@@ -3,6 +3,7 @@
 // capped maps, a ring of recent turns and the latest compact summary.
 
 import { isEngineUsageLine, isUsagelessItemLine } from '../../shared/engine-accounting'
+import { DIGEST_STRIDE, digestOf, type Digest } from '../engine/transcript-digest'
 import { intArg } from './args'
 import { openTranscript, readLines } from './line-reader'
 import { redact } from './redact'
@@ -14,7 +15,32 @@ import type { ToolOutput } from './types'
 const MAX_TOOLS = 200
 const MAX_FILES = 500
 const PROMPT_CHARS = 300
+const MAP_FIRST_REQUESTS = 20
+const MAP_LAST_REQUESTS = 40
+const MAP_LAST_HOURS = 48
 
+/** Where things are in the log, from its digest: every pointer is a line
+ *  number for from_index, its byte offset and the entry uuid. */
+function logMap(d: Digest | null): Record<string, unknown> | null {
+  if (!d) return null
+  const r = d.requests
+  const shown =
+    r.length <= MAP_FIRST_REQUESTS + MAP_LAST_REQUESTS
+      ? r
+      : [...r.slice(0, MAP_FIRST_REQUESTS), ...r.slice(-MAP_LAST_REQUESTS)]
+  return {
+    how_to_use: 'Each line is a from_index for project_session_read; read from it to see that part in full.',
+    lines: d.lines,
+    line_index_stride: DIGEST_STRIDE,
+    segments: d.segments,
+    compactions: d.compactions,
+    hours_total: d.periods.length + (d.period ? 1 : 0),
+    hours: (d.period ? [...d.periods, d.period] : d.periods).slice(-MAP_LAST_HOURS),
+    requests_total: r.length,
+    requests_omitted: r.length - shown.length,
+    requests: shown,
+  }
+}
 type Block = Record<string, unknown>
 
 function oneLine(s: string, max: number): string {
@@ -142,6 +168,7 @@ export async function outlineSession(ctx: CallerContext, args: Record<string, un
   } finally {
     await fh.close()
   }
+  const map = logMap(await digestOf(target.file, undefined, { persist: false }))
   const sorted = (m: Map<string, number>) => Object.fromEntries([...m].sort((a, b) => b[1] - a[1]))
   const body = JSON.stringify(
     {
@@ -166,6 +193,7 @@ export async function outlineSession(ctx: CallerContext, args: Record<string, un
       git_branches: [...branches],
       first_prompts: firstPrompts,
       last_prompts: lastPrompts,
+      log_map: map,
     },
     null,
     1,

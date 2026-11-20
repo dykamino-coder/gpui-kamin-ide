@@ -8,6 +8,8 @@ use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {
+    /// The full-page view's canonical scroll owner; absent for ordinary builds and print.
+    pub(crate) root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
     /// The single mutable box tree of this line of document revisions.
     pub(crate) boxes: Rc<std::cell::RefCell<crate::document::boxes::BoxTree>>,
     /// Нижние данные: арены, at-правила, метрики корня, ресурсы, шрифтовые факты.
@@ -24,7 +26,16 @@ impl DocState {
     /// Пустое состояние документа, разбираемого носителем `media`. Провайдер
     /// шрифтовых фактов по умолчанию — бэкенд text этого документа.
     pub fn new(media: Media) -> Rc<Self> {
-        Self::with_paragraphs(media, Default::default(), None)
+        Self::for_view(media, false)
+    }
+
+    pub(crate) fn for_view(media: Media, viewport: bool) -> Rc<Self> {
+        Self::with_paragraphs(
+            media,
+            Default::default(),
+            None,
+            viewport.then(Default::default),
+        )
     }
 
     /// Состояние следующей ревизии того же документа (`Document::update`): замеры
@@ -40,6 +51,7 @@ impl DocState {
             media,
             crate::text::paragraph_state::ParagraphState::continuing(&previous.paragraph),
             Some(previous),
+            previous.root_scroll.clone(),
         )
     }
 
@@ -51,6 +63,7 @@ impl DocState {
     /// основа подготовки нового (`LayoutState::continuing`).
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
+            root_scroll: previous.root_scroll.clone(),
             boxes: previous.boxes.clone(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
@@ -67,6 +80,7 @@ impl DocState {
         media: Media,
         paragraph: crate::text::paragraph_state::ParagraphState,
         previous: Option<&Self>,
+        root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
     ) -> Rc<Self> {
         let text = Rc::<crate::text::text_fonts::TextFonts>::default();
         let fonts = text.clone();
@@ -80,6 +94,7 @@ impl DocState {
             None => DocumentValues::new(media, fonts),
         };
         Rc::new(Self {
+            root_scroll,
             boxes: previous.map(|p| p.boxes.clone()).unwrap_or_default(),
             values,
             layout: Default::default(),
@@ -91,6 +106,10 @@ impl DocState {
     /// Начало сборки кадра хостом, в прежнем порядке: готовность и картинки,
     /// замеры текста, затем сброс области кадра уже покрашенного кадра.
     pub(crate) fn begin_frame(&self) {
+        if let Some(root) = &self.root_scroll {
+            // A current scroll adapter enables input during layout, including after restyles.
+            root.axes.set([false; 2]);
+        }
         self.values.begin_frame_inputs();
         self.paragraph.begin_frame();
         self.values.reset_painted_frame();

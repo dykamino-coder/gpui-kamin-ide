@@ -34,6 +34,7 @@ import { eventBus } from '../events/bus'
 import { codexErrorType, recordApiError } from '../stats/api-errors'
 import { isEngineUsageLine } from '../../shared/engine-accounting'
 import { debugLog, warnLog } from '../logging'
+import { noteAppended } from '../engine/transcript-digest'
 import { lifecycleLog } from '../logging/lifecycle'
 import { bridgeClaudeMd } from './bridge-default-claude-md'
 import { computeProjectSlug } from './jsonl-watcher'
@@ -697,7 +698,19 @@ export class CodexSessionBinding {
   // ── Input ──────────────────────────────────────────────────────────────
 
   submit(text: string, submissionId?: string): void {
-    void this.deliver(text, submissionId)
+    this.delivering++
+    void this.deliver(text, submissionId).finally(() => this.delivering--)
+  }
+
+  /** Messages handed to the thread whose delivery has not settled yet. */
+  private delivering = 0
+
+  /** What keeps the chat awake (idle hibernation): a turn that runs, a message
+   *  on its way to the thread, or a thread being resumed. */
+  liveWork(): 'turn' | 'submission' | null {
+    if (this.turnOpen || this.agent.running) return 'turn'
+    if (this.delivering > 0 || this.recovering) return 'submission'
+    return null
   }
 
   /** A turn that ended while no client was attached must not stay `working`. */
@@ -862,6 +875,7 @@ export class CodexSessionBinding {
     try {
       fs.mkdirSync(path.dirname(this.transcriptPath), { recursive: true })
       fs.appendFileSync(this.transcriptPath, entries.map((e) => JSON.stringify(e) + '\n').join(''), { mode: 0o600 })
+      noteAppended(this.transcriptPath)
     } catch (error) {
       warnLog('codex transcript append failed', { sessionId: this.session.id, error: String(error) })
     }

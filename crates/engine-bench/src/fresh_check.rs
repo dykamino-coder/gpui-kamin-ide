@@ -7,6 +7,14 @@ use std::path::Path;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
+pub(super) fn matches_series(required: usize, checks: &[Value]) -> bool {
+    required > 0
+        && checks.len() == required
+        && checks
+            .iter()
+            .all(|c| c["different_rgb_pixels"].as_u64() == Some(0))
+}
+
 pub(super) fn compare(
     incremental: &CapturedFrame,
     fresh: &CapturedFrame,
@@ -36,6 +44,21 @@ pub(super) fn compare(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_series_requires_every_transition_and_at_least_one_comparison() {
+        assert!(!matches_series(0, &[]));
+        assert!(!matches_series(3, &[]));
+        assert!(!matches_series(3, &[json!({"different_rgb_pixels": 0})]));
+    }
+
+    #[test]
+    fn an_intermediate_mismatch_cannot_be_overwritten_by_a_later_match() {
+        let checks = [0, 1, 0].map(|different| json!({"different_rgb_pixels": different}));
+        assert!(!matches_series(3, &checks));
+        let equal = [0, 0, 0].map(|different| json!({"different_rgb_pixels": different}));
+        assert!(matches_series(3, &equal));
+    }
 
     #[test]
     fn fresh_hash_identifies_a_single_rgb_pixel_change_and_ignores_alpha() {

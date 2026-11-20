@@ -3,7 +3,8 @@
 
 import type fsp from 'node:fs/promises'
 import { ArgError, type Cursor } from './args'
-import { isLineStart, readLines } from './line-reader'
+import { isLineStart } from './line-reader'
+import { lineIndex, seekLine, tailStart, totalLines } from './line-index'
 import { locateSubagent, locateTranscript, resolveScope, type CallerContext, type TranscriptRef } from './scope'
 
 export interface Target {
@@ -32,8 +33,10 @@ export interface StartPos {
 
 /** Where a paged read starts: an explicit cursor, the first of the last `tail`
  *  matching entries, `from_index`, or the beginning. `matches` decides which
- *  lines count toward `tail` (null = every line). */
+ *  lines count toward `tail` (null = every line). `tail` and `from_index` seek
+ *  through the file's sparse line index instead of reading it from the top. */
 export async function startPosition(
+  file: string,
   fh: fsp.FileHandle,
   cursor: Cursor | null,
   fromIndex: number | null,
@@ -45,20 +48,15 @@ export async function startPosition(
     return { index: cursor.i, byte: cursor.b, offset: cursor.c }
   }
   if (tail !== null) {
-    const ring: Array<{ index: number; start: number }> = []
-    for await (const line of readLines(fh)) {
-      if (matches && !matches(line.text)) continue
-      ring.push({ index: line.index, start: line.start })
-      if (ring.length > tail) ring.shift()
-    }
-    const first = ring[0]
+    const idx = await lineIndex(file, fh)
+    const first = matches
+      ? await tailStart(fh, idx, tail, matches)
+      : await seekLine(fh, idx, Math.max(0, totalLines(idx) - tail))
     return first ? { index: first.index, byte: first.start, offset: 0 } : null
   }
   if (fromIndex !== null && fromIndex > 0) {
-    for await (const line of readLines(fh)) {
-      if (line.index === fromIndex) return { index: line.index, byte: line.start, offset: 0 }
-    }
-    return null
+    const line = await seekLine(fh, await lineIndex(file, fh), fromIndex)
+    return line ? { index: line.index, byte: line.start, offset: 0 } : null
   }
   return { index: 0, byte: 0, offset: 0 }
 }

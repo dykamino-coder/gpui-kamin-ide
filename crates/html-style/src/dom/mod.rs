@@ -23,9 +23,12 @@ pub use same_tree::{
 };
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
+pub mod class_tokens;
 pub mod invalidation;
 pub mod traversal;
-pub use children::{BoxTextFacts, BoxTreeSummary, Children, ChildrenMark};
+pub use children::{
+    BoxTextFacts, BoxTreeSummary, Children, ChildrenMark, PositionedFacts, PositionedQuery,
+};
 mod direction;
 pub mod early_admission;
 mod shared_style;
@@ -44,6 +47,8 @@ mod page_scheme;
 mod parse_document;
 pub mod restyle_probe;
 pub use walk::{Probed, ProbedRest};
+#[cfg(test)]
+mod class_token_tests;
 pub mod source_walk;
 pub mod style_sources;
 pub mod text_content;

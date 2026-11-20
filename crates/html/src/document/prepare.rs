@@ -47,7 +47,7 @@ pub(super) fn parse_document(
     {
         timings.style = style_started.elapsed();
     }
-    let (mut nodes, root) = viewport::prepare(styled, vcx);
+    let (mut nodes, root) = viewport::prepare(styled, vcx, state.root_scroll.is_some());
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false, &admission)?;
     }

@@ -132,8 +132,6 @@ pub fn render_modal(
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 // Бокс диалога для проверки `target === currentTarget`
                 .child(crate::probe::registry::probe_area("modal-dialog"))
-                // Видимый регион overlay-окна (ввод даёт input_area на всё окно)
-                .child(crate::overlay::region_area())
                 .min_w(px(dlg_min_w))
                 .max_w(px(dlg_max_w))
                 .p(px(m::SPACE_5))

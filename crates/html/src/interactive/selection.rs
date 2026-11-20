@@ -1,8 +1,8 @@
 //! Общие прогоны и состояние выделения текста мышью.
 
 use gpui::{
-    GlobalElementId, Hsla, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point, TextRun,
-    Window,
+    GlobalElementId, Hitbox, Hsla, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point,
+    TextRun, Window,
 };
 
 /// Границы выделения в байтах и состояние перетаскивания между кадрами.
@@ -48,31 +48,39 @@ pub(crate) fn selected_runs(
     out
 }
 
+/// Track a mouse selection over `hitbox`. A press starts one only on a hit of
+/// `hitbox` when the press arrives (`Hitbox::is_hovered` in the listener: the
+/// hit test of the frame that dispatches it), not where the mouse was at
+/// paint. So the paint is the same wherever the mouse is, and a frame that
+/// replays it (`Window::replay_retained_paint`) hits as a new paint would.
+/// Blink hit-tests the fragment tree when the event comes
+/// (`EventHandler::HandleMousePressEvent`), not in paint.
 pub(crate) fn track_selection(
     global: &GlobalElementId,
-    inside: bool,
+    hitbox: &Hitbox,
     index_at: impl Fn(Point<Pixels>) -> Option<usize> + Clone + 'static,
     window: &mut Window,
 ) {
-    // Вне экрана слушатели без попадания и без жеста ничего не делают, а
-    // пустое выделение равно новому: пропуск такого абзаца ничего не теряет.
-    window.offscreen_inert(|window| track(global, inside, index_at, window));
+    // The listeners act only on a hit of `hitbox` or during a gesture, and an
+    // empty selection equals a new one: skipping or replaying this paint
+    // loses nothing (`Window::offscreen_inert`).
+    window.offscreen_inert(|window| track(global, hitbox.clone(), index_at, window));
 }
 
 fn track(
     global: &GlobalElementId,
-    inside: bool,
+    hitbox: Hitbox,
     index_at: impl Fn(Point<Pixels>) -> Option<usize> + Clone + 'static,
     window: &mut Window,
 ) -> ((), bool) {
     window.with_element_state::<Selection, _>(global, |state, window| {
         let state = state.unwrap_or_default();
-        let inert = !inside && !state.dragging && state.anchor == state.head;
+        let inert = !state.dragging && state.anchor == state.head;
         let st = std::rc::Rc::new(std::cell::Cell::new(state));
         let down = st.clone();
         let at_down = index_at.clone();
         window.on_mouse_event(move |e: &MouseDownEvent, phase, window, _cx| {
-            if !phase.bubble() || e.button != MouseButton::Left || !inside {
+            if !phase.bubble() || e.button != MouseButton::Left || !hitbox.is_hovered(window) {
                 return;
             }
             let Some(i) = at_down(e.position) else { return };

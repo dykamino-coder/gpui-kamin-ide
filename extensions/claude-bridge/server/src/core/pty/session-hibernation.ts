@@ -9,6 +9,11 @@
 // says *whether* a session may sleep; anything that still runs inside the
 // process — a turn, a tool, an MCP task, a question to the user, a scheduled
 // wakeup — keeps it awake.
+//
+// A ChatGPT (codex) chat sleeps the same way: its thread is let go and resumed
+// by the next message. Kept awake, it was ended by the idle reaper instead,
+// and the open client resumed it at once, every half hour, for as long as the
+// tab stayed open. The awake bound (maxAwake) counts CLI processes only.
 // ============================================================================
 
 import fs from 'node:fs'
@@ -83,7 +88,6 @@ export const SCHEDULED_WAKEUP_MARGIN_MS = 60_000
 export type HibernationBlocker =
   | 'not-running'
   | 'detached'
-  | 'codex'
   | 'subagent'
   | 'children'
   | 'mcp-call'
@@ -110,6 +114,8 @@ const defaultDeps: BlockerDeps = {
   runningShells: runningShellCount,
   // null from liveWork() means idle; only a missing control is unknown.
   liveWork: (session) => {
+    // A ChatGPT chat has no CLI: its thread binding knows what runs.
+    if (session.agentInput?.liveWork) return session.agentInput.liveWork()
     const control = sessionCliControl(session)
     return control ? control.liveWork() : 'status-unknown'
   },
@@ -129,7 +135,6 @@ export function hibernationBlocker(
   if (session.state !== 'running' || session.teardown || session.isRestarting || session.hibernating)
     return 'not-running'
   if (session.detachGraceTimer || session.detachedAt) return 'detached'
-  if (session.engine === 'codex') return 'codex'
   if (session.isSubAgent) return 'subagent'
   if (session.childSessions.some((id) => deps.childAlive(id))) return 'children'
   if (deps.inflightCall(session.id)) return 'mcp-call'
@@ -243,6 +248,8 @@ function evict(excess: number, now: number, config: HibernationConfig, deps: Blo
   if (excess <= 0) return 0
   for (const candidate of candidates(now, config.evictIdleMs, deps)) {
     if (slept >= excess) break
+    // The bound counts CLI processes; a ChatGPT chat holds none.
+    if (candidate.session.engine === 'codex') continue
     if (sleep(candidate)) slept++
   }
   return slept

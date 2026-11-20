@@ -57,6 +57,7 @@ pub fn fixed_cb_layer_box(c: &Computed) -> bool {
     (c.reset_transforms.backface_hidden == Some(true) && c.reset_transforms.transform_ancestor)
         || c.reset_transforms.transform.is_some()
         || c.reset_transforms.preserve_3d == Some(true)
+        || c.reset_transforms.perspective.is_some()
         || c.reset_context.contain_layout == Some(true)
         || c.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(c)

@@ -193,8 +193,10 @@ pub(crate) fn handle_inspect(cmd: &str, req: &Value) -> Option<Value> {
                     json!({"ok": false, "err": "windows only"})
                 }
             }
-            // {"cmd":"hits"} — hit-регионы overlay (физ. px клиента)
-            "hits" => json!({"ok": true, "rects": crate::overlay::hit_rects_snapshot()}),
+            // {"cmd":"hits"} — hit-регионы прежнего overlay-окна. Окна нет
+            // (Ф6), ввод решает hit-test главного окна: список всегда пуст,
+            // команда оставлена для старых стендов.
+            "hits" => json!({"ok": true, "rects": []}),
             "emit" => crate::probe::host::emit(req),
             _ => unreachable!("список команд выше"),
         }

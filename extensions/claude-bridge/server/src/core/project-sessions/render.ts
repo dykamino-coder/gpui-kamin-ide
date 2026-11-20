@@ -6,6 +6,8 @@
 // it, tools summarised) and `full` (every block: thinking, tool arguments, tool
 // results, attachments, system rows and any other row as JSON).
 
+import { withoutContextBlocks } from '../engine/handoff'
+
 export const KINDS = [
   'user',
   'assistant',
@@ -29,6 +31,22 @@ type Block = Record<string, unknown>
 export type Entry = Record<string, unknown>
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+/** Visible text: the history block Bridge hands a joining engine is hidden in the
+ *  chat, repeats what the log already holds, and is left out here too. */
+const visible = (v: unknown): string => withoutContextBlocks(str(v))
+
+/** Engine that wrote an entry: codex lines are marked, Claude CLI lines are not. */
+export function engineOf(entry: Entry): 'claude' | 'codex' {
+  return entry.engine === 'codex' ? 'codex' : 'claude'
+}
+
+/** Model of an assistant entry, or null. */
+export function modelOf(entry: Entry): string | null {
+  if (entry.type !== 'assistant') return null
+  const model = (entry.message as { model?: unknown } | undefined)?.model
+  return typeof model === 'string' && model && model !== '<synthetic>' ? model : null
+}
 
 function blocks(entry: Entry): Block[] | null {
   const content = (entry.message as { content?: unknown } | undefined)?.content
@@ -65,13 +83,13 @@ export function timestampOf(entry: Entry): string {
 /** Text of a user prompt or compact summary (string or text blocks). */
 export function promptText(entry: Entry): string {
   const content = (entry.message as { content?: unknown } | undefined)?.content
-  if (typeof content === 'string') return content
+  if (typeof content === 'string') return withoutContextBlocks(content)
   if (entry.type === 'summary') return str(entry.summary)
   const bs = blocks(entry)
   return bs
     ? bs
         .filter((b) => b.type === 'text')
-        .map((b) => str(b.text))
+        .map((b) => visible(b.text))
         .join('\n')
     : ''
 }
@@ -82,7 +100,7 @@ export function assistantText(entry: Entry): string {
   return bs
     ? bs
         .filter((b) => b.type === 'text')
-        .map((b) => str(b.text))
+        .map((b) => visible(b.text))
         .join('\n')
     : ''
 }
@@ -133,7 +151,7 @@ export function renderBody(entry: Entry, kind: Kind, opts: RenderOptions): strin
     case 'assistant': {
       const out: string[] = []
       for (const b of blocks(entry) ?? []) {
-        if (b.type === 'text') out.push(str(b.text))
+        if (b.type === 'text') out.push(visible(b.text))
         else if (b.type === 'thinking' && (opts.includeThinking || full)) out.push(`[thinking]\n${str(b.thinking)}`)
         else if (b.type === 'redacted_thinking' && full) out.push('[redacted thinking]')
         else if (b.type === 'tool_use') {
@@ -181,6 +199,7 @@ export function renderHeader(index: number, entry: Entry, kind: Kind, opts: Rend
   const parts = [`#${index}`, timestampOf(entry) || '-', kind]
   if (kind === 'other' && typeof entry.type === 'string') parts.push(`type=${entry.type}`)
   if (kind === 'assistant') {
+    parts.push(`engine=${engineOf(entry)}`)
     const usage = usageLine(entry)
     if (usage && opts.detail === 'full') parts.push(usage)
     else {

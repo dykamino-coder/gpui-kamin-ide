@@ -131,11 +131,16 @@ fn foreign_and_template_attributes_rebuild_the_cascade() {
     let page = "<body><svg><rect class=a width=5 height=5></rect></svg>\
         <template><p class=a>t</p></template><math><mi class=a>x</mi></math></body>";
     for (from, to) in [
-        ("<rect class=a", "<rect class=b"),
+        ("width=5", "width=6"),
         ("<p class=a>t", "<p class=b>t"),
         ("<mi class=a", "<mi class=b"),
     ] {
         assert!(!update(page, &page.replace(from, to), ""), "{to}");
+    }
+    // SVG reads `class` and `data-*` through the cascade only: no sheet
+    // mentions them, so the cascade is kept.
+    for to in ["<rect class=b", "<rect data-k=1 class=a"] {
+        assert!(update(page, &page.replace("<rect class=a", to), ""), "{to}");
     }
 }
 
