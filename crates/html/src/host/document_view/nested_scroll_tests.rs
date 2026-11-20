@@ -28,6 +28,17 @@ const STYLE: &str =
 /// Steps of `dy` at `(x, y)`; per step the builds and replays it cost, after
 /// checking the frame against the same document rebuilt at that offset.
 fn steps(cx: &mut TestAppContext, html: &str, at: (f32, f32), dys: &[f32]) -> Vec<(u64, u64)> {
+    steps_with(cx, html, at, dys, |_| {})
+}
+
+/// `steps`, with `check` run on each stepped frame.
+fn steps_with(
+    cx: &mut TestAppContext,
+    html: &str,
+    at: (f32, f32),
+    dys: &[f32],
+    check: impl Fn(&mut VisualTestContext),
+) -> Vec<(u64, u64)> {
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, html);
     frame(vcx);
@@ -41,6 +52,7 @@ fn steps(cx: &mut TestAppContext, html: &str, at: (f32, f32), dys: &[f32]) -> Ve
         frame(vcx);
         let (b1, r1) = frames(vcx);
         let after = painted(vcx);
+        check(vcx);
         // The same document rebuilt: element states (scroll offsets) stay.
         vcx.update(|_, cx| {
             view.update(cx, |view, cx| {
@@ -72,12 +84,53 @@ fn a_nested_scroller_steps_without_a_build(cx: &mut TestAppContext) {
     assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
 }
 
+/// Its scrollbar thumb moves along the lane with the offset, replayed.
+#[gpui::test]
+fn a_nested_scroller_with_a_bar_steps_without_a_build(cx: &mut TestAppContext) {
+    let html = format!(
+        "{STYLE}<div style='height:200px;width:300px;overflow-y:scroll'>{}</div><main>{}</main>",
+        rows(300),
+        rows(100)
+    );
+    let costs = steps(cx, &html, (100., 100.), &[-120., -120., -120., 120.]);
+    assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
+}
+
+/// The top edges of the painted quads `height` tall.
+fn tops(vcx: &mut VisualTestContext, height: f32) -> Vec<f32> {
+    vcx.update(|window, _| {
+        let scale = window.scale_factor();
+        window
+            .painted_quads()
+            .into_iter()
+            .filter(|q| (q.bounds.size.height.0 - height * scale).abs() < 0.01)
+            .map(|q| (q.bounds.origin.y.0 + q.transformation.translation[1]) / scale)
+            .collect()
+    })
+}
+
 #[gpui::test]
 fn a_root_step_under_a_sticky_box_replays(cx: &mut TestAppContext) {
     let html = format!(
         "{STYLE}<div style='position:sticky;top:0;height:30px;background:blue'></div><main>{}</main>",
         rows(400)
     );
-    let costs = steps(cx, &html, (200., 150.), &[-120., -120., -120., 120.]);
+    // Stuck to the scrollport's top, not to the interest rect's.
+    let stuck = |vcx: &mut VisualTestContext| assert_eq!(tops(vcx, 30.), vec![0.]);
+    let costs = steps_with(cx, &html, (200., 150.), &[-120., -120., -120., 120.], stuck);
+    assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
+}
+
+/// A sticky box inside a nested scroller: the scroller's steps replay it.
+#[gpui::test]
+fn a_nested_step_under_a_sticky_box_replays(cx: &mut TestAppContext) {
+    let html = format!(
+        "{STYLE}<div style='height:200px;width:300px;overflow:auto'>\
+         <div style='position:sticky;top:10px;height:30px;background:blue'></div>{}</div><main>{}</main>",
+        rows(300),
+        rows(100)
+    );
+    let stuck = |vcx: &mut VisualTestContext| assert_eq!(tops(vcx, 30.), vec![10.]);
+    let costs = steps_with(cx, &html, (100., 100.), &[-120., -120., 120.], stuck);
     assert!(costs.iter().all(|c| c.0 == 0), "{costs:?}");
 }

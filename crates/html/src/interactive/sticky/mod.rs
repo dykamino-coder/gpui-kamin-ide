@@ -1,7 +1,7 @@
 //! Липкие коробки `position: sticky`: распорка, снимающая коробку родителя и видимую часть
-//! ленты, и обёртка `Sticky` с порогами из `inset`. Прилипший элемент с порогом рисуется
-//! отложенно в конце кадра, чтобы проезжающее под ним содержимое его не закрашивало; без
-//! единого порога он красится как `relative` в порядке дерева (css-position-3 §sticky-pos).
+//! ленты, и обёртка `Sticky` с порогами из `inset`. Липкий красится как позиционированный
+//! шага 8 своего контекста наложения, поверх проезжающего под ним потока; отложенный проход
+//! GPUI остался только для положительного `z-index` (css-position-3 §sticky-pos).
 
 use crate::hooks::IntoHooked;
 use crate::style::computed::Computed;
@@ -19,7 +19,9 @@ pub(crate) fn sticky_probe(frame: crate::interactive::sticky::element::StickyCel
         move |bounds, window, _| {
             frame.set(crate::interactive::sticky::element::StickyFrame {
                 container: Some(bounds),
-                viewport: Some(window.content_mask().bounds),
+                // Under a scroll node the content mask is its interest
+                // rect (what a scrolled replay may show), not the scrollport.
+                viewport: Some(window.scroll_visible_mask()),
             });
         },
         |_, _, _, _| {},
@@ -32,10 +34,6 @@ pub(crate) fn sticky_probe(frame: crate::interactive::sticky::element::StickyCel
 }
 
 /// Обернуть элемент липкой рамкой, если `position: sticky`.
-///
-/// Отложенный проход нужен из-за порядка: прилипший заголовок рисуется до
-/// содержимого, которое под ним проезжает, и без переноса в конец кадра это
-/// содержимое его закрашивало бы.
 pub(crate) fn sticky_wrap(
     el: AnyElement,
     c: &Computed,
@@ -74,10 +72,19 @@ pub(crate) fn sticky_wrap(
         || wrapper.bottom.is_some()
         || wrapper.left.is_some()
         || wrapper.right.is_some();
-    if !allowed || !thresholds {
+    // With `z-index: auto | 0` the box is a positioned box of step 8
+    // (CSS 2.1 Appendix E): the step-8 collector of its stacking context
+    // paints it after the in-flow content scrolling under it, in tree
+    // order, inside its scroller (`step8::paints_at_step8`), as Blink's
+    // and WebRender's sticky boxes stay in their stacking context. GPUI's
+    // deferred pass painted it above everything, outside its scroller and
+    // its scroll node: a wheel step then rebuilt the document.
+    let z = c.reset_positioned.z_index.unwrap_or(0);
+    if !allowed || !thresholds || z <= 0 {
         return wrapper.hooked();
     }
+    wrapper.deferred = true;
     gpui::deferred(wrapper.into_hooked())
-        .with_priority(c.reset_positioned.z_index.unwrap_or(0).max(0) as usize)
+        .with_priority(z as usize)
         .into_any_element()
 }

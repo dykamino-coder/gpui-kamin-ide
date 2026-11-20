@@ -206,6 +206,15 @@ impl RootBars {
         &self,
         window: &mut Window,
     ) -> Vec<crate::interactive::scrollbars::interaction::HitBar> {
+        crate::interactive::scrollbars::follow(
+            &self.style,
+            &self.handle,
+            self.extent.bars(),
+            self.extent.range(),
+            self.extent.insets(),
+            self.bounds,
+            window,
+        );
         crate::interactive::scrollbars::interaction::prepaint(
             self.freeze,
             &self.style,

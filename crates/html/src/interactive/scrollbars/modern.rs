@@ -3,7 +3,7 @@
 //! оставляет платформенный вид за UA; авторские `scrollbar-color` уводят на классическую тему.
 //! Размеры классического gutter остаются в `scrollbar_gutter`.
 use crate::style::computed::{BoxStyle, Computed};
-use gpui::{Bounds, Pixels, ScrollHandle, Window, fill, point, px, size};
+use gpui::{Bounds, Pixels, Point, ScrollHandle, Window, fill, point, px, size};
 
 #[derive(Clone, Copy)]
 pub(super) struct Bar {
@@ -75,13 +75,7 @@ pub(super) fn bars(
                 .max(width)
                 .min(available);
             let travel = (available - thumb_len).max(0.0);
-            let start = -f32::from(if axis == 0 { offset.x } else { offset.y });
-            let start = if reverse[axis] {
-                range[axis] - start
-            } else {
-                start
-            };
-            let position = 3.0 + travel * (start / range[axis].max(1.0)).clamp(0.0, 1.0);
+            let position = 3.0 + travel_at(axis, travel, range[axis], reverse[axis], offset);
             let thumb = if axis == 0 {
                 Bounds::new(
                     point(lane.left() + px(position), lane.top() + px(3.0)),
@@ -105,7 +99,31 @@ pub(super) fn bars(
         .collect()
 }
 
-pub(super) fn paint(c: &BoxStyle, bars: &[Bar], alpha: f32, window: &mut Window) {
+/// How far along its travel a thumb lies at scroll offset `offset`.
+fn travel_at(axis: usize, travel: f32, maximum: f32, reverse: bool, offset: Point<Pixels>) -> f32 {
+    let start = -f32::from(if axis == 0 { offset.x } else { offset.y });
+    let start = if reverse { maximum - start } else { start };
+    travel * (start / maximum.max(1.0)).clamp(0.0, 1.0)
+}
+
+/// Prepaint each thumb as a follower of the scroller's node: a scrolled
+/// replay moves it along its lane by the offset's change, as cc's
+/// compositor places a scrollbar thumb from the scroll offset.
+pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
+    let base = handle.offset();
+    for bar in bars.iter().filter(|bar| bar.maximum > 0.0) {
+        let Bar { axis, travel, maximum, reverse, .. } = *bar;
+        let from = travel_at(axis, travel, maximum, reverse, base);
+        let along = move |change: Point<Pixels>| {
+            let by = px(travel_at(axis, travel, maximum, reverse, base + change) - from);
+            if axis == 0 { point(by, px(0.0)) } else { point(px(0.0), by) }
+        };
+        let id = gpui::ScrollNodeId::follower(handle, axis);
+        window.with_scroll_follower_prepaint(id, Some(handle), std::rc::Rc::new(along), |_| {});
+    }
+}
+
+pub(super) fn paint(c: &BoxStyle, bars: &[Bar], handle: &ScrollHandle, alpha: f32, window: &mut Window) {
     let color = |value: u32, alpha| {
         let mut color = crate::style::values::value::Color {
             r: value as f32 / 255.0,
@@ -129,7 +147,8 @@ pub(super) fn paint(c: &BoxStyle, bars: &[Bar], alpha: f32, window: &mut Window)
             };
             let mut quad = fill(bar.thumb, color(110, alpha));
             quad.corner_radii = gpui::Corners::all(thickness / 2.0);
-            window.paint_quad(quad);
+            let id = gpui::ScrollNodeId::follower(handle, bar.axis);
+            window.with_scroll_node_paint(id, |window| window.paint_quad(quad));
         }
     }
     if bars.len() == 2 {
