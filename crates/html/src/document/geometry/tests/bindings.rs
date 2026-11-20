@@ -1,3 +1,5 @@
+//! Geometry joins source nodes to the box builder and live scroll state.
+
 use super::*;
 
 #[test]
