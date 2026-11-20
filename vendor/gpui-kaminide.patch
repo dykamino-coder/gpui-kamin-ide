@@ -2,56 +2,57 @@
 #
 # 1. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
 # 2. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
-# 3. Natural image lifetime: each window owns its resampled CPU cache; cached entries and accepted scene commands share upload leases, including replay, clipping, transforms and retained scene copies. The final cache or scene owner removes the atlas tile.
-# 4. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
-# 5. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
-# 6. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 7. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
-# 8. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
-# 9. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
-# 10. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
-# 11. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
-# 12. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
-# 13. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
-# 14. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
-# 15. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 16. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
-# 17. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
-# 18. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
-# 19. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 20. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
-# 21. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
-# 22. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
-# 23. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
-# 24. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
-# 25. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 26. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
-# 27. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
-# 28. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 29. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
-# 30. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 31. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
-# 32. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
-# 33. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
-# 34. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 35. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 36. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 37. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 38. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 39. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 40. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 41. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 42. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 43. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 44. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 45. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 46. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 47. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 48. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 49. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 50. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 51. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 52. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 3. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
+# 4. Natural image lifetime: each window owns its resampled CPU cache; cached entries and accepted scene commands share upload leases, including replay, clipping, transforms and retained scene copies. The final cache or scene owner removes the atlas tile.
+# 5. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
+# 6. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
+# 7. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 8. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
+# 9. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
+# 10. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
+# 11. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
+# 12. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
+# 13. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
+# 14. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
+# 15. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
+# 16. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
+# 17. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
+# 18. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
+# 19. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
+# 20. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
+# 21. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
+# 22. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
+# 23. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
+# 24. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
+# 25. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
+# 26. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
+# 27. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
+# 28. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
+# 29. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
+# 30. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 31. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
+# 32. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
+# 33. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
+# 34. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
+# 35. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
+# 36. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 37. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 38. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 39. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 40. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 41. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 42. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 43. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 44. Retained subtrees: public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 45. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 46. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 47. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 48. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 49. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 50. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 51. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 52. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 53. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -5678,21 +5679,22 @@ index ea5968f84e9cb08dd878e5e09195eb88f587b1ce..7f2096597bdbcbb79495e851e4b9bd97
 +
 +    #[test]
 diff --git a/vendor/gpui/src/assets.rs b/vendor/gpui/src/assets.rs
-index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02a9474298
+index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..5e8f6e00ef3fb8de911b19c3fe1fe74860dbb72e
 --- a/vendor/gpui/src/assets.rs
 +++ b/vendor/gpui/src/assets.rs
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,7 @@
 +//! Application assets and immutable render images, owned or shared with a CPU consumer.
 +
 +// KaminIDE patch: share immutable CPU backing with the renderer and its consumers.
 +mod shared;
++pub use shared::LazyBgra;
 +use shared::SharedImage;
 +
-@@ -48,0 +55 @@
+@@ -48,0 +56 @@
 +    shared: Option<SharedImage>,
-@@ -67,0 +75 @@
+@@ -67,0 +76 @@
 +            shared: None,
-@@ -68,0 +77,18 @@
+@@ -68,0 +78,36 @@
 +    }
 +
 +    /// Share a dense, straight BGRA frame without copying its pixels. The owner
@@ -5707,15 +5709,33 @@ index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02
 +        Some(image)
 +    }
 +
++    /// KaminIDE patch: a dense straight BGRA frame of known size whose pixels the owner
++    /// produces for each upload ([`LazyBgra`]); the image keeps no CPU copy.
++    pub fn from_lazy_bgra<T: LazyBgra>(width: u32, height: u32, owner: std::sync::Arc<T>) -> Option<Self> {
++        let shared = SharedImage::lazy(width, height, owner)?;
++        let mut image = Self::new(SmallVec::new());
++        image.shared = Some(shared);
++        Some(image)
++    }
++
++    /// KaminIDE patch: the frame for one upload into a texture: borrowed when resident,
++    /// produced on demand (and dropped after the upload) for a lazy image.
++    pub fn upload_bytes(&self, frame_index: usize) -> Option<Cow<'_, [u8]>> {
++        if let Some(shared) = &self.shared {
++            return (frame_index == 0).then(|| shared.upload()).flatten();
++        }
++        self.as_bytes(frame_index).map(Cow::Borrowed)
++    }
++
 +    /// Recover a shared CPU owner for a consumer that understands its format.
 +    /// Owned/animated images have no shared owner.
 +    pub fn shared_bgra_owner<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
 +        self.shared.as_ref()?.owner()
-@@ -72,0 +99,3 @@
+@@ -72,0 +118,3 @@
 +        if let Some(shared) = &self.shared {
-+            return (frame_index == 0).then(|| shared.bytes());
++            return (frame_index == 0).then(|| shared.bytes()).flatten();
 +        }
-@@ -79,0 +109,7 @@
+@@ -79,0 +128,7 @@
 +        if let Some(shared) = &self.shared {
 +            return if frame_index == 0 {
 +                size(shared.width.into(), shared.height.into())
@@ -5723,21 +5743,22 @@ index cb8b47ed0166ba1bf67842766cd50cdd30e8a6d2..671f7d3e64dc9b42937ac03a0978ce02
 +                Size::default()
 +            };
 +        }
-@@ -105 +141 @@
+@@ -105 +160 @@
 -        self.data.len()
 +        self.shared.as_ref().map_or(self.data.len(), |_| 1)
-@@ -113 +149 @@
+@@ -113 +168 @@
 -            .field("size", &self.data.first().map(|f| f.buffer().dimensions()))
 +            .field("size", &self.size(0))
 diff --git a/vendor/gpui/src/assets/shared.rs b/vendor/gpui/src/assets/shared.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e664c90ae
+index 0000000000000000000000000000000000000000..b3546e8d16158b5f111ca8af70696ef919bcfcfe
 --- /dev/null
 +++ b/vendor/gpui/src/assets/shared.rs
-@@ -0,0 +1,77 @@
-+//! Dense immutable BGRA backing shared with an external CPU owner.
+@@ -0,0 +1,150 @@
++//! Dense immutable BGRA backing shared with an external CPU owner, or produced by it on
++//! demand (KaminIDE patch: decode on upload).
 +
-+use std::{any::Any, sync::Arc};
++use std::{any::Any, borrow::Cow, sync::Arc};
 +
 +trait Pixels: Any + Send + Sync {
 +    fn bytes(&self) -> &[u8];
@@ -5749,10 +5770,28 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +    }
 +}
 +
++/// KaminIDE patch: an owner that produces the dense straight BGRA frame when the
++/// renderer needs it (an atlas upload), so the image keeps no CPU copy of its pixels.
++pub trait LazyBgra: Any + Send + Sync {
++    /// The frame, `width * height * 4` bytes; `None` when the source cannot produce it.
++    fn bgra(&self) -> Option<Vec<u8>>;
++}
++
++enum Backing {
++    Ready(Arc<dyn Pixels>),
++    Lazy(Arc<dyn LazyBgra>),
++}
++
 +pub(super) struct SharedImage {
 +    pub width: u32,
 +    pub height: u32,
-+    pixels: Arc<dyn Pixels>,
++    pixels: Backing,
++}
++
++fn frame_len(width: u32, height: u32) -> Option<usize> {
++    (width as usize)
++        .checked_mul(height as usize)?
++        .checked_mul(4)
 +}
 +
 +impl SharedImage {
@@ -5760,33 +5799,62 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +    where
 +        T: AsRef<[u8]> + Send + Sync + 'static,
 +    {
-+        let len = (width as usize)
-+            .checked_mul(height as usize)?
-+            .checked_mul(4)?;
-+        if owner.as_ref().as_ref().len() != len {
++        if owner.as_ref().as_ref().len() != frame_len(width, height)? {
 +            return None;
 +        }
 +        Some(Self {
 +            width,
 +            height,
-+            pixels: owner,
++            pixels: Backing::Ready(owner),
 +        })
 +    }
 +
-+    pub fn bytes(&self) -> &[u8] {
-+        self.pixels.bytes()
++    pub fn lazy<T: LazyBgra>(width: u32, height: u32, owner: Arc<T>) -> Option<Self> {
++        frame_len(width, height)?;
++        Some(Self {
++            width,
++            height,
++            pixels: Backing::Lazy(owner),
++        })
++    }
++
++    /// Resident pixels; a lazy frame has none until a consumer asks [`Self::upload`].
++    pub fn bytes(&self) -> Option<&[u8]> {
++        match &self.pixels {
++            Backing::Ready(pixels) => Some(pixels.bytes()),
++            Backing::Lazy(_) => None,
++        }
++    }
++
++    /// The frame for one upload: borrowed when resident, produced (and not kept) when lazy.
++    pub fn upload(&self) -> Option<Cow<'_, [u8]>> {
++        match &self.pixels {
++            Backing::Ready(pixels) => Some(Cow::Borrowed(pixels.bytes())),
++            Backing::Lazy(owner) => {
++                let bytes = owner.bgra()?;
++                (Some(bytes.len()) == frame_len(self.width, self.height))
++                    .then_some(Cow::Owned(bytes))
++            }
++        }
 +    }
 +
 +    pub fn owner<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
-+        let owner: Arc<dyn Any + Send + Sync> = self.pixels.clone();
++        let owner: Arc<dyn Any + Send + Sync> = match &self.pixels {
++            Backing::Ready(pixels) => pixels.clone(),
++            Backing::Lazy(owner) => owner.clone(),
++        };
 +        owner.downcast().ok()
 +    }
 +}
 +
 +#[cfg(test)]
 +mod tests {
++    use super::LazyBgra;
 +    use crate::RenderImage;
-+    use std::sync::Arc;
++    use std::sync::{
++        Arc,
++        atomic::{AtomicUsize, Ordering},
++    };
 +
 +    #[test]
 +    fn shared_pixels_keep_owner_and_validate_frame_extent() {
@@ -5810,6 +5878,31 @@ index 0000000000000000000000000000000000000000..f7b6be3af1c9860665daf0d73007b17e
 +        assert!(weak.upgrade().is_some());
 +        drop(image);
 +        assert!(weak.upgrade().is_none());
++    }
++
++    struct Counted(AtomicUsize, Vec<u8>);
++
++    impl LazyBgra for Counted {
++        fn bgra(&self) -> Option<Vec<u8>> {
++            self.0.fetch_add(1, Ordering::Relaxed);
++            Some(self.1.clone())
++        }
++    }
++
++    #[test]
++    fn lazy_pixels_are_produced_per_upload_and_never_resident() {
++        let owner = Arc::new(Counted(AtomicUsize::new(0), vec![1, 2, 3, 4, 5, 6, 7, 8]));
++        let image = RenderImage::from_lazy_bgra(2, 1, owner.clone()).unwrap();
++        assert_eq!(owner.0.load(Ordering::Relaxed), 0, "nothing decoded at creation");
++        assert_eq!(image.size(0), crate::size(2.into(), 1.into()));
++        assert_eq!(image.as_bytes(0), None, "no resident CPU copy");
++        assert_eq!(image.upload_bytes(0).as_deref(), Some(&owner.1[..]));
++        assert_eq!(owner.0.load(Ordering::Relaxed), 1);
++        assert!(image.shared_bgra_owner::<Counted>().is_some());
++        assert!(RenderImage::from_lazy_bgra(3, 1, owner.clone())
++            .unwrap()
++            .upload_bytes(0)
++            .is_none(), "a frame of the wrong extent is refused");
 +    }
 +}
 diff --git a/vendor/gpui/src/batch_cost.rs b/vendor/gpui/src/batch_cost.rs
@@ -29040,7 +29133,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca3eb13780
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..24e48a64ad8810a0236b0b51d65368c52bca385c
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -30617,13 +30710,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 @@ -4898 +5940 @@
 -        self.next_frame.scene.insert_primitive(MonochromeSprite {
 +        self.insert_scene_primitive(MonochromeSprite {
-@@ -5004 +6046,4 @@
+@@ -4948,4 +5990 @@
+-                    Cow::Borrowed(
+-                        data.as_bytes(frame_index)
+-                            .expect("It's the caller's job to pass a valid frame index"),
+-                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
+@@ -5004 +6043,4 @@
 -        self.next_frame.scene.insert_primitive(PolychromeSprite {
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
 +        self.insert_scene_primitive(PolychromeSprite {
 +            transformation,
-@@ -5016,0 +6062,71 @@
+@@ -5016,0 +6059,68 @@
 +    /// KaminIDE patch: нарисовать ЧАСТЬ образа 1:1 без масштабирования.
 +    ///
 +    /// `paint_image` вписывает ВЕСЬ образ в `bounds` — для software-кадров CEF
@@ -30655,10 +30754,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .get_or_insert_with(params.into(), &mut || {
 +                Ok(Some((
 +                    data.size(frame_index),
-+                    Cow::Borrowed(
-+                        data.as_bytes(frame_index)
-+                            .expect("It's the caller's job to pass a valid frame index"),
-+                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
 +                )))
 +            })?
 +            .expect("Callback above only returns Some");
@@ -30695,7 +30791,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        Ok(())
 +    }
 +
-@@ -5018,0 +6135,219 @@
+@@ -5018,0 +6129,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -30915,10 +31011,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        result
 +    }
 +
-@@ -5028 +6363 @@
+@@ -5028 +6357 @@
 -        self.next_frame.scene.insert_primitive(PaintSurface {
 +        self.insert_scene_primitive(PaintSurface {
-@@ -5076,0 +6412,24 @@
+@@ -5076,0 +6406,24 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -30943,7 +31039,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6442,26 @@
+@@ -5082,0 +6436,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -30970,7 +31066,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6475,66 @@
+@@ -5089,0 +6469,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -31037,10 +31133,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6560,2 @@
+@@ -5108,0 +6554,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6565,229 @@
+@@ -5112 +6559,229 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -31271,7 +31367,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6814,48 @@
+@@ -5132,0 +6808,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -31320,7 +31416,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6876,6 @@
+@@ -5147,2 +6870,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -31329,11 +31425,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5160 +6893,2 @@
+@@ -5160 +6887,2 @@
 -        let content_mask = self.content_mask();
 +        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
 +        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
-@@ -5169 +6903,10 @@
+@@ -5169 +6897,10 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -31345,7 +31441,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            }
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +6955,16 @@
+@@ -5211,0 +6949,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -31362,21 +31458,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +6983 @@
+@@ -5223,0 +6977 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +6985 @@
+@@ -5225,3 +6979 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +6994 @@
+@@ -5235,0 +6988 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +6996 @@
+@@ -5237,3 +6990 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +7216,7 @@
+@@ -5458,0 +7210,7 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        // A wheel step moves scroll offsets, which retained records replay
 +        // through their scroll nodes (`retained_scrolled`); a listener that
@@ -31384,44 +31480,44 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        if !matches!(event, PlatformInput::ScrollWheel(_)) {
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
 +        }
-@@ -5792,0 +7557,5 @@
+@@ -5792,0 +7551,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -5872,0 +7642,6 @@
+@@ -5872,0 +7636,6 @@
 +            // KaminIDE patch: this frame shows the state before the key's
 +            // handlers run, so it is drawn at the epoch before this input
 +            // (`dispatch_event` counted it): a retained subtree replays here
 +            // and judges the input once its handlers ran.
 +            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
 +            self.interaction_epoch = before;
-@@ -5873,0 +7649,2 @@
+@@ -5873,0 +7643,2 @@
 +            // Inputs the draw itself counted (a focus change) stay counted.
 +            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
-@@ -6132 +7909 @@
+@@ -6132 +7903 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +7921 @@
+@@ -6144 +7915 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +7941 @@
+@@ -6164 +7935 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +8173 @@
+@@ -6396 +8167 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +8196 @@
+@@ -6419 +8190 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8375 @@
+@@ -6598 +8369 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8478 @@
+@@ -6701 +8472 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6789,0 +8567,7 @@
+@@ -6789,0 +8561,7 @@
 +    }
 +
 +    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
@@ -31429,7 +31525,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    /// report it.
 +    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.platform_window.gpu_memory(sink)
-@@ -7181,0 +8966,11 @@
+@@ -7181,0 +8960,11 @@
 +        // KaminIDE patch: a read sets states aside for the next frame, which
 +        // takes them before those of the drawn frame (`update_rendering`).
 +        if self.read_states.active {
@@ -31441,13 +31537,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +                .or_else(|| self.rendered_frame.element_states.remove(&key));
 +            return (key, state);
 +        }
-@@ -7186,0 +8982 @@
+@@ -7186,0 +8976 @@
 +            .or_else(|| self.read_states.states.remove(&key))
-@@ -7196,0 +8993,3 @@
+@@ -7196,0 +8987,3 @@
 +        if self.read_states.active {
 +            return self.read_states.states.insert(key, state);
 +        }
-@@ -7733,0 +9533,44 @@
+@@ -7733,0 +9527,44 @@
 +impl Frame {
 +    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
 +    /// (`crate::heap_report`). What listeners and element states own is not walked.
@@ -31492,7 +31588,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +    }
 +}
 +
-@@ -7752,0 +9596,31 @@
+@@ -7752,0 +9590,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -31524,7 +31620,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -7913,0 +9788,36 @@
+@@ -7913,0 +9782,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -31561,7 +31657,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..9fde53ddc04d262c1cdcf37f50d02fca
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +9945,67 @@
+@@ -8034,0 +9939,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
@@ -31875,10 +31971,10 @@ index 0000000000000000000000000000000000000000..4dd6f006fee72a8210e087a6c2b1d36c
 +}
 diff --git a/vendor/gpui/src/window/image_sampling.rs b/vendor/gpui/src/window/image_sampling.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..686f0c1cd0f86a47b2cb00e013e8acf444312c9c
+index 0000000000000000000000000000000000000000..d95baecf30c9f6066504e62f3643a1a4005a1b1d
 --- /dev/null
 +++ b/vendor/gpui/src/window/image_sampling.rs
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,100 @@
 +//! Image sampling selected by the caller without changing the native UI default.
 +
 +use super::*;
@@ -31942,10 +32038,7 @@ index 0000000000000000000000000000000000000000..686f0c1cd0f86a47b2cb00e013e8acf4
 +            .get_or_insert_with(params.into(), &mut || {
 +                Ok(Some((
 +                    data.size(frame_index),
-+                    Cow::Borrowed(
-+                        data.as_bytes(frame_index)
-+                            .expect("It's the caller's job to pass a valid frame index"),
-+                    ),
++                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
 +                )))
 +            })?
 +            .expect("Callback above only returns Some");
@@ -32657,7 +32750,7 @@ index 0000000000000000000000000000000000000000..106501ad7a57ae23f3909d5dfd29da9d
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/natural_image.rs b/vendor/gpui/src/window/natural_image.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4d7f040e99a3a014833edb9872c0a6c4e3a7d296
+index 0000000000000000000000000000000000000000..c8ef6618037d12f6ab25f4dc175f458ac6eb916d
 --- /dev/null
 +++ b/vendor/gpui/src/window/natural_image.rs
 @@ -0,0 +1,244 @@
@@ -32777,7 +32870,7 @@ index 0000000000000000000000000000000000000000..4d7f040e99a3a014833edb9872c0a6c4
 +    if let Some(found) = cache.get(&key) {
 +        return Some(found.clone());
 +    }
-+    let bytes = image.as_bytes(frame)?;
++    let bytes = image.upload_bytes(frame)?;
 +    let mut out = Vec::with_capacity((w * h * 4) as usize);
 +    for y in 0..h {
 +        let sy = sample(y, ih, phase[1], scale);
