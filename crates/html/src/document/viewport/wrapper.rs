@@ -1,12 +1,13 @@
 //! Анонимный бокс viewport: несёт политику прокрутки корня и цвет холста.
 
-use super::{Computed, Display, Node};
+use super::{Computed, Display, Node, Overflow};
 use crate::style::values::value::Len;
 
 pub(in crate::document) fn wrap(
     nodes: Vec<Node>,
     policy: Option<Computed>,
     canvas: Option<crate::style::values::value::Color>,
+    full_page: bool,
 ) -> Vec<Node> {
     let Some(c) = policy else { return nodes };
     let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
@@ -18,8 +19,14 @@ pub(in crate::document) fn wrap(
                     display: Some(Display::Block),
                     width: Some(Len::Vw(1.0)),
                     height: Some(Len::Vh(1.0)),
-                    overflow_x: c.reset_box_layout.overflow_x,
-                    overflow_y: c.reset_box_layout.overflow_y,
+                    overflow_x: c
+                        .reset_box_layout
+                        .overflow_x
+                        .or_else(|| full_page.then_some(Overflow::Scroll)),
+                    overflow_y: c
+                        .reset_box_layout
+                        .overflow_y
+                        .or_else(|| full_page.then_some(Overflow::Scroll)),
                     scroll: c.reset_box_layout.scroll.clone(),
                     ..Default::default()
                 },

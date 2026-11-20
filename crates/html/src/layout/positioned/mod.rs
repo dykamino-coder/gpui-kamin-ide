@@ -11,5 +11,6 @@ pub mod predicates;
 pub mod relative;
 mod spot_geometry;
 pub mod static_position;
+pub(crate) mod viewport_anchor;
 
 pub(crate) mod repeat;

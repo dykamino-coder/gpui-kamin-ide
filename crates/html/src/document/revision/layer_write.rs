@@ -14,7 +14,7 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before.
 
-use super::paint_damage::{PaintDamage, PaintValue, classify};
+use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
 use crate::layout::reuse::Wait;
@@ -39,7 +39,8 @@ type Write = (u32, Option<Hsla>, Option<Hsla>);
 /// it (`layout::reuse::deferred`). An inline box whose own paint is its band
 /// (`Own::Band`) takes a new background colour as a value written into every
 /// piece of its band; any other change of its band paints its pieces again
-/// on the next frame (`layer_band`).
+/// on the next frame (`layer_band`). A box the layer cannot record whose
+/// whole paint lies off the screen (`waits`) waits in `frames` (`offscreen`).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn write_paint_values(
     old: &[Node],
@@ -71,6 +72,9 @@ pub(super) fn write_paint_values(
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
+        }
+        if unpainted_svg(old, path) {
+            continue;
         }
         if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);

@@ -31,6 +31,8 @@ pub(super) async fn blocks_flow(
     below_zs: Vec<i32>,
 ) -> Vec<AnyElement> {
     let vcx = opts.cx.vcx();
+    // "Is there such a sibling later" answered for the whole list at once.
+    let nodes = &crate::layout::positioned::predicates::Siblings::new(nodes);
     // Запросы среза строк (`text::line_trim`): свой контейнер адресует их
     // владельцам строк до раскладки детей, а сам забирает адресованные ему.
     let owner = inherited.self_node;
@@ -168,7 +170,7 @@ pub(super) async fn blocks_flow(
                 && let Some(el) = flow.replay(e, opts, || {
                     element::step8::paints_at_step8(
                         e,
-                        &nodes[idx + 1..],
+                        nodes.after(idx),
                         inherited,
                         under_tf,
                         &opts.cx,
