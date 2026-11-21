@@ -41,8 +41,12 @@ impl Window {
         for run in &mut runs {
             run.group = Some(run.group.map_or(index, |nested| nested + base));
         }
-        if let Some(outer) = self.next_frame.scene.book.group_runs.as_mut() {
+        let book = &mut self.next_frame.scene.book;
+        if let Some(outer) = book.group_runs.as_mut() {
             outer.extend(runs);
+        } else if let Some(record) = book.record_runs.as_mut() {
+            // A paint record's copy carries them (`placed_groups`).
+            record.boxes.extend(runs);
         } else if let Some(recording) = self.layer_recording.as_mut() {
             recording.boxes.extend(runs);
         }

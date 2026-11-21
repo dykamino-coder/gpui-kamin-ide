@@ -24,6 +24,7 @@ mod group_runs;
 mod order;
 mod order_line;
 mod placed;
+mod placed_groups;
 mod reorder;
 mod splice;
 mod write;
