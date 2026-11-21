@@ -40,6 +40,38 @@ pub(crate) fn requested_painter(
     })
 }
 
+/// The decorations of `e` as painters without layout (`decoration_painters`),
+/// for a box with no content painted again as the whole content of its
+/// composition group (`document::retained::box_repaint`): its own paint and
+/// these are all it paints there. `None` for a box with content, one whose
+/// painter is not its own (`owner::painter`), one painted per fragment, or a
+/// decoration only layout places.
+pub(crate) fn group_painters(
+    e: &Element,
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<crate::paint::decorations::Painters> {
+    let style = BoxStyle::shared(e.style.used());
+    let empty = !e.children.iter().any(|n| !is_blank(n));
+    if !empty
+        || cx.position.geometry_record.is_some()
+        || owner::painter(e, &style, || false) != Own::Plain
+    {
+        return None;
+    }
+    crate::paint::decorations::decoration_painters(&style, empty, cx.frame(), Some(cx))
+}
+
+/// `group_painters` exist for the new used values of `e`, before program
+/// changes are applied (`requested_painter`).
+pub(crate) fn requested_group_paint(
+    doc: &std::rc::Rc<crate::document::state::DocState>,
+    e: &Element,
+) -> bool {
+    let cx = crate::layout::cx::LayoutCx::default()
+        .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
+    group_painters(e, &cx).is_some()
+}
+
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,

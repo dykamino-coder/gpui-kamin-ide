@@ -32,13 +32,16 @@ fn ink(scene: &Scene) -> Option<Bounds<ScaledPixels>> {
 
 impl SceneLayer {
     /// The group run `at` fills alone: its group, when no other run is in it,
-    /// the run spans the group's commands and the group nests none.
+    /// the run spans the group's commands (or begins them, and the rest are
+    /// its decorations, painted by its child elements after it) and the group
+    /// nests none.
     pub(crate) fn group_root(&self, at: usize) -> Option<u32> {
         let run = self.boxes.get(at)?;
         let g = run.group?;
         let scene = &self.scene.groups.get(g as usize)?.scene;
         let alone = self.boxes.iter().enumerate().all(|(i, b)| i == at || b.group != Some(g));
-        let whole = run.ops.start == 0 && run.ops.end as usize == scene.paint_operations.len();
+        let decorated = matches!(run.env.painter, crate::scene::RunPainter::Box(crate::scene::BoxContents::DecoratedBox(_)));
+        let whole = run.ops.start == 0 && (decorated || run.ops.end as usize == scene.paint_operations.len());
         (alone && whole && !nests(scene)).then_some(g)
     }
 
@@ -53,7 +56,8 @@ impl SceneLayer {
             return None;
         }
         let run = &self.boxes[at];
-        let reach = self.scene.groups[g as usize].bounds.union(&run.ink.unwrap_or(run.area));
+        let old = run.ink.unwrap_or(run.area);
+        let reach = self.scene.groups[g as usize].bounds.union(&old);
         let ink = ink(&new);
         if ink.is_some_and(|ink| reach.intersect(&ink) != ink) {
             return None;
@@ -62,7 +66,9 @@ impl SceneLayer {
         new.finish();
         let run = &mut self.boxes[at];
         run.ops = 0..new.paint_operations.len() as u32;
-        run.ink = ink;
+        // Where the run may ink stays where it ever reached: a later paint of
+        // the box (its decoration gone again) may reach there once more.
+        run.ink = Some(ink.map_or(old, |ink| ink.union(&old)));
         self.scene.groups[g as usize].scene = std::rc::Rc::new(new);
         self.version += 1;
         Some(self.composite_area(g).or(self.bounds))
@@ -82,6 +88,11 @@ mod tests {
         let mut inner = Scene { in_group: true, ..Scene::default() };
         inner.book.group_runs = Some(Vec::new());
         let run = paint_root(&mut inner, first, child);
+        in_group(inner, run)
+    }
+
+    /// `inner` as group 0 of a layer whose one run is `run`.
+    fn in_group(mut inner: Scene, run: BoxRange) -> SceneLayer {
         inner.finish();
         let mut scene = Scene::default();
         scene.groups.push(PaintGroup { scene: Rc::new(inner), bounds: LABEL, ..Default::default() });
@@ -128,6 +139,22 @@ mod tests {
         assert_eq!(layer.version(), 1);
         // A frame that still holds the old group keeps what it drew.
         assert_eq!(quads(&held), quads(&root(RED, RED).scene.groups[0].scene));
+    }
+
+    #[test]
+    fn a_decorated_run_whose_child_elements_paint_after_it_is_a_group_root() {
+        use crate::scene::{BoxContents, RunPainter};
+        let layer = |painter| {
+            let mut inner = Scene { in_group: true, ..Scene::default() };
+            inner.book.group_runs = Some(Vec::new());
+            let run = paint_box(&mut inner, 1, rect(0., 0., 100., 40.), RED);
+            inner.insert_primitive(super::super::group_runs_tests::quad(rect(10., 10., 20., 20.), BLUE));
+            in_group(inner, BoxRange { env: super::super::BoxEnv { painter, ..run.env }, ..run })
+        };
+        // The run holds its fill only; its decoration follows it in the group.
+        assert_eq!(layer(RunPainter::Box(BoxContents::DecoratedBox(crate::px(0.)))).group_root(0), Some(0));
+        // A box painting all of its own paint leaves the quad to someone else.
+        assert_eq!(layer(RunPainter::Box(BoxContents::Own)).group_root(0), None);
     }
 
     #[test]

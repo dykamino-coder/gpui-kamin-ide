@@ -21,6 +21,7 @@ fn env() -> super::BoxEnv {
         transformation: crate::TransformationMatrix::unit(),
         opacity: 1.,
         rem_size: crate::px(16.),
+        exact: None,
         fill: None,
         layer: None,
         painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),

@@ -11,6 +11,7 @@ pub(super) use borders::coloured_borders;
 pub(crate) use fragments::layer as fragment_layer;
 
 use crate::hooks::{IntoHooked, PaintOnly};
+use crate::paint::background::exact_layer::ExactLayer;
 use crate::paint::decorations::backdrop::backdrop_matrix;
 use crate::paint::decorations::border_shape::border_shape_layer;
 use crate::paint::decorations::gradient_stripes::gradient_stripes;
@@ -42,15 +43,45 @@ pub(crate) fn decorations(
     frame: FrameCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
 ) -> Vec<AnyElement> {
-    let vcx = frame.values;
-    if crate::paint::effects::corner_clip::insets(c, vcx).is_some() {
-        return Vec::new();
-    }
     let mut out: Vec<AnyElement> = vec![];
+    if crate::paint::effects::corner_clip::insets(c, frame.values).is_none() {
+        emit(c, empty, frame, cx, &mut out);
+    }
+    out
+}
 
-    outer_shadows(c, &mut out, frame);
-    if let Some(layer) = crate::paint::background::single_corner::layer(c) {
-        out.push(layer);
+pub(crate) use painters::{Painters, decoration_painters};
+mod painters;
+
+/// Where the decorations of a box go: a layer that paints from its box alone
+/// (`ExactLayer`), or any other element.
+trait Out {
+    fn exact(&mut self, layer: ExactLayer);
+    fn elements(&mut self) -> &mut Vec<AnyElement>;
+}
+
+impl Out for Vec<AnyElement> {
+    fn exact(&mut self, layer: ExactLayer) {
+        self.push(layer.hooked());
+    }
+
+    fn elements(&mut self) -> &mut Vec<AnyElement> {
+        self
+    }
+}
+
+/// The decorations of `decorations`, in paint order, into `out`.
+fn emit(
+    c: &BoxStyle,
+    empty: bool,
+    frame: FrameCx<'_>,
+    cx: Option<&crate::layout::cx::LayoutCx>,
+    out: &mut impl Out,
+) {
+    let vcx = frame.values;
+    outer_shadows(c, out.elements(), frame);
+    if let Some(layer) = crate::paint::background::single_corner::exact(c) {
+        out.exact(layer);
     }
 
     // `filter: url(#id)` на HTML-элементе (filter-effects-1 §filter
@@ -79,7 +110,7 @@ pub(crate) fn decorations(
             ),
             _ => "none".to_string(),
         };
-        out.push(
+        out.elements().push(
             PaintOnly(crate::paint::effects::filter::FilterLayer {
                 def,
                 id: id.to_string(),
@@ -93,9 +124,9 @@ pub(crate) fn decorations(
     // backdrop is drawn first and the element's background, borders and
     // content on top of it; borders after it stay unfiltered
     // (`backdrop-filter-with-background-clip-padding-box`).
-    backdrop_matrix(c, &mut out, vcx);
+    backdrop_matrix(c, out.elements(), vcx);
     if !c.paints_decorations() {
-        return out;
+        return;
     }
     if !(empty
         && !c.reset_transforms.transform_ancestor
@@ -106,7 +137,7 @@ pub(crate) fn decorations(
             .is_some_and(|id| vcx.doc.masks.markup(&format!("filter:{id}")).is_some()))
         && let Some(layer) = crate::paint::background::color_layer(c, vcx)
     {
-        out.push(layer);
+        out.elements().push(layer);
     }
 
     // Фоновая картинка идёт первой: она поверх цвета фона и под всем
@@ -117,8 +148,8 @@ pub(crate) fn decorations(
         let bg = c.paint_background();
         if let Some(layers) = &bg.layers {
             for layer in layers.iter().rev() {
-                if let Some(element) = crate::paint::background::layer(layer, c, vcx) {
-                    out.push(element);
+                if let Some(layer) = crate::paint::background::exact(layer, c, vcx) {
+                    out.exact(layer);
                 }
             }
         } else {
@@ -126,13 +157,13 @@ pub(crate) fn decorations(
             if layer.image.is_none() && bg.gradient_as_tile() {
                 layer.image = bg.gradient_image.clone();
             }
-            if let Some(element) = crate::paint::background::layer(&layer, c, vcx) {
-                out.push(element);
+            if let Some(layer) = crate::paint::background::exact(&layer, c, vcx) {
+                out.exact(layer);
             }
         }
     }
 
-    inset_shadows(c, &mut out, frame);
+    inset_shadows(c, out.elements(), frame);
 
     // Рамка ПОВЕРХ слоя картинки (css-backgrounds-3 §3.7, прим.: «The
     // background is always drawn behind the border»; CSS 2.2 Прил. E; Blink
@@ -142,19 +173,20 @@ pub(crate) fn decorations(
     // Квад цвета не получает (`apply::apply_paint`); слой повторяет толщины,
     // стиль и скругление рамки и вынесен на толщину сторон — абсолютный
     // ребёнок отсчитывается от padding-box (как полосы сторон ниже).
+    let out = out.elements();
     let start = out.len();
-    box_borders(c, &mut out, vcx);
+    box_borders(c, out, vcx);
 
-    border_shape_layer(c, &mut out, vcx);
+    border_shape_layer(c, out, vcx);
 
     // Рамка-картинка рисуется ПОВЕРХ фона и заменяет обычную рамку.
     if let Some(layer) = crate::paint::border_image::layer(c, vcx) {
         out.push(layer);
     }
-    stationary(c, &mut out, start, cx);
+    stationary(c, out, start, cx);
 
     if c.background_paint.paints() {
-        gradient_stripes(c, &mut out);
+        gradient_stripes(c, out);
     }
 
     out.extend(outline::decorations(c, frame));
@@ -162,9 +194,8 @@ pub(crate) fn decorations(
     // Разные цвета сторон рамки: у GPUI цвет рамки один на элемент, поэтому
     // несовпадающие стороны дорисовываются полосами поверх.
     let start = out.len();
-    coloured_borders(c, &mut out, vcx);
-    stationary(c, &mut out, start, cx);
-    out
+    coloured_borders(c, out, vcx);
+    stationary(c, out, start, cx);
 }
 
 fn stationary(
