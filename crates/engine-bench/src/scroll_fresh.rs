@@ -7,24 +7,14 @@
 
 use super::frames::Run;
 use super::run::{Step, sample};
-use gpui::frame_capture::CapturedFrame;
+use super::step_frames::StepFrames;
 use serde_json::{Value, json};
-use std::rc::Rc;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// One wheel step: its measured frame, the last settle frame (when the step
-/// drew more frames before it settled) and the root offset it was drawn at.
-pub(super) struct StepFrame {
-    pub(super) measured: Rc<CapturedFrame>,
-    pub(super) settled: Option<Rc<CapturedFrame>>,
-    pub(super) offset: (f32, f32),
-}
-
-pub(super) type StepFrames = Vec<StepFrame>;
-
 pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
     let (cx, window, fonts, args, capture, luid) = run;
+    let steps = steps.steps;
     if steps.is_empty() {
         return Err("scroll mode captured no frame to check against a fresh document".into());
     }
