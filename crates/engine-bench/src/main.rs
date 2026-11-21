@@ -43,6 +43,7 @@ mod scroll_fresh;
 #[cfg(windows)]
 mod startup;
 mod step;
+mod step_frames;
 mod stylesheet;
 #[cfg(all(windows, feature = "work-counters"))]
 mod usage;

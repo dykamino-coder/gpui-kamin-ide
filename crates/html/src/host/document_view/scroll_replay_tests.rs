@@ -174,4 +174,5 @@ fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppConte
 
 mod built_at_offset;
 mod canvas;
+mod canvas_extent;
 mod groups;

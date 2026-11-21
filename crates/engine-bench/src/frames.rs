@@ -96,8 +96,8 @@ pub(super) struct Frames {
     /// Root-flow blocks replayed in the document before the frame (`Document::replayed_blocks`).
     before_blocks: u64,
     samples: Vec<Value>,
-    /// Scroll: every step frame and its root offset (`scroll_fresh`).
-    steps: super::scroll_fresh::StepFrames,
+    /// Scroll: a copy of every step frame and its root offset (`step_frames`).
+    steps: super::step_frames::StepFrames,
 }
 
 impl Frames {
@@ -126,7 +126,7 @@ impl Frames {
             wheel_from: None,
             before_blocks: 0,
             samples: Vec::new(),
-            steps: Vec::new(),
+            steps: super::step_frames::StepFrames::new(args.runs),
         })
     }
 
@@ -226,14 +226,9 @@ impl Frames {
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        // A memory run keeps no step frame: its working set is the document's.
+        // A memory run keeps no step: its working set is the document's.
         if let (true, Some(offset), false) = (self.scroll, offset.0, memory_only()) {
-            let (measured, settled) = (frame.pixels.clone(), None);
-            (self.steps).push(super::scroll_fresh::StepFrame {
-                measured,
-                settled,
-                offset,
-            })
+            self.steps.push(&frame.pixels, offset);
         }
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
     }
@@ -250,9 +245,7 @@ impl Frames {
         while frames < SETTLE_FRAMES && !settled {
             let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
             let (_, frame, _) = sample(cx, window, fonts, args, step, capture, luid).await?;
-            if let Some(last) = self.steps.last_mut() {
-                last.settled = Some(frame.pixels);
-            }
+            self.steps.settled(&frame.pixels);
             let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
             let (b, r) = delta(before, after)?;
             frames += 1;
