@@ -49,7 +49,7 @@ fn lazy_fragment_keeps_fixed_containing_block_after_layer_closes(cx: &mut gpui::
     let inner = box_style(&merged, &copy.style, opts.cx.vcx());
     let watch = Watched::new(&[fixed]);
     let icb = LayerScope::icb(&opts.cx.position.state);
-    let layer = LayerScope::fixed_only(&opts.cx.position.state);
+    let layer = LayerScope::fixed_only(&opts.cx.position.state, None);
     let build = new(
         &opts,
         false,

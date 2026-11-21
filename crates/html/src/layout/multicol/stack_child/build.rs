@@ -201,6 +201,7 @@ pub(super) fn build_copy(
         crate::layout::positioned::layer_scope::LayerScope::cb(
             &opts.cx.position.state,
             fixed_cb_layer_box(inner),
+            opts.cx.scroll.node.clone(),
         )
     });
     let child_build = &child_opts.cx.contracts.build;

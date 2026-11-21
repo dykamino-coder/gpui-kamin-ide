@@ -89,7 +89,7 @@ mod tests {
     fn probe_descendants_cannot_reach_retained_live_destinations() {
         let positioning = Positioning::default();
         positioning.icb_open();
-        positioning.cb_open_with(true);
+        positioning.cb_open_with(true, None);
         positioning.late_open();
         let live = positioning.retain();
         {

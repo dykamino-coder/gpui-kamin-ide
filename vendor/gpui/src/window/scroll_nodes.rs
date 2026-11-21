@@ -58,6 +58,9 @@ pub(crate) struct ScrollNodeRecord {
     /// Index of the enclosing node in the same frame.
     pub(crate) parent: Option<u32>,
     pub(crate) offset: Point<Pixels>,
+    /// Element offset the children were prepainted under: the offset at the
+    /// node plus its own (`scroll_node_children_offset`).
+    pub(crate) children_offset: Point<Pixels>,
     /// Real clip chain of the children: the enclosing node's clip and the
     /// content mask at the node (`chain`).
     pub(crate) clip: Bounds<Pixels>,
@@ -261,6 +264,25 @@ impl Window {
         result
     }
 
+    /// The element offset under which the children of the open scroll node
+    /// of `handle` prepaint (the innermost one, when nested copies are open),
+    /// or `None` outside it. A box laid out in that node's content but
+    /// prepainted elsewhere (painted at its source position, CSS 2.1
+    /// Appendix E) takes its coordinates from here: that is the space of its
+    /// containing block, as Blink takes a positioned box's transform from
+    /// its containing block's context and not from its tree position.
+    pub fn scroll_node_children_offset(&self, handle: &ScrollHandle) -> Option<Point<Pixels>> {
+        let id = ScrollNodeId::of(handle);
+        let nodes = &self.next_frame.scroll_nodes;
+        self.next_frame
+            .scroll_node_stack
+            .iter()
+            .rev()
+            .map(|&index| &nodes[index as usize])
+            .find(|node| node.id == id)
+            .map(|node| node.children_offset)
+    }
+
     /// The visible part of what the innermost open prepaint node shows:
     /// the content mask, which under a node is its interest rect, clipped
     /// by the node's real clip chain (a sticky box's scrollport).
@@ -281,10 +303,16 @@ impl Window {
             None => chain,
         };
         let interest = clip.dilate(self.scroll_interest_margin);
+        // Read the stack directly instead of `element_offset()`: opening a
+        // node is not tied to a draw phase (records are built outside one),
+        // and outside prepaint the stack is empty, so the base is zero.
+        let base = self.element_offset_stack.last().copied().unwrap_or_default();
+        let children_offset = base + offset;
         self.next_frame.scroll_nodes.push(ScrollNodeRecord {
             id,
             parent,
             offset,
+            children_offset,
             clip,
             chain,
             interest,

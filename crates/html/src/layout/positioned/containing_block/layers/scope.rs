@@ -42,18 +42,32 @@ impl<'a> LayerScope<'a> {
         }
     }
 
-    pub(crate) fn cb(positioning: &'a Positioning, fixed: bool) -> Self {
-        positioning.cb_open_with(fixed);
+    /// `node`: the scroll node whose content the layer's owner lays its
+    /// boxes out in (`ScrollContext::node`); the same for every constructor.
+    pub(crate) fn cb(
+        positioning: &'a Positioning,
+        fixed: bool,
+        node: Option<gpui::ScrollHandle>,
+    ) -> Self {
+        positioning.cb_open_with(fixed, node);
         Self::new(positioning, Layer::Containing)
     }
 
-    pub(crate) fn strict(positioning: &'a Positioning, style: &BoxStyle, fixed: bool) -> Self {
-        positioning.cb_open_strict(style, fixed);
+    pub(crate) fn strict(
+        positioning: &'a Positioning,
+        style: &BoxStyle,
+        fixed: bool,
+        node: Option<gpui::ScrollHandle>,
+    ) -> Self {
+        positioning.cb_open_strict(style, fixed, node);
         Self::new(positioning, Layer::Containing)
     }
 
-    pub(crate) fn fixed_only(positioning: &'a Positioning) -> Self {
-        positioning.cb_open_fixed_only();
+    pub(crate) fn fixed_only(
+        positioning: &'a Positioning,
+        node: Option<gpui::ScrollHandle>,
+    ) -> Self {
+        positioning.cb_open_fixed_only(node);
         Self::new(positioning, Layer::Containing)
     }
 
@@ -126,7 +140,7 @@ mod tests {
     fn finish_removes_exactly_its_layer() {
         let positioning = Positioning::default();
         let before = depths(&positioning);
-        let outer = LayerScope::cb(&positioning, false);
+        let outer = LayerScope::cb(&positioning, false, None);
         let strict = LayerScope::strict(
             &positioning,
             &{
@@ -135,10 +149,11 @@ mod tests {
                 style
             },
             true,
+            None,
         );
         assert_eq!(positioning.cb.borrow().last().unwrap().strict, Some(4));
         assert!(strict.finish().is_empty());
-        let fixed = LayerScope::fixed_only(&positioning);
+        let fixed = LayerScope::fixed_only(&positioning, None);
         assert!(fixed.finish().is_empty());
         assert_eq!(depths(&positioning)[0], before[0] + 1);
         assert!(outer.finish().is_empty());
@@ -155,7 +170,7 @@ mod tests {
         let outer = LayerScope::icb(&positioning);
         let nested = depths(&positioning);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _cb = LayerScope::cb(&positioning, true);
+            let _cb = LayerScope::cb(&positioning, true, None);
             let _icb = LayerScope::icb(&positioning);
             let _late = LayerScope::late(&positioning);
             panic!("render failed");
