@@ -46,6 +46,8 @@ impl Window {
         // A paint record keeps the run for its placements (`scene::layer::placed`).
         if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
             runs.boxes.push(range.clone());
+        } else if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.group_runs.as_mut()) {
+            runs.push(range.clone());
         } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
             recording.boxes.push(range);
         }
@@ -139,9 +141,14 @@ impl Window {
                 None => (scene, bindings),
             };
             let mut current = layer.0.content.borrow_mut();
-            let plan = current.check_box(at, &scene)?;
-            let content = Rc::make_mut(&mut *current);
-            let (damage, shifted) = content.replace_box(at, scene, bindings, plan);
+            let (damage, shifted) = if current.boxes[at].group.is_some() {
+                // The layer is held by no frame (a grouped layer is copied
+                // into frames), so this takes no copy of its top commands.
+                Rc::make_mut(&mut *current).replace_group_run(at, scene, bindings)?
+            } else {
+                let plan = current.check_box(at, &scene)?;
+                Rc::make_mut(&mut *current).replace_box(at, scene, bindings, plan)
+            };
             moved |= shifted;
             if let Some(rect) = damage {
                 let old = layer.0.damage.get();
@@ -178,6 +185,10 @@ impl Window {
         self.invalidator.set_phase(DrawPhase::Paint);
         self.content_mask_stack.push(env.mask);
         let opacity = mem::replace(&mut self.element_opacity, env.opacity);
+        // A run painted under a transformation paints again under it.
+        let unit = env.transformation == TransformationMatrix::unit();
+        let restored = if unit { Vec::new() } else { vec![env.transformation] };
+        let transforms = mem::replace(&mut self.transformation_stack, restored);
         self.box_fill = env.fill;
         self.next_frame.scene.open_box(owner, area, env);
         self.with_rem_size(Some(env.rem_size), |window| {
@@ -185,6 +196,7 @@ impl Window {
         });
         self.next_frame.scene.close_box();
         self.box_fill = None;
+        self.transformation_stack = transforms;
         self.element_opacity = opacity;
         self.content_mask_stack.pop();
         self.invalidator.set_phase(phase);
