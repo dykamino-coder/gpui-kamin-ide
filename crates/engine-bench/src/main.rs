@@ -32,6 +32,8 @@ mod memory;
 #[cfg(windows)]
 mod pixels;
 #[cfg(windows)]
+mod plan;
+#[cfg(windows)]
 mod process;
 #[cfg(all(windows, feature = "work-counters"))]
 mod profile_state;
@@ -40,6 +42,8 @@ mod resources;
 #[cfg(windows)]
 mod run;
 mod scroll_fresh;
+#[cfg(windows)]
+mod series;
 #[cfg(windows)]
 mod startup;
 mod step;

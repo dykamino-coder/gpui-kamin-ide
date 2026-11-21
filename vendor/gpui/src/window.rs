@@ -71,6 +71,7 @@ mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
+mod grouped_layer;
 mod layer_box;
 mod layer_band;
 pub use scene_layer::{NoLayer, RecordedLayer};
@@ -6313,11 +6314,12 @@ impl Window {
         let scaled = bounds.scale(scale_factor);
         let content_mask = self.content_mask().scale(scale_factor);
 
-        let (result, mut inner) = self.with_isolated_scene(f);
+        let (result, mut inner) = self.with_isolated_scene_runs(true, f);
         inner.finish();
         // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
         // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
         let hoisted = inner.take_backdrops();
+        let runs = inner.book.group_runs.take();
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -6325,7 +6327,7 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
@@ -6335,7 +6337,7 @@ impl Window {
             None => (None, Bounds::default(), 0),
         };
         self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: scaled,
             blur_radius: blur_radius * scale_factor,
             blend,
@@ -6348,6 +6350,7 @@ impl Window {
             projection: None,
             fragments: Vec::new(),
         });
+        self.adopt_group_runs(runs, index, base);
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.

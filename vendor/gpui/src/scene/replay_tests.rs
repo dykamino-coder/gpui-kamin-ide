@@ -103,7 +103,7 @@ fn placed_replay_of_a_fully_clipped_record_writes_only_kept_commands() {
 fn placed_replay_declines_records_with_groups_and_open_layers() {
     let mut grouped = record();
     grouped.groups.push(PaintGroup {
-        scene: Scene::default(),
+        scene: Default::default(),
         bounds: rect(0., 0., 1., 1.),
         blur_radius: 0.,
         blend: 0,

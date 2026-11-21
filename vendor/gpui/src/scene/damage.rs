@@ -437,7 +437,12 @@ impl Compare<'_> {
             && bits(a.mask_clip) == bits(b.mask_clip)
             && bits(a.projection) == bits(b.projection)
             && a.fragments == b.fragments
-            && self.same_scene(&a.scene, &b.scene)
+            && if std::rc::Rc::ptr_eq(&a.scene, &b.scene) && a.scene.book.layers.is_empty() {
+                // One shared content: equal unless a group it labels changed.
+                a.scene.surfaces.iter().filter(|s| s.group > 0).all(|s| self.same_group(s.group - 1, s.group - 1))
+            } else {
+                self.same_scene(&a.scene, &b.scene)
+            }
     }
 
     /// Сцены группы рисуют одно и то же: равные примитивы в равном порядке.

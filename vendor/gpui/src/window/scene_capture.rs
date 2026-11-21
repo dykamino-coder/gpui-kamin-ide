@@ -97,6 +97,6 @@ fn normalize_solid_quads(scene: &mut Scene) {
         quad.transformation = TransformationMatrix::unit();
     }
     for group in &mut scene.groups {
-        normalize_solid_quads(&mut group.scene);
+        normalize_solid_quads(group.scene_mut());
     }
 }

@@ -14,7 +14,7 @@ fn sized(cells: &[(usize, Hsla)], side: impl Fn(usize) -> f32) -> Scene {
         let d = side(k);
         let (x, y) = (g.bounds.origin.x.0, g.bounds.origin.y.0);
         g.bounds = b(x, y, 44. - d, 44. - d);
-        g.scene.quads[0].bounds = g.bounds;
+        std::rc::Rc::get_mut(&mut g.scene).expect("an unshared test group").quads[0].bounds = g.bounds;
         s.surfaces[k].bounds = g.bounds;
     }
     s

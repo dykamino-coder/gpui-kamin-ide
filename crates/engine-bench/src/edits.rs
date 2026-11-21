@@ -34,7 +34,7 @@ pub(super) async fn run(
     let same_shape = window.read_with(cx, |view, _| view.doc.mutations(&edited).is_some())?;
     // Boxes of the input that paint only their own commands, and refusals by reason.
     let census = window.read_with(cx, |view, _| kamin_html::paint_path::census(&view.doc))?;
-    super::memory::steady(cx, capture).await?;
+    let quiet = super::memory::before_phase(cx, capture, args).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
@@ -73,7 +73,12 @@ pub(super) async fn run(
     // The bench asks for every frame it reads (`require_presentation`).
     window.update(cx, |_, window, _| window.allow_unpresented_readback(true))?;
     let mut frame_samples = Vec::with_capacity(args.runs);
-    for index in 1..=args.runs {
+    let series = super::series::Series::new(args);
+    let series_start = std::time::Instant::now();
+    let mut index = 0;
+    let mut totals = Vec::with_capacity(args.runs);
+    while series.more(index, series_start.elapsed(), &totals) {
+        index += 1;
         let variant = index % 2;
         let path_before = kamin_html::paint_path::read();
         let before = (
@@ -94,6 +99,7 @@ pub(super) async fn run(
         // Each edit commits a new revision whose frame slot counts from zero:
         // its counters after the frame are the work of this frame.
         frame_samples.push(window.read_with(cx, counters)?);
+        totals.extend(super::series::total(&measured.phases));
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
@@ -145,20 +151,27 @@ pub(super) async fn run(
     });
     mode["presentation_required"] = json!(present);
     mode["scene_layer"] = json!({"samples": layer, "census": census});
-    mode["matches_fresh"] = json!(super::fresh_check::matches_series(args.runs, &checks));
+    // A timed series knows its length only now: every measured frame must be checked.
+    let required = samples.len();
+    mode["matches_fresh"] = json!(super::fresh_check::matches_series(required, &checks));
     mode["fresh_validation"] = json!({
-        "required": args.runs, "compared": checks.len(), "skipped": skipped_checks,
+        "required": required, "compared": checks.len(), "skipped": skipped_checks,
         "status": if checks.is_empty() { "not_checked" }
-            else if checks.len() != args.runs { "incomplete" }
-            else if super::fresh_check::matches_series(args.runs, &checks) { "matched" } else { "mismatched" },
+            else if checks.len() != required { "incomplete" }
+            else if super::fresh_check::matches_series(required, &checks) { "matched" } else { "mismatched" },
         "method": "each_measured_capture_against_fresh_document",
     });
     mode["fresh_checks"] = json!(checks);
+    mode["start_quiet"] = super::memory::quiet_summary(&quiet);
     mode["document_frame_samples"] = frame_samples
         .iter()
         .enumerate()
         .map(|(i, &counts)| frame_sample(i + 1, counts))
         .collect::<Result<Value>>()?;
+    // Owners of the heap after the last edit frame, as after the frames of
+    // every other mode (`memprof.py run --owners`, `holders`).
+    #[cfg(feature = "heap-report")]
+    super::holders::attach(cx, window, "edit", &mut mode)?;
     Ok((mode, work))
 }
 

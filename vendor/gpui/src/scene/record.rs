@@ -18,7 +18,7 @@ impl Scene {
 
     pub(super) fn copy_group(group: &PaintGroup, scene: Scene, offset: Point<ScaledPixels>) -> PaintGroup {
         PaintGroup {
-            scene,
+            scene: std::rc::Rc::new(scene),
             bounds: geometry::bounds(group.bounds, offset),
             blur_radius: group.blur_radius,
             blend: group.blend,
