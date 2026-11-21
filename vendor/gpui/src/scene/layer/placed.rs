@@ -50,7 +50,7 @@ impl Placed {
         Placed { offset, clip }
     }
 
-    fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+    pub(super) fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         let moved = record::geometry::bounds(bounds, self.offset);
         self.clip.map_or(moved, |clip| moved.intersect(&clip))
     }
@@ -342,7 +342,7 @@ impl Window {
     /// not placed by a shift, or lands in a group's scene, composited as one
     /// result) its owners are unheld there instead. `false`: nothing placed
     /// and nothing carried; the caller places a copy and carries the runs
-    /// (`place_record_copy`) or drops them (`drop_record_runs`).
+    /// (`place_record_copy`).
     pub(crate) fn replay_placed_carrying(
         &mut self,
         scene: &Scene,
@@ -374,12 +374,4 @@ impl Window {
         true
     }
 
-    /// The runs of record `scene`, which was painted here otherwise than by
-    /// `replay_placed_carrying` or `place_record_copy`: every owner unheld.
-    pub(crate) fn drop_record_runs(&mut self, scene: &Scene) {
-        if let Some(runs) = scene.book.record_runs.as_deref().filter(|_| self.takes_record_runs()) {
-            let dropped = runs.dropped();
-            self.deliver_record_runs(dropped);
-        }
-    }
 }
