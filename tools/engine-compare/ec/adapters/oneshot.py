@@ -4,10 +4,12 @@ cold = median of 3 process walls (start -> snapshot written -> exit) minus the m
        (process start-up and shutdown cancel out); memory peak = highest working set of the engine's processes;
        no steady memory and no warm phases (the process exits after its first frame).
 Config: {"adapter": "oneshot", "exe": ..., "argv": [...], "env": {...}, "label": "Blitz"}
-argv/env templates: {exe} {page} {page_uri} {out} {profile}.
+argv/env templates: {exe} {page} {page_uri} {page_id} {out} {profile}; "self_timing": {prefix, field (dotted path)};
+"clean_env": true drops credential-like variables from the engine's environment.
 """
 import json
 import os
+import re
 import shutil
 import threading
 import time
@@ -46,11 +48,14 @@ class OneShot:
     def close(self, lane):
         pass
 
-    def _launch(self, lane, cls, page_file, out, timeout):
+    def _launch(self, lane, cls, page_file, out, timeout, page_id='_blank'):
         out.mkdir(parents=True, exist_ok=True); prof = out / 'profile'; (prof / 'tmp').mkdir(parents=True, exist_ok=True)
-        sub = {'exe': self.e['exe'], 'page': str(page_file), 'page_uri': Path(page_file).as_uri(), 'out': str(out), 'profile': str(prof)}
+        sub = {'exe': self.e['exe'], 'page': str(page_file), 'page_uri': Path(page_file).as_uri(), 'out': str(out), 'profile': str(prof),
+               'page_id': page_id}
         argv = [a.format(**sub) for a in self.e['argv']]
         env = dict(os.environ, **{k: v.format(**sub) for k, v in self.e.get('env', {}).items()})
+        if self.e.get('clean_env'):  # the engine gets no credentials of the shell that runs the tool
+            env = {k: v for k, v in env.items() if not re.search(r'TOKEN|SECRET|PASSWORD|API_?KEY|CREDENTIAL|AUTH', k, re.I)}
         p = W.Proc(argv, mask=lane.mask(cls), desk=self.cfg.desktop, env=env, cwd=out, stdout=True,
                    mem_cap=int(self.cfg.mem_cap_gb * (1 << 30)), stderr_path=out / 'stderr.txt')
         tree = W.Tree(p, period=0.05); tree.start(); so = []
@@ -75,7 +80,10 @@ class OneShot:
         for ln in text.splitlines():
             if ln.startswith(st['prefix']):
                 try:
-                    return float(json.loads(ln[len(st['prefix']):])[st['field']])
+                    v = json.loads(ln if st['prefix'] == '{' else ln[len(st['prefix']):])  # '{': the line is the JSON
+                    for k in st['field'].split('.'):  # dotted path into nested results
+                        v = v[k]
+                    return float(v)
                 except (ValueError, KeyError, TypeError):
                     return None
         return None
@@ -105,7 +113,7 @@ class OneShot:
         walls, peaks, own, why = [], [], [], None
         n = REPEATS  # cheap; the blank subtraction needs a median on both sides even in quick
         for i in range(max(n, 1) if blank else 0):
-            code, wall, pk, err, sm = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90)
+            code, wall, pk, err, sm = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90, page.id)
             if code is None:
                 why = 'hangs: no snapshot within 90 s'; break
             if code != 0:
