@@ -140,11 +140,6 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                     }
                 }
             }
-            "img" => {
-                if let Some(src) = attr(&node, "src").filter(|src| !src.starts_with("data:")) {
-                    stylesheet::file(&base.join(&src)?)?;
-                }
-            }
             "iframe" | "object" | "embed" => {
                 return Err(
                     "nested documents are outside the single-document benchmark scope".into(),

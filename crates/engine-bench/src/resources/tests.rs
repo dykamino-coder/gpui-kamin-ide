@@ -156,3 +156,16 @@ fn escaped_selector_quotes_do_not_hide_following_resources() {
     }
     std::fs::remove_dir(dir).unwrap();
 }
+
+/// Unavailable subresources leave a usable document and preserve URL identity.
+#[test]
+fn missing_subresources_do_not_abort_the_document_or_drop_sibling_styles() {
+    let base = Url::parse("file:///C:/missing-bench-fixture/input.html").unwrap();
+    let source = "<link rel=stylesheet href=missing.css><link rel=stylesheet href=https://example.test/a.css><style>@import 'missing-import.css';p{color:green;background:url(missing.png)}</style><img src=missing-image.png><p>still visible</p>";
+    let prepared = rewrite(base, source.into()).unwrap();
+    assert!(prepared.contains("p{color:green"));
+    assert!(prepared.contains("file:///C:/missing-bench-fixture/missing.png"));
+    assert!(prepared.contains("src=\"missing-image.png\""));
+    assert!(prepared.contains("still visible"));
+    kamin_html::dom::try_parse(&prepared, "").unwrap();
+}

@@ -18,9 +18,16 @@ pub(super) fn file(url: &Url) -> Result<PathBuf> {
 
 pub(super) fn load(url: &Url, stack: &mut Vec<Url>) -> Result<String> {
     if stack.contains(url) || stack.len() >= 32 {
-        return Err(format!("cyclic or excessively deep CSS import: {url}").into());
+        return Ok(String::new());
     }
-    let bytes = std::fs::read(file(url)?)?;
+    // A failed subresource does not invalidate the document or sibling sheets.
+    let bytes = match file(url).and_then(|path| Ok(std::fs::read(path)?)) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            log::warn!("stylesheet unavailable: {error}");
+            return Ok(String::new());
+        }
+    };
     let charset = bytes.strip_prefix(b"@charset \"").and_then(|rest| {
         let end = rest.iter().position(|c| *c == b'"')?;
         encoding_rs::Encoding::for_label(&rest[..end])
@@ -121,7 +128,6 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
             let href = bare(&text[i + 4..end])?;
             if !href.is_empty() && !href.starts_with('#') && !href.starts_with("data:") {
                 let url = base.join(&href)?;
-                file(&url)?;
                 out.push_str(&text[copied..i]);
                 out.push_str(&format!("url(\"{url}\")"));
                 copied = end + 1;
@@ -164,13 +170,10 @@ mod tests {
     }
 
     #[test]
-    fn invalid_and_network_resources_fail_instead_of_becoming_empty_css() {
+    fn malformed_url_is_an_error_but_unavailable_import_is_not() {
         let base = Url::parse("file:///C:/example/main.css").unwrap();
-        for text in [
-            "a{background:url(abc}",
-            "@import 'https://example.test/style.css';",
-        ] {
-            assert!(expand(text, &base, &mut vec![]).is_err());
-        }
+        assert!(expand("a{background:url(abc}", &base, &mut vec![]).is_err());
+        let text = "@import 'https://example.test/style.css'; p{color:green}";
+        assert_eq!(expand(text, &base, &mut vec![]).unwrap(), " p{color:green}");
     }
 }
