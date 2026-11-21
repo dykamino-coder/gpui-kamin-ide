@@ -125,6 +125,10 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.browser_visit('firefox', one)['S']['raf'], None)  # no afterPaint: Firefox raf unknown
         self.assertEqual(M.browser_visit('chromium', dict(one, trace={'windows': {'frame:S': {'RasterTask': {'sumMs': 0}}}}))['S']['raf'], 2)
 
+    def test_servo_takes_the_better_probe_clock(self):
+        sv = M.browser_visit('servo', {'probe': {'cases': {'R': {'frame': {'median': 3}, 'frameReq': {'median': 5}}}}})
+        self.assertEqual((sv['R']['raf'], sv['R']['req'], sv['R']['value']), (3, 5, 3))
+
     def test_browser_visit_definitions(self):
         res = {'twoRafMs': 40, 'probe': {'frames': 10, 'cases': {
             'R': {'frame': {'median': 2}, 'frameReq': {'median': 5}},

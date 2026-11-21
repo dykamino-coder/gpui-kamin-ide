@@ -4,7 +4,8 @@ context (Chromium) or tab (Firefox) per page, every warm phase in the same page 
 Visit 1: load -> steady window (memory) -> probe of all phases -> CPU loops of fixed frame count (CPU per frame).
 Visits 2..N: load -> probe only, for timing repeats; later visits probe only the rows that still need repeats
 (noisy, or faster than the fast-row threshold).
-Config: {"adapter": "browser", "browser": "chrome"|"edge"|"firefox", "exe": ..., "geckodriver": ... (Firefox)}
+Config: {"adapter": "browser", "browser": "chrome"|"edge"|"firefox"|"servo", "exe": ..., "geckodriver": ... (Firefox),
+         "gpu": false when the engine rasters on the CPU in every class (Servo headless)}
 """
 import json
 import shutil
@@ -21,7 +22,12 @@ DEF = 'browser-1'
 BOUNDS = {'chromium': ('headless browser, page in a fresh context of a warm browser; frame = better of two probe clocks plus '
                        'raster and swap from the trace of the same window; memory = working-set sum of all browser processes'),
           'firefox': ('headless browser, page in a fresh tab of a warm browser; frame = better of MozAfterPaint and the request '
-                      'clock; memory = working-set sum of all browser processes')}
+                      'clock; memory = working-set sum of all browser processes'),
+          'servo': ('headless servoshell driven through its own WebDriver server, the page in the one window of a warm '
+                    'browser; frame = better of the two probe clocks (rAF -> message after the rendering update; no raster '
+                    'trace and no paint event, so raster done after that message is not counted); memory = working set of the '
+                    'servoshell process; headless servoshell rasters on the CPU (ANGLE on D3D11 WARP, no GPU driver loaded), so '
+                    'gpu2 is measured once under soft2')}
 DRIVER = Path(__file__).resolve().parents[2] / 'driver' / 'browser-driver.cjs'
 
 
@@ -100,7 +106,7 @@ class Browser:
         return DEF
 
     def needs_gpu(self, cls):
-        return CLASSES[cls][1] == 'gpu'
+        return self.e.get('gpu', True) and CLASSES[cls][1] == 'gpu'
 
     def session(self, lane, cls):
         return (self.name, cls)
@@ -120,7 +126,8 @@ class Browser:
 
     def measure(self, lane, page, cls, part, policy, phases=None):
         phases = phases or M.PHASES
-        fam = 'firefox' if self.e.get('browser', self.name) == 'firefox' else 'chromium'
+        b = self.e.get('browser', self.name)
+        fam = b if b in ('firefox', 'servo') else 'chromium'
         rec = REC.new_record(self.name, self.version(), part, page, cls, f'{DEF}-{policy.definition()}', BOUNDS[fam])
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); rec['family'] = fam; t0 = time.perf_counter()
         to = 420 if page.kind != 'syn' else 300
@@ -177,6 +184,10 @@ class Browser:
             r = REC.row(rec, ph); r['time_ms'] = M.med(r['repeats'])
             if r['time_ms'] is None and not r.get('empty'):
                 r['empty'] = (M.scroll_empty_reason(res) if ph == 'S' else None) or 'no frames of this phase in the probe result'
+            if fam == 'servo' and ph != 'cold' and r['time_ms'] is not None:  # see BOUNDS['servo']
+                r['invalid'] = True
+                r['note'] = ('Servo: the probe clocks end before its asynchronous layout and paint (CPU per frame is '
+                             'the comparable number); shown, not ranked')
         rec['visits'] = visits; rec['wall_s'] = time.perf_counter() - t0
         return rec
 

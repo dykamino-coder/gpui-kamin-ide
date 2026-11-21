@@ -1,5 +1,5 @@
 // engine-compare browser driver: ONE long-lived browser per lane, a fresh context (Chromium) or tab (Firefox) per page.
-// Usage: node browser-driver.cjs <chrome|edge|firefox> <driver-config.json>
+// Usage: node browser-driver.cjs <chrome|edge|firefox|servo> <driver-config.json>
 // driver-config: {exe, cls: "gpu"|"sw", workDir, playwright, selenium, geckodriver}
 // Protocol (JSON lines): stdout "READY {...}", "MARK <name>" (the controller snapshots CPU/memory of the tree and
 // answers "ACK" on stdin before the page continues), "RESULT {...}". stdin: {"op":"page",...} | {"op":"quit"} | "ACK".
@@ -144,9 +144,46 @@ async function firefox() {
   return { info, page, quit: () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]) };
 }
 
-(async () => {
-  let b;
-  try { b = engine === 'firefox' ? await firefox() : await chromium(); out('READY', b.info); }
+// Servo: servoshell's own WebDriver server (--webdriver=PORT), driven like Firefox in one window (no new tab per page).
+async function servo() {
+  const selenium = require(cfg.selenium); const { spawn } = require('node:child_process'); const net = require('node:net');
+  const port = await new Promise((ok, no) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); }).on('error', no); });
+  const profile = path.join(cfg.workDir, 'profile'); fs.mkdirSync(profile, { recursive: true });
+  const t0 = clock.now();
+  const child = spawn(cfg.exe, ['--headless', `--webdriver=${port}`, '--window-size=800x600', '--screen-size=800x600',
+    '--device-pixel-ratio=1', '--temporary-storage', '--config-dir', profile], { env, stdio: 'ignore', windowsHide: true });
+  let driver = null;
+  for (let i = 0; i < 100 && !driver; i++) {
+    try { driver = await new selenium.Builder().usingServer(`http://127.0.0.1:${port}`).withCapabilities({ browserName: 'servo' }).build(); }
+    catch (e) { if (child.exitCode !== null) throw new Error('servoshell exited: ' + child.exitCode); await sleep(200); }
+  }
+  if (!driver) throw new Error('servoshell WebDriver did not answer within 20 s');
+  await driver.manage().setTimeouts({ pageLoad: 180000, script: 300000 }).catch(() => {});
+  const info = { version: 'servoshell', launchMs: clock.now() - t0, webdriverPort: port };
+  const run = body => driver.executeAsyncScript('const done=arguments[arguments.length-1];(function(){' + body + '})().then(done);');
+  async function page(op) {
+    const w0 = clock.now();
+    await driver.get('about:blank');
+    await mark('nav');
+    const navStart = clock.now();
+    await driver.get(pathToFileURL(op.probe).href);
+    const metrics = await run(SETTLE);
+    const navWallMs = clock.now() - navStart;
+    await mark('loaded');
+    if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
+    const p0 = clock.now();
+    const probe = op.cases ? await run(PROBE(op.cases)) : null;
+    const probeWallMs = clock.now() - p0;
+    const cpu = {}; const c0 = clock.now();
+    for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
+    return { navWallMs, probeWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu };
+  }
+  const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch (e) { /* gone */ } });
+  return { info, page, quit };
+}
+
+(async () => {  let b;
+  try { b = engine === 'firefox' ? await firefox() : engine === 'servo' ? await servo() : await chromium(); out('READY', b.info); }
   catch (e) { out('READY', { error: String(e && e.stack || e) }); process.exit(2); }
   while (true) {
     const l = await nextLine(); let op;

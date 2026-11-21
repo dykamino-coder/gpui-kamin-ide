@@ -149,6 +149,8 @@ def browser_visit(engine, res):
         ap = (c.get('afterPaint') or {}).get('median') if c.get('afterPaint') else None
         if engine == 'firefox':
             raf = ap; req = rq + max(0.0, ap - fr) if None not in (ap, rq, fr) else None
+        elif engine == 'servo':  # no trace and no paint event: the probe clocks alone
+            raf, req = fr, rq
         else:
             rf, rr = ras('frame:' + k), ras('req:' + k)
             raf = fr + rf if None not in (rf, fr) else None
