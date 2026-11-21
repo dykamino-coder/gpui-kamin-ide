@@ -25,7 +25,7 @@ impl Scene {
             for fragment in &mut group.fragments {
                 fragment.iter_mut().for_each(|p| *p = map_point(*p, matrix));
             }
-            group.scene = group.scene.transform_commands(transform, matrix);
+            group.scene = std::rc::Rc::new(Scene::unshared(group.scene).transform_commands(transform, matrix));
             group
         }).collect();
         scene

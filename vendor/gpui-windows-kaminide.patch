@@ -9432,7 +9432,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..ff462a29007230c0333e2fa54c1ba51f
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/backdrop.rs b/vendor/gpui-windows/src/directx_renderer/backdrop.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0759f8c9e2bf651b77be9684ea0c0ba63937a884
+index 0000000000000000000000000000000000000000..48ada74c4c937b14089fa45c661a6b0487a6472d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/backdrop.rs
 @@ -0,0 +1,202 @@
@@ -9603,7 +9603,7 @@ index 0000000000000000000000000000000000000000..0759f8c9e2bf651b77be9684ea0c0ba6
 +            inner.insert_primitive(surface(group));
 +            inner.finish();
 +            scene.groups.push(PaintGroup {
-+                scene: inner,
++                scene: std::rc::Rc::new(inner),
 +                ..Default::default()
 +            });
 +            scene
@@ -13218,7 +13218,7 @@ index 0000000000000000000000000000000000000000..d3432f8a2c42f73bcef325254289139c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154acfa4de9
+index 0000000000000000000000000000000000000000..20d7c8be69df4b2cbd4e502a08c237d19c54c4a1
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 @@ -0,0 +1,266 @@
@@ -13332,7 +13332,7 @@ index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154
 +        }
 +        let group = b(150., 90., 60., 40.);
 +        s.groups.push(PaintGroup {
-+            scene: inner,
++            scene: std::rc::Rc::new(inner),
 +            bounds: group,
 +            ..Default::default()
 +        });
@@ -13490,7 +13490,7 @@ index 0000000000000000000000000000000000000000..93c032e010943a87f26fc52b35299154
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e0b08b577b5915207d271892473e9ae598b68913
+index 0000000000000000000000000000000000000000..fe5d7e1b8ff44bcc7086a8183a96cb6423989ef2
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 @@ -0,0 +1,226 @@
@@ -13516,7 +13516,7 @@ index 0000000000000000000000000000000000000000..e0b08b577b5915207d271892473e9ae5
 +        inner.quads.push(q);
 +        let bounds = b(x, y, 44., 44.);
 +        s.groups.push(PaintGroup {
-+            scene: inner,
++            scene: std::rc::Rc::new(inner),
 +            bounds,
 +            ..Default::default()
 +        });
@@ -13569,7 +13569,7 @@ index 0000000000000000000000000000000000000000..e0b08b577b5915207d271892473e9ae5
 +            q.order = 1;
 +            inner.quads.push(q);
 +            s.groups.push(PaintGroup {
-+                scene: inner,
++                scene: std::rc::Rc::new(inner),
 +                bounds: b(0., 0., W as f32, H as f32),
 +                ..Default::default()
 +            });
@@ -13722,7 +13722,7 @@ index 0000000000000000000000000000000000000000..e0b08b577b5915207d271892473e9ae5
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f1ef37efd6b286e84e9c2601aa29d5ea71a888a
+index 0000000000000000000000000000000000000000..7ab131822b75566cb51baf38271fc22b6650814d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs
 @@ -0,0 +1,78 @@
@@ -13742,7 +13742,7 @@ index 0000000000000000000000000000000000000000..1f1ef37efd6b286e84e9c2601aa29d5e
 +        let d = side(k);
 +        let (x, y) = (g.bounds.origin.x.0, g.bounds.origin.y.0);
 +        g.bounds = b(x, y, 44. - d, 44. - d);
-+        g.scene.quads[0].bounds = g.bounds;
++        std::rc::Rc::get_mut(&mut g.scene).expect("an unshared test group").quads[0].bounds = g.bounds;
 +        s.surfaces[k].bounds = g.bounds;
 +    }
 +    s
@@ -13806,7 +13806,7 @@ index 0000000000000000000000000000000000000000..1f1ef37efd6b286e84e9c2601aa29d5e
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba493096471fcf
+index 0000000000000000000000000000000000000000..e3fb469313ef60dff84036a079d7469570036860
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
 @@ -0,0 +1,259 @@
@@ -13868,7 +13868,7 @@ index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba4930
 +        }
 +        let bounds = b(0., 0., W as f32, H as f32);
 +        s.groups.push(PaintGroup {
-+            scene: inner,
++            scene: std::rc::Rc::new(inner),
 +            bounds,
 +            blur_radius: grp.blur,
 +            blend: grp.blend,
@@ -13893,7 +13893,7 @@ index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba4930
 +            inner.surfaces = marks;
 +            let bounds = b(0., 0., W as f32, H as f32);
 +            s.groups.push(PaintGroup {
-+                scene: inner,
++                scene: std::rc::Rc::new(inner),
 +                bounds,
 +                ..Default::default()
 +            });

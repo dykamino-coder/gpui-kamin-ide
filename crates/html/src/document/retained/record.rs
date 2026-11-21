@@ -69,7 +69,15 @@ impl Record {
         store: &crate::layout::reuse::Store,
         same_prepaint: bool,
     ) {
-        let paint = window.replay_retained_paint(&self.paint);
+        // A layer that kept composition groups is copied into each frame, not
+        // drawn by one command: the copy comes from the layer as written since
+        // (`gpui::Window::replay_retained_paint_with_layer`), not from the
+        // rendered frame's stale one.
+        let layer = store.scene_layer().filter(|_| self.layered.is_some());
+        let paint = match &layer {
+            Some(layer) => window.replay_retained_paint_with_layer(&self.paint, layer),
+            None => window.replay_retained_paint(&self.paint),
+        };
         if same_prepaint
             && paint.preserves_window_slots(&self.paint)
             && self.layer.is_some()

@@ -16,7 +16,6 @@ pub(crate) enum Refusal {
     Hidden,
     Clone,
     Filter,
-    Transform,
     Decoration,
     BandEffect,
     BandPaint,
@@ -33,7 +32,6 @@ impl Refusal {
             Self::Hidden => "hidden",
             Self::Clone => "clone",
             Self::Filter => "filter",
-            Self::Transform => "transform",
             Self::Decoration => "decoration",
             Self::BandEffect => "band_effect",
             Self::BandPaint => "band_paint",
@@ -59,9 +57,15 @@ pub(super) fn painter(e: &Element, c: &BoxStyle, decorated: impl FnOnce() -> boo
         Some(Refusal::Clone)
     } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
         Some(Refusal::Filter)
-    } else if c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor {
-        Some(Refusal::Transform)
+    } else if e.inline
+        && (c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor)
+    {
+        // Band pieces on a transformed line keep refusing.
+        Some(Refusal::BandEffect)
     } else {
+        // A transformed box's own run is painted again under the transform
+        // it was recorded with (`gpui::Window::rerecord_layer_box`); a box in
+        // a 3D context keeps no run, and the layer refuses it.
         None
     };
     if e.inline && c.reset_box_layout.display.is_none() {
