@@ -104,6 +104,13 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", build_info::json());
         return Ok(());
     }
+    #[cfg(windows)]
+    if let [flag, a, b] = &std::env::args().skip(1).collect::<Vec<_>>()[..]
+        && flag == "--why-compare"
+    {
+        print!("{}", why::compare::run(a.as_ref(), b.as_ref())?);
+        return Ok(());
+    }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {
         println!("{}", args::USAGE);
         return Ok(());

@@ -126,7 +126,12 @@ impl Store {
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
         let site = std::panic::Location::caller();
-        let why = gpui::NoLayer { reason: "dropped", site, groups: 0, backdrops: 0 };
+        let why = gpui::NoLayer {
+            reason: "dropped",
+            site,
+            groups: 0,
+            backdrops: 0,
+        };
         self.layer.no_layer.set(Some(why));
         self.layer.deferred.start(None, self.epoch.get(), 1.);
     }

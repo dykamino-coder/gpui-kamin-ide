@@ -41,17 +41,25 @@ impl Record {
             return Ok(Replay::Still);
         }
         let layer = match &self.layered {
-            Some(_) => Some(store.scene_layer().ok_or_else(|| FrameMiss::Paint.noted())?),
+            Some(_) => Some(
+                store
+                    .scene_layer()
+                    .ok_or_else(|| FrameMiss::Paint.noted())?,
+            ),
             None => None,
         };
-        let layered = self.layered.as_ref().map(|inner| self.paint.in_layer(inner));
+        let layered = self
+            .layered
+            .as_ref()
+            .map(|inner| self.paint.in_layer(inner));
         let paint = layered.as_ref().unwrap_or(&self.paint);
         let plan = window.scroll_replay_plan(&self.prepaint, paint, layer.as_ref());
         plan.map(Replay::Scrolled).map_err(|refusal| {
             let miss = FrameMiss::Scroll(refusal);
             if crate::why::enabled() {
                 // gpui names the line that refused and what it saw.
-                let explained = window.explain_scroll_refusal(&self.prepaint, paint, layer.as_ref());
+                let explained =
+                    window.explain_scroll_refusal(&self.prepaint, paint, layer.as_ref());
                 if let Some((_, site, detail)) = explained {
                     crate::why::note_at(miss.code(), site, || detail);
                 }

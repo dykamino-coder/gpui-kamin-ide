@@ -15,7 +15,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// Мебибайт — единица бюджетов кэшей.
@@ -40,34 +40,9 @@ struct Store<K, V> {
     gone: HashMap<u64, &'static str>,
 }
 
-/// Bound of `Store::gone`; past it the memory starts again.
-const GONE: usize = 1 << 16;
-
-/// Names of the caches in the memory report (`held`); unnamed ones are `resource`.
-pub const NAMES: [&str; 3] = ["resource", "gradient_tiles", "rounded_masks"];
-/// Bytes the caches of each name hold, kept by their inserts and evictions
-/// (one atomic add each; lookups do not touch it).
-static HELD: [AtomicUsize; NAMES.len()] = [const { AtomicUsize::new(0) }; NAMES.len()];
-
-/// Bytes held by the process-wide caches, by name (DevTools memory domain).
-pub fn held() -> impl Iterator<Item = (&'static str, usize)> {
-    NAMES.iter().zip(&HELD).map(|(name, bytes)| (*name, bytes.load(Relaxed)))
-}
-
-const fn same(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut i = 0;
-    while i < a.len() {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
+mod why;
+use why::{HELD, remember, same};
+pub use why::{NAMES, held};
 
 /// Кэш с бюджетом в байтах; `const`-конструктор позволяет держать его в `static`.
 pub struct BoundedCache<K, V> {
@@ -151,7 +126,11 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
     /// while the `why` journal records (`new_key` otherwise); the miss goes
     /// into the journal at the caller with `explain(reason)` as its detail.
     #[track_caller]
-    pub fn lookup<Q>(&self, key: &Q, explain: impl FnOnce(&'static str) -> String) -> Result<V, &'static str>
+    pub fn lookup<Q>(
+        &self,
+        key: &Q,
+        explain: impl FnOnce(&'static str) -> String,
+    ) -> Result<V, &'static str>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
@@ -168,7 +147,10 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
                             slot.used = store.clock;
                             (Some(slot.value.clone()), "")
                         }
-                        None if observed => (None, store.gone.get(&hint(key)).copied().unwrap_or("new_key")),
+                        None if observed => (
+                            None,
+                            store.gone.get(&hint(key)).copied().unwrap_or("new_key"),
+                        ),
                         None => (None, "new_key"),
                     }
                 }
@@ -255,23 +237,6 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
 /// Убрать самые давние записи, пока вес не уложится в бюджет. Одна сортировка на
 /// вытеснение; только что вставленная запись новее всех и не тяжелее бюджета, поэтому
 /// остаётся.
-/// A cache that ends (not a `static`) stops holding its bytes.
-impl<K, V> Drop for BoundedCache<K, V> {
-    fn drop(&mut self) {
-        let store = self.store.get_mut().unwrap_or_else(PoisonError::into_inner);
-        if let Some(store) = store {
-            HELD[self.slot].fetch_sub(store.bytes, Relaxed);
-        }
-    }
-}
-
-fn remember(gone:&mut HashMap<u64, &'static str>, key: u64, why: &'static str) {
-    if gone.len() >= GONE {
-        gone.clear();
-    }
-    gone.insert(key, why);
-}
-
 fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize, observed: bool) {
     let mut ages: Vec<(u64, usize)> = store.map.values().map(|s| (s.used, s.weight)).collect();
     ages.sort_unstable_by_key(|&(used, _)| used);

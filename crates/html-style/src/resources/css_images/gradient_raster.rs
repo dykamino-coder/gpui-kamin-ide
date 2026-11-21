@@ -38,7 +38,9 @@ fn cached(
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
     if !src.cacheable() {
-        crate::why::cache_miss(CACHE, "uncacheable", || format!("{w}x{h} source not cacheable"));
+        crate::why::cache_miss(CACHE, "uncacheable", || {
+            format!("{w}x{h} source not cacheable")
+        });
         return uncached(src, w, h, css, centers, vcx);
     }
     // Conic-растр использует конкретный размер bitmap, остальные — CSS-плитку.
@@ -48,7 +50,9 @@ fn cached(
         css
     };
     let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
-        crate::why::cache_miss(CACHE, "no_key", || format!("{w}x{h} source has no image key"));
+        crate::why::cache_miss(CACHE, "no_key", || {
+            format!("{w}x{h} source has no image key")
+        });
         return uncached(src, w, h, css, centers, vcx);
     };
     let size = [size.0, size.1].map(FloatKey::from);

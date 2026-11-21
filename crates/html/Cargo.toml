@@ -32,6 +32,8 @@ name = "wptrun"
 required-features = ["wpt-harness"]
 
 [dependencies]
+# The DevTools `why` protocol form (`why::to_json`).
+serde_json.workspace = true
 # Нижний контракт шрифтов; реэкспорт `kamin_html::font_facts` сохраняет путь.
 kamin-font-facts = { path = "../font-facts" }
 # Нижняя фаза: DOM, CSS, каскад, ресурсы и нижние данные документа; реэкспорт
@@ -104,7 +106,6 @@ windows = { version = "0.62", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 encoding_rs = "0.8"
-serde_json.workspace = true
 # SHA контекста и снимков; та же версия уже используется в workspace lockfile.
 sha2 = "0.10.9"
 # Платформа gpui (окно, рендерер) — отдельный крейт с 0.3.8.

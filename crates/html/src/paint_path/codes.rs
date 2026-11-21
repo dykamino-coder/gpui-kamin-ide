@@ -37,7 +37,9 @@ mod tests {
     #[test]
     fn every_refusal_counter_has_its_code_and_no_other_does() {
         for (at, name) in super::super::NAMES[..super::super::PATH].iter().enumerate() {
-            let expected = name.starts_with("refused_").then(|| format!("paint_path.{name}"));
+            let expected = name
+                .starts_with("refused_")
+                .then(|| format!("paint_path.{name}"));
             assert_eq!(super::CODES[at].map(String::from), expected, "{name}");
         }
     }

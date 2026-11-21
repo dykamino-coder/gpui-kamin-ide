@@ -111,11 +111,13 @@ pub(super) async fn sample_with(
     work::Sample,
 )> {
     let watch = super::why::Watch::begin(args, cx, window)?;
-    let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await?;
+    let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await;
     if let Some(watch) = watch {
-        watch.end(args, cx, window, step, &out.0.phases)?;
+        let phases = out.as_ref().ok().map(|out| &out.0.phases);
+        let error = out.as_ref().err().map(|e| e.to_string());
+        watch.end(args, cx, window, step, phases, error)?;
     }
-    Ok(out)
+    out
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -16,7 +16,9 @@ static MISSED: Mutex<Vec<Fields>> = Mutex::new(Vec::new());
 
 /// The detail of a miss of `key` for `reason` (`BoundedCache::lookup`).
 pub(super) fn explain(reason: &'static str, key: &Fields) -> String {
-    let mut seen = MISSED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut seen = MISSED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let detail = detail(reason, key, &seen);
     if seen.len() >= SEEN {
         seen.clear();
@@ -51,7 +53,10 @@ fn detail(reason: &'static str, key: &Fields, seen: &[Fields]) -> String {
     // Another image at the same tile fields: which part of the image key.
     let same_tile = |s: &&Fields| (s.1, s.2, s.3, s.4) == (*w, *h, *css, *centers);
     if let Some(other) = seen.iter().rev().find(same_tile) {
-        return format!("{at}: first lookup of this image; nearest key at the same size differs in {}", image.differs(&other.0));
+        return format!(
+            "{at}: first lookup of this image; nearest key at the same size differs in {}",
+            image.differs(&other.0)
+        );
     }
     format!("{at}: first lookup of this image")
 }
@@ -62,7 +67,13 @@ mod tests {
 
     fn key(color: f32, w: u32) -> Fields {
         let c = FloatKey::from(color);
-        (ImageKey::Color([c, c, c, c]), w, 10, [FloatKey::from(10.0), FloatKey::from(10.0)], true)
+        (
+            ImageKey::Color([c, c, c, c]),
+            w,
+            10,
+            [FloatKey::from(10.0), FloatKey::from(10.0)],
+            true,
+        )
     }
 
     #[test]

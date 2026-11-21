@@ -12,7 +12,7 @@
 use std::collections::BTreeMap;
 use std::panic::Location;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 /// Version of the journal's shape and codes for protocol readers.
 pub const SCHEMA: u32 = 1;
@@ -21,20 +21,31 @@ const CAUSES: usize = 512;
 /// Examples kept per cache miss reason between two takes.
 const EXAMPLES: usize = 4;
 
-static ON: AtomicBool = AtomicBool::new(false);
+static READERS: AtomicUsize = AtomicUsize::new(0);
 static JOURNAL: Mutex<Journal> = Mutex::new(Journal::new());
 
-/// Whether the journal records.
+/// Whether the journal records (some reader is subscribed).
 #[inline]
 pub fn enabled() -> bool {
-    ON.load(Relaxed)
+    READERS.load(Relaxed) > 0
 }
 
-/// Start or stop recording; stopping drops what was not taken.
-pub fn set_enabled(on: bool) {
-    ON.store(on, Relaxed);
-    if !on {
-        take();
+/// A reader of the journal: recording lasts while one lives; when the last
+/// goes, what was not taken is dropped.
+#[must_use = "the journal records only while the subscription lives"]
+pub struct Subscription(());
+
+/// Start recording for a new reader.
+pub fn subscribe() -> Subscription {
+    READERS.fetch_add(1, Relaxed);
+    Subscription(())
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        if READERS.fetch_sub(1, Relaxed) == 1 {
+            take();
+        }
     }
 }
 
@@ -49,7 +60,11 @@ pub struct Cause {
 impl Cause {
     /// `file:line` of the deciding call.
     pub fn site(&self) -> String {
-        format!("{}:{}", self.site.file().replace('\\', "/"), self.site.line())
+        format!(
+            "{}:{}",
+            self.site.file().replace('\\', "/"),
+            self.site.line()
+        )
     }
 }
 
@@ -87,7 +102,9 @@ impl Journal {
 }
 
 fn with(f: impl FnOnce(&mut Journal)) {
-    f(&mut JOURNAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    f(&mut JOURNAL
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner));
 }
 
 /// Record a decision `code` made at the caller; `detail` runs only while recording.
@@ -99,7 +116,11 @@ pub fn note(code: &'static str, detail: impl FnOnce() -> String) {
 
 /// `note` of a decision made at `site` in a lower layer (gpui reports its own line).
 #[inline]
-pub fn note_at(code: &'static str, site: &'static Location<'static>, detail: impl FnOnce() -> String) {
+pub fn note_at(
+    code: &'static str,
+    site: &'static Location<'static>,
+    detail: impl FnOnce() -> String,
+) {
     if enabled() {
         let cause = Cause {
             code,
@@ -156,19 +177,38 @@ pub fn take() -> Journal {
     out
 }
 
+/// Serializes the tests of this crate that subscribe: the journal is process-wide.
+#[cfg(test)]
+pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription) {
+    static ONE: Mutex<()> = Mutex::new(());
+    let guard = ONE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let sub = subscribe();
+    take();
+    (guard, sub)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// The journal is process-wide: one test owns it.
     #[test]
-    fn records_only_while_enabled_with_the_callers_line() {
-        set_enabled(false);
+    fn off_means_no_records_and_no_detail_work() {
+        let _one = test_reader().0;
+        // No subscription in this test: nothing is computed, nothing kept.
         note("off", || unreachable!("detail of a disabled journal"));
-        cache_miss("c", "new_key", || unreachable!());
-        assert!(take().is_empty());
+        cache_hit("off");
+        cache_miss("off", "new_key", || {
+            unreachable!("detail of a disabled journal")
+        });
+        let j = take();
+        assert!(j.causes.iter().all(|c| c.code != "off") && !j.caches.contains_key("off"));
+    }
 
-        set_enabled(true);
+    #[test]
+    fn records_while_subscribed_with_the_callers_line_and_bounds() {
+        let (_one, sub) = test_reader();
         let line = line!() + 1;
         note("code", || "detail".into());
         cache_hit("c");
@@ -176,8 +216,6 @@ mod tests {
             cache_miss("c", "evicted", String::new);
         }
         let j = take();
-        set_enabled(false);
-        // Other tests may record while this one has the journal on.
         let mine: Vec<_> = j.causes.iter().filter(|c| c.code == "code").collect();
         assert_eq!(mine.len(), 1);
         assert!(mine[0].site().ends_with(&format!("why.rs:{line}")));
@@ -185,13 +223,17 @@ mod tests {
         assert_eq!((c.hits, c.misses["evicted"]), (1, EXAMPLES as u64 + 2));
         assert_eq!(c.examples.len(), EXAMPLES);
 
-        set_enabled(true);
         for _ in 0..CAUSES + 3 {
             note("many", String::new);
         }
         let j = take();
-        set_enabled(false);
         assert_eq!(j.causes.len(), CAUSES);
         assert!(j.dropped >= 3);
+
+        // The last reader leaving stops recording and drops the rest.
+        note("left", String::new);
+        drop(sub);
+        assert!(!enabled());
+        assert!(take().causes.is_empty());
     }
 }

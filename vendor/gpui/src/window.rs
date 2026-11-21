@@ -3864,10 +3864,15 @@ impl Window {
     /// Produces a new frame and assigns it to `rendered_frame`. To actually show
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
+    #[track_caller]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // KaminIDE patch: DevTools `why` reads which requests each draw served
+        // and which caller drew (the platform frame request or a forced draw).
+        crate::dirty_sources::trace::mark("draw");
         // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
         self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        self.trace_unpainted_anchors();
         // A frame takes what reads set aside; the rest is stale, like the
         // states a frame does not access.
         self.read_states.states.clear();

@@ -58,6 +58,7 @@ pub(super) struct Record {
 }
 
 mod miss;
+pub(crate) use miss::is_code as frame_miss_code;
 mod replay;
 pub(super) use miss::{FrameMiss, MISSES};
 pub(super) use replay::Replay;
@@ -127,7 +128,12 @@ impl Record {
 /// Both the rendering step and the element inspect the same recording.
 impl Slot {
     pub(super) fn inputs(&self, key: Option<&FrameKey>) -> Result<Rc<Inputs>, FrameMiss> {
-        let unpublished = || self.unsettled.get().unwrap_or(FrameMiss::Unpublished).noted();
+        let unpublished = || {
+            self.unsettled
+                .get()
+                .unwrap_or(FrameMiss::Unpublished)
+                .noted()
+        };
         let inputs = self.recorded.borrow().upgrade().ok_or_else(unpublished)?;
         (Some(&inputs.key) == key)
             .then_some(inputs)

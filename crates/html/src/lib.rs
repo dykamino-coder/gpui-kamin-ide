@@ -36,14 +36,13 @@ pub use kamin_style::budget;
 #[cfg(test)]
 pub mod coverage;
 pub mod paint_path;
-pub(crate) use kamin_style::defaults;
-pub use kamin_style::diagnostics;
-pub use kamin_style::work;
-/// DevTools `why` journal: why a frame was built, a write refused, a cache missed.
-pub use kamin_style::why;
+pub mod why;
 /// The memory report's walk state (`Document::heap_report`) for hosts and DevTools.
 #[cfg(feature = "heap-report")]
 pub use kamin_heap as heap;
+pub(crate) use kamin_style::defaults;
+pub use kamin_style::diagnostics;
+pub use kamin_style::work;
 pub(crate) mod hooks;
 pub mod host;
 pub use crate::document::dom;

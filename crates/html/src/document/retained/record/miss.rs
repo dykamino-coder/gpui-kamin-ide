@@ -61,6 +61,12 @@ const PLAIN: [(FrameMiss, &str); 14] = [
 /// Number of counters: the plain reasons, then one per scrolled refusal.
 pub(in crate::document::retained) const MISSES: usize = PLAIN.len() + SCROLL.len();
 
+/// Whether `code` is the `why` code of a frame miss (`frame_miss.<counter name>`).
+pub(crate) fn is_code(code: &str) -> bool {
+    code.strip_prefix("frame_miss.")
+        .is_some_and(|name| (0..MISSES).any(|at| FrameMiss::name(at) == name))
+}
+
 impl FrameMiss {
     fn index(self) -> usize {
         match self {
@@ -149,7 +155,10 @@ mod tests {
         let names: std::collections::HashSet<_> = (0..MISSES).map(FrameMiss::name).collect();
         assert_eq!(names.len(), MISSES);
         // The DevTools codes are the counter names: one protocol vocabulary.
-        let all = PLAIN.iter().map(|(m, _)| *m).chain(SCROLL.iter().map(|r| FrameMiss::Scroll(*r)));
+        let all = PLAIN
+            .iter()
+            .map(|(m, _)| *m)
+            .chain(SCROLL.iter().map(|r| FrameMiss::Scroll(*r)));
         for (at, reason) in all.enumerate() {
             assert_eq!(reason.code(), format!("frame_miss.{}", FrameMiss::name(at)));
         }

@@ -1,10 +1,14 @@
 //! `--why DIR`: the first reader of the DevTools `why` journal
 //! (`kamin_html::why`). Each sampled frame gets one entry: built or replayed,
-//! the causes with their engine lines, the paint-path refusals, the phase
+//! the journal's causes with their engine lines, the requests of frames and
+//! the draws and renders they caused, the paint-path refusals, the phase
 //! times, the cache lookups with the reasons of their misses and the memory
-//! by owner with what grew. `why.json` (schema `kamin_html::why::SCHEMA`) is
-//! for the browser panel and `tools/engine-compare`; `why.txt` for people.
+//! by owner with what grew. A failed sample keeps its entry with the error.
+//! `why.json` (schema `kamin_html::why::SCHEMA`) is for the browser panel
+//! and `tools/engine-compare`; `why.txt` for people; `--why-compare A B`
+//! reads two of them (`compare`).
 
+pub(super) mod compare;
 mod text;
 
 use super::run::Step;
@@ -19,16 +23,21 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 thread_local! {
     static FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
     static OWNERS: RefCell<BTreeMap<String, u64>> = const { RefCell::new(BTreeMap::new()) };
+    /// The reader's subscription, for the whole run.
+    static READER: RefCell<Option<kamin_html::why::Subscription>> = const { RefCell::new(None) };
 }
 
 /// Counters before one sample.
 pub(super) struct Watch {
     frames: (u64, u64, u64),
     path: [u64; kamin_html::paint_path::NAMES.len()],
+    /// What was recorded between the previous sample and this one (a frame
+    /// that came late belongs to neither).
+    between: Value,
 }
 
 impl Watch {
-    /// `None` without `--why`; turns the journal on at the first sample.
+    /// `None` without `--why`; subscribes at the first sample.
     pub(super) fn begin(
         args: &super::args::Args,
         cx: &AsyncApp,
@@ -37,30 +46,48 @@ impl Watch {
         if args.why.is_none() {
             return Ok(None);
         }
-        kamin_html::why::set_enabled(true);
+        READER.with(|r| {
+            r.borrow_mut()
+                .get_or_insert_with(kamin_html::why::subscribe);
+        });
+        let between = kamin_html::why::to_json(&kamin_html::why::take());
         let frames = window.read_with(cx, |view, _| frames(&view.doc))?;
         let path = kamin_html::paint_path::read();
-        Ok(Some(Self { frames, path }))
+        Ok(Some(Self {
+            frames,
+            path,
+            between,
+        }))
     }
 
-    /// The entry of the sample that just ended, written out with the others.
+    /// The entry of the sample that just ended (or failed with `error`),
+    /// written out with the others.
     pub(super) fn end(
         self,
         args: &super::args::Args,
         cx: &mut AsyncApp,
         window: WindowHandle<View>,
         step: Step<'_>,
-        phases: &super::report::Sample,
+        phases: Option<&super::report::Sample>,
+        error: Option<String>,
     ) -> Result<()> {
         let (frames, mut memory) = window.update(cx, |view, window, cx| {
             (frames(&view.doc), owners(&view.doc, window, cx))
         })?;
-        // What the process holds beyond the named owners (allocator, driver, unreported).
+        // What the process holds beyond the named heap owners (allocator, driver, unreported).
         let private = super::process::Snapshot::read()?.commit;
+        let heap = memory["heap_bytes"].as_u64().unwrap_or(0);
         memory["process_private_bytes"] = json!(private);
+        memory["outside_owners_bytes"] = json!(private as i64 - heap as i64);
         // A new document (cold) or revision (edit) counts from zero: its counters are the frame's.
         let fresh = !matches!(step, Step::Warm);
-        let since = |after: u64, before: u64| if fresh { after } else { after.saturating_sub(before) };
+        let since = |after: u64, before: u64| {
+            if fresh {
+                after
+            } else {
+                after.saturating_sub(before)
+            }
+        };
         // Builds by the document step and inside the window's draw.
         let built = since(frames.0, self.frames.0) + since(frames.2, self.frames.2);
         let replayed = since(frames.1, self.frames.1);
@@ -71,24 +98,23 @@ impl Watch {
             .filter(|&(i, name)| *name != "write_ns" && after[i] != self.path[i])
             .map(|(i, name)| ((*name).into(), json!(after[i].wrapping_sub(self.path[i]))))
             .collect();
-        let journal = kamin_html::why::take();
+        let mut entry = kamin_html::why::to_json(&kamin_html::why::take());
         let index = FRAMES.with(|f| f.borrow().len()) + 1;
-        let entry = json!({
+        let fields = json!({
             "frame": index,
             "mode": format!("{:?}", args.mode).to_lowercase(),
             "step": match step { Step::Cold(_) => "cold", Step::Warm => "warm", Step::Edit(_) => "edit" },
             "built": built, "replayed": replayed,
             "verdict": if built > 0 { "built" } else if replayed > 0 { "replayed" } else { "none" },
-            "causes": journal.causes.iter().map(cause).collect::<Vec<_>>(),
-            "causes_dropped": journal.dropped,
+            "error": error,
             "paint_path": path,
             "phases_ms": phases,
-            "caches": journal.caches.iter().map(|(name, c)| ((*name).to_string(), json!({
-                "hits": c.hits, "misses": c.misses,
-                "examples": c.examples.iter().map(cause).collect::<Vec<_>>(),
-            }))).collect::<serde_json::Map<_, _>>(),
             "memory": memory,
+            "between": self.between,
         });
+        for (key, value) in fields.as_object().into_iter().flatten() {
+            entry[key] = value.clone();
+        }
         FRAMES.with(|f| f.borrow_mut().push(entry));
         write(args.why.as_deref().ok_or("--why without a directory")?)
     }
@@ -98,10 +124,6 @@ impl Watch {
 fn frames(doc: &kamin_html::Document) -> (u64, u64, u64) {
     let (built, replayed) = doc.retained_frames();
     (built, replayed, doc.builds_inside_draw())
-}
-
-fn cause(c: &kamin_html::why::Cause) -> Value {
-    json!({"code": c.code, "site": c.site(), "detail": c.detail})
 }
 
 /// Rust heap of the document and the window by owner, the process caches and
@@ -127,7 +149,13 @@ fn owners(doc: &kamin_html::Document, window: &gpui::Window, cx: &gpui::App) -> 
         let before = std::mem::replace(&mut *o.borrow_mut(), now.clone());
         text::changes(&before, &now)
     });
-    json!({"total_bytes": now.values().sum::<u64>(), "owners": now, "changed_bytes": grew})
+    let gpu: u64 = now
+        .iter()
+        .filter(|(k, _)| k.starts_with("gpu/"))
+        .map(|(_, v)| v)
+        .sum();
+    let heap = now.values().sum::<u64>() - gpu;
+    json!({"heap_bytes": heap, "gpu_bytes": gpu, "owners": now, "changed_bytes": grew})
 }
 
 fn write(dir: &std::path::Path) -> Result<()> {

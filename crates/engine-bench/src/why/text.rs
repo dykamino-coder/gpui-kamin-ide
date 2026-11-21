@@ -7,7 +7,10 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 /// Owners present in either report whose bytes changed, largest change first.
-pub(super) fn changes(before: &BTreeMap<String, u64>, now: &BTreeMap<String, u64>) -> Vec<(String, i64)> {
+pub(super) fn changes(
+    before: &BTreeMap<String, u64>,
+    now: &BTreeMap<String, u64>,
+) -> Vec<(String, i64)> {
     let mut out: Vec<(String, i64)> = before
         .keys()
         .chain(now.keys())
@@ -33,7 +36,12 @@ pub(super) fn render(out: &Value) -> String {
         let _ = writeln!(
             s,
             "\n#{} {}/{}: {} (built {}, replayed {})",
-            f["frame"], text(&f["mode"]), text(&f["step"]), text(&f["verdict"]), f["built"], f["replayed"]
+            f["frame"],
+            text(&f["mode"]),
+            text(&f["step"]),
+            text(&f["verdict"]),
+            f["built"],
+            f["replayed"]
         );
         // The same decision taken again in the frame (the step and the draw both check) reads once.
         let mut causes: Vec<(&Value, usize)> = Vec::new();
@@ -44,8 +52,26 @@ pub(super) fn render(out: &Value) -> String {
             }
         }
         for (c, n) in causes {
-            line(&mut s, &if n > 1 { format!("cause x{n}") } else { "cause".into() }, c);
+            line(
+                &mut s,
+                &if n > 1 {
+                    format!("cause x{n}")
+                } else {
+                    "cause".into()
+                },
+                c,
+            );
         }
+        if let Some(error) = f["error"].as_str() {
+            let _ = writeln!(s, "  error  {error}");
+        }
+        frames(&mut s, "  frame ", &f["frames"], &f["frames_dropped"]);
+        frames(
+            &mut s,
+            "  before",
+            &f["between"]["frames"],
+            &f["between"]["frames_dropped"],
+        );
         if f["causes_dropped"].as_u64().unwrap_or(0) > 0 {
             let _ = writeln!(s, "  cause  ... {} more not kept", f["causes_dropped"]);
         }
@@ -54,7 +80,11 @@ pub(super) fn render(out: &Value) -> String {
             .as_object()
             .into_iter()
             .flatten()
-            .filter_map(|(k, v)| v.as_f64().filter(|ms| *ms > 0.0).map(|ms| format!("{k}={ms:.3}")))
+            .filter_map(|(k, v)| {
+                v.as_f64()
+                    .filter(|ms| *ms > 0.0)
+                    .map(|ms| format!("{k}={ms:.3}"))
+            })
             .collect();
         if !phases.is_empty() {
             let _ = writeln!(s, "  phase  {}", phases.join(" "));
@@ -66,7 +96,12 @@ pub(super) fn render(out: &Value) -> String {
                 .flatten()
                 .map(|(k, v)| format!("{k}={v}"))
                 .collect();
-            let _ = writeln!(s, "  cache  {name}: hits={} misses: {}", c["hits"], misses.join(" "));
+            let _ = writeln!(
+                s,
+                "  cache  {name}: hits={} misses: {}",
+                c["hits"],
+                misses.join(" ")
+            );
             for e in c["examples"].as_array().into_iter().flatten() {
                 line(&mut s, "  miss", e);
             }
@@ -74,11 +109,21 @@ pub(super) fn render(out: &Value) -> String {
         let m = &f["memory"];
         let _ = writeln!(
             s,
-            "  memory named owners {} bytes, process private {} bytes",
-            m["total_bytes"], m["process_private_bytes"]
+            "  memory heap owners {} bytes, gpu {} bytes, process private {} bytes, outside the owners' report {} bytes",
+            m["heap_bytes"], m["gpu_bytes"], m["process_private_bytes"], m["outside_owners_bytes"]
         );
-        for c in m["changed_bytes"].as_array().into_iter().flatten().take(SHOWN_OWNERS) {
-            let _ = writeln!(s, "  memory {:+} {}", c[1].as_i64().unwrap_or(0), text(&c[0]));
+        for c in m["changed_bytes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(SHOWN_OWNERS)
+        {
+            let _ = writeln!(
+                s,
+                "  memory {:+} {}",
+                c[1].as_i64().unwrap_or(0),
+                text(&c[0])
+            );
         }
     }
     s
@@ -91,11 +136,75 @@ fn text(v: &Value) -> &str {
 fn line(s: &mut String, label: &str, c: &Value) {
     let detail = text(&c["detail"]);
     let sep = if detail.is_empty() { "" } else { ": " };
-    let _ = writeln!(s, "  {label}  {} at {}{sep}{detail}", text(&c["code"]), text(&c["site"]));
+    let _ = writeln!(
+        s,
+        "  {label}  {} at {}{sep}{detail}",
+        text(&c["code"]),
+        text(&c["site"])
+    );
+}
+
+/// The frame events in order, repeats of one event in a row as `xN`, and a
+/// summary of draws and renders with the requests after the first render
+/// (who asked for a frame beyond the expected one).
+fn frames(s: &mut String, label: &str, events: &Value, dropped: &Value) {
+    let all = events.as_array().map_or(&[][..], Vec::as_slice);
+    if all.is_empty() {
+        return;
+    }
+    let count = |kind: &str| all.iter().filter(|e| e["kind"] == kind).count();
+    let first_render = all.iter().position(|e| e["kind"] == "render");
+    let late: Vec<String> = first_render
+        .map(|at| &all[at + 1..])
+        .unwrap_or_default()
+        .iter()
+        .filter(|e| {
+            e["kind"] != "draw"
+                && e["kind"] != "render"
+                && !text(&e["kind"]).starts_with("scroll_node.")
+        })
+        .map(|e| format!("{} at {}", text(&e["kind"]), text(&e["site"])))
+        .collect();
+    let _ = write!(
+        s,
+        "{label} draws={} renders={}",
+        count("draw"),
+        count("render")
+    );
+    if !late.is_empty() {
+        let _ = write!(s, "; requested after the first render: {}", late.join(", "));
+    }
+    let _ = writeln!(s);
+    let mut at = 0;
+    while at < all.len() {
+        let run = all[at..].iter().take_while(|e| *e == &all[at]).count();
+        let times = if run > 1 {
+            format!(" x{run}")
+        } else {
+            String::new()
+        };
+        let detail = text(&all[at]["detail"]);
+        let sep = if detail.is_empty() { "" } else { ": " };
+        let _ = writeln!(
+            s,
+            "{label}   {}{times} at {}{sep}{detail}",
+            text(&all[at]["kind"]),
+            text(&all[at]["site"])
+        );
+        at += run;
+    }
+    if dropped.as_u64().unwrap_or(0) > 0 {
+        let _ = writeln!(s, "{label}   ... {dropped} more not kept");
+    }
 }
 
 fn pairs(s: &mut String, label: &str, v: &Value) {
-    let all: Vec<String> = v.as_object().into_iter().flatten().map(|(k, n)| format!("{k}={n}")).collect();
+    let all: Vec<String> = v
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(k, n)| format!("{k}={n}"))
+        .collect();
     if !all.is_empty() {
         let _ = writeln!(s, "  {label} {}", all.join(" "));
     }
@@ -110,7 +219,10 @@ mod tests {
     fn growth_is_ordered_by_size_and_names_new_and_gone_owners() {
         let before = BTreeMap::from([("a".to_string(), 10), ("b".to_string(), 5)]);
         let now = BTreeMap::from([("a".to_string(), 11), ("c".to_string(), 100)]);
-        assert_eq!(changes(&before, &now), [("c".into(), 100), ("b".into(), -5), ("a".into(), 1)]);
+        assert_eq!(
+            changes(&before, &now),
+            [("c".into(), 100), ("b".into(), -5), ("a".into(), 1)]
+        );
     }
 
     #[test]
@@ -123,7 +235,14 @@ mod tests {
                 {"code": "frame_miss.key", "site": "a.rs:1", "detail": ""}],
             "causes_dropped": 0, "paint_path": {"refused_no_layer": 1}, "phases_ms": {"layout": 2.5, "paint": null},
             "caches": {"gradient_tiles": {"hits": 3, "misses": {"evicted": 2}, "examples": []}},
-            "memory": {"total_bytes": 9, "changed_bytes": [["style/computed", 4]]},
+            "memory": {"heap_bytes": 9, "changed_bytes": [["style/computed", 4]]},
+            "error": "unexpected extra/reused frame: draws=1, renders=2",
+            "frames": [{"kind": "notify", "site": "crates/engine-bench/src/run.rs:207"},
+                {"kind": "draw", "site": "vendor/gpui/src/window.rs:2149"},
+                {"kind": "render", "site": "crates/engine-bench/src/view.rs:99"},
+                {"kind": "notify", "site": "crates/html/src/x.rs:5"},
+                {"kind": "render", "site": "crates/engine-bench/src/view.rs:99"}],
+            "frames_dropped": 0,
         }]});
         let s = render(&out);
         assert!(s.contains("#2 scroll/warm: built (built 1, replayed 0)"));
@@ -133,5 +252,8 @@ mod tests {
         assert!(s.contains("phase  layout=2.500"));
         assert!(s.contains("gradient_tiles: hits=3 misses: evicted=2"));
         assert!(s.contains("memory +4 style/computed"));
+        assert!(s.contains("error  unexpected extra/reused frame"));
+        assert!(s.contains("frame  draws=1 renders=2; requested after the first render: notify at crates/html/src/x.rs:5\n"));
+        assert!(s.contains("frame    render at crates/engine-bench/src/view.rs:99\n"));
     }
 }

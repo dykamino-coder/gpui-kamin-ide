@@ -75,6 +75,7 @@ mod band_rerecord_tests;
 #[cfg(test)]
 mod band_value_tests;
 mod record;
+pub(crate) use record::frame_miss_code;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -93,6 +94,8 @@ mod unread_color_tests;
 mod unseen_tests;
 #[cfg(test)]
 mod used_style_tests;
+#[cfg(test)]
+mod why_tests;
 mod window_key;
 
 use super::Document;

@@ -116,7 +116,11 @@ pub(super) fn write_paint_values(
             (_, Own::Not(reason)) => {
                 refuse_not_own(reason);
                 crate::why::note("not_own", || {
-                    format!("{}: box {owner} <{}>, recorded painter {recorded:?}", reason.label(), b.tag)
+                    format!(
+                        "{}: box {owner} <{}>, recorded painter {recorded:?}",
+                        reason.label(),
+                        b.tag
+                    )
                 });
                 return None;
             }
@@ -124,8 +128,14 @@ pub(super) fn write_paint_values(
                 refuse_not_own(Refusal::Kind);
                 // `Kind` covers both a changed box kind and a box the layer never recorded.
                 crate::why::note("not_own.kind", || match recorded {
-                    None => format!("box {owner} <{}> has no painter in the layer; new paint {now:?}", b.tag),
-                    Some(p) => format!("box {owner} <{}>: recorded painter {p:?}, new paint {now:?}", b.tag),
+                    None => format!(
+                        "box {owner} <{}> has no painter in the layer; new paint {now:?}",
+                        b.tag
+                    ),
+                    Some(p) => format!(
+                        "box {owner} <{}>: recorded painter {p:?}, new paint {now:?}",
+                        b.tag
+                    ),
                 });
                 return None;
             }

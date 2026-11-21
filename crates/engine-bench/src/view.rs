@@ -95,6 +95,8 @@ impl Render for View {
         let mut phases = self.phases.borrow_mut();
         phases.build += started.elapsed();
         phases.renders += 1;
+        // DevTools `why`: each render in the order of the frame requests (`--why`).
+        gpui::dirty_sources::trace::mark("render");
         Timed {
             root,
             phases: self.phases.clone(),
