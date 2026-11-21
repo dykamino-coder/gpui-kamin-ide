@@ -57,6 +57,7 @@ mod shader_compilation;
 mod present_gate;
 mod quad_clear;
 mod retained;
+mod damage_mask;
 mod group_cache;
 mod group_scrub;
 pub use group_scrub::group_scrub_mismatches;
@@ -848,11 +849,11 @@ impl DirectXRenderer {
             self.drop_frame();
             return Ok(());
         }
-        let drawn = match plan {
+        let drawn = match &plan {
             retained::Plan::Keep => Ok(()),
             retained::Plan::Full => self.render(scene, background_appearance, None),
             retained::Plan::Within(region) => {
-                self.render(scene, background_appearance, Some(region))
+                self.render(scene, background_appearance, Some(region.as_slice()))
             }
         };
         if let Err(e) = drawn {
@@ -861,8 +862,8 @@ impl DirectXRenderer {
         }
         // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
         if damage_audit::enabled() && !keep {
-            let within = match plan {
-                retained::Plan::Within(region) => Some(region),
+            let within = match &plan {
+                retained::Plan::Within(region) => Some(region.as_slice()),
                 _ => None,
             };
             if let Err(e) = self.audit_frame(scene, background_appearance, within) {
@@ -891,7 +892,7 @@ impl DirectXRenderer {
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
-        within: Option<Region>,
+        within: Option<&[Region]>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
@@ -907,7 +908,7 @@ impl DirectXRenderer {
         self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
-        let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
+        let needed = Self::needed_damage_groups(scene, within);
         log::debug!(
             target: "gpui::frame",
             "plan within {within:?} groups {} needed {:?}",
@@ -928,28 +929,15 @@ impl DirectXRenderer {
         unsafe {
             self.dev()
                 .device_context
-                .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
+                .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), self.current_depth());
         }
         // KaminIDE patch: the scissor goes on only now: the group passes and
         // their blurs write other targets in their own coordinates.
-        let restore = match within {
-            Some(region) => {
-                let state = self.begin_scissor(region)?;
-                let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-                self.clear_frame(clear)?;
-                Some(state)
-            }
-            None => None,
-        };
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
-        self.blur.frame_within = within;
-        let drawn = self.draw_scene(scene);
-        self.blur.frame_within = None;
+        let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
+        let drawn = self.draw_damage_regions(scene, within, clear);
         self.timing_main = false;
-        if let Some(state) = restore {
-            unsafe { ctx.RSSetState(&state) };
-        }
         self.gpu_timer.end(&ctx);
         drawn
     }
@@ -969,6 +957,8 @@ impl DirectXRenderer {
     /// `group_batch::upload_layer`) starting at these offsets per instance kind
     /// (shadows, quads, underlines, monochrome, subpixel, polychrome sprites).
     fn draw_scene_at(&mut self, scene: &Scene, base: Option<[usize; 6]>) -> Result<()> {
+        #[cfg(test)]
+        { self.retained.scene_replays += 1; }
         self.restore_frame_globals()?;
         if base.is_none() {
             self.upload_scene_buffers(scene)?;
@@ -1164,7 +1154,7 @@ impl DirectXRenderer {
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {
-            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
+            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), self.current_depth());
             dc.RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
         }
         self.restore_frame_globals()
@@ -1546,6 +1536,7 @@ impl DirectXRenderer {
         recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
     ) -> Result<()> {
         // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
+        self.retained.mask = Default::default();
         self.forget_frames();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
@@ -1721,7 +1712,7 @@ impl DirectXRenderer {
             // Restore main render target
             devices
                 .device_context
-                .OMSetRenderTargets(Some(self.current_target()), None);
+                .OMSetRenderTargets(Some(self.current_target()), self.current_depth());
             devices
                 .device_context
                 .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
@@ -1914,7 +1905,7 @@ impl DirectXRenderer {
         unsafe {
             self.dev()
                 .device_context
-                .OMSetRenderTargets(Some(self.current_target()), None);
+                .OMSetRenderTargets(Some(self.current_target()), self.current_depth());
         }
         Ok(())
     }
@@ -2036,7 +2027,7 @@ impl DirectXRenderer {
             .blur_pipeline
             .update_buffer(&device, &dc, &[quad])?;
         unsafe {
-            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
+            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), self.current_depth());
         }
         self.pipelines.blur_pipeline.draw_with_texture_blended(
             &dc,
@@ -2133,7 +2124,7 @@ impl DirectXRenderer {
             .update_buffer(&device, &dc, &[quad])?;
         // Матричный проход пишет в кадр.
         unsafe {
-            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
+            dc.OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), self.current_depth());
         }
         self.pipelines.blur_pipeline.draw_with_texture_blended(
             &dc,
@@ -2189,7 +2180,7 @@ impl DirectXRenderer {
         // кадр: `render_groups` идёт до отрисовки кадра, и уложенный в
         // бэкбуфер результат закрашивал фон страницы (corner-shape-bevel-ref).
         unsafe {
-            dc.OMSetRenderTargets(Some(self.current_target()), None);
+            dc.OMSetRenderTargets(Some(self.current_target()), self.current_depth());
         }
         // Смешанный цвет шейдер считает целиком, вместе с прозрачностью —
         // блендеру тут делать нечего, результат пишется поверх.

@@ -264,3 +264,5 @@ fn a_chain_of_edits_equals_its_last_frame_drawn_whole() {
         );
     }
 }
+mod sparse;
+mod mask;

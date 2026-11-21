@@ -34,7 +34,7 @@ impl DirectXRenderer {
         &mut self,
         scene: &Scene,
         background: WindowBackgroundAppearance,
-        within: Option<Region>,
+        within: Option<&[Region]>,
     ) -> Result<()> {
         let planned = self.read_target()?;
         let (kept, drawn) = (

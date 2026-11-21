@@ -363,7 +363,7 @@ impl DirectXRenderer {
                 if mask > 0 {
                     unsafe { dc.PSSetShaderResources(3, Some(slice::from_ref(&masks[mask - 1]))) };
                 }
-                unsafe { dc.OMSetRenderTargets(Some(&target), None) };
+                unsafe { dc.OMSetRenderTargets(Some(&target), self.current_depth()) };
                 self.pipelines.blur_pipeline.draw_with_texture_blended(
                     &dc,
                     &self.blur.groups[page].srv,
