@@ -57,14 +57,15 @@ impl Scene {
             let read = capture.read.clone();
             let input = Rc::new(move || { let mut tag = read(); tag.clips = None; tag.slices = Rc::from([]); tag });
             for group in &mut self.groups {
-                group.scene.begin_segments(input.clone());
-                if let Some(capture) = &mut group.scene.segment_capture {
+                let scene = group.scene_mut();
+                scene.begin_segments(input.clone());
+                if let Some(capture) = &mut scene.segment_capture {
                     capture.atomic = true;
                     let tag = (capture.read)();
-                    capture.primitives = group.scene.paint_operations.iter().filter_map(|op| {
+                    capture.primitives = scene.paint_operations.iter().filter_map(|op| {
                         matches!(op, PaintOperation::Primitive(_)).then(|| tag.clone())
                     }).collect();
-                    capture.hoisted = vec![tag; group.scene.hoisted_backdrops.len()];
+                    capture.hoisted = vec![tag; scene.hoisted_backdrops.len()];
                 }
             }
         }
@@ -82,7 +83,7 @@ impl Scene {
 
     pub(crate) fn segment_clip(&self, id: PaintSegmentId, source: Bounds<Pixels>) -> Bounds<Pixels> {
         let mut result = None;
-        for scene in std::iter::once(self).chain(self.groups.iter().map(|group| &group.scene)) {
+        for scene in std::iter::once(self).chain(self.groups.iter().map(|group| &*group.scene)) {
             if let Some(capture) = &scene.segment_capture {
                 for routes in std::iter::once(&capture.entry).chain(&capture.primitives).chain(&capture.hoisted) {
                     for route in routes.routes.iter().filter(|route| route.id == id) {

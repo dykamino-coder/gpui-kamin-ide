@@ -50,7 +50,7 @@ impl Placed {
         Placed { offset, clip }
     }
 
-    fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+    pub(super) fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         let moved = record::geometry::bounds(bounds, self.offset);
         self.clip.map_or(moved, |clip| moved.intersect(&clip))
     }
@@ -173,6 +173,7 @@ impl RecordRuns {
                 env: run.env,
                 replaceable: run.replaceable,
                 placed: Some(run.placed.map_or(placed, |p| p.then(placed))),
+                group: run.group,
             });
         }
         for binding in &self.bindings {
@@ -233,6 +234,7 @@ fn clipped_away(run: &BoxRange, at: Option<Placed>, dest: &Scene) -> Option<BoxR
         env: run.env,
         replaceable: run.replaceable,
         placed: Some(placed),
+        group: run.group,
     })
 }
 
@@ -338,7 +340,9 @@ impl Window {
     /// record's box runs and bindings to the record being painted here or to
     /// the layer being recorded. Where they cannot be carried (the record is
     /// not placed by a shift, or lands in a group's scene, composited as one
-    /// result) its owners are unheld there instead.
+    /// result) its owners are unheld there instead. `false`: nothing placed
+    /// and nothing carried; the caller places a copy and carries the runs
+    /// (`place_record_copy`).
     pub(crate) fn replay_placed_carrying(
         &mut self,
         scene: &Scene,
@@ -346,9 +350,11 @@ impl Window {
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
         let here = &self.next_frame.scene;
-        let into = here.book.record_runs.is_some() || self.layer_recording.is_some();
+        let into = self.takes_record_runs();
+        // A group of a layer keeps runs (`grouped_layer`): placed there as in a record.
+        let kept_here = here.book.record_runs.is_some() || here.book.group_runs.is_some();
         let takes = scene.book.record_runs.is_some()
-            && if here.in_group { here.book.record_runs.is_some() } else { self.layer_recording.is_some() };
+            && if here.in_group { kept_here } else { self.layer_recording.is_some() };
         if takes {
             self.next_frame.scene.book.placed_map = Some(PlacedMap::new(Some(Placed { offset, clip }), 0));
         }
@@ -357,17 +363,15 @@ impl Window {
         let Some(runs) = scene.book.record_runs.as_deref().filter(|_| into) else {
             return done;
         };
-        let carried = match (done, map) {
-            (true, Some(map)) => runs.carry(&map, &self.next_frame.scene),
-            _ => runs.dropped(),
-        };
-        if let Some(own) = self.next_frame.scene.book.record_runs.as_mut() {
-            own.extend(carried);
-        } else if let Some(recording) = self.layer_recording.as_mut() {
-            recording.boxes.extend(carried.boxes);
-            recording.bindings.extend(carried.bindings);
-            recording.unheld.extend(carried.unheld);
+        if !done {
+            return false;
         }
-        done
+        let carried = match map {
+            Some(map) => runs.carry(&map, &self.next_frame.scene),
+            None => runs.dropped(),
+        };
+        self.deliver_record_runs(carried);
+        true
     }
+
 }

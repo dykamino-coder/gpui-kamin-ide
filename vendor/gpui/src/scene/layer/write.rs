@@ -72,8 +72,12 @@ impl LayerHandle {
         let content = self.0.content.borrow();
         content
             .runs_of(owner)
-            .map(|at| content.boxes[at].area)
-            .reduce(|a, b| a.union(&b))
+            .map(|at| content.run_area(at))
+            .reduce(|a, b| match (a, b) {
+                (Some(a), Some(b)) => Some(a.union(&b)),
+                _ => None,
+            })
+            .flatten()
     }
 
     /// Bounds of the old and proposed decoration paint in the layer's coordinates.
@@ -90,7 +94,8 @@ impl LayerHandle {
         let mut area = None;
         for at in content.runs_of(owner) {
             let run = &content.boxes[at];
-            if run.env.transformation != crate::TransformationMatrix::unit() {
+            // A decoration in a group changes the group's image (PR-B).
+            if run.env.transformation != crate::TransformationMatrix::unit() || run.group.is_some() {
                 return None;
             }
             let outset = match run.env.painter {

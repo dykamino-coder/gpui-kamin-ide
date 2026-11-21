@@ -350,7 +350,7 @@ impl Window {
 
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
-    pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
+    pub(crate) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
         inner.bind_record_segments(&self.next_frame.scene);
         let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
@@ -358,7 +358,7 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
@@ -381,14 +381,14 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
         let index = self.next_frame.scene.groups.len() as u32;
         let size = self.viewport_size.scale(self.scale_factor());
         self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: Bounds::new(Point::default(), size),
             polygon,
             projection,

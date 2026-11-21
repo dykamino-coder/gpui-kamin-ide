@@ -27,7 +27,7 @@ fn label(group: u32, x: f32) -> PaintSurface {
 }
 
 fn group(scene: Scene, x: f32) -> PaintGroup {
-    PaintGroup { scene, bounds: rect(x, 0., 10., 10.), mask_bounds: rect(x, 0., 10., 10.), ..Default::default() }
+    PaintGroup { scene: std::rc::Rc::new(scene), bounds: rect(x, 0., 10., 10.), mask_bounds: rect(x, 0., 10., 10.), ..Default::default() }
 }
 
 fn finished(mut scene: Scene) -> Scene {
