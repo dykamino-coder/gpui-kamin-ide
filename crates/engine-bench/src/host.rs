@@ -29,6 +29,25 @@ pub(super) fn peak_memory() -> Result<u64, Box<dyn std::error::Error>> {
     Ok(counters.PeakWorkingSetSize as u64)
 }
 
+/// The process's working set and private commit now, in bytes: a scroll
+/// sample of each step shows whether memory stays flat over the steps.
+pub(super) fn memory_now() -> Option<(u64, u64)> {
+    use windows::Win32::System::{
+        ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+        },
+        Threading::GetCurrentProcess,
+    };
+    let mut counters = PROCESS_MEMORY_COUNTERS_EX {
+        cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+        ..Default::default()
+    };
+    // The extended counters start as the basic ones; the buffer is this call's.
+    let basic = &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut PROCESS_MEMORY_COUNTERS;
+    unsafe { GetProcessMemoryInfo(GetCurrentProcess(), basic, counters.cb) }.ok()?;
+    Some((counters.WorkingSetSize as u64, counters.PrivateUsage as u64))
+}
+
 pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Error>> {
     use windows::Win32::{
         Foundation::{HWND, RECT},

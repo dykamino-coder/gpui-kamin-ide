@@ -35,21 +35,29 @@ fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
     }
 }
 
-/// A wheel sample counts only when the step moved the root scroller by the whole step down:
+/// A wheel sample counts only when the step moved the root scroller by the whole step:
 /// an event a nested scroller took, or one at the document's end, scrolls no root.
 type Offset = Option<(f32, f32)>;
-fn scrolled(from: Offset, to: Offset, max: Offset) -> Result<()> {
+fn scrolled(from: Offset, to: Offset, step: f32, max: Offset) -> Result<()> {
     let (Some(from), Some(to)) = (from, to) else {
         return Err("scroll mode needs the root scroller offset before and after the step".into());
     };
-    if to.0 != from.0 || (to.1 - from.1 - WHEEL_STEP).abs() > 0.5 {
+    if to.0 != from.0 || (to.1 - from.1 - step).abs() > 0.5 {
         return Err(format!(
-            "the wheel step did not scroll the root by {WHEEL_STEP} px: {from:?} -> {to:?} \
+            "the wheel step did not scroll the root by {step} px: {from:?} -> {to:?} \
              (root max offset {max:?}: a nested scroller took it, or the document ended)"
         )
         .into());
     }
     Ok(())
+}
+
+/// A scroll run for memory only (`ENGINE_BENCH_SCROLL_MEMORY_ONLY=1`): it
+/// reads the working set of each step and neither keeps the step frames nor
+/// builds the fresh documents of their check, so the bench adds nothing per
+/// step to the memory it reads (the JSON records the skipped check).
+fn memory_only() -> bool {
+    std::env::var_os("ENGINE_BENCH_SCROLL_MEMORY_ONLY").is_some_and(|v| v == "1")
 }
 
 fn delta(before: (u64, u64), after: (u64, u64)) -> Result<(u64, u64)> {
@@ -70,6 +78,13 @@ pub(super) struct Frames {
     base: (u32, u32),
     relayout: bool,
     scroll: bool,
+    /// Scroll (`--scroll-back`): whether the next step goes down; it turns at
+    /// either end of the root scroller, so long runs cross the document again.
+    back_down: Option<bool>,
+    /// The root scroll the step of the sample asks for, down positive.
+    step: f32,
+    /// The step of `--scroll-back` (`Args::scroll_step`).
+    jump: f32,
     /// When the step's wheel event was dispatched (prepare).
     dispatched: Option<std::time::Instant>,
     before: (u64, u64),
@@ -102,6 +117,9 @@ impl Frames {
             base: args.viewport,
             relayout,
             scroll: args.mode == Mode::Scroll,
+            back_down: args.scroll_back.then_some(true),
+            step: WHEEL_STEP,
+            jump: args.scroll_step,
             dispatched: None,
             before: (0, 0),
             before_inside: 0,
@@ -123,11 +141,18 @@ impl Frames {
             if self.scroll {
                 // Dispatched as a platform wheel event: the root scroller's handler moves it.
                 let size = window.viewport_size();
+                let mut at = gpui::point(size.width / 2.0, size.height / 2.0);
+                if let Some(down) = self.back_down {
+                    // `--scroll-back`: down and up between the ends, by the
+                    // root's own scrollbar edge, which no nested scroller covers.
+                    self.step = if down { self.jump } else { -self.jump };
+                    at.x = size.width - gpui::px(2.0);
+                }
                 let wheel = gpui::ScrollWheelEvent {
-                    position: gpui::point(size.width / 2.0, size.height / 2.0),
+                    position: at,
                     delta: gpui::ScrollDelta::Pixels(gpui::point(
                         gpui::px(0.0),
-                        gpui::px(-WHEEL_STEP),
+                        gpui::px(-self.step),
                     )),
                     modifiers: gpui::Modifiers::default(),
                     touch_phase: gpui::TouchPhase::Moved,
@@ -181,19 +206,29 @@ impl Frames {
             .into());
         }
         if self.scroll {
-            scrolled(self.wheel_from.take(), offset.0, offset.1)?;
+            match (self.back_down, offset) {
+                // The document's ends clamp a direct step: only a root
+                // scroller is required, and an end turns the next step.
+                (Some(down), (Some((_, y)), Some((_, max)))) => {
+                    self.back_down = Some(if down { y < max - 0.5 } else { y <= 0.5 });
+                }
+                _ => scrolled(self.wheel_from.take(), offset.0, self.step, offset.1)?,
+            }
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
+        let memory = self.scroll.then(super::host::memory_now).flatten();
         self.samples.push(json!({"mode": mode, "sample_index": index,
+            "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
-            "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
+            "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
             "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        if let (true, Some(offset)) = (self.scroll, offset.0) {
+        // A memory run keeps no step: its working set is the document's.
+        if let (true, Some(offset), false) = (self.scroll, offset.0, memory_only()) {
             self.steps.push(&frame.pixels, offset);
         }
         self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
@@ -263,6 +298,10 @@ impl Frames {
     /// `frame_pixels_changed`) совпадает по пикселям со свежим документом той
     /// же ширины.
     async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        if self.scroll && memory_only() {
+            report["scroll_fresh_check"] = json!("skipped: ENGINE_BENCH_SCROLL_MEMORY_ONLY");
+            return Ok(());
+        }
         if self.scroll {
             return super::scroll_fresh::check(self.steps, report, run).await;
         }
@@ -302,11 +341,13 @@ mod tests {
     /// Only a whole step down on the root counts as a wheel sample.
     #[test]
     fn a_wheel_sample_requires_the_root_to_scroll_by_the_step() {
-        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP)), Some((0., 9000.))).is_ok());
-        assert!(scrolled(Some((0., 240.)), Some((0., 240.)), Some((0., 9000.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((0., 40.)), Some((0., 9000.))).is_err());
-        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP)), Some((0., 9000.))).is_err());
-        assert!(scrolled(None, Some((0., WHEEL_STEP)), Some((0., 9000.))).is_err());
+        let max = Some((0., 9000.));
+        assert!(scrolled(Some((0., 0.)), Some((0., WHEEL_STEP)), WHEEL_STEP, max).is_ok());
+        assert!(scrolled(Some((0., 240.)), Some((0., 120.)), -WHEEL_STEP, max).is_ok());
+        assert!(scrolled(Some((0., 240.)), Some((0., 240.)), WHEEL_STEP, max).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((0., 40.)), WHEEL_STEP, max).is_err());
+        assert!(scrolled(Some((0., 0.)), Some((5., WHEEL_STEP)), WHEEL_STEP, max).is_err());
+        assert!(scrolled(None, Some((0., WHEEL_STEP)), WHEEL_STEP, max).is_err());
     }
 
     #[test]
