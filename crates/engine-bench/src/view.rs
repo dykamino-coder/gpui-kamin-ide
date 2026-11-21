@@ -19,6 +19,7 @@ pub(super) struct Phases {
     pub(super) prepaint: Duration,
     pub(super) paint: Duration,
     pub(super) renders: usize,
+    pub(super) paints: usize,
     pub(super) observer_setup: Duration,
     pub(super) requested: Option<Instant>,
     pub(super) request_to_render: Option<Duration>,
@@ -182,6 +183,8 @@ impl Element for Timed {
         kamin_html::work::switch!(Paint);
         self.root.paint(window, cx);
         kamin_html::work::switch!(RasterGpuReadback);
-        self.phases.borrow_mut().paint += started.elapsed();
+        let mut phases = self.phases.borrow_mut();
+        phases.paint += started.elapsed();
+        phases.paints += 1;
     }
 }
