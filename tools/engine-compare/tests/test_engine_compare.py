@@ -69,6 +69,12 @@ class Scheduler(unittest.TestCase):
         self.assertEqual(pick(q[:2], None, 2, 2, False), 1)
         self.assertIsNone(pick(q[:2], None, 2, 2, True))  # exclusive waits for the other lanes
 
+    def test_job_pid_list_counts_sit_in_the_first_slot(self):
+        from ec.winproc import job_pids
+        buf = [(3 << 32) | 3, 101, 202, 303, 0]
+        self.assertEqual(job_pids(buf, 4), [101, 202, 303])
+        self.assertEqual(job_pids(buf, 2), [101, 202])
+
     def test_lane_masks_shift_class_masks(self):
         self.assertEqual(lane_mask('gpu4', 8), 0xF00)
         self.assertEqual(lane_mask('soft1', 4), 0x80)
@@ -90,6 +96,13 @@ class Metrics(unittest.TestCase):
         rep = {'modes': {'relayout': {'diagnostic_scopes': {'samples_ms': [{'process_cpu_mcycles': 3.0}, {'process_cpu_mcycles': 6.0}]}}}}
         self.assertEqual(M.ours_cpu_cycles(rep, 'relayout', {'cycles_per_cpu_ms': 3e6}), 1.5)
         self.assertIsNone(M.ours_cpu_cycles(rep, 'relayout', {}))
+
+    def test_oneshot_cpu_is_the_page_minus_the_empty_page_in_cycle_time(self):
+        page = [{'cpu_s': 0.30, 'cycles': 900e6}, {'cpu_s': 0.32, 'cycles': 960e6}, {'cpu_s': 0.31, 'cycles': 930e6}]
+        blank = [{'cpu_s': 0.10, 'cycles': 300e6}] * 3
+        self.assertAlmostEqual(M.oneshot_cpu_ms(page, blank), 210.0, places=3)  # 3e6 cycles per ms
+        self.assertIsNone(M.oneshot_cpu_ms(blank, page))
+        self.assertIsNone(M.oneshot_cpu_ms(page, []))
 
     def test_ours_steady_takes_the_window_median_and_notes_a_busy_page(self):
         quiet = {'page': {'median': {'rss_bytes': 50}, 'end': {'rss_bytes': 70}, 'quiet': True, 'busy_windows': 2}}

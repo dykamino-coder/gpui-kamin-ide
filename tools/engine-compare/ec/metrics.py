@@ -104,6 +104,22 @@ def ours_steady(audit):
     return value, note
 
 
+def oneshot_cpu_ms(page, blank):
+    """Cold CPU ms of a one-shot engine: median CPU of the whole process tree over its life on the page minus the same on
+    the empty page. page/blank: [{'cpu_s', 'cycles'}]; cycle time is converted with the rate of these launches (process
+    times alone move in ~15.6 ms quanta). None when there is no baseline or the page does not exceed it."""
+    if not page or not blank:
+        return None
+    every = page + blank
+    sec = sum(x['cpu_s'] for x in every); cyc = sum(x['cycles'] for x in every)
+    rate = cyc / (sec * 1000) if sec > 0.2 and cyc else None
+
+    def ms(x):
+        return x['cycles'] / rate if rate else x['cpu_s'] * 1000
+    v = med([ms(x) for x in page]) - med([ms(x) for x in blank])
+    return v if v > 0 else None
+
+
 def ours_memory(j):
     """(peak, steady) bytes from a ``--mode both --memory-settle-ms`` run."""
     return j.get('peak_working_set_bytes'), ours_steady(j.get('memory_audit'))[0]

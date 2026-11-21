@@ -158,6 +158,14 @@ def _env_block(env):
     return ctypes.create_unicode_buffer(s, len(s))
 
 
+def job_pids(buf, n):
+    """PIDs of a JOBOBJECT_BASIC_PROCESS_ID_LIST read as ULONG_PTR slots: two DWORD counts share slot 0 (assigned
+    low, listed high), the PIDs follow from slot 1. (Reading the count from slot 1 dropped the job's first process -
+    the engine itself for one-shot engines - and padded the list with zeros.)"""
+    listed = (buf[0] >> 32) & 0xFFFFFFFF
+    return [buf[1 + i] for i in range(min(listed, n))]
+
+
 class Proc:
     """One launched tree. ``stdout``/``stdin`` are binary pipe files when requested."""
 
@@ -215,7 +223,7 @@ class Proc:
         buf = (ctypes.c_size_t * (n + 2))()
         if not K.QueryInformationJobObject(self.job, JOB_PID_LIST, buf, ctypes.sizeof(buf), None):
             return []
-        return [buf[2 + i] for i in range(min(buf[1], n))]
+        return job_pids(buf, n)
 
     def peak_commit(self):
         lim = EXTENDED_LIMIT()
