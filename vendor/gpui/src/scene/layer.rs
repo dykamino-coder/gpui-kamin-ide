@@ -20,6 +20,7 @@
 
 mod boxes;
 mod frame;
+mod group_content;
 mod group_runs;
 mod order;
 mod order_line;

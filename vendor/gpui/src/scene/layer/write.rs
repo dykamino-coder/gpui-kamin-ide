@@ -46,6 +46,15 @@ impl LayerHandle {
         self.accepts(owner, crate::LayerPainter::Box)
     }
 
+    /// Whether box `owner` painted one run, the whole content of its group
+    /// (`SceneLayer::group_root`): `Window::rerecord_layer_group` paints the
+    /// group again with the box and its child elements.
+    pub fn holds_group_root(&self, owner: u32) -> bool {
+        let content = self.0.content.borrow();
+        let mut runs = content.runs_of(owner);
+        runs.next().is_some_and(|at| runs.next().is_none() && content.group_root(at).is_some())
+    }
+
     /// Whether every piece of the owner's band can be recorded again.
     pub fn holds_band(&self, owner: u32) -> bool {
         self.accepts(owner, crate::LayerPainter::Band)

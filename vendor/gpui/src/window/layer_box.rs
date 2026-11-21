@@ -31,6 +31,7 @@ impl Window {
             transformation: self.current_transformation(),
             opacity: self.element_opacity(),
             rem_size: self.rem_size(),
+            exact: self.raster_frame.exact_bounds.filter(|(snapped, _)| *snapped == bounds).map(|(_, exact)| exact),
             fill: None,
             layer: None,
             painter,
@@ -164,7 +165,7 @@ impl Window {
     }
 
     /// Paint one run of box `owner` into a scratch scene, in `env`.
-    fn paint_box_run(
+    pub(super) fn paint_box_run(
         &mut self,
         owner: u32,
         area: Bounds<ScaledPixels>,
@@ -190,11 +191,14 @@ impl Window {
         let restored = if unit { Vec::new() } else { vec![env.transformation] };
         let transforms = mem::replace(&mut self.transformation_stack, restored);
         self.box_fill = env.fill;
+        // The unrounded box its border snapping read when it was recorded.
+        let exact = mem::replace(&mut self.raster_frame.exact_bounds, env.exact.map(|exact| (env.bounds, exact)));
         self.next_frame.scene.open_box(owner, area, env);
         self.with_rem_size(Some(env.rem_size), |window| {
             window.with_paint_owner(owner, |window| paint(window, cx, &env))
         });
         self.next_frame.scene.close_box();
+        self.raster_frame.exact_bounds = exact;
         self.box_fill = None;
         self.transformation_stack = transforms;
         self.element_opacity = opacity;

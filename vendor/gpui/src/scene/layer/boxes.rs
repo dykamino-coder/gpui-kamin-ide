@@ -60,6 +60,10 @@ pub(crate) struct BoxEnv {
     pub(crate) transformation: TransformationMatrix,
     pub(crate) opacity: f32,
     pub(crate) rem_size: Pixels,
+    /// The unrounded border box of the painting element when its snapped
+    /// border box is `bounds` (`RasterFrame::exact_bounds`): border snapping
+    /// and child layers read it.
+    pub(crate) exact: Option<Bounds<Pixels>>,
     /// Where the host placed the box's fill (Window::box_fill_bounds).
     pub(crate) fill: Option<Bounds<Pixels>>,
     /// The order of the stacking layer the run was painted in (`None`:
