@@ -18,21 +18,23 @@ L = {
     'en': {'title': 'Our engine against every engine', 'phase': {'cold': 'cold load', 'R': 'viewport width change',
            'C': 'style edit, off screen', 'Cvis': 'style edit, visible', 'D': 'content edit, off screen',
            'Dvis': 'content edit, visible', 'S': 'scroll step (120 px)'},
-           'summary': 'Summary: where we lead and where we do not', 'worst_t': 'worst rows by time',
-           'worst_m': 'worst pages by peak memory', 'worst_c': 'worst rows by CPU per frame', 'causes': 'Causes and how to win',
+           'summary': 'Summary: where we lead and where we do not', 'worst_t': 'every row by time, best for us first',
+           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'all': 'All comparisons', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
            'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
            'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'versions': 'Versions',
            'legend': ['we are faster than the best', 'within 5%', 'slower, up to x2', 'x2-x10', 'x10 and more'],
+           'v_style': 'style edit', 'v_content': 'content edit', 'v_vis': 'visible edit', 'source': 'source',
+           'pages_title': 'Pages under test', 'about': 'What it is', 'size': 'HTML+CSS, KB', 'local': 'local file',
            'intro': 'Frame time is from the frame request to finished pixels, ms (median of repeats); browsers take the '
                     'better of their two clocks. Viewport 800x600. Lanes run on equal performance cores in parallel.'},
     'ru': {'title': 'Наш движок против всех движков', 'phase': {'cold': 'холодная загрузка', 'R': 'смена ширины окна',
            'C': 'правка стиля, вне экрана', 'Cvis': 'правка стиля, видимая', 'D': 'правка содержимого, вне экрана',
            'Dvis': 'правка содержимого, видимая', 'S': 'шаг прокрутки (120 px)'},
-           'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'худшие строки по времени',
-           'worst_m': 'худшие страницы по пику памяти', 'worst_c': 'худшие строки по процессору на кадр',
+           'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'все строки по времени, от лучших для нас к худшим',
+           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'all': 'Все сравнения', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
@@ -40,6 +42,8 @@ L = {
            'fast': 'строка <5 мс: вердикт только при 8 повторах', 'invalid': 'не в счёт: ', 'gap': 'Разрыв пика, МБ',
            'bounds': 'Границы замера', 'versions': 'Версии',
            'legend': ['мы быстрее лучшего', '±5 %', 'медленнее до ×2', '×2–10', '×10 и больше'],
+           'v_style': 'правка стиля', 'v_content': 'правка содержимого', 'v_vis': 'видимая правка', 'source': 'источник',
+           'pages_title': 'Проверяемые страницы', 'about': 'Что это', 'size': 'HTML+CSS, КБ', 'local': 'локальный файл',
            'intro': 'Время — кадр от запроса до готовых пикселей, мс (медиана повторов); у браузера берётся лучший из двух '
                     'способов отсчёта. Окно 800×600. Дорожки идут параллельно на равных производительных ядрах.'},
 }
@@ -129,6 +133,17 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
     ours = next((e for e in cfg.engines if cfg.engines[e].get('adapter') == 'ours'), None)
     kinds = sorted({p.kind for p in cfg.pages.values()})
     H, SUM, WT, WM, WC = [], {}, [], [], []
+
+    def plink(pid):
+        """Page name linked to the file the engines opened, its edit variants and its source."""
+        p = cfg.pages.get(pid)
+        if not p:
+            return html.escape(pid)
+        out = f'<a href="{p.file("base.html").as_uri()}">{html.escape(pid)}</a>'
+        vs = [f'<a href="{p.file(n).as_uri()}">{T[k]}</a>' for k, n in (('v_style', 'C.html'), ('v_content', 'D.html'), ('v_vis', 'vis.html')) if p.file(n).exists()]
+        if p.meta.get('source_url'):
+            vs.append(f'<a href="{html.escape(p.meta["source_url"])}">{T["source"]}</a>')
+        return out + (f' <span class="vl">{" · ".join(vs)}</span>' if vs else '')
     for cls in classes:
         H.append(f'<h2 id="{cls}">{html.escape(CLASSES[cls][2])}</h2>')
         for kind in kinds:
@@ -143,6 +158,8 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
                     for e in others:
                         x = idx.get((cls, p, e, ph)) or {'empty': 'not_measured'}
                         v = x.get('time_ms')
+                        if v is not None and x.get('within_noise'):  # shown, never the best: inside the bounds' noise
+                            cells.append(f'<td class="num nd" title="{html.escape(x.get("note") or "")}">≈{f(v)}</td>'); continue
                         cells.append(f'<td class="num">{f(v)}</td>' if v is not None else f'<td class="why">{html.escape(why(x, T))}</td>')
                         if v:
                             comp.append((v, e))
@@ -158,7 +175,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
                     elif ov is not None and not best:
                         note.append(T['none'])
                     oc = f'<td class="num">{f(ov)}</td>' if ov is not None else f'<td class="why">{html.escape(why(o, T))}</td>'
-                    H.append(f'<tr><td>{html.escape(p)}</td><td>{T["phase"][ph]}</td>{oc}{"".join(cells)}<td>{html.escape(best[1]) if best else "—"}</td>'
+                    H.append(f'<tr><td>{plink(p)}</td><td>{T["phase"][ph]}</td>{oc}{"".join(cells)}<td>{html.escape(best[1]) if best else "—"}</td>'
                              f'<td class="num {col(ratio)}">{("×" + f(ratio)) if ratio else "—"}</td><td class="note">{html.escape("; ".join(note))}</td></tr>')
             H.append('</tbody></table></div>')
             H.append(f'<h4>{T["mem"]}</h4><div class="tw"><table><thead><tr><th>{T["page"]}</th><th>{T["ours"]}</th>'
@@ -180,7 +197,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
                 b = min(bp) if bp else None; gap = (opk - b[0]) / MB if opk and b else None
                 if gap is not None:
                     WM.append((gap, cls, kind, p, opk, b))
-                H.append(f'<tr><td>{html.escape(p)}</td>{oc}{"".join(cs)}<td>{(html.escape(b[1]) + " " + f(b[0] / MB)) if b else "—"}</td>'
+                H.append(f'<tr><td>{plink(p)}</td>{oc}{"".join(cs)}<td>{(html.escape(b[1]) + " " + f(b[0] / MB)) if b else "—"}</td>'
                          f'<td class="num {col(opk / b[0]) if gap is not None else "nd"}">{("%+.0f" % gap) if gap is not None else "—"}</td></tr>')
             H.append('</tbody></table></div>')
             H.append(f'<h4>{T["cpu"]}</h4><div class="tw"><table><thead><tr><th>{T["page"]}</th><th>{T["ph"]}</th><th>{T["ours"]}</th>'
@@ -193,7 +210,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
                     bb = min([v for v in vs if v[0]], default=None); rr = oc / bb[0] if oc and bb else None
                     if rr:
                         WC.append((rr, cls, kind, p, ph, oc, bb))
-                    H.append(f'<tr><td>{html.escape(p)}</td><td>{T["phase"][ph]}</td><td class="num">{f(oc)}</td>'
+                    H.append(f'<tr><td>{plink(p)}</td><td>{T["phase"][ph]}</td><td class="num">{f(oc)}</td>'
                              + ''.join(f'<td class="num">{f(v)}</td>' for v, _ in vs) + f'<td class="num {col(rr)}">{("×" + f(rr)) if rr else "—"}</td></tr>')
             H.append('</tbody></table></div>')
     sm = [f'<h2 id="sum">{T["summary"]}</h2><div class="tw"><table><thead><tr><th>class</th><th>pages</th><th>{T["ph"]}</th><th>{T["rows"]}</th>'
@@ -202,16 +219,30 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
         sm.append(f'<tr><td>{html.escape(CLASSES[cls][2])}</td><td>{html.escape(kind)}</td><td>{T["phase"][ph]}</td><td class="num">{len(r)}</td>'
                   f'<td class="num">{sum(1 for x in r if x < 1)}</td><td class="num {col(M.med(r))}">×{f(M.med(r))}</td><td class="num {col(max(r))}">×{f(max(r))}</td></tr>')
     sm.append('</tbody></table></div>')
+    # Full lists of every comparable row, best for us first; no top-N cut.
+    sm.append(f'<h2 id="all">{T["all"]}</h2>')
     for cls in classes:
-        wt = sorted([x for x in WT if x[1] == cls], key=lambda x: -x[0])[:15]
-        wm = sorted([x for x in WM if x[1] == cls], key=lambda x: -x[0])[:10]
-        wc = sorted([x for x in WC if x[1] == cls], key=lambda x: -x[0])[:10]
-        sm.append(f'<h3>{html.escape(CLASSES[cls][2])}: {T["worst_t"]}</h3><ol>' + ''.join(
-            f'<li>{html.escape(x[3])} ({html.escape(x[2])}), {T["phase"][x[4]]}: {T["ours"]} {f(x[5])} ms, {html.escape(x[6][1])} {f(x[6][0])} ms — ×{f(x[0])}</li>' for x in wt) + '</ol>')
-        sm.append(f'<h3>{html.escape(CLASSES[cls][2])}: {T["worst_m"]}</h3><ol>' + ''.join(
-            f'<li>{html.escape(x[3])}: {T["ours"]} {f(x[4] / MB)} MB, {html.escape(x[5][1])} {f(x[5][0] / MB)} MB — {x[0]:+.0f} MB</li>' for x in wm) + '</ol>')
-        sm.append(f'<h3>{html.escape(CLASSES[cls][2])}: {T["worst_c"]}</h3><ol>' + ''.join(
-            f'<li>{html.escape(x[3])}, {T["phase"][x[4]]}: {T["ours"]} {f(x[5])} ms, {html.escape(x[6][1])} {f(x[6][0])} ms — ×{f(x[0])}</li>' for x in wc) + '</ol>')
+        lists = (
+            (T['worst_t'], 'ms', [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WT if x[1] == cls]),
+            (T['worst_m'], 'MB', [(x[4] / x[5][0], x[3], x[2], '', x[4] / MB, (x[5][0] / MB, x[5][1])) for x in WM if x[1] == cls]),
+            (T['worst_c'], 'ms', [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WC if x[1] == cls]),
+        )
+        for name, unit, items in lists:
+            items.sort(key=lambda x: x[0])
+            behind = sum(1 for x in items if x[0] > 1.05); first = sum(1 for x in items if x[0] < 0.95)
+            cnt = T['count'].format(n=behind, m=first, k=len(items) - behind - first, t=len(items))
+            sm.append(f'<h3>{html.escape(CLASSES[cls][2])}: {name}</h3><p class="note">{cnt}</p><div class="tw"><table><thead><tr>'
+                      f'<th>{T["page"]}</th><th>pages</th><th>{T["ph"]}</th><th>{T["ours"]}, {unit}</th><th>{T["best"]}, {unit}</th>'
+                      f'<th>{T["ratio"]}</th></tr></thead><tbody>' + ''.join(
+                          f'<tr class="{col(x[0])}"><td>{plink(x[1])}</td><td>{html.escape(x[2])}</td><td>{x[3]}</td><td class="num">{f(x[4])}</td>'
+                          f'<td class="num">{html.escape(x[5][1])} {f(x[5][0])}</td><td class="num {col(x[0])}">×{f(x[0])}</td></tr>' for x in items)
+                      + '</tbody></table></div>')
+    pg = [f'<h2 id="pages">{T["pages_title"]}</h2>']
+    for kind in kinds:
+        pg.append(f'<h3>{html.escape(kind)}</h3><div class="tw"><table><thead><tr><th>{T["page"]}</th><th>{T["about"]}</th><th>{T["size"]}</th></tr></thead><tbody>')
+        for p in (x for x in cfg.pages.values() if x.kind == kind):
+            pg.append(f'<tr><td>{plink(p.id)}</td><td>{html.escape(p.meta.get("about") or "")}</td><td class="num">{p.size() / 1024:.0f}</td></tr>')
+        pg.append('</tbody></table></div>')
     causes = ''
     if cfg.causes and Path(cfg.causes).exists():
         causes = ''.join(f'<h3>{html.escape(c.stem)}</h3><pre class="cause">{html.escape(c.read_text(encoding="utf-8", errors="replace"))}</pre>'
@@ -222,8 +253,8 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Engine comparison</title><style>{CSS}</style></head><body>
 <h1>{html.escape(title or T['title'])}</h1><p class="note">{html.escape(T['intro'])} {T['versions']}: {ver}.</p>
-<p class="leg">{leg}</p><nav><a href="#sum">{T['summary']}</a><a href="#causes">{T['causes']}</a>{''.join(f'<a href="#{c}">{html.escape(CLASSES[c][2])}</a>' for c in classes)}</nav>
-{''.join(sm)}<h2 id="causes">{T['causes']}</h2>{causes or '<p class="note">—</p>'}
+<p class="leg">{leg}</p><nav><a href="#sum">{T['summary']}</a><a href="#all">{T['all']}</a><a href="#pages">{T['pages_title']}</a><a href="#causes">{T['causes']}</a>{''.join(f'<a href="#{c}">{html.escape(CLASSES[c][2])}</a>' for c in classes)}</nav>
+{''.join(sm)}{''.join(pg)}<h2 id="causes">{T['causes']}</h2>{causes or '<p class="note">—</p>'}
 <h2>{T['bounds']}</h2><ul class="note">{bnd}</ul>{''.join(H)}</body></html>"""
 
 
@@ -236,7 +267,7 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:19px;margin:30px 0 8px}h3{font-siz
 th,td{padding:3px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--head);position:sticky;top:0;white-space:nowrap}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.note{color:var(--mut);font-size:12px}.why{color:var(--mut);font-size:11px;max-width:220px}
 .g{background:var(--g)}.n{background:var(--n)}.y{background:var(--y)}.o{background:var(--o)}.r{background:var(--r)}.nd{color:var(--mut)}
-nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
+nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}td .vl{font-size:10.5px;color:var(--mut)}td .vl a{color:var(--mut)}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
 
 
 def noise_verdict(a, b, floor=0.05):
