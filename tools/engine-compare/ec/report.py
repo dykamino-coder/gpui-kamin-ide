@@ -24,7 +24,7 @@ L = {
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
            'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
-           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'versions': 'Versions',
+           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
            'legend': ['we are faster than the best', 'within 5%', 'slower, up to x2', 'x2-x10', 'x10 and more'],
            'v_style': 'style edit', 'v_content': 'content edit', 'v_vis': 'visible edit', 'source': 'source',
            'pages_title': 'Pages under test', 'about': 'What it is', 'size': 'HTML+CSS, KB', 'local': 'local file',
@@ -40,7 +40,7 @@ L = {
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
            'not_measured': 'ещё не измерено', 'none': 'ни один другой движок не дал числа',
            'fast': 'строка <5 мс: вердикт только при 8 повторах', 'invalid': 'не в счёт: ', 'gap': 'Разрыв пика, МБ',
-           'bounds': 'Границы замера', 'versions': 'Версии',
+           'bounds': 'Границы замера', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
            'legend': ['мы быстрее лучшего', '±5 %', 'медленнее до ×2', '×2–10', '×10 и больше'],
            'v_style': 'правка стиля', 'v_content': 'правка содержимого', 'v_vis': 'видимая правка', 'source': 'источник',
            'pages_title': 'Проверяемые страницы', 'about': 'Что это', 'size': 'HTML+CSS, КБ', 'local': 'локальный файл',
@@ -298,6 +298,12 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
         causes = ''.join(f'<h3>{html.escape(c.stem)}</h3><pre class="cause">{html.escape(c.read_text(encoding="utf-8", errors="replace"))}</pre>'
                          for c in sorted(Path(cfg.causes).glob('*.md')))
     bnd = ''.join(f'<li><b>{html.escape(e)}</b>: {html.escape(str(b))}</li>' for e, b in bounds.items())
+    try:  # foreign load seen at the start of every block (the gate's line in run.log)
+        loads = [x.strip() for x in (Path(cfg.store) / 'run.log').read_text(encoding='utf-8').splitlines() if 'load check' in x]
+    except OSError:
+        loads = []
+    if loads:
+        bnd += f'<li><b>{T["loads"]}</b><ul>' + ''.join(f'<li>{html.escape(x)}</li>' for x in loads) + '</ul></li>'
     ver = '; '.join(f'{html.escape(e)} {html.escape(str(v))}' for e, v in vers.items())
     leg = ''.join(f'<span class="{c}">{html.escape(t)}</span>' for c, t in zip('gnyor', T['legend']))
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
