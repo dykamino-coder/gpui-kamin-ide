@@ -19,29 +19,53 @@ pub(super) async fn steady(cx: &AsyncApp, capture: &CaptureSession) -> Result<()
         .map(drop)
 }
 
-/// Шаг кадров фазы замера; фаза того же документа начинается после [`steady`].
+/// Тихое окно плана (`Args::steady_each_phase` = false): без кадров, как
+/// [`steady`], но без ожидания отложенной очистки памяти — план меряет память
+/// один раз (`plan.rs`), а не перед каждой фазой.
+const QUIET_WINDOW_MS: u64 = 100;
+
+/// Окно перед фазой того же документа: устойчивая память или тихое окно плана.
+pub(super) async fn before_phase(cx: &AsyncApp, capture: &CaptureSession, args: &Args) -> Result<()> {
+    if args.steady_each_phase {
+        return steady(cx, capture).await;
+    }
+    idle(cx, capture, QUIET_WINDOW_MS).await.map(drop)
+}
+
+/// Шаг кадров фазы замера; фаза того же документа начинается после [`before_phase`].
 pub(super) async fn phase_step(
     cx: &AsyncApp,
     capture: &CaptureSession,
+    args: &Args,
     cold: bool,
 ) -> Result<run::Step<'static>> {
     if cold {
         return Ok(run::Step::Cold(None));
     }
-    steady(cx, capture).await?;
+    before_phase(cx, capture, args).await?;
     Ok(run::Step::Warm)
 }
 
 /// Start of the scroll phase: the root scroller may still paint a few frames
 /// after its cold setup, so wait for a steady window up to `tries` times and
 /// return how many windows saw a frame (reported, never hidden).
-pub(super) async fn converge(cx: &AsyncApp, capture: &CaptureSession, tries: u32) -> Result<u32> {
+pub(super) async fn converge(
+    cx: &AsyncApp,
+    capture: &CaptureSession,
+    args: &Args,
+    tries: u32,
+) -> Result<u32> {
     for busy in 0..tries {
-        if steady(cx, capture).await.is_ok() {
+        if before_phase(cx, capture, args).await.is_ok() {
             return Ok(busy);
         }
     }
     Err(format!("the document kept painting through {tries} steady windows").into())
+}
+
+/// Устойчивая память открытой страницы плана: одно окно простоя, без пустого документа.
+pub(super) async fn page_audit(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64) -> Result<Value> {
+    idle(cx, capture, milliseconds).await
 }
 
 async fn idle(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64) -> Result<Value> {

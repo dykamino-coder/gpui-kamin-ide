@@ -159,10 +159,12 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         match setup() {
             Ok((window, fonts)) => {
                 cx.spawn(async move |cx| {
-                    let value =
-                        run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup)
-                            .await
-                            .map_err(|e| e.to_string());
+                    let value = if args.plan.is_some() {
+                        super::plan::run(cx, window, &fonts, &args, &platform, &capture, &mut startup).await
+                    } else {
+                        run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup).await
+                    }
+                    .map_err(|e| e.to_string());
                     *result.borrow_mut() = Some(value);
                     let _ = cx.update(|cx| {
                         // Stop this window's frame requests before the asynchronous platform quit.

@@ -27,7 +27,7 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
         // The open's first frame lays the root out before it knows its own
         // scrollbars and draws again: the reference is the frame the open
         // settles on, as scroll mode settles the load before its steps.
-        super::memory::converge(cx, capture, 5).await?;
+        super::memory::converge(cx, capture, args, 5).await?;
         let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
         let (_, fresh, _) = sample(cx, window, fonts, args, Step::Warm, capture, luid).await?;
         let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
