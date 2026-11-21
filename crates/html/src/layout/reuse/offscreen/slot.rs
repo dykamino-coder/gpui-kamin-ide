@@ -22,6 +22,7 @@ impl Slot {
             measured: Cell::new(None),
             failed: Cell::new(false),
             sizes: Default::default(),
+            builds: Cell::new(0),
         }
     }
 
@@ -58,6 +59,8 @@ pub(crate) struct Slot {
     pub(super) failed: Cell<bool>,
     /// What the measure laid out at each width it was asked for.
     pub(super) sizes: RefCell<Vec<Laid>>,
+    /// Builds of the block by its measure (`ReuseStats::offscreen_measures`).
+    pub(super) builds: Cell<u32>,
 }
 
 /// A width a measure was asked for, its size and its exact leaf.

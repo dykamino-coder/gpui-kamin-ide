@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Far blocks as exact leaves: expose a layout snapshot's height and block-axis margin equality, the children of a laid out node and the union of its subtree's bounds, so a host can stand a measured block far from the screen as one leaf and check it before prepaint. A leaf of a block container repeats the node's layout output (taffy LeafOutput: edge margin sets, collapse-through, scrollable overflow, baselines), so descendant margins may adjoin its edges and content may overflow it; a measured leaf gives the output of the block it measured (MeasuredContent::standing_for). Window::layout_sized_by_content tells a host whether a parent asked the node for its intrinsic inline size, which a fixed leaf cannot answer (CSS Sizing 3 section 5). A refused layout attempt is discarded before the next one: the element arena rewinds to a mark (ArenaMark, Window::mark_layout_attempt/abandon_layout_attempt), dropping and reusing what the attempt allocated.
+# 1. Far blocks as exact leaves: expose a layout snapshot's height and block-axis margin equality, the children of a laid out node and the union of its subtree's bounds, so a host can stand a measured block far from the screen as one leaf and check it before prepaint. A leaf of a block container repeats the node's layout output (taffy LeafOutput: edge margin sets, collapse-through, scrollable overflow, baselines), so descendant margins may adjoin its edges and content may overflow it; a measured leaf gives the output of the block it measured (MeasuredContent::standing_for). Window::layout_sized_by_content tells a host whether a parent asked the node for its intrinsic inline size, which a fixed leaf cannot answer (CSS Sizing 3 section 5). A refused layout attempt is discarded before the next one: the element arena rewinds to a mark (ArenaMark, Window::mark_layout_attempt/abandon_layout_attempt), dropping and reusing what the attempt allocated. Lines shaped in a release scope (with_layouts_released) are cached for that scope only, so a measure that lays a paragraph out at several widths shapes it once; they go with the next scope or the frame's end.
 # 2. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
 # 3. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
 # 4. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
@@ -28617,7 +28617,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..eaed2ee43954b52722799b2815bd983f
 +                background_owner: 0,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744de6d775b
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..7d76d26b4c5e43147a3ba21fd47995646c5ae803
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -28658,7 +28658,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            }
 +
 +            if width - trailing_space > wrap_width && boundary > last_boundary {
-@@ -487 +512,84 @@
+@@ -460,0 +486,5 @@
++    /// KaminIDE patch: the lines shaped in the present release scope
++    /// ([`with_layouts_released`]) and the scope they belong to: a measure
++    /// that lays a paragraph out at several widths shapes its text once, and
++    /// the lines go with the next scope or the frame's end.
++    released: Mutex<(u64, FrameCache)>,
+@@ -487 +517,89 @@
 -#[derive(Clone, Default)]
 +impl FrameCache {
 +    /// KaminIDE patch: nothing laid out in this frame yet.
@@ -28699,6 +28705,8 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +thread_local! {
 +    /// KaminIDE patch: see [`with_layouts_released`].
 +    static LAYOUTS_RELEASED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
++    /// KaminIDE patch: the outermost release scope entered last (`released`).
++    static RELEASED_SCOPE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 +}
 +
 +pub(crate) fn layouts_released() -> bool {
@@ -28738,13 +28746,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +/// do not outlive the paint by a frame.
 +pub(crate) fn with_layouts_released<R>(f: impl FnOnce() -> R) -> R {
 +    let outer = LAYOUTS_RELEASED.with(|released| released.replace(true));
++    if !outer {
++        RELEASED_SCOPE.with(|scope| scope.set(scope.get() + 1));
++    }
 +    let result = f();
 +    LAYOUTS_RELEASED.with(|released| released.set(outer));
 +    result
 +}
 +
 +#[derive(Clone, Default, PartialEq)]
-@@ -493,0 +602,27 @@
+@@ -493,0 +612,27 @@
 +}
 +
 +impl LineLayoutIndex {
@@ -28772,7 +28783,9 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            wrapped_lines_by_hash_index,
 +        }
 +    }
-@@ -530,12 +665,21 @@
+@@ -504,0 +650 @@
++            released: Mutex::default(),
+@@ -530,12 +676,21 @@
 -        let mut current_frame = &mut *self.current_frame.write();
 -        let mut previous_frame = &mut *self.previous_frame.lock();
 -
@@ -28806,7 +28819,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        if let Some(keys) = previous_frame
 +            .used_lines
 +            .get(range.start.lines_index..range.end.lines_index)
-@@ -543,8 +687,11 @@
+@@ -543,8 +698,11 @@
 -            if let Some((key, line)) = previous_frame.wrapped_lines.remove_entry(key) {
 -                current_frame.wrapped_lines.insert(key, line);
 -            }
@@ -28826,7 +28839,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        if let Some(keys) = previous_frame
 +            .used_wrapped_lines
 +            .get(range.start.wrapped_lines_index..range.end.wrapped_lines_index)
-@@ -552,8 +699,11 @@
+@@ -552,8 +710,11 @@
 -            if let Some((key, line)) = previous_frame.lines_by_hash.remove_entry(key) {
 -                current_frame.lines_by_hash.insert(key, line);
 -            }
@@ -28846,7 +28859,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        if let Some(keys) = previous_frame
 +            .used_lines_by_hash
 +            .get(range.start.lines_by_hash_index..range.end.lines_by_hash_index)
-@@ -561,4 +711,18 @@
+@@ -561,4 +722,18 @@
 -            if let Some((key, line)) = previous_frame.wrapped_lines_by_hash.remove_entry(key) {
 -                current_frame.wrapped_lines_by_hash.insert(key, line);
 -            }
@@ -28869,7 +28882,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +                }
 +                current_frame.used_wrapped_lines_by_hash.push(key.clone());
 +            }
-@@ -585,0 +750,11 @@
+@@ -585,0 +761,22 @@
 +    /// KaminIDE patch: line layouts the frame caches hold (current and
 +    /// previous frame), for hosts that check a pass leaves them unchanged.
 +    pub fn cached_layouts(&self) -> usize {
@@ -28881,9 +28894,21 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            .sum()
 +    }
 +
-@@ -590,0 +766 @@
++    /// KaminIDE patch: the lines of the present release scope (`released`);
++    /// those of an earlier scope go first.
++    fn released_scope(&self) -> parking_lot::MutexGuard<'_, (u64, FrameCache)> {
++        let scope = RELEASED_SCOPE.with(std::cell::Cell::get);
++        let mut released = self.released.lock();
++        if released.0 != scope {
++            *released = (scope, FrameCache::default());
++        }
++        released
++    }
++
+@@ -590,0 +788,2 @@
++        *self.released.lock() = Default::default();
 +        super::composed::PIECES.finish_frame();
-@@ -602 +778,7 @@
+@@ -602 +801,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -28892,17 +28917,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +791 @@
+@@ -608,0 +814 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +797,5 @@
+@@ -613,0 +820,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +809 @@
+@@ -620,0 +832 @@
 +            letter_spacing,
-@@ -624,0 +814,10 @@
+@@ -624,0 +837,10 @@
 +            let layout = layout.clone();
 +            if layouts_released() {
 +                RwLockUpgradableReadGuard::upgrade(current_frame).wrapped_lines.remove(key);
@@ -28913,13 +28938,19 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        if layouts_sealed()
 +            && let Some(layout) = self.previous_frame.lock().wrapped_lines.get(key)
 +        {
-@@ -627 +825,0 @@
+@@ -627 +848,0 @@
 -
-@@ -629,0 +828,3 @@
+@@ -629,0 +851,3 @@
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -639 +840,7 @@
+@@ -637,0 +862,5 @@
++            if layouts_released()
++                && let Some(layout) = self.released_scope().1.wrapped_lines.get(key)
++            {
++                return layout.clone();
++            }
+@@ -639 +868,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -28928,13 +28959,18 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +                None,
 +                letter_spacing,
 +            );
-@@ -649,0 +857,3 @@
-+            if layouts_released() || layouts_sealed() {
+@@ -649,0 +885,3 @@
++            if layouts_sealed() {
 +                return layout;
 +            }
-@@ -655,0 +866 @@
+@@ -655,0 +894 @@
 +                letter_spacing,
-@@ -678,0 +890,63 @@
+@@ -656,0 +896,4 @@
++            if layouts_released() {
++                self.released_scope().1.wrapped_lines.insert(key, layout.clone());
++                return layout;
++            }
+@@ -678,0 +922,63 @@
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
 +
@@ -28998,12 +29034,12 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        Text: AsRef<str>,
 +        SharedString: From<Text>,
 +    {
-@@ -684 +958 @@
+@@ -684 +990 @@
 -            wrap_width: None,
 +            wrap_width,
-@@ -685,0 +960 @@
+@@ -685,0 +992 @@
 +            letter_spacing,
-@@ -689,0 +965,13 @@
+@@ -689,0 +997,13 @@
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            let layout = layout.clone();
@@ -29017,18 +29053,24 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            && let Some(layout) = self.previous_frame.lock().lines.get(key)
 +        {
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -692 +979,0 @@
+@@ -692 +1011,0 @@
 -
-@@ -694,0 +982,4 @@
+@@ -694,0 +1014,4 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -698,0 +990,3 @@
+@@ -698,0 +1022,9 @@
++            if layouts_released()
++                && let Some(layout) = self.released_scope().1.lines.get(key)
++            {
++                crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++                return layout.clone();
++            }
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -700,8 +994,9 @@
+@@ -700,8 +1032,9 @@
 -            let mut layout = self
 -                .platform_text_system
 -                .layout_line(&text, font_size, runs);
@@ -29043,15 +29085,21 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +                std::sync::atomic::Ordering::Relaxed,
 +            );
 +
-+            if layouts_released() || layouts_sealed() {
++            if layouts_sealed() {
 +                return Arc::new(layout);
 +            }
-@@ -712 +1007 @@
+@@ -712 +1045 @@
 -                wrap_width: None,
 +                wrap_width,
-@@ -713,0 +1009 @@
+@@ -713,0 +1047 @@
 +                letter_spacing,
-@@ -841 +1137,7 @@
+@@ -715,0 +1050,5 @@
++            if layouts_released() {
++                drop(current_frame);
++                self.released_scope().1.lines.insert(key, layout.clone());
++                return layout;
++            }
+@@ -841 +1180,7 @@
 -            if let Some((key, layout)) = previous_frame.lines_by_hash.remove_entry(&existing_key) {
 +            if layouts_sealed() {
 +                if let Some(layout) = previous_frame.lines_by_hash.get(&existing_key) {
@@ -29060,17 +29108,18 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            } else if let Some((key, layout)) =
 +                previous_frame.lines_by_hash.remove_entry(&existing_key)
 +            {
-@@ -856,0 +1159,3 @@
+@@ -856,0 +1202,3 @@
 +        }
 +        if layouts_sealed() {
 +            return Arc::new(layout);
-@@ -887,0 +1193 @@
+@@ -887,0 +1236,2 @@
++        *self.released.lock() = Default::default();
 +        super::composed::PIECES.clear();
-@@ -927,0 +1234,3 @@
+@@ -927,0 +1278,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1239,7 @@
+@@ -929,0 +1283,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -29078,16 +29127,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1259,3 @@
+@@ -942,0 +1303,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1271,2 @@
+@@ -951,0 +1315,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1365 @@
+@@ -1043,0 +1409 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1070,0 +1393,96 @@
+@@ -1070,0 +1437,96 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -29184,14 +29233,14 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +
 +#[cfg(test)]
 +mod reuse_tests;
-@@ -1094,0 +1513 @@
+@@ -1094,0 +1557 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7fa3775e0d00017e9038623d384ae60c18a63d6b
+index 0000000000000000000000000000000000000000..058dcf7da280c609acc5e6b89568be75df3db336
 --- /dev/null
 +++ b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,156 @@
 +//! KaminIDE patch: reusing a frame's line layouts whole equals reusing them
 +//! one by one, and a range past a frame reused whole reuses nothing.
 +
@@ -29332,6 +29381,23 @@ index 0000000000000000000000000000000000000000..7fa3775e0d00017e9038623d384ae60c
 +    assert_eq!(cached(&cache.current_frame.read()), ["a"]);
 +    assert_eq!(cached(&cache.previous_frame.lock()), ["b"]);
 +}
++
++#[test]
++fn a_release_scope_shapes_a_line_once_and_keeps_it_only_in_the_scope() {
++    // A measure lays a paragraph out at several widths in one release scope.
++    let cache = cache();
++    let first = with_layouts_released(|| {
++        let first = line(&cache, "a");
++        assert!(Arc::ptr_eq(&line(&cache, "a"), &first), "shaped once in the scope");
++        first
++    });
++    assert_eq!(cache.cached_layouts(), 0, "the frame caches hold nothing of it");
++    let next = with_layouts_released(|| line(&cache, "a"));
++    assert!(!Arc::ptr_eq(&next, &first), "a later scope shapes it again");
++    cache.finish_frame();
++    assert!(cache.released.lock().1.lines.is_empty(), "the frame's end drops the scope's lines");
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/text_system/line_wrapper.rs b/vendor/gpui/src/text_system/line_wrapper.rs
 index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb6bd59522
 --- a/vendor/gpui/src/text_system/line_wrapper.rs

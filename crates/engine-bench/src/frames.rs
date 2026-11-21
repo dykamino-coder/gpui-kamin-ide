@@ -173,7 +173,7 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents, blocks, offset, leaves) =
+        let (after, inside, contents, blocks, offset, (leaves, measures)) =
             window.read_with(cx, |view, _| {
                 let doc = &view.doc;
                 (
@@ -182,7 +182,7 @@ impl Frames {
                     doc.replayed_contents(),
                     doc.replayed_blocks(),
                     (doc.root_scroll_offset(), doc.root_scroll_max()),
-                    doc.offscreen_leaves(),
+                    (doc.offscreen_leaves(), doc.offscreen_measures()),
                 )
             })?;
         let misses = window.read_with(cx, |view, _| view.doc.take_frame_misses())?;
@@ -207,12 +207,14 @@ impl Frames {
             }
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
+        let memory = self.scroll.then(super::host::memory_now).flatten();
         self.samples.push(json!({"mode": mode, "sample_index": index,
+            "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
             "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
             "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
-            "builds_inside_draw": inside, "offscreen_leaves_total": leaves,
+            "builds_inside_draw": inside, "offscreen_leaves_total": leaves, "offscreen_measures_total": measures,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));

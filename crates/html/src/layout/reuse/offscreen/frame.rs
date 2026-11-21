@@ -144,6 +144,7 @@ impl FlowReuse {
         let leaves = || slots.iter().filter(|s| s.leaf());
         let mut stats = self.store.stats.get();
         stats.offscreen += leaves().count() as u64;
+        stats.offscreen_measures += slots.iter().map(|s| u64::from(s.builds.get())).sum::<u64>();
         self.store.stats.set(stats);
         // A paint-only edit of a box in a leaf shows no pixel of this frame.
         self.store.add_unpainted(leaves().map(|s| s.node));

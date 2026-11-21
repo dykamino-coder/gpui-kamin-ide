@@ -97,12 +97,16 @@ impl FlowReuse {
         let layout = &e.style.used().reset_box_layout;
         let visible = |o| matches!(o, None | Some(crate::style::computed::Overflow::Visible));
         if let Some(before) = before.filter(|_| visible(layout.overflow_y)) {
-            let mut chars = 0;
+            // Only whether the flow passed the interest zone's bottom is read
+            // (`offscreen_leaf`): the text is counted up to it, so a frame
+            // pays for the text above the zone's end, not for the document's.
+            let bottom = self.zone(opts).1;
+            let mut least = before;
             super::super::plain::all_elements(e, |e| {
-                chars += eligible::own_text(e);
-                true
+                least += height(eligible::own_text(e), opts);
+                least <= bottom
             });
-            self.offscreen.above.set(before + height(chars, opts));
+            self.offscreen.above.set(least);
         }
         if self.offscreen.floated.get() || !super::super::plain::escaping_floats(e) {
             return;
@@ -127,8 +131,9 @@ impl FlowReuse {
             });
             each.sum()
         }
-        if self.counts(opts) {
-            let above = &self.offscreen.above;
+        let above = &self.offscreen.above;
+        // Past the zone's bottom the flow's text is no longer read (`built_block`).
+        if self.counts(opts) && above.get() <= self.zone(opts).1 {
             above.set(above.get() + height(chars(nodes), opts));
         }
     }

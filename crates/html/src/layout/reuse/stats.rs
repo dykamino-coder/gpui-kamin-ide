@@ -25,4 +25,7 @@ pub struct ReuseStats {
     /// Blocks far from the screen that stood as their leaf in a painted
     /// frame (`offscreen`).
     pub offscreen: u64,
+    /// Builds of far blocks by the measures of their leaves (`offscreen`):
+    /// more than one per leaf is a block built at more than one width.
+    pub offscreen_measures: u64,
 }

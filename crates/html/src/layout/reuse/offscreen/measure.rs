@@ -66,7 +66,12 @@ fn measure(
         return MeasuredContent::new(Size::default());
     }
     let counters = Counters::read(&source.opts.cx);
-    let laid_out = gpui::with_temporary_element_arena(|| {
+    slot.builds.set(slot.builds.get() + 1);
+    // The block's elements go to the frame's arena past a mark and are
+    // dropped back to it: every measure of the frame reuses the same memory
+    // instead of a private arena of its own.
+    let mark = gpui::mark_element_arena();
+    let laid_out = {
         window.with_nested_layout(|window| {
             window.with_line_layouts_released(|window| {
                 let opts = &source.opts;
@@ -97,7 +102,8 @@ fn measure(
                 Some((window.layout_size_unrounded(id), snapshot))
             })
         })
-    });
+    };
+    gpui::rewind_element_arena(mark);
     counters.write(&source.opts.cx);
     let Some((laid, snapshot)) = laid_out else {
         slot.failed.set(true);
