@@ -64,6 +64,7 @@ pub(super) async fn float_box_stack(
             crate::layout::positioned::layer_scope::LayerScope::cb(
                 &opts.cx.position.state,
                 crate::style::computed::stacking::fixed_cb_layer_box(&merged),
+                opts.cx.scroll.node.clone(),
             )
         });
         let span = open_clamp_span(&opts.cx);

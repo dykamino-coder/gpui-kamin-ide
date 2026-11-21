@@ -153,6 +153,7 @@ pub(super) fn own_box_atom(
             &opts.cx.position.state,
             &merged,
             crate::style::computed::stacking::fixed_cb_layer_box(&merged),
+            opts.cx.scroll.node.clone(),
         )
     });
     let mut kids =

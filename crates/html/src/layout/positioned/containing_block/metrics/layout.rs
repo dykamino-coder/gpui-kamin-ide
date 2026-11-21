@@ -98,8 +98,8 @@ mod tests {
                     frag: Default::default(),
                 };
                 let state = opts.cx.position.state.clone();
-                let transform = LayerScope::cb(&state, true);
-                let absolute = LayerScope::cb(&state, false);
+                let transform = LayerScope::cb(&state, true, None);
+                let absolute = LayerScope::cb(&state, false, None);
                 let built = Rc::new(Cell::new(false));
                 let observed = built.clone();
                 let mut deferred = defer(

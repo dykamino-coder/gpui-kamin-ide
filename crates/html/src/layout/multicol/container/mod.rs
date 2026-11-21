@@ -102,6 +102,7 @@ pub(crate) fn multicol_column_stack(
             let fixed_layer = fixed_cb_layer_box(&merged).then(|| {
                 crate::layout::positioned::layer_scope::LayerScope::fixed_only(
                     &opts.cx.position.state,
+                    opts.cx.scroll.node.clone(),
                 )
             });
             let children = if deferred.is_some() {
