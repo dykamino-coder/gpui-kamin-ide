@@ -37,6 +37,7 @@ impl Phases {
 
 pub(super) struct View {
     pub(super) doc: Document,
+    pub(super) animation_elapsed: Option<Duration>,
     pub(super) phases: Rc<RefCell<Phases>>,
     pub(super) viewport: Option<(u32, u32)>,
     /// Шаг документа перед каждым кадром окна (`step::register`).

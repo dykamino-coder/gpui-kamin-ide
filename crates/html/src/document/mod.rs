@@ -16,6 +16,7 @@
 mod admission_diagnostics_tests;
 #[cfg(test)]
 mod admission_tests;
+mod animation;
 mod base_url;
 #[cfg(test)]
 mod budget_tests;

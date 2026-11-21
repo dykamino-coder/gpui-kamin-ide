@@ -1,11 +1,6 @@
-//! Живая анимация по `@keyframes`: пересборка настоящего узла на каждом кадре.
-//!
-//! Вход — элемент с набором кадров (`anim`) и `AnimSpec`; выход — GPUI-элемент,
-//! обёрнутый в `with_animation`. Остановленная (`frozen`) анимация запекается
-//! в один стиль и собирается как обычный элемент. На живом кадре выборка
-//! накладывается на исходный узел (`animation_frame::sample`), и собирается
-//! сам форматирующий узел, а не отдельная коробка-обёртка: иначе анимируемые
-//! размеры и цвета не доезжали бы до раскладки и детей.
+//! Live CSS keyframes rebuild the actual formatting element on the shared clock.
+//! Frozen effects remain baked styles. Samples reach layout, child styles and
+//! transforms through `animation_frame::sample`, without a separate painted box.
 
 use crate::animation::animation_frame;
 use crate::animation::frames::{bake_frozen, sample_at};
@@ -15,20 +10,7 @@ use crate::paint::effects::transform::transformed_node;
 use crate::style::computed::{AnimSpec, BoxStyle, Computed};
 use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement};
-
-fn animation(spec: &AnimSpec) -> gpui::Animation {
-    let alternating = spec.infinite && spec.alternate;
-    let period = if spec.infinite {
-        spec.seconds.max(0.05) * if alternating { 2.0 } else { 1.0 }
-    } else {
-        (f64::from(spec.seconds) * spec.iterations + f64::from(spec.delay)).max(0.05) as f32
-    };
-    let mut animation = gpui::Animation::new(std::time::Duration::from_secs_f32(period));
-    if spec.infinite {
-        animation = animation.repeat();
-    }
-    animation
-}
+use std::rc::Rc;
 
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     transformed_node(
@@ -92,18 +74,22 @@ pub(crate) async fn animated(
     if spec.frozen() {
         return painted_stack(stk, e, inherited, opts).await;
     }
-    let base = painted_stack(stk, e, inherited, opts).await;
     let id = e.state_id("html-animation", vcx);
     let source = e.clone();
     let inherited = inherited.clone();
+    let doc = opts.cx.doc().clone();
     let opts = opts.clone();
-    let timeline = animation(&spec);
-    let period = timeline.duration.as_secs_f64();
-    gpui::AnimationExt::with_animation(base, id, timeline, move |_, delta| {
-        let vcx = opts.cx.vcx();
-        let sampled = sample_live(&source, &frames, &spec, f64::from(delta) * period, vcx);
-        painted(&sampled, &inherited, &opts)
-    })
+    let sampled_spec = spec.clone();
+    super::keyframe::Keyframe {
+        id,
+        spec,
+        doc,
+        build: Rc::new(move |elapsed| {
+            let vcx = opts.cx.vcx();
+            let sampled = sample_live(&source, &frames, &sampled_spec, elapsed, vcx);
+            painted(&sampled, &inherited, &opts)
+        }),
+    }
     .into_any_element()
 }
 
@@ -128,9 +114,6 @@ mod tests {
 
     #[test]
     fn alternate_repeat_starts_at_first_keyframe_and_gives_each_leg_its_duration() {
-        let animation = animation(&spec(true));
-        assert_eq!(animation.duration.as_secs_f32(), 1.0);
-        assert!(!animation.oneshot);
         for (time, progress) in [(0.0, 0.0), (0.25, 0.5), (0.5, 1.0), (0.75, 0.5), (1.0, 0.0)] {
             assert_eq!(spec(true).progress_at(time), Some(progress));
         }
@@ -138,11 +121,9 @@ mod tests {
 
     #[test]
     fn single_alternate_iteration_plays_forward_once() {
-        let animation = animation(&spec(false));
-        assert_eq!(animation.duration.as_secs_f32(), 0.5);
-        assert!(animation.oneshot);
-        assert_eq!((animation.easing)(0.0), 0.0);
-        assert_eq!((animation.easing)(1.0), 1.0);
+        assert_eq!(spec(false).progress_at(0.0), Some(0.0));
+        assert_eq!(spec(false).progress_at(0.25), Some(0.5));
+        assert_eq!(spec(false).progress_at(0.5), None);
     }
 
     #[test]
@@ -165,10 +146,8 @@ mod tests {
         end.apply_one("margin", "200px", vcx);
         end.apply_one("transform", "translateX(200px)", vcx);
         let frames = [(0.0, start), (1.0, end)];
-        let period = animation(spec).duration.as_secs_f64();
         for (ms, x) in [(0, 0.0), (250, 50.0), (500, 100.0), (750, 150.0)] {
-            let delta = (f64::from(ms) / 1000.0 / period) as f32;
-            let sampled = sample_live(&source, &frames, spec, f64::from(delta) * period, vcx);
+            let sampled = sample_live(&source, &frames, spec, f64::from(ms) / 1000.0, vcx);
             assert_eq!(
                 sampled.style.used().reset_box_layout.margin.left,
                 Some(Len::Px(x))
@@ -197,8 +176,7 @@ mod tests {
                 x
             );
         }
-        // GPUI clamps a completed one-shot to delta=1, including at 1500 ms.
-        let expired = sample_live(&source, &frames, spec, period, vcx);
+        let expired = sample_live(&source, &frames, spec, 1.5, vcx);
         assert_eq!(
             expired.style.used().reset_box_layout.margin,
             source.style.used().reset_box_layout.margin
