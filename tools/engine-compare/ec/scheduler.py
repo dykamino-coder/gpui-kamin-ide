@@ -34,12 +34,20 @@ class Task:
         return f'{self.engine}/{self.part} {self.page.id} {self.cls}'
 
 
+def canon(ad, cls):
+    """Class the engine actually measures: without GPU raster, gpu2 and soft2 are the same setup (mask A, CPU raster)."""
+    return 'soft2' if cls == 'gpu2' and not ad.needs_gpu('gpu2') else cls
+
+
 def plan(adapters, pages, classes, policy, store, force=False):
-    """(todo, cached) task lists; ``adapters`` = {name: adapter}."""
-    todo, cached = [], []
-    for cls in classes:
+    """(todo, cached) task lists; ``adapters`` = {name: adapter}. Equivalent classes are measured once (``canon``)."""
+    todo, cached, seen = [], [], set()
+    for cls0 in classes:
         for name, ad in adapters.items():
-            ver = ad.version()
+            ver = ad.version(); cls = canon(ad, cls0)
+            if (name, cls) in seen:
+                continue
+            seen.add((name, cls))
             for part in ad.parts:
                 d = ad.definition(part) + '-' + policy.definition()
                 for p in pages:

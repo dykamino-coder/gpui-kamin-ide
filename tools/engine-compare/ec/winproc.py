@@ -90,6 +90,7 @@ for fn, res, args in [
     ('GetExitCodeProcess', wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]),
     ('GetProcessTimes', wintypes.BOOL, [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4),
     ('QueryFullProcessImageNameW', wintypes.BOOL, [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]),
+    ('QueryProcessCycleTime', wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(ctypes.c_ulonglong)]),
     ('GetProcessAffinityMask', wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_size_t)]),
 ]:
     f = getattr(K, fn); f.restype = res; f.argtypes = args
@@ -125,6 +126,11 @@ def proc_cpu_s(h):
     if not K.GetProcessTimes(h, *[ctypes.byref(x) for x in ft]):
         return None
     return _ft(ft[2]) + _ft(ft[3])
+
+
+def proc_cycles(h):
+    c = ctypes.c_ulonglong()
+    return c.value if K.QueryProcessCycleTime(h, ctypes.byref(c)) else 0
 
 
 def proc_mem(h):
@@ -267,16 +273,16 @@ class Tree(threading.Thread):
                 K.CloseHandle(h)
 
     def snap(self):
-        """(t, cpu_s, ws, private) summed over measured processes; exited ones keep their final CPU."""
+        """(t, cpu_s, ws, private, cycles) summed over measured processes; exited ones keep their final CPU."""
         with self.lock:
-            self._refresh(); t = time.perf_counter(); cpu = 0.0; ws = pv = 0
+            self._refresh(); t = time.perf_counter(); cpu = 0.0; ws = pv = cyc = 0
             for pid, h in self.h.items():
-                c = proc_cpu_s(h); cpu += c or 0
+                c = proc_cpu_s(h); cpu += c or 0; cyc += proc_cycles(h)
                 if K.WaitForSingleObject(h, 0) != 0:
                     m = proc_mem(h)
                     if m:
                         ws += m.WorkingSetSize; pv += m.PrivateUsage
-            return t, cpu, ws, pv
+            return t, cpu, ws, pv, cyc
 
     def run(self):
         while not self.stop.is_set():

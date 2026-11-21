@@ -65,6 +65,16 @@ def ours_cpu(j, mode):
     return med(v)
 
 
+def ours_cpu_cycles(rep, mode, calibration):
+    """CPU ms per frame from a single-process plan: median over samples of the process cycle time inside the frame
+    (all threads), converted with the run's cycles per CPU millisecond."""
+    k = (calibration or {}).get('cycles_per_cpu_ms')
+    m = (rep.get('modes') or {}).get(mode) or {}
+    d = (m.get('diagnostic_scopes') or {}).get('samples_ms') or []
+    v = [x['process_cpu_mcycles'] * 1e6 / k for x in d if x and x.get('process_cpu_mcycles') is not None] if k else []
+    return med(v)
+
+
 def ours_memory(j):
     """(peak, steady) bytes from a ``--mode both --memory-settle-ms`` run."""
     ma = j.get('memory_audit') or {}
@@ -121,18 +131,20 @@ def scroll_empty_reason(res):
     return None
 
 
-def cpu_windows(marks, frames):
+def cpu_windows(marks, frames, per_ms=None):
     """CPU ms per frame for every cpu_<case>_0/1 mark pair; cold = nav -> loaded (ms, not per frame).
 
-    marks: {name: (t, cpu_s, ws, private)}; frames: {case: frames of the loop}."""
+    marks: {name: (t, cpu_s, ws, private[, cycles])}; frames: {case: frames of the loop}; per_ms: cycles per CPU ms."""
     out = {}
     for k, a in marks.items():
         if k.startswith('cpu_') and k.endswith('_0'):
             c = k[4:-2]; b = marks.get(f'cpu_{c}_1')
             if b and frames.get(c):
-                out[c] = (b[1] - a[1]) / frames[c] * 1000
+                # exact cycle time when calibrated (process times move in ~15.6 ms quanta)
+                out[c] = ((b[4] - a[4]) / per_ms if per_ms and len(a) > 4 else (b[1] - a[1]) * 1000) / frames[c]
     if 'nav' in marks and 'loaded' in marks:
-        out['cold'] = (marks['loaded'][1] - marks['nav'][1]) * 1000
+        a, b = marks['nav'], marks['loaded']
+        out['cold'] = (b[4] - a[4]) / per_ms if per_ms and len(a) > 4 else (b[1] - a[1]) * 1000
     return out
 
 

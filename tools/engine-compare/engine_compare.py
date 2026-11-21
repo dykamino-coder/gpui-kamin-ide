@@ -34,7 +34,19 @@ def fmt(x):
     return '-' if x is None else (f'{x:.0f}' if x >= 100 else f'{x:.1f}' if x >= 10 else f'{x:.2f}')
 
 
+def gate(cfg, a):
+    """Refuse to measure while builds or other engines run on the measuring lanes (they would be in every number)."""
+    if getattr(a, 'ignore_load', False):
+        return
+    from ec.doctor import intruders
+    bad = intruders(cfg.lanes)
+    if bad:
+        sys.exit('refused: processes on the measuring lanes ' + ', '.join(f'{n} pid {p} mask 0x{m:X}' for p, n, m in bad)
+                 + ' (move them off the lanes, or --ignore-load for a functional check)')
+
+
 def quick(cfg, a):
+    gate(cfg, a)
     page = cfg.pages.get(a.page)
     if not page:
         sys.exit(f'unknown page {a.page!r}; the page set has {len(cfg.pages)} pages')
@@ -44,52 +56,35 @@ def quick(cfg, a):
     r = Runner(cfg, ads, A.QUICK, lanes_of(cfg), cfg.gpu_parallel, log=lambda m: print(m, flush=True))
     cfg.store = cfg.store / 'quick'
     wall = r.run(todo)
-    recs = {}
-    for t, rec in r.done:
-        recs.setdefault(t.engine, {})[t.part] = rec
-    print(f'\n{page.id} ({page.kind}), {CLASSES[a.cls][2]}; one repeat per row (quick); wall {wall:.1f} s\n')
+    recs = {n: REC.merge([rec for t, rec in r.done if t.engine == n]) for n in names}
+    print(f'\n{page.id} ({page.kind}), {CLASSES[a.cls][2]}; quick repeats; wall {wall:.1f} s\n')
     w = max(10, max(len(n) for n in names) + 2)
-    print('frame ms'.ljust(12) + ''.join(n.rjust(w) for n in names))
-    for ph in M.PHASES:
-        cells = []
-        for n in names:
-            x = (recs.get(n, {}).get('time') or recs.get(n, {}).get('all') or {}).get('rows', {}).get(ph) or {}
-            cells.append(fmt(x.get('time_ms')) if x.get('time_ms') is not None else ('n/a' if not x else 'x'))
-        print(ph.ljust(12) + ''.join(c.rjust(w) for c in cells))
-    print('\ncpu ms/frame'.ljust(12))
-    for ph in M.PHASES:
-        cells = []
-        for n in names:
-            x = (recs.get(n, {}).get('cpu') or recs.get(n, {}).get('all') or {}).get('rows', {}).get(ph) or {}
-            cells.append(fmt(x.get('cpu_ms')))
-        print(ph.ljust(12) + ''.join(c.rjust(w) for c in cells))
-    print('\nmemory MB'.ljust(12))
+    for title, key, scale in (('frame ms', 'time_ms', 1), ('cpu ms/frame', 'cpu_ms', 1)):
+        print(title.ljust(12) + ''.join(n.rjust(w) for n in names))
+        for ph in M.PHASES:
+            cells = [(recs[n]['rows'].get(ph) or {}).get(key) for n in names]
+            print(ph.ljust(12) + ''.join((fmt(c) if c is not None else 'x').rjust(w) for c in cells))
+        print()
+    print('memory MB'.ljust(12) + ''.join(n.rjust(w) for n in names))
     for k in ('peak_bytes', 'steady_bytes'):
-        cells = []
-        for n in names:
-            m = (recs.get(n, {}).get('time') or recs.get(n, {}).get('all') or {}).get('memory') or {}
-            cells.append(fmt(m[k] / 2 ** 20) if m.get(k) else '-')
-        print(k.split('_')[0].ljust(12) + ''.join(c.rjust(w) for c in cells))
-    why = []
-    for n, parts in recs.items():
-        for part, rec in parts.items():
-            for ph, x in (rec.get('rows') or {}).items():
-                if x.get('empty'):
-                    why.append(f'  {n} {ph}: {x["empty"]}')
-                if x.get('note'):
-                    why.append(f'  {n} {ph}: {x["note"]}')
-            if rec.get('empty'):
-                why.append(f'  {n}: {rec["empty"]}')
+        cells = [recs[n]['memory'].get(k) for n in names]
+        print(k.split('_')[0].ljust(12) + ''.join((fmt(c / 2 ** 20) if c else '-').rjust(w) for c in cells))
+    why = sorted({f'  {n} {ph}: {x["empty"]}' for n in names for ph, x in recs[n]['rows'].items() if x.get('empty')}
+                 | {f'  {n} {ph}: {x["note"]}' for n in names for ph, x in recs[n]['rows'].items() if x.get('note')})
     if why:
-        print('\nempty cells and notes:\n' + '\n'.join(sorted(set(why))))
-
+        print('\nx = no number:\n' + '\n'.join(why))
+    walls = ', '.join(f'{t.engine}/{t.part} {rec.get("wall_s", 0):.1f}s' for t, rec in r.done)
+    print(f'\nunit walls: {walls}')
 
 def run(cfg, a):
+    gate(cfg, a)
     pages = [cfg.pages[i] for i in csv(a.pages)] if a.pages else [p for p in cfg.pages.values() if not a.kinds or p.kind in csv(a.kinds)]
     names = csv(a.engines) or list(cfg.engines)
     ads = {n: A.load(n, cfg) for n in names}
     classes = csv(a.classes) or list(CLASSES)
-    pol = A.Policy()
+    n = int(a.repeats or 3)
+    pol = A.Policy(min_repeats=n, fast_repeats=max(n, 8) if n > 1 else 1, max_repeats=max(n, 8) if n > 1 else 1,
+                   cpu_frames=int(a.cpu_frames or 10))
     todo, cached = plan(ads, pages, classes, pol, cfg.store, force=a.force)
     print(f'{len(todo)} units to measure, {len(cached)} cached ({len(pages)} pages x {len(classes)} classes x {len(names)} engines)', flush=True)
     if a.dry or not todo:
@@ -104,14 +99,15 @@ def run(cfg, a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--config', default=None)
+    ap.add_argument('--store', default=None, help='result store (default: the config''s)')
     sub = ap.add_subparsers(dest='cmd', required=True)
-    q = sub.add_parser('quick'); q.add_argument('page'); q.add_argument('--cls', default='gpu4', choices=list(CLASSES)); q.add_argument('--engines')
+    q = sub.add_parser('quick'); q.add_argument('page'); q.add_argument('--cls', default='gpu4', choices=list(CLASSES)); q.add_argument('--engines'); q.add_argument('--ignore-load', action='store_true')
     r = sub.add_parser('run')
-    for k in ('--pages', '--kinds', '--engines', '--classes', '--phases'):
+    for k in ('--pages', '--kinds', '--engines', '--classes', '--phases', '--repeats', '--cpu-frames'):
         r.add_argument(k)
-    r.add_argument('--force', action='store_true'); r.add_argument('--dry', action='store_true')
+    r.add_argument('--force', action='store_true'); r.add_argument('--dry', action='store_true'); r.add_argument('--ignore-load', action='store_true')
     d = sub.add_parser('doctor'); d.add_argument('--aa', action='store_true')
-    rp = sub.add_parser('report'); rp.add_argument('out'); rp.add_argument('--classes'); rp.add_argument('--title', default='Engine comparison')
+    rp = sub.add_parser('report'); rp.add_argument('out'); rp.add_argument('--classes'); rp.add_argument('--title', default=''); rp.add_argument('--lang', default='en', choices=['en', 'ru'])
     df = sub.add_parser('diff'); df.add_argument('a'); df.add_argument('b'); df.add_argument('--engine', default='ours')
     a = ap.parse_args()
     if a.cmd == 'diff':
@@ -120,6 +116,8 @@ def main():
     if not a.config:
         sys.exit('--config is required')
     cfg = Config(a.config)
+    if a.store:
+        cfg.store = Path(a.store).resolve()
     if a.cmd == 'quick':
         quick(cfg, a)
     elif a.cmd == 'run':

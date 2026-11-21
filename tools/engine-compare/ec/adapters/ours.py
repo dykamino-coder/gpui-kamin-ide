@@ -22,6 +22,10 @@ EDITS = {'C': ('html.alt [data-deep]{background:#eee}', 'class'), 'D': ('[data-e
 BOUNDS = ('ours: one engine_bench process per phase on an offscreen GPU texture (software raster on soft classes); '
           'frame = from the frame request to pixels read back, minus the bench capture copy; cold = cold document in a '
           'warm process; memory = working set of the one process')
+BOUNDS_PLAN = ('ours: cold = document-cold samples in one process; warm phases = one process, each phase on its own '
+               'input after its load, frame series of fixed duration; frame = from the frame request to pixels read back, '
+               'minus the bench capture copy; CPU = process cycle time inside the frame (all threads); steady memory once '
+               'after the first warm phase')
 DEF = 'ours-1'
 
 
@@ -31,6 +35,9 @@ class Ours:
 
     def __init__(self, name, cfg, e):
         self.name = name; self.cfg = cfg; self.e = e
+        # "plan": a bench with --plan measures time, CPU and memory in two processes (part "all");
+        # otherwise the old one-mode-per-process bench and a separate counters build (parts "time" and "cpu").
+        self.parts = ('cold', 'warm') if e.get('plan') else ('time', 'cpu')
 
     def version(self):
         return self.e.get('version') or file_version(self.e['exe']) + '+' + file_version(self.e['counters_exe'])
@@ -90,8 +97,72 @@ class Ours:
             return 8
         return 5 if est_ms < 400 else 3
 
+    def _plan_measure(self, lane, page, cls, policy, phases, part):
+        """Two processes: cold (document-cold samples, peak memory), then every warm phase in one plan process
+        (steady memory once after the first phase, CPU per frame from process cycle time)."""
+        rec = REC.new_record(self.name, self.version(), part, page, cls, self.definition(part) + '-' + policy.definition(), BOUNDS_PLAN)
+        rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()
+        to = self.e.get('timeout_s', {}).get(page.kind, self.e.get('timeout_s', {}).get('default', 120))
+        exe = self.e['exe']; series = self.e.get('series_ms', 500)
+        if 'cold' in phases:
+            r = REC.row(rec, 'cold')
+            j, why, r['wall_s'] = self._run(exe, lane, page, cls, [self._page(page, 'cold'), '--mode', 'cold', '--runs', '5'], to)
+            if why:
+                r['empty'] = why; rec['memory'] = {'empty': why}
+            else:
+                fr = M.ours_frame(j, 'cold'); r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
+                r['cpu_ms'] = M.ours_cpu_cycles(j, 'cold', j.get('cpu_calibration'))
+                rec['memory'] = {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': None}
+        warm = [ph for ph in ('R', 'S', 'C', 'D', 'Cvis', 'Dvis') if ph in phases]
+        plan = {'series_ms': series, 'min_runs': 3, 'memory_settle_ms': 2000 if warm and warm[0] == 'R' else 0, 'phases': []}
+        for ph in warm:
+            p = {'name': ph, 'input': str(self._page(page, ph)), 'runs': 8 if ph == 'S' else 30}
+            if ph == 'R':
+                p['mode'] = 'relayout'
+            elif ph == 'S':
+                p['mode'] = 'scroll'
+            else:
+                p['mode'] = 'edit'; p['edit'] = EDITS[ph][1]
+            plan['phases'].append(p)
+        if warm:
+            pf = lane.work / f'plan-{lane.id}.json'
+            import json
+            pf.write_text(json.dumps(plan), encoding='utf-8')
+            j, why, wall = self._run(exe, lane, page, cls, [self._page(page, warm[0]), '--plan', str(pf)], to * 2)
+            rec['plan_wall_s'] = wall
+            for ph in warm:
+                r = REC.row(rec, ph)
+                if why:
+                    r['empty'] = why; continue
+                rep = (j.get('phases') or {}).get(ph) or {}
+                if rep.get('error'):
+                    e = rep['error']
+                    r['empty'] = ('page does not scroll by three whole 120 px steps' if 'whole wheel steps fit' in e
+                                  else 'crashed: ' + e[:160]); continue
+                r['wall_s'] = round((rep.get('wall_ms') or 0) / 1000, 2)
+                m = M.OURS_MODE.get(ph, 'edit')
+                fr = M.ours_frame(rep, m)
+                r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
+                r['cpu_ms'] = M.ours_cpu_cycles(rep, m, j.get('cpu_calibration'))
+                if ph in ('Cvis', 'Dvis'):
+                    bad = M.ours_vis_check(rep)
+                    if bad:
+                        r['note'] = bad; r['invalid'] = True
+                if rep.get('check_error'):
+                    r['note'] = (r.get('note', '') + ' check: ' + rep['check_error'])[:200]
+            if not why:
+                ma = (((j.get('memory_audit') or {}).get('page') or {}).get('end') or {}).get('rss_bytes')
+                rec.setdefault('memory', {})['steady_bytes'] = ma
+                if ma is None:
+                    rec['memory']['steady_empty'] = 'no memory audit in the plan report'
+        rec['wall_s'] = time.perf_counter() - t0
+        return rec
+
     def measure(self, lane, page, cls, part, policy, phases=None):
         phases = phases or M.PHASES
+        if part in ('cold', 'warm'):  # two units the scheduler may put on different lanes
+            ph = [p for p in phases if (p == 'cold') == (part == 'cold')]
+            return self._plan_measure(lane, page, cls, policy, ph, part)
         exe = self.e['exe'] if part == 'time' else self.e['counters_exe']
         rec = REC.new_record(self.name, self.version(), part, page, cls, self.definition(part) + '-' + policy.definition(), BOUNDS)
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()

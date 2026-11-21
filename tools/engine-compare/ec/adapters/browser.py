@@ -146,7 +146,9 @@ class Browser:
         pk, sd = M.tree_memory(samples, marks)
         rec['memory'] = {'peak_bytes': pk, 'steady_bytes': sd, 'empty': None if pk else 'no memory samples'}
         frames = {c: (v or {}).get('frames') for c, v in (res.get('cpu') or {}).items()}
-        cpu = M.cpu_windows(marks, frames)
+        last = s.tree.snap()  # calibration: the warm browser's cycles per CPU millisecond so far
+        per_ms = last[4] / (last[1] * 1000) if last[1] > 1 else None
+        cpu = M.cpu_windows(marks, frames, per_ms)
         self._add(rec, res, phases)
         for ph in phases:
             if ph in cpu:

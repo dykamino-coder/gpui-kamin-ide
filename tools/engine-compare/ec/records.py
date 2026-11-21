@@ -68,6 +68,34 @@ def scan(store):
             continue
 
 
+def merge(recs):
+    """One engine's records of a page and class (its parts) as one: numbers win over reasons, rows and memory fields
+    are joined (e.g. ours: time from one build and CPU from another, or cold and warm processes)."""
+    rows, memory = {}, {}
+    for rec in recs:
+        for ph, r in (rec.get('rows') or {}).items():
+            y = rows.setdefault(ph, {})
+            for k, v in r.items():
+                if k == 'empty':
+                    continue
+                if v not in (None, [], '') and y.get(k) in (None, [], ''):
+                    y[k] = v
+            if r.get('empty') and not y.get('empty_seen'):
+                y['empty_seen'] = r['empty']
+        for k, v in (rec.get('memory') or {}).items():
+            if v is not None and memory.get(k) is None:
+                memory[k] = v
+        if rec.get('empty'):
+            for ph in rows:
+                rows[ph].setdefault('empty_seen', rec['empty'])
+    for y in rows.values():
+        reason = y.pop('empty_seen', None)
+        y['empty'] = None if y.get('time_ms') is not None else (reason or 'no frame time in the result')
+    if memory.get('peak_bytes') is not None:
+        memory['empty'] = None
+    return {'rows': rows, 'memory': memory}
+
+
 def validate(rec):
     """List of schema problems ('' list = valid): every phase row has a number or a reason."""
     bad = []

@@ -18,7 +18,7 @@ class Policy:
     """Adaptive repeats: at least ``min_repeats``; rows faster than ``fast_ms`` get ``fast_repeats``; rows whose
     repeats spread more than ``noisy`` (relative) get more, up to ``max_repeats``. ``quick`` = one repeat."""
 
-    def __init__(self, min_repeats=3, fast_ms=5.0, fast_repeats=8, noisy=0.25, max_repeats=8, cpu_frames=30, steady_ms=2000):
+    def __init__(self, min_repeats=3, fast_ms=5.0, fast_repeats=8, noisy=0.25, max_repeats=8, cpu_frames=10, steady_ms=2000):
         self.min_repeats = min_repeats; self.fast_ms = fast_ms; self.fast_repeats = fast_repeats
         self.noisy = noisy; self.max_repeats = max_repeats; self.cpu_frames = cpu_frames; self.steady_ms = steady_ms
 

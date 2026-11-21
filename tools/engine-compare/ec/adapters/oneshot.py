@@ -51,10 +51,13 @@ class OneShot:
         sub = {'exe': self.e['exe'], 'page': str(page_file), 'page_uri': Path(page_file).as_uri(), 'out': str(out), 'profile': str(prof)}
         argv = [a.format(**sub) for a in self.e['argv']]
         env = dict(os.environ, **{k: v.format(**sub) for k, v in self.e.get('env', {}).items()})
-        p = W.Proc(argv, mask=lane.mask(cls), desk=self.cfg.desktop, env=env, cwd=out, stdout=False,
+        p = W.Proc(argv, mask=lane.mask(cls), desk=self.cfg.desktop, env=env, cwd=out, stdout=True,
                    mem_cap=int(self.cfg.mem_cap_gb * (1 << 30)), stderr_path=out / 'stderr.txt')
-        tree = W.Tree(p, period=0.05); tree.start()
+        tree = W.Tree(p, period=0.05); tree.start(); so = []
+        rd = threading.Thread(target=lambda: so.append(p.stdout.read()), daemon=True); rd.start()
         code = p.wait(timeout); wall = time.perf_counter() - p.t0
+        rd.join(5)
+        self_ms = self._self_timing((so[0] if so else b'').decode('utf-8', 'replace'))
         if code is None:
             p.kill()
         peaks = tree.finish(); root = W.proc_mem(p.handle)
@@ -62,18 +65,32 @@ class OneShot:
         p.close()
         err = (out / 'stderr.txt').read_text(encoding='utf-8', errors='replace') if (out / 'stderr.txt').exists() else ''
         shutil.rmtree(out, ignore_errors=True)
-        return code, wall * 1000, pk, err
+        return code, wall * 1000, pk, err, self_ms
+
+    def _self_timing(self, text):
+        """The engine's own count of the first frame, when it prints one (config `self_timing`: {prefix, field})."""
+        st = self.e.get('self_timing')
+        if not st:
+            return None
+        for ln in text.splitlines():
+            if ln.startswith(st['prefix']):
+                try:
+                    return float(json.loads(ln[len(st['prefix']):])[st['field']])
+                except (ValueError, KeyError, TypeError):
+                    return None
+        return None
 
     def _blank(self, lane, cls):
         """Walls on the empty page, once per engine build x class x lane (cached in the store)."""
-        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-L{lane.id}.json'
+        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-cpu{lane.base}.json'
         with self.lock:
             if f.exists():
                 return json.loads(f.read_text(encoding='utf-8'))
             page = lane.work / 'blank.html'; page.write_text(BLANK, encoding='utf-8')
+            self._launch(lane, cls, page, lane.work / f'{self.name}-warmup', 90)  # first start pays disk and caches
             w = []
             for i in range(REPEATS):
-                code, wall, _, _ = self._launch(lane, cls, page, lane.work / f'{self.name}-blank{i}', 90)
+                code, wall, _, _, _ = self._launch(lane, cls, page, lane.work / f'{self.name}-blank{i}', 90)
                 if code == 0:
                     w.append(wall)
             f.parent.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(w), encoding='utf-8')
@@ -85,22 +102,32 @@ class OneShot:
         rec = REC.new_record(self.name, self.version(), part, page, cls, f'{DEF}-{policy.definition()}', bounds)
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()
         blank = self._blank(lane, cls)
-        walls, peaks, why = [], [], None
-        n = 1 if policy.min_repeats == 1 else REPEATS
+        walls, peaks, own, why = [], [], [], None
+        n = REPEATS  # cheap; the blank subtraction needs a median on both sides even in quick
         for i in range(max(n, 1) if blank else 0):
-            code, wall, pk, err = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90)
+            code, wall, pk, err, sm = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90)
             if code is None:
                 why = 'hangs: no snapshot within 90 s'; break
             if code != 0:
                 from . import last_error
                 why = f'crashed: exit code {code}: {last_error(err)}'; break
-            walls.append(wall); peaks.append(pk)
+            walls.append(wall); peaks.append(pk); own.append(sm)
         if not blank:
             why = 'fails on an empty page: no baseline'
         cold = REC.row(rec, 'cold')
-        if walls and not why:
+        if walls and not why and all(x is not None for x in own):
+            # the engine's own count from its start to the raster buffer: no process start-up noise in it
+            cold['repeats'] = own; cold['time_ms'] = M.med(own); cold['walls_ms'] = walls
+            cold['note'] = f'{self.label} own count: ' + self.e['self_timing']['field']
+        elif walls and not why:
             cold['repeats'] = [w - M.med(blank) for w in walls]; cold['time_ms'] = M.med(cold['repeats'])
             cold['walls_ms'] = walls; cold['blank_walls_ms'] = blank
+            noise = (max(blank) - min(blank)) + (max(walls) - min(walls))
+            if cold['time_ms'] is not None and cold['time_ms'] <= noise:
+                cold['within_noise'] = True
+                cold['note'] = f'within the noise of the bounds (start-up spread {noise:.0f} ms): not ranked'
+            if cold['time_ms'] is not None and cold['time_ms'] <= 0:
+                cold['time_ms'] = None; cold['empty'] = 'the empty page took as long as the page: start-up noise exceeds the page'
         else:
             cold['empty'] = why or 'no run'
         rec['memory'] = {'peak_bytes': M.med(peaks), 'steady_bytes': None,
