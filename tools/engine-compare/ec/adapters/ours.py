@@ -81,7 +81,7 @@ class Ours:
             shutil.rmtree(old, ignore_errors=True)
         self._seq = getattr(self, '_seq', 0) + 1
         tmp = lane.work / f'ours-{lane.id}-{__import__("os").getpid()}-{self._seq}'; tmp.mkdir(parents=True, exist_ok=False)
-        self._tmp = dict(getattr(self, '_tmp', {}), **{lane.id: tmp})
+        self._tmp = getattr(self, '_tmp', {}); self._tmp[lane.id] = tmp
         env = dict(__import__('os').environ, TEMP=str(tmp), TMP=str(tmp))
         gpu = 'default' if CLASSES[cls][1] == 'gpu' else 'software'
         err = tmp / 'stderr.txt'
