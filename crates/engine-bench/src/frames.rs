@@ -52,6 +52,14 @@ fn scrolled(from: Offset, to: Offset, step: f32, max: Offset) -> Result<()> {
     Ok(())
 }
 
+/// A scroll run for memory only (`ENGINE_BENCH_SCROLL_MEMORY_ONLY=1`): it
+/// reads the working set of each step and neither keeps the step frames nor
+/// builds the fresh documents of their check, so the bench adds nothing per
+/// step to the memory it reads (the JSON records the skipped check).
+fn memory_only() -> bool {
+    std::env::var_os("ENGINE_BENCH_SCROLL_MEMORY_ONLY").is_some_and(|v| v == "1")
+}
+
 fn delta(before: (u64, u64), after: (u64, u64)) -> Result<(u64, u64)> {
     Ok((
         after
@@ -218,7 +226,8 @@ impl Frames {
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
             "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
             "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        if let (true, Some(offset)) = (self.scroll, offset.0) {
+        // A memory run keeps no step frame: its working set is the document's.
+        if let (true, Some(offset), false) = (self.scroll, offset.0, memory_only()) {
             let (measured, settled) = (frame.pixels.clone(), None);
             (self.steps).push(super::scroll_fresh::StepFrame {
                 measured,
@@ -295,6 +304,10 @@ impl Frames {
     /// `frame_pixels_changed`) совпадает по пикселям со свежим документом той
     /// же ширины.
     async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        if self.scroll && memory_only() {
+            report["scroll_fresh_check"] = json!("skipped: ENGINE_BENCH_SCROLL_MEMORY_ONLY");
+            return Ok(());
+        }
         if self.scroll {
             return super::scroll_fresh::check(self.steps, report, run).await;
         }
