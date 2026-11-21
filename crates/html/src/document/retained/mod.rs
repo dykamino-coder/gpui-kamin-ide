@@ -56,6 +56,8 @@ mod layered_replay_tests;
 mod moved_rows_tests;
 #[cfg(test)]
 mod paint_damage_tests;
+#[cfg(all(test, windows))]
+mod paint_pixels_tests;
 mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;
