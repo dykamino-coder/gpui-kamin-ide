@@ -52,6 +52,13 @@ impl TraversalState {
         self.text_keys.replace(exact);
     }
 
+    /// Borrow the admitted source of the current revision.
+    pub fn source(&self) -> std::cell::Ref<'_, Admitted> {
+        std::cell::Ref::map(self.source.borrow(), |s| {
+            s.as_ref().expect("document owns its source DOM")
+        })
+    }
+
     /// Забрать исходный DOM: следующая ревизия собирается из него же
     /// (`retain` возвращает его этой ревизии, если сборка отвергнута).
     pub fn take_source(&self) -> Option<Admitted> {

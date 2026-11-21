@@ -176,3 +176,64 @@ mod built_at_offset;
 mod canvas;
 mod canvas_extent;
 mod groups;
+
+/// Block ranges from the previous layer must not survive the moved scene.
+#[gpui::test]
+fn moving_a_child_after_a_scrolled_replay_matches_fresh(cx: &mut TestAppContext) {
+    use crate::document::Mutation;
+    let css = "<style>body{margin:0}.r{height:20px;background:#ddd}#probe{height:45px;background:green}#flag{height:35px;background:red}</style>";
+    let row = "<div class=r></div>";
+    let probe = "<div id=probe></div>";
+    let flag = "<div id=flag></div>";
+    let lead = row.repeat(9);
+    let rest = row.repeat(90);
+    let original = format!("{css}<body>{lead}{probe}{rest}{flag}</body>");
+    let moved = format!("{css}<body>{lead}{flag}{probe}{rest}</body>");
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &original);
+    let offset = point(px(0.), px(-120.));
+    let (builds, replays) = frames(&view, vcx);
+    root(&view, vcx).set_offset(offset);
+    frame(vcx);
+    assert_eq!(frames(&view, vcx), (builds, replays + 1));
+    assert_same(
+        "before move",
+        &painted(vcx),
+        &fresh_quads(cx, &original, offset),
+    );
+    let reference = fresh_quads(cx, &moved, offset);
+    assert!(same_paint(&painted(vcx), &reference).is_err());
+    vcx.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            let doc = view.document_mut();
+            let element = |id: &str| {
+                let attr = format!("id={id}");
+                let records = doc
+                    .mutations(&original.replace(&attr, &format!("{attr} data-probe")))
+                    .unwrap();
+                let [Mutation::Attribute { element, .. }] = &records[..] else {
+                    panic!("expected one source element for {id}");
+                };
+                element.clone()
+            };
+            let (child, before) = (element("flag"), element("probe"));
+            let link = before.parent.take().unwrap();
+            let parent = link.upgrade().unwrap();
+            before.parent.set(Some(link));
+            let record = Mutation::InsertBefore {
+                parent: doc.source_node(&parent).unwrap(),
+                child: doc.source_node(&child).unwrap(),
+                before: Some(before),
+            };
+            doc.apply(&[record], "").unwrap();
+            cx.notify();
+        });
+    });
+    frame(vcx);
+    assert_eq!(root(&view, vcx).offset(), offset);
+    assert_same("moved child", &painted(vcx), &reference);
+    let (builds, replays) = frames(&view, vcx);
+    frame(vcx);
+    assert_eq!(frames(&view, vcx), (builds, replays + 1));
+    assert_same("replayed child", &painted(vcx), &reference);
+}

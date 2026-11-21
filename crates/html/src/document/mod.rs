@@ -42,7 +42,7 @@ pub use crate::dom::outcome::{
     TraversalLimit,
 };
 pub use builder::DocumentBuilder;
-pub use revision::{ApplyError, Mutation};
+pub use revision::{ApplyError, Mutation, SourceNode};
 mod canvas_background;
 mod embedded;
 mod logical_properties;

@@ -1,14 +1,18 @@
 //! The source DOM mutation journal used by document revisions.
 //!
-//! Each record names a node in `Document::source_dom`. Text and attribute
-//! edits keep the source handle. A removal names both ends of a child link.
+//! Each record names a source node. A document-owned handle also identifies
+//! a detached node. Child records address both ends of the changed link.
 //! `Document::update` converts same-shape markup edits into this journal.
 //!
 //! A batch keeps old values, child positions and parent links for rollback.
 
 mod attributes;
 mod children;
+mod source;
 pub(super) use attributes::attribute_records;
+pub use source::SourceNode;
+pub(super) use source::open;
+use source::parent;
 
 use super::apply::ApplyError;
 use html5ever::{Attribute, QualName};
@@ -18,6 +22,12 @@ use std::rc::Rc;
 /// Запись мутации исходного DOM ревизии.
 #[derive(Clone)]
 pub enum Mutation {
+    /// Insert or move this node before a direct child, or append when before is None.
+    InsertBefore {
+        parent: SourceNode,
+        child: SourceNode,
+        before: Option<Handle>,
+    },
     /// DOM removeChild: detach this direct child of the given source parent.
     RemoveChild { parent: Handle, child: Handle },
     /// Новое содержимое текстового узла `node`.
@@ -47,7 +57,7 @@ pub(super) struct AttrChange {
 /// Записи пакета, сведённые к узлам; правки без итогового отличия выброшены.
 #[derive(Default)]
 pub(super) struct Batch {
-    removals: Vec<children::Removal>,
+    children: children::Changes,
     pub(super) texts: Vec<TextChange>,
     pub(super) elements: Vec<AttrChange>,
 }
@@ -76,22 +86,46 @@ impl ScalarSlots {
 impl Batch {
     /// Shape comparison already paired every target with the original source DOM.
     pub(super) fn new(records: &[Mutation]) -> Option<Self> {
-        Self::collect(records, |_| true).ok()
+        Self::collect(records, None, || {
+            unreachable!("shape comparison emits scalar records")
+        })
+        .ok()
     }
 
-    pub(super) fn in_document(records: &[Mutation], root: &Handle) -> Result<Self, ApplyError> {
-        Self::collect(records, |node| within(node, root))
+    pub(super) fn in_document(
+        records: &[Mutation],
+        root: &Handle,
+        context: impl FnOnce() -> crate::dom::input::Context,
+    ) -> Result<Self, ApplyError> {
+        Self::collect(records, Some(root), context)
     }
 
     fn collect(
         records: &[Mutation],
-        attached: impl Fn(&Handle) -> bool,
+        root: Option<&Handle>,
+        context: impl FnOnce() -> crate::dom::input::Context,
     ) -> Result<Self, ApplyError> {
         let mut batch = Self::default();
         let mut children = children::Requests::default();
+        let mut certified = std::collections::HashSet::new();
         let mut slots = ScalarSlots::default();
         for record in records {
             match record {
+                Mutation::InsertBefore {
+                    parent,
+                    child,
+                    before,
+                } => {
+                    if !root.is_some_and(|r| child.owned_by(r) && parent.owned_by(r)) {
+                        return Err(ApplyError::Foreign);
+                    }
+                    certified.insert(Rc::as_ptr(child.handle()));
+                    certified.insert(Rc::as_ptr(parent.handle()));
+                    if let Some(from) = source::parent(child.handle()) {
+                        certified.insert(Rc::as_ptr(&from));
+                    }
+                    children.insert(parent.handle(), child.handle(), before.as_ref())?;
+                }
                 Mutation::RemoveChild { parent, child } => {
                     children.remove(parent, child)?;
                 }
@@ -131,23 +165,25 @@ impl Batch {
                 }
             }
         }
-        batch.removals = children.finish()?;
-        let mut targets = batch
-            .texts
-            .iter()
-            .map(|t| &t.node)
-            .chain(batch.elements.iter().map(|e| &e.element))
-            .chain(batch.removals.iter().map(|r| r.parent()));
-        if !targets.all(attached) {
-            return Err(ApplyError::Foreign);
+        if let Some(root) = root {
+            let mut targets = batch
+                .texts
+                .iter()
+                .map(|t| &t.node)
+                .chain(batch.elements.iter().map(|e| &e.element))
+                .chain(children.parents());
+            if !targets.all(|node| source::belongs(node, root, &certified)) {
+                return Err(ApplyError::Foreign);
+            }
         }
+        batch.children = children.finish(context)?;
         batch.texts.retain(|t| t.old != t.new);
         batch.elements.retain(|e| e.old != e.new);
         Ok(batch)
     }
 
     pub(super) fn changes_children(&self) -> bool {
-        !self.removals.is_empty()
+        !self.children.is_empty()
     }
 
     pub(super) fn is_empty(&self) -> bool {
@@ -155,18 +191,14 @@ impl Batch {
     }
 
     /// Записать итоговые значения в исходный DOM.
-    pub(super) fn write(&self) {
+    pub(super) fn write(&mut self) {
         self.store(|t| &t.new, |e| &e.new);
-        for removal in &self.removals {
-            removal.write();
-        }
+        self.children.exchange(true);
     }
 
     /// Вернуть прежние значения: пакет отвергнут.
-    pub(super) fn undo(&self) {
-        for removal in &self.removals {
-            removal.undo();
-        }
+    pub(super) fn undo(&mut self) {
+        self.children.exchange(false);
         self.store(|t| &t.old, |e| &e.old);
     }
 
@@ -186,61 +218,4 @@ impl Batch {
             }
         }
     }
-}
-
-/// Узел принадлежит DOM `root` и стоит под элементами HTML вне шаблонов и
-/// чужого содержимого: у такого узла атрибуты и текст не часть формы
-/// (`shape`). Текст требует родителя-элемента.
-/// An element may also be in an SVG subtree: of its attributes the edit
-/// paths take only `class` and `data-*` (`restyle::invalidation`,
-/// `adopt::neutral`), which SVG reads through the cascade alone; texts in
-/// SVG stay closed (`<text>` and `<style>` are read as they are).
-pub(super) fn open(node: &Handle, root: &Handle) -> bool {
-    let element = matches!(node.data, NodeData::Element { .. });
-    let mut at = node.clone();
-    let mut first = true;
-    loop {
-        match &at.data {
-            NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
-            NodeData::Element { name, .. } => {
-                let svg = element && name.ns == html5ever::ns!(svg);
-                if !(name.ns == html5ever::ns!(html) || svg) || &*name.local == "template" {
-                    return false;
-                }
-            }
-            NodeData::Text { .. } if first => {}
-            _ => return false,
-        }
-        let Some(parent) = parent(&at) else {
-            return false;
-        };
-        if first
-            && matches!(at.data, NodeData::Text { .. })
-            && !matches!(parent.data, NodeData::Element { .. })
-        {
-            return false;
-        }
-        first = false;
-        at = parent;
-    }
-}
-
-fn parent(node: &Handle) -> Option<Handle> {
-    let weak = node.parent.take();
-    let parent = weak
-        .as_ref()
-        .and_then(markup5ever_rcdom::WeakHandle::upgrade);
-    node.parent.set(weak);
-    parent
-}
-
-fn within(node: &Handle, root: &Handle) -> bool {
-    let mut at = Some(node.clone());
-    while let Some(node) = at {
-        if Rc::ptr_eq(&node, root) {
-            return true;
-        }
-        at = parent(&node);
-    }
-    false
 }

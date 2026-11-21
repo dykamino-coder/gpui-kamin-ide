@@ -59,7 +59,7 @@ impl LineCapture {
     }
 
     /// Блок ничего не отложил за свой вывод, и запись полна.
-    fn nothing(&self) -> bool {
+    pub(crate) fn nothing(&self) -> bool {
         self.complete() && self.lines.borrow().is_empty() && self.jobs.borrow().is_empty()
     }
 

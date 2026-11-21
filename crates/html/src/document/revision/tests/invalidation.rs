@@ -70,7 +70,7 @@ fn a_rebuild_restyles_the_elements_of_the_rules_that_read_a_changed_class() {
     let mut invalidation = crate::dom::invalidation::Invalidation::new(changed);
     let fonts = doc.state.text.metrics.font_context();
     let revision = doc.budget().revision();
-    let batch = Batch::new(&[set(&html, "class", "alt")]).unwrap();
+    let mut batch = Batch::new(&[set(&html, "class", "alt")]).unwrap();
     batch.write();
     let mut input = doc.state.values.traversal.take_source().unwrap();
     input.replace_context(input.context().continuing(revision.clone()));
