@@ -90,6 +90,7 @@ pub(super) fn pseudo_holds(
                 .unwrap_or(false)
         }
         PseudoKind::TargetCurrent => me.target_current,
+        PseudoKind::Checked => me.checked,
         // Корень документа — `<html>`: не структурный по месту среди соседей.
         PseudoKind::Root => me.tag == "html",
         PseudoKind::HasSlotted => has_slotted_holds(sel, pseudo, me),
