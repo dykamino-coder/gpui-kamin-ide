@@ -96,6 +96,9 @@ pub(super) struct Args {
     /// `runs`; 0 = exactly `runs` (the default).
     pub(super) series_ms: u64,
     pub(super) min_runs: usize,
+    /// A timed series also stops once its frame totals are stable: relative MAD
+    /// (median absolute deviation over the median) at most this; 0 = off.
+    pub(super) stable_mad: f64,
 }
 
 impl Args {
@@ -128,6 +131,7 @@ impl Args {
             steady_each_phase: true,
             series_ms: 0,
             min_runs: 1,
+            stable_mad: 0.0,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {

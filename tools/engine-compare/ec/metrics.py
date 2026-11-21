@@ -141,7 +141,7 @@ def ours_vis_check(j):
         if not m.get('matches_fresh') or any(c.get('different_rgb_pixels') for c in fc):
             return 'incremental frame differs from a fresh render (engine defect); number shown, not ranked'
         if len(fc) < 2 or len({c.get('fresh_bgr_fnv1a64') for c in fc}) < 2:
-            return 'edit not visible: both variants render the same frame (stand defect)'
+            return 'edit not visible in our frames: both variants render the same frame (Chrome shows the edit: engine defect)'
     return ''
 
 

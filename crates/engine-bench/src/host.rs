@@ -160,7 +160,16 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             Ok((window, fonts)) => {
                 cx.spawn(async move |cx| {
                     let value = if args.plan.is_some() {
-                        super::plan::run(cx, window, &fonts, &args, &platform, &capture, &mut startup).await
+                        super::plan::run(
+                            cx,
+                            window,
+                            &fonts,
+                            &args,
+                            &platform,
+                            &capture,
+                            &mut startup,
+                        )
+                        .await
                     } else {
                         run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup).await
                     }

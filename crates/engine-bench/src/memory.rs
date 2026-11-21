@@ -27,7 +27,13 @@ const TICK_MS: u64 = 25;
 /// (около 1 с) успевает сработать до них у медленного процесса и не успевает
 /// у быстрого, и быстрый кандидат выглядит тяжелее базы.
 pub(super) async fn steady(cx: &AsyncApp, capture: &CaptureSession) -> Result<Value> {
-    settle(cx, capture, super::args::MEMORY_STEADY_WINDOW_MS, QUIET_WINDOWS).await
+    settle(
+        cx,
+        capture,
+        super::args::MEMORY_STEADY_WINDOW_MS,
+        QUIET_WINDOWS,
+    )
+    .await
 }
 
 /// Тихое окно плана (`Args::steady_each_phase` = false): без кадров, как
@@ -36,7 +42,11 @@ pub(super) async fn steady(cx: &AsyncApp, capture: &CaptureSession) -> Result<Va
 const QUIET_WINDOW_MS: u64 = 100;
 
 /// Окно перед фазой того же документа: устойчивая память или тихое окно плана.
-pub(super) async fn before_phase(cx: &AsyncApp, capture: &CaptureSession, args: &Args) -> Result<Value> {
+pub(super) async fn before_phase(
+    cx: &AsyncApp,
+    capture: &CaptureSession,
+    args: &Args,
+) -> Result<Value> {
     if args.steady_each_phase {
         return steady(cx, capture).await;
     }
@@ -58,7 +68,11 @@ pub(super) async fn phase_step(
 }
 
 /// Устойчивая память открытой страницы плана: окно простоя, без пустого документа.
-pub(super) async fn page_audit(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64) -> Result<Value> {
+pub(super) async fn page_audit(
+    cx: &AsyncApp,
+    capture: &CaptureSession,
+    milliseconds: u64,
+) -> Result<Value> {
     settle(cx, capture, milliseconds, QUIET_WINDOWS).await
 }
 
@@ -70,7 +84,12 @@ pub(super) fn quiet_summary(window: &Value) -> Value {
 
 /// Ждёт окно без кадров до `tries` раз; окно с кадром обрывается сразу на нём.
 /// Не затихшая страница меряется по ещё одному полному окну с `quiet: false`.
-async fn settle(cx: &AsyncApp, capture: &CaptureSession, milliseconds: u64, tries: u32) -> Result<Value> {
+async fn settle(
+    cx: &AsyncApp,
+    capture: &CaptureSession,
+    milliseconds: u64,
+    tries: u32,
+) -> Result<Value> {
     let started = Instant::now();
     for busy in 0..tries {
         let (mut value, frames) = window(cx, capture, milliseconds, true).await?;
@@ -103,7 +122,10 @@ async fn window(
     let length = Duration::from_millis(milliseconds);
     let mut rss = Vec::with_capacity((milliseconds / TICK_MS + 1) as usize);
     let mut commit = Vec::with_capacity(rss.capacity());
-    while let Some(left) = length.checked_sub(started.elapsed()).filter(|d| !d.is_zero()) {
+    while let Some(left) = length
+        .checked_sub(started.elapsed())
+        .filter(|d| !d.is_zero())
+    {
         cx.background_executor()
             .timer(left.min(Duration::from_millis(TICK_MS)))
             .await;
@@ -116,12 +138,15 @@ async fn window(
     }
     let after = Snapshot::read()?;
     let frames = capture.sequence().wrapping_sub(sequence);
-    Ok((json!({"start": before.json(), "end": after.json(),
+    Ok((
+        json!({"start": before.json(), "end": after.json(),
         "median": {"rss_bytes": median(&mut rss), "private_commit_bytes": median(&mut commit),
             "samples": rss.len(), "tick_ms": TICK_MS},
         "idle_ms": started.elapsed().as_secs_f64() * 1000.,
         "cpu_ms": after.cpu_100ns.saturating_sub(before.cpu_100ns) as f64 / 10_000.,
-        "unexpected_frames": frames}), frames))
+        "unexpected_frames": frames}),
+        frames,
+    ))
 }
 
 /// Медиана (нижняя при чётном числе); `None` у пустой выборки.

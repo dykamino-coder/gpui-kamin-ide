@@ -76,7 +76,8 @@ pub(super) async fn run(
     let series = super::series::Series::new(args);
     let series_start = std::time::Instant::now();
     let mut index = 0;
-    while series.more(index, series_start.elapsed()) {
+    let mut totals = Vec::with_capacity(args.runs);
+    while series.more(index, series_start.elapsed(), &totals) {
         index += 1;
         let variant = index % 2;
         let path_before = kamin_html::paint_path::read();
@@ -98,6 +99,7 @@ pub(super) async fn run(
         // Each edit commits a new revision whose frame slot counts from zero:
         // its counters after the frame are the work of this frame.
         frame_samples.push(window.read_with(cx, counters)?);
+        totals.extend(super::series::total(&measured.phases));
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);

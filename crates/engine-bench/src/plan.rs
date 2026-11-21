@@ -45,7 +45,12 @@ fn mode(name: &str) -> Result<Mode> {
         "relayout" => Mode::Relayout,
         "scroll" => Mode::Scroll,
         "edit" => Mode::Edit,
-        _ => return Err(format!("plan phase mode must be cold, warm, relayout, scroll or edit, not {name:?}").into()),
+        _ => {
+            return Err(format!(
+                "plan phase mode must be cold, warm, relayout, scroll or edit, not {name:?}"
+            )
+            .into());
+        }
     })
 }
 
@@ -54,13 +59,24 @@ impl Plan {
         let raw: Value = serde_json::from_str(text)?;
         let series_ms = raw["series_ms"].as_u64().unwrap_or(500);
         let min_runs = raw["min_runs"].as_u64().unwrap_or(3) as usize;
+        let stable_mad = raw["stable_mad"].as_f64().unwrap_or(0.0);
         let memory_settle_ms = raw["memory_settle_ms"].as_u64().unwrap_or(0);
-        if memory_settle_ms != 0 && !(MEMORY_STEADY_WINDOW_MS..=60_000).contains(&memory_settle_ms) {
-            return Err(format!("plan memory_settle_ms must be 0 or {MEMORY_STEADY_WINDOW_MS}..60000").into());
+        if memory_settle_ms != 0 && !(MEMORY_STEADY_WINDOW_MS..=60_000).contains(&memory_settle_ms)
+        {
+            return Err(format!(
+                "plan memory_settle_ms must be 0 or {MEMORY_STEADY_WINDOW_MS}..60000"
+            )
+            .into());
         }
         let mut phases = Vec::new();
-        for p in raw["phases"].as_array().ok_or("plan needs a phases array")? {
-            let name = p["name"].as_str().ok_or("plan phase needs a name")?.to_owned();
+        for p in raw["phases"]
+            .as_array()
+            .ok_or("plan needs a phases array")?
+        {
+            let name = p["name"]
+                .as_str()
+                .ok_or("plan phase needs a name")?
+                .to_owned();
             if phases.iter().any(|x: &Phase| x.name == name) {
                 return Err(format!("plan phase {name:?} is given twice").into());
             }
@@ -70,7 +86,9 @@ impl Plan {
                 args.edit = Edit::parse(edit)?;
             }
             let input = dir.join(p["input"].as_str().ok_or("plan phase needs an input")?);
-            args.path = input.canonicalize().map_err(|e| format!("plan input {}: {e}", input.display()))?;
+            args.path = input
+                .canonicalize()
+                .map_err(|e| format!("plan input {}: {e}", input.display()))?;
             args.runs = p["runs"].as_u64().unwrap_or(30) as usize;
             if !(1..=100_000).contains(&args.runs) {
                 return Err("plan runs must be 1..100000".into());
@@ -79,6 +97,10 @@ impl Plan {
             // A phase may set its own series (scroll: as many steps as the page allows, down to one).
             args.series_ms = p["series_ms"].as_u64().unwrap_or(series_ms);
             args.min_runs = p["min_runs"].as_u64().map_or(min_runs, |n| n as usize);
+            args.stable_mad = p["stable_mad"].as_f64().unwrap_or(stable_mad);
+            if !(0.0..1.0).contains(&args.stable_mad) {
+                return Err("plan stable_mad must be 0 (off) or a fraction below 1".into());
+            }
             args.memory_settle_ms = 0;
             args.plan = None;
             args.snapshot = None;
@@ -87,7 +109,11 @@ impl Plan {
         if phases.is_empty() {
             return Err("plan has no phases".into());
         }
-        Ok(Self { phases, memory_settle_ms, raw })
+        Ok(Self {
+            phases,
+            memory_settle_ms,
+            raw,
+        })
     }
 
     fn read(base: &Args) -> Result<Self> {
@@ -113,7 +139,10 @@ async fn phase(
             report[key] = value.clone();
         }
     }
-    if let Err(error) = frames.finish(&mut report, (&mut *cx, window, fonts, args, capture, luid)).await {
+    if let Err(error) = frames
+        .finish(&mut report, (&mut *cx, window, fonts, args, capture, luid))
+        .await
+    {
         report["check_error"] = json!(error.to_string());
     }
     Ok(report)
@@ -169,7 +198,9 @@ mod tests {
     fn base(dir: &Path) -> Args {
         let page = dir.join("p.html");
         std::fs::write(&page, "<p>x</p>").expect("write page");
-        Args::parse([page.to_string_lossy().into_owned()]).expect("parse").expect("args")
+        Args::parse([page.to_string_lossy().into_owned()])
+            .expect("parse")
+            .expect("args")
     }
 
     #[test]
@@ -177,23 +208,48 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("engine-bench-plan-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("dir");
         let b = base(&dir);
-        let plan = Plan::parse(&b, r#"{"series_ms": 400, "min_runs": 4, "memory_settle_ms": 2000,
+        let plan = Plan::parse(&b, r#"{"series_ms": 400, "min_runs": 4, "memory_settle_ms": 2000, "stable_mad": 0.03,
             "phases": [{"name": "R", "mode": "relayout", "input": "p.html", "runs": 12},
                        {"name": "C", "mode": "edit", "edit": "class", "input": "p.html"},
-                       {"name": "S", "mode": "scroll", "input": "p.html", "runs": 5, "min_runs": 1, "series_ms": 60000}]}"#, &dir)
+                       {"name": "S", "mode": "scroll", "input": "p.html", "runs": 5, "min_runs": 1, "series_ms": 60000, "stable_mad": 0}]}"#, &dir)
         .expect("plan");
         assert_eq!(plan.phases.len(), 3);
         let s = &plan.phases[2].args;
-        assert_eq!((s.runs, s.min_runs, s.series_ms), (5, 1, 60000));
-        assert_eq!((plan.phases[1].args.min_runs, plan.phases[1].args.series_ms), (4, 400));
+        assert_eq!(
+            (s.runs, s.min_runs, s.series_ms, s.stable_mad),
+            (5, 1, 60000, 0.0)
+        );
+        assert_eq!(plan.phases[0].args.stable_mad, 0.03);
+        assert!(Plan::parse(&b, r#"{"stable_mad": 1.5, "phases": [{"name": "R", "mode": "warm", "input": "p.html"}]}"#, &dir).is_err());
+        assert_eq!(
+            (plan.phases[1].args.min_runs, plan.phases[1].args.series_ms),
+            (4, 400)
+        );
         let r = &plan.phases[0].args;
-        assert_eq!((r.mode, r.runs, r.series_ms, r.min_runs, r.steady_each_phase), (Mode::Relayout, 12, 400, 4, false));
+        assert_eq!(
+            (r.mode, r.runs, r.series_ms, r.min_runs, r.steady_each_phase),
+            (Mode::Relayout, 12, 400, 4, false)
+        );
         assert_eq!(plan.phases[1].args.edit, Edit::Class);
         assert_eq!(plan.memory_settle_ms, 2000);
         assert!(Plan::parse(&b, r#"{"phases": []}"#, &dir).is_err());
-        assert!(Plan::parse(&b, r#"{"phases": [{"name": "X", "mode": "both", "input": "p.html"}]}"#, &dir).is_err());
+        assert!(
+            Plan::parse(
+                &b,
+                r#"{"phases": [{"name": "X", "mode": "both", "input": "p.html"}]}"#,
+                &dir
+            )
+            .is_err()
+        );
         assert!(Plan::parse(&b, r#"{"memory_settle_ms": 10, "phases": [{"name": "R", "mode": "warm", "input": "p.html"}]}"#, &dir).is_err());
-        assert!(Plan::parse(&b, r#"{"phases": [{"name": "R", "mode": "warm", "input": "missing.html"}]}"#, &dir).is_err());
+        assert!(
+            Plan::parse(
+                &b,
+                r#"{"phases": [{"name": "R", "mode": "warm", "input": "missing.html"}]}"#,
+                &dir
+            )
+            .is_err()
+        );
         std::fs::remove_dir_all(&dir).expect("cleanup");
     }
 }

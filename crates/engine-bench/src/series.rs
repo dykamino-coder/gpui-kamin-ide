@@ -1,9 +1,11 @@
 //! Длина серии кадров: фиксированное число или по длительности.
 //!
 //! Без `series_ms` серия ровно `runs` кадров (прежнее поведение скриптов).
-//! С ним серия идёт, пока не набрано и `min_runs` кадров, и `series_ms`
-//! миллисекунд от начала серии, но не длиннее `runs`: лёгкая страница даёт много
-//! образцов за то же время, тяжёлая — не меньше `min_runs`.
+//! С ним серия идёт, пока не набрано `min_runs` кадров, а затем — пока не
+//! вышло `series_ms` от начала серии и кадры ещё не устоялись, но не длиннее
+//! `runs`. Устоялись = относительное MAD итогов кадра (медиана модулей
+//! отклонений от медианы, делённая на медиану) не больше `stable_mad`:
+//! ровная страница останавливается на `min_runs` кадрах, шумная идёт до потолка.
 
 use std::time::Duration;
 
@@ -12,23 +14,69 @@ pub(super) struct Series {
     max: usize,
     min: usize,
     budget: Duration,
+    stable: f64,
+}
+
+/// Итог кадра (`first_frame_total`) образца — величина, по которой судят об устойчивости.
+pub(super) fn total(sample: &super::report::Sample) -> Option<f64> {
+    sample.get("first_frame_total").copied().flatten()
+}
+
+/// Относительное MAD; `None` меньше чем для двух значений или при нулевой медиане.
+pub(super) fn relative_mad(values: &[f64]) -> Option<f64> {
+    fn median(v: &mut [f64]) -> f64 {
+        v.sort_by(f64::total_cmp);
+        let n = v.len();
+        if n % 2 == 1 {
+            v[n / 2]
+        } else {
+            (v[n / 2 - 1] + v[n / 2]) / 2.
+        }
+    }
+    if values.len() < 2 {
+        return None;
+    }
+    let mut v = values.to_vec();
+    let m = median(&mut v);
+    if m <= 0. {
+        return None;
+    }
+    let mut dev: Vec<f64> = values.iter().map(|x| (x - m).abs()).collect();
+    Some(median(&mut dev) / m)
 }
 
 impl Series {
     pub(super) fn new(args: &super::args::Args) -> Self {
-        Self::with(args.runs, args.min_runs, args.series_ms)
+        Self::with(args.runs, args.min_runs, args.series_ms, args.stable_mad)
     }
 
-    pub(super) fn with(runs: usize, min_runs: usize, series_ms: u64) -> Self {
+    pub(super) fn with(runs: usize, min_runs: usize, series_ms: u64, stable_mad: f64) -> Self {
         if series_ms == 0 {
-            return Self { max: runs, min: runs, budget: Duration::ZERO };
+            return Self {
+                max: runs,
+                min: runs,
+                budget: Duration::ZERO,
+                stable: 0.,
+            };
         }
-        Self { max: runs, min: min_runs.clamp(1, runs.max(1)), budget: Duration::from_millis(series_ms) }
+        let min = min_runs.clamp(1, runs.max(1));
+        Self {
+            max: runs,
+            min,
+            budget: Duration::from_millis(series_ms),
+            stable: stable_mad,
+        }
     }
 
-    /// Ещё один кадр после `done` кадров, занявших `spent`?
-    pub(super) fn more(&self, done: usize, spent: Duration) -> bool {
-        done < self.max && (done < self.min || spent < self.budget)
+    /// Ещё один кадр после `done` кадров, занявших `spent`, с итогами `totals`?
+    pub(super) fn more(&self, done: usize, spent: Duration, totals: &[f64]) -> bool {
+        done < self.max && (done < self.min || (spent < self.budget && !self.settled(totals)))
+    }
+
+    fn settled(&self, totals: &[f64]) -> bool {
+        self.stable > 0.
+            && totals.len() >= self.min.max(2)
+            && relative_mad(totals).is_some_and(|r| r <= self.stable)
     }
 
     /// Наименьшая допустимая длина серии.
@@ -48,20 +96,43 @@ mod tests {
 
     #[test]
     fn fixed_series_runs_exactly_the_requested_frames() {
-        let s = Series::with(6, 3, 0);
-        assert!(s.more(5, Duration::from_secs(9)));
-        assert!(!s.more(6, Duration::ZERO));
+        let s = Series::with(6, 3, 0, 0.03);
+        assert!(s.more(5, Duration::from_secs(9), &[1., 1., 1., 1., 1.]));
+        assert!(!s.more(6, Duration::ZERO, &[]));
         assert!(!s.timed());
     }
 
     #[test]
     fn timed_series_needs_both_the_minimum_and_the_duration_but_stops_at_the_maximum() {
-        let s = Series::with(30, 3, 500);
-        assert!(s.more(2, Duration::from_secs(5)));
-        assert!(s.more(10, Duration::from_millis(499)));
-        assert!(!s.more(10, Duration::from_millis(500)));
-        assert!(!s.more(30, Duration::ZERO));
-        assert!(Series::with(2, 3, 500).more(1, Duration::from_secs(1)));
-        assert!(!Series::with(2, 3, 500).more(2, Duration::ZERO));
+        let s = Series::with(30, 3, 500, 0.);
+        assert!(s.more(2, Duration::from_secs(5), &[]));
+        assert!(s.more(10, Duration::from_millis(499), &[1.; 10]));
+        assert!(!s.more(10, Duration::from_millis(500), &[]));
+        assert!(!s.more(30, Duration::ZERO, &[]));
+        assert!(Series::with(2, 3, 500, 0.).more(1, Duration::from_secs(1), &[]));
+        assert!(!Series::with(2, 3, 500, 0.).more(2, Duration::ZERO, &[]));
+    }
+
+    #[test]
+    fn adaptive_series_stops_once_the_frames_are_stable() {
+        let s = Series::with(30, 3, 500, 0.03);
+        let early = Duration::from_millis(10);
+        assert!(s.more(2, early, &[10., 10.]), "the minimum comes first");
+        assert!(
+            !s.more(3, early, &[10., 10.1, 9.9]),
+            "stable at the minimum"
+        );
+        assert!(s.more(3, early, &[10., 14., 8.]), "noisy: more frames");
+        assert!(
+            !s.more(4, early, &[10., 10.1, 30., 10.2]),
+            "one outlier does not keep it going"
+        );
+        assert!(
+            !s.more(5, Duration::from_millis(500), &[10., 14., 8., 13., 7.]),
+            "the cap still ends it"
+        );
+        assert!(s.more(3, early, &[]), "no totals: by time as before");
+        assert_eq!(relative_mad(&[10., 11., 9.]), Some(0.1));
+        assert_eq!(relative_mad(&[5.]), None);
     }
 }

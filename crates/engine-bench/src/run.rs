@@ -347,7 +347,12 @@ pub(super) async fn prepare(
     gpu["device_id"] = json!(identity.device_id);
     let baseline_memory = host::peak_memory()?;
     let startup = super::process::Snapshot::read()?;
-    Ok(Prepared { gpu, adapter, baseline_memory, startup })
+    Ok(Prepared {
+        gpu,
+        adapter,
+        baseline_memory,
+        startup,
+    })
 }
 
 /// The modes of `args` on its input: cold load of the input, then each phase.
@@ -381,14 +386,18 @@ pub(super) async fn measure(
         let mut work = Vec::with_capacity(args.runs);
         // Scroll's load is a cold step too: its steps start after the same quiet window.
         let (step, quiet) = if args.mode == Mode::Scroll {
-            (Step::Warm, Some(super::memory::before_phase(cx, capture, args).await?))
+            (
+                Step::Warm,
+                Some(super::memory::before_phase(cx, capture, args).await?),
+            )
         } else {
             super::memory::phase_step(cx, capture, args, cold).await?
         };
         let series = super::series::Series::new(args);
         let series_start = Instant::now();
         let mut index = 0;
-        while series.more(index, series_start.elapsed()) {
+        let mut totals = Vec::with_capacity(args.runs);
+        while series.more(index, series_start.elapsed(), &totals) {
             // A timed scroll series ends where the document does: the next wheel step
             // could no longer move the root by a whole step.
             if series.timed() && args.mode == Mode::Scroll && !scroll_room(cx, window)? {
@@ -406,6 +415,7 @@ pub(super) async fn measure(
             frames
                 .settle((&mut *cx, window, fonts, args, capture, luid), step)
                 .await?;
+            totals.extend(super::series::total(&sample.phases));
             samples.push(sample.phases);
             diagnostics.push(sample.diagnostics);
         }
@@ -443,8 +453,14 @@ pub(super) fn header(
     modes: serde_json::Value,
     startup_timings: &super::startup::Startup,
 ) -> Result<serde_json::Value> {
-    let Prepared { gpu, baseline_memory, startup, .. } = prepared;
-    Ok(json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
+    let Prepared {
+        gpu,
+        baseline_memory,
+        startup,
+        ..
+    } = prepared;
+    Ok(
+        json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
         "device_scale_factor": 1, "surface": args.surface.name(), "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
@@ -453,7 +469,8 @@ pub(super) fn header(
         "peak_working_set_bytes": host::peak_memory()?, "startup_peak_working_set_bytes": baseline_memory,
         "startup_process_memory": startup.json(), "startup_timings": startup_timings.report(),
         "scope": "document cold; process, OS file cache, font system and GPU caches remain warm",
-        "intervals_overlap": false, "diagnostic_intervals_overlap": true}))
+        "intervals_overlap": false, "diagnostic_intervals_overlap": true}),
+    )
 }
 
 pub(super) async fn run(
