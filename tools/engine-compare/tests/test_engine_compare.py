@@ -259,5 +259,30 @@ class WarmUp(unittest.TestCase):
             self.assertEqual(ad.calls[0], 1)
 
 
+class Settle(unittest.TestCase):
+    def test_median_interval_from_order_statistics(self):
+        self.assertIsNone(M.median_ci([1.0]))
+        self.assertEqual(M.median_ci([3, 1, 2]), (1, 3, 0.75))  # too few values: the full range
+        lo, hi, cov = M.median_ci(list(range(14)))
+        self.assertEqual((lo, hi), (3, 10)); self.assertGreaterEqual(cov, 0.9)
+
+    def test_row_settles_on_a_narrow_interval_or_a_decided_place(self):
+        p = Policy()
+        self.assertIsNone(p.settled([10.0, 10.1]))  # fewer than 3
+        self.assertEqual(p.settled([10.0, 10.1, 10.2, 9.9, 10.0]), 'ci')
+        wide = [10, 13, 8, 12, 9]
+        self.assertIsNone(p.settled(wide))
+        self.assertEqual(p.settled(wide, ours=5.0), 'place')  # whole interval above ours by more than 3 %
+        self.assertIsNone(p.settled(wide, ours=10.0))
+
+    def test_browser_samples_take_the_lower_clock_with_raster_per_frame(self):
+        res = {'probe': {'frames': 2, 'cases': {
+            'R': {'frame': {'samples': [4.0, 6.0]}, 'frameReq': {'samples': [8.0, 9.0]}},
+            'S': {'frame': {'samples': [1.0], 'moved': 0}}}},
+            'trace': {'windows': {'frame:R': {'RasterTask': {'sumMs': 2.0}}, 'req:R': {'RasterTask': {'sumMs': 0.0}}}}}
+        s = M.browser_samples('chrome', res)
+        self.assertEqual(s['R'], {'value': 6.0, 'samples': [5.0, 7.0], 'clock': 'raf'})
+        self.assertNotIn('S', s)  # no whole scroll step: no sample
+
 if __name__ == '__main__':
     unittest.main()

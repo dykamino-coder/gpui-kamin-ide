@@ -155,7 +155,8 @@ class Runner:
         self.log(f'L{lane.id} warm-up {t.engine} on {t.page.id} {t.cls} {time.perf_counter() - s:.1f}s (dropped)')
     def run(self, tasks):
         q = list(tasks)
-        q.sort(key=lambda t: (t.exclusive, t.cls, t.engine, t.part, t.page.id))
+        # the reference engine (ours) first in each class: browsers stop a row early once its place against ours is decided
+        q.sort(key=lambda t: (t.exclusive, t.cls, not getattr(self.ad[t.engine], 'reference', False), t.engine, t.part, t.page.id))
         t0 = time.perf_counter()
 
         def worker(lane):

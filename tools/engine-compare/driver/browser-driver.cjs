@@ -3,7 +3,8 @@
 // driver-config: {exe, cls: "gpu"|"sw", workDir, playwright, selenium, geckodriver}
 // Protocol (JSON lines): stdout "READY {...}", "MARK <name>" (the controller snapshots CPU/memory of the tree and
 // answers "ACK" on stdin before the page continues), "RESULT {...}". stdin: {"op":"page",...} | {"op":"quit"} | "ACK".
-// Page op: {probe, cases:"R,C,...", steadyMs, cpuCases:[...], cpuFrames, trace, navTimeoutMs}
+// Page op: {probe, cases:"R,C,...", steadyMs, cpuCases:[...], cpuFrames, trace, navTimeoutMs, hold}; with hold the page
+// stays open for {"op":"more",cases,trace} rounds until {"op":"done"} (see hold()).
 // Metric definitions match the probe page (window.__probeStart / window.__loop): see ec/metrics.py.
 'use strict';
 const fs = require('node:fs');
@@ -27,12 +28,14 @@ const SETTLE = `return new Promise(done => { requestAnimationFrame(() => request
   const n = performance.getEntriesByType('navigation')[0] || {};
   done({ elements: document.getElementsByTagName('*').length, loadEventEndMs: n.loadEventEnd, twoRafMs: performance.now(),
          viewport: [innerWidth, innerHeight, devicePixelRatio] }); })); });`;
-const PROBE = cases => `window.__b4cases = ${JSON.stringify(cases)}; return new Promise(done => window.__probeStart(done));`;
+const PROBE = (cases, framesOnly) => `window.__b4cases = ${JSON.stringify(cases)}; window.__b4framesOnly = ${!!framesOnly}; return new Promise(done => window.__probeStart(done));`;
 const LOOP = (c, n) => `return new Promise(done => window.__loop(${JSON.stringify(c)}, ${n}, done));`;
 const tmpDir = path.join(cfg.workDir, 'tmp'); fs.mkdirSync(tmpDir, { recursive: true });
 const env = { ...process.env, TEMP: tmpDir, TMP: tmpDir };
 
-const TRACE_CATEGORIES = 'devtools.timeline,blink,loading,cc,viz,gpu,disabled-by-default-devtools.timeline';
+// Only the categories of the events summarize() reads (TimeStamp, main-thread phases, RasterTask, Display::DrawAndSwap):
+// the same events as the former 'blink,loading,cc,gpu' superset at a third of the trace bytes.
+const TRACE_CATEGORIES = 'devtools.timeline,disabled-by-default-devtools.timeline,viz';
 // ---- Chromium trace summary: complete events by name inside a window of console.timeStamp markers ----
 const NAMES = ['ParseHTML', 'ParseAuthorStyleSheet', 'UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint', 'Layerize', 'Commit',
   'RasterTask', 'Display::DrawAndSwap'];
@@ -57,6 +60,30 @@ function summarize(evs) {
   return { stamps: Object.keys(st).length, windows };
 }
 
+async function traceStart(cdp, categories) {
+  await cdp.send('Tracing.start', { categories: categories || TRACE_CATEGORIES, transferMode: 'ReturnAsStream' });
+}
+async function traceEnd(cdp) {
+  const completed = new Promise(r => cdp.once('Tracing.tracingComplete', r));
+  const e0 = clock.now(); await cdp.send('Tracing.end'); const ev = await completed; const chunks = []; const e1 = clock.now();
+  while (true) { const c = await cdp.send('IO.read', { handle: ev.stream, size: 4 << 20 }); chunks.push(c.base64Encoded ? Buffer.from(c.data, 'base64') : Buffer.from(c.data)); if (c.eof) break; }
+  await cdp.send('IO.close', { handle: ev.stream }); const e2 = clock.now(); const raw = Buffer.concat(chunks);
+  const data = JSON.parse(raw.toString('utf8')); const trace = summarize(data.traceEvents || data);
+  trace.costMs = { end: e1 - e0, read: e2 - e1, parse: clock.now() - e2, bytes: raw.length };
+  return trace;
+}
+// Page op with "hold": the first RESULT goes out at once and the page stays open; the controller then sends
+// {"op":"more","cases":"R,C",...} (one more probe round of those rows -> RESULT) as often as it needs, and {"op":"done"}.
+async function hold(first, more) {
+  out('RESULT', { status: 'ok', held: true, ...first });
+  while (true) {
+    let m; try { m = JSON.parse(await nextLine()); } catch (e) { continue; }
+    if (m.op !== 'more') { if (m.op === 'quit') lines.unshift('{"op":"quit"}'); return null; }
+    let r; try { r = { status: 'ok', ...(await more(m)) }; } catch (e) { r = { status: 'error', error: String(e && e.stack || e) }; }
+    out('RESULT', r);
+    if (r.status !== 'ok') return null;
+  }
+}
 async function chromium() {
   const pw = require(cfg.playwright);
   const args = ['--no-first-run', '--no-default-browser-check'].concat(cfg.cls === 'sw' ? ['--disable-gpu', '--disable-gpu-compositing'] : []);
@@ -71,7 +98,7 @@ async function chromium() {
       const cdp = op.trace ? await ctx.newCDPSession(pg) : null;
       let done = null;
       if (cdp) {
-        await cdp.send('Tracing.start', { categories: op.traceCategories || TRACE_CATEGORIES, transferMode: 'ReturnAsStream' });
+        await traceStart(cdp, op.traceCategories);
         await pg.evaluate(() => console.timeStamp('nav'));
       }
       await mark('nav');
@@ -85,18 +112,19 @@ async function chromium() {
       const p0 = clock.now();
       const probe = op.cases ? await pg.evaluate(new Function(PROBE(op.cases))) : null;
       const probeWallMs = clock.now() - p0;
-      let trace = null; const t0 = clock.now();
-      if (cdp) {
-        const completed = new Promise(r => cdp.once('Tracing.tracingComplete', r));
-        const e0 = clock.now(); await cdp.send('Tracing.end'); const ev = await completed; const chunks = []; const e1 = clock.now();
-        while (true) { const c = await cdp.send('IO.read', { handle: ev.stream, size: 4 << 20 }); chunks.push(c.base64Encoded ? Buffer.from(c.data, 'base64') : Buffer.from(c.data)); if (c.eof) break; }
-        await cdp.send('IO.close', { handle: ev.stream }); const e2 = clock.now(); const raw = Buffer.concat(chunks);
-        const data = JSON.parse(raw.toString('utf8')); trace = summarize(data.traceEvents || data);
-        trace.costMs = { end: e1 - e0, read: e2 - e1, parse: clock.now() - e2, bytes: raw.length };
-      }
+      const t0 = clock.now(); const trace = cdp ? await traceEnd(cdp) : null;
       const cpu = {}; const c0 = clock.now();
       for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await pg.evaluate(new Function(LOOP(c, op.cpuFrames))); await mark('cpu_' + c + '_1'); }
-      return { navWallMs, probeWallMs, traceWallMs: c0 - t0, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu, trace };
+      const res = { navWallMs, probeWallMs, traceWallMs: c0 - t0, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu, trace };
+      // more probe rounds of the rows that did not settle, in the same page (no reload): controller-driven
+      return op.hold ? await hold(res, async m => {
+        const s = m.trace ? await ctx.newCDPSession(pg) : null;
+        if (s) await traceStart(s, m.traceCategories);
+        const p1 = clock.now(); const pr = await pg.evaluate(new Function(PROBE(m.cases, m.framesOnly))); const probeWallMs = clock.now() - p1;
+        const t1 = clock.now(); const tr = s ? await traceEnd(s) : null;
+        if (s) await s.detach().catch(() => {});
+        return { probeWallMs, traceWallMs: clock.now() - t1, probe: pr, trace: tr };
+      }) : res;
     } finally { await ctx.close().catch(() => {}); }
   }
   return { info, page, quit: () => Promise.race([browser.close().catch(() => {}), sleep(3000)]) };
@@ -139,7 +167,8 @@ async function firefox() {
       const probeWallMs = clock.now() - p0;
       const cpu = {}; const c0 = clock.now();
       for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
-      return { navWallMs, probeWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu };
+      const res = { navWallMs, probeWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu };
+      return op.hold ? await hold(res, async m => { const p1 = clock.now(); const pr = await run(PROBE(m.cases, m.framesOnly)); return { probeWallMs: clock.now() - p1, probe: pr }; }) : res;
     } finally { await driver.close().catch(() => {}); await driver.switchTo().window(home).catch(() => {}); }
   }
   return { info, page, quit: () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]) };
@@ -198,7 +227,9 @@ async function servo() {
     const shotWallMs = clock.now() - s0;
     const cpu = {}; const c0 = clock.now();
     for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
-    return { navWallMs, probeWallMs, shotWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, shots, cpu };
+    const res = { navWallMs, probeWallMs, shotWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, shots, cpu };
+    return op.hold ? await hold(res, async m => { const p1 = clock.now(); const pr = await run(PROBE(m.cases, m.framesOnly)); const s1 = clock.now();
+      const sh = await screenshots(m.cases.split(','), op.shots || 5); return { probeWallMs: s1 - p1, shotWallMs: clock.now() - s1, probe: pr, shots: sh }; }) : res;
   }
   const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch (e) { /* gone */ } });
   return { info, page, quit };
@@ -213,8 +244,8 @@ async function servo() {
     if (op.op === 'quit') break;
     if (op.op !== 'page') continue;
     let r;
-    try { r = { status: 'ok', ...(await b.page(op)) }; } catch (e) { r = { status: 'error', error: String(e && e.stack || e) }; }
-    out('RESULT', r);
+    try { const p = await b.page(op); r = p && { status: 'ok', ...p }; } catch (e) { r = { status: 'error', error: String(e && e.stack || e) }; }
+    if (r) out('RESULT', r);  // a held page answered already
   }
   await b.quit(); process.exit(0);
 })();

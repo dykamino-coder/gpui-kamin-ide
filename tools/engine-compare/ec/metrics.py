@@ -181,6 +181,69 @@ def browser_visit(engine, res):
     return out
 
 
+def median_ci(xs, level=0.9):
+    """Distribution-free confidence interval of the median from order statistics: (lo, hi, coverage). The narrowest
+    symmetric pair of ranks whose binomial coverage reaches ``level``; with too few values for that, the full range
+    (coverage 1 - 2^(1-n)). None for fewer than two values."""
+    s = sorted(x for x in xs if x is not None); n = len(s)
+    if n < 2:
+        return None
+    from math import comb
+
+    def cover(k):  # ranks k .. n-1-k (0-based): 1 - 2 P(B(n, 1/2) <= k)
+        return 1 - 2 * sum(comb(n, i) for i in range(k + 1)) / 2 ** n
+    k = 0
+    while k + 1 < n - 2 - k and cover(k + 1) >= level:
+        k += 1
+    cov = cover(k)
+    return s[k], s[n - 1 - k], cov
+
+
+def ci_half(xs, level=0.9):
+    """Half-width of the median's confidence interval over the median (relative); None without one."""
+    c = median_ci(xs, level); m = med(xs)
+    return (c[1] - c[0]) / 2 / m if c and m else None
+
+
+def browser_samples(engine, res):
+    """{phase: {'value', 'samples', 'clock'}} of one probe round: per-frame samples of the clock with the lower median
+    (the same choice as ``browser_visit``), each with the round's per-frame raster + swap from the trace (Chromium) or
+    the MozAfterPaint lag (Firefox); Servo: every edit + screenshot minus the median screenshot alone."""
+    tw = (res.get('trace') or {}).get('windows') or {}
+    probe = res.get('probe') or {}; frames = probe.get('frames') or 14; out = {}
+
+    def ras(win):
+        w = tw.get(win)
+        return None if not w else ((w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)) / frames
+
+    def smp(x):
+        return [v for v in ((x or {}).get('samples') or []) if v is not None]
+    for k, c in (probe.get('cases') or {}).items():
+        fr, rq, ap = smp(c.get('frame')), smp(c.get('frameReq')), smp(c.get('afterPaint'))
+        if k == 'S' and ((c.get('frame') or {}).get('moved') or 0) < 1:
+            continue
+        cand = {}
+        if engine == 'firefox':
+            if ap:
+                cand['raf'] = ap
+            if rq and ap and fr:
+                lag = max(0.0, med(ap) - med(fr)); cand['req'] = [v + lag for v in rq]
+        elif engine == 'servo':
+            a = ((res.get('shots') or {}).get(k) or {}).get('ms'); b = ((res.get('shots') or {}).get('idle') or {}).get('ms')
+            if a and b:
+                cand['shot'] = [v - med(b) for v in a]
+        else:
+            rf, rr = ras('frame:' + k), ras('req:' + k)
+            if fr and rf is not None:
+                cand['raf'] = [v + rf for v in fr]
+            if rq and rr is not None:
+                cand['req'] = [v + rr for v in rq]
+        cand = {n: v for n, v in cand.items() if v and med(v) and med(v) > 0}
+        if cand:
+            clock = min(cand, key=lambda n: med(cand[n]))
+            out[k] = {'value': med(cand[clock]), 'samples': cand[clock], 'clock': clock}
+    return out
+
 def servo_shot(shots, k):
     """Servo frame of case k: median (edit + screenshot) minus median (screenshot alone); None without a positive value."""
     a = ((shots or {}).get(k) or {}).get('ms'); b = ((shots or {}).get('idle') or {}).get('ms')

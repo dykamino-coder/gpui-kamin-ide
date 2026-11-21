@@ -35,11 +35,17 @@ load line into the store's `run.log`, which the report shows under the measureme
 
 ## Repeats
 
-Every row gets at least 3 values (ours: frames of one series in one process; browsers: page visits), then one
-more while it is not stable, up to a cap (ours: 500 ms of frames; browsers: 8 visits). Stable = MAD / median
-<= 3 % (median absolute deviation from the median). Scroll keeps the step count of the browser scenario. The
-report shows the number of samples in each cell's title.
-
+Ours: frames of one series in one process, at least 3, then until MAD / median <= 3 % or 500 ms of frames. Browsers:
+visit 1 loads the page (one cold sample), keeps it open for the steady memory window, runs one probe round of every
+warm row (every frame of the round is a sample of its row) and the CPU loops; only the rows that did not settle get
+more probe rounds in the same page (frame clocks only, Chromium reuses round 1's raster + swap per frame unless
+`"trace_rounds": "all"`), and cold gets one fresh load per further sample (`"cold_clock": "load"`: navigation to two
+rAFs after load; `"min"` also traces every load and takes the better of that and the trace's main + raster sum). A
+row settles when the 90 % confidence interval of its median (order statistics) is within 3 % of the median (or within
+the 0.1 ms clock step), or lies wholly beyond our value of the same row by 3 %: its place is decided, so ours is
+measured first in every class. The cap is 8 rounds; the report shows the interval half-width next to a number and
+marks a row stopped at the cap. Scroll keeps the step count of the browser scenario. The cell title gives the number
+of samples.
 ## Adapters
 
 `ec/adapters/` holds one file per engine kind (`ours`, `browser`, `native`, `oneshot`, `kitesurf`); the contract is in

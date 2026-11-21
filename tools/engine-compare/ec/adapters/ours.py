@@ -54,6 +54,7 @@ def edit_input(page, phase):
 class Ours:
     parts = ('time', 'cpu')
     exclusive = False
+    reference = True  # measured first in every class (scheduler); other engines compare rows against it
 
     def __init__(self, name, cfg, e):
         self.name = name; self.cfg = cfg; self.e = e

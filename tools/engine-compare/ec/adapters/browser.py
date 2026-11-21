@@ -1,9 +1,11 @@
 """Chrome, Edge, Firefox through driver/browser-driver.cjs: one long-lived browser per lane and class, a fresh
 context (Chromium) or tab (Firefox) per page, every warm phase in the same page visit.
 
-Visit 1: load -> steady window (memory) -> probe of all phases -> CPU loops of fixed frame count (CPU per frame).
-Visits 2..N: load -> probe only, for timing repeats; later visits probe only the rows that still need repeats
-(noisy, or faster than the fast-row threshold).
+Visit 1: load -> steady window (memory) -> one probe round of every warm row -> CPU loops of fixed frame count (CPU
+per frame); the page stays open and only the rows that did not settle get more probe rounds in it (every frame of a
+round is a sample of the row). Cold: one fresh load per sample. A row settles when the 90 % confidence interval of its
+median (order statistics) is within 3 % of the median, or lies wholly beyond our value of the same row by 3 % (its
+place is decided); the cap is 8 rounds (8 loads for cold), a row stopped there is marked ``capped``.
 Config: {"adapter": "browser", "browser": "chrome"|"edge"|"firefox"|"servo", "exe": ..., "geckodriver": ... (Firefox),
          "gpu": false when the engine rasters on the CPU in every class (Servo headless)}
 """
@@ -18,7 +20,7 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
 
-DEF = 'browser-3'  # 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
+DEF = 'browser-4'  # 4: later rounds reuse round 1's raster per frame; warm rows = frames of in-page probe rounds, stop on the median's interval (Policy.settled); 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
 # The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
 # so its miss is known at once (wrap() recorded it in c.ok). Only that wait changes; every measured frame is the same.
 GUARD = 'setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},250);'
@@ -26,13 +28,19 @@ GUARD_EC = ('setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},'
             '(c.ok&&c.ok.length&&!c.ok[c.ok.length-1])?0:250);')
 
 
+# Later probe rounds need only the frame clocks: the style / layout loops (no metric uses them) are skipped there.
+SYNC = 'function sync(c,flush){if(c.nosync)return null;'
+SYNC_EC = 'function sync(c,flush){if(c.nosync||window.__b4framesOnly)return null;'
+
+
 def probe_file(page):
-    """The page's probe with the stuck-step guard (derived next to it, like C.html); the original when it differs."""
+    """The page's probe with the stuck-step guard and the frames-only switch (derived next to it, like C.html); the
+    original when neither applies."""
     src = page.file('probe.html'); text = src.read_text(encoding='utf-8')
-    if GUARD not in text:
+    if GUARD not in text and SYNC not in text:
         return src
     out = page.file('probe-ec.html')
-    new = text.replace(GUARD, GUARD_EC)
+    new = text.replace(GUARD, GUARD_EC).replace(SYNC, SYNC_EC)
     if not out.exists() or out.read_text(encoding='utf-8') != new:
         out.write_text(new, encoding='utf-8', newline='')
     return out
@@ -102,6 +110,25 @@ class Session:
             res['visitWallMs'] = (t1 - t0) * 1000  # controller side: the driver's page() plus marks and transport
         return res, None, (dict(self.marks), samples)
 
+    def more(self, op, timeout):
+        """One more probe round in the held page: (result | None, reason)."""
+        t0 = time.perf_counter()
+        self.p.stdin.write((json.dumps(dict(op, op='more')) + '\n').encode())
+        kind, res = self._read(timeout)
+        if kind == 'TIMEOUT':
+            return None, f'hangs: probe round did not finish within {timeout} s'
+        if kind != 'RESULT':
+            return None, 'browser exited during the probe round'
+        res['visitWallMs'] = (time.perf_counter() - t0) * 1000
+        return res, None
+
+    def done(self):
+        """Close the held page (no answer)."""
+        try:
+            self.p.stdin.write(b'{"op":"done"}\n')
+        except OSError:
+            pass
+
     def close(self):
         try:
             self.p.stdin.write(b'{"op":"quit"}\n'); self.p.wait(10)
@@ -162,12 +189,17 @@ class Browser:
         warm = [p for p in phases if p != 'cold']
         if 'S' in warm and M.scroll_steps(page.meta) == 0:  # nothing to scroll: every step would wait out its guard
             warm.remove('S'); phases = [p for p in phases if p != 'S']; REC.row(rec, 'S')['empty'] = M.NO_SCROLL
-        probe = str(probe_file(page))
-        op = {'probe': probe, 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
-              'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
+        probe = str(probe_file(page)); tr = fam == 'chromium'
+        ours = self._ours(page, cls, policy)
+        # visit 1: load (cold sample 1) -> steady window -> one probe round of every warm row -> CPU loops; the page
+        # stays open for more probe rounds of the rows that did not settle (no reload, the settled ones are not rerun)
+        op = {'probe': probe, 'cases': ','.join(warm), 'steadyMs': policy.steady_ms, 'hold': bool(warm),
+              'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': tr, 'traceCategories': self.e.get('trace_categories')}
         res, why, extra = s.visit(op, to)
         if res is None or res.get('status') != 'ok':
             why = why or 'did not open: ' + ' '.join(str((res or {}).get('error', '?')).split())[:160]
+            if res is not None and res.get('held'):
+                s.done()
             for ph in phases:
                 REC.row(rec, ph)['empty'] = why
             rec['memory'] = {'empty': why}; self.close(lane)
@@ -185,39 +217,84 @@ class Browser:
         for ph in phases:
             if ph in cpu:
                 REC.row(rec, ph)['cpu_ms'] = cpu[ph]
-        visits = 1
-        while visits < policy.max_repeats:
-            need = [ph for ph in phases if len(REC.row(rec, ph)['repeats']) < policy.want(REC.row(rec, ph)['repeats'])]
+        rounds = {ph: 1 for ph in phases}
+        while res.get('held'):
+            need = [ph for ph in warm if REC.row(rec, ph)['repeats'] and rounds[ph] < policy.max_repeats
+                    and not policy.settled(REC.row(rec, ph)['repeats'], ours.get(ph))]
             if not need:
                 break
-            w = [p for p in need if p != 'cold']
-            op = {'probe': probe, 'cases': ','.join(w), 'steadyMs': 0, 'cpuCases': [],
-                  'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
-            res, why, _ = s.visit(op, to)
-            visits += 1
-            if res is None or res.get('status') != 'ok':
-                rec.setdefault('notes', []).append(f'repeat {visits} failed: {why or res.get("error", "?")}'[:200])
-                if res is None:
+            # Chromium: the raster + swap per frame comes from the trace; later rounds reuse round 1's per-frame raster
+            # of the same row unless "trace_rounds": "all" (the JS clocks of the round carry the variance)
+            again = tr and self.e.get('trace_rounds', 'first') == 'all'
+            r2, why = s.more({'cases': ','.join(need), 'trace': again, 'framesOnly': True,
+                              'traceCategories': self.e.get('trace_categories')}, to)
+            if r2 is not None and tr and not again:
+                r2['trace'] = first.get('trace'); r2['trace_reused'] = True
+            for ph in need:
+                rounds[ph] += 1
+            if r2 is None or r2.get('status') != 'ok':
+                rec.setdefault('notes', []).append(f'probe round failed: {why or r2.get("error", "?")}'[:200])
+                if r2 is None:
                     self.close(lane)
                 break
-            self._add(rec, res, ['cold'] + w if 'cold' in need else w)
+            self._add(rec, r2, need)
+        if res.get('held') and lane.id in self.sessions:
+            s.done()
+        # cold: one fresh load per sample (nothing else in the visit), until it settles or the cap
+        while 'cold' in phases and rounds['cold'] < policy.max_repeats and REC.row(rec, 'cold')['repeats'] \
+                and not policy.settled(REC.row(rec, 'cold')['repeats'], ours.get('cold')):
+            r2, why, _ = s.visit({'probe': probe, 'cases': '', 'steadyMs': 0, 'cpuCases': [],
+                                  'trace': tr and self.e.get('cold_clock', 'load') == 'min'}, to)
+            rounds['cold'] += 1
+            if r2 is None or r2.get('status') != 'ok':
+                rec.setdefault('notes', []).append(f'cold visit failed: {why or r2.get("error", "?")}'[:200])
+                if r2 is None:
+                    self.close(lane)
+                break
+            self._add(rec, r2, ['cold'])
         for ph in phases:
             r = REC.row(rec, ph); r['time_ms'] = M.med(r['repeats'])
             if r['time_ms'] is None and not r.get('empty'):
                 r['empty'] = (M.scroll_empty_reason(first) if ph == 'S' else None) or 'no frames of this phase in the probe result'
-        rec['visits'] = visits; rec['wall_s'] = time.perf_counter() - t0
+            elif r['time_ms'] is not None:
+                h = M.ci_half(r['repeats']); r['ci_pct'] = round(100 * h, 1) if h is not None else None
+                why_stop = policy.settled(r['repeats'], ours.get(ph))
+                r['rounds'] = rounds[ph]; r['settled'] = why_stop
+                if not why_stop:
+                    r['capped'] = True  # stopped at the cap with the interval still wider than the rule
+        rec['visits'] = 1 + max(0, rounds.get('cold', 1) - 1); rec['wall_s'] = time.perf_counter() - t0
         return rec
 
-    @staticmethod
-    def _add(rec, res, phases):
+    def _ours(self, page, cls, policy):
+        """Our values of the same page and class ({phase: ms}) when already measured: a row whose interval lies wholly
+        beyond ours has its place decided and stops early."""
+        name = next((n for n, e in self.cfg.engines.items() if e.get('adapter') == 'ours'), None)
+        if not name:
+            return {}
+        if getattr(self, '_ours_ad', None) is None:
+            from . import load
+            self._ours_ad = load(name, self.cfg)
+        ad = self._ours_ad; part = ad.parts[0]
+        key = REC.unit_key(name, ad.version(), page.hash, cls, part, ad.definition(part) + '-' + policy.definition())
+        rec = REC.load(self.cfg.store, name, cls, page.id, key) or {}
+        return {ph: r.get('time_ms') for ph, r in (rec.get('rows') or {}).items() if r.get('time_ms')}
+    def _add(self, rec, res, phases):
         rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'shotWallMs', 'traceWallMs', 'cpuWallMs')
                                                      if isinstance(res.get(k), (int, float))})
         cases = (res.get('probe') or {}).get('cases') or {}
         missed = {k: (c.get('afterPaint') or {}).get('missed') for k, c in cases.items() if c.get('afterPaint')}
         if missed:  # Firefox: frames whose MozAfterPaint did not come within the probe's guard
             rec.setdefault('paint_missed', []).append(missed)
-        v = M.browser_visit(rec['family'], res)
+        v = M.browser_visit(rec['family'], res); fr = M.browser_samples(rec['family'], res)
         for ph in phases:
-            x = v.get(ph)
-            if x and x['value'] is not None:
-                REC.row(rec, ph)['repeats'].append(x['value'])
+            if ph == 'cold':  # one value per load
+                x = v.get(ph) or {}; r = REC.row(rec, ph)
+                # "cold_clock": "load" (default) = navigation -> two rAFs after load on every load, no trace needed;
+                # "min" = the better of that and the trace's main + raster sum (needs a trace on every cold load)
+                val = x.get('value') if self.e.get('cold_clock', 'load') == 'min' else x.get('req')
+                if val is not None:
+                    r['repeats'].append(val)
+                if x.get('raf') is not None:  # kept for the method comparison
+                    r.setdefault('alt_trace_ms', []).append(x['raf'])
+            elif fr.get(ph):  # warm rows: every frame of the probe round is a sample (as ours: frames of a series)
+                r = REC.row(rec, ph); r['repeats'].extend(fr[ph]['samples']); r['clock'] = fr[ph]['clock']

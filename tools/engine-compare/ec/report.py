@@ -25,7 +25,7 @@ L = {
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
            'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
-           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'samples': 'samples: {n}', 'series_def': 'Repeats: every row has at least 3 values (ours: frames of one series; browsers: visits), then one more while it is not stable, up to the cap (ours: 500 ms of frames; browsers: 8 visits); stable = MAD / median <= 3 % (MAD = median absolute deviation from the median). The cell title gives the number of samples. Scroll keeps the browsers'' step count.', 'ours_fail': 'did not open / crashed', 'ours_failsum': 'We did not get through: {n} cells (time {t}, CPU {c}, memory {m}); the reason is on each red cell (hover).', 'cpu_none': 'the engine gives no CPU for this phase', 'm_time': 'time', 'm_cpu': 'CPU', 'm_peak': 'peak memory', 'm_steady': 'steady memory', 'cover': 'Coverage: engine x metric x phase', 'cover_note': 'Measured cells / all cells (every page and class). Green: all, yellow: part, red: none; the reasons of every empty cell are in the next table.', 'gaps': 'What is not measured and why', 'gaps_note': 'Every empty cell of every engine, grouped by engine, metric, phase and reason, most cells first.', 'metric': 'Metric', 'cells': 'Cells', 'reason': 'Reason', 'scroll_def': 'Scroll (S), every engine: from the top of the page, as many 120 px steps as the browser probe makes on that page: min(14, (scrollHeight - 600) // 120), down to one step; a step counts only when the root scroller moved by the whole 120 px; a page without one whole step has no S row.', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
+           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'samples': 'samples: {n}', 'capped': 'stopped at the repeat cap: the interval is still wider than 3 %', 'series_def': 'Repeats: ours: frames of one series until MAD / median <= 3 % or 500 ms; browsers: every frame of a probe round is a sample, rounds are added in the same page only to the rows that did not settle (cold: one load per sample), up to 8; a browser row settles when the 90 % confidence interval of its median (order statistics) is within 3 % of the median or lies wholly beyond our value by 3 %. ±N% next to a number = the interval half-width; ! = stopped at the cap. The cell title gives the number of samples. Scroll keeps the browsers'' step count.', 'ours_fail': 'did not open / crashed', 'ours_failsum': 'We did not get through: {n} cells (time {t}, CPU {c}, memory {m}); the reason is on each red cell (hover).', 'cpu_none': 'the engine gives no CPU for this phase', 'm_time': 'time', 'm_cpu': 'CPU', 'm_peak': 'peak memory', 'm_steady': 'steady memory', 'cover': 'Coverage: engine x metric x phase', 'cover_note': 'Measured cells / all cells (every page and class). Green: all, yellow: part, red: none; the reasons of every empty cell are in the next table.', 'gaps': 'What is not measured and why', 'gaps_note': 'Every empty cell of every engine, grouped by engine, metric, phase and reason, most cells first.', 'metric': 'Metric', 'cells': 'Cells', 'reason': 'Reason', 'scroll_def': 'Scroll (S), every engine: from the top of the page, as many 120 px steps as the browser probe makes on that page: min(14, (scrollHeight - 600) // 120), down to one step; a step counts only when the root scroller moved by the whole 120 px; a page without one whole step has no S row.', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
            'legend': ['we are faster than the best', 'within 5%', 'slower, up to x2', 'x2-x10', 'x10 and more'],
            'v_style': 'style edit', 'v_content': 'content edit', 'v_vis': 'visible edit', 'source': 'source',
            'pages_title': 'Pages under test', 'about': 'What it is', 'size': 'HTML+CSS, KB', 'local': 'local file',
@@ -41,7 +41,7 @@ L = {
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
            'not_measured': 'ещё не измерено', 'none': 'ни один другой движок не дал числа',
            'fast': 'строка <5 мс: вердикт только при 8 повторах', 'invalid': 'не в счёт: ', 'gap': 'Разрыв пика, МБ',
-           'bounds': 'Границы замера', 'samples': 'образцов: {n}', 'series_def': 'Повторы: у каждой строки не меньше 3 значений (у нас — кадры одной серии, у браузеров — визиты), затем ещё по одному, пока строка не устоялась, до потолка (у нас 500 мс кадров, у браузеров 8 визитов); устоялась = MAD / медиана <= 3 % (MAD — медиана модулей отклонений от медианы). Число образцов — в подсказке ячейки. Прокрутка сохраняет число шагов браузеров.', 'ours_fail': 'не открылась / упала', 'ours_failsum': 'Мы не прошли: {n} ячеек (время {t}, процессор {c}, память {m}); причина — во всплывающей подсказке каждой красной ячейки.', 'cpu_none': 'движок не даёт процессорного времени этой фазы', 'm_time': 'время', 'm_cpu': 'процессор', 'm_peak': 'пик памяти', 'm_steady': 'уст. память', 'cover': 'Покрытие: движок × метрика × фаза', 'cover_note': 'Измерено ячеек / всего ячеек (все страницы и классы). Зелёный — всё, жёлтый — часть, красный — ничего; причины каждой пустой ячейки — в следующей таблице.', 'gaps': 'Что не измерено и почему', 'gaps_note': 'Каждая пустая ячейка любого движка, по движку, метрике, фазе и причине, от больших групп к меньшим.', 'metric': 'Метрика', 'cells': 'Ячеек', 'reason': 'Причина', 'scroll_def': 'Прокрутка (S), одинаково у всех движков: от верха страницы столько шагов по 120 px, сколько делает браузерный пробник на этой странице: min(14, (scrollHeight − 600) // 120), вплоть до одного шага; шаг в счёт, только если корневой прокрутчик сдвинулся на целые 120 px; страница без одного целого шага строки S не имеет.', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
+           'bounds': 'Границы замера', 'samples': 'образцов: {n}', 'capped': 'остановлено на потолке повторов: интервал всё ещё шире 3 %', 'series_def': 'Повторы: у нас — кадры одной серии, пока MAD / медиана > 3 %, до 500 мс; у браузеров каждый кадр прохода пробы — образец, новые проходы в той же странице только для неустоявшихся строк (cold — одна загрузка на образец), до 8; строка браузера устоялась, когда 90 % доверительный интервал медианы (порядковые статистики) не шире 3 % от медианы или целиком дальше нашего значения на 3 %. ±N% у числа — полуширина интервала; ! — остановлено на потолке. Число образцов — в подсказке ячейки. Прокрутка сохраняет число шагов браузеров.', 'ours_fail': 'не открылась / упала', 'ours_failsum': 'Мы не прошли: {n} ячеек (время {t}, процессор {c}, память {m}); причина — во всплывающей подсказке каждой красной ячейки.', 'cpu_none': 'движок не даёт процессорного времени этой фазы', 'm_time': 'время', 'm_cpu': 'процессор', 'm_peak': 'пик памяти', 'm_steady': 'уст. память', 'cover': 'Покрытие: движок × метрика × фаза', 'cover_note': 'Измерено ячеек / всего ячеек (все страницы и классы). Зелёный — всё, жёлтый — часть, красный — ничего; причины каждой пустой ячейки — в следующей таблице.', 'gaps': 'Что не измерено и почему', 'gaps_note': 'Каждая пустая ячейка любого движка, по движку, метрике, фазе и причине, от больших групп к меньшим.', 'metric': 'Метрика', 'cells': 'Ячеек', 'reason': 'Причина', 'scroll_def': 'Прокрутка (S), одинаково у всех движков: от верха страницы столько шагов по 120 px, сколько делает браузерный пробник на этой странице: min(14, (scrollHeight − 600) // 120), вплоть до одного шага; шаг в счёт, только если корневой прокрутчик сдвинулся на целые 120 px; страница без одного целого шага строки S не имеет.', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
            'legend': ['мы быстрее лучшего', '±5 %', 'медленнее до ×2', '×2–10', '×10 и больше'],
            'v_style': 'правка стиля', 'v_content': 'правка содержимого', 'v_vis': 'видимая правка', 'source': 'источник',
            'pages_title': 'Проверяемые страницы', 'about': 'Что это', 'size': 'HTML+CSS, КБ', 'local': 'локальный файл',
@@ -139,7 +139,8 @@ def units_rows(classes, ads, units):
             if (cls, eng) in shared or any(k[1] == eng and v == cls for k, v in shared.items()):
                 note = '; '.join(x for x in (note, 'engine rasters on the CPU: this class and ' + (shared.get((cls, eng)) or 'gpu2') + ' coincide, measured once') if x)
             rows.append(dict(base, phase=ph, time_ms=r.get('time_ms'), repeats=r.get('repeats') or [], cpu_ms=r.get('cpu_ms'),
-                             cpu_empty=r.get('cpu_empty'), empty=r.get('empty'), note=note, invalid=r.get('invalid'), within_noise=r.get('within_noise')))
+                             cpu_empty=r.get('cpu_empty'), empty=r.get('empty'), note=note, invalid=r.get('invalid'), within_noise=r.get('within_noise'),
+                             ci_pct=r.get('ci_pct'), capped=r.get('capped')))
         if m['memory']:
             mem[(cls, page.id, eng)] = m['memory']
     return rows, mem, bounds, vers
@@ -304,7 +305,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                         v = x.get('time_ms')
                         if v is not None and x.get('within_noise'):  # shown, never the best: inside the bounds' noise
                             cells.append(f'<td class="num nd" title="{html.escape(x.get("note") or "")}">≈{f(v)}</td>'); continue
-                        cells.append(f'<td class="num" title="{T["samples"].format(n=len(x.get("repeats") or []))}">{f(v)}</td>' if v is not None else
+                        cells.append(numcell(x, v, f, T) if v is not None else
                                      f'<td class="why" title="{html.escape(why(x, T))}">{html.escape(why(x, T))}</td>')
                         if v and v > 0:
                             comp.append((v, e))
@@ -320,7 +321,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                     elif ov is not None and not best:
                         note.append(T['none'])
                     if ov is not None:
-                        oc = f'<td class="num" title="{T["samples"].format(n=len(o.get("repeats") or []))}">{f(ov)}</td>'
+                        oc = numcell(o, ov, f, T)
                     elif ours_failed(o):  # we did not get through: red, the reason on hover
                         FAIL['time'] += 1
                         oc = f'<td class="r fail" title="{html.escape(why(o, T))}">{T["ours_fail"]}</td>'
@@ -447,7 +448,7 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:19px;margin:30px 0 8px}h3{font-siz
 th,td{padding:3px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--head);position:sticky;top:0;white-space:nowrap}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.note{color:var(--mut);font-size:12px}.why{color:var(--mut);font-size:11px;max-width:220px}
 .g{background:var(--g)}.n{background:var(--n)}.y{background:var(--y)}.o{background:var(--o)}.r{background:var(--r)}.nd{color:var(--mut)}
-a{color:var(--link)}a:visited{color:var(--visited)}.fail{font-weight:600;cursor:help}.failsum{padding:6px 10px;border-radius:6px;font-weight:600}nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}td .vl{font-size:10.5px;color:var(--mut)}td .vl a{color:var(--mut)}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
+a{color:var(--link)}a:visited{color:var(--visited)}.cap{color:#b45309;font-weight:600}.fail{font-weight:600;cursor:help}.failsum{padding:6px 10px;border-radius:6px;font-weight:600}nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}td .vl{font-size:10.5px;color:var(--mut)}td .vl a{color:var(--mut)}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
 
 
 def noise_verdict(a, b, floor=0.05):
@@ -465,6 +466,17 @@ def noise_verdict(a, b, floor=0.05):
         return 'noise', r
     return ('better' if r < 1 else 'worse'), r
 
+
+def numcell(x, v, f, T):
+    """A number cell: value, the achieved accuracy (half-width of the median's interval, when known) and a mark when
+    the row stopped at the repeat cap without settling (shown, not hidden)."""
+    tip = T['samples'].format(n=len(x.get('repeats') or []))
+    acc = ''
+    if x.get('ci_pct') is not None:
+        tip += f'; ±{x["ci_pct"]:.1f} %'; acc = f'<small> ±{x["ci_pct"]:.0f}%</small>'
+    if x.get('capped'):
+        tip += '; ' + T['capped']; acc += '<small class="cap">!</small>'
+    return f'<td class="num" title="{html.escape(tip)}">{f(v)}{acc}</td>'
 
 def diff_cli(a):
     A_, B_ = (json.loads(Path(p).read_text(encoding='utf-8')) for p in (a.a, a.b))
