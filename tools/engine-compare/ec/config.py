@@ -59,7 +59,7 @@ class Config:
 
 
 SOURCES = {'base.html', 'vis.html', 'probe.html'}
-DERIVED = {'C.html', 'D.html'}  # edit variants written from base.html (see adapters/ours.py)
+DERIVED = {'C.html', 'D.html', 'probe-ec.html'}  # written by the adapters from base.html / probe.html: not page identity
 
 
 class Page:
