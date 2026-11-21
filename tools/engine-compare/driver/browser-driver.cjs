@@ -161,8 +161,27 @@ async function servo() {
   await driver.manage().setTimeouts({ pageLoad: 180000, script: 300000 }).catch(() => {});
   const info = { version: 'servoshell', launchMs: clock.now() - t0, webdriverPort: port };
   const run = body => driver.executeAsyncScript('const done=arguments[arguments.length-1];(function(){' + body + '})().then(done);');
-  async function page(op) {
-    const w0 = clock.now();
+  // Request -> pixels for Servo: the edit (one probe loop frame) then a WebDriver screenshot, which Servo answers only
+  // once the rendering is up to date with no pending frame (components/servo/webview.rs take_screenshot); the same with
+  // no edit ('idle') is the transport + encode cost the caller subtracts. S: one 120 px step from the top per sample.
+  async function screenshots(cases, n) {
+    const out = {}; const time = async f => { const a = clock.now(); await f(); await driver.takeScreenshot(); return clock.now() - a; };
+    for (const k of ['idle'].concat(cases)) {
+      const t = []; let moved = 0;
+      if (k === 'S') await driver.executeScript('window.scrollTo(0,0)');
+      for (let i = 0; i < n; i++) {
+        if (k === 'S') {
+          t.push(await time(async () => { moved += await driver.executeScript('var a=scrollY;window.scrollBy(0,120);return Math.abs(scrollY-a-120)<0.5?1:0;'); }));
+        } else {
+          t.push(await time(() => run(LOOP(k, 1))));
+        }
+      }
+      if (k === 'S') { await driver.executeScript('window.scrollTo(0,0)'); out[k] = { ms: t.slice(0, moved), moved }; }
+      else out[k] = { ms: t };
+    }
+    return out;
+  }
+  async function page(op) {    const w0 = clock.now();
     await driver.get('about:blank');
     await mark('nav');
     const navStart = clock.now();
@@ -174,9 +193,11 @@ async function servo() {
     const p0 = clock.now();
     const probe = op.cases ? await run(PROBE(op.cases)) : null;
     const probeWallMs = clock.now() - p0;
+    const s0 = clock.now(); const shots = op.cases ? await screenshots(op.cases.split(','), op.shots || 5) : null;
+    const shotWallMs = clock.now() - s0;
     const cpu = {}; const c0 = clock.now();
     for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
-    return { navWallMs, probeWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu };
+    return { navWallMs, probeWallMs, shotWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, shots, cpu };
   }
   const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch (e) { /* gone */ } });
   return { info, page, quit };

@@ -24,8 +24,10 @@ BOUNDS = {'chromium': ('headless browser, page in a fresh context of a warm brow
           'firefox': ('headless browser, page in a fresh tab of a warm browser; frame = better of MozAfterPaint and the request '
                       'clock; memory = working-set sum of all browser processes'),
           'servo': ('headless servoshell driven through its own WebDriver server, the page in the one window of a warm '
-                    'browser; frame = better of the two probe clocks (rAF -> message after the rendering update; no raster '
-                    'trace and no paint event, so raster done after that message is not counted); memory = working set of the '
+                    'browser; frame = request -> pixels: the edit (one probe frame) then a WebDriver screenshot, which '
+                    'Servo answers only when the rendering is up to date with no pending frame, minus the same without an '
+                    'edit (transport and PNG encode); its probe clocks end before its asynchronous layout and paint, so they are '
+                    'not used; memory = working set of the '
                     'servoshell process; headless servoshell rasters on the CPU (ANGLE on D3D11 WARP, no GPU driver loaded), so '
                     'gpu2 is measured once under soft2')}
 DRIVER = Path(__file__).resolve().parents[2] / 'driver' / 'browser-driver.cjs'
@@ -184,16 +186,12 @@ class Browser:
             r = REC.row(rec, ph); r['time_ms'] = M.med(r['repeats'])
             if r['time_ms'] is None and not r.get('empty'):
                 r['empty'] = (M.scroll_empty_reason(res) if ph == 'S' else None) or 'no frames of this phase in the probe result'
-            if fam == 'servo' and ph != 'cold' and r['time_ms'] is not None:  # see BOUNDS['servo']
-                r['invalid'] = True
-                r['note'] = ('Servo: the probe clocks end before its asynchronous layout and paint (CPU per frame is '
-                             'the comparable number); shown, not ranked')
         rec['visits'] = visits; rec['wall_s'] = time.perf_counter() - t0
         return rec
 
     @staticmethod
     def _add(rec, res, phases):
-        rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'traceWallMs', 'cpuWallMs')
+        rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'shotWallMs', 'traceWallMs', 'cpuWallMs')
                                                      if isinstance(res.get(k), (int, float))})
         cases = (res.get('probe') or {}).get('cases') or {}
         missed = {k: (c.get('afterPaint') or {}).get('missed') for k, c in cases.items() if c.get('afterPaint')}

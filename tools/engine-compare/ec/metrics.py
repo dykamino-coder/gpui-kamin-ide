@@ -149,8 +149,8 @@ def browser_visit(engine, res):
         ap = (c.get('afterPaint') or {}).get('median') if c.get('afterPaint') else None
         if engine == 'firefox':
             raf = ap; req = rq + max(0.0, ap - fr) if None not in (ap, rq, fr) else None
-        elif engine == 'servo':  # no trace and no paint event: the probe clocks alone
-            raf, req = fr, rq
+        elif engine == 'servo':  # request -> pixels: edit + WebDriver screenshot minus the same without an edit
+            raf, req = None, servo_shot(res.get('shots'), k)
         else:
             rf, rr = ras('frame:' + k), ras('req:' + k)
             raf = fr + rf if None not in (rf, fr) else None
@@ -168,6 +168,15 @@ def browser_visit(engine, res):
         cold['value'] = min(vals) if vals else None
         out['cold'] = cold
     return out
+
+
+def servo_shot(shots, k):
+    """Servo frame of case k: median (edit + screenshot) minus median (screenshot alone); None without a positive value."""
+    a = ((shots or {}).get(k) or {}).get('ms'); b = ((shots or {}).get('idle') or {}).get('ms')
+    if not a or not b:
+        return None
+    v = med(a) - med(b)
+    return v if v > 0 else None
 
 
 def scroll_empty_reason(res):
