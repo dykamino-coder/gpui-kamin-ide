@@ -19,7 +19,7 @@ L = {
            'C': 'style edit, off screen', 'Cvis': 'style edit, visible', 'D': 'content edit, off screen',
            'Dvis': 'content edit, visible', 'S': 'scroll step (120 px)'},
            'summary': 'Summary: where we lead and where we do not', 'worst_t': 'every row by time, best for us first',
-           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'all': 'All comparisons', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
+           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
@@ -34,7 +34,7 @@ L = {
            'C': 'правка стиля, вне экрана', 'Cvis': 'правка стиля, видимая', 'D': 'правка содержимого, вне экрана',
            'Dvis': 'правка содержимого, видимая', 'S': 'шаг прокрутки (120 px)'},
            'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'все строки по времени, от лучших для нас к худшим',
-           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'all': 'Все сравнения', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
+           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Движок', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
@@ -79,9 +79,22 @@ def collect(cfg, classes, engines=None):
     ads = {n: A.load(n, cfg) for n in names}
     todo, cached = plan(ads, list(cfg.pages.values()), classes, A.Policy(), cfg.store)
     rows, mem, bounds, vers, units = [], {}, {}, {}, {}
+    dirty = contamination(cfg)
+    passes = {}  # (cls, engine) -> {'wall', 'engine', 'pages', 'units', 'missing'}
     for t in todo + cached:
         rec = REC.load(cfg.store, t.engine, t.cls, t.page.id, t.key) or latest(cfg.store, t, ads[t.engine].version())
         units.setdefault((t.cls, t.page, t.engine), []).append(rec)
+        ps = passes.setdefault((t.cls, t.engine), {'wall': 0.0, 'engine': 0.0, 'pages': set(), 'units': 0, 'missing': 0})
+        if not rec:
+            ps['missing'] += 1; continue
+        ps['wall'] += rec.get('wall_s') or 0; ps['units'] += 1; ps['pages'].add(t.page.id)
+        if ads[t.engine].e.get('adapter') == 'ours':  # frames the engine itself spent; the rest is the stand
+            ps['engine'] += sum(sum(x for x in (r.get('repeats') or []) if x) for r in (rec.get('rows') or {}).values()) / 1000
+        note = next((d['note'] for d in dirty if d['from'] <= (rec.get('started') or 0) < d['to']), None)
+        if note and not rec.get('_dirty'):
+            rec['_dirty'] = True
+            for r in (rec.get('rows') or {}).values():
+                r['note'] = '; '.join(x for x in (r.get('note'), note) if x)
     shared = {}  # (cls, engine) -> measured class, for CPU-raster engines whose classes coincide
     for cls in classes:
         for n, ad in ads.items():
@@ -108,17 +121,27 @@ def collect(cfg, classes, engines=None):
                              empty=r.get('empty'), note=note, invalid=r.get('invalid'), within_noise=r.get('within_noise')))
         if m['memory']:
             mem[(cls, page.id, eng)] = m['memory']
-    return rows, mem, bounds, vers
+    return rows, mem, bounds, vers, passes
+
+
+def contamination(cfg):
+    """Windows of known foreign load from the config: [{"from": ISO, "to": ISO, "note"}] -> epoch seconds."""
+    import datetime as dt
+    out = []
+    for d in cfg.raw.get('contamination') or []:
+        out.append({'from': dt.datetime.fromisoformat(d['from']).timestamp(), 'to': dt.datetime.fromisoformat(d['to']).timestamp(),
+                    'note': d['note']})
+    return out
 
 
 def main(cfg, a):
     lang = getattr(a, 'lang', 'en') or 'en'; T = L[lang]
     classes = [c for c in (a.classes or ','.join(CLASSES)).split(',') if c]
-    rows, mem, bounds, vers = collect(cfg, classes)
+    rows, mem, bounds, vers, passes = collect(cfg, classes)
     out = Path(a.out)
     (out.with_suffix('.rows.json')).write_text(json.dumps({'rows': rows, 'memory': [dict(cls=k[0], page=k[1], engine=k[2], **v)
                                                            for k, v in mem.items()]}, default=str), encoding='utf-8')
-    out.write_text(render(cfg, rows, mem, bounds, vers, classes, T, a.title), encoding='utf-8')
+    out.write_text(render(cfg, rows, mem, bounds, vers, classes, T, a.title, passes), encoding='utf-8')
     print(f'report: {out} ({len(rows)} cells); rows for diff: {out.with_suffix(".rows.json")}')
 
 
@@ -127,7 +150,28 @@ def why(x, T):
     return T['not_measured'] if e == 'not_measured' else (e or 'no number')
 
 
-def render(cfg, rows, mem, bounds, vers, classes, T, title):
+def pass_table(passes, classes, T, ours):
+    """Time to get through the whole page set, per engine and class: goal row (ours must be the fastest)."""
+    h = [f'<h3>{T["pass"]}</h3><p class="note">{html.escape(T["pass_note"])}</p><div class="tw"><table><thead><tr><th>class</th>'
+         f'<th>engine</th><th>{T["pass_total"]}</th><th>{T["pass_page"]}</th><th>{T["pass_rank"]}</th><th>{T["pass_stand"]}</th>'
+         f'<th>{T["pass_engine"]}</th><th>{T["pass_pages"]}</th></tr></thead><tbody>']
+    for cls in classes:
+        es = [(e, v) for (c, e), v in passes.items() if c == cls and v['pages']]
+        es.sort(key=lambda x: x[1]['wall'] / len(x[1]['pages']))
+        for rank, (e, v) in enumerate(es, 1):
+            per = v['wall'] / len(v['pages'])
+            st = en = '—'
+            if e == ours:
+                en = f'{v["engine"]:.0f} s'; st = f'{v["wall"] - v["engine"]:.0f} s ({100 * (1 - v["engine"] / v["wall"]):.0f} %)' if v['wall'] else '—'
+            cl = 'g' if rank == 1 else 'r' if e == ours else ''
+            h.append(f'<tr class="{cl if e == ours else ""}"><td>{html.escape(CLASSES[cls][2])}</td><td>{"<b>" + html.escape(e) + "</b>" if e == ours else html.escape(e)}</td>'
+                     f'<td class="num">{v["wall"]:.0f} s</td><td class="num">{per:.1f} s</td><td class="num {cl}">{rank} / {len(es)}</td>'
+                     f'<td class="num">{st}</td><td class="num">{en}</td><td class="num">{len(v["pages"])}{(" (+" + str(v["missing"]) + " " + T["pass_missing"] + ")") if v["missing"] else ""}</td></tr>')
+    h.append('</tbody></table></div>')
+    return ''.join(h)
+
+
+def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
     idx = {(x['cls'], x['page'], x['engine'], x['phase']): x for x in rows}
     others = [e for e in cfg.engines if cfg.engines[e].get('adapter') != 'ours']
     ours = next((e for e in cfg.engines if cfg.engines[e].get('adapter') == 'ours'), None)
@@ -219,6 +263,8 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title):
         sm.append(f'<tr><td>{html.escape(CLASSES[cls][2])}</td><td>{html.escape(kind)}</td><td>{T["phase"][ph]}</td><td class="num">{len(r)}</td>'
                   f'<td class="num">{sum(1 for x in r if x < 1)}</td><td class="num {col(M.med(r))}">×{f(M.med(r))}</td><td class="num {col(max(r))}">×{f(max(r))}</td></tr>')
     sm.append('</tbody></table></div>')
+    if passes:
+        sm.append(pass_table(passes, classes, T, ours))
     # Full lists of every comparable row, best for us first; no top-N cut.
     sm.append(f'<h2 id="all">{T["all"]}</h2>')
     for cls in classes:

@@ -46,6 +46,10 @@ class Config:
         """Page set: {"list": file of [{id, kind, dir}]} or {"items": [...]}; optional {"meta": {id: {...}} file}."""
         items = p.get('items') or json.loads(rel(p['list']).read_text(encoding='utf-8')) if (p.get('items') or p.get('list')) else []
         meta = json.loads(rel(p['meta']).read_text(encoding='utf-8')) if p.get('meta') else {}
+        # optional {id: {url, about}}: where a page comes from and one line on what it is (report only)
+        src = json.loads(rel(p['sources']).read_text(encoding='utf-8')) if p.get('sources') else {}
+        for k, v in src.items():
+            meta.setdefault(k, {}).update({'source_url': v.get('url'), 'about': v.get('about')})
         out = {}
         for it in items:
             out[it['id']] = Page(it['id'], it.get('kind', 'page'), Path(it['dir']), meta.get(it['id'], {}))
@@ -65,6 +69,11 @@ class Page:
 
     def file(self, name):
         return self.dir / name
+
+    def size(self):
+        """Bytes of the page's HTML and CSS (base document and every stylesheet next to it)."""
+        n = self.file('base.html').stat().st_size if self.file('base.html').exists() else 0
+        return n + sum(p.stat().st_size for p in self.dir.rglob('*.css'))
 
     @property
     def hash(self):

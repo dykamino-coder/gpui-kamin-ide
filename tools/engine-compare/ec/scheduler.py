@@ -39,8 +39,15 @@ def canon(ad, cls):
     return 'soft2' if cls == 'gpu2' and not ad.needs_gpu('gpu2') else cls
 
 
-def plan(adapters, pages, classes, policy, store, force=False):
-    """(todo, cached) task lists; ``adapters`` = {name: adapter}. Equivalent classes are measured once (``canon``)."""
+def started_in(store, t, window):
+    """True when the cached record of ``t`` was started inside ``window`` (epoch from, to): measured under known load."""
+    rec = REC.load(store, t.engine, t.cls, t.page.id, t.key)
+    return bool(rec) and window[0] <= (rec.get('started') or 0) < window[1]
+
+
+def plan(adapters, pages, classes, policy, store, force=False, redo=None):
+    """(todo, cached) task lists; ``adapters`` = {name: adapter}. Equivalent classes are measured once (``canon``).
+    ``redo`` = (from, to) epoch: cached units started in that window are measured again."""
     todo, cached, seen = [], [], set()
     for cls0 in classes:
         for name, ad in adapters.items():
@@ -53,7 +60,10 @@ def plan(adapters, pages, classes, policy, store, force=False):
                 for p in pages:
                     key = REC.unit_key(name, ver, p.hash, cls, part, d)
                     t = Task(name, p, cls, part, key, ad.needs_gpu(cls), (name, cls) if ad.session(None, cls) else None, ad.exclusive)
-                    (cached if not force and REC.unit_path(store, name, cls, p.id, key).exists() else todo).append(t)
+                    have = not force and REC.unit_path(store, name, cls, p.id, key).exists()
+                    if have and redo and started_in(store, t, redo):
+                        have = False
+                    (cached if have else todo).append(t)
     return todo, cached
 
 
