@@ -88,10 +88,11 @@ async function chromium() {
       let trace = null; const t0 = clock.now();
       if (cdp) {
         const completed = new Promise(r => cdp.once('Tracing.tracingComplete', r));
-        await cdp.send('Tracing.end'); const ev = await completed; const chunks = [];
-        while (true) { const c = await cdp.send('IO.read', { handle: ev.stream }); chunks.push(c.base64Encoded ? Buffer.from(c.data, 'base64') : Buffer.from(c.data)); if (c.eof) break; }
-        await cdp.send('IO.close', { handle: ev.stream });
-        const data = JSON.parse(Buffer.concat(chunks).toString('utf8')); trace = summarize(data.traceEvents || data);
+        const e0 = clock.now(); await cdp.send('Tracing.end'); const ev = await completed; const chunks = []; const e1 = clock.now();
+        while (true) { const c = await cdp.send('IO.read', { handle: ev.stream, size: 4 << 20 }); chunks.push(c.base64Encoded ? Buffer.from(c.data, 'base64') : Buffer.from(c.data)); if (c.eof) break; }
+        await cdp.send('IO.close', { handle: ev.stream }); const e2 = clock.now(); const raw = Buffer.concat(chunks);
+        const data = JSON.parse(raw.toString('utf8')); trace = summarize(data.traceEvents || data);
+        trace.costMs = { end: e1 - e0, read: e2 - e1, parse: clock.now() - e2, bytes: raw.length };
       }
       const cpu = {}; const c0 = clock.now();
       for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await pg.evaluate(new Function(LOOP(c, op.cpuFrames))); await mark('cpu_' + c + '_1'); }

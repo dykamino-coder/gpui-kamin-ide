@@ -18,7 +18,24 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
 
-DEF = 'browser-1'
+DEF = 'browser-2'  # 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
+# The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
+# so its miss is known at once (wrap() recorded it in c.ok). Only that wait changes; every measured frame is the same.
+GUARD = 'setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},250);'
+GUARD_EC = ('setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},'
+            '(c.ok&&c.ok.length&&!c.ok[c.ok.length-1])?0:250);')
+
+
+def probe_file(page):
+    """The page's probe with the stuck-step guard (derived next to it, like C.html); the original when it differs."""
+    src = page.file('probe.html'); text = src.read_text(encoding='utf-8')
+    if GUARD not in text:
+        return src
+    out = page.file('probe-ec.html')
+    new = text.replace(GUARD, GUARD_EC)
+    if not out.exists() or out.read_text(encoding='utf-8') != new:
+        out.write_text(new, encoding='utf-8', newline='')
+    return out
 BOUNDS = {'chromium': ('headless browser, page in a fresh context of a warm browser; frame = better of two probe clocks plus '
                        'raster and swap from the trace of the same window; memory = working-set sum of all browser processes'),
           'firefox': ('headless browser, page in a fresh tab of a warm browser; frame = better of MozAfterPaint and the request '
@@ -145,7 +162,8 @@ class Browser:
         warm = [p for p in phases if p != 'cold']
         if 'S' in warm and M.scroll_steps(page.meta) == 0:  # nothing to scroll: every step would wait out its guard
             warm.remove('S'); phases = [p for p in phases if p != 'S']; REC.row(rec, 'S')['empty'] = M.NO_SCROLL
-        op = {'probe': str(page.file('probe.html')), 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
+        probe = str(probe_file(page))
+        op = {'probe': probe, 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
               'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
         res, why, extra = s.visit(op, to)
         if res is None or res.get('status') != 'ok':
@@ -172,7 +190,7 @@ class Browser:
             if not need:
                 break
             w = [p for p in need if p != 'cold']
-            op = {'probe': str(page.file('probe.html')), 'cases': ','.join(w), 'steadyMs': 0, 'cpuCases': [],
+            op = {'probe': probe, 'cases': ','.join(w), 'steadyMs': 0, 'cpuCases': [],
                   'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
             res, why, _ = s.visit(op, to)
             visits += 1
