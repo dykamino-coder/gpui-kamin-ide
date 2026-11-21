@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(crate) struct Retained {
-    cb: Vec<(u8, Option<u16>, Destination)>,
+    cb: Vec<(u8, Option<u16>, Destination, Option<gpui::ScrollHandle>)>,
     pending: Vec<super::Pending>,
     /// ICB destinations with the root scroll handle of each layer (`anchors`).
     icb: Vec<(Destination, Option<gpui::ScrollHandle>)>,
@@ -23,7 +23,7 @@ impl Positioning {
                 .cb
                 .borrow()
                 .iter()
-                .map(|l| (l.takes, l.strict, l.taken.retain()))
+                .map(|l| (l.takes, l.strict, l.taken.retain(), l.node.clone()))
                 .collect(),
             icb: self
                 .icb
@@ -97,11 +97,12 @@ impl Retained {
         let cb = self
             .cb
             .iter()
-            .filter_map(|(takes, strict, dest)| {
+            .filter_map(|(takes, strict, dest, node)| {
                 Some(CbLayer {
                     takes: *takes,
                     strict: *strict,
                     taken: local(dest)?,
+                    node: node.clone(),
                 })
             })
             .collect();
@@ -135,11 +136,12 @@ impl Retained {
             cb: RefCell::new(
                 self.cb
                     .iter()
-                    .filter_map(|(takes, strict, dest)| {
+                    .filter_map(|(takes, strict, dest, node)| {
                         Some(CbLayer {
                             takes: *takes,
                             strict: *strict,
                             taken: dest.upgrade()?,
+                            node: node.clone(),
                         })
                     })
                     .collect(),
