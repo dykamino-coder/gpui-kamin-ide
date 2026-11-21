@@ -6,6 +6,7 @@
 use super::super::{ApplyError, Mutation};
 use super::{PAGE, state, tree};
 mod children;
+mod insert;
 
 use crate::document::{Document, RevisionStatus};
 use markup5ever_rcdom::{Handle, NodeData};

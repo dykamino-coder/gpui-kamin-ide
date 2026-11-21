@@ -61,3 +61,26 @@ fn moved_output_checks_physical_pixels_at_the_current_scale() {
         scaled(to, 2.0)
     ));
 }
+
+#[test]
+fn copied_block_ranges_expire_at_a_gap_or_an_unverified_frame() {
+    let store = Store::default();
+    store.draw(false);
+    let source = store.epoch.get();
+    for _ in 0..2 {
+        store.draw(true);
+        store.copied_layer_ranges();
+        assert!(store.block_source(store.epoch.get(), source));
+    }
+
+    store.draw(true);
+    let rebuilt = store.epoch.get();
+    assert!(!store.block_source(rebuilt, source));
+    store.draw(true);
+    store.copied_layer_ranges();
+    assert!(store.block_source(store.epoch.get(), rebuilt));
+    assert!(!store.block_source(store.epoch.get(), source));
+
+    store.draw(false);
+    assert!(!store.block_source(store.epoch.get(), rebuilt));
+}

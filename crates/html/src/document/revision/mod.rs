@@ -24,7 +24,7 @@ mod tests;
 mod text;
 
 pub use apply::ApplyError;
-pub use mutation::Mutation;
+pub use mutation::{Mutation, SourceNode};
 pub(super) use repaint::Kept;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
@@ -93,13 +93,13 @@ impl Document {
         // общий с `apply`; иначе новая разметка собирается целиком.
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
-            && let Some(batch) = mutation::Batch::new(&shape.records())
+            && let Some(mut batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
             let started = crate::work::Clock::now();
             let invalidation = self.invalidation(&batch, theme_css);
             if let Some(plan) = self.plan(
-                &batch,
+                &mut batch,
                 theme_css,
                 Some(&shape.sheets),
                 invalidation.as_ref(),
@@ -121,7 +121,7 @@ impl Document {
             #[cfg(feature = "engine-bench")]
             let parse = source.parse;
             drop(source);
-            let report = self.rebuild(&batch, invalidation, theme_css, key, revision)?;
+            let report = self.rebuild(&mut batch, invalidation, theme_css, key, revision)?;
             #[cfg(feature = "engine-bench")]
             {
                 self.timings.parse = parse;

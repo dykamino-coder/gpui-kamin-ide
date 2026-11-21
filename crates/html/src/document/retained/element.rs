@@ -22,6 +22,7 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
+    same_prepaint: bool,
     /// The scroll nodes of the replayed record moved (`prepaint` to `paint`).
     scroll_plan: Option<gpui::ScrollReplay>,
     /// The root scrollport's bars and their hit areas this frame, drawn
@@ -55,6 +56,7 @@ impl Retained {
                 flow: prepared.flow,
                 scheduled: prepared.scheduled,
                 replay: false,
+                same_prepaint: false,
                 scroll_plan: None,
                 root_bars: None,
                 laid_out: Some(prepared.parent),
@@ -78,6 +80,7 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
+            same_prepaint: false,
             scroll_plan: None,
             root_bars: None,
             laid_out: None,

@@ -41,7 +41,7 @@ impl FlowReuse {
                     let from = record.replay.borrow().as_ref().and_then(|r| {
                         (replayable
                             && slot.paint_holds()
-                            && r.follows(epoch)
+                            && r.follows(&self.store, epoch)
                             && (r.origin == origin
                                 || r.movable
                                     && raster_phase_matches(r.origin, origin)
