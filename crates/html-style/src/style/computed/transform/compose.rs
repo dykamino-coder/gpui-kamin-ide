@@ -71,6 +71,7 @@ impl Transform {
             tr: out.tr,
             m4: out.m4,
             m4_pct: out.m4_pct,
+            scale_primitive: false,
             ..self
         }
     }
@@ -87,6 +88,9 @@ impl Transform {
         use std::f32::consts::{PI, TAU};
         // Столбцы `lin` — образы осей: `row0` псевдокода = (a, b) записи
         // `matrix(a, b, c, d, e, f)`, `row1` = (c, d).
+        if self.scale_primitive && other.scale_primitive {
+            return self.lerp_scales(other, k);
+        }
         let unmatrix = |l: [[f32; 2]; 2]| -> Option<((f32, f32), f32, [f32; 4])> {
             let (r0x, r0y, r1x, r1y) = (l[0][0], l[1][0], l[0][1], l[1][1]);
             let det = r0x * r1y - r0y * r1x;
@@ -113,8 +117,12 @@ impl Transform {
             ];
             Some(((sx, sy), angle, m))
         };
-        let (mut sa, mut aa, ma) = unmatrix(self.lin)?;
-        let (sb, mut ab, mb) = unmatrix(other.lin)?;
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (Some((mut sa, mut aa, ma)), Some((sb, mut ab, mb))) =
+            (unmatrix(self.lin), unmatrix(other.lin))
+        else {
+            return None;
+        };
         if (sa.0 < 0.0 && sb.1 < 0.0) || (sa.1 < 0.0 && sb.0 < 0.0) {
             sa = (-sa.0, -sa.1);
             aa += if aa < 0.0 { PI } else { -PI };
@@ -132,7 +140,6 @@ impl Transform {
                 ab -= TAU;
             }
         }
-        let mix = |x: f32, y: f32| x + (y - x) * k;
         let (sx, sy) = (mix(sa.0, sb.0), mix(sa.1, sb.1));
         let m: [f32; 4] = std::array::from_fn(|i| mix(ma[i], mb[i]));
         let angle = mix(aa, ab);
@@ -164,4 +171,33 @@ impl Transform {
             ..out
         })
     }
+
+    /// A single scale function (or identity padding for `none`) interpolates
+    /// its arguments even at zero. Matrix functions and composed lists use
+    /// decomposition instead; a diagonal matrix does not prove matching
+    /// primitives (css-transforms-1 section interpolation-of-transforms).
+    fn lerp_scales(&self, other: &Transform, k: f32) -> Option<Transform> {
+        let diagonal = |l: &[[f32; 2]; 2]| l[0][1] == 0.0 && l[1][0] == 0.0;
+        if !diagonal(&self.lin) || !diagonal(&other.lin) {
+            return None;
+        }
+        let mix = |x: f32, y: f32| x + (y - x) * k;
+        let (sx, sy) = (
+            mix(self.lin[0][0], other.lin[0][0]),
+            mix(self.lin[1][1], other.lin[1][1]),
+        );
+        let tr: [[f32; 3]; 2] =
+            std::array::from_fn(|i| std::array::from_fn(|j| mix(self.tr[i][j], other.tr[i][j])));
+        let mut out = Transform::default();
+        out.push(Self::diag(sx, sy), tr);
+        Some(Transform {
+            scale: (sx, sy),
+            translate: (tr[0][0], tr[1][0]),
+            translate_pct: (tr[0][1], tr[1][2]),
+            ..out
+        })
+    }
 }
+
+#[cfg(test)]
+mod tests;

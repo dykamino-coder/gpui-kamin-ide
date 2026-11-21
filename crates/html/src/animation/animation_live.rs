@@ -84,7 +84,9 @@ pub(crate) async fn animated(
     ) else {
         return painted_stack(stk, e, inherited, opts).await;
     };
-    if let Some(frozen) = bake_frozen(e, false, vcx) {
+    // The baked copy carries `transform`/`rotate`/`scale` as well: the block
+    // path builds the transform wrapper from the element it is handed.
+    if let Some(frozen) = bake_frozen(e, true, vcx) {
         return painted_stack(stk, &frozen, inherited, opts).await;
     }
     if spec.frozen() {

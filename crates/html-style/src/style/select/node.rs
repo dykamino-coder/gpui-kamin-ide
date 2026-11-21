@@ -13,7 +13,13 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
             .find(|a| &*a.name.local == key)
             .map(|a| a.value.to_string())
     };
+    let tag = local_name(&name.local);
+    let list: Vec<(String, String)> = attrs
+        .iter()
+        .map(|a| (a.name.local.to_string(), a.value.to_string()))
+        .collect();
     Some(Ancestor {
+        checked: tree.form.checked(child, &tag, &list),
         key: crate::dom::tree_index::HandleKey::of(child),
         matching: tree.matching.clone(),
         ancestor_bloom: None,
@@ -21,7 +27,7 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
         counter_context: Default::default(),
         content_style: None,
         content_none: None,
-        tag: local_name(&name.local),
+        tag,
         html_attrs: content::html_attributes(&name.ns, tree.xhtml),
         id: find("id"),
         classes: find("class")
@@ -31,10 +37,7 @@ pub fn ancestor_of(child: &Handle, spot: Spot, tree: &TreeIndex) -> Option<Ances
                     .collect()
             })
             .unwrap_or_default(),
-        attrs: attrs
-            .iter()
-            .map(|a| (a.name.local.to_string(), a.value.to_string()))
-            .collect(),
+        attrs: list,
         spot,
         href: find("href"),
         visited: link_visited(find("href").as_deref()),

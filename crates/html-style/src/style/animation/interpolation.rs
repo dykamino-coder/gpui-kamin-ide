@@ -224,12 +224,13 @@ pub fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Compute
     if prev.1.reset_transforms.transform.is_some() || next.1.reset_transforms.transform.is_some() {
         let a = prev.1.reset_transforms.transform.unwrap_or_default();
         let b = next.1.reset_transforms.transform.unwrap_or_default();
-        if (a.lin != b.lin || a.tr != b.tr)
-            && !a.has_3d
-            && !b.has_3d
-            && let Some(m) = a.lerp_2d(&b, k)
-        {
-            out.reset_transforms.transform = Some(m);
+        if a.lin != b.lin || a.tr != b.tr || a.m4 != b.m4 {
+            let mixed = (!a.has_3d && !b.has_3d).then(|| a.lerp_2d(&b, k)).flatten();
+            // A pair that cannot be interpolated animates discretely, switching
+            // at the midpoint (css-transforms-1 §interpolation-of-transforms,
+            // web-animations-1 §discrete).
+            let near = if k < 0.5 { prev } else { next };
+            out.reset_transforms.transform = mixed.or(near.1.reset_transforms.transform);
         }
     }
     // Отдельное свойство — тоже преобразование: коробка с ним несёт
