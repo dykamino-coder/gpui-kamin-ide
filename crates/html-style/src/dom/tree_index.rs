@@ -72,6 +72,8 @@ pub struct TreeIndex {
     pub doc: Rc<crate::values::DocumentValues>,
     /// XHTML host-language rules for attribute matching in this parse.
     pub xhtml: bool,
+    /// Checkedness of form controls (`:checked`).
+    pub form: crate::dom::form_state::FormState,
 }
 
 impl TreeIndex {
@@ -95,6 +97,7 @@ impl TreeIndex {
             slotted: Default::default(),
             doc,
             xhtml,
+            form: Default::default(),
         }
     }
 

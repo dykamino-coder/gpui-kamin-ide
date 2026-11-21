@@ -102,3 +102,28 @@ fn many_restyled_elements_give_up_the_set() {
         Some(LIMIT + 1)
     );
 }
+
+#[test]
+fn checked_state_dependencies_restyle_subjects_after_owner_changes() {
+    for attr in [
+        "form", "id", "name", "checked", "selected", "size", "multiple", "type", "disabled",
+    ] {
+        let changed = Changed {
+            elements: vec![4],
+            classes: vec![],
+            attrs: vec![attr.into()],
+        };
+        for css in [
+            "p:checked{color:red}",
+            "p:has(:checked){color:red}",
+            "p:is(:checked){color:red}",
+            "p:not(:checked){color:red}",
+        ] {
+            assert_eq!(
+                restyled(css, changed.clone(), &TREE),
+                Some(vec![4, 1, 2]),
+                "{attr}: {css}"
+            );
+        }
+    }
+}

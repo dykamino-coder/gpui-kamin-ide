@@ -35,6 +35,7 @@ mod shared_style;
 pub use shared_style::SharedStyle;
 mod document_rules;
 mod finish_document;
+pub mod form_state;
 pub mod input;
 pub mod mathml;
 mod mathml_defaults;

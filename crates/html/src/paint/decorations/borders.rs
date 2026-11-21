@@ -152,12 +152,22 @@ pub(crate) fn coloured_borders(
             side_px(bw.bottom),
             side_px(bw.left),
         );
+        // Solid sides on square corners meet on the corner diagonals: one
+        // polygon layer paints them (`border_sides`); patterned sides and
+        // rounded corners keep the strips below.
+        let square = square_corners(c);
+        let patterned = |i: usize| matches!(c.reset_border.border_side_styles[i], Some(7 | 8));
+        if square {
+            let colours =
+                std::array::from_fn(|i| (!patterned(i)).then(|| c.used_border_color(i).to_hsla()));
+            out.push(super::border_sides::polygon_sides([t, r, b, l], colours));
+        }
         // Сторона `currentcolor` красится цветом текста: квад при полосах
         // цвета не получает (`apply::apply_paint`, `strips`).
         for i in 0..4 {
             let colour = c.used_border_color(i);
             let w = [t, r, b, l][i];
-            if w <= 0.0 {
+            if w <= 0.0 || (square && !patterned(i)) {
                 continue;
             }
             // Абсолютный ребёнок считается от ВНУТРЕННЕГО края рамки,
@@ -189,4 +199,21 @@ pub(crate) fn coloured_borders(
             out.push(strip.into_any_element());
         }
     }
+}
+
+/// No corner of the border box is rounded (`border-radius` zero or unset).
+fn square_corners(c: &crate::style::computed::BoxStyle) -> bool {
+    let zero = |r: Option<Len>| match r {
+        None => true,
+        Some(Len::Px(v) | Len::Pct(v)) => v == 0.0,
+        Some(_) => false,
+    };
+    let radius = &c.reset_border.radius;
+    [radius.tl, radius.tr, radius.br, radius.bl]
+        .into_iter()
+        .all(zero)
+        && c.reset_border.radius_ell.is_none_or(|ell| {
+            ell.iter()
+                .all(|e| e.is_none_or(|(x, y)| zero(Some(x)) && zero(Some(y))))
+        })
 }

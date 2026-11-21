@@ -17,22 +17,19 @@ pub(super) fn sample(
     let mut inner = e.clone();
     // Animations are an origin of the cascade (css-cascade-5 §6.2): the sampled
     // values enter the cascaded style and are computed with it.
+    // Block-axis margins stay the box's USED ones: layout may already have
+    // collapsed them (`used_mut`), and editing the cascaded style drops that
+    // layer, so the cascaded margin would be applied a second time. Inline-axis
+    // margins stay cascaded: `auto` resolves against the sampled width.
+    let used = e.style.used().reset_box_layout.margin;
     let style = inner.style.cascaded_mut();
-    style.reset_box_layout.margin.top = frame
-        .reset_box_layout
-        .margin
-        .top
-        .or(style.reset_box_layout.margin.top);
+    style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.or(used.top);
     style.reset_box_layout.margin.right = frame
         .reset_box_layout
         .margin
         .right
         .or(style.reset_box_layout.margin.right);
-    style.reset_box_layout.margin.bottom = frame
-        .reset_box_layout
-        .margin
-        .bottom
-        .or(style.reset_box_layout.margin.bottom);
+    style.reset_box_layout.margin.bottom = frame.reset_box_layout.margin.bottom.or(used.bottom);
     style.reset_box_layout.margin.left = frame
         .reset_box_layout
         .margin
@@ -72,15 +69,12 @@ pub(super) fn sample(
         style.reset_effects.drop_shadow = frame.reset_effects.drop_shadow.clone();
     }
     if transforms {
-        if frame.reset_transforms.rotate_prop.is_some() {
-            style.reset_transforms.rotate_prop = frame.reset_transforms.rotate_prop;
-        }
-        if frame.reset_transforms.scale_prop.is_some() {
-            style.reset_transforms.scale_prop = frame.reset_transforms.scale_prop;
-        }
-        if frame.reset_transforms.transform.is_some() {
-            style.reset_transforms.transform = frame.reset_transforms.transform;
-        }
+        // Frames are complete computed styles, including `none`. Copying only
+        // present values would keep the underlying transform after a discrete
+        // animation has switched to a `none` endpoint.
+        style.reset_transforms.rotate_prop = frame.reset_transforms.rotate_prop;
+        style.reset_transforms.scale_prop = frame.reset_transforms.scale_prop;
+        style.reset_transforms.transform = frame.reset_transforms.transform;
     }
     crate::style::cascade::materialize::rematerialize(&e.style, inner, vcx)
 }
@@ -198,5 +192,42 @@ mod tests {
                 .rotate_prop,
             frame.reset_transforms.rotate_prop
         );
+    }
+    #[test]
+    fn sampled_frame_keeps_the_used_margins_layout_gave_a_materialized_box() {
+        let parsed =
+            crate::document::parsed::parse("<div style='margin:50px;opacity:0.5'></div>", "");
+        let div = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div").unwrap();
+        let mut collapsed = div.clone();
+        collapsed.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(0.0));
+        let frame = Computed {
+            reset_effects: crate::style::computed::StyleGroup::new(
+                crate::style::computed::ResetEffects {
+                    opacity: Some(1.0),
+                    ..Default::default()
+                },
+            ),
+            ..Computed::default()
+        };
+        let sampled = sample(&collapsed, &frame, true, parsed.values());
+        let margin = &sampled.style.used().reset_box_layout.margin;
+        assert_eq!(margin.top, Some(Len::Px(0.0)));
+        assert_eq!(margin.left, Some(Len::Px(50.0)));
+    }
+
+    #[test]
+    fn a_none_transform_frame_replaces_the_underlying_transform() {
+        let parsed = crate::document::parsed::parse(
+            "<div style='transform:matrix(0,0,0,0,0,0);rotate:10deg;scale:2'></div>",
+            "",
+        );
+        let element = crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == "div").unwrap();
+        let frame = Computed::default();
+        let sampled = sample(element, &frame, true, parsed.values());
+        let transforms = &sampled.style.used().reset_transforms;
+        assert!(transforms.transform.is_none());
+        assert!(transforms.rotate_prop.is_none());
+        assert!(transforms.scale_prop.is_none());
+        assert!(element.style.used().reset_transforms.transform.is_some());
     }
 }

@@ -155,8 +155,16 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
         let mut names = changed.classes.iter().chain(&changed.attrs);
         raw.contains('\\') || names.any(|n| mentions(raw, n))
     };
+    // `:checked` reads the attributes its state derives from (`form_state`).
+    let state = |raw: &String| {
+        (raw.contains('\\') || mentions(raw, "checked"))
+            && crate::dom::form_state::READS
+                .iter()
+                .any(|name| among(&changed.attrs, name))
+    };
     sel.classes.iter().any(|c| among(&changed.classes, c))
         || sel.attrs.iter().any(|a| among(&changed.attrs, &a.name))
+        || sel.pseudo.iter().chain(&sel.also).any(state)
         || sel.pseudo.iter().chain(&sel.also).any(text)
         || sel
             .arguments

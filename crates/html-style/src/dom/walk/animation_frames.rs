@@ -1,11 +1,11 @@
-//! Разрешение `@keyframes` элемента при обходе: кадры как готовые стили.
+//! Resolves an element's `@keyframes` during the walk: frames as finished styles.
 //!
-//! Вход — стиль элемента, наборы кадров документа и его переменные; выход —
-//! список `(доля, Computed)`, где каждый кадр — объявления поверх базового
-//! стиля (кадр заменяет `transform`, а не дописывает). Считается здесь,
-//! потому что к отрисовке таблицы стилей уже нет. У остановленной анимации
-//! достраиваются `0%`/`100%` (css-animations-1 §keyframes), несколько
-//! остановленных складываются слоями по порядку списка (§3).
+//! Input is the element style, the document keyframe sets and its variables; output is
+//! a list of `(progress, Computed)` where each frame is declarations over the base
+//! style (a frame replaces `transform`, it does not append). It is computed here
+//! because the stylesheets are gone by paint time.
+//! Missing `0%`/`100%` frames of frozen animations use the underlying style
+//! (css-animations-1 §keyframes); several frozen animations stack in list order (§3).
 
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, Keyframes, VarMap};
@@ -34,7 +34,7 @@ pub(super) fn animation_frames(
                     // дописывает функции к уже стоящим (ветка
                     // `"transform"`: `self.transform.unwrap_or_default()`).
                     if decls.contains("transform") {
-                        c.reset_transforms.transform = None;
+                        c.apply_one("transform", "none", vcx);
                     }
                     c.apply_decls_with_vars(decls, vars, vcx);
                     // Происхождение анимаций ниже важных объявлений
@@ -47,24 +47,22 @@ pub(super) fn animation_frames(
                             .cloned()
                             .collect();
                         if !over.is_empty() {
+                            // An important transform replaces the animation's
+                            // list; applying it to that matrix would append it.
+                            if over.contains("transform") {
+                                c.apply_one("transform", "none", vcx);
+                            }
                             c.apply_decls_with_vars(&over, vars, vcx);
                         }
                     }
                     (*at, c)
                 })
                 .collect();
-            // Недостающие `0%`/`100%` строятся из вычисленного стиля
-            // (css-animations-1 §keyframes). Только у остановленной:
-            // живая обёртка с таким кадром сделала бы reftest
-            // недетерминированным (`individual-transform-combine`: пять
-            // наборов из одного `to`).
+            // Frozen samples use implicit endpoints from the underlying style
+            // (css-animations-1 §keyframes). Live endpoint completion belongs
+            // with the shared animation clock and deterministic stepping slice.
             if a.frozen() {
-                if resolved.first().is_some_and(|f| f.0 > 0.0) {
-                    resolved.insert(0, (0.0, base.clone()));
-                }
-                if resolved.last().is_some_and(|f| f.0 < 1.0) {
-                    resolved.push((1.0, base.clone()));
-                }
+                close_track(&mut resolved, base);
             }
             (resolved.len() >= 2).then_some(resolved)
         };
@@ -118,6 +116,18 @@ pub(super) fn animation_frames(
     anim
 }
 
+/// Adds the implicit `0%`/`100%` keyframes (css-animations-1 §keyframes:
+/// "If a 0% or from keyframe is not specified, then the user agent constructs
+/// a 0% keyframe using the computed values of the properties being animated").
+fn close_track(track: &mut Vec<(f32, Computed)>, base: &Computed) {
+    if track.first().is_some_and(|f| f.0 > 0.0) {
+        track.insert(0, (0.0, base.clone()));
+    }
+    if track.last().is_some_and(|f| f.0 < 1.0) {
+        track.push((1.0, base.clone()));
+    }
+}
+
 /// Одно свойство или сокращение и его длинное свойство (`background` и
 /// `background-color`): пока сокращения не раскрыты при разборе, так
 /// узнаётся, что кадр трогает важное свойство.
@@ -155,6 +165,25 @@ mod tests {
                     (property == "margin").then_some(Len::Px(20.0))
                 );
             }
+        }
+    }
+    #[test]
+    fn important_transform_replaces_the_animated_list() {
+        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
+        let vcx = doc.values();
+        let mut base = Computed::default();
+        base.apply_one("animation", "a 1s linear", vcx);
+        base.apply_one("transform", "translateX(10px)", vcx);
+        let decls = crate::style::css::parse_decls("transform: scale(2)");
+        let important = crate::style::css::parse_decls("transform: translateX(10px)");
+        let tracks = HashMap::from([("a".into(), vec![(0.0, decls.clone()), (1.0, decls)])]);
+        let frames =
+            animation_frames(&base, &tracks, &HashMap::new(), Some(&important), vcx).unwrap();
+        for (_, frame) in frames {
+            assert_eq!(
+                frame.reset_transforms.transform,
+                base.reset_transforms.transform
+            );
         }
     }
 }

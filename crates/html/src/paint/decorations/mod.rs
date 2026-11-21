@@ -2,6 +2,7 @@
 
 use crate::layout::cx::FrameCx;
 use crate::style::computed::BoxStyle;
+mod border_sides;
 mod borders;
 pub(crate) mod clone_hidden;
 mod fragments;
