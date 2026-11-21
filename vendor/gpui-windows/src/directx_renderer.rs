@@ -161,6 +161,9 @@ struct BlurScratch {
     group_regions: Vec<Region>,
     /// KaminIDE patch: tile lists of the composite run in one pass (`group_tiles`).
     tile_lists: group_tiles::TileLists,
+    /// KaminIDE patch: the scissor of the frame scene being drawn
+    /// (`retained::Plan::Within`); group composites outside it are skipped.
+    frame_within: Option<Region>,
     pool: texture_pool::Pool,
     /// Готовый буфер каждой группы: сырой или размытый.
     group_slots: Vec<usize>,
@@ -815,6 +818,10 @@ impl DirectXRenderer {
         let plan = self.plan_frame(scene, background_appearance);
         self.count_plan(&plan);
         let keep = matches!(plan, retained::Plan::Keep);
+        if keep {
+            // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.
+            self.carry_kept_groups(scene);
+        }
         if keep && !self.unpresented {
             self.frame_drawn(&plan);
             if self.capture.is_some()
@@ -936,7 +943,9 @@ impl DirectXRenderer {
         };
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
+        self.blur.frame_within = within;
         let drawn = self.draw_scene(scene);
+        self.blur.frame_within = None;
         self.timing_main = false;
         if let Some(state) = restore {
             unsafe { ctx.RSSetState(&state) };

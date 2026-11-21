@@ -6,6 +6,9 @@
 use super::super::super::group_cache::GroupCounts;
 use super::*;
 
+// KaminIDE patch: the cache across kept frames and partial frames.
+mod kept;
+
 /// One group per cell of a 4×3 grid: a quad of `colors[i]` at opacity 0.8.
 fn groups(cells: &[(usize, Hsla)]) -> Scene {
     let mut s = Scene::default();
