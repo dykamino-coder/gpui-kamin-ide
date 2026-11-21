@@ -96,7 +96,10 @@ fn recover_string_fixture(name: &str, external: bool, eof: bool) {
     let path = dir.join("input.html");
     std::fs::write(&path, html).unwrap();
     let prepared = read(&path).expect("CSS syntax recovery must not abort page loading");
-    assert!(prepared.contains(css), "the host must retain the CSS source");
+    assert!(
+        prepared.contains(css),
+        "the host must retain the CSS source"
+    );
     kamin_html::dom::try_parse(&prepared, "").expect("the prepared document must parse");
     let rules = kamin_html::css::parse_stylesheet(css).unwrap();
     assert_eq!(rules[0].decls.last("color"), Some("blue"));
