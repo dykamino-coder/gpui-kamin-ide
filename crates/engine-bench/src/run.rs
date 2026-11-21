@@ -377,7 +377,10 @@ pub(super) async fn run(
             frames.prepare(cx, window, index)?;
             let (sample, frame, counts) =
                 sample(cx, window, fonts, args, step, capture, luid).await?;
-            work.push(counts);
+            let kept = super::frames::keeps_step(args.mode == Mode::Scroll, index);
+            if kept {
+                work.push(counts);
+            }
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
@@ -385,8 +388,10 @@ pub(super) async fn run(
             frames
                 .settle((&mut *cx, window, fonts, args, capture, luid), step)
                 .await?;
-            samples.push(sample.phases);
-            diagnostics.push(sample.diagnostics);
+            if kept {
+                samples.push(sample.phases);
+                diagnostics.push(sample.diagnostics);
+            }
         }
         #[cfg_attr(not(feature = "heap-report"), allow(unused_mut))]
         let mut mode = report::measured_mode(&samples, &diagnostics);
