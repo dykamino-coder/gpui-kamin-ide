@@ -6,8 +6,8 @@ use super::*;
 fn closed_destinations_keep_strict_and_fixed_routing_in_host_arena() {
     let p = Positioning::default();
     p.icb_open();
-    p.cb_open_with(true);
-    p.open_cb(ABS, Some(7));
+    p.cb_open_with(true, None);
+    p.open_cb(ABS, Some(7), None);
     let retained = p.retain();
     let strict_host = p.cb_close();
     let fixed_host = p.cb_close();
@@ -45,7 +45,7 @@ fn closed_destinations_keep_strict_and_fixed_routing_in_host_arena() {
 fn retained_destinations_do_not_own_closed_queues() {
     let p = Positioning::default();
     p.icb_open();
-    p.cb_open_with(true);
+    p.cb_open_with(true, None);
     let retained = p.retain();
     p.cb.borrow_mut().clear();
     p.icb.borrow_mut().clear();
