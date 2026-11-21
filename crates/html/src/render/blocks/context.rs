@@ -37,6 +37,40 @@ pub(crate) fn blocks(nodes: &[Node], inherited: &BoxStyle, opts: &RenderOpts) ->
         .finish()
 }
 
+/// The boxes of `node`, a child that the preparation of its block list
+/// (`build`: anonymous boxes, margin collapsing, float wrapping) already
+/// made, built as the flow builds it among its siblings. `opts` are the
+/// list's child options. Preparing a list of `node` alone would treat it as
+/// the first and last child and move its margins to the container.
+pub(crate) fn prepared_block(
+    node: &Node,
+    inherited: &BoxStyle,
+    opts: &RenderOpts,
+) -> Vec<AnyElement> {
+    let (_, under_tf) = super::prepare_children::container_flags(inherited);
+    let nodes = std::slice::from_ref(node);
+    let letter_scope = crate::render::first_letter_scope::Scope::new(nodes, inherited);
+    reblessive::Stack::new()
+        .enter(|stk| {
+            super::flow::blocks_flow(
+                stk,
+                nodes,
+                Vec::new(),
+                Vec::new(),
+                letter_scope,
+                inherited,
+                opts,
+                false,
+                under_tf,
+                Default::default(),
+                usize::MAX,
+                0,
+                Vec::new(),
+            )
+        })
+        .finish()
+}
+
 pub(super) fn child_options(
     inherited: &BoxStyle,
     sizes: &BoxDimensions,

@@ -144,8 +144,7 @@ pub(crate) async fn paint_element(
     let e = if hoist_margins || hoist_place {
         let mut copy = e.clone();
         if hoist_margins {
-            copy.style.used_mut().reset_box_layout.margin.left = None;
-            copy.style.used_mut().reset_box_layout.margin.right = None;
+            crate::layout::block::margins::strip_inline_margins(&mut copy);
         }
         if hoist_place {
             copy.style.used_mut().reset_grid.grid_row = None;

@@ -96,7 +96,7 @@ where
             let size = Size { width, height }
                 .maybe_clamp(node_min_size, node_max_size)
                 .maybe_max(padding_border.sum_axes().map(Some));
-            return LayoutOutput {
+            let mut output = LayoutOutput {
                 size,
                 #[cfg(feature = "content_size")]
                 scrollable_overflow_rect: Rect::ZERO,
@@ -109,6 +109,10 @@ where
                 oof_candidates: crate::tree::OofCandidates::NONE,
                 oof_positioning_area: None,
             };
+            if let Some(leaf) = style.leaf_output() {
+                leaf.apply(&mut output);
+            }
+            return output;
         };
     }
 
@@ -185,7 +189,7 @@ where
     let baselines_x =
         measured_baselines::physical_x(style, measured, size.width, content_box_inset);
 
-    LayoutOutput {
+    let mut output = LayoutOutput {
         size,
         #[cfg(feature = "content_size")]
         scrollable_overflow_rect,
@@ -199,7 +203,12 @@ where
         inline_block_last_y: None,
         oof_candidates: crate::tree::OofCandidates::NONE,
         oof_positioning_area: None,
+    };
+    // A leaf standing for a laid out subtree gives what the subtree gave.
+    if let Some(leaf) = style.leaf_output() {
+        leaf.apply(&mut output);
     }
+    output
 }
 
 #[cfg(test)]

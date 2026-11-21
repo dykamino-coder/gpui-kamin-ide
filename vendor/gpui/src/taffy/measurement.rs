@@ -161,7 +161,9 @@ pub(super) fn leaf(
             }
         }
     }
-    taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
+    // A leaf standing for a laid out subtree gives what the subtree gave.
+    let mut standing = None;
+    let mut output = taffy::compute_leaf_layout(input, style, taffy::tree::calc_value, |known, available| {
         crate::frame_perf::LAYOUT_MEASURES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let _timer = super::MeasureTimer(std::time::Instant::now());
         let Some(context) = context else {
@@ -194,6 +196,7 @@ pub(super) fn leaf(
             };
         }
         let measured = context.measure.borrow_mut().measure(known, available, geometry, window, cx);
+        standing = measured.leaf;
         let output = measured.to_native(scale);
         // Intrinsic probes must not replace metadata belonging to a cached full layout.
         if performed {
@@ -212,7 +215,11 @@ pub(super) fn leaf(
             context.performed_size = size;
         }
         output
-    })
+    });
+    if let Some(leaf) = standing {
+        leaf.apply(&mut output);
+    }
+    output
 }
 
 #[cfg(test)]

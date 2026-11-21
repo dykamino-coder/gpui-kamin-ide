@@ -202,6 +202,7 @@ pub use action::*;
 pub use anyhow::Result;
 pub use app::*;
 pub(crate) use arena::*;
+pub use arena::ArenaMark;
 pub use asset_cache::*;
 pub use assets::*;
 pub use color::*;

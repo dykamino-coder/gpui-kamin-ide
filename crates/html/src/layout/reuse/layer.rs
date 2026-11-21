@@ -129,6 +129,12 @@ impl Store {
         self.layer.unpainted.replace(blocks);
     }
 
+    /// More blocks the frame did not paint: far blocks that stood as their
+    /// leaves (`FlowReuse::finish_offscreen`), after `set_unpainted`.
+    pub(crate) fn add_unpainted(&self, blocks: impl IntoIterator<Item = u64>) {
+        self.layer.unpainted.borrow_mut().extend(blocks);
+    }
+
     /// Whether the layer's frame skipped block `id` off the screen: a
     /// paint-only change of a box in it shows no pixel there. The block's
     /// record takes the change (`Store::restyle`): a frame that brings it

@@ -34,6 +34,9 @@ pub struct MeasuredContent {
     pub lines_y: Option<Vec<Pixels>>,
     /// Every vertical-text line offset in content order, using the selected X origin.
     pub lines_x: Option<Vec<Pixels>>,
+    /// KaminIDE patch: the leaf stands for a laid out subtree and gives its block
+    /// container what that subtree gave (`standing_for`).
+    pub leaf: Option<taffy::LeafOutput>,
 }
 
 impl MeasuredContent {
@@ -41,8 +44,15 @@ impl MeasuredContent {
     pub fn new(size: Size<Pixels>) -> Self {
         Self {
             static_positions: Vec::new(), size, first_y: None, last_y: None, first_x: None, last_x: None,
-            x_from_right: false, lines_y: None, lines_x: None,
+            x_from_right: false, lines_y: None, lines_x: None, leaf: None,
         }
+    }
+
+    /// KaminIDE patch: content of a leaf standing for the laid out node of `snapshot`,
+    /// `size` its size: the leaf gives its block container the margin sets and
+    /// overflow that node gave, at the same device scale.
+    pub fn standing_for(size: Size<Pixels>, snapshot: &crate::LayoutSnapshot) -> Self {
+        Self { leaf: snapshot.leaf_output(), ..Self::new(size) }
     }
 
     pub(super) fn to_native(&self, scale: f32) -> taffy::MeasureOutput {

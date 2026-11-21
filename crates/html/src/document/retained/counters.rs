@@ -70,6 +70,23 @@ impl Document {
         self.reuse.stats.get().far
     }
 
+    /// Blocks far from the screen that stood as their leaf in painted frames
+    /// (`layout::reuse::offscreen`).
+    pub fn offscreen_leaves(&self) -> u64 {
+        self.reuse.stats.get().offscreen
+    }
+
+    /// Builds of far blocks by the measures of their leaves in painted frames.
+    pub fn offscreen_measures(&self) -> u64 {
+        self.reuse.stats.get().offscreen_measures
+    }
+
+    /// Build this document's frames without leaves (`layout::reuse::offscreen`).
+    #[cfg(test)]
+    pub(crate) fn turn_off_offscreen_leaves(&self) {
+        self.reuse.turn_off_offscreen_leaves();
+    }
+
     /// Far records kept for the next build.
     #[cfg(test)]
     pub(crate) fn far_records(&self) -> usize {

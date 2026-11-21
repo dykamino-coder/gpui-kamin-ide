@@ -138,3 +138,19 @@ fn a_frame_with_a_layout_cached_twice_is_not_swapped() {
     assert_eq!(cached(&cache.current_frame.read()), ["a"]);
     assert_eq!(cached(&cache.previous_frame.lock()), ["b"]);
 }
+
+#[test]
+fn a_release_scope_shapes_a_line_once_and_keeps_it_only_in_the_scope() {
+    // A measure lays a paragraph out at several widths in one release scope.
+    let cache = cache();
+    let first = with_layouts_released(|| {
+        let first = line(&cache, "a");
+        assert!(Arc::ptr_eq(&line(&cache, "a"), &first), "shaped once in the scope");
+        first
+    });
+    assert_eq!(cache.cached_layouts(), 0, "the frame caches hold nothing of it");
+    let next = with_layouts_released(|| line(&cache, "a"));
+    assert!(!Arc::ptr_eq(&next, &first), "a later scope shapes it again");
+    cache.finish_frame();
+    assert!(cache.released.lock().1.lines.is_empty(), "the frame's end drops the scope's lines");
+}

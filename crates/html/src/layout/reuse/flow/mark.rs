@@ -31,6 +31,9 @@ pub(crate) struct Mark {
     /// The paint key of the child's step-8 wrapper, which the flow puts on
     /// outside its records (`FlowCx::record`).
     pub(super) paint_last: Option<u64>,
+    /// Far blocks the build stood as leaves (`FlowReuse::leaves_made`): a
+    /// record of a subtree with one would replay none of its paint.
+    pub(super) leaves: u32,
 }
 
 impl super::FlowCx {
@@ -72,6 +75,12 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         shared_widths: false,
         skip_origin: None,
         paint_last: None,
+        leaves: opts
+            .cx
+            .contracts
+            .reuse
+            .as_ref()
+            .map_or(0, |r| r.leaves_made()),
     }
 }
 

@@ -382,6 +382,18 @@ impl Cache {
         self.final_layout_entry.is_none() && !self.measure_slots().iter().any(|entry| entry.is_some())
     }
 
+    /// KaminIDE patch: whether a held entry measured the node at a min- or
+    /// max-content width without a known one: a parent asked for its
+    /// intrinsic inline contribution (CSS Sizing 3 §5).
+    pub(crate) fn measured_by_content(&self) -> bool {
+        let by_content = |key: &CacheKey| {
+            let width = (key.kd_available_space >> 32) as u32;
+            width == NEG_INFINITY_BITS || width == INFINITY_BITS
+        };
+        self.final_layout_entry.as_ref().is_some_and(|e| by_content(&e.key))
+            || self.measure_slots().iter().flatten().any(|e| by_content(&e.key))
+    }
+
     /// KaminIDE patch: the measurement slots, empty before the first measurement.
     fn measure_slots(&self) -> &[Option<CacheEntry<Measurement>>] {
         self.measure_entries.as_slice()
@@ -432,6 +444,19 @@ mod tests {
         assert_eq!(cache.get(&input(2.0)), None);
         cache.store(&input(3.0), output(3.0));
         assert_eq!(cache.get(&input(3.0)), Some(output(3.0)));
+    }
+
+    #[test]
+    fn only_a_measure_without_a_known_definite_width_is_by_content() {
+        let mut cache = Cache::new();
+        cache.store(&input(5.0), output(5.0));
+        let definite = Size { width: AvailableSpace::Definite(5.0), height: AvailableSpace::MaxContent };
+        let fill = LayoutInput { known_dimensions: Size::NONE, available_space: definite, ..input(5.0) };
+        cache.store(&fill, output(5.0));
+        assert!(!cache.measured_by_content());
+        let max = LayoutInput { known_dimensions: Size::NONE, ..input(5.0) };
+        cache.store(&max, output(7.0));
+        assert!(cache.measured_by_content());
     }
 
     #[test]

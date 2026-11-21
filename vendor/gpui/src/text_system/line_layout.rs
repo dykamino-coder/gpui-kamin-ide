@@ -483,6 +483,11 @@ impl WrappedLineLayout {
 pub(crate) struct LineLayoutCache {
     previous_frame: Mutex<FrameCache>,
     current_frame: RwLock<FrameCache>,
+    /// KaminIDE patch: the lines shaped in the present release scope
+    /// ([`with_layouts_released`]) and the scope they belong to: a measure
+    /// that lays a paragraph out at several widths shapes its text once, and
+    /// the lines go with the next scope or the frame's end.
+    released: Mutex<(u64, FrameCache)>,
     platform_text_system: Arc<dyn PlatformTextSystem>,
     /// Advances when [`TextSystem::add_fonts`] successfully changes the font database.
     font_generation: Arc<AtomicUsize>,
@@ -548,6 +553,8 @@ impl FrameCache {
 thread_local! {
     /// KaminIDE patch: see [`with_layouts_released`].
     static LAYOUTS_RELEASED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// KaminIDE patch: the outermost release scope entered last (`released`).
+    static RELEASED_SCOPE: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 pub(crate) fn layouts_released() -> bool {
@@ -587,6 +594,9 @@ pub(crate) fn swap_layouts_released(released: &mut bool) {
 /// do not outlive the paint by a frame.
 pub(crate) fn with_layouts_released<R>(f: impl FnOnce() -> R) -> R {
     let outer = LAYOUTS_RELEASED.with(|released| released.replace(true));
+    if !outer {
+        RELEASED_SCOPE.with(|scope| scope.set(scope.get() + 1));
+    }
     let result = f();
     LAYOUTS_RELEASED.with(|released| released.set(outer));
     result
@@ -637,6 +647,7 @@ impl LineLayoutCache {
         Self {
             previous_frame: Mutex::default(),
             current_frame: RwLock::default(),
+            released: Mutex::default(),
             platform_text_system,
             font_generation,
             cached_font_generation: AtomicUsize::new(cached_font_generation),
@@ -758,11 +769,23 @@ impl LineLayoutCache {
             .sum()
     }
 
+    /// KaminIDE patch: the lines of the present release scope (`released`);
+    /// those of an earlier scope go first.
+    fn released_scope(&self) -> parking_lot::MutexGuard<'_, (u64, FrameCache)> {
+        let scope = RELEASED_SCOPE.with(std::cell::Cell::get);
+        let mut released = self.released.lock();
+        if released.0 != scope {
+            *released = (scope, FrameCache::default());
+        }
+        released
+    }
+
     pub fn finish_frame(&self) {
         let _font_generation = self.clear_if_font_generation_changed();
         let mut curr_frame = self.current_frame.write();
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
+        *self.released.lock() = Default::default();
         super::composed::PIECES.finish_frame();
         curr_frame.lines.clear();
         curr_frame.wrapped_lines.clear();
@@ -836,6 +859,11 @@ impl LineLayoutCache {
             layout
         } else {
             drop(current_frame);
+            if layouts_released()
+                && let Some(layout) = self.released_scope().1.wrapped_lines.get(key)
+            {
+                return layout.clone();
+            }
             let text = SharedString::from(text);
             let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
                 &text,
@@ -854,7 +882,7 @@ impl LineLayoutCache {
                 wrap_boundaries,
                 wrap_width,
             });
-            if layouts_released() || layouts_sealed() {
+            if layouts_sealed() {
                 return layout;
             }
             let key = Arc::new(CacheKey {
@@ -865,6 +893,10 @@ impl LineLayoutCache {
                 force_width: None,
                 letter_spacing,
             });
+            if layouts_released() {
+                self.released_scope().1.wrapped_lines.insert(key, layout.clone());
+                return layout;
+            }
 
             let mut current_frame = self.current_frame.write();
             current_frame
@@ -987,6 +1019,12 @@ impl LineLayoutCache {
             current_frame.used_lines.push(key);
             layout
         } else {
+            if layouts_released()
+                && let Some(layout) = self.released_scope().1.lines.get(key)
+            {
+                crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                return layout.clone();
+            }
             // KaminIDE patch (#76): промах кэша = реальный шейпинг.
             let shape_started = std::time::Instant::now();
             crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -997,7 +1035,7 @@ impl LineLayoutCache {
                 std::sync::atomic::Ordering::Relaxed,
             );
 
-            if layouts_released() || layouts_sealed() {
+            if layouts_sealed() {
                 return Arc::new(layout);
             }
             let key = Arc::new(CacheKey {
@@ -1009,6 +1047,11 @@ impl LineLayoutCache {
                 letter_spacing,
             });
             let layout = Arc::new(layout);
+            if layouts_released() {
+                drop(current_frame);
+                self.released_scope().1.lines.insert(key, layout.clone());
+                return layout;
+            }
             current_frame.lines.insert(key.clone(), layout.clone());
             current_frame.used_lines.push(key);
             layout
@@ -1190,6 +1233,7 @@ impl LineLayoutCache {
 
         *current_frame = FrameCache::default();
         *self.previous_frame.lock() = FrameCache::default();
+        *self.released.lock() = Default::default();
         super::composed::PIECES.clear();
         self.cached_font_generation
             .store(font_generation, Ordering::Release);

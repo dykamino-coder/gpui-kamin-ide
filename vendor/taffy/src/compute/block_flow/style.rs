@@ -43,6 +43,12 @@ impl<S: CoreStyle> CoreStyle for Logical<S> {
     fn is_flow_root(&self) -> bool {
         self.style.is_flow_root()
     }
+    /// The output a leaf repeats is the one its node gave in this same flow;
+    /// only the block axis must be the physical one.
+    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
+        let identity = !self.flow.vertical && !self.flow.block_reverse;
+        self.style.leaf_output().filter(|_| identity)
+    }
     fn direction(&self) -> Direction {
         if self.flow.inline_reverse {
             Direction::Rtl

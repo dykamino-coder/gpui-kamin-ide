@@ -13,8 +13,7 @@ pub(crate) struct Store {
     /// Записи под ключом `last`: другой ключ их не принимает, поэтому смена
     /// ключа их сбрасывает, а не держит устаревшие стили.
     pub(super) records: RefCell<HashMap<u64, Rc<Record>>>,
-    /// Records of blocks replayed on screen with their layout subtree
-    /// (`replay`), by node id.
+    /// Blocks replayed on screen with their layout subtree (`replay`), by node.
     pub(super) replays: RefCell<HashMap<u64, Rc<ReplayRecord>>>,
     /// Records of box contents replayed at any depth (`content`), by the
     /// node of their container.
@@ -77,6 +76,7 @@ pub(crate) struct Store {
     /// (`FlowKey::strip_boxes`) found them different in paint-only values.
     pub(super) repainted_roots: Cell<bool>,
     pub(super) layer: super::layer::Kept,
+    pub(super) offscreen: super::offscreen::Store, // far blocks' leaves
 }
 
 impl Store {

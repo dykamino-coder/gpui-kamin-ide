@@ -20,6 +20,10 @@ mod offscreen;
 /// paints nothing and reaches into the viewport (its edit: `at == HOLE`).
 const HOLE: usize = 999;
 
+/// A row of the wrapped block below the 300px window that the frame still
+/// builds and paints: farther rows stand as their leaves (`layout::reuse::offscreen`).
+const PAINTED: usize = 25;
+
 fn page(at: usize, edit: &str) -> String {
     framed(at, edit, false)
 }
@@ -154,12 +158,17 @@ fn a_box_in_part_on_the_screen_is_recorded_again_as_fresh(cx: &mut TestAppContex
 
 #[gpui::test]
 fn a_painted_box_below_the_screen_waits_and_shows_as_fresh(cx: &mut TestAppContext) {
-    check(cx, 40, true, true, true, true);
+    check(cx, PAINTED, true, true, true, true);
 }
 
 #[gpui::test]
 fn a_painted_box_below_the_screen_shows_as_fresh_in_a_taller_viewport(cx: &mut TestAppContext) {
-    check(cx, 40, true, true, true, false);
+    check(cx, PAINTED, true, true, true, false);
+}
+
+#[gpui::test]
+fn a_box_in_a_far_leaf_keeps_the_frame_with_nothing_waiting(cx: &mut TestAppContext) {
+    check(cx, 140, true, true, false, true);
 }
 
 #[gpui::test]

@@ -1607,6 +1607,12 @@ impl<NodeContext> TaffyTree<NodeContext> {
         Ok(&self.nodes[node.into()].style)
     }
 
+    /// KaminIDE patch: whether a parent asked `node` for its intrinsic inline
+    /// contribution in a layout its cache still holds (`Cache::measured_by_content`).
+    pub fn measured_by_content(&self, node: NodeId) -> bool {
+        self.nodes.get(node.into()).is_some_and(|data| data.cache.measured_by_content())
+    }
+
     /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
     #[inline]
     pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {

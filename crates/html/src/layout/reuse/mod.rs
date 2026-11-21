@@ -29,6 +29,7 @@ mod layer;
 mod layered;
 pub(crate) mod lines;
 mod narrow;
+mod offscreen;
 pub(crate) mod paragraph;
 mod placeholder;
 mod plain;
@@ -50,6 +51,7 @@ pub(crate) use deferred::{Wait, fragment_target};
 use frame::{placed, scaled};
 use gpui::{Bounds, LayoutSnapshot, Pixels, Point, ScaledPixels, Window, point, px, size};
 pub(crate) use key::{Counters, FlowKey};
+pub(crate) use offscreen::{Far, root_scroller_build};
 pub(crate) use placeholder::Replay;
 pub(crate) use record::Record;
 use source::{Shells, Source};
@@ -118,6 +120,8 @@ pub(crate) struct FlowReuse {
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
+    /// Blocks of this build standing far from the screen as leaves (`offscreen`).
+    offscreen: offscreen::Frame,
 }
 
 fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Element> {
@@ -196,6 +200,7 @@ impl FlowReuse {
             far_recorders: Cell::new(0),
             screen: Cell::new(None),
             mask: Cell::new(None),
+            offscreen: Default::default(),
         }))
     }
 

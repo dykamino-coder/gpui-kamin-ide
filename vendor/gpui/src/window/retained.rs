@@ -599,6 +599,11 @@ impl RetainedSubtree {
     }
 }
 
+/// KaminIDE patch: the start of a layout attempt (`Window::mark_layout_attempt`).
+pub struct LayoutAttempt {
+    arena: crate::ArenaMark,
+}
+
 /// KaminIDE patch: an exact layout leaf standing in for a laid out subtree
 /// (`Window::layout_snapshot`), valid at the device scale it was taken at.
 #[derive(Clone, Copy)]
@@ -613,6 +618,11 @@ impl LayoutSnapshot {
         self.scale
     }
 
+    /// What the node gave its block container, in device pixels.
+    pub(crate) fn leaf_output(&self) -> Option<taffy::LeafOutput> {
+        self.leaf.output()
+    }
+
     /// Border-box width of the snapshot leaf, in logical pixels; for an
     /// unpainted box ([`Window::layout_snapshot_unpainted`]) at least the
     /// width of its content.
@@ -625,6 +635,17 @@ impl LayoutSnapshot {
     /// subtree's height and overflow do not depend on that width.
     pub fn stretched(self) -> Self {
         Self { leaf: self.leaf.stretched(), ..self }
+    }
+
+    /// Border-box height of the snapshot leaf, in logical pixels.
+    pub fn height(&self) -> f32 {
+        self.leaf.height() / self.scale
+    }
+
+    /// Both snapshots place their box by the same block-axis margins: a leaf
+    /// requested from the box's own style stands where the box would.
+    pub fn same_block_margins(&self, other: &LayoutSnapshot) -> bool {
+        self.scale == other.scale && self.leaf.same_block_margins(&other.leaf)
     }
 }
 
@@ -732,6 +753,16 @@ impl Window {
         Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
     }
 
+    /// Whether a parent of the laid out node `id` asked for its min- or
+    /// max-content inline size (CSS Sizing 3 §5): a leaf of fixed width
+    /// would not repeat that contribution, so its snapshot does not stand
+    /// for it in such a parent.
+    pub fn layout_sized_by_content(&self, id: LayoutId) -> bool {
+        self.layout_engine
+            .as_ref()
+            .is_some_and(|engine| engine.sized_by_content(id))
+    }
+
     /// The exact leaf of a laid out node that paints nothing of its own and
     /// holds its content at its inline-start edge whatever its width (an
     /// anonymous wrapper box; the caller guarantees both). Unlike
@@ -742,6 +773,24 @@ impl Window {
     pub fn layout_snapshot_unpainted(&self, id: LayoutId) -> Option<LayoutSnapshot> {
         let leaf = self.layout_engine.as_ref()?.unpainted_leaf(id)?;
         Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
+    }
+
+    /// KaminIDE patch: where a layout attempt starts (`abandon_layout_attempt`):
+    /// the end of the element arena.
+    pub fn mark_layout_attempt(&self) -> LayoutAttempt {
+        LayoutAttempt {
+            arena: crate::mark_element_arena(),
+        }
+    }
+
+    /// KaminIDE patch: discard an attempt whose elements the host dropped
+    /// unpainted: the elements allocated since `attempt` go now, so the next
+    /// attempt reuses their memory instead of holding both trees until the
+    /// frame ends. Its layout nodes stay claimable by the next attempt; the
+    /// end-of-pass sweep drops those it leaves. Nothing allocated since may be
+    /// used again.
+    pub fn abandon_layout_attempt(&mut self, attempt: LayoutAttempt) {
+        crate::rewind_element_arena(attempt.arena);
     }
 
     /// Position in this pass's layout requests; pass it to `capture_layout`

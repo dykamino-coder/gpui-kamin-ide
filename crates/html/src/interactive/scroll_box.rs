@@ -117,7 +117,7 @@ pub(crate) fn scrollable(
             let inner_opts = opts.inner(|cx| {
                 cx.scroll.enter(target.clone(), frame, handle.clone());
             });
-            let build = inner_opts.cx.contracts.build;
+            let (build, _frame) = crate::layout::reuse::root_scroller_build(&inner_opts, &node.tag);
             let built = build.element(&inner, &inherited, &inner_opts);
             if target.applied() {
                 return built;

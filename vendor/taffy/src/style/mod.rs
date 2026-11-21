@@ -162,6 +162,10 @@ pub trait CoreStyle {
     fn block_flow(&self) -> Option<BlockFlow> {
         None
     }
+    /// KaminIDE patch: what a leaf standing for a laid out subtree gives its parent.
+    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
+        None
+    }
 
     // Overflow properties
     /// How children overflowing their container should affect layout
@@ -962,6 +966,11 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     /// Native block layout in logical axes, retaining its BFC and margin rules.
     #[cfg(feature = "block_layout")]
     pub block_flow: Option<BlockFlow>,
+    /// KaminIDE patch: a leaf standing for a laid out subtree gives its parent
+    /// what the subtree gave (`compute_leaf_layout`). Boxed: only such leaves
+    /// pay for it.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub leaf_output: Option<crate::util::sys::Box<crate::tree::LeafOutput>>,
 
     // Overflow properties
     /// How children overflowing their container should affect layout
@@ -1224,6 +1233,7 @@ impl<S: CheapCloneStr> Style<S> {
         grid_axis_reversed: None,
         #[cfg(feature = "block_layout")]
         block_flow: None,
+        leaf_output: None,
         overflow: Point {
             x: Overflow::Visible,
             y: Overflow::Visible,
@@ -1383,6 +1393,9 @@ impl<S: CheapCloneStr> CoreStyle for Style<S> {
     #[cfg(feature = "block_layout")]
     fn block_flow(&self) -> Option<BlockFlow> {
         self.block_flow
+    }
+    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
+        self.leaf_output.as_deref().copied()
     }
     #[inline(always)]
     fn overflow(&self) -> Point<Overflow> {
@@ -1546,6 +1559,9 @@ impl<T: CoreStyle> CoreStyle for &'_ T {
     #[cfg(feature = "block_layout")]
     fn block_flow(&self) -> Option<BlockFlow> {
         (*self).block_flow()
+    }
+    fn leaf_output(&self) -> Option<crate::tree::LeafOutput> {
+        (*self).leaf_output()
     }
     #[inline(always)]
     fn overflow(&self) -> Point<Overflow> {
@@ -2276,6 +2292,7 @@ mod tests {
             grid_axis_reversed: None,
             #[cfg(feature = "block_layout")]
             block_flow: None,
+            leaf_output: None,
             overflow: Default::default(),
             scrollbar_width: 0.0,
             contain: Default::default(),
@@ -2448,12 +2465,12 @@ mod tests {
         assert_type_size::<Option<GridLanes>>(20);
         assert_type_size::<Option<(f32, bool)>>(8);
         assert_type_size::<Size<Option<f32>>>(16);
-        assert_type_size::<Style<String>>(1016);
+        assert_type_size::<Style<String>>(1024);
 
         // String-type dependent (Arc<str>)
         assert_type_size::<GridTemplateComponent<Arc<str>>>(56);
         assert_type_size::<GridPlacement<Arc<str>>>(24);
         assert_type_size::<Line<GridPlacement<Arc<str>>>>(48);
-        assert_type_size::<Style<Arc<str>>>(984);
+        assert_type_size::<Style<Arc<str>>>(992);
     }
 }

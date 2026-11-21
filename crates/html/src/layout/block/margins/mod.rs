@@ -183,3 +183,11 @@ pub(crate) fn collapse_margins_prepared(
 
 #[cfg(test)]
 mod tests;
+
+/// `e` without its inline margins: a wrapper or a leaf standing for it
+/// keeps them instead.
+pub(crate) fn strip_inline_margins(e: &mut crate::dom::Element) {
+    let margin = &mut e.style.used_mut().reset_box_layout.margin;
+    margin.left = None;
+    margin.right = None;
+}

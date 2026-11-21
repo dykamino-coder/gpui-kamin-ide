@@ -24,7 +24,7 @@ use crate::layout::replaced::replaced_used_style;
 use crate::paint::stacking::by_layer;
 use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
-pub(crate) use context::{blocks, blocks_stack, blocks_stack_with_dimensions};
+pub(crate) use context::{blocks, blocks_stack, blocks_stack_with_dimensions, prepared_block};
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
