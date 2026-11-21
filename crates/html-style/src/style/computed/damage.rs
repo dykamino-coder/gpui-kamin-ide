@@ -6,7 +6,9 @@
 //! reaches every descendant's own style), the background colour and gradients
 //! of the box itself (with `bg_explicit`, which only presentational hints at
 //! cascade time and control painting read) and, on request, its border
-//! colours, and the SVG paints `fill` and `stroke` (`svg`). A background image with a URL stays layout damage: it loads as a
+//! colours, and the SVG paints `fill` and `stroke` (`svg`). A generated
+//! background image (a conic gradient, a colour, their filters) is paint only
+//! too. A background image with a URL stays layout damage: it loads as a
 //! resource of the build. Everything else, `currentcolor` values resolved into
 //! other groups included, is layout damage. The destructuring is exhaustive: a
 //! new field of a compared struct must be classified here.
@@ -215,12 +217,19 @@ fn same_layout_background(a: &ResetBackground, b: &ResetBackground) -> bool {
         && *bg_clip == b.bg_clip
         && *bg_origin == b.bg_origin
         && *bg_border_insets == b.bg_border_insets
-        && *bg_image == b.bg_image
+        && (*bg_image == b.bg_image || generated(bg_image) && generated(&b.bg_image))
         && *bg_size == b.bg_size
         && *bg_pos == b.bg_pos
         && *bg_position_math == b.bg_position_math
         && *bg_lists == b.bg_lists
         && *bg_repeat == b.bg_repeat
+}
+
+/// No image, or one paint rasterizes without a load (`ImageSource::loads_url`):
+/// such images differ in paint only, like Blink's background layers
+/// (`ComputedStyle::DiffNeedsNormalPaintInvalidation`, `kBackground`).
+fn generated(image: &Option<super::ImageSource>) -> bool {
+    !image.as_ref().is_some_and(super::ImageSource::loads_url)
 }
 
 mod svg;
