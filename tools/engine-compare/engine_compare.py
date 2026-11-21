@@ -19,7 +19,7 @@ from ec import adapters as A  # noqa: E402
 from ec import metrics as M  # noqa: E402
 from ec import records as REC  # noqa: E402
 from ec.config import CLASSES, Config  # noqa: E402
-from ec.scheduler import Lane, Runner, plan  # noqa: E402
+from ec.scheduler import Lane, Runner, groups, plan  # noqa: E402
 
 
 def csv(s):
@@ -28,6 +28,16 @@ def csv(s):
 
 def lanes_of(cfg, ids=None):
     return [Lane(i, b, cfg.work / f'lane{i}') for i, b in enumerate(cfg.lanes) if ids is None or i in ids]
+
+
+def execute(cfg, ads, pol, todo, log, keep_memory=False):
+    """Run the units group by group (``scheduler.groups``); (wall seconds, [(task, record)])."""
+    wall, done = 0.0, []
+    for lanes, tasks in groups(todo, lanes_of(cfg), cfg.work, cfg.split_soft1):
+        r = Runner(cfg, ads, pol, lanes, cfg.gpu_parallel, log=log)
+        r.keep_memory = keep_memory
+        wall += r.run(tasks); done += r.done
+    return wall, done
 
 
 def fmt(x):
@@ -60,10 +70,9 @@ def quick(cfg, a):
     names = csv(a.engines) or list(cfg.engines)
     ads = {n: A.load(n, cfg) for n in names}
     todo, _ = plan(ads, [page], [a.cls], A.QUICK, cfg.store / 'quick', force=True)
-    r = Runner(cfg, ads, A.QUICK, lanes_of(cfg), cfg.gpu_parallel, log=lambda m: print(m, flush=True))
     cfg.store = cfg.store / 'quick'
-    wall = r.run(todo)
-    recs = {n: REC.merge([rec for t, rec in r.done if t.engine == n]) for n in names}
+    wall, done = execute(cfg, ads, A.QUICK, todo, lambda m: print(m, flush=True))
+    recs = {n: REC.merge([rec for t, rec in done if t.engine == n]) for n in names}
     print(f'\n{page.id} ({page.kind}), {CLASSES[a.cls][2]}; quick repeats; wall {wall:.1f} s\n')
     w = max(10, max(len(n) for n in names) + 2)
     for title, key, scale in (('frame ms', 'time_ms', 1), ('cpu ms/frame', 'cpu_ms', 1)):
@@ -80,7 +89,7 @@ def quick(cfg, a):
                  | {f'  {n} {ph}: {x["note"]}' for n in names for ph, x in recs[n]['rows'].items() if x.get('note')})
     if why:
         print('\nx = no number:\n' + '\n'.join(why))
-    walls = ', '.join(f'{t.engine}/{t.part} {rec.get("wall_s", 0):.1f}s' for t, rec in r.done)
+    walls = ', '.join(f'{t.engine}/{t.part} {rec.get("wall_s", 0):.1f}s' for t, rec in done)
     print(f'\nunit walls: {walls}')
 
 def run(cfg, a):
@@ -89,8 +98,7 @@ def run(cfg, a):
     ads = {n: A.load(n, cfg) for n in names}
     classes = csv(a.classes) or list(CLASSES)
     n = int(a.repeats or 3)
-    pol = A.Policy(min_repeats=n, fast_repeats=max(n, 8) if n > 1 else 1, max_repeats=max(n, 8) if n > 1 else 1,
-                   cpu_frames=int(a.cpu_frames or 10))
+    pol = A.Policy(min_repeats=n, max_repeats=max(n, 8) if n > 1 else 1, cpu_frames=int(a.cpu_frames or 10))
     redo = None
     if a.redo_between:
         import datetime as dt
@@ -104,9 +112,7 @@ def run(cfg, a):
     def say(m):
         line = time.strftime('%H:%M:%S ') + m; print(line, flush=True); log.write(line + '\n')
     gate(cfg, a, say=say)
-    rn = Runner(cfg, ads, pol, lanes_of(cfg), cfg.gpu_parallel, log=say)
-    rn.keep_memory = bool(redo)
-    wall = rn.run(todo)
+    wall, _ = execute(cfg, ads, pol, todo, say, keep_memory=bool(redo))
     say(f'done: {len(todo)} units in {wall:.0f} s')
 
 

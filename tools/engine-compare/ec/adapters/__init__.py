@@ -15,32 +15,30 @@ import re
 
 
 class Policy:
-    """Adaptive repeats: at least ``min_repeats``; rows faster than ``fast_ms`` get ``fast_repeats``; rows whose
-    repeats spread more than ``noisy`` (relative) get more, up to ``max_repeats``. ``quick`` = one repeat."""
+    """Adaptive repeats (the same rule as our bench's frame series): at least ``min_repeats`` values, then one more
+    while the row is not stable, up to ``max_repeats``. Stable = MAD / median <= ``stable`` (relative median absolute
+    deviation). ``quick`` = one repeat."""
 
-    def __init__(self, min_repeats=3, fast_ms=5.0, fast_repeats=8, noisy=0.25, max_repeats=8, cpu_frames=10, steady_ms=2000):
-        self.min_repeats = min_repeats; self.fast_ms = fast_ms; self.fast_repeats = fast_repeats
-        self.noisy = noisy; self.max_repeats = max_repeats; self.cpu_frames = cpu_frames; self.steady_ms = steady_ms
+    def __init__(self, min_repeats=3, max_repeats=8, stable=0.03, cpu_frames=10, steady_ms=2000):
+        self.min_repeats = min_repeats; self.max_repeats = max(max_repeats, min_repeats); self.stable = stable
+        self.cpu_frames = cpu_frames; self.steady_ms = steady_ms
 
     def want(self, repeats):
         """How many repeats a row with these values should have in total."""
-        from ..metrics import med, spread
+        from ..metrics import rel_mad
         v = [x for x in repeats if x is not None]
         if not v:
             return len(repeats)  # nothing to refine: failures are not retried
-        n = self.min_repeats
-        if med(v) < self.fast_ms:
-            n = max(n, self.fast_repeats)
-        s = spread(v)
-        if s is not None and s > self.noisy:
-            n = max(n, min(self.max_repeats, len(v) + 2))
-        return min(n, self.max_repeats)
+        if len(v) < self.min_repeats:
+            return self.min_repeats
+        r = rel_mad(v)
+        return len(v) if r is not None and r <= self.stable else min(self.max_repeats, len(v) + 1)
 
     def definition(self):
-        return f'rep{self.min_repeats}-{self.fast_repeats}@{self.fast_ms}-n{self.noisy}-cpu{self.cpu_frames}-st{self.steady_ms}'
+        return f'rep{self.min_repeats}-{self.max_repeats}-mad{self.stable}-cpu{self.cpu_frames}-st{self.steady_ms}'
 
 
-QUICK = Policy(min_repeats=1, fast_repeats=1, max_repeats=1)
+QUICK = Policy(min_repeats=1, max_repeats=1)
 
 
 def last_error(text, limit=160):

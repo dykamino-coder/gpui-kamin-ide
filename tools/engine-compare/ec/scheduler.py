@@ -15,12 +15,37 @@ from .config import lane_mask
 
 
 class Lane:
-    def __init__(self, n, base, work):
-        self.id = n; self.base = base; self.work = Path(work)
+    """``width`` 4 = two physical cores with HT (every class); 2 = one physical core (soft1 only: its second
+    thread, the HT sibling stays empty, as in the wide lane where soft1 is one thread of an otherwise idle core)."""
+
+    def __init__(self, n, base, work, width=4):
+        self.id = n; self.base = base; self.work = Path(work); self.width = width
         self.work.mkdir(parents=True, exist_ok=True)
 
     def mask(self, cls):
+        if self.width == 2:
+            if cls != 'soft1':
+                raise ValueError(f'a one-core lane measures only soft1, not {cls}')
+            return 0x2 << self.base
         return lane_mask(cls, self.base)
+
+
+def narrow(lane, work):
+    """The two one-core lanes inside a wide lane (ids 10 + 2*id, 11 + 2*id)."""
+    return [Lane(10 + 2 * lane.id + k, lane.base + 2 * k, Path(work) / f'lane{lane.id}{"ab"[k]}', width=2) for k in (0, 1)]
+
+
+def groups(todo, lanes, work, split_soft1):
+    """[(lanes, tasks)] in run order: every class on the wide lanes, then (``split_soft1``) the soft1 units on one
+    lane per physical core: one thread each, so twice as many at once with the same per-unit hardware."""
+    if not split_soft1:
+        return [(lanes, todo)]
+    wide = [t for t in todo if t.cls != 'soft1' or t.exclusive or t.gpu]
+    one = [t for t in todo if t not in wide]
+    out = [(lanes, wide)] if wide else []
+    if one:
+        out.append(([n for ln in lanes for n in narrow(ln, work)], one))
+    return out
 
 
 class Task:

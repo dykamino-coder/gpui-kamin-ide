@@ -23,15 +23,18 @@ BOUNDS = ('ours: one engine_bench process per phase on an offscreen GPU texture 
           'frame = from the frame request to pixels read back, minus the bench capture copy; cold = cold document in a '
           'warm process; memory = working set of the one process')
 BOUNDS_PLAN = ('ours: one engine_bench process per page and class runs every phase (as one browser visit): cold = '
-               'document-cold samples, then each warm phase on its own input after its load, frame series of fixed '
-               'duration; before a phase the page is let go quiet (late decodes) up to 10 windows, a page that keeps '
+               'document-cold samples, then each warm phase on its own input after its load, adaptive frame series: at '
+               'least 3 frames, then until the frame totals are stable (MAD / median <= 3 %) or 500 ms have passed '
+               '(scroll: the browsers'' step count); before a phase the page is let go quiet (late decodes) up to 10 windows, a page that keeps '
                'painting is measured with a note; peak memory = the process over the whole visit; steady memory = '
                'median working set over a 2 s idle window after the cold phase; scroll fresh-document check on the first '
                'and the last step; frame = from the frame request to pixels read back, '
                'minus the bench capture copy; CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop')
 # 2: CPU = all threads over the frame window minus the capture window; 3: one process per page (cold in the plan),
-# quiet windows converge instead of refusing, steady memory = window median, scroll fresh check first + last step
-DEF = 'ours-3'
+# quiet windows converge instead of refusing, steady memory = window median, scroll fresh check first + last step;
+# 4: adaptive series (stable_mad)
+DEF = 'ours-4'
+STABLE_MAD = 0.03  # the series stop rule, the same as the browsers' repeat visits (adapters.Policy.stable)
 
 
 class Ours:
@@ -71,7 +74,14 @@ class Ours:
         return page.file('base.html')
 
     def _run(self, exe, lane, page, cls, args, timeout):
-        tmp = lane.work / f'ours-{lane.id}'; tmp.mkdir(parents=True, exist_ok=True)
+        # A fresh TEMP/cwd per process: removing and re-creating one fixed directory raced with Windows' delayed
+        # delete (the next bench started in a directory that then vanished: "os error 2", a false failure).
+        old = getattr(self, '_tmp', {}).get(lane.id)
+        if old:
+            shutil.rmtree(old, ignore_errors=True)
+        self._seq = getattr(self, '_seq', 0) + 1
+        tmp = lane.work / f'ours-{lane.id}-{__import__("os").getpid()}-{self._seq}'; tmp.mkdir(parents=True, exist_ok=False)
+        self._tmp = dict(getattr(self, '_tmp', {}), **{lane.id: tmp})
         env = dict(__import__('os').environ, TEMP=str(tmp), TMP=str(tmp))
         gpu = 'default' if CLASSES[cls][1] == 'gpu' else 'software'
         err = tmp / 'stderr.txt'
@@ -93,7 +103,6 @@ class Ours:
         if code != 0 or not j:
             msg = err.read_text(encoding='utf-8', errors='replace') if err.exists() else ''
             return None, (f'crashed: {last_error(msg)}' if code != 0 else 'no report in the output'), wall
-        shutil.rmtree(tmp, ignore_errors=True)
         return j, None, wall
 
     def _runs(self, page, est_ms):
@@ -114,7 +123,7 @@ class Ours:
         steps = M.scroll_steps(page.meta)
         if 'S' in order and steps == 0:  # the same scenario as the browsers: nothing to scroll
             REC.row(rec, 'S')['empty'] = M.NO_SCROLL; order.remove('S')
-        plan = {'series_ms': series, 'min_runs': 3, 'phases': [],
+        plan = {'series_ms': series, 'min_runs': 3, 'stable_mad': self.e.get('stable_mad', STABLE_MAD), 'phases': [],
                 'memory_settle_ms': 2000 if order and order[0] in ('cold', 'R') else 0}
         for ph in order:
             p = {'name': ph, 'input': str(self._page(page, ph)), 'runs': 30}
@@ -125,7 +134,7 @@ class Ours:
             elif ph == 'S':
                 # as many 120 px steps as the browser probe makes on this page (down to one); the bench stops
                 # earlier only where its own document ends (whole step no longer fits)
-                p.update(mode='scroll', runs=steps or M.SCROLL_MAX_STEPS, min_runs=1, series_ms=600000)
+                p.update(mode='scroll', runs=steps or M.SCROLL_MAX_STEPS, min_runs=1, series_ms=600000, stable_mad=0)
             else:
                 p['mode'] = 'edit'; p['edit'] = EDITS[ph][1]
             plan['phases'].append(p)

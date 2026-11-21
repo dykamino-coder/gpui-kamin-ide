@@ -46,6 +46,15 @@ def spread(xs):
     return (max(xs) - min(xs)) / m if m else None
 
 
+def rel_mad(xs):
+    """Median absolute deviation over the median (the series stop rule); None with fewer than two values."""
+    xs = [x for x in xs if x is not None]
+    if len(xs) < 2:
+        return None
+    m = statistics.median(xs)
+    return statistics.median(abs(x - m) for x in xs) / m if m else None
+
+
 def bench_json(text):
     """The engine_bench JSON document from its stdout (log lines may precede it)."""
     import json

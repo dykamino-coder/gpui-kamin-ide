@@ -18,7 +18,7 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
 
-DEF = 'browser-2'  # 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
+DEF = 'browser-3'  # 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
 # The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
 # so its miss is known at once (wrap() recorded it in c.ok). Only that wait changes; every measured frame is the same.
 GUARD = 'setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},250);'
@@ -176,6 +176,7 @@ class Browser:
         marks, samples = extra
         pk, sd = M.tree_memory(samples, marks)
         rec['memory'] = {'peak_bytes': pk, 'steady_bytes': sd, 'empty': None if pk else 'no memory samples'}
+        first = res
         frames = {c: (v or {}).get('frames') for c, v in (res.get('cpu') or {}).items()}
         last = s.tree.snap()  # calibration: the warm browser's cycles per CPU millisecond so far
         per_ms = last[4] / (last[1] * 1000) if last[1] > 1 else None
@@ -203,7 +204,7 @@ class Browser:
         for ph in phases:
             r = REC.row(rec, ph); r['time_ms'] = M.med(r['repeats'])
             if r['time_ms'] is None and not r.get('empty'):
-                r['empty'] = (M.scroll_empty_reason(res) if ph == 'S' else None) or 'no frames of this phase in the probe result'
+                r['empty'] = (M.scroll_empty_reason(first) if ph == 'S' else None) or 'no frames of this phase in the probe result'
         rec['visits'] = visits; rec['wall_s'] = time.perf_counter() - t0
         return rec
 

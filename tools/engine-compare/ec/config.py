@@ -31,6 +31,8 @@ class Config:
         self.desktop = r.get('desktop', 'engine-compare-hidden')
         self.lanes = list(r.get('lanes', [0, 4, 8]))
         self.gpu_parallel = int(r.get('gpu_parallel', 2))
+        # soft1 on one lane per physical core (6 instead of 3); on only after the neighbour A/A check (README)
+        self.split_soft1 = bool(r.get('split_soft1', False))
         self.node = r.get('node', 'node')
         self.playwright = r.get('playwright'); self.selenium = r.get('selenium')
         self.engines = r.get('engines', {})

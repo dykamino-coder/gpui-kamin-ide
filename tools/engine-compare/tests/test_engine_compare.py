@@ -154,13 +154,35 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.tree_memory(samples, marks), (900, 220))
 
 
+class NarrowLanes(unittest.TestCase):
+    def test_soft1_runs_on_one_core_lanes_after_the_wide_classes(self):
+        import tempfile
+        from ec.scheduler import Lane, Task, groups
+        with tempfile.TemporaryDirectory() as d:
+            wide = [Lane(i, b, Path(d) / f'w{i}') for i, b in enumerate([0, 4, 8])]
+            mk = lambda cls: Task('e', None, cls, 'all', 'k', False, None, False)
+            todo = [mk('gpu4'), mk('soft1'), mk('soft2'), mk('soft1')]
+            self.assertEqual(groups(todo, wide, d, False), [(wide, todo)])
+            (l1, t1), (l2, t2) = groups(todo, wide, d, True)
+            self.assertEqual([t.cls for t in t1], ['gpu4', 'soft2']); self.assertEqual([t.cls for t in t2], ['soft1'] * 2)
+            self.assertEqual([x.mask('soft1') for x in l2], [0x2 << b for b in (0, 2, 4, 6, 8, 10)])
+            self.assertEqual(len({x.id for x in l2} | {x.id for x in wide}), 9)
+            self.assertEqual(wide[1].mask('soft1'), 0x8 << 4)   # the same one thread of an idle core
+            with self.assertRaises(ValueError):
+                l2[0].mask('gpu2')
+
+
 class Repeats(unittest.TestCase):
     def test_policy(self):
         p = Policy()
-        self.assertEqual(p.want([10, 10.2, 9.9]), 3)
-        self.assertEqual(p.want([2.0]), 8)          # fast rows get 8
-        self.assertEqual(p.want([10, 20, 15]), 5)   # noisy rows get more
-        self.assertEqual(p.want([None]), 1)         # failures are not retried
+        self.assertEqual(p.want([10, 10.2, 9.9]), 3)        # stable after the minimum: stop
+        self.assertEqual(p.want([2.0]), 3)                  # the minimum first, fast rows too
+        self.assertEqual(p.want([10, 20, 15]), 4)           # unstable: one more at a time
+        self.assertEqual(p.want([10, 20, 15, 11, 12, 30, 9, 25]), 8)  # the cap
+        self.assertEqual(p.want([10, 10.1, 30, 10.2]), 4)   # MAD ignores one outlier
+        self.assertEqual(p.want([None]), 1)                 # failures are not retried
+        self.assertAlmostEqual(M.rel_mad([10, 11, 9]), 0.1)
+        self.assertIsNone(M.rel_mad([5]))
 
     def test_noise_verdict(self):
         self.assertEqual(noise_verdict([10, 10.5, 10.2], [8, 8.2, 8.1])[0], 'better')
