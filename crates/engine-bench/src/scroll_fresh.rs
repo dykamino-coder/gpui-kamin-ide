@@ -21,6 +21,7 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
     let mut checks = Vec::with_capacity(steps.len());
     let mut failures = Vec::new();
     for (index, step) in steps.iter().enumerate() {
+        super::animation::prepare(cx, window, args, index + 1)?;
         let offset = step.offset;
         window.update(cx, |view, _, _| view.fresh_scroll = Some(offset))?;
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;

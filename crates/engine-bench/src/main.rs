@@ -10,6 +10,10 @@
 #[cfg(windows)]
 mod accounting;
 mod allocations;
+#[cfg(windows)]
+mod animation;
+#[cfg(windows)]
+mod animation_spool;
 mod args;
 #[cfg(windows)]
 mod build_info;

@@ -1,13 +1,10 @@
 //! Alternating edits with exact RGB validation of every captured transition.
 //! Missing captures and intermediate mismatches cannot produce a passing verdict.
+mod counters;
+mod references;
+use counters::{counters, frame_sample, layer_delta, layer_work};
 
-use super::{
-    args::Args,
-    report, resources,
-    run::{Step, sample},
-    view::View,
-    work,
-};
+use super::{args::Args, report, resources, run::Step, view::View, work};
 use gpui::{AsyncApp, WindowHandle};
 use kamin_html::host::capture::CaptureSession;
 use kamin_html::metrics::FontContext;
@@ -38,32 +35,8 @@ pub(super) async fn run(
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
-    // Fresh Documents do not inherit incremental layout/style state. Keep only
-    // two references, then restore the input before the measured transitions.
-    let mut references = Vec::with_capacity(2);
-    for markup in variants {
-        let (_, fresh, _) = sample(
-            cx,
-            window,
-            fonts,
-            args,
-            Step::Cold(Some(markup)),
-            capture,
-            luid,
-        )
-        .await?;
-        references.push(fresh.pixels);
-    }
-    sample(
-        cx,
-        window,
-        fonts,
-        args,
-        Step::Cold(Some(variants[0])),
-        capture,
-        luid,
-    )
-    .await?;
+    let references =
+        references::References::prepare(cx, window, fonts, args, capture, luid, variants).await?;
     let mut checks = Vec::with_capacity(args.runs);
     let mut skipped_checks = 0;
     let mut layer = Vec::with_capacity(args.runs);
@@ -75,6 +48,7 @@ pub(super) async fn run(
     let mut frame_samples = Vec::with_capacity(args.runs);
     for index in 1..=args.runs {
         let variant = index % 2;
+        super::animation::prepare(cx, window, args, index)?;
         let path_before = kamin_html::paint_path::read();
         let before = (
             layer_work(),
@@ -93,7 +67,10 @@ pub(super) async fn run(
         .await?;
         // Each edit commits a new revision whose frame slot counts from zero:
         // its counters after the frame are the work of this frame.
-        frame_samples.push(window.read_with(cx, counters)?);
+        let mut entry = frame_sample(index, window.read_with(cx, counters)?)?;
+        entry["animation"] =
+            super::animation::journal(window.read_with(cx, |view, _| view.doc.animation_frame())?);
+        frame_samples.push(entry);
         samples.push(measured.phases);
         diagnostics.push(measured.diagnostics);
         work.push(counts);
@@ -110,9 +87,10 @@ pub(super) async fn run(
         // Compare the actual measured frame after its timing and counters close.
         // A skipped presentation has no captured pixels and cannot prove equality.
         if let Some(frame) = frame {
+            let reference = references.get(index)?;
             let mut check = super::fresh_check::compare(
                 &frame.pixels,
-                &references[variant],
+                &reference,
                 args.fresh_check_dir.as_deref(),
                 &format!("edit-{index}-variant-{variant}"),
             )?;
@@ -123,7 +101,7 @@ pub(super) async fn run(
             {
                 super::fresh_check::compare(
                     &frame.pixels,
-                    &references[variant],
+                    &reference,
                     Some(directory),
                     &format!("edit-{index}-variant-{variant}"),
                 )?;
@@ -154,59 +132,6 @@ pub(super) async fn run(
         "method": "each_measured_capture_against_fresh_document",
     });
     mode["fresh_checks"] = json!(checks);
-    mode["document_frame_samples"] = frame_samples
-        .iter()
-        .enumerate()
-        .map(|(i, &counts)| frame_sample(i + 1, counts))
-        .collect::<Result<Value>>()?;
+    mode["document_frame_samples"] = json!(frame_samples);
     Ok((mode, work))
-}
-
-/// The scene layer's process-wide work counters (`gpui::layer_counters`).
-fn layer_work() -> [u64; 6] {
-    use gpui::layer_counters as c;
-    use std::sync::atomic::Ordering::Relaxed;
-    [
-        c::RECORDS.load(Relaxed),
-        c::COW_CLONES.load(Relaxed),
-        c::VALUES_WRITTEN.load(Relaxed),
-        c::BOXES_RERECORDED.load(Relaxed),
-        c::PRIMITIVES_COPIED.load(Relaxed),
-        c::PRESENTS_SKIPPED.load(Relaxed),
-    ]
-}
-
-/// One sample's layer work and frame builds/replays of the document's
-/// retained frame (a rebuilt document counts from zero again).
-fn layer_delta(before: ([u64; 6], (u64, u64)), after: ([u64; 6], (u64, u64))) -> Value {
-    let d = |i: usize| after.0[i].wrapping_sub(before.0[i]);
-    let since = |a: u64, b: u64| a.checked_sub(b).unwrap_or(a);
-    json!({
-        "layers_recorded": d(0),
-        "cow_clones": d(1),
-        "values_written": d(2),
-        "boxes_rerecorded": d(3),
-        "primitives_copied": d(4),
-        "presents_skipped": d(5),
-        "frame_builds": since(after.1.0, before.1.0),
-        "frame_replays": since(after.1.1, before.1.1),
-    })
-}
-
-/// Сборки, повторы и сборки внутри `Window::draw` документа на эту минуту.
-fn counters(view: &View, _: &gpui::App) -> (u64, u64, u64) {
-    let (builds, replays) = view.doc.retained_frames();
-    (builds, replays, view.doc.builds_inside_draw())
-}
-
-/// Работа документа за кадр правки; кадр без сборки и без повтора значит, что
-/// счётчики не начались с ревизии правки, и не выдаётся за ноль работы.
-fn frame_sample(index: usize, (builds, replays, inside): (u64, u64, u64)) -> Result<Value> {
-    if builds + replays == 0 {
-        return Err(format!("edit frame {index} neither built nor replayed the document").into());
-    }
-    Ok(
-        json!({"mode": "edit", "sample_index": index, "builds": builds, "replays": replays,
-        "builds_inside_draw": inside}),
-    )
 }

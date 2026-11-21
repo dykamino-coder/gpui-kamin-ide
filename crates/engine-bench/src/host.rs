@@ -113,6 +113,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
             startup.mark("font_context");
             let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
+            empty.set_animation_elapsed(args.animation_time(0));
             startup.mark("empty_document");
             let window = cx.open_window(
                 WindowOptions {
@@ -137,6 +138,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         .expect("Windows GPU readback");
                     let view = cx.new(|_| View {
                         doc: empty,
+                        animation_elapsed: args.animation_time(0),
                         phases: Rc::new(RefCell::new(Phases::default())),
                         viewport: None,
                         step: None,

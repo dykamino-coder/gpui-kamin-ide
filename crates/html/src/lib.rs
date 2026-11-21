@@ -64,6 +64,7 @@ pub use style::values::value;
 // контракт между фазами, а не API крейта. Наружу выходит только объявленное
 // `pub` в этом файле: `dom`, `render`, `svg`, `tolerance`, `flow`, реэкспорты.
 pub(crate) mod animation;
+pub use animation::clock::{AnimationFrame, AnimationTimeSource};
 pub(crate) use kamin_style::cache;
 #[expect(unused_imports, reason = "корень нижней фазы без верхних читателей")]
 pub(crate) use kamin_style::color;
