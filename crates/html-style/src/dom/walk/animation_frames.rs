@@ -34,7 +34,7 @@ pub(super) fn animation_frames(
                     // дописывает функции к уже стоящим (ветка
                     // `"transform"`: `self.transform.unwrap_or_default()`).
                     if decls.contains("transform") {
-                        c.reset_transforms.transform = None;
+                        c.apply_one("transform", "none", vcx);
                     }
                     c.apply_decls_with_vars(decls, vars, vcx);
                     // Происхождение анимаций ниже важных объявлений
@@ -50,7 +50,7 @@ pub(super) fn animation_frames(
                             // An important transform replaces the animation's
                             // list; applying it to that matrix would append it.
                             if over.contains("transform") {
-                                c.reset_transforms.transform = None;
+                                c.apply_one("transform", "none", vcx);
                             }
                             c.apply_decls_with_vars(&over, vars, vcx);
                         }
