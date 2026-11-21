@@ -1,6 +1,7 @@
 //! Paint-only style damage (`Computed::same_layout`).
 
 use super::*;
+use crate::style::computed::ImageSource;
 use crate::style::values::value::{Color, Len};
 
 #[test]
@@ -26,6 +27,22 @@ fn colour_and_background_colour_are_paint_only() {
     let mut d = b.clone();
     d.inh.ui.hidden = Some(true);
     assert!(!b.same_layout(&d), "visibility stays exact");
+}
+
+#[test]
+fn a_generated_background_image_is_paint_only_and_a_url_is_layout() {
+    let doc = crate::values::DocumentValues::detached(Default::default());
+    let a = Computed::default();
+    let mut conic = a.clone();
+    conic.reset_background.bg_image = ImageSource::parse("conic-gradient(red, blue)", doc.values());
+    assert!(matches!(
+        conic.reset_background.bg_image,
+        Some(ImageSource::Conic(_))
+    ));
+    assert!(a.same_layout(&conic) && conic.same_layout(&a));
+    let mut url = a.clone();
+    url.reset_background.bg_image = Some(ImageSource::Url("a.png".into()));
+    assert!(!a.same_layout(&url) && !conic.same_layout(&url));
 }
 
 #[test]
