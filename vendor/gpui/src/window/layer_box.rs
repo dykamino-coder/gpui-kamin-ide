@@ -164,7 +164,7 @@ impl Window {
     }
 
     /// Paint one run of box `owner` into a scratch scene, in `env`.
-    fn paint_box_run(
+    pub(super) fn paint_box_run(
         &mut self,
         owner: u32,
         area: Bounds<ScaledPixels>,
