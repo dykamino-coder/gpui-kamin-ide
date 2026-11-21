@@ -17,8 +17,8 @@ use crate::style::computed::Computed;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PaintValue(u8);
 
-// The bits other than the background colour are the contract ST3 and R3
-// fill; the layer takes them as their bindings land.
+// The layer writes background colour values; other paint deltas require
+// command recording until their value bindings land.
 #[allow(dead_code)]
 impl PaintValue {
     pub(crate) const BACKGROUND_COLOR: Self = Self(1);
@@ -151,7 +151,7 @@ fn svg_content(nodes: &[crate::dom::Node], path: &[usize]) -> bool {
 }
 
 /// The values of the box's own paint `new` changed from `old` when nothing
-/// else differs: its background (`Computed::with_paint_of`, the paint groups
+/// else differs: its background and border colours (`Computed::with_paint_of`, the groups
 /// of a restyle). `None` for any other difference, a new inherited UI group
 /// (`color` paints the text of descendants) included.
 fn own_paint_only(old: &Computed, new: &Computed) -> Option<PaintValue> {
@@ -162,11 +162,25 @@ fn own_paint_only(old: &Computed, new: &Computed) -> Option<PaintValue> {
     if old.reset_background != new.reset_background {
         bits = bits.union(PaintValue::BACKGROUND_COLOR);
     }
+    if old.reset_border.border_colors != new.reset_border.border_colors {
+        bits = bits.union(PaintValue::BORDER_COLORS);
+    }
     Some(bits)
 }
 #[cfg(test)]
 mod tests {
-    use super::PaintValue;
+    use super::{PaintValue, own_paint_only};
+    use crate::style::computed::Computed;
+    use crate::style::values::value::{Color, Len};
+
+    fn colour() -> Color {
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            a: 1.0,
+        }
+    }
 
     #[test]
     fn only_the_background_colour_is_written_into_the_layer() {
@@ -183,5 +197,40 @@ mod tests {
             assert!(!PaintValue::BACKGROUND_COLOR.union(other).layer_writable());
             assert!(!other.is_empty());
         }
+    }
+
+    #[test]
+    fn each_border_side_requires_a_record_including_a_simultaneous_background_write() {
+        let old = Computed::default();
+        for side in 0..4 {
+            let mut new = old.clone();
+            new.reset_border.border_colors[side] = colour().into();
+            let border = own_paint_only(&old, &new).unwrap();
+            assert_eq!(border, PaintValue::BORDER_COLORS, "side {side}");
+            assert!(!border.layer_writable());
+            new.reset_background.background = Some(colour());
+            let combined = own_paint_only(&old, &new).unwrap();
+            assert_eq!(combined, border.union(PaintValue::BACKGROUND_COLOR));
+            assert!(!combined.layer_writable());
+            assert_eq!(own_paint_only(&new, &old), Some(combined));
+        }
+    }
+
+    #[test]
+    fn unchanged_paint_is_empty_but_inherited_and_layout_changes_are_refused() {
+        let old = Computed::default();
+        assert_eq!(own_paint_only(&old, &old), Some(PaintValue::default()));
+        let mut background = old.clone();
+        background.reset_background.background = Some(colour());
+        assert_eq!(
+            own_paint_only(&old, &background),
+            Some(PaintValue::BACKGROUND_COLOR)
+        );
+        let mut inherited = background.clone();
+        inherited.inh.ui.color = Some(colour());
+        assert_eq!(own_paint_only(&old, &inherited), None);
+        let mut layout = background;
+        layout.reset_box_layout.margin.top = Some(Len::Px(1.0));
+        assert_eq!(own_paint_only(&old, &layout), None);
     }
 }
