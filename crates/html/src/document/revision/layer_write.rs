@@ -59,8 +59,7 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A replacement must cover every recorded run of the owner; a group
-    // root's run is its group's whole content, painted again with it.
+    // A replacement covers every recorded run of the owner (a group root's: its group).
     let held = |id: u64| {
         u32::try_from(id)
             .is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o) || layer.holds_group_root(o))
