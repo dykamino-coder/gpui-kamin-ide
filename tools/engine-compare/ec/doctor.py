@@ -92,6 +92,38 @@ def intruders(lanes, own=()):
     return out
 
 
+def _proc_cpu(pid):
+    """(cpu seconds, affinity mask) of a process, None when it cannot be opened."""
+    h = K.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return None
+    try:
+        c, e, k, u = (wintypes.FILETIME() for _ in range(4))
+        a, s = ctypes.c_size_t(), ctypes.c_size_t()
+        if not K.GetProcessTimes(wintypes.HANDLE(h), ctypes.byref(c), ctypes.byref(e), ctypes.byref(k), ctypes.byref(u)):
+            return None
+        K.GetProcessAffinityMask(wintypes.HANDLE(h), ctypes.byref(a), ctypes.byref(s))
+        t = lambda f: (f.dwHighDateTime << 32 | f.dwLowDateTime) / 1e7
+        return t(k) + t(u), a.value
+    finally:
+        K.CloseHandle(h)
+
+
+def load_and_hogs(lanes, seconds=1.0, own=(), limit=0.10):
+    """(busy share per CPU, [(pid, name, share of one core, mask)]) over one window: every process whose mask touches a
+    lane and which used more than ``limit`` of one core (foreign load on the measuring lanes, whatever its name)."""
+    lane = 0
+    for base in lanes:
+        lane |= ((1 << LANE_WIDTH) - 1) << base
+    names = dict(processes()); before = {p: _proc_cpu(p) for p in names if p not in own and p > 4}
+    ld = load(seconds); out = []
+    for p, x in before.items():
+        y = _proc_cpu(p) if x else None
+        if x and y and y[1] & lane and (y[0] - x[0]) / seconds > limit:
+            out.append((p, names[p], (y[0] - x[0]) / seconds, y[1]))
+    return ld, sorted(out, key=lambda r: -r[2])
+
+
 def check_lanes(topo, lanes):
     """Problems of the lane layout: every lane = 2 physical cores x 2 threads of the fastest class, disjoint."""
     bad = []; best = max((e for e, _ in topo.values()), default=0); used = set()
@@ -134,7 +166,10 @@ def main(cfg, a):
         print('  ' + b)
     ok &= not bad
     print(f'lanes: {cfg.lanes} (classes: ' + ', '.join(f'{c}=0x{int(m, 16):X}' for c, (m, _, _) in CLASSES.items()) + ' inside each lane)')
-    ld = load(1.0)
+    ld, hogs = load_and_hogs(cfg.lanes, own=(os.getpid(),))
+    for pid, name, share, mask in hogs:
+        print(f'  foreign load on the lanes: {name} pid {pid} {share:.0%} of a core, mask 0x{mask:X}')
+    ok &= not hogs
     for n, base in enumerate(cfg.lanes):
         busy = max(ld[base:base + LANE_WIDTH], default=0)
         flag = 'BUSY' if busy > 0.10 else 'idle'

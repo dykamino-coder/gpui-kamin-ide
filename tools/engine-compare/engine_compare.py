@@ -38,11 +38,14 @@ def gate(cfg, a):
     """Refuse to measure while builds or other engines run on the measuring lanes (they would be in every number)."""
     if getattr(a, 'ignore_load', False):
         return
-    from ec.doctor import intruders
+    import os
+    from ec.doctor import intruders, load_and_hogs
     bad = intruders(cfg.lanes)
-    if bad:
-        sys.exit('refused: processes on the measuring lanes ' + ', '.join(f'{n} pid {p} mask 0x{m:X}' for p, n, m in bad)
-                 + ' (move them off the lanes, or --ignore-load for a functional check)')
+    _, hogs = load_and_hogs(cfg.lanes, own=(os.getpid(),))
+    if bad or hogs:
+        sys.exit('refused: processes on the measuring lanes ' + ', '.join(
+            [f'{n} pid {p} mask 0x{m:X}' for p, n, m in bad] + [f'{n} pid {p} {s:.0%} of a core' for p, n, s, _ in hogs])
+            + ' (move them off the lanes, or --ignore-load for a functional check)')
 
 
 def quick(cfg, a):

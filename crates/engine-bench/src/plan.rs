@@ -157,7 +157,7 @@ pub(super) async fn run(
     report["plan"] = plan.raw;
     report["build"] = super::build_info::json();
     report["cpu_calibration"] = super::process::calibration();
-    super::report::print(&report, base.json)
+    Ok(super::report::print(&report, base.json)?)
 }
 
 #[cfg(test)]
