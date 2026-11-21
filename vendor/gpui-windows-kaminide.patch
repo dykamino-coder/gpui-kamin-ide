@@ -12244,7 +12244,7 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5263288ac66b464e9d62b2b0b32e398957df1ab3
+index 0000000000000000000000000000000000000000..15c1ede0b6ee251e668cc01c691aa304001cf240
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 @@ -0,0 +1,197 @@
@@ -12269,15 +12269,15 @@ index 0000000000000000000000000000000000000000..5263288ac66b464e9d62b2b0b32e3989
 +//! per split, never a longer list). Composites of one pass share an atlas page
 +//! and a mask image view (or have none).
 +
-+//! Внутри повреждения сетка уточняется до 8 px без роста буферов.
-+//! Границы проходов, порядок композитов и арифметика шага сохраняются.
++//! Within damage, the grid refines to 8 px without growing retained buffers.
++//! Pass boundaries, composite order and per-step arithmetic stay unchanged.
 +
 +use super::*;
 +
 +mod pass;
 +mod refine;
 +
-+/// Сторона крупного тайла в пикселях цели.
++/// Coarse tile side in target pixels.
 +pub(super) const TILE: u32 = 16;
 +/// Most composites one tile lists, so most loop steps per pixel.
 +pub(super) const TILE_CAP: u32 = 128;
@@ -12447,11 +12447,11 @@ index 0000000000000000000000000000000000000000..5263288ac66b464e9d62b2b0b32e3989
 +mod tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..63dcfe79c6a1e6a88ee4dc0317d4659d72eec9b3
+index 0000000000000000000000000000000000000000..0d2cb3204ea7ae896ce1233305f0b64b16a839ee
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs
 @@ -0,0 +1,105 @@
-+//! Отрисовка упорядоченного прохода по крупной или уточнённой сетке.
++//! Draw an ordered composite pass on the coarse or refined grid.
 +
 +use super::*;
 +
@@ -12558,11 +12558,11 @@ index 0000000000000000000000000000000000000000..63dcfe79c6a1e6a88ee4dc0317d4659d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a764e7fc9d3fac6fddb6a607afaecec37f42d555
+index 0000000000000000000000000000000000000000..9a900cfb1a8f85a71596ff244715e8920f4221eb
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs
 @@ -0,0 +1,217 @@
-+//! Уточнение сетки повреждения без роста сохранённых буферов тайлов.
++//! Refine the damage grid without growing retained tile buffers.
 +
 +use super::{Region, TILE, TileLists};
 +
@@ -12600,10 +12600,10 @@ index 0000000000000000000000000000000000000000..a764e7fc9d3fac6fddb6a607afaecec3
 +    })
 +}
 +
-+/// Сетка 16 px уже определила границы и порядок прохода. Её выровненное
-+/// подразделение не превышает прежний лимит. Меняются только списки внутри
-+/// повреждения; шейдер проверяет прежние консервативные границы текстуры.
-+/// При отказе data пригодны для крупной сетки, counts — рабочая память.
++/// The 16 px grid already determined the pass boundaries and order. Its aligned
++/// subdivision preserves the run limit. Only lists within damage change; the
++/// shader still checks the conservative texture bounds. On refusal, data stays
++/// valid for the coarse grid; counts is scratch storage.
 +pub(super) fn bin_cover(
 +    regions: &[Region],
 +    cover: Region,
@@ -12754,7 +12754,7 @@ index 0000000000000000000000000000000000000000..a764e7fc9d3fac6fddb6a607afaecec3
 +        lists.counts.reserve(4);
 +        let original = lists.data.clone();
 +        let capacity = (lists.counts.capacity(), lists.data.capacity());
-+        // Четырём fine-тайлам нужны пять offsets и восемь индексов групп.
++        // Four fine tiles need five offsets and eight group indices.
 +        assert!(capacity.0 >= 4 && capacity.1 < 13);
 +        assert!(bin_cover(&regions, r(0, 0, 16, 16), usize::MAX, &mut lists).is_none());
 +        assert_eq!(original, lists.data);
@@ -16714,7 +16714,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..49e89cbd8d46e264b4db86a6bf95816eba23e24a
+index ba89c6873354fb7449b8294878e080a68c3dd29b..f08db4161af0ceb9852fb3c79a7416124bd378b0
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -17564,7 +17564,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..49e89cbd8d46e264b4db86a6bf95816e
 +//
 +// blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
 +// tile grid's corner, poly_count = tiles per row.
-+// texel.x — обратная сторона тайла (крупного или уточнённого). Composites are
++// texel.x is the reciprocal tile side (coarse or refined). Composites are
 +// blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 +// than the tiles, the last is the end), then composite indices, each tile's in
 +// document order. Every pixel starts from the backdrop copy and applies the

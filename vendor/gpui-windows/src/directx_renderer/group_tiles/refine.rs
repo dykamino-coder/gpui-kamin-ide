@@ -1,4 +1,4 @@
-//! Уточнение сетки повреждения без роста сохранённых буферов тайлов.
+//! Refine the damage grid without growing retained tile buffers.
 
 use super::{Region, TILE, TileLists};
 
@@ -36,10 +36,10 @@ fn span(r: Region, cover: Region, grid: &Grid) -> Option<[u32; 4]> {
     })
 }
 
-/// Сетка 16 px уже определила границы и порядок прохода. Её выровненное
-/// подразделение не превышает прежний лимит. Меняются только списки внутри
-/// повреждения; шейдер проверяет прежние консервативные границы текстуры.
-/// При отказе data пригодны для крупной сетки, counts — рабочая память.
+/// The 16 px grid already determined the pass boundaries and order. Its aligned
+/// subdivision preserves the run limit. Only lists within damage change; the
+/// shader still checks the conservative texture bounds. On refusal, data stays
+/// valid for the coarse grid; counts is scratch storage.
 pub(super) fn bin_cover(
     regions: &[Region],
     cover: Region,
@@ -190,7 +190,7 @@ mod tests {
         lists.counts.reserve(4);
         let original = lists.data.clone();
         let capacity = (lists.counts.capacity(), lists.data.capacity());
-        // Четырём fine-тайлам нужны пять offsets и восемь индексов групп.
+        // Four fine tiles need five offsets and eight group indices.
         assert!(capacity.0 >= 4 && capacity.1 < 13);
         assert!(bin_cover(&regions, r(0, 0, 16, 16), usize::MAX, &mut lists).is_none());
         assert_eq!(original, lists.data);

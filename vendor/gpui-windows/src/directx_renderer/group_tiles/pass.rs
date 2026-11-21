@@ -1,4 +1,4 @@
-//! Отрисовка упорядоченного прохода по крупной или уточнённой сетке.
+//! Draw an ordered composite pass on the coarse or refined grid.
 
 use super::*;
 
