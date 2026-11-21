@@ -114,7 +114,7 @@ pub(crate) fn canvas_layer(
             let root_left = e.style.cascaded().wm().block_rl();
             let padding = geometry.padding;
             let area = crate::paint::background::RootArea {
-                scrolls: opts.cx.scroll.target.is_some(),
+                scroll: target.map(|t| t.handle().clone()),
                 measured,
                 left: side(geometry.margin.left) + side(b.left),
                 top: side(geometry.margin.top) + side(b.top),

@@ -80,6 +80,11 @@ pub(crate) fn canvas(
 }
 
 impl Target {
+    /// The scroll handle of this scrollport.
+    pub(crate) fn handle(&self) -> &ScrollHandle {
+        &self.handle
+    }
+
     /// The scroll handle of this scrollport when it is the box `node`.
     pub(crate) fn handle_of(&self, node: u64) -> Option<&ScrollHandle> {
         (self.node == node).then_some(&self.handle)

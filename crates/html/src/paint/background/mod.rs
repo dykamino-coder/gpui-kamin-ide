@@ -77,18 +77,14 @@ pub(crate) fn canvas_layer(
     layer.image.as_ref()?;
     let layer = layer.clone();
     let opaque_borders = std::array::from_fn(|i| geometry.used_border_color(i).a >= 1.0);
-    // Scrolling under a follower, the canvas clip is its node's, not its own.
-    let own_clip = !(area.scrolls && layer.fixed != Some(true));
     Some(
         gpui::canvas(
             |_, _, _| {},
             move |clip: Bounds<Pixels>, _, window, _| {
                 let vcx = values.vcx();
-                let bounds = if layer.fixed == Some(true) {
-                    clip
-                } else {
-                    area.rect(clip)
-                };
+                let fixed = layer.fixed == Some(true);
+                let bounds = if fixed { clip } else { area.rect(clip) };
+                let canvas = area.canvas(fixed, clip, window);
                 tiles::paint_layer_in(
                     tiles::LayerPaint {
                         layer: &layer,
@@ -96,7 +92,7 @@ pub(crate) fn canvas_layer(
                     },
                     &geometry,
                     bounds,
-                    own_clip.then_some(clip),
+                    Some(canvas),
                     window,
                     None,
                     vcx,
