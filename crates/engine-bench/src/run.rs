@@ -407,7 +407,10 @@ pub(super) async fn measure(
             frames.prepare(cx, window, index)?;
             let (sample, frame, counts) =
                 sample(cx, window, fonts, args, step, capture, luid).await?;
-            work.push(counts);
+            let kept = super::frames::keeps_step(args.mode == Mode::Scroll, index);
+            if kept {
+                work.push(counts);
+            }
             if let Some(path) = snapshot_pending.take() {
                 pixels::save(&frame.pixels, path)?;
             }
@@ -415,9 +418,11 @@ pub(super) async fn measure(
             frames
                 .settle((&mut *cx, window, fonts, args, capture, luid), step)
                 .await?;
-            totals.extend(super::series::total(&sample.phases));
-            samples.push(sample.phases);
-            diagnostics.push(sample.diagnostics);
+            if kept {
+                totals.extend(super::series::total(&sample.phases));
+                samples.push(sample.phases);
+                diagnostics.push(sample.diagnostics);
+            }
         }
         if samples.len() < series.min_frames() {
             return Err(format!(
