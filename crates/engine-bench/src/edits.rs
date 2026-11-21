@@ -34,7 +34,7 @@ pub(super) async fn run(
     let same_shape = window.read_with(cx, |view, _| view.doc.mutations(&edited).is_some())?;
     // Boxes of the input that paint only their own commands, and refusals by reason.
     let census = window.read_with(cx, |view, _| kamin_html::paint_path::census(&view.doc))?;
-    super::memory::before_phase(cx, capture, args).await?;
+    let quiet = super::memory::before_phase(cx, capture, args).await?;
     let mut samples = Vec::with_capacity(args.runs);
     let mut diagnostics = Vec::with_capacity(args.runs);
     let mut work = Vec::with_capacity(args.runs);
@@ -160,6 +160,7 @@ pub(super) async fn run(
         "method": "each_measured_capture_against_fresh_document",
     });
     mode["fresh_checks"] = json!(checks);
+    mode["start_quiet"] = super::memory::quiet_summary(&quiet);
     mode["document_frame_samples"] = frame_samples
         .iter()
         .enumerate()

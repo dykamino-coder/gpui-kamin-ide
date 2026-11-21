@@ -379,11 +379,11 @@ pub(super) async fn measure(
         let mut samples = Vec::with_capacity(args.runs);
         let mut diagnostics = Vec::with_capacity(args.runs);
         let mut work = Vec::with_capacity(args.runs);
-        let (step, busy_windows) = if args.mode == Mode::Scroll {
-            let busy = super::memory::converge(cx, capture, args, 5).await?;
-            (Step::Warm, Some(busy))
+        // Scroll's load is a cold step too: its steps start after the same quiet window.
+        let (step, quiet) = if args.mode == Mode::Scroll {
+            (Step::Warm, Some(super::memory::before_phase(cx, capture, args).await?))
         } else {
-            (super::memory::phase_step(cx, capture, args, cold).await?, None)
+            super::memory::phase_step(cx, capture, args, cold).await?
         };
         let series = super::series::Series::new(args);
         let series_start = Instant::now();
@@ -421,8 +421,9 @@ pub(super) async fn measure(
         let mut mode = report::measured_mode(&samples, &diagnostics);
         #[cfg(feature = "heap-report")]
         super::holders::attach(cx, window, name, &mut mode)?;
-        if let Some(busy) = busy_windows {
-            mode["start_busy_steady_windows"] = json!(busy);
+        if let Some(quiet) = &quiet {
+            mode["start_busy_steady_windows"] = quiet["busy_windows"].clone();
+            mode["start_quiet"] = super::memory::quiet_summary(quiet);
         }
         modes.insert(name.into(), mode);
         work_samples.push((name, work));

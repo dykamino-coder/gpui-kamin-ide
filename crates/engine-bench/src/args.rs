@@ -90,7 +90,7 @@ pub(super) struct Args {
     /// Every phase of this plan file in one process (`plan.rs`).
     pub(super) plan: Option<PathBuf>,
     /// Memory steady window before each warm phase (the default); a plan replaces it
-    /// with a short quiet window that still refuses unexpected frames.
+    /// with a short quiet window that waits out late frames (`memory::settle`).
     pub(super) steady_each_phase: bool,
     /// Frame series: at least `min_runs` samples and `series_ms` of samples, at most
     /// `runs`; 0 = exactly `runs` (the default).

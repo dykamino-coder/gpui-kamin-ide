@@ -148,13 +148,19 @@ class Ours:
                     bad = M.ours_vis_check(rep)
                     if bad:
                         r['note'] = bad; r['invalid'] = True
+                q = (((rep.get('modes') or {}).get(m) or {}).get('start_quiet') or {})
+                if q.get('quiet') is False:
+                    r['note'] = (r.get('note', '') + f" page kept painting before the phase "
+                                 f"({q.get('busy_windows')} busy quiet windows)").strip()[:200]
                 if rep.get('check_error'):
                     r['note'] = (r.get('note', '') + ' check: ' + rep['check_error'])[:200]
             if not why:
-                ma = (((j.get('memory_audit') or {}).get('page') or {}).get('end') or {}).get('rss_bytes')
+                ma, note = M.ours_steady(j.get('memory_audit'))
                 rec.setdefault('memory', {})['steady_bytes'] = ma
+                if note:
+                    rec['memory']['steady_note'] = note
                 if ma is None:
-                    rec['memory']['steady_empty'] = 'no memory audit in the plan report'
+                    rec['memory']['steady_empty'] = note or 'no memory audit in the plan report'
         rec['wall_s'] = time.perf_counter() - t0
         return rec
 

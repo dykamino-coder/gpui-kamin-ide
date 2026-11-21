@@ -91,6 +91,17 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.ours_cpu_cycles(rep, 'relayout', {'cycles_per_cpu_ms': 3e6}), 1.5)
         self.assertIsNone(M.ours_cpu_cycles(rep, 'relayout', {}))
 
+    def test_ours_steady_takes_the_window_median_and_notes_a_busy_page(self):
+        quiet = {'page': {'median': {'rss_bytes': 50}, 'end': {'rss_bytes': 70}, 'quiet': True, 'busy_windows': 2}}
+        self.assertEqual(M.ours_steady(quiet), (50, ''))
+        old = {'page': {'end': {'rss_bytes': 70}}}  # benches before the median
+        self.assertEqual(M.ours_steady(old), (70, ''))
+        busy = {'page': {'median': {'rss_bytes': 60}, 'quiet': False, 'busy_windows': 10, 'unexpected_frames': 4}}
+        value, note = M.ours_steady(busy)
+        self.assertEqual(value, 60); self.assertIn('kept painting: 4 frames', note)
+        self.assertEqual(M.ours_steady({'error': 'x'})[0], None)
+        self.assertEqual(M.ours_steady(None), (None, ''))
+
     def test_browser_visit_definitions(self):
         res = {'twoRafMs': 40, 'probe': {'frames': 10, 'cases': {
             'R': {'frame': {'median': 2}, 'frameReq': {'median': 5}},

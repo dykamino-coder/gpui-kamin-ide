@@ -79,10 +79,23 @@ def ours_cpu_cycles(rep, mode, calibration):
     return med(v)
 
 
+def ours_steady(audit):
+    """(steady bytes, note) of an engine_bench memory audit: the median working set over the idle window (older
+    benches: its end); the note says when the page kept painting through every quiet window."""
+    page = (audit or {}).get('page') or {}
+    if (audit or {}).get('error'):
+        return None, 'memory audit failed: ' + str(audit['error'])[:160]
+    value = (page.get('median') or {}).get('rss_bytes') or (page.get('end') or {}).get('rss_bytes')
+    note = ''
+    if page.get('quiet') is False:
+        note = (f"page kept painting: {page.get('unexpected_frames')} frames in the measured window after "
+                f"{page.get('busy_windows')} busy windows; median of the window")
+    return value, note
+
+
 def ours_memory(j):
     """(peak, steady) bytes from a ``--mode both --memory-settle-ms`` run."""
-    ma = j.get('memory_audit') or {}
-    return j.get('peak_working_set_bytes'), (((ma.get('page') or {}).get('end') or {}).get('rss_bytes'))
+    return j.get('peak_working_set_bytes'), ours_steady(j.get('memory_audit'))[0]
 
 
 def ours_vis_check(j):
