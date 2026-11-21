@@ -6,7 +6,7 @@
 //! overlapping groups (effects-480: every layer overlaps its neighbours) cost N
 //! backdrop copies, N draws and N read-after-write barriers. As in the fine
 //! stage of vello (per-tile command lists, every pixel runs its tile's list
-//! in order), the run is split on 16 px tiles of the target: each tile
+//! in order), the run is binned into 16 px tiles of the target: each tile
 //! lists, in document order, the composites whose region meets it. One copy of
 //! the run's rectangle is the starting backdrop and one draw over it applies,
 //! per pixel, every composite covering the pixel in order, rounding to the
@@ -19,15 +19,9 @@
 //! per split, never a longer list). Composites of one pass share an atlas page
 //! and a mask image view (or have none).
 
-//! Within damage, the grid refines to 8 px without growing retained buffers.
-//! Pass boundaries, composite order and per-step arithmetic stay unchanged.
-
 use super::*;
 
-mod pass;
-mod refine;
-
-/// Coarse tile side in target pixels.
+/// Tile side in target pixels (`GROUP_TILE` in shaders.hlsl).
 pub(super) const TILE: u32 = 16;
 /// Most composites one tile lists, so most loop steps per pixel.
 pub(super) const TILE_CAP: u32 = 128;
@@ -53,25 +47,14 @@ pub(super) struct TileLists {
 /// column, last row), inclusive.
 fn tile_span(r: Region) -> (u32, u32, u32, u32) {
     let last = |o: u32, s: u32| (o + s.max(1) - 1) / TILE;
-    (
-        r.x / TILE,
-        r.y / TILE,
-        last(r.x, r.width),
-        last(r.y, r.height),
-    )
+    (r.x / TILE, r.y / TILE, last(r.x, r.width), last(r.y, r.height))
 }
 
 /// Bin the leading composites of `regions` on a target `width` x `height`:
 /// how many are taken (stopping before one that would put more than `cap` in
 /// a tile) and the lists: the first entry of every tile (one more than the
 /// tiles), then composite instance indices (k + 1), document order per tile.
-pub(super) fn bin(
-    regions: &[Region],
-    width: u32,
-    height: u32,
-    cap: u32,
-    lists: &mut TileLists,
-) -> usize {
+pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: &mut TileLists) -> usize {
     let cols = width.div_ceil(TILE);
     let tiles = (cols * height.div_ceil(TILE)) as usize;
     let counts = &mut lists.counts;
@@ -130,16 +113,10 @@ impl DirectXRenderer {
         type View = Option<Option<ID3D11ShaderResourceView>>;
         let mut first: Option<(usize, View)> = None;
         for s in run.iter().take(MAX_RUN) {
-            let Some((mut quad, p)) = self.group_composite_quad(s).filter(|_| self.group_tiles)
-            else {
+            let Some((mut quad, p)) = self.group_composite_quad(s).filter(|_| self.group_tiles) else {
                 break;
             };
-            let mask = self
-                .blur
-                .group_mask
-                .get(s.group as usize - 1)
-                .cloned()
-                .flatten();
+            let mask = self.blur.group_mask.get(s.group as usize - 1).cloned().flatten();
             // Masked composites carry their mask rectangle per instance and share
             // the pass with those of the same view (the mask cache hands equal
             // images one view), as in the composite levels.
@@ -172,9 +149,7 @@ impl DirectXRenderer {
             let keep: Vec<usize> = (0..taken).filter(|&k| w.meets(regions[k])).collect();
             if keep.len() < taken {
                 regions = keep.iter().map(|&k| regions[k]).collect();
-                quads = std::iter::once(quads[0])
-                    .chain(keep.iter().map(|&k| quads[k + 1]))
-                    .collect();
+                quads = std::iter::once(quads[0]).chain(keep.iter().map(|&k| quads[k + 1])).collect();
                 bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
             }
         }
@@ -190,6 +165,85 @@ impl DirectXRenderer {
         };
         self.blur.tile_lists = lists;
         result.map(|()| taken)
+    }
+
+    fn draw_tile_pass(
+        &mut self,
+        quads: &mut Vec<BlurQuad>,
+        regions: &[Region],
+        page: usize,
+        lists: &mut TileLists,
+    ) -> Result<()> {
+        let device = self.dev().device.clone();
+        let dc = self.dev().device_context.clone();
+        let x0 = regions.iter().map(|r| r.x).min().unwrap_or(0);
+        let y0 = regions.iter().map(|r| r.y).min().unwrap_or(0);
+        let x1 = regions.iter().map(|r| r.x + r.width).max().unwrap_or(0);
+        let y1 = regions.iter().map(|r| r.y + r.height).max().unwrap_or(0);
+        // Within a scissor only its pixels are drawn: the cover (backdrop copy
+        // and the pass quad) need not reach farther.
+        let (x0, y0, x1, y1) = match self.blur.frame_within {
+            Some(w) => {
+                let (x, y) = (x0.max(w.x), y0.max(w.y));
+                (x, y, x1.min(w.x + w.width).max(x), y1.min(w.y + w.height).max(y))
+            }
+            None => (x0, y0, x1, y1),
+        };
+        let cover = Region {
+            x: x0,
+            y: y0,
+            width: x1 - x0,
+            height: y1 - y0,
+        };
+        quads.truncate(regions.len() + 1);
+        quads[0].bounds = cover.floats();
+        quads[0].poly_count = self.width.div_ceil(TILE);
+        log::debug!(
+            target: "gpui::frame",
+            "tile pass {} composites cover {}x{} lists {} entries",
+            regions.len(),
+            cover.width,
+            cover.height,
+            lists.data.len()
+        );
+        // One copy of the run's rectangle: every pixel starts from it.
+        self.copy_level_backdrop(slice::from_ref(&cover))?;
+        let len = lists.data.len();
+        if lists.buffer.as_ref().is_none_or(|b| b.2 < len) {
+            let cap = len.next_power_of_two();
+            let buffer = create_buffer(&device, std::mem::size_of::<u32>(), cap)?;
+            let view = create_buffer_view(&device, &buffer)?;
+            lists.buffer = Some((buffer, view, cap));
+        }
+        let (buffer, view, _) = lists.buffer.as_ref().unwrap();
+        update_buffer(&dc, buffer, &lists.data)?;
+        self.ensure_blur_globals(&device)?;
+        update_buffer(
+            &dc,
+            self.blur.globals[0].as_ref().unwrap(),
+            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
+        )?;
+        let target = self.current_target().to_vec();
+        self.pipelines.group_tiles_pipeline.update_buffer(&device, &dc, quads)?;
+        unsafe {
+            dc.PSSetShaderResources(4, Some(slice::from_ref(view)));
+            dc.OMSetRenderTargets(Some(&target), None);
+        }
+        self.pipelines.group_tiles_pipeline.draw_with_texture_blended(
+            &dc,
+            &self.blur.groups[page].srv,
+            slice::from_ref(&self.res().viewport),
+            &self.blur.globals,
+            slice::from_ref(&self.globals.sampler),
+            1,
+            None,
+        )?;
+        unsafe {
+            dc.PSSetShaderResources(2, Some(&[None]));
+            dc.PSSetShaderResources(4, Some(&[None]));
+        }
+        lists.passes += 1;
+        Ok(())
     }
 }
 

@@ -1929,14 +1929,14 @@ float4 clear_fragment(ClearVertexOutput input): SV_Target {
 // KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 //
 // blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
-// tile grid's corner, poly_count = tiles per row.
-// texel.x is the reciprocal tile side (coarse or refined). Composites are
+// tile grid's corner, poly_count = tiles per row. Composites are
 // blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 // than the tiles, the last is the end), then composite indices, each tile's in
 // document order. Every pixel starts from the backdrop copy and applies the
 // composites covering it in order, rounding to the 8-bit target after every
 // step: the canonical group arithmetic (design.md), the frame the copy path
 // writes composite by composite.
+#define GROUP_TILE 16.0
 StructuredBuffer<uint> tile_lists: register(t4);
 
 // The pixels the composite's own draw covers: its rectangle with vertices on
@@ -1964,7 +1964,7 @@ float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
     float2 c = input.position.xy;
     BlurQuad cover = blur_quads[0];
     float4 dst = t_backdrop.Load(int3(int2(floor(c)), 0));
-    uint2 tile = uint2(floor((c - cover.src_origin) * cover.texel.x));
+    uint2 tile = uint2(floor((c - cover.src_origin) / GROUP_TILE));
     uint t = tile.y * cover.poly_count + tile.x;
     uint end = tile_lists[t + 1u];
     float2 p = c + global_origin;
