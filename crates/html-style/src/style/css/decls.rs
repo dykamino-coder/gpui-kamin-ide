@@ -74,6 +74,10 @@ fn parse_block(raw: &str, vcx: Option<ValueCx<'_>>) -> DeclBlock {
         // `red ! fail`, а разбор цвета брал из него первое слово и красил
         // (`core-syntax-006`).
         let joined = join_string_continuations(v);
+        // Validate before trim: a newline makes a bad-string token; EOF does not.
+        if !variable_tokens::valid(&joined) {
+            continue;
+        }
         let val = joined.trim();
         if let Some(bang) = top_level_bang(val)
             && !val[bang + 1..].trim().eq_ignore_ascii_case("important")
@@ -87,9 +91,6 @@ fn parse_block(raw: &str, vcx: Option<ValueCx<'_>>) -> DeclBlock {
             continue;
         }
         let value = top_level_bang(val).map_or(val, |at| val[..at].trim_end());
-        if !variable_tokens::valid(value) {
-            continue;
-        }
         // Пометка важности — флаг объявления, значение хранится без неё.
         let important = top_level_bang(val).is_some();
         let val = font_family_values::normalize(&key, value);

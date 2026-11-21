@@ -139,6 +139,21 @@ mod tests {
     }
 
     #[test]
+    fn bad_string_newline_is_checked_before_trimming_declarations() {
+        for newline in ["\n", "\r\n", "\r", "\u{c}"] {
+            for tail in ["", "  ", "; color: blue"] {
+                let decls = parse_decls(&format!("content: \"broken{newline}{tail}"));
+                assert!(!decls.contains("content"), "{newline:?} {tail:?}");
+                if tail.contains(';') {
+                    assert_eq!(decls.last("color"), Some("blue"));
+                }
+            }
+        }
+        assert!(parse_decls("content: \"text").contains("content"));
+        assert!(parse_decls("content: \"text\\\ncontinued\"").contains("content"));
+    }
+
+    #[test]
     fn invalid_fallback_does_not_replace_a_previous_declaration() {
         for fallback in ["!", "!important", ";", "var(,green)"] {
             let decls = parse_decls(&format!("--a: green; --a: var(--b,{fallback})"));
