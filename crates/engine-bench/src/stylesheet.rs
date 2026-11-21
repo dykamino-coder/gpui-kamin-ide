@@ -67,9 +67,9 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
         let tail = &text[i..];
         if tail.starts_with("/*") {
             i += tail.find("*/").map_or(tail.len(), |n| n + 2);
-        } else if tail.starts_with('\\') {
+        } else if let Some(escaped) = tail.strip_prefix('\\') {
             // An escaped quote in an identifier cannot open a string token.
-            i += 1 + tail[1..].chars().next().map_or(0, char::len_utf8);
+            i += 1 + escaped.chars().next().map_or(0, char::len_utf8);
         } else if matches!(tail.as_bytes()[0], b'\'' | b'"') {
             i = quoted_end(text, i);
         } else if tail
