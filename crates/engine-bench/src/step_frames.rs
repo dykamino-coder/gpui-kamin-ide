@@ -3,8 +3,7 @@
 //!
 //! A kept capture buffer is never freed back to the allocator, so the
 //! readback of every next step would write a new frame-sized block whose
-//! pages fault in first: the check would be timed in the steps it checks
-//! (a wheel step on a software rasterizer measured about 3 ms slower).
+//! pages fault in first: the check would be timed in the steps it checks.
 //! A step instead copies its frame into a spare buffer after its sample, and
 //! the capture buffer goes back to the allocator for the next readback, as
 //! in the other modes.
