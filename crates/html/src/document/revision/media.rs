@@ -33,11 +33,11 @@ impl Document {
         if !flips {
             return Ok(false);
         }
-        let batch = Batch::new(&[]).expect("an empty batch addresses no node");
+        let mut batch = Batch::new(&[]).expect("an empty batch addresses no node");
         let theme_css = self.theme_css.clone();
         let revision = self.budget().revision();
         // A flipped query restyles everything it may reach: no known change set.
-        self.rebuild(&batch, None, &theme_css, self.key, revision)?;
+        self.rebuild(&mut batch, None, &theme_css, self.key, revision)?;
         Ok(true)
     }
 }

@@ -49,6 +49,8 @@ pub(super) struct Record {
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
     pub(super) layered: Option<RetainedPaint>,
+    /// Layer whose unchanged commands still occupy the nested block ranges.
+    pub(super) layer: Option<(u64, u64)>,
     pub(super) root: bool,
     /// Window frame and document generation that own this element state.
     frame: Option<(u64, u64)>,
@@ -61,6 +63,23 @@ pub(super) use miss::{FrameMiss, MISSES};
 pub(super) use replay::Replay;
 
 impl Record {
+    pub(super) fn replay_paint(
+        &mut self,
+        window: &mut gpui::Window,
+        store: &crate::layout::reuse::Store,
+        same_prepaint: bool,
+    ) {
+        let paint = window.replay_retained_paint(&self.paint);
+        if same_prepaint
+            && paint.preserves_window_slots(&self.paint)
+            && self.layer.is_some()
+            && self.layer == store.layer_version()
+        {
+            store.copied_layer_ranges();
+        }
+        self.paint = paint;
+    }
+
     /// The rendering step and the actual draw enter the same generation.
     /// Only a painted predecessor in this window can supply replay ranges.
     pub(super) fn begin(&mut self, store: &crate::layout::reuse::Store, window: &Window) -> u64 {

@@ -28,8 +28,15 @@ pub(crate) struct Replay {
 
 impl Replay {
     /// Вывод записан в кадре перед `epoch` и весь нарисован в нём.
-    pub(super) fn follows(&self, epoch: u64) -> bool {
-        self.epoch + 1 == epoch && self.deferred.complete()
+    pub(super) fn available(&self, store: &super::Store, frame: u64) -> bool {
+        self.epoch == frame
+            || store.block_source(frame, self.epoch)
+                && self.prepaint.has_no_line_layouts(&self.paint)
+                && self.deferred.nothing()
+    }
+
+    pub(super) fn follows(&self, store: &super::Store, epoch: u64) -> bool {
+        self.available(store, epoch - 1) && self.deferred.complete()
     }
 }
 

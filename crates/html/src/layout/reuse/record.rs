@@ -103,6 +103,6 @@ impl Record {
         self.replay
             .borrow()
             .as_ref()
-            .is_some_and(|r| r.epoch == epoch)
+            .is_some_and(|r| r.available(&flow.store, epoch))
     }
 }

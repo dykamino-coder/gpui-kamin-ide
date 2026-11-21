@@ -53,12 +53,16 @@ impl Retained {
                     self.replay = true;
                     self.builder.store.forget_replays();
                     self.slot.replays.set(self.slot.replays.get() + 1);
-                    record.prepaint = match &plan {
+                    let prepaint = match &plan {
                         Some(plan) => {
                             window.replay_retained_prepaint_scrolled(&record.prepaint, plan)
                         }
                         None => window.replay_retained_prepaint(&record.prepaint),
                     };
+                    // A moved replay remaps scene and scroll-node ranges.
+                    self.same_prepaint =
+                        plan.is_none() && prepaint.preserves_window_slots(&record.prepaint);
+                    record.prepaint = prepaint;
                     self.scroll_plan = plan;
                     return ((), record);
                 }
@@ -99,6 +103,7 @@ impl Retained {
                 record.prepaint = prepaint;
                 record.paint = RetainedPaint::default();
                 record.layered = None;
+                record.layer = None;
                 record.root = root;
                 ((), record)
             })
@@ -109,6 +114,10 @@ impl Retained {
         window.with_element_state::<Record, _>(id, |record, window| {
             let mut record = record.unwrap_or_default();
             if self.replay {
+                if self.scroll_plan.is_some() {
+                    // Only a plain replay can carry the original block ranges.
+                    record.layer = None;
+                }
                 match (self.scroll_plan.take(), record.layered.clone()) {
                     (Some(plan), Some(inner)) => {
                         (record.paint, record.layered) = self.builder.replay_paint_scrolled(
@@ -120,7 +129,9 @@ impl Retained {
                     (Some(plan), None) => {
                         record.paint = window.replay_retained_paint_scrolled(&record.paint, &plan)
                     }
-                    (None, _) => record.paint = window.replay_retained_paint(&record.paint),
+                    (None, _) => {
+                        record.replay_paint(window, &self.builder.store, self.same_prepaint)
+                    }
                 }
                 record.painted();
                 if let Some(inputs) = &record.inputs {
@@ -134,6 +145,7 @@ impl Retained {
             let before = window.next_frame_callback_count();
             let (paint, layered) = self.builder.record_paint(window, |w| tree.paint(w, cx));
             record.layered = layered;
+            record.layer = self.builder.store.layer_version();
             if let Some(flow) = &self.flow {
                 flow.finish();
             }
