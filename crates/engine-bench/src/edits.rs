@@ -159,6 +159,10 @@ pub(super) async fn run(
         .enumerate()
         .map(|(i, &counts)| frame_sample(i + 1, counts))
         .collect::<Result<Value>>()?;
+    // Owners of the heap after the last edit frame, as after the frames of
+    // every other mode (`memprof.py run --owners`, `holders`).
+    #[cfg(feature = "heap-report")]
+    super::holders::attach(cx, window, "edit", &mut mode)?;
     Ok((mode, work))
 }
 
