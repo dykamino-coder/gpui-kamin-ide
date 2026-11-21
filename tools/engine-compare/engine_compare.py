@@ -127,7 +127,7 @@ def main():
         r.add_argument(k)
     r.add_argument('--force', action='store_true'); r.add_argument('--dry', action='store_true'); r.add_argument('--ignore-load', action='store_true')
     r.add_argument('--redo-between', help='FROM,TO (ISO local time): measure again the cached units started in this window')
-    d =sub.add_parser('doctor'); d.add_argument('--aa', action='store_true')
+    d =sub.add_parser('doctor'); d.add_argument('--aa', action='store_true'); d.add_argument('--aa-soft1', action='store_true', help='neighbour A/A of one-core soft1 lanes (split_soft1)')
     rp = sub.add_parser('report'); rp.add_argument('out'); rp.add_argument('--classes'); rp.add_argument('--title', default=''); rp.add_argument('--lang', default='en', choices=['en', 'ru'])
     df = sub.add_parser('diff'); df.add_argument('a'); df.add_argument('b'); df.add_argument('--engine', default='ours')
     a = ap.parse_args()

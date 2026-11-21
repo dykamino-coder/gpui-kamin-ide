@@ -184,6 +184,8 @@ def main(cfg, a):
         print('  busy CPUs elsewhere: ' + ' '.join(others))
     if a.aa:
         ok &= aa(cfg)
+    if getattr(a, 'aa_soft1', False):
+        ok &= aa_soft1(cfg)
     print('doctor: ' + ('OK' if ok else 'PROBLEMS above'))
 
 
@@ -208,3 +210,33 @@ def aa(cfg):
         print(f'  lane {n}: ' + ', '.join(d))
     return True
 
+
+
+def aa_soft1(cfg, page_id=None, limit=0.03):
+    """Neighbour A/A for split_soft1: the same ours soft1 unit alone on one one-core lane, then on all one-core lanes at
+    once (every neighbour busy with the same unit). True when no phase moves by more than ``limit`` (relative)."""
+    import threading
+    from . import adapters as A
+    from .scheduler import Lane, narrow
+    name = next((n for n, e in cfg.engines.items() if e.get('adapter') == 'ours'), None)
+    page = cfg.pages.get(page_id) if page_id else next(iter(cfg.pages.values()), None)
+    if not name or not page:
+        print('aa-soft1: needs an ours engine and a page'); return False
+    ad = A.load(name, cfg); pol = A.Policy(); part = ad.parts[0]
+    lanes = [n for i, b in enumerate(cfg.lanes) for n in narrow(Lane(i, b, cfg.work / f'lane{i}'), cfg.work)]
+    alone = ad.measure(lanes[0], page, 'soft1', part, pol)['rows']
+    got = {}
+    th = [threading.Thread(target=lambda ln=ln: got.__setitem__(ln.id, ad.measure(ln, page, 'soft1', part, pol)['rows']))
+          for ln in lanes]
+    [x.start() for x in th]; [x.join() for x in th]
+    worst = 0.0
+    for ph, x in alone.items():
+        if not x.get('time_ms'):
+            continue
+        d = [got[k][ph]['time_ms'] / x['time_ms'] - 1 for k in got if (got[k].get(ph) or {}).get('time_ms')]
+        if d:
+            worst = max(worst, max(abs(v) for v in d))
+            print(f'  {ph}: neighbours busy vs alone ' + ' '.join(f'{100 * v:+.1f}%' for v in d))
+    verdict = worst <= limit
+    print(f'aa-soft1 on {page.id}: worst {100 * worst:.1f}% -> ' + ('split_soft1 may be on' if verdict else 'keep 3 lanes'))
+    return verdict
