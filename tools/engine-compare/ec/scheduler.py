@@ -89,6 +89,16 @@ def pick(queue, lane_session, gpu_busy, gpu_parallel, others_busy):
     return None
 
 
+def eta(t0, done, left, now):
+    """'N units/min, end ~HH:MM' from the pace so far (all lanes together)."""
+    el = now - t0
+    if done <= 0 or el <= 0:
+        return ''
+    rate = done / el
+    end = time.localtime(time.time() + left / rate)
+    return f'{rate * 60:.1f} units/min, end ~{time.strftime("%H:%M", end)}'
+
+
 class Runner:
     def __init__(self, cfg, adapters, policy, lanes, gpu_parallel, log=print):
         self.cfg = cfg; self.ad = adapters; self.policy = policy; self.lanes = lanes
@@ -142,7 +152,10 @@ class Runner:
                     REC.save(self.cfg.store, rec)
                 else:  # adapter computed another key (definition drift): store under the planned key
                     rec['key'] = t.key; REC.save(self.cfg.store, rec)
-                self.log(f'L{lane.id} {t} {time.perf_counter() - s:.1f}s')
+                with self.cv:
+                    left = len(q) + sum(1 for k, v in self.busy.items() if v is not None and k != lane.id)
+                    done = len(self.done) + 1
+                self.log(f'L{lane.id} {t} {time.perf_counter() - s:.1f}s | {done}/{done + left} {eta(t0, done, left, time.perf_counter())}')
                 with self.cv:
                     self.busy[lane.id] = None
                     if t.gpu:

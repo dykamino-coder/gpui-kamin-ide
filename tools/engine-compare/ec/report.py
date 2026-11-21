@@ -19,7 +19,7 @@ L = {
            'C': 'style edit, off screen', 'Cvis': 'style edit, visible', 'D': 'content edit, off screen',
            'Dvis': 'content edit, visible', 'S': 'scroll step (120 px)'},
            'summary': 'Summary: where we lead and where we do not', 'worst_t': 'every row by time, best for us first',
-           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
+           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'h_cls': 'Class', 'h_engine': 'Engine', 'h_kind': 'Set', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine itself', 'u_ms': 'ms', 'u_mb': 'MB', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
@@ -34,7 +34,7 @@ L = {
            'C': 'правка стиля, вне экрана', 'Cvis': 'правка стиля, видимая', 'D': 'правка содержимого, вне экрана',
            'Dvis': 'правка содержимого, видимая', 'S': 'шаг прокрутки (120 px)'},
            'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'все строки по времени, от лучших для нас к худшим',
-           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Движок', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
+           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'cls': {'gpu4': 'GPU, 4 потока', 'gpu2': 'GPU, 2 ядра', 'soft2': 'софт-растр, 2 ядра', 'soft1': 'софт-растр, 1 ядро'}, 'h_cls': 'Класс', 'h_engine': 'Движок', 'h_kind': 'Набор', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Сам движок', 'u_ms': 'мс', 'u_mb': 'МБ', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
@@ -47,6 +47,10 @@ L = {
            'intro': 'Время — кадр от запроса до готовых пикселей, мс (медиана повторов); у браузера берётся лучший из двух '
                     'способов отсчёта. Окно 800×600. Дорожки идут параллельно на равных производительных ядрах.'},
 }
+
+
+def cname(cls, T):
+    return (T.get('cls') or {}).get(cls) or CLASSES[cls][2]
 
 
 def f(x):
@@ -152,8 +156,8 @@ def why(x, T):
 
 def pass_table(passes, classes, T, ours):
     """Time to get through the whole page set, per engine and class: goal row (ours must be the fastest)."""
-    h = [f'<h3>{T["pass"]}</h3><p class="note">{html.escape(T["pass_note"])}</p><div class="tw"><table><thead><tr><th>class</th>'
-         f'<th>engine</th><th>{T["pass_total"]}</th><th>{T["pass_page"]}</th><th>{T["pass_rank"]}</th><th>{T["pass_stand"]}</th>'
+    h = [f'<h3>{T["pass"]}</h3><p class="note">{html.escape(T["pass_note"])}</p><div class="tw"><table><thead><tr><th>{T["h_cls"]}</th>'
+         f'<th>{T["h_engine"]}</th><th>{T["pass_total"]}</th><th>{T["pass_page"]}</th><th>{T["pass_rank"]}</th><th>{T["pass_stand"]}</th>'
          f'<th>{T["pass_engine"]}</th><th>{T["pass_pages"]}</th></tr></thead><tbody>']
     for cls in classes:
         es = [(e, v) for (c, e), v in passes.items() if c == cls and v['pages']]
@@ -164,7 +168,7 @@ def pass_table(passes, classes, T, ours):
             if e == ours:
                 en = f'{v["engine"]:.0f} s'; st = f'{v["wall"] - v["engine"]:.0f} s ({100 * (1 - v["engine"] / v["wall"]):.0f} %)' if v['wall'] else '—'
             cl = 'g' if rank == 1 else 'r' if e == ours else ''
-            h.append(f'<tr class="{cl if e == ours else ""}"><td>{html.escape(CLASSES[cls][2])}</td><td>{"<b>" + html.escape(e) + "</b>" if e == ours else html.escape(e)}</td>'
+            h.append(f'<tr class="{cl if e == ours else ""}"><td>{html.escape(cname(cls, T))}</td><td>{"<b>" + html.escape(e) + "</b>" if e == ours else html.escape(e)}</td>'
                      f'<td class="num">{v["wall"]:.0f} s</td><td class="num">{per:.1f} s</td><td class="num {cl}">{rank} / {len(es)}</td>'
                      f'<td class="num">{st}</td><td class="num">{en}</td><td class="num">{len(v["pages"])}{(" (+" + str(v["missing"]) + " " + T["pass_missing"] + ")") if v["missing"] else ""}</td></tr>')
     h.append('</tbody></table></div>')
@@ -189,10 +193,10 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
             vs.append(f'<a href="{html.escape(p.meta["source_url"])}">{T["source"]}</a>')
         return out + (f' <span class="vl">{" · ".join(vs)}</span>' if vs else '')
     for cls in classes:
-        H.append(f'<h2 id="{cls}">{html.escape(CLASSES[cls][2])}</h2>')
+        H.append(f'<h2 id="{cls}">{html.escape(cname(cls, T))}</h2>')
         for kind in kinds:
             ids = [p.id for p in cfg.pages.values() if p.kind == kind]
-            H.append(f'<h3>{html.escape(CLASSES[cls][2])} — {html.escape(kind)}</h3><div class="tw"><table><thead><tr><th>{T["page"]}</th>'
+            H.append(f'<h3>{html.escape(cname(cls, T))} — {html.escape(kind)}</h3><div class="tw"><table><thead><tr><th>{T["page"]}</th>'
                      f'<th>{T["ph"]}</th><th>{T["ours"]}</th>' + ''.join(f'<th>{html.escape(e)}</th>' for e in others)
                      + f'<th>{T["best"]}</th><th>{T["ratio"]}</th><th>{T["note"]}</th></tr></thead><tbody>')
             for p in ids:
@@ -257,10 +261,10 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                     H.append(f'<tr><td>{plink(p)}</td><td>{T["phase"][ph]}</td><td class="num">{f(oc)}</td>'
                              + ''.join(f'<td class="num">{f(v)}</td>' for v, _ in vs) + f'<td class="num {col(rr)}">{("×" + f(rr)) if rr else "—"}</td></tr>')
             H.append('</tbody></table></div>')
-    sm = [f'<h2 id="sum">{T["summary"]}</h2><div class="tw"><table><thead><tr><th>class</th><th>pages</th><th>{T["ph"]}</th><th>{T["rows"]}</th>'
+    sm = [f'<h2 id="sum">{T["summary"]}</h2><div class="tw"><table><thead><tr><th>{T["h_cls"]}</th><th>{T["h_kind"]}</th><th>{T["ph"]}</th><th>{T["rows"]}</th>'
           f'<th>{T["faster"]}</th><th>{T["median"]}</th><th>{T["worst"]}</th></tr></thead><tbody>']
     for (cls, kind, ph), r in SUM.items():
-        sm.append(f'<tr><td>{html.escape(CLASSES[cls][2])}</td><td>{html.escape(kind)}</td><td>{T["phase"][ph]}</td><td class="num">{len(r)}</td>'
+        sm.append(f'<tr><td>{html.escape(cname(cls, T))}</td><td>{html.escape(kind)}</td><td>{T["phase"][ph]}</td><td class="num">{len(r)}</td>'
                   f'<td class="num">{sum(1 for x in r if x < 1)}</td><td class="num {col(M.med(r))}">×{f(M.med(r))}</td><td class="num {col(max(r))}">×{f(max(r))}</td></tr>')
     sm.append('</tbody></table></div>')
     if passes:
@@ -269,16 +273,16 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
     sm.append(f'<h2 id="all">{T["all"]}</h2>')
     for cls in classes:
         lists = (
-            (T['worst_t'], 'ms', [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WT if x[1] == cls]),
-            (T['worst_m'], 'MB', [(x[4] / x[5][0], x[3], x[2], '', x[4] / MB, (x[5][0] / MB, x[5][1])) for x in WM if x[1] == cls]),
-            (T['worst_c'], 'ms', [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WC if x[1] == cls]),
+            (T['worst_t'], T['u_ms'], [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WT if x[1] == cls]),
+            (T['worst_m'], T['u_mb'], [(x[4] / x[5][0], x[3], x[2], '', x[4] / MB, (x[5][0] / MB, x[5][1])) for x in WM if x[1] == cls]),
+            (T['worst_c'], T['u_ms'], [(x[0], x[3], x[2], T['phase'][x[4]], x[5], x[6]) for x in WC if x[1] == cls]),
         )
         for name, unit, items in lists:
             items.sort(key=lambda x: x[0])
             behind = sum(1 for x in items if x[0] > 1.05); first = sum(1 for x in items if x[0] < 0.95)
             cnt = T['count'].format(n=behind, m=first, k=len(items) - behind - first, t=len(items))
-            sm.append(f'<h3>{html.escape(CLASSES[cls][2])}: {name}</h3><p class="note">{cnt}</p><div class="tw"><table><thead><tr>'
-                      f'<th>{T["page"]}</th><th>pages</th><th>{T["ph"]}</th><th>{T["ours"]}, {unit}</th><th>{T["best"]}, {unit}</th>'
+            sm.append(f'<h3>{html.escape(cname(cls, T))}: {name}</h3><p class="note">{cnt}</p><div class="tw"><table><thead><tr>'
+                      f'<th>{T["page"]}</th><th>{T["h_kind"]}</th><th>{T["ph"]}</th><th>{T["ours"]}, {unit}</th><th>{T["best"]}, {unit}</th>'
                       f'<th>{T["ratio"]}</th></tr></thead><tbody>' + ''.join(
                           f'<tr class="{col(x[0])}"><td>{plink(x[1])}</td><td>{html.escape(x[2])}</td><td>{x[3]}</td><td class="num">{f(x[4])}</td>'
                           f'<td class="num">{html.escape(x[5][1])} {f(x[5][0])}</td><td class="num {col(x[0])}">×{f(x[0])}</td></tr>' for x in items)
@@ -299,7 +303,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
     return f"""<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Engine comparison</title><style>{CSS}</style></head><body>
 <h1>{html.escape(title or T['title'])}</h1><p class="note">{html.escape(T['intro'])} {T['versions']}: {ver}.</p>
-<p class="leg">{leg}</p><nav><a href="#sum">{T['summary']}</a><a href="#all">{T['all']}</a><a href="#pages">{T['pages_title']}</a><a href="#causes">{T['causes']}</a>{''.join(f'<a href="#{c}">{html.escape(CLASSES[c][2])}</a>' for c in classes)}</nav>
+<p class="leg">{leg}</p><nav><a href="#sum">{T['summary']}</a><a href="#all">{T['all']}</a><a href="#pages">{T['pages_title']}</a><a href="#causes">{T['causes']}</a>{''.join(f'<a href="#{c}">{html.escape(cname(c, T))}</a>' for c in classes)}</nav>
 {''.join(sm)}{''.join(pg)}<h2 id="causes">{T['causes']}</h2>{causes or '<p class="note">—</p>'}
 <h2>{T['bounds']}</h2><ul class="note">{bnd}</ul>{''.join(H)}</body></html>"""
 
