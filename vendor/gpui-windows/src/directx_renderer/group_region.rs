@@ -47,6 +47,11 @@ impl Region {
         }
     }
 
+    /// The two rectangles share a pixel.
+    pub(super) fn meets(self, o: Self) -> bool {
+        self.x < o.x + o.width && o.x < self.x + self.width && self.y < o.y + o.height && o.y < self.y + self.height
+    }
+
     pub(super) fn floats(self) -> [f32; 4] {
         [
             self.x as f32,
