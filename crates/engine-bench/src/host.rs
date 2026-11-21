@@ -33,7 +33,9 @@ pub(super) fn peak_memory() -> Result<u64, Box<dyn std::error::Error>> {
 /// sample of each step shows whether memory stays flat over the steps.
 pub(super) fn memory_now() -> Option<(u64, u64)> {
     use windows::Win32::System::{
-        ProcessStatus::{GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX},
+        ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+        },
         Threading::GetCurrentProcess,
     };
     let mut counters = PROCESS_MEMORY_COUNTERS_EX {
