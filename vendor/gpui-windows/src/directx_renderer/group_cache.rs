@@ -57,19 +57,27 @@ impl DirectXRenderer {
         let mut shelves = shelves.clone();
         let mut places = vec![None; regions.len()];
         let mut keep = vec![false; regions.len()];
+        // A matched group keeps its rectangle whether or not its image is
+        // there: a frame drawn within a rectangle draws only the groups it
+        // needs, and the others must not take new space on the packed shelves
+        // (they would not fit, and the repack would drop every kept image).
+        // Only a group without a match, or with another region, gets new space.
+        let mut held = false;
         for (g, region) in regions.iter().enumerate() {
             let old = if same { Some(g) } else { scene.group_base(g) };
-            let Some(o) = old.filter(|&o| {
-                c.valid.get(o).copied().unwrap_or(false) && c.regions.get(o) == Some(region)
-            }) else {
+            let Some(o) = old.filter(|&o| c.regions.get(o) == Some(region)) else {
                 continue;
             };
-            if shelves.occupy(c.places[o], (region.width, region.height)) {
-                places[g] = Some(c.places[o]);
-                keep[g] = true;
+            let Some(&place) = c.places.get(o) else {
+                continue;
+            };
+            if shelves.occupy(place, (region.width, region.height)) {
+                places[g] = Some(place);
+                keep[g] = c.valid.get(o).copied().unwrap_or(false);
+                held = true;
             }
         }
-        if !keep.contains(&true) {
+        if !held {
             return None;
         }
         let places = places
@@ -78,6 +86,32 @@ impl DirectXRenderer {
             .map(|(p, r)| p.or_else(|| shelves.alloc((r.width, r.height))))
             .collect::<Option<Vec<_>>>()?;
         Some((places, keep))
+    }
+
+    /// A frame kept without drawing (`retained::Plan::Keep`) whose scene is a
+    /// new one: its groups paint what their matches painted, so the images
+    /// stay valid under the new scene's numbering. Without this the next frame,
+    /// compared with the kept one, would find the cache describing an older
+    /// scene and lose every image. A group without a match ends the carry.
+    pub(super) fn carry_kept_groups(&mut self, scene: &Scene) {
+        let Some((false, base)) = self.retained.chain else {
+            return;
+        };
+        let c = &mut self.retained.groups;
+        if c.id != base {
+            return;
+        }
+        let mut carried = (Vec::new(), Vec::new(), Vec::new());
+        for g in 0..scene.groups.len() {
+            let Some(o) = scene.group_base(g).filter(|&o| o < c.places.len().min(c.regions.len())) else {
+                return;
+            };
+            carried.0.push(c.places[o]);
+            carried.1.push(c.regions[o]);
+            carried.2.push(c.valid.get(o).copied().unwrap_or(false));
+        }
+        (c.places, c.regions, c.valid) = carried;
+        c.id = scene.frame_damage().2;
     }
 
     /// The atlas now holds the images of `scene`'s groups marked in `valid`.

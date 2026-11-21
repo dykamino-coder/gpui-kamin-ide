@@ -133,19 +133,38 @@ impl DirectXRenderer {
             regions.push(self.composite_region(s));
         }
         let mut lists = std::mem::take(&mut self.blur.tile_lists);
-        let n = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
+        let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
+        if taken < 2 {
+            self.blur.tile_lists = lists;
+            return Ok(0);
+        }
+        // KaminIDE patch: in a frame drawn within a rectangle the pass keeps
+        // only the composites that reach it. The pass is the one the whole
+        // frame draws (same split, same per-pixel steps); a composite outside
+        // the scissor writes none of its pixels, so it costs no list entries,
+        // no backdrop copy and no draw. A lone survivor stays in the pass:
+        // drawn alone it would take another path than the whole frame.
+        regions.truncate(taken);
+        if let Some(w) = self.blur.frame_within {
+            let keep: Vec<usize> = (0..taken).filter(|&k| w.meets(regions[k])).collect();
+            if keep.len() < taken {
+                regions = keep.iter().map(|&k| regions[k]).collect();
+                quads = std::iter::once(quads[0]).chain(keep.iter().map(|&k| quads[k + 1])).collect();
+                bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
+            }
+        }
         let result = match first {
-            Some((page, view)) if n >= 2 => {
+            Some((page, view)) if !regions.is_empty() => {
                 if let Some(v) = &view {
                     let dc = self.dev().device_context.clone();
                     unsafe { dc.PSSetShaderResources(3, Some(slice::from_ref(v))) };
                 }
-                self.draw_tile_pass(&mut quads, &regions[..n], page, &mut lists)
+                self.draw_tile_pass(&mut quads, &regions, page, &mut lists)
             }
             _ => Ok(()),
         };
         self.blur.tile_lists = lists;
-        result.map(|()| if n >= 2 { n } else { 0 })
+        result.map(|()| taken)
     }
 
     fn draw_tile_pass(
@@ -161,6 +180,15 @@ impl DirectXRenderer {
         let y0 = regions.iter().map(|r| r.y).min().unwrap_or(0);
         let x1 = regions.iter().map(|r| r.x + r.width).max().unwrap_or(0);
         let y1 = regions.iter().map(|r| r.y + r.height).max().unwrap_or(0);
+        // Within a scissor only its pixels are drawn: the cover (backdrop copy
+        // and the pass quad) need not reach farther.
+        let (x0, y0, x1, y1) = match self.blur.frame_within {
+            Some(w) => {
+                let (x, y) = (x0.max(w.x), y0.max(w.y));
+                (x, y, x1.min(w.x + w.width).max(x), y1.min(w.y + w.height).max(y))
+            }
+            None => (x0, y0, x1, y1),
+        };
         let cover = Region {
             x: x0,
             y: y0,
