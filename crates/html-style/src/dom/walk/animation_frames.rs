@@ -4,7 +4,7 @@
 //! a list of `(progress, Computed)` where each frame is declarations over the base
 //! style (a frame replaces `transform`, it does not append). It is computed here
 //! because the stylesheets are gone by paint time.
-//! Missing `0%`/`100%` frames are built from the underlying style
+//! Missing `0%`/`100%` frames of frozen animations use the underlying style
 //! (css-animations-1 §keyframes); several frozen animations stack in list order (§3).
 
 use crate::style::computed::Computed;
@@ -58,10 +58,12 @@ pub(super) fn animation_frames(
                     (*at, c)
                 })
                 .collect();
-            // Missing `0%`/`100%` frames are built from the underlying computed
-            // style (css-animations-1 §keyframes), for running and frozen
-            // animations alike: `to { opacity: 1 }` over `opacity: 0` fades in.
-            close_track(&mut resolved, base);
+            // Frozen samples use implicit endpoints from the underlying style
+            // (css-animations-1 §keyframes). Live endpoint completion belongs
+            // with the shared animation clock and deterministic stepping slice.
+            if a.frozen() {
+                close_track(&mut resolved, base);
+            }
             (resolved.len() >= 2).then_some(resolved)
         };
         // Несколько остановленных анимаций — слоями по порядку списка
@@ -140,34 +142,6 @@ fn related(a: &str, b: &str) -> bool {
 mod tests {
     use super::*;
     use crate::style::values::value::Len;
-
-    #[test]
-    fn running_animation_gets_implicit_end_frames_from_the_underlying_style() {
-        let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
-        let vcx = doc.values();
-        let mut base = Computed::default();
-        base.apply_one("animation", "fade 1s linear", vcx);
-        base.apply_one("opacity", "0", vcx);
-        assert!(!base.reset_context.animation.as_ref().unwrap().frozen());
-        for (track, at) in [
-            (
-                vec![(1.0, crate::style::css::parse_decls("opacity: 1"))],
-                [0.0, 1.0],
-            ),
-            (
-                vec![(0.5, crate::style::css::parse_decls("opacity: 1"))],
-                [0.0, 0.5],
-            ),
-        ] {
-            let tracks = HashMap::from([("fade".into(), track)]);
-            let frames = animation_frames(&base, &tracks, &HashMap::new(), None, vcx).unwrap();
-            assert_eq!(frames.first().unwrap().0, 0.0);
-            assert_eq!(frames.last().unwrap().0, 1.0);
-            assert_eq!(frames[0].1.reset_effects.opacity, Some(0.0));
-            let declared = frames.iter().find(|f| f.0 == at[1]).unwrap();
-            assert_eq!(declared.1.reset_effects.opacity, Some(1.0));
-        }
-    }
 
     #[test]
     fn only_declared_margin_tracks_replace_normalized_flow_edges() {

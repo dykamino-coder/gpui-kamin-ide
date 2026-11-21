@@ -12,6 +12,58 @@ use gpui::{AnyElement, Bounds, Hsla, IntoElement, PathBuilder, Pixels, Styled, p
 
 type Quad = [(f32, f32); 4];
 
+/// Extend the earlier opaque side underneath the later one at their shared
+/// diagonal. Separate antialiased fills otherwise leave background coverage
+/// between them (even though the mathematical polygons tile exactly).
+/// Like Gecko's corner skirts, the overlap stays inside the corner rectangle.
+/// Transparent joins keep their partition: overpainting would compound alpha.
+fn outline(
+    quads: &[Quad; 4],
+    i: usize,
+    colours: &[Option<Hsla>; 4],
+    pixel: f32,
+) -> Vec<(f32, f32)> {
+    let q = quads[i];
+    let mut out = Vec::with_capacity(8);
+    let opaque = |j: usize| colours[j].is_some_and(|c| c.a == 1.0);
+    let skirt = |outer: (f32, f32), inner: (f32, f32)| {
+        let dx = (outer.0 - inner.0).abs();
+        let dy = (outer.1 - inner.1).abs();
+        if dx == 0.0 || dy == 0.0 || q[2] == q[3] {
+            return (outer, inner);
+        }
+        // Displace the shared diagonal by one device pixel, intersecting its
+        // parallel with the outer and inner edges of this corner rectangle.
+        let distance = dx.hypot(dy) * pixel;
+        let sx = (distance / dy).min(dx);
+        let sy = (distance / dx).min(dy);
+        match i {
+            0 | 2 => (
+                (outer.0, outer.1 + (inner.1 - outer.1).signum() * sy),
+                (inner.0 + (outer.0 - inner.0).signum() * sx, inner.1),
+            ),
+            _ => (
+                (outer.0 + (inner.0 - outer.0).signum() * sx, outer.1),
+                (inner.0, inner.1 + (outer.1 - inner.1).signum() * sy),
+            ),
+        }
+    };
+    out.push(q[0]);
+    out.push(q[1]);
+    let next = (i + 1) % 4;
+    if next > i && opaque(i) && opaque(next) {
+        let (a, b) = skirt(q[1], q[2]);
+        out.extend([a, b]);
+    }
+    out.extend([q[2], q[3]]);
+    let prev = (i + 3) % 4;
+    if prev > i && opaque(i) && opaque(prev) {
+        let (a, b) = skirt(q[0], q[3]);
+        out.extend([b, a]);
+    }
+    out
+}
+
 /// The four side polygons (top, right, bottom, left) of a border box of
 /// `w`×`h` with side widths `[t, r, b, l]`, in the box's own coordinates:
 /// outer edge first, then the inner edge back.
@@ -58,10 +110,14 @@ pub(crate) fn polygon_sides(widths: [f32; 4], colours: [Option<Hsla>; 4]) -> Any
             let transform = gpui::Transform::new(a, bb, c, d, x / scale, y / scale);
             let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let (ox, oy) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
-            for (quad, colour) in side_polygons(w, h, widths).iter().zip(colours) {
+            let quads = side_polygons(w, h, widths);
+            let transform_scale = a.hypot(bb).min(c.hypot(d));
+            let pixel = 1.0 / (scale * transform_scale).max(f32::EPSILON);
+            for (i, colour) in colours.iter().copied().enumerate() {
                 let Some(colour) = colour.filter(|c| c.a > 0.0) else {
                     continue;
                 };
+                let quad = outline(&quads, i, &colours, pixel);
                 let mut path = PathBuilder::fill();
                 path.move_to(point(px(ox + quad[0].0), px(oy + quad[0].1)));
                 for &(qx, qy) in &quad[1..] {
