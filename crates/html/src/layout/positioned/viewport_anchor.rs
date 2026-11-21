@@ -45,6 +45,9 @@ pub(crate) fn viewport_box(child: AnyElement) -> AnyElement {
 pub(crate) fn unscroll(cx: &mut crate::layout::cx::LayoutCx, anchored: bool) {
     if anchored {
         cx.scroll.frame = None;
+        // The anchor cancels the root offset: its content prepaints in
+        // viewport space, under no scroll node.
+        cx.scroll.node = None;
     }
 }
 
