@@ -36,15 +36,16 @@ load line into the store's `run.log`, which the report shows under the measureme
 ## Repeats
 
 Ours: frames of one series in one process, at least 3, then until MAD / median <= 3 % or 500 ms of frames. Browsers:
-visit 1 loads the page (one cold sample), keeps it open for the steady memory window, runs one probe round of every
-warm row (every frame of the round is a sample of its row) and the CPU loops; only the rows that did not settle get
-more probe rounds in the same page (frame clocks only, Chromium reuses round 1's raster + swap per frame unless
-`"trace_rounds": "all"`), and cold gets one fresh load per further sample (`"cold_clock": "load"`: navigation to two
-rAFs after load; `"min"` also traces every load and takes the better of that and the trace's main + raster sum). A
-row settles when the 90 % confidence interval of its median (order statistics) is within 3 % of the median (or within
-the 0.1 ms clock step), or lies wholly beyond our value of the same row by 3 %: its place is decided, so ours is
-measured first in every class. The cap is 8 rounds; the report shows the interval half-width next to a number and
-marks a row stopped at the cap. Scroll keeps the step count of the browser scenario. The cell title gives the number
+visit 1 loads the page (one cold sample), keeps it for the steady memory window, probes every warm row (every frame of
+the probe is a sample of its row) and runs the CPU loops; visit 2 is a fresh load with a frames-only probe of every
+warm row; visits 3..8 load again and probe only the rows that have not settled. Cold takes one value per load
+(`"cold_clock": "min"`, the default: every load is traced and the better of navigation -> two rAFs after load and the
+trace's main + raster sum is taken; `"load"`: the first clock only, which read far higher on the stand). A row's
+accuracy is the larger of the 90 % confidence interval half-width of its pooled samples' median (order statistics)
+and half the spread of its visit medians; it settles when that is within 3 % of the median (or within the 0.1 ms
+clock step), or when that range lies wholly beyond our value of the same row by 3 %: its place is decided, so ours is
+measured first in every class. The report shows the accuracy next to a number (`±N%`) and marks a row stopped at the
+cap (`!`). Scroll keeps the step count of the browser scenario. The cell title gives the number
 of samples.
 ## Adapters
 

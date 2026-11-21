@@ -274,6 +274,9 @@ class Settle(unittest.TestCase):
         self.assertIsNone(p.settled(wide))
         self.assertEqual(p.settled(wide, ours=5.0), 'place')  # whole interval above ours by more than 3 %
         self.assertIsNone(p.settled(wide, ours=10.0))
+        tight = [10.0, 10.1, 10.2, 9.9, 10.0]
+        self.assertIsNone(p.settled(tight, visit_medians=[9.0, 11.0]))  # visits disagree by 20 %: not settled
+        self.assertAlmostEqual(M.accuracy(tight, [9.0, 11.0]), 0.1)
 
     def test_browser_samples_take_the_lower_clock_with_raster_per_frame(self):
         res = {'probe': {'frames': 2, 'cases': {

@@ -205,6 +205,24 @@ def ci_half(xs, level=0.9):
     return (c[1] - c[0]) / 2 / m if c and m else None
 
 
+def accuracy(samples, visit_medians=None, level=0.9):
+    """Relative accuracy of a row's median: the larger of the confidence-interval half-width of the pooled samples
+    and half the spread of the per-visit medians (frames of one visit understate the visit-to-visit spread)."""
+    h = ci_half(samples, level); m = med(samples)
+    v = [x for x in (visit_medians or []) if x is not None]
+    if len(v) >= 2 and m:
+        h = max(h or 0.0, (max(v) - min(v)) / 2 / m)
+    return h
+
+
+def accuracy_range(samples, visit_medians=None, level=0.9):
+    """(lo, hi) of the median under ``accuracy``: the interval widened to every visit median."""
+    c = median_ci(samples, level)
+    if not c:
+        return None
+    v = [x for x in (visit_medians or []) if x is not None]
+    return min([c[0]] + v), max([c[1]] + v)
+
 def browser_samples(engine, res):
     """{phase: {'value', 'samples', 'clock'}} of one probe round: per-frame samples of the clock with the lower median
     (the same choice as ``browser_visit``), each with the round's per-frame raster + swap from the trace (Chromium) or
