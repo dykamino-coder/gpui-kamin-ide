@@ -1,4 +1,4 @@
-//! Draw one ordered composite run from its coarse or bounded fine lists.
+//! Отрисовка упорядоченного прохода по крупной или уточнённой сетке.
 
 use super::*;
 

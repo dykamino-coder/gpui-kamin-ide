@@ -12244,10 +12244,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06457b5794
+index 0000000000000000000000000000000000000000..5263288ac66b464e9d62b2b0b32e398957df1ab3
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,197 @@
 +//! KaminIDE patch: a run of overlapping group composites in one pass.
 +//!
 +//! A blend mode mixed in the shader reads a copy of the backdrop, and a
@@ -12256,7 +12256,7 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +//! overlapping groups (effects-480: every layer overlaps its neighbours) cost N
 +//! backdrop copies, N draws and N read-after-write barriers. As in the fine
 +//! stage of vello (per-tile command lists, every pixel runs its tile's list
-+//! in order), the run is binned into 16 px tiles of the target: each tile
++//! in order), the run is split on 16 px tiles of the target: each tile
 +//! lists, in document order, the composites whose region meets it. One copy of
 +//! the run's rectangle is the starting backdrop and one draw over it applies,
 +//! per pixel, every composite covering the pixel in order, rounding to the
@@ -12269,9 +12269,15 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +//! per split, never a longer list). Composites of one pass share an atlas page
 +//! and a mask image view (or have none).
 +
++//! Внутри повреждения сетка уточняется до 8 px без роста буферов.
++//! Границы проходов, порядок композитов и арифметика шага сохраняются.
++
 +use super::*;
 +
-+/// Tile side in target pixels (`GROUP_TILE` in shaders.hlsl).
++mod pass;
++mod refine;
++
++/// Сторона крупного тайла в пикселях цели.
 +pub(super) const TILE: u32 = 16;
 +/// Most composites one tile lists, so most loop steps per pixel.
 +pub(super) const TILE_CAP: u32 = 128;
@@ -12297,14 +12303,25 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +/// column, last row), inclusive.
 +fn tile_span(r: Region) -> (u32, u32, u32, u32) {
 +    let last = |o: u32, s: u32| (o + s.max(1) - 1) / TILE;
-+    (r.x / TILE, r.y / TILE, last(r.x, r.width), last(r.y, r.height))
++    (
++        r.x / TILE,
++        r.y / TILE,
++        last(r.x, r.width),
++        last(r.y, r.height),
++    )
 +}
 +
 +/// Bin the leading composites of `regions` on a target `width` x `height`:
 +/// how many are taken (stopping before one that would put more than `cap` in
 +/// a tile) and the lists: the first entry of every tile (one more than the
 +/// tiles), then composite instance indices (k + 1), document order per tile.
-+pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: &mut TileLists) -> usize {
++pub(super) fn bin(
++    regions: &[Region],
++    width: u32,
++    height: u32,
++    cap: u32,
++    lists: &mut TileLists,
++) -> usize {
 +    let cols = width.div_ceil(TILE);
 +    let tiles = (cols * height.div_ceil(TILE)) as usize;
 +    let counts = &mut lists.counts;
@@ -12363,10 +12380,16 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        type View = Option<Option<ID3D11ShaderResourceView>>;
 +        let mut first: Option<(usize, View)> = None;
 +        for s in run.iter().take(MAX_RUN) {
-+            let Some((mut quad, p)) = self.group_composite_quad(s).filter(|_| self.group_tiles) else {
++            let Some((mut quad, p)) = self.group_composite_quad(s).filter(|_| self.group_tiles)
++            else {
 +                break;
 +            };
-+            let mask = self.blur.group_mask.get(s.group as usize - 1).cloned().flatten();
++            let mask = self
++                .blur
++                .group_mask
++                .get(s.group as usize - 1)
++                .cloned()
++                .flatten();
 +            // Masked composites carry their mask rectangle per instance and share
 +            // the pass with those of the same view (the mask cache hands equal
 +            // images one view), as in the composite levels.
@@ -12399,7 +12422,9 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +            let keep: Vec<usize> = (0..taken).filter(|&k| w.meets(regions[k])).collect();
 +            if keep.len() < taken {
 +                regions = keep.iter().map(|&k| regions[k]).collect();
-+                quads = std::iter::once(quads[0]).chain(keep.iter().map(|&k| quads[k + 1])).collect();
++                quads = std::iter::once(quads[0])
++                    .chain(keep.iter().map(|&k| quads[k + 1]))
++                    .collect();
 +                bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
 +            }
 +        }
@@ -12416,8 +12441,22 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        self.blur.tile_lists = lists;
 +        result.map(|()| taken)
 +    }
++}
 +
-+    fn draw_tile_pass(
++#[cfg(test)]
++mod tests;
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..63dcfe79c6a1e6a88ee4dc0317d4659d72eec9b3
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/pass.rs
+@@ -0,0 +1,105 @@
++//! Отрисовка упорядоченного прохода по крупной или уточнённой сетке.
++
++use super::*;
++
++impl DirectXRenderer {
++    pub(super) fn draw_tile_pass(
 +        &mut self,
 +        quads: &mut Vec<BlurQuad>,
 +        regions: &[Region],
@@ -12435,7 +12474,12 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        let (x0, y0, x1, y1) = match self.blur.frame_within {
 +            Some(w) => {
 +                let (x, y) = (x0.max(w.x), y0.max(w.y));
-+                (x, y, x1.min(w.x + w.width).max(x), y1.min(w.y + w.height).max(y))
++                (
++                    x,
++                    y,
++                    x1.min(w.x + w.width).max(x),
++                    y1.min(w.y + w.height).max(y),
++                )
 +            }
 +            None => (x0, y0, x1, y1),
 +        };
@@ -12447,7 +12491,16 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        };
 +        quads.truncate(regions.len() + 1);
 +        quads[0].bounds = cover.floats();
-+        quads[0].poly_count = self.width.div_ceil(TILE);
++        let capacity = lists.buffer.as_ref().map_or(0, |b| b.2);
++        let grid = self
++            .blur
++            .frame_within
++            .filter(|_| regions.len() > 1)
++            .and_then(|_| refine::bin_cover(regions, cover, capacity, lists))
++            .unwrap_or_else(|| refine::Grid::full(self.width));
++        quads[0].src_origin = grid.origin.map(|n| n as f32);
++        quads[0].poly_count = grid.cols;
++        quads[0].texel = [1.0 / grid.side as f32, 0.0];
 +        log::debug!(
 +            target: "gpui::frame",
 +            "tile pass {} composites cover {}x{} lists {} entries",
@@ -12471,23 +12524,30 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        update_buffer(
 +            &dc,
 +            self.blur.globals[0].as_ref().unwrap(),
-+            &[global_params(self.font_info, [self.width as f32, self.height as f32])],
++            &[global_params(
++                self.font_info,
++                [self.width as f32, self.height as f32],
++            )],
 +        )?;
 +        let target = self.current_target().to_vec();
-+        self.pipelines.group_tiles_pipeline.update_buffer(&device, &dc, quads)?;
++        self.pipelines
++            .group_tiles_pipeline
++            .update_buffer(&device, &dc, quads)?;
 +        unsafe {
 +            dc.PSSetShaderResources(4, Some(slice::from_ref(view)));
 +            dc.OMSetRenderTargets(Some(&target), None);
 +        }
-+        self.pipelines.group_tiles_pipeline.draw_with_texture_blended(
-+            &dc,
-+            &self.blur.groups[page].srv,
-+            slice::from_ref(&self.res().viewport),
-+            &self.blur.globals,
-+            slice::from_ref(&self.globals.sampler),
-+            1,
-+            None,
-+        )?;
++        self.pipelines
++            .group_tiles_pipeline
++            .draw_with_texture_blended(
++                &dc,
++                &self.blur.groups[page].srv,
++                slice::from_ref(&self.res().viewport),
++                &self.blur.globals,
++                slice::from_ref(&self.globals.sampler),
++                1,
++                None,
++            )?;
 +        unsafe {
 +            dc.PSSetShaderResources(2, Some(&[None]));
 +            dc.PSSetShaderResources(4, Some(&[None]));
@@ -12496,9 +12556,229 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        Ok(())
 +    }
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a764e7fc9d3fac6fddb6a607afaecec37f42d555
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/refine.rs
+@@ -0,0 +1,217 @@
++//! Уточнение сетки повреждения без роста сохранённых буферов тайлов.
++
++use super::{Region, TILE, TileLists};
++
++const SIDE: u32 = 8;
++
++pub(super) struct Grid {
++    pub(super) origin: [u32; 2],
++    pub(super) cols: u32,
++    pub(super) side: u32,
++}
++
++impl Grid {
++    pub(super) fn full(width: u32) -> Self {
++        Self {
++            origin: [0, 0],
++            cols: width.div_ceil(TILE),
++            side: TILE,
++        }
++    }
++}
++
++fn span(r: Region, cover: Region, grid: &Grid) -> Option<[u32; 4]> {
++    let (x, y) = (r.x.max(cover.x), r.y.max(cover.y));
++    let (right, bottom) = (
++        (r.x + r.width).min(cover.x + cover.width),
++        (r.y + r.height).min(cover.y + cover.height),
++    );
++    (x < right && y < bottom).then(|| {
++        [
++            (x - grid.origin[0]) / SIDE,
++            (y - grid.origin[1]) / SIDE,
++            (right - 1 - grid.origin[0]) / SIDE,
++            (bottom - 1 - grid.origin[1]) / SIDE,
++        ]
++    })
++}
++
++/// Сетка 16 px уже определила границы и порядок прохода. Её выровненное
++/// подразделение не превышает прежний лимит. Меняются только списки внутри
++/// повреждения; шейдер проверяет прежние консервативные границы текстуры.
++/// При отказе data пригодны для крупной сетки, counts — рабочая память.
++pub(super) fn bin_cover(
++    regions: &[Region],
++    cover: Region,
++    gpu_capacity: usize,
++    lists: &mut TileLists,
++) -> Option<Grid> {
++    if cover.width == 0 || cover.height == 0 || gpu_capacity == 0 {
++        return None;
++    }
++    let origin = [cover.x / SIDE * SIDE, cover.y / SIDE * SIDE];
++    let cols = (cover.x + cover.width - origin[0]).div_ceil(SIDE);
++    let rows = (cover.y + cover.height - origin[1]).div_ceil(SIDE);
++    let tiles = cols as usize * rows as usize;
++    if tiles > lists.counts.capacity() {
++        return None;
++    }
++    let grid = Grid {
++        origin,
++        cols,
++        side: SIDE,
++    };
++    let counts = &mut lists.counts;
++    counts.clear();
++    counts.resize(tiles, 0);
++    for &r in regions {
++        if let Some([x0, y0, x1, y1]) = span(r, cover, &grid) {
++            for y in y0..=y1 {
++                for x in x0..=x1 {
++                    counts[(y * cols + x) as usize] += 1;
++                }
++            }
++        }
++    }
++    let needed = tiles + 1 + counts.iter().map(|&n| n as usize).sum::<usize>();
++    if needed > lists.data.capacity() || needed > gpu_capacity || needed > u32::MAX as usize {
++        return None;
++    }
++    let data = &mut lists.data;
++    data.clear();
++    let mut at = tiles as u32 + 1;
++    for &n in counts.iter() {
++        data.push(at);
++        at += n;
++    }
++    data.push(at);
++    data.resize(needed, 0);
++    counts.copy_from_slice(&data[..tiles]);
++    for (k, &r) in regions.iter().enumerate() {
++        if let Some([x0, y0, x1, y1]) = span(r, cover, &grid) {
++            for y in y0..=y1 {
++                for x in x0..=x1 {
++                    let t = (y * cols + x) as usize;
++                    data[counts[t] as usize] = k as u32 + 1;
++                    counts[t] += 1;
++                }
++            }
++        }
++    }
++    Some(grid)
++}
 +
 +#[cfg(test)]
-+mod tests;
++mod tests {
++    use super::super::{TILE_CAP, bin};
++    use super::*;
++
++    fn r(x: u32, y: u32, width: u32, height: u32) -> Region {
++        Region {
++            x,
++            y,
++            width,
++            height,
++        }
++    }
++
++    #[test]
++    fn subdivision_preserves_every_pixels_order_and_reuses_capacity() {
++        let regions = [r(0, 0, 37, 30), r(11, 5, 21, 33), r(25, 17, 28, 20)];
++        let cover = r(13, 7, 33, 27);
++        let mut lists = TileLists::default();
++        assert_eq!(bin(&regions, 128, 128, TILE_CAP, &mut lists), 3);
++        let coarse = lists.data.clone();
++        let capacity = (lists.counts.capacity(), lists.data.capacity());
++        let grid = bin_cover(&regions, cover, capacity.1, &mut lists).unwrap();
++        assert_eq!((grid.origin, grid.cols, grid.side), ([8, 0], 5, 8));
++        assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
++        let entries =
++            |data: &[u32], t: usize| data[data[t] as usize..data[t + 1] as usize].to_vec();
++        let mut old_steps = 0;
++        let mut new_steps = 0;
++        for y in cover.y..cover.y + cover.height {
++            for x in cover.x..cover.x + cover.width {
++                let old = entries(&coarse, (y / TILE * 8 + x / TILE) as usize);
++                let t = (y - grid.origin[1]) / SIDE * grid.cols + (x - grid.origin[0]) / SIDE;
++                let new = entries(&lists.data, t as usize);
++                old_steps += old.len();
++                new_steps += new.len();
++                assert!(new.iter().all(|n| old.contains(n)));
++                let covers = |&n: &u32| regions[n as usize - 1].meets(r(x, y, 1, 1));
++                assert_eq!(
++                    old.into_iter().filter(covers).collect::<Vec<_>>(),
++                    new.into_iter().filter(covers).collect::<Vec<_>>()
++                );
++            }
++        }
++        assert!(new_steps < old_steps);
++    }
++
++    #[test]
++    fn insufficient_cpu_or_gpu_capacity_keeps_the_coarse_data() {
++        let regions = [r(0, 0, 16, 16); 2];
++        let mut lists = TileLists::default();
++        bin(&regions, 16, 16, TILE_CAP, &mut lists);
++        let original = lists.data.clone();
++        let capacity = (lists.counts.capacity(), lists.data.capacity());
++        assert!(bin_cover(&regions, r(0, 0, 16, 16), usize::MAX, &mut lists).is_none());
++        assert_eq!(original, lists.data);
++        assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
++        bin(&regions, 128, 128, TILE_CAP, &mut lists);
++        let original = lists.data.clone();
++        let capacity = (lists.counts.capacity(), lists.data.capacity());
++        assert!(bin_cover(&regions, r(0, 0, 16, 16), 1, &mut lists).is_none());
++        assert_eq!(original, lists.data);
++        assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
++    }
++
++    #[test]
++    fn subdivision_keeps_the_coarse_run_limit() {
++        let regions = [r(0, 0, 16, 16); 5];
++        let mut lists = TileLists::default();
++        let taken = bin(&regions, 128, 128, 3, &mut lists);
++        assert_eq!(taken, 3);
++        let capacity = lists.data.capacity();
++        bin_cover(&regions[..taken], r(0, 0, 16, 16), capacity, &mut lists).unwrap();
++        for t in 0..4 {
++            assert_eq!(
++                &lists.data[lists.data[t] as usize..lists.data[t + 1] as usize],
++                [1, 2, 3]
++            );
++        }
++    }
++
++    #[test]
++    fn insufficient_data_capacity_keeps_coarse_lists_with_enough_scratch_and_gpu() {
++        let regions = [r(0, 0, 16, 16); 2];
++        let mut lists = TileLists::default();
++        bin(&regions, 16, 16, TILE_CAP, &mut lists);
++        lists.counts.reserve(4);
++        let original = lists.data.clone();
++        let capacity = (lists.counts.capacity(), lists.data.capacity());
++        // Четырём fine-тайлам нужны пять offsets и восемь индексов групп.
++        assert!(capacity.0 >= 4 && capacity.1 < 13);
++        assert!(bin_cover(&regions, r(0, 0, 16, 16), usize::MAX, &mut lists).is_none());
++        assert_eq!(original, lists.data);
++        assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
++    }
++
++    #[test]
++    fn empty_cover_or_missing_gpu_buffer_preserves_both_vectors() {
++        let regions = [r(0, 0, 16, 16); 2];
++        let mut lists = TileLists::default();
++        bin(&regions, 128, 128, TILE_CAP, &mut lists);
++        let original = (lists.counts.clone(), lists.data.clone());
++        let capacity = (lists.counts.capacity(), lists.data.capacity());
++        for (cover, gpu_capacity) in [
++            (r(1, 1, 0, 8), usize::MAX),
++            (r(1, 1, 8, 0), usize::MAX),
++            (r(1, 1, 8, 8), 0),
++        ] {
++            assert!(bin_cover(&regions, cover, gpu_capacity, &mut lists).is_none());
++            assert_eq!(original, (lists.counts.clone(), lists.data.clone()));
++            assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
++        }
++    }
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/tests.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..bfcbca2ae2edb8ed4c4bdcdc3bc096a1b70cd80c
@@ -16434,7 +16714,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaabd5e79d8e
+index ba89c6873354fb7449b8294878e080a68c3dd29b..49e89cbd8d46e264b4db86a6bf95816eba23e24a
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -17283,14 +17563,14 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaab
 +// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +//
 +// blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
-+// tile grid's corner, poly_count = tiles per row. Composites are
++// tile grid's corner, poly_count = tiles per row.
++// texel.x — обратная сторона тайла (крупного или уточнённого). Composites are
 +// blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 +// than the tiles, the last is the end), then composite indices, each tile's in
 +// document order. Every pixel starts from the backdrop copy and applies the
 +// composites covering it in order, rounding to the 8-bit target after every
 +// step: the canonical group arithmetic (design.md), the frame the copy path
 +// writes composite by composite.
-+#define GROUP_TILE 16.0
 +StructuredBuffer<uint> tile_lists: register(t4);
 +
 +// The pixels the composite's own draw covers: its rectangle with vertices on
@@ -17318,7 +17598,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaab
 +    float2 c = input.position.xy;
 +    BlurQuad cover = blur_quads[0];
 +    float4 dst = t_backdrop.Load(int3(int2(floor(c)), 0));
-+    uint2 tile = uint2(floor((c - cover.src_origin) / GROUP_TILE));
++    uint2 tile = uint2(floor((c - cover.src_origin) * cover.texel.x));
 +    uint t = tile.y * cover.poly_count + tile.x;
 +    uint end = tile_lists[t + 1u];
 +    float2 p = c + global_origin;

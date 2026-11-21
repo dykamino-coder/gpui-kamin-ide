@@ -19,15 +19,15 @@
 //! per split, never a longer list). Composites of one pass share an atlas page
 //! and a mask image view (or have none).
 
-//! A damaged cover may refine that grid to 8 px within existing buffer
-//! capacities. Run boundaries, composite order and per-step arithmetic stay fixed.
+//! Внутри повреждения сетка уточняется до 8 px без роста буферов.
+//! Границы проходов, порядок композитов и арифметика шага сохраняются.
 
 use super::*;
 
 mod pass;
 mod refine;
 
-/// Tile side in target pixels (`GROUP_TILE` in shaders.hlsl).
+/// Сторона крупного тайла в пикселях цели.
 pub(super) const TILE: u32 = 16;
 /// Most composites one tile lists, so most loop steps per pixel.
 pub(super) const TILE_CAP: u32 = 128;

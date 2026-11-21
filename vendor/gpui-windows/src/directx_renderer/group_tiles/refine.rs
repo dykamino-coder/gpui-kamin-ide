@@ -1,4 +1,4 @@
-//! Refine a damaged cover without growing the retained tile buffers.
+//! Уточнение сетки повреждения без роста сохранённых буферов тайлов.
 
 use super::{Region, TILE, TileLists};
 
@@ -36,10 +36,10 @@ fn span(r: Region, cover: Region, grid: &Grid) -> Option<[u32; 4]> {
     })
 }
 
-/// The 16 px grid has already fixed the run's split and order. An aligned
-/// subdivision cannot exceed its cap. Only lists of the clipped cover change;
-/// no texture support is guessed and the shader still tests the same bounds.
-/// On refusal, data stays valid for the coarse draw (counts is only scratch).
+/// Сетка 16 px уже определила границы и порядок прохода. Её выровненное
+/// подразделение не превышает прежний лимит. Меняются только списки внутри
+/// повреждения; шейдер проверяет прежние консервативные границы текстуры.
+/// При отказе data пригодны для крупной сетки, counts — рабочая память.
 pub(super) fn bin_cover(
     regions: &[Region],
     cover: Region,
@@ -179,6 +179,39 @@ mod tests {
                 &lists.data[lists.data[t] as usize..lists.data[t + 1] as usize],
                 [1, 2, 3]
             );
+        }
+    }
+
+    #[test]
+    fn insufficient_data_capacity_keeps_coarse_lists_with_enough_scratch_and_gpu() {
+        let regions = [r(0, 0, 16, 16); 2];
+        let mut lists = TileLists::default();
+        bin(&regions, 16, 16, TILE_CAP, &mut lists);
+        lists.counts.reserve(4);
+        let original = lists.data.clone();
+        let capacity = (lists.counts.capacity(), lists.data.capacity());
+        // Четырём fine-тайлам нужны пять offsets и восемь индексов групп.
+        assert!(capacity.0 >= 4 && capacity.1 < 13);
+        assert!(bin_cover(&regions, r(0, 0, 16, 16), usize::MAX, &mut lists).is_none());
+        assert_eq!(original, lists.data);
+        assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
+    }
+
+    #[test]
+    fn empty_cover_or_missing_gpu_buffer_preserves_both_vectors() {
+        let regions = [r(0, 0, 16, 16); 2];
+        let mut lists = TileLists::default();
+        bin(&regions, 128, 128, TILE_CAP, &mut lists);
+        let original = (lists.counts.clone(), lists.data.clone());
+        let capacity = (lists.counts.capacity(), lists.data.capacity());
+        for (cover, gpu_capacity) in [
+            (r(1, 1, 0, 8), usize::MAX),
+            (r(1, 1, 8, 0), usize::MAX),
+            (r(1, 1, 8, 8), 0),
+        ] {
+            assert!(bin_cover(&regions, cover, gpu_capacity, &mut lists).is_none());
+            assert_eq!(original, (lists.counts.clone(), lists.data.clone()));
+            assert_eq!(capacity, (lists.counts.capacity(), lists.data.capacity()));
         }
     }
 }

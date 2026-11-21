@@ -1929,8 +1929,8 @@ float4 clear_fragment(ClearVertexOutput input): SV_Target {
 // KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 //
 // blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
-// tile grid's corner, poly_count = tiles per row, texel.x = inverse tile side.
-// Composites are
+// tile grid's corner, poly_count = tiles per row.
+// texel.x — обратная сторона тайла (крупного или уточнённого). Composites are
 // blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 // than the tiles, the last is the end), then composite indices, each tile's in
 // document order. Every pixel starts from the backdrop copy and applies the
