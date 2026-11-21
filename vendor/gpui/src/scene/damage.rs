@@ -21,6 +21,7 @@ use collections::FxHashMap;
 
 mod clipped;
 mod group_match;
+mod group_needed;
 mod trace;
 
 /// Сторона клетки повреждения, device px.
@@ -95,6 +96,8 @@ pub(crate) struct DamageIndex {
     backdrop: bool,
     /// Повреждение этого кадра и номера кадров (`Window::frame_serial`).
     pub(crate) damage: SceneDamage,
+    /// Disjoint dirty cells; the scalar damage remains a conservative envelope.
+    regions: Vec<[u32; 4]>,
     /// Группа прошлого кадра, рисующая ту же картинку, что группа `g`, плюс один
     /// (0 — нет), `group_match`.
     group_base: Vec<u32>,
@@ -262,6 +265,7 @@ impl DamageIndex {
         self.spans.clear();
         self.backdrop = false;
         self.damage = SceneDamage::Unknown;
+        self.regions.clear();
         self.group_base.clear();
         self.id = 0;
         self.base = 0;
@@ -478,7 +482,8 @@ impl Scene {
         index.build(self, size);
         index.id = id;
         index.base = previous.book.index.id;
-        index.damage = self.damage_against(&index, previous);
+        index.regions.clear();
+        index.damage = self.damage_against(&mut index, previous);
         trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
@@ -504,7 +509,7 @@ impl Scene {
         }
     }
 
-    fn damage_against(&self, index: &DamageIndex, previous: &Scene) -> SceneDamage {
+    fn damage_against(&self, index: &mut DamageIndex, previous: &Scene) -> SceneDamage {
         let old = &previous.book.index;
         if index.backdrop || old.backdrop || old.size != index.size || old.size.is_none() {
             return SceneDamage::Unknown;
@@ -574,6 +579,7 @@ impl Scene {
                 let (ax, ay) = (clamp(a[0].floor(), x, x1), clamp(a[1].floor(), y, y1));
                 let (bx, by) = (clamp(a[2].ceil(), x, x1), clamp(a[3].ceil(), y, y1));
                 if bx > ax && by > ay {
+                    index.regions.push([ax, ay, bx - ax, by - ay]);
                     damage = damage.union(SceneDamage::Rect {
                         x: ax,
                         y: ay,
@@ -599,44 +605,11 @@ impl Scene {
         )
     }
 
-    /// KaminIDE patch: группы, чья картинка нужна кадру, рисуемому только в
-    /// прямоугольнике `x, y, width, height`: метка в кадре пересекает его, или
-    /// группа вложена в нужную.
+    /// Disjoint dirty pixel bounds for backends preserving sparse damage. An empty
+    /// slice uses the scalar envelope (retained layers and unknown damage).
     #[doc(hidden)]
-    pub fn groups_needed(&self, rect: [u32; 4]) -> Vec<bool> {
-        let mut needed = vec![false; self.groups.len()];
-        let r = [
-            rect[0] as f32,
-            rect[1] as f32,
-            (rect[0] + rect[2]) as f32,
-            (rect[1] + rect[3]) as f32,
-        ];
-        for (i, s) in self.surfaces.iter().enumerate() {
-            if s.group == 0 {
-                continue;
-            }
-            let entry = (7 << KIND_SHIFT) | i as u32;
-            let a = entry_area(self, entry).unwrap_or(FULL);
-            let hit = a.iter().any(|v| v.is_nan())
-                || (a[0] < r[2] && a[2] > r[0] && a[1] < r[3] && a[3] > r[1]);
-            if hit && let Some(n) = needed.get_mut(s.group as usize - 1) {
-                *n = true;
-            }
-        }
-        // Объемлющая группа стоит в списке позже вложенной.
-        for g in (0..self.groups.len()).rev() {
-            if !needed[g] {
-                continue;
-            }
-            for s in &self.groups[g].scene.surfaces {
-                if s.group > 0
-                    && let Some(n) = needed.get_mut(s.group as usize - 1)
-                {
-                    *n = true;
-                }
-            }
-        }
-        needed
+    pub fn frame_damage_regions(&self) -> &[[u32; 4]] {
+        &self.book.index.regions
     }
 
     pub(crate) fn clear_damage_index(&mut self) {

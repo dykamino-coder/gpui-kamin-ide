@@ -65,7 +65,9 @@ impl DirectXRenderer {
         let counted = match plan {
             Plan::Keep => FramePlan::Keep,
             Plan::Full => FramePlan::Full(self.retained.full_by.name()),
-            Plan::Within(r) => FramePlan::Within(r.width as f64 * r.height as f64),
+            Plan::Within(r) => {
+                FramePlan::Within(r.iter().map(|r| r.width as f64 * r.height as f64).sum())
+            }
         };
         self.gpu_timer.instrumentation.batches.plan(counted, window);
     }
@@ -78,11 +80,19 @@ mod tests {
 
     #[test]
     fn an_unplaced_external_change_comes_first_then_the_target() {
-        let rect = SceneDamage::Rect { x: 0, y: 0, width: 1, height: 1 };
+        let rect = SceneDamage::Rect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+        };
         let unknown = SceneDamage::Unknown;
         assert_eq!(FullBy::of(unknown, true, rect, rect), FullBy::External);
         assert_eq!(FullBy::of(rect, true, rect, unknown), FullBy::Target);
         assert_eq!(FullBy::of(rect, false, rect, unknown), FullBy::Unknown);
-        assert_eq!(FullBy::of(SceneDamage::Unchanged, false, rect, rect), FullBy::Earlier);
+        assert_eq!(
+            FullBy::of(SceneDamage::Unchanged, false, rect, rect),
+            FullBy::Earlier
+        );
     }
 }

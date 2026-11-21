@@ -5,6 +5,7 @@
 
 use super::super::super::super::group_cache::GroupCounts;
 use super::*;
+use crate::directx_renderer::Region;
 
 /// One group per cell of the 4×3 grid; group `k` is `44 - side[k]` px square,
 /// so freed rectangles do not fit every other group.
@@ -75,4 +76,61 @@ fn groups_without_an_image_keep_their_atlas_rectangles() {
     let got = target_bytes(&mut r);
     let want = whole(&device, || sized(&recolored, side));
     assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
+}
+
+/// Both edited edges are needed; clean cells and cached images are not redrawn.
+#[test]
+fn distant_group_edits_keep_the_middle_and_match_a_whole_frame() {
+    let device = DirectXDevices::with_instrumentation(
+        crate::GpuAdapterPreference::Software,
+        gpui::Instrumentation::default(),
+    )
+    .unwrap();
+    for tiled in [true, false] {
+        let base: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
+        let mut edited = base.clone();
+        edited[0].1 = hsla(0.95, 0.9, 0.4, 1.);
+        edited[11].1 = hsla(0.15, 0.9, 0.4, 1.);
+        let mut retained = offscreen(&device, W, H);
+        retained.group_tiles = tiled;
+        let mut first = groups(&base);
+        first.note_frame_damage(&Scene::default(), 1, (W, H));
+        retained
+            .draw(&first, WindowBackgroundAppearance::Opaque)
+            .unwrap();
+        let mut next = groups(&edited);
+        next.note_frame_damage(&first, 2, (W, H));
+        let regions: Vec<_> = next
+            .frame_damage_regions()
+            .iter()
+            .map(|&[x, y, width, height]| Region {
+                x,
+                y,
+                width,
+                height,
+            })
+            .collect();
+        assert_eq!(
+            regions.iter().map(|r| r.width * r.height).sum::<u32>(),
+            2 * 50 * 50
+        );
+        let needed = DirectXRenderer::needed_damage_groups(&next, Some(&regions)).unwrap();
+        assert!(needed[0] && needed[11], "both edited groups are needed");
+        // The cell index is conservative only inside occupied cells.
+        assert!(!needed[5], "clean middle cell is excluded");
+        retained
+            .draw(&next, WindowBackgroundAppearance::Opaque)
+            .unwrap();
+        assert_eq!(
+            retained.retained.groups.counts,
+            GroupCounts { kept: 10, drawn: 2 }
+        );
+        let got = target_bytes(&mut retained);
+        let want = whole(&device, || groups(&edited));
+        assert!(
+            got == want,
+            "{} pixels differ from the whole frame",
+            differing(&got, &want)
+        );
+    }
 }

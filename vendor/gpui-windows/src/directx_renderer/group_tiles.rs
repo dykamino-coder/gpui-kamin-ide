@@ -223,11 +223,10 @@ impl DirectXRenderer {
             self.blur.globals[0].as_ref().unwrap(),
             &[global_params(self.font_info, [self.width as f32, self.height as f32])],
         )?;
-        let target = self.current_target().to_vec();
         self.pipelines.group_tiles_pipeline.update_buffer(&device, &dc, quads)?;
         unsafe {
             dc.PSSetShaderResources(4, Some(slice::from_ref(view)));
-            dc.OMSetRenderTargets(Some(&target), None);
+            self.bind_current_target();
         }
         self.pipelines.group_tiles_pipeline.draw_with_texture_blended(
             &dc,

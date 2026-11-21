@@ -48,6 +48,9 @@ impl DirectXRenderer {
             whole("gpu/target/path", &resources.path_intermediate_texture);
             whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
         }
+        if let Some(mask) = self.retained.mask.texture() {
+            whole("gpu/target/damage-stencil", mask);
+        }
         let blur = &self.blur;
         let single = [
             ("gpu/group/stage", &blur.stage),
