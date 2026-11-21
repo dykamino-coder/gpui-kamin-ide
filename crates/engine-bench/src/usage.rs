@@ -243,7 +243,7 @@ pub(super) struct Sample {
 }
 impl Sample {
     /// Heap bytes the sample owns: only error messages (tests only).
-    #[cfg(test)]
+    #[cfg(all(test, feature = "allocation-audit"))]
     pub(super) fn owned_bytes(&self) -> usize {
         [&self.error, &self.gpu_error]
             .into_iter()
