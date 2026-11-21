@@ -82,7 +82,10 @@ impl Window {
         let (mut bindings, mut boxes, unheld) =
             recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
         crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
-        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
+        // A layer keeps the groups it made (`grouped_layer`) unless they name
+        // the frame's scroll nodes or 3D planes; hoisted backdrops need the
+        // frame painted under the layer.
+        if !scene.hoisted_backdrops.is_empty() || (!scene.groups.is_empty() && !Self::layer_keeps_groups(&scene)) {
             let scene = self.adopt_scene(scene);
             self.splice_scene(&scene);
             return (result, RecordedLayer::Spliced);
@@ -99,12 +102,29 @@ impl Window {
     }
 
     /// Draw `layer` here: one command in the frame, ordered like one
-    /// primitive covering the layer's ink within the content mask.
+    /// primitive covering the layer's ink within the content mask. A layer
+    /// that kept groups is copied instead (`paint_grouped_layer`).
     pub fn paint_scene_layer(&mut self, layer: &LayerHandle) {
         self.invalidator.debug_assert_paint();
+        let content = layer.content();
+        if !content.scene.groups.is_empty() {
+            return self.paint_grouped_layer(layer, &content, true);
+        }
         let mask = self.content_mask().scale(self.scale_factor());
         let bounds = layer.content().bounds().map_or_else(Bounds::default, |b| b.intersect(&mask.bounds));
         self.next_frame.scene.insert_layer(layer, bounds);
+    }
+
+    /// Draw again a layer that kept groups and was written since the frame
+    /// that drew it (`SceneLayer::has_groups`): its last copy in the
+    /// rendered frame is stale, a replay of it would show the old content.
+    pub fn redraw_scene_layer(&mut self, layer: &LayerHandle) {
+        self.invalidator.debug_assert_paint();
+        let content = layer.content();
+        if !content.has_groups() {
+            return self.paint_scene_layer(layer);
+        }
+        self.paint_grouped_layer(layer, &content, false);
     }
 
     /// Paint `f` with `owner` (0: none) naming the values its painters bind.

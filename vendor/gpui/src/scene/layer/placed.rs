@@ -173,6 +173,7 @@ impl RecordRuns {
                 env: run.env,
                 replaceable: run.replaceable,
                 placed: Some(run.placed.map_or(placed, |p| p.then(placed))),
+                group: run.group,
             });
         }
         for binding in &self.bindings {
@@ -233,6 +234,7 @@ fn clipped_away(run: &BoxRange, at: Option<Placed>, dest: &Scene) -> Option<BoxR
         env: run.env,
         replaceable: run.replaceable,
         placed: Some(placed),
+        group: run.group,
     })
 }
 

@@ -153,7 +153,7 @@ fn a_group_in_a_record_drops_the_runs_it_kept() {
     s.insert_primitive(quad(rect(0., 0., 10., 10.), blue()));
     let run = s.close_box().unwrap();
     s.book.record_runs.as_mut().unwrap().boxes.push(run);
-    s.groups.push(PaintGroup { scene: Scene::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
+    s.groups.push(PaintGroup { scene: Default::default(), bounds: rect(0., 0., 1., 1.), ..Default::default() });
     s.end_record_runs();
     let runs = s.book.record_runs.as_deref().expect("the record says whom it does not hold");
     assert!(runs.boxes.is_empty() && runs.bindings.is_empty(), "a record with a group carries no runs");

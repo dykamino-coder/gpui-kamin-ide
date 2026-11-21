@@ -129,8 +129,9 @@ impl Scene {
         moved
     }
 
-    /// A copy of a finished layer scene (a write's copy on write).
-    pub(super) fn copy_finished(&self) -> Scene {
+    /// A copy of a finished layer or group scene (a write's copy on write);
+    /// nested groups are shared handles.
+    pub(crate) fn copy_finished(&self) -> Scene {
         Scene {
             book: Box::new(super::super::SceneBook { images: self.book.images.clone(), ..Default::default() }),
             paint_operations: self.paint_operations.clone(),
@@ -143,6 +144,8 @@ impl Scene {
             subpixel_sprites: self.subpixel_sprites.clone(),
             polychrome_sprites: self.polychrome_sprites.clone(),
             surfaces: self.surfaces.clone(),
+            groups: self.groups.clone(),
+            in_group: self.in_group,
             // The copy keeps the scroll marks and the space ranges recorded in
             // the layer count in (`scroll_marks::SceneSpace`).
             scroll: super::super::scroll_marks::ScrollBook {

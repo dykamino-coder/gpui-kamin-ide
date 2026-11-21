@@ -142,8 +142,28 @@ impl Window {
         &mut self,
         f: impl FnOnce(&mut Self) -> R,
     ) -> (R, Scene) {
+        self.with_isolated_scene_runs(false, f)
+    }
+
+    /// `with_isolated_scene` for a composition group (`paint_group`): `runs`
+    /// keeps the box runs painted inside when the group is painted straight
+    /// into a layer's scene or into such a group (`grouped_layer`); one
+    /// inside a paint record does not (its record places commands, not groups).
+    pub(super) fn with_isolated_scene_runs<R>(
+        &mut self,
+        runs: bool,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> (R, Scene) {
         let mut scene = Scene::default();
         scene.in_group = true;
+        let outer = &self.next_frame.scene;
+        if runs
+            && self.layer_recording.is_some()
+            && outer.book.record_runs.is_none()
+            && (!outer.in_group || outer.book.group_runs.is_some())
+        {
+            scene.book.group_runs = Some(Vec::new());
+        }
         if self.segment_capture_mask().is_some() { scene.inherit_segments(&self.next_frame.scene); }
         mem::swap(&mut self.next_frame.scene, &mut scene);
         self.with_restore(scene, |window, scene| {
