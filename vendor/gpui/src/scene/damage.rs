@@ -697,6 +697,7 @@ mod tests {
     }
 
     #[test]
+    /// Entry areas carry the one-pixel antialiasing margin of the damage index.
     fn a_changed_primitive_damages_only_its_area() {
         let (red, blue) = (red(), blue());
         let old = [quad(5.0, 5.0, red), quad(200.0, 200.0, red)];
@@ -704,10 +705,10 @@ mod tests {
         assert_eq!(
             damage(&old, &new),
             SceneDamage::Rect {
-                x: 200,
-                y: 200,
-                width: 10,
-                height: 10
+                x: 199,
+                y: 199,
+                width: 12,
+                height: 12
             }
         );
         // A moved primitive damages its old and new place.
@@ -715,10 +716,10 @@ mod tests {
         assert_eq!(
             damage(&old, &moved),
             SceneDamage::Rect {
-                x: 200,
-                y: 200,
-                width: 30,
-                height: 20
+                x: 199,
+                y: 199,
+                width: 32,
+                height: 22
             }
         );
     }
