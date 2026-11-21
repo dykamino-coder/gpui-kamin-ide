@@ -1,11 +1,11 @@
-//! Длина серии кадров: фиксированное число или по длительности.
+//! Length of a frame series: a fixed count or adaptive by time and stability.
 //!
-//! Без `series_ms` серия ровно `runs` кадров (прежнее поведение скриптов).
-//! С ним серия идёт, пока не набрано `min_runs` кадров, а затем — пока не
-//! вышло `series_ms` от начала серии и кадры ещё не устоялись, но не длиннее
-//! `runs`. Устоялись = относительное MAD итогов кадра (медиана модулей
-//! отклонений от медианы, делённая на медиану) не больше `stable_mad`:
-//! ровная страница останавливается на `min_runs` кадрах, шумная идёт до потолка.
+//! Without `series_ms` a series is exactly `runs` frames (the scripts' old behaviour).
+//! With it the series runs `min_runs` frames, then while `series_ms` from its
+//! start have not passed and the frames are not yet stable, never longer than
+//! `runs`. Stable = relative MAD of the frame totals (median absolute
+//! deviation from the median over the median) at most `stable_mad`:
+//! a steady page stops at `min_runs` frames, a noisy one runs to the cap.
 
 use std::time::Duration;
 
@@ -17,12 +17,12 @@ pub(super) struct Series {
     stable: f64,
 }
 
-/// Итог кадра (`first_frame_total`) образца — величина, по которой судят об устойчивости.
+/// Frame total (`first_frame_total`) of a sample: the value stability is judged by.
 pub(super) fn total(sample: &super::report::Sample) -> Option<f64> {
     sample.get("first_frame_total").copied().flatten()
 }
 
-/// Относительное MAD; `None` меньше чем для двух значений или при нулевой медиане.
+/// Relative MAD; `None` for fewer than two values or a zero median.
 pub(super) fn relative_mad(values: &[f64]) -> Option<f64> {
     fn median(v: &mut [f64]) -> f64 {
         v.sort_by(f64::total_cmp);
@@ -68,7 +68,7 @@ impl Series {
         }
     }
 
-    /// Ещё один кадр после `done` кадров, занявших `spent`, с итогами `totals`?
+    /// One more frame after `done` frames that took `spent`, with totals `totals`?
     pub(super) fn more(&self, done: usize, spent: Duration, totals: &[f64]) -> bool {
         done < self.max && (done < self.min || (spent < self.budget && !self.settled(totals)))
     }
@@ -79,12 +79,12 @@ impl Series {
             && relative_mad(totals).is_some_and(|r| r <= self.stable)
     }
 
-    /// Наименьшая допустимая длина серии.
+    /// Shortest allowed series.
     pub(super) fn min_frames(&self) -> usize {
         self.min
     }
 
-    /// Серия по длительности (а не фиксированная): её длина известна только в конце.
+    /// A timed (not fixed) series: its length is known only at its end.
     pub(super) fn timed(&self) -> bool {
         !self.budget.is_zero()
     }

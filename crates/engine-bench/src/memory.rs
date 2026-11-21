@@ -1,12 +1,12 @@
 //! Устойчивая память страницы и освобождение документа без принудительной очистки.
 //!
-//! Тихое окно — интервал без кадров. Страница может ещё рисовать после
-//! загрузки (поздняя расшифровка картинок, шрифты, анимации), поэтому окно
-//! не отказывает на первом кадре: оно начинается заново до [`QUIET_WINDOWS`]
-//! раз, а страница, которая так и не затихла, меряется по последнему полному
-//! окну с пометкой (`quiet: false`, число кадров). Сами кадры замера по-прежнему
-//! отказывают на лишнем кадре (`run::sample`), так что реальные сбои движка
-//! не скрываются. Память окна — медиана выборок по окну, а не одна точка.
+//! A quiet window is an interval without frames. A page may still paint after
+//! its load (late image decodes, fonts, animations), so the window does not
+//! refuse on the first frame: it starts again up to [`QUIET_WINDOWS`] times,
+//! and a page that never goes quiet is measured over the last full window
+//! with a note (`quiet: false`, frame count). The measured frames themselves still
+//! refuse an extra frame (`run::sample`), so real engine faults are not
+//! hidden. Window memory is the median of the samples over the window, not one point.
 
 use super::{args::Args, process::Snapshot, run, view::View};
 use gpui::{AsyncApp, WindowHandle};
@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
-/// Сколько окон ждать тишины, прежде чем мерить шумную страницу с пометкой.
+/// How many windows to wait for quiet before a busy page is measured with a note.
 pub(super) const QUIET_WINDOWS: u32 = 10;
-/// Шаг выборки памяти и проверки кадров внутри окна.
+/// Step of memory sampling and frame checks inside a window.
 const TICK_MS: u64 = 25;
 
 /// Окно устойчивой памяти между построением документа и замерами того же
@@ -36,12 +36,12 @@ pub(super) async fn steady(cx: &AsyncApp, capture: &CaptureSession) -> Result<Va
     .await
 }
 
-/// Тихое окно плана (`Args::steady_each_phase` = false): без кадров, как
-/// [`steady`], но без ожидания отложенной очистки памяти — план меряет память
-/// один раз (`plan.rs`), а не перед каждой фазой.
+/// Quiet window of a plan (`Args::steady_each_phase` = false): no frames, as
+/// [`steady`], but without waiting for the delayed memory purge: a plan measures memory
+/// once (`plan.rs`), not before every phase.
 const QUIET_WINDOW_MS: u64 = 100;
 
-/// Окно перед фазой того же документа: устойчивая память или тихое окно плана.
+/// Window before a phase of the same document: steady memory or the plan's quiet window.
 pub(super) async fn before_phase(
     cx: &AsyncApp,
     capture: &CaptureSession,
@@ -53,7 +53,7 @@ pub(super) async fn before_phase(
     settle(cx, capture, QUIET_WINDOW_MS, QUIET_WINDOWS).await
 }
 
-/// Шаг кадров фазы замера и тишина перед ней (`None` у холодной фазы).
+/// Frame step of the measured phase and the quiet before it (`None` for a cold phase).
 pub(super) async fn phase_step(
     cx: &AsyncApp,
     capture: &CaptureSession,
@@ -67,7 +67,7 @@ pub(super) async fn phase_step(
     Ok((run::Step::Warm, Some(quiet)))
 }
 
-/// Устойчивая память открытой страницы плана: окно простоя, без пустого документа.
+/// Steady memory of the open plan page: an idle window, without an empty document.
 pub(super) async fn page_audit(
     cx: &AsyncApp,
     capture: &CaptureSession,
@@ -76,14 +76,14 @@ pub(super) async fn page_audit(
     settle(cx, capture, milliseconds, QUIET_WINDOWS).await
 }
 
-/// Краткая сводка тишины для отчёта фазы.
+/// Short quiet summary for the phase report.
 pub(super) fn quiet_summary(window: &Value) -> Value {
     json!({"quiet": window["quiet"], "busy_windows": window["busy_windows"],
         "frames_in_measured_window": window["unexpected_frames"]})
 }
 
-/// Ждёт окно без кадров до `tries` раз; окно с кадром обрывается сразу на нём.
-/// Не затихшая страница меряется по ещё одному полному окну с `quiet: false`.
+/// Waits for a window without frames up to `tries` times; a window ends at its first frame.
+/// A page that never went quiet is measured over one more full window with `quiet: false`.
 async fn settle(
     cx: &AsyncApp,
     capture: &CaptureSession,
@@ -109,7 +109,7 @@ fn mark(value: &mut Value, busy: u32, quiet: bool, started: Instant) {
     value["settle_ms"] = json!(started.elapsed().as_secs_f64() * 1000.);
 }
 
-/// Одно окно: память в начале, в конце и медиана выборок; число кадров за окно.
+/// One window: memory at its start, at its end and the sample median; frames in the window.
 async fn window(
     cx: &AsyncApp,
     capture: &CaptureSession,
@@ -149,7 +149,7 @@ async fn window(
     ))
 }
 
-/// Медиана (нижняя при чётном числе); `None` у пустой выборки.
+/// Median (the lower one for an even count); `None` for no samples.
 fn median(values: &mut [u64]) -> Option<u64> {
     if values.is_empty() {
         return None;

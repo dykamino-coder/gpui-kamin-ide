@@ -1,18 +1,18 @@
-//! План (`--plan PLAN.json`): все фазы страницы в одном процессе.
+//! Plan (`--plan PLAN.json`): every phase of a page in one process.
 //!
-//! Каждая фаза — прежний режим на своём входе (своя холодная загрузка, затем
-//! серия кадров), но без окна устойчивой памяти перед фазой: тихое окно
-//! только дожидается конца поздних кадров (`memory.rs`). Память страницы меряется один
-//! раз — после первой фазы (`memory_settle_ms`), как у браузеров после
-//! загрузки. Сбой фазы записывается в её отчёт и не отменяет остальные фазы.
+//! Each phase is the old mode on its own input (its own cold load, then a
+//! frame series), without the steady-memory window before the phase: a quiet
+//! window only waits out late frames (`memory.rs`). Page memory is measured once,
+//! after the first phase (`memory_settle_ms`), as browsers after their
+//! load. A failed phase is written into its report and does not cancel the others.
 //!
 //! ```json
 //! {"series_ms": 500, "min_runs": 3, "memory_settle_ms": 2000,
 //!  "phases": [{"name": "R", "mode": "relayout", "input": "base.html", "runs": 30},
 //!             {"name": "C", "mode": "edit", "edit": "class", "input": "C.html"}]}
 //! ```
-//! `runs` — наибольшая длина серии; фаза может задать свои `series_ms` и
-//! `min_runs`; относительные входы — от файла плана.
+//! `runs` is the longest series; a phase may set its own `series_ms`,
+//! `min_runs` and `stable_mad`; relative inputs are resolved from the plan file.
 
 use super::{
     args::{Args, MEMORY_STEADY_WINDOW_MS, Mode},
