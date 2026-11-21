@@ -108,7 +108,7 @@ impl Frame {
         }
         let group = b(150., 90., 60., 40.);
         s.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: group,
             ..Default::default()
         });
