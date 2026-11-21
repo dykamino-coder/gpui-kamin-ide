@@ -220,6 +220,11 @@ impl Frames {
         }
         let group = usize::from(self.relayout && !index.is_multiple_of(2));
         let memory = self.scroll.then(super::host::memory_now).flatten();
+        if let (true, Some((ws, private))) = (memory_only(), memory) {
+            // A long memory run killed at its time limit still leaves its curve.
+            let y = offset.0.map_or(f32::NAN, |o| o.1);
+            eprintln!("scroll-memory step {index} y {y} ws {ws} private {private}");
+        }
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
