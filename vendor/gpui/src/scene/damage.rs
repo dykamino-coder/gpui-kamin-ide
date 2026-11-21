@@ -546,19 +546,41 @@ impl Scene {
         let mut damage = SceneDamage::Unchanged;
         for t in 0..tiles {
             let (a, b) = (index.tile(t), old.tile(t));
-            let same = a.len() == b.len()
-                && a.iter()
-                    .zip(b)
-                    .all(|(&x, &y)| cmp.same(self, x, previous, y));
-            if !same {
+            // KaminIDE patch: a tile whose lists pair up entry by entry changes
+            // only under the entries that differ (old and new place): every
+            // other pixel of it sees the same primitives in the same order.
+            // Lists of other lengths damage the whole tile.
+            let mut changed: Option<Area> = None;
+            let mut whole = a.len() != b.len();
+            for (&x, &y) in a.iter().zip(b) {
+                if whole || cmp.same(self, x, previous, y) {
+                    continue;
+                }
+                match (entry_area(self, x), entry_area(previous, y)) {
+                    (Some(p), Some(q)) if p.iter().chain(&q).all(|v| !v.is_nan()) => {
+                        let u = changed.unwrap_or(p);
+                        changed = Some([u[0].min(p[0]).min(q[0]), u[1].min(p[1]).min(q[1]),
+                            u[2].max(p[2]).max(q[2]), u[3].max(p[3]).max(q[3])]);
+                    }
+                    _ => whole = true,
+                }
+            }
+            if whole || changed.is_some() {
                 let (c, r) = ((t % cols) as u32, (t / cols) as u32);
                 let (x, y) = (c * DAMAGE_TILE, r * DAMAGE_TILE);
-                damage = damage.union(SceneDamage::Rect {
-                    x,
-                    y,
-                    width: DAMAGE_TILE.min(w - x),
-                    height: DAMAGE_TILE.min(h - y),
-                });
+                let (x1, y1) = (x + DAMAGE_TILE.min(w - x), y + DAMAGE_TILE.min(h - y));
+                let a = changed.filter(|_| !whole).unwrap_or(FULL);
+                let clamp = |v: f32, lo: u32, hi: u32| (v.max(lo as f32).min(hi as f32)) as u32;
+                let (ax, ay) = (clamp(a[0].floor(), x, x1), clamp(a[1].floor(), y, y1));
+                let (bx, by) = (clamp(a[2].ceil(), x, x1), clamp(a[3].ceil(), y, y1));
+                if bx > ax && by > ay {
+                    damage = damage.union(SceneDamage::Rect {
+                        x: ax,
+                        y: ay,
+                        width: bx - ax,
+                        height: by - ay,
+                    });
+                }
             }
         }
         damage
@@ -675,15 +697,43 @@ mod tests {
     }
 
     #[test]
-    fn a_changed_primitive_damages_only_its_tiles() {
+    /// Entry areas carry the one-pixel antialiasing margin of the damage index.
+    fn a_changed_primitive_damages_only_its_area() {
         let (red, blue) = (red(), blue());
         let old = [quad(5.0, 5.0, red), quad(200.0, 200.0, red)];
         let new = [quad(5.0, 5.0, red), quad(200.0, 200.0, blue)];
         assert_eq!(
             damage(&old, &new),
             SceneDamage::Rect {
-                x: 192,
-                y: 192,
+                x: 199,
+                y: 199,
+                width: 12,
+                height: 12
+            }
+        );
+        // A moved primitive damages its old and new place.
+        let moved = [quad(5.0, 5.0, red), quad(220.0, 210.0, red)];
+        assert_eq!(
+            damage(&old, &moved),
+            SceneDamage::Rect {
+                x: 199,
+                y: 199,
+                width: 32,
+                height: 22
+            }
+        );
+    }
+
+    #[test]
+    fn an_added_primitive_damages_its_whole_tiles() {
+        let red = red();
+        let old = [quad(5.0, 5.0, red)];
+        let new = [quad(5.0, 5.0, red), quad(20.0, 20.0, red)];
+        assert_eq!(
+            damage(&old, &new),
+            SceneDamage::Rect {
+                x: 0,
+                y: 0,
                 width: 64,
                 height: 64
             }
