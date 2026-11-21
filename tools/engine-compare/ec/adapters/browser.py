@@ -73,6 +73,8 @@ class Session:
         if kind != 'RESULT':
             return None, 'browser exited during the page', None
         samples = [s for s in self.tree.samples if t0 <= s[0] <= t1]
+        if isinstance(res, dict):
+            res['visitWallMs'] = (t1 - t0) * 1000  # controller side: the driver's page() plus marks and transport
         return res, None, (dict(self.marks), samples)
 
     def close(self):
@@ -132,6 +134,8 @@ class Browser:
             return rec
         rec['browser_version'] = s.info.get('version')
         warm = [p for p in phases if p != 'cold']
+        if 'S' in warm and M.scroll_steps(page.meta) == 0:  # nothing to scroll: every step would wait out its guard
+            warm.remove('S'); phases = [p for p in phases if p != 'S']; REC.row(rec, 'S')['empty'] = M.NO_SCROLL
         op = {'probe': str(page.file('probe.html')), 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
               'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
         res, why, extra = s.visit(op, to)
@@ -178,6 +182,12 @@ class Browser:
 
     @staticmethod
     def _add(rec, res, phases):
+        rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'traceWallMs', 'cpuWallMs')
+                                                     if isinstance(res.get(k), (int, float))})
+        cases = (res.get('probe') or {}).get('cases') or {}
+        missed = {k: (c.get('afterPaint') or {}).get('missed') for k, c in cases.items() if c.get('afterPaint')}
+        if missed:  # Firefox: frames whose MozAfterPaint did not come within the probe's guard
+            rec.setdefault('paint_missed', []).append(missed)
         v = M.browser_visit(rec['family'], res)
         for ph in phases:
             x = v.get(ph)

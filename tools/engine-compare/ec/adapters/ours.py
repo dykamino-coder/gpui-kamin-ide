@@ -22,11 +22,16 @@ EDITS = {'C': ('html.alt [data-deep]{background:#eee}', 'class'), 'D': ('[data-e
 BOUNDS = ('ours: one engine_bench process per phase on an offscreen GPU texture (software raster on soft classes); '
           'frame = from the frame request to pixels read back, minus the bench capture copy; cold = cold document in a '
           'warm process; memory = working set of the one process')
-BOUNDS_PLAN = ('ours: cold = document-cold samples in one process; warm phases = one process, each phase on its own '
-               'input after its load, frame series of fixed duration; frame = from the frame request to pixels read back, '
-               'minus the bench capture copy; CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop; steady memory once '
-               'after the first warm phase')
-DEF = 'ours-2'  # 2: CPU = all threads over the frame window minus the capture window
+BOUNDS_PLAN = ('ours: one engine_bench process per page and class runs every phase (as one browser visit): cold = '
+               'document-cold samples, then each warm phase on its own input after its load, frame series of fixed '
+               'duration; before a phase the page is let go quiet (late decodes) up to 10 windows, a page that keeps '
+               'painting is measured with a note; peak memory = the process over the whole visit; steady memory = '
+               'median working set over a 2 s idle window after the cold phase; scroll fresh-document check on the first '
+               'and the last step; frame = from the frame request to pixels read back, '
+               'minus the bench capture copy; CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop')
+# 2: CPU = all threads over the frame window minus the capture window; 3: one process per page (cold in the plan),
+# quiet windows converge instead of refusing, steady memory = window median, scroll fresh check first + last step
+DEF = 'ours-3'
 
 
 class Ours:
@@ -37,7 +42,7 @@ class Ours:
         self.name = name; self.cfg = cfg; self.e = e
         # "plan": a bench with --plan measures time, CPU and memory in two processes (part "all");
         # otherwise the old one-mode-per-process bench and a separate counters build (parts "time" and "cpu").
-        self.parts = ('cold', 'warm') if e.get('plan') else ('time', 'cpu')
+        self.parts = ('all',) if e.get('plan') else ('time', 'cpu')
 
     def version(self):
         return self.e.get('version') or file_version(self.e['exe']) + '+' + file_version(self.e['counters_exe'])
@@ -98,46 +103,47 @@ class Ours:
         return 5 if est_ms < 400 else 3
 
     def _plan_measure(self, lane, page, cls, policy, phases, part):
-        """Two processes: cold (document-cold samples, peak memory), then every warm phase in one plan process
-        (steady memory once after the first phase, CPU per frame from process cycle time)."""
+        """One process per page: every phase in one plan, cold first (document-cold samples), then the warm phases;
+        steady memory once after the first phase on the base input, peak working set over the whole visit (as the
+        browsers), CPU per frame from process cycle time."""
         rec = REC.new_record(self.name, self.version(), part, page, cls, self.definition(part) + '-' + policy.definition(), BOUNDS_PLAN)
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()
         to = self.e.get('timeout_s', {}).get(page.kind, self.e.get('timeout_s', {}).get('default', 120))
         exe = self.e['exe']; series = self.e.get('series_ms', 500)
-        if 'cold' in phases:
-            r = REC.row(rec, 'cold')
-            j, why, r['wall_s'] = self._run(exe, lane, page, cls, [self._page(page, 'cold'), '--mode', 'cold', '--runs', '5'], to)
-            if why:
-                r['empty'] = why; rec['memory'] = {'empty': why}
-            else:
-                fr = M.ours_frame(j, 'cold'); r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
-                r['cpu_ms'] = M.ours_cpu_cycles(j, 'cold', j.get('cpu_calibration'))
-                rec['memory'] = {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': None}
-        warm = [ph for ph in ('R', 'S', 'C', 'D', 'Cvis', 'Dvis') if ph in phases]
-        plan = {'series_ms': series, 'min_runs': 3, 'memory_settle_ms': 2000 if warm and warm[0] == 'R' else 0, 'phases': []}
-        for ph in warm:
-            p = {'name': ph, 'input': str(self._page(page, ph)), 'runs': 8 if ph == 'S' else 30}
-            if ph == 'R':
+        order = [ph for ph in ('cold', 'R', 'S', 'C', 'D', 'Cvis', 'Dvis') if ph in phases]
+        steps = M.scroll_steps(page.meta)
+        if 'S' in order and steps == 0:  # the same scenario as the browsers: nothing to scroll
+            REC.row(rec, 'S')['empty'] = M.NO_SCROLL; order.remove('S')
+        plan = {'series_ms': series, 'min_runs': 3, 'phases': [],
+                'memory_settle_ms': 2000 if order and order[0] in ('cold', 'R') else 0}
+        for ph in order:
+            p = {'name': ph, 'input': str(self._page(page, ph)), 'runs': 30}
+            if ph == 'cold':
+                p['mode'] = 'cold'; p['runs'] = 5
+            elif ph == 'R':
                 p['mode'] = 'relayout'
             elif ph == 'S':
-                p['mode'] = 'scroll'
+                # as many 120 px steps as the browser probe makes on this page (down to one); the bench stops
+                # earlier only where its own document ends (whole step no longer fits)
+                p.update(mode='scroll', runs=steps or M.SCROLL_MAX_STEPS, min_runs=1, series_ms=600000)
             else:
                 p['mode'] = 'edit'; p['edit'] = EDITS[ph][1]
             plan['phases'].append(p)
-        if warm:
+        if order:
             pf = lane.work / f'plan-{lane.id}.json'
             import json
             pf.write_text(json.dumps(plan), encoding='utf-8')
-            j, why, wall = self._run(exe, lane, page, cls, [self._page(page, warm[0]), '--plan', str(pf)], to * 2)
+            j, why, wall = self._run(exe, lane, page, cls, [self._page(page, order[0]), '--plan', str(pf)], to * 3)
             rec['plan_wall_s'] = wall
-            for ph in warm:
+            rec['memory'] = {'empty': why} if why else {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': None}
+            for ph in order:
                 r = REC.row(rec, ph)
                 if why:
                     r['empty'] = why; continue
                 rep = (j.get('phases') or {}).get(ph) or {}
                 if rep.get('error'):
                     e = rep['error']
-                    r['empty'] = ('page does not scroll by three whole 120 px steps' if 'whole wheel steps fit' in e
+                    r['empty'] = (M.NO_SCROLL if 'whole wheel steps fit' in e
                                   else 'crashed: ' + e[:160]); continue
                 r['wall_s'] = round((rep.get('wall_ms') or 0) / 1000, 2)
                 m = M.OURS_MODE.get(ph, 'edit')
@@ -166,9 +172,8 @@ class Ours:
 
     def measure(self, lane, page, cls, part, policy, phases=None):
         phases = phases or M.PHASES
-        if part in ('cold', 'warm'):  # two units the scheduler may put on different lanes
-            ph = [p for p in phases if (p == 'cold') == (part == 'cold')]
-            return self._plan_measure(lane, page, cls, policy, ph, part)
+        if self.e.get('plan'):  # one process per page and class: every phase in one plan
+            return self._plan_measure(lane, page, cls, policy, phases, part)
         exe = self.e['exe'] if part == 'time' else self.e['counters_exe']
         rec = REC.new_record(self.name, self.version(), part, page, cls, self.definition(part) + '-' + policy.definition(), BOUNDS)
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()
@@ -199,9 +204,9 @@ class Ours:
             if ph == 'S':
                 sh = page.meta.get('scrollHeight')
                 if sh is not None:
-                    fit = (sh - 600) // 120 - 1
-                    if fit < 3:
-                        r['empty'] = 'page does not scroll by three whole 120 px steps'; continue
+                    fit = M.scroll_steps(page.meta)
+                    if fit < 1:
+                        r['empty'] = M.NO_SCROLL; continue
                     n = min(n, fit)
             mode = {'R': ['--mode', 'relayout'], 'S': ['--mode', 'scroll']}.get(ph) or ['--mode', 'edit', '--edit', EDITS[ph][1]]
             j, why, r['wall_s'] = self._run(exe, lane, page, cls, [self._page(page, ph)] + mode + ['--runs', str(n)], to)

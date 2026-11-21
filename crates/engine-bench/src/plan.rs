@@ -11,7 +11,8 @@
 //!  "phases": [{"name": "R", "mode": "relayout", "input": "base.html", "runs": 30},
 //!             {"name": "C", "mode": "edit", "edit": "class", "input": "C.html"}]}
 //! ```
-//! `runs` — наибольшая длина серии; относительные входы — от файла плана.
+//! `runs` — наибольшая длина серии; фаза может задать свои `series_ms` и
+//! `min_runs`; относительные входы — от файла плана.
 
 use super::{
     args::{Args, MEMORY_STEADY_WINDOW_MS, Mode},
@@ -75,8 +76,9 @@ impl Plan {
                 return Err("plan runs must be 1..100000".into());
             }
             args.steady_each_phase = false;
-            args.series_ms = series_ms;
-            args.min_runs = min_runs;
+            // A phase may set its own series (scroll: as many steps as the page allows, down to one).
+            args.series_ms = p["series_ms"].as_u64().unwrap_or(series_ms);
+            args.min_runs = p["min_runs"].as_u64().map_or(min_runs, |n| n as usize);
             args.memory_settle_ms = 0;
             args.plan = None;
             args.snapshot = None;
@@ -177,9 +179,13 @@ mod tests {
         let b = base(&dir);
         let plan = Plan::parse(&b, r#"{"series_ms": 400, "min_runs": 4, "memory_settle_ms": 2000,
             "phases": [{"name": "R", "mode": "relayout", "input": "p.html", "runs": 12},
-                       {"name": "C", "mode": "edit", "edit": "class", "input": "p.html"}]}"#, &dir)
+                       {"name": "C", "mode": "edit", "edit": "class", "input": "p.html"},
+                       {"name": "S", "mode": "scroll", "input": "p.html", "runs": 5, "min_runs": 1, "series_ms": 60000}]}"#, &dir)
         .expect("plan");
-        assert_eq!(plan.phases.len(), 2);
+        assert_eq!(plan.phases.len(), 3);
+        let s = &plan.phases[2].args;
+        assert_eq!((s.runs, s.min_runs, s.series_ms), (5, 1, 60000));
+        assert_eq!((plan.phases[1].args.min_runs, plan.phases[1].args.series_ms), (4, 400));
         let r = &plan.phases[0].args;
         assert_eq!((r.mode, r.runs, r.series_ms, r.min_runs, r.steady_each_phase), (Mode::Relayout, 12, 400, 4, false));
         assert_eq!(plan.phases[1].args.edit, Edit::Class);

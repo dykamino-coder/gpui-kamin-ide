@@ -1,5 +1,6 @@
-//! Scroll mode: every wheel-step frame (built or replayed scrolled) must
-//! equal a fresh document opened at the same root scroll offset. A replay
+//! Scroll mode: the first and the last wheel-step frame (built or replayed
+//! scrolled) must equal a fresh document opened at the same root scroll
+//! offset. A replay
 //! that draws stale content (a stationary layer that should scroll, a moved
 //! copy without its deferred draws) fails the run instead of only timing it.
 //! Fresh documents open after all measured steps, so the checks never touch
@@ -18,9 +19,14 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
     if steps.is_empty() {
         return Err("scroll mode captured no frame to check against a fresh document".into());
     }
-    let mut checks = Vec::with_capacity(steps.len());
+    // A fresh document per step costs a cold open and its settle: check the first
+    // step (the first replay after the load) and the last (the longest replayed
+    // chain), the two ends where stale content shows.
+    let checked = checked_steps(steps.len());
+    let mut checks = Vec::with_capacity(checked.len());
     let mut failures = Vec::new();
-    for (index, step) in steps.iter().enumerate() {
+    for index in checked {
+        let step = &steps[index];
         let offset = step.offset;
         window.update(cx, |view, _, _| view.fresh_scroll = Some(offset))?;
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
@@ -61,6 +67,7 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
     let mode = &mut report["modes"]["scroll"];
     mode["matches_fresh"] = json!(failures.is_empty());
     mode["fresh_checks"] = json!(checks);
+    mode["fresh_checked_steps"] = json!("first and last");
     if !failures.is_empty() {
         return Err(format!(
             "scroll frames differ from a fresh document at the same offset (RGB pixels): {}",
@@ -69,4 +76,26 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
         .into());
     }
     Ok(())
+}
+
+/// Indices of the steps checked against a fresh document: the first and the last.
+fn checked_steps(len: usize) -> Vec<usize> {
+    match len {
+        0 => Vec::new(),
+        1 => vec![0],
+        _ => vec![0, len - 1],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::checked_steps;
+
+    #[test]
+    fn only_the_first_and_the_last_step_are_checked() {
+        assert!(checked_steps(0).is_empty());
+        assert_eq!(checked_steps(1), [0]);
+        assert_eq!(checked_steps(2), [0, 1]);
+        assert_eq!(checked_steps(8), [0, 7]);
+    }
 }

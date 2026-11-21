@@ -102,15 +102,25 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.ours_steady({'error': 'x'})[0], None)
         self.assertEqual(M.ours_steady(None), (None, ''))
 
+    def test_scroll_scenario_is_the_browser_probe_pass_down_to_one_step(self):
+        self.assertEqual(M.scroll_steps({'scrollHeight': 600}), 0)
+        self.assertEqual(M.scroll_steps({'scrollHeight': 719}), 0)
+        self.assertEqual(M.scroll_steps({'scrollHeight': 720}), 1)
+        self.assertEqual(M.scroll_steps({'scrollHeight': 50000}), 14)
+        self.assertIsNone(M.scroll_steps({}))
+        one = {'probe': {'cases': {'S': {'frame': {'median': 2, 'moved': 1}, 'frameReq': {'median': 3}}}}}
+        self.assertEqual(M.browser_visit('firefox', one)['S']['raf'], None)  # no afterPaint: Firefox raf unknown
+        self.assertEqual(M.browser_visit('chromium', dict(one, trace={'windows': {'frame:S': {'RasterTask': {'sumMs': 0}}}}))['S']['raf'], 2)
+
     def test_browser_visit_definitions(self):
         res = {'twoRafMs': 40, 'probe': {'frames': 10, 'cases': {
             'R': {'frame': {'median': 2}, 'frameReq': {'median': 5}},
-            'S': {'frame': {'median': 1, 'moved': 2}, 'frameReq': {'median': 1}}}},
+            'S': {'frame': {'median': 1, 'moved': 0}, 'frameReq': {'median': 1}}}},
             'trace': {'windows': {'frame:R': {'RasterTask': {'sumMs': 10}, 'Display::DrawAndSwap': {'sumMs': 0}},
                                   'req:R': {'RasterTask': {'sumMs': 20}}}}}
         v = M.browser_visit('chromium', res)
         self.assertEqual((v['R']['raf'], v['R']['req'], v['R']['value']), (3.0, 7.0, 3.0))
-        self.assertIsNone(v['S']['value'])  # fewer than 3 whole steps
+        self.assertIsNone(v['S']['value'])  # no whole step
         self.assertEqual(v['cold']['value'], 40)
         ff = M.browser_visit('firefox', {'probe': {'cases': {'C': {'frame': {'median': 2}, 'frameReq': {'median': 4}, 'afterPaint': {'median': 3}}}}})
         self.assertEqual((ff['C']['raf'], ff['C']['req']), (3, 5))

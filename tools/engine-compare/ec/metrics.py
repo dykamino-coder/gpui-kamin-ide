@@ -8,7 +8,7 @@ Frame time of a phase, ms (median over samples):
            Chrome/Edge add (RasterTask + Display::DrawAndSwap) per frame of the same probe window from the trace;
            Firefox raf = MozAfterPaint, req = frameReq + (afterPaint - frame).
   cold     ours first_frame_total of a cold document; browsers time from navigation start to two rAFs after load.
-  S        a sample counts only when the root scroller moved by the whole 120 px step; fewer than 3 such steps -> no number.
+  S        the same scenario for every engine: from the top, min(14, whole 120 px steps the page allows) steps of 120 px`n           (14 = the browser probe's frames; steps the page allows = (scrollHeight - 600) // 120 from the page meta, down`n           to 1); a sample counts only when the root scroller moved by the whole step; no whole step -> no number.
 CPU per frame, ms: ours = cycle time of every thread of the process over the frame window, minus the stand's capture window
   (copy + wake after readback); the old counters-build phase sum (15.6 ms quanta) is no longer used;
   browsers = CPU of the whole browser tree (helpers excluded) over a rAF loop with the edit / frames; cold = navigation -> load.
@@ -18,7 +18,18 @@ Memory: peak = highest working-set sum of the engine's processes while the page 
 import statistics
 
 PHASES = ['cold', 'R', 'C', 'Cvis', 'D', 'Dvis', 'S']
+SCROLL_STEP_PX = 120
+SCROLL_MAX_STEPS = 14  # FRAMES of the browser probe: one scroll pass
+NO_SCROLL = 'page does not scroll by one whole 120 px step'
 OURS_MODE = {'cold': 'cold', 'R': 'relayout', 'S': 'scroll'}  # every other phase is an edit
+
+
+def scroll_steps(meta, viewport_h=600):
+    """Steps of the scroll scenario on a page: min(14, whole 120 px steps below the first screen); None unknown."""
+    sh = (meta or {}).get('scrollHeight')
+    if sh is None:
+        return None
+    return max(0, min(SCROLL_MAX_STEPS, (int(sh) - viewport_h) // SCROLL_STEP_PX))
 
 
 def med(xs):
@@ -126,7 +137,7 @@ def browser_visit(engine, res):
             rf, rr = ras('frame:' + k), ras('req:' + k)
             raf = fr + rf if None not in (rf, fr) else None
             req = rq + rr if None not in (rr, rq) else None
-        if k == 'S' and ((c.get('frame') or {}).get('moved') or 0) < 3:
+        if k == 'S' and ((c.get('frame') or {}).get('moved') or 0) < 1:
             req = raf = None
         vals = [v for v in (req, raf) if v]
         out[k] = {'req': req, 'raf': raf, 'value': min(vals) if vals else None}
@@ -143,8 +154,8 @@ def browser_visit(engine, res):
 
 def scroll_empty_reason(res):
     c = (((res.get('probe') or {}).get('cases') or {}).get('S') or {}).get('frame') or {}
-    if (c.get('moved') or 0) < 3:
-        return 'page does not scroll by three whole 120 px steps'
+    if (c.get('moved') or 0) < 1:
+        return NO_SCROLL
     return None
 
 

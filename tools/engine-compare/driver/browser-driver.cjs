@@ -32,6 +32,7 @@ const LOOP = (c, n) => `return new Promise(done => window.__loop(${JSON.stringif
 const tmpDir = path.join(cfg.workDir, 'tmp'); fs.mkdirSync(tmpDir, { recursive: true });
 const env = { ...process.env, TEMP: tmpDir, TMP: tmpDir };
 
+const TRACE_CATEGORIES = 'devtools.timeline,blink,loading,cc,viz,gpu,disabled-by-default-devtools.timeline';
 // ---- Chromium trace summary: complete events by name inside a window of console.timeStamp markers ----
 const NAMES = ['ParseHTML', 'ParseAuthorStyleSheet', 'UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint', 'Layerize', 'Commit',
   'RasterTask', 'Display::DrawAndSwap'];
@@ -63,13 +64,14 @@ async function chromium() {
   const browser = await pw.chromium.launch({ executablePath: cfg.exe, headless: true, timeout: 60000, env, args });
   const info = { version: browser.version(), launchMs: clock.now() - t0, args };
   async function page(op) {
+    const w0 = clock.now();
     const ctx = await browser.newContext({ viewport: { width: 800, height: 600 }, deviceScaleFactor: 1 });
     try {
       const pg = await ctx.newPage(); await pg.goto('about:blank');
       const cdp = op.trace ? await ctx.newCDPSession(pg) : null;
       let done = null;
       if (cdp) {
-        await cdp.send('Tracing.start', { categories: 'devtools.timeline,blink,loading,cc,viz,gpu,disabled-by-default-devtools.timeline', transferMode: 'ReturnAsStream' });
+        await cdp.send('Tracing.start', { categories: op.traceCategories || TRACE_CATEGORIES, transferMode: 'ReturnAsStream' });
         await pg.evaluate(() => console.timeStamp('nav'));
       }
       await mark('nav');
@@ -80,8 +82,10 @@ async function chromium() {
       const navWallMs = clock.now() - navStart;
       await mark('loaded');
       if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
+      const p0 = clock.now();
       const probe = op.cases ? await pg.evaluate(new Function(PROBE(op.cases))) : null;
-      let trace = null;
+      const probeWallMs = clock.now() - p0;
+      let trace = null; const t0 = clock.now();
       if (cdp) {
         const completed = new Promise(r => cdp.once('Tracing.tracingComplete', r));
         await cdp.send('Tracing.end'); const ev = await completed; const chunks = [];
@@ -89,9 +93,9 @@ async function chromium() {
         await cdp.send('IO.close', { handle: ev.stream });
         const data = JSON.parse(Buffer.concat(chunks).toString('utf8')); trace = summarize(data.traceEvents || data);
       }
-      const cpu = {};
+      const cpu = {}; const c0 = clock.now();
       for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await pg.evaluate(new Function(LOOP(c, op.cpuFrames))); await mark('cpu_' + c + '_1'); }
-      return { navWallMs, ...metrics, probe, cpu, trace };
+      return { navWallMs, probeWallMs, traceWallMs: c0 - t0, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu, trace };
     } finally { await ctx.close().catch(() => {}); }
   }
   return { info, page, quit: () => Promise.race([browser.close().catch(() => {}), sleep(3000)]) };
@@ -118,6 +122,7 @@ async function firefox() {
   const info = { version: caps.get('browserVersion'), launchMs: clock.now() - t0, prefs };
   const run = body => driver.executeAsyncScript('const done=arguments[arguments.length-1];(function(){' + body + '})().then(done);');
   async function page(op) {
+    const w0 = clock.now();
     await driver.switchTo().newWindow('tab');
     try {
       await driver.get('about:blank');
@@ -128,10 +133,12 @@ async function firefox() {
       const navWallMs = clock.now() - navStart;
       await mark('loaded');
       if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
+      const p0 = clock.now();
       const probe = op.cases ? await run(PROBE(op.cases)) : null;
-      const cpu = {};
+      const probeWallMs = clock.now() - p0;
+      const cpu = {}; const c0 = clock.now();
       for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
-      return { navWallMs, ...metrics, probe, cpu };
+      return { navWallMs, probeWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, cpu };
     } finally { await driver.close().catch(() => {}); await driver.switchTo().window(home).catch(() => {}); }
   }
   return { info, page, quit: () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]) };
