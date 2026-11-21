@@ -9,6 +9,7 @@ mod filtered_raster;
 pub mod flat_vector;
 pub mod gradient_geometry;
 pub mod gradient_raster;
+mod gradient_why;
 pub mod raster;
 mod raster_keys;
 mod source_types;

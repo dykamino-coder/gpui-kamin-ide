@@ -73,7 +73,7 @@ mod scene_capture;
 mod scene_layer;
 mod layer_box;
 mod layer_band;
-pub use scene_layer::RecordedLayer;
+pub use scene_layer::{NoLayer, RecordedLayer};
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
@@ -1065,6 +1065,8 @@ pub(crate) struct DeferredDraw {
     paint_range: Range<PaintIndex>,
     // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
     isolated: Option<IsolatedDraw>,
+    // KaminIDE patch: the line that deferred it, for DevTools' scroll refusals.
+    pub(crate) site: &'static core::panic::Location<'static>,
 }
 
 pub(crate) struct Frame {
@@ -4530,6 +4532,7 @@ impl Window {
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
                     isolated: deferred_draw.isolated.clone(),
+                    site: deferred_draw.site,
                 }),
         );
         // KaminIDE patch: reused isolated draws stay isolated in the new frame.
@@ -5287,12 +5290,26 @@ impl Window {
     /// both prepaint and paint. When `None`, no additional clipping is applied.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
+    #[track_caller]
     pub fn defer_draw(
         &mut self,
         element: AnyElement,
         absolute_offset: Point<Pixels>,
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
+    ) {
+        let site = core::panic::Location::caller();
+        self.defer_draw_at(element, absolute_offset, priority, content_mask, site);
+    }
+
+    /// KaminIDE patch: `defer_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        site: &'static core::panic::Location<'static>,
     ) {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
@@ -5311,6 +5328,7 @@ impl Window {
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
             isolated: None,
+            site,
         });
     }
 

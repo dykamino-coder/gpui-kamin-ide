@@ -50,6 +50,8 @@ mod usage;
 #[cfg(windows)]
 mod view;
 #[cfg(windows)]
+mod why;
+#[cfg(windows)]
 mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.

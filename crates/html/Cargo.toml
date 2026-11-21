@@ -14,6 +14,9 @@ edition.workspace = true
 # него собирается таблица в `docs/html-css-mapping.html`. Скрипты (JS) вне цели.
 
 [features]
+# The memory report by owner is part of the engine (DevTools memory domain): its walk runs only
+# on request and the feature adds no fields, so the ordinary build carries it.
+default = ["heap-report"]
 # Builds the Windows-only WPT reftest runner (`examples/wptrun.rs`) and its
 # capture dev-dependencies and observational fragmentation probes. The paged-media API the
 # runner calls (`render::render_paged*`, `flow::PageGeom`) is public engine API.

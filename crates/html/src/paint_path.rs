@@ -72,6 +72,7 @@ pub static ARRIVED_DECORATION: AtomicU64 = AtomicU64::new(0);
 /// Nanoseconds spent deciding and writing the paint-only path.
 pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
 
+#[track_caller]
 pub(crate) fn note_plan(counter: &AtomicU64) {
     add(counter, 1);
 }
@@ -91,11 +92,22 @@ impl Drop for Timer {
     }
 }
 
+/// Count `n` on `counter`; a refusal also goes into the DevTools `why`
+/// journal as `paint_path.<name>` at the caller.
+#[track_caller]
 pub(crate) fn add(counter: &AtomicU64, n: u64) {
     counter.fetch_add(n, Relaxed);
+    if crate::why::enabled()
+        && let Some(code) = codes::refusal(counter)
+    {
+        crate::why::note(code, String::new);
+    }
 }
 
+mod codes;
+
 /// `value`, counting `reason` when it is `None`.
+#[track_caller]
 pub(crate) fn why<T>(value: Option<T>, reason: &AtomicU64) -> Option<T> {
     if value.is_none() {
         add(reason, 1);
@@ -104,6 +116,7 @@ pub(crate) fn why<T>(value: Option<T>, reason: &AtomicU64) -> Option<T> {
 }
 
 /// `None`, counting `reason`.
+#[track_caller]
 pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
     add(reason, 1);
     None

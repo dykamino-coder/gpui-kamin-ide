@@ -29,11 +29,32 @@ pub enum RecordedLayer {
     /// The content needs the frame scene (composition groups or hoisted
     /// backdrops): its commands were placed in the frame as if painted there,
     /// at other indices than recorded, so ranges recorded inside are void.
-    Spliced,
+    Spliced(NoLayer),
     /// The paint environment allows no layer (a transform, opacity, mask,
     /// group, capture, open ink sinks or a layer being recorded): the content
     /// painted into the frame.
-    Painted,
+    Painted(NoLayer),
+}
+
+/// Why `record_scene_layer` made no layer, for DevTools: a stable reason,
+/// the line that decided and, when spliced, what the content made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NoLayer {
+    /// `environment`, `ink`, `nested`, `disabled` (painted) or `groups` (spliced).
+    pub reason: &'static str,
+    /// The line that decided.
+    pub site: &'static core::panic::Location<'static>,
+    /// Composition groups of spliced content.
+    pub groups: usize,
+    /// Hoisted backdrops of spliced content.
+    pub backdrops: usize,
+}
+
+impl NoLayer {
+    #[track_caller]
+    fn at(reason: &'static str, groups: usize, backdrops: usize) -> Self {
+        Self { reason, site: core::panic::Location::caller(), groups, backdrops }
+    }
 }
 
 impl Window {
@@ -53,11 +74,17 @@ impl Window {
             || self.layer_recording.is_some()
             || self.scene_layers_disabled()
         {
+            let why = match () {
+                _ if !self.retained_root_environment() => NoLayer::at("environment", 0, 0),
+                _ if !scene.ink.is_empty() || scene.ink_scope != 0 => NoLayer::at("ink", 0, 0),
+                _ if self.layer_recording.is_some() => NoLayer::at("nested", 0, 0),
+                _ => NoLayer::at("disabled", 0, 0),
+            };
             let previous = mem::replace(&mut self.layer_source, source);
             let (result, _) = self.with_restore(previous, |window, previous| {
                 window.layer_source = previous.take();
             }, f);
-            return (result, RecordedLayer::Painted);
+            return (result, RecordedLayer::Painted(why));
         }
         // The content painted again is about the size of its last recording:
         // its lists start at that size instead of growing by copies.
@@ -83,9 +110,10 @@ impl Window {
             recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
         crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
         if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
+            let why = NoLayer::at("groups", scene.groups.len(), scene.hoisted_backdrops.len());
             let scene = self.adopt_scene(scene);
             self.splice_scene(&scene);
-            return (result, RecordedLayer::Spliced);
+            return (result, RecordedLayer::Spliced(why));
         }
         (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
     }

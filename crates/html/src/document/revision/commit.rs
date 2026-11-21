@@ -148,6 +148,7 @@ impl Document {
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
             // A frame replays only from a settled record of this tree.
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
+            self.note_no_layer();
             return false;
         };
         let own = |e: &crate::dom::Element| {
@@ -190,6 +191,43 @@ impl Document {
         self.reuse.defer_repaints(taken.deferred);
         self.reuse.defer_frames(frames);
         true
+    }
+
+    /// Why `write_paint_values` had no layer (DevTools `why`): the layer's own
+    /// refusal at the line that made it, or the record this revision lacks.
+    fn note_no_layer(&self) {
+        if !crate::why::enabled() {
+            return;
+        }
+        match (self.reuse.scene_layer().is_some(), self.reuse.no_layer()) {
+            (false, Some(why)) => {
+                let code = match why.reason {
+                    "groups" => "no_layer.spliced",
+                    "environment" => "no_layer.painted_environment",
+                    "ink" => "no_layer.painted_ink",
+                    "nested" => "no_layer.painted_nested",
+                    "dropped" => "no_layer.dropped",
+                    _ => "no_layer.painted_other",
+                };
+                crate::why::note_at(code, why.site, || match why.reason {
+                    "groups" => format!(
+                        "the frame's paint made {} composition groups and {} hoisted backdrops; \
+                         layer records voided (layout/reuse/layer.rs void_frame_records)",
+                        why.groups, why.backdrops
+                    ),
+                    reason => format!("no scene layer: {reason}"),
+                });
+            }
+            (false, None) => crate::why::note("no_layer.unrecorded", || {
+                "no frame painted into a scene layer yet".into()
+            }),
+            (true, _) => crate::why::note("no_layer.frame_unrecorded", || {
+                match self.unpublished_reason() {
+                    Some(code) => format!("this revision's frame was not published: {code}"),
+                    None => "no frame was recorded for this revision yet".into(),
+                }
+            }),
+        }
     }
 
     /// Следующая ревизия с деревом `nodes` и прежними значениями документа;

@@ -18,6 +18,8 @@ pub(crate) struct Kept {
     /// a gap or an unverified copy ends the run without walking any records.
     copied: Cell<Option<(u64, u64)>>,
     layer: RefCell<Option<gpui::LayerHandle>>,
+    /// Why `layer` is empty: the last recording's refusal or the drop (DevTools `why`).
+    no_layer: Cell<Option<gpui::NoLayer>>,
     repaints: RefCell<Vec<(Vec<usize>, u64)>>,
     /// The root-flow blocks the layer's frame skipped off the screen
     /// (`FlowReuse::finish`): no box of theirs is in the layer.
@@ -89,17 +91,18 @@ impl Store {
         let (_, layer) = window.record_scene_layer(source.as_ref(), |window| {
             inner = Some(window.record_retained_paint(f).1);
         });
-        let layer = match layer {
+        let (layer, why) = match layer {
             gpui::RecordedLayer::Layer(layer) => {
                 window.paint_scene_layer(&layer);
-                Some(layer)
+                (Some(layer), None)
             }
-            gpui::RecordedLayer::Spliced => {
+            gpui::RecordedLayer::Spliced(why) => {
                 self.void_frame_records();
-                None
+                (None, Some(why))
             }
-            gpui::RecordedLayer::Painted => None,
+            gpui::RecordedLayer::Painted(why) => (None, Some(why)),
         };
+        self.layer.no_layer.set(why);
         let inner = inner.filter(|_| layer.is_some());
         self.layer.layer.replace(layer);
         inner
@@ -119,14 +122,23 @@ impl Store {
     }
 
     /// Drop the layer: the next frame paints a new one.
+    #[track_caller]
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
+        let site = std::panic::Location::caller();
+        let why = gpui::NoLayer { reason: "dropped", site, groups: 0, backdrops: 0 };
+        self.layer.no_layer.set(Some(why));
         self.layer.deferred.start(None, self.epoch.get(), 1.);
     }
 
     /// The layer of the last recorded frame, if it painted into one.
     pub(crate) fn scene_layer(&self) -> Option<gpui::LayerHandle> {
         self.layer.layer.borrow().clone()
+    }
+
+    /// Why there is no `scene_layer`: `None` when none was recorded yet.
+    pub(crate) fn no_layer(&self) -> Option<gpui::NoLayer> {
+        self.layer.no_layer.get()
     }
 
     /// Identity and content version of the layer containing the block ranges.

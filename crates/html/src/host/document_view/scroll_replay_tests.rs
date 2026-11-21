@@ -176,6 +176,7 @@ mod built_at_offset;
 mod canvas;
 mod canvas_extent;
 mod groups;
+mod why;
 
 /// Block ranges from the previous layer must not survive the moved scene.
 #[gpui::test]

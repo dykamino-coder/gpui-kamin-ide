@@ -13,7 +13,10 @@ use std::sync::Arc;
 type TileKey = Hinted<(super::raster_keys::ImageKey, u32, u32, [FloatKey; 2], bool)>;
 /// Бюджет 64 МиБ: плитка не больше 2048 x 2048 точек (16 МиБ).
 static TILES: BoundedCache<TileKey, Option<Arc<CpuRaster>>> =
-    BoundedCache::new(64 * MIB, optional_image_bytes).with_key_weight(|key| key.key.0.bytes());
+    BoundedCache::new(64 * MIB, optional_image_bytes)
+        .with_key_weight(|key: &TileKey| key.key.0.bytes())
+        .named(CACHE);
+const CACHE: &str = "gradient_tiles";
 
 /// Device-sized samples depend on the concrete CSS line as well as the bitmap.
 pub fn tile(
@@ -35,6 +38,7 @@ fn cached(
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
     if !src.cacheable() {
+        crate::why::cache_miss(CACHE, "uncacheable", || format!("{w}x{h} source not cacheable"));
         return uncached(src, w, h, css, centers, vcx);
     }
     // Conic-растр использует конкретный размер bitmap, остальные — CSS-плитку.
@@ -44,6 +48,7 @@ fn cached(
         css
     };
     let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
+        crate::why::cache_miss(CACHE, "no_key", || format!("{w}x{h} source has no image key"));
         return uncached(src, w, h, css, centers, vcx);
     };
     let size = [size.0, size.1].map(FloatKey::from);
@@ -51,7 +56,13 @@ fn cached(
         hint: hint((std::mem::discriminant(src), w, h, size, centers)),
         key: (image, w, h, size, centers),
     };
-    TILES.get_or_insert_with(key, || uncached(src, w, h, css, centers, vcx))
+    let explain = |reason| super::gradient_why::explain(reason, &key.key);
+    if let Ok(hit) = TILES.lookup(&key, explain) {
+        return hit;
+    }
+    let value = uncached(src, w, h, css, centers, vcx);
+    TILES.insert(key, value.clone());
+    value
 }
 
 pub fn raster(

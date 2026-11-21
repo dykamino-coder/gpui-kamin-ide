@@ -83,6 +83,69 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Result<ScrollReplay, ScrollRefusal> {
+        self.located_scroll_plan(prepaint, paint, layer).map_err(|(refusal, _)| refusal)
+    }
+
+    /// Why `scroll_replay_plan` refuses, for DevTools: the refusal, the line
+    /// that decided it and what it saw (the deferred draws' sites, the node).
+    /// Plans again; call it only to explain a refusal.
+    pub fn explain_scroll_refusal(
+        &self,
+        prepaint: &RetainedPrepaint,
+        paint: &RetainedPaint,
+        layer: Option<&LayerHandle>,
+    ) -> Option<(ScrollRefusal, &'static core::panic::Location<'static>, String)> {
+        let (refusal, site) = self.located_scroll_plan(prepaint, paint, layer).err()?;
+        let range = prepaint.range();
+        let detail = match refusal {
+            ScrollRefusal::DeferredDraws => {
+                let draws = &self.rendered_frame.deferred_draws;
+                let draws = draws.get(range.start.deferred_draws_index..range.end.deferred_draws_index);
+                let draws = draws.unwrap_or_default();
+                // One line per deferring site and owner, with its count.
+                let mut sites = std::collections::BTreeMap::<String, usize>::new();
+                for draw in draws {
+                    let owner = draw.element_id_stack.last().map(|id| format!(" under {id:?}")).unwrap_or_default();
+                    let site = format!("{}:{}{owner}", draw.site.file().replace('\\', "/"), draw.site.line());
+                    *sites.entry(site).or_default() += 1;
+                }
+                let sites: Vec<String> = sites.into_iter().map(|(site, n)| format!("{n} x {site}")).collect();
+                format!("{} deferred draws in the record, made at: {}", draws.len(), sites.join("; "))
+            }
+            ScrollRefusal::Node => {
+                let first = range.start.scroll_nodes_index;
+                let nodes = &self.rendered_frame.scroll_nodes[first..range.end.scroll_nodes_index];
+                let content = layer.map(LayerHandle::content);
+                let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+                let space = source.scroll.space;
+                nodes
+                    .iter()
+                    .find_map(|node| {
+                        let why = match () {
+                            _ if node.paint.is_none() => "no paint",
+                            _ if node.torn => "torn",
+                            _ if node.painted_in != Some(space) => "painted in another scene",
+                            _ => return None,
+                        };
+                        Some(format!("scroll node {:?}: {why}", node.id))
+                    })
+                    .unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+        Some((refusal, site, detail))
+    }
+
+    fn located_scroll_plan(
+        &self,
+        prepaint: &RetainedPrepaint,
+        paint: &RetainedPaint,
+        layer: Option<&LayerHandle>,
+    ) -> Result<ScrollReplay, (ScrollRefusal, &'static core::panic::Location<'static>)> {
+        #[track_caller]
+        fn at(refusal: ScrollRefusal) -> (ScrollRefusal, &'static core::panic::Location<'static>) {
+            (refusal, core::panic::Location::caller())
+        }
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
         if !paint.replayable
@@ -90,10 +153,10 @@ impl Window {
             || scene.segment_capture.is_some()
             || !scene.at_root()
         {
-            return Err(ScrollRefusal::Environment);
+            return Err(at(ScrollRefusal::Environment));
         }
         if prepaints.start.deferred_draws_index != prepaints.end.deferred_draws_index {
-            return Err(ScrollRefusal::DeferredDraws);
+            return Err(at(ScrollRefusal::DeferredDraws));
         }
         let content = layer.map(LayerHandle::content);
         let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
@@ -105,10 +168,10 @@ impl Window {
         for node in records {
             // Every paint range of the node in the record's scene, deferred ones too.
             if node.paint.is_none() || node.painted_in != Some(space) || node.torn {
-                return Err(ScrollRefusal::Node);
+                return Err(at(ScrollRefusal::Node));
             }
             if node.ranges().any(|painted| painted.start < scenes.start || painted.end > scenes.end) {
-                return Err(ScrollRefusal::NodeRange);
+                return Err(at(ScrollRefusal::NodeRange));
             }
             let new = node.source.offset();
             let parent = node
@@ -126,7 +189,7 @@ impl Window {
             let shift = parent_shift + (new - node.offset);
             let interest = moved(node.interest, shift);
             if !inside(clip, interest) {
-                return Err(ScrollRefusal::Interest);
+                return Err(at(ScrollRefusal::Interest));
             }
             plan.by_id.insert(node.id, plan.nodes.len());
             plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
@@ -134,18 +197,22 @@ impl Window {
         // Paint that follows a moved node's offset outside it (a thumb).
         let moved = |id: ScrollNodeId| plan.by_id.get(&id).is_some_and(|&at| plan.nodes[at].shift != Point::default());
         if self.scroll_dependents_moved(space, &scenes, moved) {
-            return Err(ScrollRefusal::Dependent);
+            return Err(at(ScrollRefusal::Dependent));
         }
         // The groups the record made move with their labels' nodes (`group_replay`).
         let groups = paint.groups();
         if !groups.is_empty() {
             let labels = source.group_label_nodes(scenes.clone(), groups.clone());
             if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
-                return Err(ScrollRefusal::Groups);
+                return Err(at(ScrollRefusal::Groups));
             }
         }
         let nodes = records.iter().flat_map(|node| node.ranges());
-        source.scroll_check(&scenes, nodes).map(|()| plan)
+        match source.scroll_check(&scenes, nodes) {
+            Ok(()) => Ok(plan),
+            // The scene's check (`scene::scroll_marks::check`) decided: its caller is the site.
+            Err(refusal) => Err(at(refusal)),
+        }
     }
 
     /// `replay_retained_prepaint` of a planned scrolled replay: hitboxes

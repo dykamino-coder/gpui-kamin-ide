@@ -213,6 +213,11 @@ impl Document {
     pub(super) fn frame_recorded(&self) -> bool {
         self.retained.recorded.borrow().strong_count() != 0
     }
+
+    /// Why the last recorded frame of this revision was kept from replay (DevTools `why`).
+    pub(in crate::document) fn unpublished_reason(&self) -> Option<&'static str> {
+        self.retained.unsettled.get().map(record::FrameMiss::code)
+    }
 }
 
 #[cfg(test)]

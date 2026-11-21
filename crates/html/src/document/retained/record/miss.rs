@@ -79,6 +79,50 @@ impl FrameMiss {
         }
     }
 
+    /// The stable DevTools code of the reason (`why` journal): `frame_miss.` and its counter name.
+    pub(in crate::document::retained) fn code(self) -> &'static str {
+        match self {
+            FrameMiss::Resources => "frame_miss.resources",
+            FrameMiss::Unpublished => "frame_miss.unpublished",
+            FrameMiss::NotRoot => "frame_miss.not_root",
+            FrameMiss::Commands => "frame_miss.commands",
+            FrameMiss::Scheduled => "frame_miss.scheduled",
+            FrameMiss::NotReady => "frame_miss.not_ready",
+            FrameMiss::Unreplayable => "frame_miss.unreplayable",
+            FrameMiss::ScrollRead => "frame_miss.scroll_read",
+            FrameMiss::Key => "frame_miss.key",
+            FrameMiss::Stale => "frame_miss.stale",
+            FrameMiss::Environment => "frame_miss.environment",
+            FrameMiss::LayoutScroll => "frame_miss.layout_scroll",
+            FrameMiss::Paint => "frame_miss.paint",
+            FrameMiss::Boxes => "frame_miss.boxes",
+            FrameMiss::Scroll(refusal) => match refusal {
+                ScrollRefusal::Environment => "frame_miss.scroll_environment",
+                ScrollRefusal::DeferredDraws => "frame_miss.scroll_deferreddraws",
+                ScrollRefusal::Node => "frame_miss.scroll_node",
+                ScrollRefusal::NodeRange => "frame_miss.scroll_noderange",
+                ScrollRefusal::Interest => "frame_miss.scroll_interest",
+                ScrollRefusal::Dependent => "frame_miss.scroll_dependent",
+                ScrollRefusal::Groups => "frame_miss.scroll_groups",
+                ScrollRefusal::BottomLayer => "frame_miss.scroll_bottomlayer",
+                ScrollRefusal::DepthSort => "frame_miss.scroll_depthsort",
+                ScrollRefusal::UnbalancedLayer => "frame_miss.scroll_unbalancedlayer",
+                ScrollRefusal::ForeignMark => "frame_miss.scroll_foreignmark",
+                ScrollRefusal::Unmarked => "frame_miss.scroll_unmarked",
+                ScrollRefusal::UnmarkedLayer => "frame_miss.scroll_unmarkedlayer",
+                ScrollRefusal::RetainedLayer => "frame_miss.scroll_retainedlayer",
+                ScrollRefusal::LayerReservoir => "frame_miss.scroll_layerreservoir",
+            },
+        }
+    }
+
+    /// This reason, recorded in the `why` journal at the caller (the check that decided it).
+    #[track_caller]
+    pub(in crate::document::retained) fn noted(self) -> Self {
+        crate::why::note(self.code(), String::new);
+        self
+    }
+
     /// Count one refusal in `counters`.
     pub(in crate::document::retained) fn count(self, counters: &std::cell::Cell<[u64; MISSES]>) {
         let mut all = counters.get();
@@ -104,6 +148,11 @@ mod tests {
         assert_eq!(counters.get(), [1; MISSES]);
         let names: std::collections::HashSet<_> = (0..MISSES).map(FrameMiss::name).collect();
         assert_eq!(names.len(), MISSES);
+        // The DevTools codes are the counter names: one protocol vocabulary.
+        let all = PLAIN.iter().map(|(m, _)| *m).chain(SCROLL.iter().map(|r| FrameMiss::Scroll(*r)));
+        for (at, reason) in all.enumerate() {
+            assert_eq!(reason.code(), format!("frame_miss.{}", FrameMiss::name(at)));
+        }
         assert_eq!(FrameMiss::name(PLAIN.len() + 4), "scroll_interest");
     }
 }

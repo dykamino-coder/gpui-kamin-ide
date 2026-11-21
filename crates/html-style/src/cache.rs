@@ -15,6 +15,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// Мебибайт — единица бюджетов кэшей.
@@ -34,12 +35,48 @@ struct Store<K, V> {
     map: HashMap<K, Slot<V>>,
     bytes: usize,
     clock: u64,
+    /// While the DevTools `why` journal records: hashes of keys the cache
+    /// let go and why (`evicted`, `not_admitted`), so a later miss names it.
+    gone: HashMap<u64, &'static str>,
+}
+
+/// Bound of `Store::gone`; past it the memory starts again.
+const GONE: usize = 1 << 16;
+
+/// Names of the caches in the memory report (`held`); unnamed ones are `resource`.
+pub const NAMES: [&str; 3] = ["resource", "gradient_tiles", "rounded_masks"];
+/// Bytes the caches of each name hold, kept by their inserts and evictions
+/// (one atomic add each; lookups do not touch it).
+static HELD: [AtomicUsize; NAMES.len()] = [const { AtomicUsize::new(0) }; NAMES.len()];
+
+/// Bytes held by the process-wide caches, by name (DevTools memory domain).
+pub fn held() -> impl Iterator<Item = (&'static str, usize)> {
+    NAMES.iter().zip(&HELD).map(|(name, bytes)| (*name, bytes.load(Relaxed)))
+}
+
+const fn same(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }
 
 /// Кэш с бюджетом в байтах; `const`-конструктор позволяет держать его в `static`.
 pub struct BoundedCache<K, V> {
     #[cfg(feature = "work-counters")]
     paint: bool,
+    /// The cache's name in the `why` journal.
+    name: &'static str,
+    /// Its place in `NAMES` and `HELD`.
+    slot: usize,
     budget: usize,
     weigh: fn(&V) -> usize,
     key_weight: fn(&K) -> usize,
@@ -52,11 +89,25 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         Self {
             #[cfg(feature = "work-counters")]
             paint: false,
+            name: NAMES[0],
+            slot: 0,
             budget,
             weigh,
             key_weight: |_| 0,
             store: Mutex::new(None),
         }
+    }
+
+    /// Name the cache in the DevTools `why` journal and memory report; the
+    /// name is one of `NAMES` (checked when the constant is built).
+    pub const fn named(mut self, name: &'static str) -> Self {
+        let mut slot = 0;
+        while !same(NAMES[slot], name) {
+            slot += 1; // past the end: a name missing from `NAMES` fails the build
+        }
+        self.name = NAMES[slot];
+        self.slot = slot;
+        self
     }
 
     /// Учитывать выделенную память ключа (разметка, удерживаемые CPU-точки).
@@ -86,25 +137,55 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
     }
 
     /// Найти запись и отметить её как только что использованную.
+    #[track_caller]
     pub fn get<Q>(&self, key: &Q) -> Option<V>
     where
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let result = (|| {
+        self.lookup(key, |_| String::new()).ok()
+    }
+
+    /// `get`, or why it missed: `new_key`, `evicted` (the budget let it go)
+    /// or `not_admitted` (heavier than the budget). The reason is known only
+    /// while the `why` journal records (`new_key` otherwise); the miss goes
+    /// into the journal at the caller with `explain(reason)` as its detail.
+    #[track_caller]
+    pub fn lookup<Q>(&self, key: &Q, explain: impl FnOnce(&'static str) -> String) -> Result<V, &'static str>
+    where
+        K: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
+    {
+        let observed = crate::why::enabled();
+        let (result, reason) = {
             let mut guard = self.lock();
-            let store = guard.as_mut()?;
-            store.clock += 1;
-            let slot = store.map.get_mut(key)?;
-            slot.used = store.clock;
-            Some(slot.value.clone())
-        })();
+            match guard.as_mut() {
+                None => (None, "new_key"),
+                Some(store) => {
+                    store.clock += 1;
+                    match store.map.get_mut(key) {
+                        Some(slot) => {
+                            slot.used = store.clock;
+                            (Some(slot.value.clone()), "")
+                        }
+                        None if observed => (None, store.gone.get(&hint(key)).copied().unwrap_or("new_key")),
+                        None => (None, "new_key"),
+                    }
+                }
+            }
+        };
+        if observed {
+            match result {
+                Some(_) => crate::why::cache_hit(self.name),
+                None => crate::why::cache_miss(self.name, reason, || explain(reason)),
+            }
+        }
         crate::work::cache!(result, ResourceCacheHits, ResourceCacheMisses);
         #[cfg(feature = "work-counters")]
         if self.paint {
             crate::work::cache!(result, PaintCacheHits, PaintCacheMisses);
         }
-        result
+        result.ok_or(reason)
     }
 
     /// Положить запись; при превышении бюджета вытесняются самые давние записи.
@@ -112,33 +193,45 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         let weight = (self.weigh)(&value)
             .saturating_add((self.key_weight)(&key))
             .saturating_add(ENTRY_OVERHEAD + size_of::<K>());
-        if weight > self.budget {
-            return;
-        }
+        let observed = crate::why::enabled();
         let mut guard = self.lock();
         let store = guard.get_or_insert_with(|| Store {
             map: HashMap::new(),
             bytes: 0,
             clock: 0,
+            gone: HashMap::new(),
         });
+        if weight > self.budget {
+            if observed {
+                remember(&mut store.gone, hint(&key), "not_admitted");
+            }
+            return;
+        }
         store.clock += 1;
         let slot = Slot {
             value,
             weight,
             used: store.clock,
         };
+        let before = store.bytes;
         if let Some(old) = store.map.insert(key, slot) {
             store.bytes -= old.weight;
         }
         store.bytes += weight;
         if store.bytes > self.budget {
-            evict(store, self.budget);
+            evict(store, self.budget, observed);
         }
+        let held = &HELD[self.slot];
+        match store.bytes >= before {
+            true => held.fetch_add(store.bytes - before, Relaxed),
+            false => held.fetch_sub(before - store.bytes, Relaxed),
+        };
     }
 
     /// Взять из кэша или создать без замка и запомнить.
+    #[track_caller]
     pub fn get_or_insert_with(&self, key: K, create: impl FnOnce() -> V) -> V {
-        if let Some(hit) = self.get(&key) {
+        if let Ok(hit) = self.lookup(&key, |_| String::new()) {
             return hit;
         }
         let value = create();
@@ -162,7 +255,24 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
 /// Убрать самые давние записи, пока вес не уложится в бюджет. Одна сортировка на
 /// вытеснение; только что вставленная запись новее всех и не тяжелее бюджета, поэтому
 /// остаётся.
-fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize) {
+/// A cache that ends (not a `static`) stops holding its bytes.
+impl<K, V> Drop for BoundedCache<K, V> {
+    fn drop(&mut self) {
+        let store = self.store.get_mut().unwrap_or_else(PoisonError::into_inner);
+        if let Some(store) = store {
+            HELD[self.slot].fetch_sub(store.bytes, Relaxed);
+        }
+    }
+}
+
+fn remember(gone:&mut HashMap<u64, &'static str>, key: u64, why: &'static str) {
+    if gone.len() >= GONE {
+        gone.clear();
+    }
+    gone.insert(key, why);
+}
+
+fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize, observed: bool) {
     let mut ages: Vec<(u64, usize)> = store.map.values().map(|s| (s.used, s.weight)).collect();
     ages.sort_unstable_by_key(|&(used, _)| used);
     let mut excess = store.bytes - budget;
@@ -175,10 +285,14 @@ fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize) {
         cutoff = used;
     }
     let mut freed = 0;
-    store.map.retain(|_, slot| {
+    let gone = &mut store.gone;
+    store.map.retain(|key, slot| {
         let keep = slot.used > cutoff;
         if !keep {
             freed += slot.weight;
+            if observed {
+                remember(gone, hint(key), "evicted");
+            }
         }
         keep
     });
