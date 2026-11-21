@@ -205,7 +205,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                         if v is not None and x.get('within_noise'):  # shown, never the best: inside the bounds' noise
                             cells.append(f'<td class="num nd" title="{html.escape(x.get("note") or "")}">≈{f(v)}</td>'); continue
                         cells.append(f'<td class="num">{f(v)}</td>' if v is not None else f'<td class="why">{html.escape(why(x, T))}</td>')
-                        if v:
+                        if v and v > 0:
                             comp.append((v, e))
                     best = min(comp) if comp else None
                     ratio = ov / best[0] if best and ov and not o.get('invalid') else None
