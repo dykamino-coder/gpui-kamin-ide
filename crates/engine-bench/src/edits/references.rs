@@ -9,12 +9,12 @@ use super::super::{
 };
 use gpui::{AsyncApp, WindowHandle, frame_capture::CapturedFrame};
 use kamin_html::{host::capture::CaptureSession, metrics::FontContext};
-use std::borrow::Cow;
+use std::{borrow::Cow, rc::Rc};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub(super) enum References {
-    Ordinary(Vec<CapturedFrame>),
+    Ordinary(Vec<Rc<CapturedFrame>>),
     Stepped(Spool),
 }
 
@@ -82,7 +82,7 @@ impl References {
 
     pub(super) fn get(&self, index: usize) -> Result<Cow<'_, CapturedFrame>> {
         match self {
-            Self::Ordinary(frames) => Ok(Cow::Borrowed(&frames[index % 2])),
+            Self::Ordinary(frames) => Ok(Cow::Borrowed(frames[index % 2].as_ref())),
             Self::Stepped(spool) => Ok(Cow::Owned(spool.read(index)?)),
         }
     }

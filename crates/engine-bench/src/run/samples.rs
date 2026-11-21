@@ -12,7 +12,11 @@ use crate::{
 };
 use gpui::{AsyncApp, WindowHandle};
 use kamin_html::{BROWSER_CSS, Document, host::capture::CaptureSession, metrics::FontContext};
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 pub(crate) async fn sample(
     cx: &mut AsyncApp,
