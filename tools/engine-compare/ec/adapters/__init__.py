@@ -59,6 +59,8 @@ def load(name, cfg):
         from .oneshot import OneShot as A
     elif kind == 'kitesurf':
         from .kitesurf import Kitesurf as A
+    elif kind == 'native':
+        from .native import Native as A
     else:
         raise ValueError(f'unknown adapter {kind!r} for engine {name!r}')
     return A(name, cfg, e)
