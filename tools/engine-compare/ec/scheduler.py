@@ -93,7 +93,7 @@ class Runner:
     def __init__(self, cfg, adapters, policy, lanes, gpu_parallel, log=print):
         self.cfg = cfg; self.ad = adapters; self.policy = policy; self.lanes = lanes
         self.gpu_parallel = gpu_parallel; self.log = log; self.cv = threading.Condition(); self.gpu = 0
-        self.busy = {}; self.done = []; self.stop = False
+        self.busy = {}; self.done = []; self.stop = False; self.keep_memory = False
 
     def run(self, tasks):
         q = list(tasks)
@@ -133,6 +133,10 @@ class Runner:
                     rec['empty'] = f'tool error: {type(e).__name__}: {e}'[:300]
                     rec['rows'] = {}
                     rec['key'] = None
+                if self.keep_memory:  # a redo for time/CPU keeps the memory measured before (memory was not affected)
+                    old = REC.load(self.cfg.store, t.engine, t.cls, t.page.id, t.key)
+                    if old and (old.get('memory') or {}).get('peak_bytes'):
+                        rec['memory'] = old['memory']; rec['memory_started'] = old.get('started')
                 rec['key'] = rec.get('key') or t.key
                 if rec['key'] == t.key:
                     REC.save(self.cfg.store, rec)

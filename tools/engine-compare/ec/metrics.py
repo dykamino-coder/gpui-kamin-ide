@@ -9,7 +9,8 @@ Frame time of a phase, ms (median over samples):
            Firefox raf = MozAfterPaint, req = frameReq + (afterPaint - frame).
   cold     ours first_frame_total of a cold document; browsers time from navigation start to two rAFs after load.
   S        a sample counts only when the root scroller moved by the whole 120 px step; fewer than 3 such steps -> no number.
-CPU per frame, ms: ours = process CPU inside the frame (all phases except pipeline_other) from the counters build;
+CPU per frame, ms: ours = cycle time of every thread of the process over the frame window, minus the stand's capture window
+  (copy + wake after readback); the old counters-build phase sum (15.6 ms quanta) is no longer used;
   browsers = CPU of the whole browser tree (helpers excluded) over a rAF loop with the edit / frames; cold = navigation -> load.
 Memory: peak = highest working-set sum of the engine's processes while the page is open; steady = median of that sum
   0.5 s after load until the end of the steady window (ours: the bench's memory audit after the settle time).
@@ -71,7 +72,10 @@ def ours_cpu_cycles(rep, mode, calibration):
     k = (calibration or {}).get('cycles_per_cpu_ms')
     m = (rep.get('modes') or {}).get(mode) or {}
     d = (m.get('diagnostic_scopes') or {}).get('samples_ms') or []
-    v = [x['process_cpu_mcycles'] * 1e6 / k for x in d if x and x.get('process_cpu_mcycles') is not None] if k else []
+    # minus the stand's capture window (copy to memory + wake after readback, the capture's own clock; one thread,
+    # so its duration bounds its CPU): browsers have no such step
+    v = [max(0.0, x['process_cpu_mcycles'] * 1e6 / k - (x.get('capture_copy') or 0) - (x.get('readback_to_resume') or 0))
+         for x in d if x and x.get('process_cpu_mcycles') is not None] if k else []
     return med(v)
 
 

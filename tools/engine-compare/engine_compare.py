@@ -104,7 +104,9 @@ def run(cfg, a):
     def say(m):
         line = time.strftime('%H:%M:%S ') + m; print(line, flush=True); log.write(line + '\n')
     gate(cfg, a, say=say)
-    wall = Runner(cfg, ads, pol, lanes_of(cfg), cfg.gpu_parallel, log=say).run(todo)
+    rn = Runner(cfg, ads, pol, lanes_of(cfg), cfg.gpu_parallel, log=say)
+    rn.keep_memory = bool(redo)
+    wall = rn.run(todo)
     say(f'done: {len(todo)} units in {wall:.0f} s')
 
 

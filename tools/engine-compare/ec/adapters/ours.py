@@ -24,9 +24,9 @@ BOUNDS = ('ours: one engine_bench process per phase on an offscreen GPU texture 
           'warm process; memory = working set of the one process')
 BOUNDS_PLAN = ('ours: cold = document-cold samples in one process; warm phases = one process, each phase on its own '
                'input after its load, frame series of fixed duration; frame = from the frame request to pixels read back, '
-               'minus the bench capture copy; CPU = process cycle time inside the frame (all threads); steady memory once '
+               'minus the bench capture copy; CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop; steady memory once '
                'after the first warm phase')
-DEF = 'ours-1'
+DEF = 'ours-2'  # 2: CPU = all threads over the frame window minus the capture window
 
 
 class Ours:
