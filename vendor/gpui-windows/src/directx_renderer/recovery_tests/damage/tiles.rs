@@ -186,6 +186,21 @@ fn modes_of_one_run_interleave_in_document_order() {
     }
 }
 
+/// A composite no other joins is a pass of one: its translucent pixels take
+/// the same steps as in a run, so a primitive that splits a run between two
+/// composites leaves both as they were.
+#[test]
+fn a_lone_composite_equals_its_formula_as_in_a_run() {
+    for (gpu, device) in devices() {
+        for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
+            let mut lone = chain(&[0]);
+            lone[0].opacity = 0.6;
+            check(&device, &format!("{gpu}: lone normal {bg:?}"), &lone, bg);
+            check(&device, &format!("{gpu}: lone multiply {bg:?}"), &chain(&[1]), bg);
+        }
+    }
+}
+
 fn mode_chain(m: u32) -> Vec<G> {
     let mut groups = chain(&[m, m, 3, m, 9, m]);
     groups[2].opacity = 0.6;

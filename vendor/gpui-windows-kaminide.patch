@@ -12244,10 +12244,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06457b5794
+index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb6a9b04f7
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,257 @@
 +//! KaminIDE patch: a run of overlapping group composites in one pass.
 +//!
 +//! A blend mode mixed in the shader reads a copy of the backdrop, and a
@@ -12356,7 +12356,13 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +
 +    /// Draw the leading composites of `run` that `tiles_take` accepts, on one
 +    /// atlas page and with one mask image (or none), in one pass; returns how
-+    /// many were drawn (0: fewer than two could share a pass, nothing drawn).
++    /// many were drawn (0: none could, nothing drawn). A composite no other
++    /// can join is a pass of one: drawn by the adapter's blender instead, its
++    /// partly covered pixels (an antialiased clip edge, a translucent run)
++    /// could land a code away from the same composite drawn in a pass, so a
++    /// frame would change where an unrelated primitive between two
++    /// composites splits their run (album-cover: a fixed box painted over
++    /// the page moved the clip-path edges of two groups by one code).
 +    pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
 +        let mut quads = vec![BlurQuad::default()];
 +        let mut regions = Vec::new();
@@ -12384,7 +12390,7 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        }
 +        let mut lists = std::mem::take(&mut self.blur.tile_lists);
 +        let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
-+        if taken < 2 {
++        if taken == 0 {
 +            self.blur.tile_lists = lists;
 +            return Ok(0);
 +        }
@@ -13806,10 +13812,10 @@ index 0000000000000000000000000000000000000000..1f1ef37efd6b286e84e9c2601aa29d5e
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba493096471fcf
+index 0000000000000000000000000000000000000000..0f6111b40cc30094d0901905c50feaf5dd11fc2d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,274 @@
 +//! KaminIDE patch: a composite run drawn in one pass (`group_tiles`) equals
 +//! the canonical group arithmetic: the Compositing formulas of its modes in
 +//! document order, rounded to 8 bits after every step.
@@ -13995,6 +14001,21 @@ index 0000000000000000000000000000000000000000..347cb7c6a1f8b3e67448c92764ba4930
 +    for (gpu, device) in devices() {
 +        let bg = WindowBackgroundAppearance::Opaque;
 +        check(&device, &format!("{gpu}: multiply/difference"), &chain(&[1, 10, 1, 0, 10, 1]), bg);
++    }
++}
++
++/// A composite no other joins is a pass of one: its translucent pixels take
++/// the same steps as in a run, so a primitive that splits a run between two
++/// composites leaves both as they were.
++#[test]
++fn a_lone_composite_equals_its_formula_as_in_a_run() {
++    for (gpu, device) in devices() {
++        for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
++            let mut lone = chain(&[0]);
++            lone[0].opacity = 0.6;
++            check(&device, &format!("{gpu}: lone normal {bg:?}"), &lone, bg);
++            check(&device, &format!("{gpu}: lone multiply {bg:?}"), &chain(&[1]), bg);
++        }
 +    }
 +}
 +
