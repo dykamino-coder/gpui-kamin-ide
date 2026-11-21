@@ -13,7 +13,6 @@ use super::{Binding, BoxRange, SceneLayer};
 use crate::scene::{Bounds, ScaledPixels, Scene};
 
 impl SceneLayer {
-
     /// Where group `g`'s image lands in the layer: the label of its
     /// outermost enclosing group, clipped by its content mask.
     pub(crate) fn composite_area(&self, mut g: u32) -> Option<Bounds<ScaledPixels>> {
@@ -50,14 +49,20 @@ impl SceneLayer {
         bindings: Vec<Binding>,
     ) -> Option<(Option<Bounds<ScaledPixels>>, bool)> {
         let g = self.boxes.get(at)?.group?;
-        // Quads in a group's scene take no bindings (`bind_painted_quad`).
+        // Quads in a group's scene take no bindings (`bind_painted_quad`):
+        // the scratch scene of the new run is no group, so its bindings go,
+        // as a fresh paint into the group would not make them.
         if !bindings.is_empty() {
-            return None;
+            super::layer_counters::GROUP_BINDS_SKIPPED.fetch_add(bindings.len() as u64, std::sync::atomic::Ordering::Relaxed);
         }
         let members: Vec<usize> = (0..self.boxes.len()).filter(|&i| self.boxes[i].group == Some(g)).collect();
         let local = members.iter().position(|&i| i == at)?;
         let group = self.scene.groups.get_mut(g as usize)?;
-        let bounds = group.bounds;
+        // The new run may reach where the group or the old run reached: a
+        // transformed box inks outside the group's untransformed bounds, and
+        // a fresh paint puts the same ink there. Beyond both it is refused.
+        let old = &self.boxes[at];
+        let bounds = group.bounds.union(&old.ink.unwrap_or(old.area));
         let scene = Scene::unshared(std::mem::take(&mut group.scene));
         let boxes = members.iter().map(|&i| BoxRange { group: None, ..self.boxes[i].clone() }).collect();
         let mut sub = SceneLayer {

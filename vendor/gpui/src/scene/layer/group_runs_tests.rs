@@ -114,3 +114,16 @@ fn an_unshared_group_is_written_without_a_copy() {
     assert_ne!(Rc::as_ptr(&group.scene), Rc::as_ptr(&held.scene));
     assert!(held.scene.in_group);
 }
+
+#[test]
+fn a_group_run_may_ink_where_its_old_run_inked_outside_the_group() {
+    // A transformed box inks outside the group's untransformed bounds.
+    let mut layer = grouped(hsla(0., 1., 0.5, 1.));
+    let wide = rect(0., 0., 150., 20.);
+    layer.boxes[0].ink = Some(wide);
+    let mut new = Scene::default();
+    paint_box(&mut new, 1, wide, hsla(0.66, 1., 0.5, 1.));
+    let (damage, _) = layer.replace_group_run(0, new, Vec::new()).expect("replaced in place");
+    assert_eq!(damage, Some(LABEL));
+    assert_eq!(layer.version(), 1);
+}

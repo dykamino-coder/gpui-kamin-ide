@@ -350,7 +350,7 @@ impl Window {
 
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
-    pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
+    pub(crate) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
         inner.bind_record_segments(&self.next_frame.scene);
         let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
