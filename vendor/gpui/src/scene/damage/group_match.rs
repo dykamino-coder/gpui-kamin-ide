@@ -85,7 +85,7 @@ mod tests {
                 background: Background::from(hsla(hue, 0.5, 0.5, 1.)),
                 ..Default::default()
             });
-            s.groups.push(PaintGroup { scene: inner, bounds: b(x), ..Default::default() });
+            s.groups.push(PaintGroup { scene: std::rc::Rc::new(inner), bounds: b(x), ..Default::default() });
             s.surfaces.push(PaintSurface { order: k as u32 + 1, bounds: b(x), content_mask: ContentMask { bounds: b(x) }, corner_radii: Corners::default(), blur_radius: 0., group: k as u32 + 1, opacity: 1., color_matrix: None, fragment: 0 });
         }
         s
@@ -133,7 +133,7 @@ mod tests {
             });
             let handle = LayerHandle::new(SceneLayer::finish(content, Vec::new(), Vec::new()));
             let mut s = scene(&[(0., 0.1)]);
-            s.groups[0].scene.insert_layer(&handle, b(0.));
+            s.groups[0].scene_mut().insert_layer(&handle, b(0.));
             (s, handle)
         };
         let (mut a, _keep_a) = layered(0.2);

@@ -71,3 +71,43 @@ fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut T
         assert_eq!(groups(vcx), reference, "{name}: groups");
     }
 }
+
+/// A colour edit inside an opacity group first (the document's layer may
+/// keep its groups, `gpui::Window::paint_grouped_layer`), then wheel steps:
+/// every scrolled frame still draws what a fresh tree at that offset draws.
+#[gpui::test]
+fn wheel_steps_after_an_edit_inside_a_group_match_fresh(cx: &mut TestAppContext) {
+    let style = format!("{STYLE}<style>[data-edit]{{background:#e45}}</style>");
+    let html = rows(&style);
+    let edited = html.replace(
+        "<div class=r>row 13</div>",
+        "<div class=r data-edit>row 13</div>",
+    );
+    assert_ne!(html, edited, "the fixture has row 13");
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    vcx.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            view.document.update(&edited, "").unwrap();
+            cx.notify();
+        })
+    });
+    frame(vcx);
+    let offset = root(&view, vcx).offset();
+    let (quads, reference) = fresh_with(cx, &edited, offset, |c| (painted(c), groups(c)));
+    assert_same("edited", &painted(vcx), &quads);
+    assert_eq!(groups(vcx), reference, "edited: groups");
+    for (i, dy) in [-120., -120., 120.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        wheel_by(vcx, dy);
+        frame(vcx);
+        let offset = root(&view, vcx).offset();
+        let (quads, reference) = fresh_with(cx, &edited, offset, |c| (painted(c), groups(c)));
+        assert_same(&name, &painted(vcx), &quads);
+        assert_eq!(groups(vcx), reference, "{name}: groups");
+        frame(vcx);
+        assert_same(&format!("{name} still"), &painted(vcx), &quads);
+        assert_eq!(groups(vcx), reference, "{name} still: groups");
+    }
+}

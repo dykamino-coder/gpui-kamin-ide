@@ -223,7 +223,8 @@ impl Window {
         let start = self.paint_index();
         let before = self.next_frame.scene.ink_allowed;
         let result = f(self);
-        // Groups made at the frame's root are in its list (a layer's are spliced).
+        // Groups made at the frame's root are in its list; a layer's are in
+        // the layer's own list (`grouped_layer`) or spliced into the frame.
         let replayable = root && (groups == self.next_frame.scene.groups.len() || self.layer_recording.is_none());
         let after = self.next_frame.scene.ink_allowed;
         let allowed = (after.0.wrapping_sub(before.0), after.1.wrapping_sub(before.1));

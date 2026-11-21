@@ -56,7 +56,7 @@ fn scene(backdrop: &[([f32; 4], Hsla)], groups: &[G], parent: Option<f32>) -> Sc
         }
         let bounds = b(0., 0., W as f32, H as f32);
         s.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds,
             blur_radius: grp.blur,
             blend: grp.blend,
@@ -81,7 +81,7 @@ fn scene(backdrop: &[([f32; 4], Hsla)], groups: &[G], parent: Option<f32>) -> Sc
             inner.surfaces = marks;
             let bounds = b(0., 0., W as f32, H as f32);
             s.groups.push(PaintGroup {
-                scene: inner,
+                scene: std::rc::Rc::new(inner),
                 bounds,
                 ..Default::default()
             });
