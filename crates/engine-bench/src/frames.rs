@@ -62,9 +62,21 @@ fn scrolled(from: Offset, to: Offset, step: f32, max: Offset, clamp: bool) -> Re
 /// reads the working set of each step and neither keeps the step frames (nor
 /// touches their spare buffers, two frames a step) nor builds the fresh
 /// documents of their check, so the bench adds nothing per step to the memory
-/// it reads (the JSON records the skipped check).
+/// it reads (the JSON records the skipped check). Its per-step records (timings,
+/// work counters, samples, pixel differences) stop after `MEMORY_KEPT_STEPS`:
+/// the stderr curve holds every step.
 fn memory_only() -> bool {
     std::env::var_os("ENGINE_BENCH_SCROLL_MEMORY_ONLY").is_some_and(|v| v == "1")
+}
+
+/// Steps of a memory run whose records the bench keeps (`memory_only`).
+const MEMORY_KEPT_STEPS: usize = 100;
+
+/// Whether the bench keeps the records of step `index` (1-based): a memory
+/// run holds a bounded number, so its own growth does not read as the
+/// document's.
+pub(super) fn keeps_step(scroll: bool, index: usize) -> bool {
+    !(scroll && memory_only()) || index <= MEMORY_KEPT_STEPS
 }
 
 fn delta(before: (u64, u64), after: (u64, u64)) -> Result<(u64, u64)> {
@@ -224,6 +236,10 @@ impl Frames {
             // A long memory run killed at its time limit still leaves its curve.
             let y = offset.0.map_or(f32::NAN, |o| o.1);
             eprintln!("scroll-memory step {index} y {y} ws {ws} private {private}");
+        }
+        if !keeps_step(self.scroll, index) {
+            self.dispatched = None;
+            return Ok(());
         }
         self.samples.push(json!({"mode": mode, "sample_index": index,
             "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
