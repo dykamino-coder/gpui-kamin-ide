@@ -61,23 +61,17 @@ pub(super) fn matrix(
         dev(f32::from(scaled_origin.x) + ox),
         dev(f32::from(scaled_origin.y) + oy),
     );
-    let back = gpui::point(
-        dev(-(f32::from(scaled_origin.x) + ox)),
-        dev(-(f32::from(scaled_origin.y) + oy)),
-    );
     // Матрица функций в порядке записи (css-transforms-1
     // §transform-rendering), вокруг точки отсчёта: она уводится в ноль и
     // возвращается. Проценты сдвига считаются от собственного размера —
     // он известен только здесь, на отрисовке.
     let shift = |row: [f32; 3]| (row[0] + rw * row[1] + rh * row[2]) * scale_factor;
     let quarter = quarter_turn(group.lin).filter(|_| unit);
-    let mut matrix = TransformationMatrix::unit()
-        .translate(origin)
-        .compose(TransformationMatrix {
-            rotation_scale: quarter.unwrap_or(group.lin),
-            translation: [shift(group.tr[0]), shift(group.tr[1])],
-        })
-        .translate(back);
+    let mut matrix = around_origin(
+        quarter.unwrap_or(group.lin),
+        [shift(group.tr[0]), shift(group.tr[1])],
+        origin,
+    );
     let fill_matrix =
         quarter.map(|_| group.exact_fill_matrix(matrix, bounds.origin, raw_origin, scale_factor));
     if quarter.is_some() {
@@ -115,4 +109,62 @@ pub(super) fn matrix(
         matrix.translation[1] += snap(exact.1) - cur.1;
     }
     (matrix, fill_matrix)
+}
+
+/// Compute t + (I - M) origin before rounding to the raster's f32 matrix.
+/// Composing three f32 matrices first adds and then subtracts origin.y for
+/// skewY, losing bits that vary with the scroll position. Blink likewise
+/// retains double precision in AffineTransform until the raster boundary.
+fn around_origin(
+    linear: [[f32; 2]; 2],
+    translation: [f32; 2],
+    origin: Point<gpui::ScaledPixels>,
+) -> TransformationMatrix {
+    let [x, y] = [f64::from(origin.x.0), f64::from(origin.y.0)];
+    TransformationMatrix {
+        rotation_scale: linear,
+        translation: [
+            (f64::from(translation[0]) + (1.0 - f64::from(linear[0][0])) * x
+                - f64::from(linear[0][1]) * y) as f32,
+            (f64::from(translation[1]) - f64::from(linear[1][0]) * x
+                + (1.0 - f64::from(linear[1][1])) * y) as f32,
+        ],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{ScaledPixels, point};
+
+    #[test]
+    fn scrolling_along_a_skews_preserved_axis_loses_no_origin_bits() {
+        let linear = [[1.0, 0.0], [-0.14054084, 1.0]];
+        let mut expected = None;
+        for y in [486.02, -1193.98, 791.02, 65_536.0, -65_536.0] {
+            let matrix = around_origin(
+                linear,
+                [0.0; 2],
+                point(ScaledPixels(400.0), ScaledPixels(y)),
+            );
+            assert_eq!(matrix.translation, [0.0, 56.216335]);
+            if let Some(expected) = expected {
+                assert_eq!(matrix, expected);
+            }
+            expected = Some(matrix);
+        }
+    }
+
+    #[test]
+    fn origin_and_translation_apply_in_css_order() {
+        let matrix = around_origin(
+            [[0.0, -1.0], [1.0, 0.0]],
+            [7.0, -3.0],
+            point(ScaledPixels(40.0), ScaledPixels(20.0)),
+        );
+        assert_eq!(
+            matrix.apply(point(px(45.0), px(20.0))),
+            point(px(47.0), px(22.0))
+        );
+    }
 }
