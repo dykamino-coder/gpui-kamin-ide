@@ -37,6 +37,20 @@ DEF = 'ours-4'
 STABLE_MAD = 0.03  # the series stop rule, the same as the browsers' repeat visits (adapters.Policy.stable)
 
 
+def edit_input(page, phase):
+    """Input document of a phase: vis.html for the visible edits, C.html/D.html (base.html with the edit's rule, written
+    once next to the page) for the offscreen edits, base.html otherwise. Shared by every adapter with edit phases."""
+    if phase in ('Cvis', 'Dvis'):
+        return page.file('vis.html')
+    if phase in ('C', 'D'):
+        f = page.file(f'{phase}.html')
+        if not f.exists():
+            base = page.file('base.html').read_text(encoding='utf-8')
+            f.write_text(base.replace(RULE, EDITS[phase][0], 1), encoding='utf-8', newline='')
+        return f
+    return page.file('base.html')
+
+
 class Ours:
     parts = ('time', 'cpu')
     exclusive = False
@@ -63,15 +77,7 @@ class Ours:
         pass
 
     def _page(self, page, phase):
-        if phase in ('Cvis', 'Dvis'):
-            return page.file('vis.html')
-        if phase in ('C', 'D'):
-            f = page.file(f'{phase}.html')
-            if not f.exists():
-                base = page.file('base.html').read_text(encoding='utf-8')
-                f.write_text(base.replace(RULE, EDITS[phase][0], 1), encoding='utf-8', newline='')
-            return f
-        return page.file('base.html')
+        return edit_input(page, phase)
 
     def _run(self, exe, lane, page, cls, args, timeout):
         # A fresh TEMP/cwd per process: removing and re-creating one fixed directory raced with Windows' delayed

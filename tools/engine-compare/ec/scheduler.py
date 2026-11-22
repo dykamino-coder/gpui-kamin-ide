@@ -129,7 +129,30 @@ class Runner:
         self.cfg = cfg; self.ad = adapters; self.policy = policy; self.lanes = lanes
         self.gpu_parallel = gpu_parallel; self.log = log; self.cv = threading.Condition(); self.gpu = 0
         self.busy = {}; self.done = []; self.stop = False; self.keep_memory = False
+        # one idle run of every engine before its first measured unit (README: warm-up); numbers are dropped
+        self.warmup = bool(cfg.raw.get('warmup', True)); self.warm = {}
 
+    def _warm_up(self, ad, t, lane):
+        """The first run of a fresh executable pays cold disk and the driver's shader cache (memory +27..40 %, time):
+        one quick run of the task's own unit per engine and tool run, before its first measured unit; dropped.
+        Other lanes wait for it, so no measured unit of that engine runs before the warm-up has finished."""
+        if not self.warmup:
+            return
+        from .adapters import QUICK
+        with self.cv:
+            ev = self.warm.get(t.engine); first = ev is None
+            if first:
+                ev = self.warm[t.engine] = threading.Event()
+        if not first:
+            ev.wait(); return
+        s = time.perf_counter()
+        try:
+            ad.measure(lane, t.page, t.cls, t.part, QUICK)
+        except Exception as e:  # a failing warm-up is reported by the measured unit itself
+            self.log(f'L{lane.id} warm-up {t.engine} failed: {type(e).__name__}: {e}'[:200])
+        finally:
+            ev.set()
+        self.log(f'L{lane.id} warm-up {t.engine} on {t.page.id} {t.cls} {time.perf_counter() - s:.1f}s (dropped)')
     def run(self, tasks):
         q = list(tasks)
         q.sort(key=lambda t: (t.exclusive, t.cls, t.engine, t.part, t.page.id))
@@ -160,6 +183,7 @@ class Runner:
                     for a in self.ad.values():
                         a.close(lane)
                 sess = t.session
+                self._warm_up(ad, t, lane)
                 s = time.perf_counter()
                 try:
                     rec = ad.measure(lane, t.page, t.cls, t.part, self.policy)
