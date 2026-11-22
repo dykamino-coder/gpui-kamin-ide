@@ -3,6 +3,11 @@
 //! its unpublished record, the paint path's refusals, a box the layer does
 //! not own, a layer that was not made and a text edit off the plan. Every
 //! code recorded belongs to the protocol (`why::is_code`).
+//!
+//! `not_own.kind` has no case here: every style input of a box's painter
+//! kind but `:hover` and decorations is a layout value, so a paint-only edit
+//! keeps the kind it was recorded with (`revision::repaint` refuses the
+//! rest first).
 
 use super::reuse_tests::{settled, update};
 use super::tests::frame;
@@ -22,7 +27,11 @@ fn page(css: &str, body: &str, class: &str) -> String {
 /// The causes the journal recorded for the edit of a settled document from
 /// `CLASS` = `""` to `class` and its frame.
 fn causes(cx: &mut TestAppContext, css: &str, body: &str, class: &str) -> Vec<Cause> {
-    let at = |class: &str| page(css, body, class);
+    causes_of(cx, |class| page(css, body, class), class)
+}
+
+/// `causes` of the pages `at(class)`.
+fn causes_of(cx: &mut TestAppContext, at: impl Fn(&str) -> String, class: &str) -> Vec<Cause> {
     let (view, vcx) = settled(cx, &at(""), &at("x"));
     update(&view, vcx, &at(""));
     update(&view, vcx, &at(""));
@@ -74,46 +83,43 @@ fn a_refused_paint_path_names_the_refusal(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn a_box_without_a_painter_in_the_layer_is_not_own_kind(cx: &mut TestAppContext) {
-    let causes = causes(
-        cx,
-        "#s.b{background:#eee}",
-        "<div id=s class='CLASS' style='height:20px'></div>",
-        "b",
-    );
-    let cause = find(&causes, "not_own.kind", "document/revision/layer_write.rs");
-    assert!(cause.detail.contains("<div>"), "{}", cause.detail);
-}
-
-#[gpui::test]
 fn a_paint_the_layer_cannot_take_is_not_own(cx: &mut TestAppContext) {
-    let css = "#s{background:#eee} #s.b{box-shadow:0 0 4px #000}";
-    let causes = causes(
-        cx,
-        css,
-        "<div id=s class='CLASS' style='height:20px'></div>",
-        "b",
+    // The root canvas takes `body`'s paint (css-backgrounds-3 §2.11.2): a
+    // border colour edit of `body` repaints only, and the layer refuses it.
+    let at = |class: &str| {
+        format!(
+            "<!doctype html><html><head><style>html{{background:#fff}} \
+             body{{margin:0;border:2px solid #00f}} body.b{{border-color:#f00}} \
+             p{{font:16px/20px sans-serif;margin:0}}</style></head>\
+             <body class='{class}'><p>text</p></body></html>"
+        )
+    };
+    let causes = causes_of(cx, at, "b");
+    let cause = find(&causes, "not_own", "document/revision/layer_write.rs");
+    assert!(
+        cause.detail.starts_with("root_canvas") && cause.detail.contains("<body>"),
+        "{}",
+        cause.detail
     );
-    find(&causes, "not_own", "document/revision/layer_write.rs");
 }
-
 #[gpui::test]
 fn a_frame_without_a_layer_names_the_layer_refusal(cx: &mut TestAppContext) {
-    // A composition group (opacity) makes the frame splice its scene: no layer.
-    let css = "#g{opacity:.5} #s{background:#eee} #s.b{background:#0af}";
-    let body = "<div id=g>group</div><div id=s class='CLASS' style='height:20px'></div>";
+    // A plane of a 3D context is a group the layer cannot keep (its
+    // projection is the frame's), so the frame splices its scene and keeps
+    // no layer (`gpui::Window::layer_keeps_groups`).
+    let css = "#p{perspective:100px} #r{transform:rotateY(20deg);opacity:.5} \
+               #s{background:#eee} #s.b{background:#0af}";
+    let body =
+        "<div id=p><div id=r>x</div></div><div id=s class='CLASS' style='height:20px'></div>";
     let causes = causes(cx, css, body, "b");
-    let cause = causes
-        .iter()
-        .find(|c| c.code.starts_with("no_layer."))
-        .unwrap_or_else(|| panic!("no no_layer cause in {causes:#?}"));
-    assert!(cause.site().contains(".rs:"), "{}", cause.site());
+    let cause = find(&causes, "no_layer.spliced", "window/scene_layer.rs");
+    assert!(cause.detail.contains("spliced"), "{}", cause.detail);
 }
 
 #[gpui::test]
 fn a_text_edit_off_the_plan_names_why(cx: &mut TestAppContext) {
-    // The old text is blank: the edit is no text write.
-    let causes = causes(cx, "", "<p id=t>CLASS</p>", "word");
+    // The old text is blank by CSS (a lone space): the edit is no text write.
+    let causes = causes(cx, "", "<p id=t> CLASS</p>", "word");
     let cause = find(&causes, "plan_text.refused", "document/revision/adopt.rs");
     assert!(!cause.detail.is_empty());
 }

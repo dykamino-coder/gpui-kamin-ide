@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn a_miss_names_new_evicted_and_not_admitted_keys_at_the_caller() {
-        let (_one, _sub) = crate::why::test_reader();
+        let (_one, _sub) = crate::journal::test_reader();
         let one = 100 + ENTRY_OVERHEAD + size_of::<u32>();
         let cache: BoundedCache<u32, Vec<u8>> =
             BoundedCache::new(one * 2, len).named("rounded_masks");
@@ -82,7 +82,7 @@ mod tests {
         assert!(cache.get(&3).is_some());
         assert_eq!(cache.lookup(&1, |_| String::new()), Err("evicted"));
         assert_eq!(cache.lookup(&9, |_| String::new()), Err("not_admitted"));
-        let j = crate::why::take();
+        let j = crate::journal::take();
         let stats = &j.caches["rounded_masks"];
         assert_eq!(stats.hits, 1);
         assert_eq!(
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn named_caches_report_the_bytes_they_hold_until_they_end() {
         // Only the tests of this module name `rounded_masks` in this crate; they take turns.
-        let _one = crate::why::test_reader().0;
+        let _one = crate::journal::test_reader().0;
         let held = || {
             super::held()
                 .find(|(n, _)| *n == "rounded_masks")

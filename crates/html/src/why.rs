@@ -13,8 +13,8 @@ use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
-pub use kamin_style::why::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
-pub(crate) use kamin_style::why::{note, note_at};
+pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
+pub(crate) use kamin_style::journal::{note, note_at};
 
 /// Stable codes of the protocol (renamed only with a schema bump): causes,
 /// cache miss reasons and frame events.
@@ -68,14 +68,14 @@ pub fn is_code(code: &str) -> bool {
 /// A reader: the journal and the frame trace record while one lives.
 #[must_use = "the journal records only while the subscription lives"]
 pub struct Subscription {
-    _journal: kamin_style::why::Subscription,
+    _journal: kamin_style::journal::Subscription,
     _frames: trace::Trace,
 }
 
 /// Start recording for a new reader.
 pub fn subscribe() -> Subscription {
     Subscription {
-        _journal: kamin_style::why::subscribe(),
+        _journal: kamin_style::journal::subscribe(),
         _frames: trace::Trace::start(),
     }
 }
@@ -94,7 +94,7 @@ pub struct Entry {
 pub fn take() -> Entry {
     let (frames, frames_dropped) = trace::take();
     Entry {
-        journal: kamin_style::why::take(),
+        journal: kamin_style::journal::take(),
         frames,
         frames_dropped,
     }

@@ -8,7 +8,7 @@ fn json_carries_the_schema_codes_sites_and_frame_events() {
     let (_one, _sub) = test_reader();
     let line = line!() + 1;
     note("frame_unpublished", || "frame_miss.key".into());
-    kamin_style::why::cache_miss("gradient_tiles", "evicted", || "800x600 tile".into());
+    kamin_style::journal::cache_miss("gradient_tiles", "evicted", || "800x600 tile".into());
     trace::mark("render");
     let value = to_json(&take());
     assert_eq!(value["schema"], SCHEMA);

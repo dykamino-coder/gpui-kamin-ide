@@ -211,7 +211,8 @@ impl Document {
                 };
                 crate::why::note_at(code, why.site, || match why.reason {
                     "groups" => format!(
-                        "the frame's paint made {} composition groups and {} hoisted backdrops; \
+                        "spliced: the frame's paint made {} composition groups (a group or \
+                         the layer names scroll nodes or a 3D plane) and {} hoisted backdrops; \
                          layer records voided (layout/reuse/layer.rs void_frame_records)",
                         why.groups, why.backdrops
                     ),

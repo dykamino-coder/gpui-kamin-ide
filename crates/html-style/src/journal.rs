@@ -218,7 +218,7 @@ mod tests {
         let j = take();
         let mine: Vec<_> = j.causes.iter().filter(|c| c.code == "code").collect();
         assert_eq!(mine.len(), 1);
-        assert!(mine[0].site().ends_with(&format!("why.rs:{line}")));
+        assert!(mine[0].site().ends_with(&format!("journal.rs:{line}")));
         let c = &j.caches["c"];
         assert_eq!((c.hits, c.misses["evicted"]), (1, EXAMPLES as u64 + 2));
         assert_eq!(c.examples.len(), EXAMPLES);

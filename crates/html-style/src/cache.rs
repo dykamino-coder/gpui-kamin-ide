@@ -135,7 +135,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         K: Borrow<Q>,
         Q: Hash + Eq + ?Sized,
     {
-        let observed = crate::why::enabled();
+        let observed = crate::journal::enabled();
         let (result, reason) = {
             let mut guard = self.lock();
             match guard.as_mut() {
@@ -158,8 +158,8 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         };
         if observed {
             match result {
-                Some(_) => crate::why::cache_hit(self.name),
-                None => crate::why::cache_miss(self.name, reason, || explain(reason)),
+                Some(_) => crate::journal::cache_hit(self.name),
+                None => crate::journal::cache_miss(self.name, reason, || explain(reason)),
             }
         }
         crate::work::cache!(result, ResourceCacheHits, ResourceCacheMisses);
@@ -175,7 +175,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         let weight = (self.weigh)(&value)
             .saturating_add((self.key_weight)(&key))
             .saturating_add(ENTRY_OVERHEAD + size_of::<K>());
-        let observed = crate::why::enabled();
+        let observed = crate::journal::enabled();
         let mut guard = self.lock();
         let store = guard.get_or_insert_with(|| Store {
             map: HashMap::new(),

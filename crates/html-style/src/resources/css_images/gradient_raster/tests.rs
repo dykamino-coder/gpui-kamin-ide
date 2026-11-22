@@ -78,11 +78,12 @@ fn legacy_edge_and_device_center_sampling_have_separate_cache_entries() {
 
 /// The DevTools `why` journal names a tile lookup the cache cannot serve:
 /// a source with document lengths (`uncacheable`), a key that differs from
-/// a seen one (`new_key`; its field is `gradient_why`'s test) and a key it
-/// cannot make (`no_key`).
+/// a seen one (`new_key`; its field is `gradient_why`'s test). `no_key`
+/// guards a cacheable source the key cannot describe: every source that
+/// `cacheable` admits has a key today, so no lookup reaches it.
 #[test]
 fn tile_misses_name_their_reason() {
-    let (_one, _sub) = crate::why::test_reader();
+    let (_one, _sub) = crate::journal::test_reader();
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     let relative = ImageSource::parse("radial-gradient(at 1em 2em, red, blue)", vcx).unwrap();
@@ -91,8 +92,7 @@ fn tile_misses_name_their_reason() {
     let plain = ImageSource::parse("linear-gradient(red, #123457)", vcx).unwrap();
     tile(&plain, 17, 3, (17.0, 3.0), vcx);
     tile(&plain, 18, 3, (18.0, 3.0), vcx);
-    tile(&plain, 1, 1, (0.0, 0.0), vcx);
-    let j = crate::why::take();
+    let j = crate::journal::take();
     let tiles = &j.caches[CACHE];
     let reasons: Vec<_> = tiles
         .examples
@@ -107,5 +107,4 @@ fn tile_misses_name_their_reason() {
     );
     // Examples keep the first misses of each reason; tests in parallel add theirs.
     assert!(tiles.misses["new_key"] >= 2, "{reasons:?}");
-    assert!(tiles.misses.contains_key("no_key"), "{reasons:?}");
 }

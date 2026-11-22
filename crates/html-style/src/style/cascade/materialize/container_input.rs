@@ -40,7 +40,7 @@ impl ComputedSlot {
     pub fn set_container_size(&self, size: (Option<f32>, Option<f32>)) -> bool {
         let old = self.1.replace(size);
         if old != size {
-            crate::why::note("layout_retry.container_size", || {
+            crate::journal::note("layout_retry.container_size", || {
                 format!("container size (width, height) {old:?} -> {size:?}")
             });
         }
@@ -52,12 +52,12 @@ impl ComputedSlot {
 mod tests {
     #[test]
     fn a_changed_container_size_is_noted_at_the_caller() {
-        let (_one, _sub) = crate::why::test_reader();
+        let (_one, _sub) = crate::journal::test_reader();
         let slot = super::ComputedSlot::default();
         let line = line!() + 1;
         assert!(slot.set_container_size((Some(800.0), None)));
         assert!(!slot.set_container_size((Some(800.0), None)));
-        let j = crate::why::take();
+        let j = crate::journal::take();
         let mine: Vec<_> = j
             .causes
             .iter()

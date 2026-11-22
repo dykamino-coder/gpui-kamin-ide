@@ -38,7 +38,7 @@ fn cached(
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
     if !src.cacheable() {
-        crate::why::cache_miss(CACHE, "uncacheable", || {
+        crate::journal::cache_miss(CACHE, "uncacheable", || {
             format!("{w}x{h} source not cacheable")
         });
         return uncached(src, w, h, css, centers, vcx);
@@ -50,7 +50,7 @@ fn cached(
         css
     };
     let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
-        crate::why::cache_miss(CACHE, "no_key", || {
+        crate::journal::cache_miss(CACHE, "no_key", || {
             format!("{w}x{h} source has no image key")
         });
         return uncached(src, w, h, css, centers, vcx);
