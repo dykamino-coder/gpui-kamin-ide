@@ -132,11 +132,19 @@ impl Element for ScrollArea {
             // New bars change the content box this layout placed: lay the
             // roots out again in this draw with them, as Blink lays a box
             // out again when `UpdateAfterLayout` finds its scrollbars changed.
-            // A persistent frame publishes once per draw, so bars that change
-            // again in the second layout (content that only fits without
-            // them) wait for the next frame, and so does a frame no state
-            // keeps (it would start each layout without its bars).
-            if id.is_some() && window.update_layout_input(child.2.layout_input(), || true) {
+            // One bar can bring the other (or the root's bar narrows a nested
+            // scroller), so each layout again publishes the next of the
+            // frame's inputs, each once per draw: bars that still change
+            // after them (content that only fits without them) wait for the
+            // next frame, and so does a frame no state keeps (it would start
+            // each layout without its bars).
+            if id.is_some()
+                && child
+                    .2
+                    .layout_inputs()
+                    .into_iter()
+                    .any(|input| window.update_layout_input(input, || true))
+            {
                 return (paint_bounds, hitbox, Vec::new());
             }
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
