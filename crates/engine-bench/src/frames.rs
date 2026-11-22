@@ -27,70 +27,11 @@ pub(super) type Run<'a, 'b> = (
     &'b super::work::Adapter,
 );
 
-fn viewport(base: (u32, u32), alternate: bool) -> (u32, u32) {
-    if alternate {
-        (if base.0 == 8192 { 8191 } else { base.0 + 1 }, base.1)
-    } else {
-        base
-    }
-}
-
-/// A wheel sample counts only when the step moved the root scroller by the whole step:
-/// an event a nested scroller took, or one at the document's end, scrolls no root.
-/// With `clamp` (`--scroll-back`) a step that the document's end clamps counts too.
-type Offset = Option<(f32, f32)>;
-fn scrolled(from: Offset, to: Offset, step: f32, max: Offset, clamp: bool) -> Result<()> {
-    let (Some(from), Some(to)) = (from, to) else {
-        return Err("scroll mode needs the root scroller offset before and after the step".into());
-    };
-    let end = max.map_or(f32::INFINITY, |m| m.1);
-    let expected = match clamp {
-        true => (from.1 + step).clamp(0.0, end.max(0.0)),
-        false => from.1 + step,
-    };
-    if to.0 != from.0 || (to.1 - expected).abs() > 0.5 {
-        return Err(format!(
-            "the wheel step did not scroll the root by {step} px: {from:?} -> {to:?} \
-             (root max offset {max:?}: a nested scroller took it, or the document ended)"
-        )
-        .into());
-    }
-    Ok(())
-}
-
-/// A scroll run for memory only (`ENGINE_BENCH_SCROLL_MEMORY_ONLY=1`): it
-/// reads the working set of each step and neither keeps the step frames (nor
-/// touches their spare buffers, two frames a step) nor builds the fresh
-/// documents of their check, so the bench adds nothing per step to the memory
-/// it reads (the JSON records the skipped check). Its per-step records (timings,
-/// work counters, samples, pixel differences) stop after `MEMORY_KEPT_STEPS`:
-/// the stderr curve holds every step.
-fn memory_only() -> bool {
-    std::env::var_os("ENGINE_BENCH_SCROLL_MEMORY_ONLY").is_some_and(|v| v == "1")
-}
-
-/// Steps of a memory run whose records the bench keeps (`memory_only`).
-const MEMORY_KEPT_STEPS: usize = 100;
-
-/// Whether the bench keeps the records of step `index` (1-based): a memory
-/// run holds a bounded number, so its own growth does not read as the
-/// document's.
-pub(super) fn keeps_step(scroll: bool, index: usize) -> bool {
-    !(scroll && memory_only()) || index <= MEMORY_KEPT_STEPS
-}
-
-fn delta(before: (u64, u64), after: (u64, u64)) -> Result<(u64, u64)> {
-    Ok((
-        after
-            .0
-            .checked_sub(before.0)
-            .ok_or("document build counter regressed")?,
-        after
-            .1
-            .checked_sub(before.1)
-            .ok_or("document replay counter regressed")?,
-    ))
-}
+pub(super) use input::keeps_step;
+use input::{delta, memory_only, scrolled, viewport};
+mod fresh;
+mod input;
+mod observe;
 
 pub(super) struct Frames {
     pixels: Vec<Recorder>,
@@ -190,74 +131,6 @@ impl Frames {
         Ok(())
     }
 
-    pub(super) fn observe(
-        &mut self,
-        cx: &AsyncApp,
-        window: WindowHandle<View>,
-        frame: Frame,
-        mode: &str,
-        index: usize,
-    ) -> Result<()> {
-        let (after, inside, contents, blocks, offset) = window.read_with(cx, |view, _| {
-            let doc = &view.doc;
-            (
-                doc.retained_frames(),
-                doc.builds_inside_draw(),
-                doc.replayed_contents(),
-                doc.replayed_blocks(),
-                (doc.root_scroll_offset(), doc.root_scroll_max()),
-            )
-        })?;
-        let misses = window.read_with(cx, |view, _| view.doc.take_frame_misses())?;
-        let cold = mode == "cold";
-        let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
-        let inside = inside
-            .checked_sub(if cold { 0 } else { self.before_inside })
-            .ok_or("document inside-draw build counter regressed")?;
-        // A frame built again within the same frame counts both builds.
-        if self.relayout && (counts.0 == 0 || counts.1 != 0) {
-            return Err(format!(
-                "relayout requires a document build and no replay; received {counts:?}"
-            )
-            .into());
-        }
-        if self.scroll {
-            let back = self.back_down.is_some();
-            scrolled(self.wheel_from.take(), offset.0, self.step, offset.1, back)?;
-            // An end of the document turns the next step of `--scroll-back`.
-            if let (Some(down), Some((_, y)), Some((_, max))) = (self.back_down, offset.0, offset.1)
-            {
-                self.back_down = Some(if down { y < max - 0.5 } else { y <= 0.5 });
-            }
-        }
-        let group = usize::from(self.relayout && !index.is_multiple_of(2));
-        let memory = self.scroll.then(super::host::memory_now).flatten();
-        if let (true, Some((ws, private))) = (memory_only(), memory) {
-            // A long memory run killed at its time limit still leaves its curve.
-            let y = offset.0.map_or(f32::NAN, |o| o.1);
-            eprintln!("scroll-memory step {index} y {y} ws {ws} private {private}");
-        }
-        if !keeps_step(self.scroll, index) {
-            self.dispatched = None;
-            return Ok(());
-        }
-        self.samples.push(json!({"mode": mode, "sample_index": index,
-            "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
-            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
-            "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
-            "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
-            "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
-            "builds_inside_draw": inside,
-            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
-            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
-            "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        // A memory run keeps no step: its working set is the document's.
-        if let (true, Some(offset), false) = (self.scroll, offset.0, memory_only()) {
-            self.steps.push(&frame.pixels, offset);
-        }
-        self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
-    }
-
     /// Scroll: frames after the measured one until the document replays its frame (settled), so a
     /// deferred second build of the step counts with the step. At most `SETTLE_FRAMES` frames.
     pub(super) async fn settle(&mut self, run: Run<'_, '_>, step: Step<'_>) -> Result<()> {
@@ -303,98 +176,7 @@ impl Frames {
         out["warm_scope"] = json!("unchanged document: may replay without element build/layout");
         out
     }
-
-    /// После чтения пика памяти и вне замеров: проверка relayout по свежему
-    /// документу (`fresh`) и аудит устойчивой памяти (`memory::finish`).
-    pub(super) async fn finish(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
-        let (cx, window, fonts, args, capture, luid) = run;
-        self.fresh(report, (&mut *cx, window, fonts, args, capture, luid))
-            .await?;
-        if args.memory_settle_ms > 0 {
-            if report["frame_pixels_changed"] != false {
-                return Err("memory audit requires an unchanged RGB frame sequence".into());
-            }
-            report["memory_audit"] =
-                super::memory::finish(cx, window, fonts, args, capture, luid).await?;
-        }
-        Ok(())
-    }
-
-    /// Relayout: кадр каждой ширины (все кадры группы равны первому, иначе
-    /// `frame_pixels_changed`) совпадает по пикселям со свежим документом той
-    /// же ширины.
-    async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
-        if self.scroll && memory_only() {
-            report["scroll_fresh_check"] = json!("skipped: ENGINE_BENCH_SCROLL_MEMORY_ONLY");
-            return Ok(());
-        }
-        if self.scroll {
-            return super::scroll_fresh::check(self.steps, report, run).await;
-        }
-        let (cx, window, fonts, args, capture, luid) = run;
-        if !self.relayout {
-            return Ok(());
-        }
-        let mut checks = Vec::new();
-        for (group, pixels) in self.pixels.iter().enumerate() {
-            let Some(incremental) = pixels.first() else {
-                continue;
-            };
-            let css = viewport(self.base, group == 1);
-            window.update(cx, |view, _, _| view.viewport = Some(css))?;
-            let (_, fresh, _) =
-                sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
-            let mut check = super::fresh_check::compare(
-                incremental,
-                &fresh.pixels,
-                args.fresh_check_dir.as_deref(),
-                &format!("relayout-{group}"),
-            )?;
-            check["css_viewport"] = json!(css);
-            checks.push(check);
-        }
-        let mode = &mut report["modes"]["relayout"];
-        mode["matches_fresh"] = json!(checks.iter().all(|c| c["different_rgb_pixels"] == 0));
-        mode["fresh_checks"] = json!(checks);
-        Ok(())
-    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Only a whole step down on the root counts as a wheel sample.
-    #[test]
-    fn a_wheel_sample_requires_the_root_to_scroll_by_the_step() {
-        let max = Some((0., 9000.));
-        let ok = |from, to, step, clamp| scrolled(Some(from), Some(to), step, max, clamp).is_ok();
-        assert!(ok((0., 0.), (0., WHEEL_STEP), WHEEL_STEP, false));
-        assert!(ok((0., 240.), (0., 120.), -WHEEL_STEP, false));
-        assert!(!ok((0., 240.), (0., 240.), WHEEL_STEP, false));
-        assert!(!ok((0., 0.), (0., 40.), WHEEL_STEP, false));
-        assert!(!ok((0., 0.), (5., WHEEL_STEP), WHEEL_STEP, false));
-        assert!(scrolled(None, Some((0., WHEEL_STEP)), WHEEL_STEP, max, false).is_err());
-        // `--scroll-back`: the document's ends clamp a step, nothing else does.
-        assert!(ok((0., 8800.), (0., 9000.), 600., true));
-        assert!(ok((0., 300.), (0., 0.), -600., true));
-        assert!(!ok((0., 8800.), (0., 9000.), 600., false));
-        assert!(!ok((0., 0.), (0., 0.), 600., true));
-    }
-
-    #[test]
-    fn relayout_input_alternates_without_leaving_the_supported_viewport_range() {
-        assert_eq!(viewport((800, 600), true), (801, 600));
-        assert_eq!(viewport((800, 600), false), (800, 600));
-        assert_eq!(viewport((8192, 1), true), (8191, 1));
-        assert_eq!(viewport((1, 8192), true), (2, 8192));
-    }
-
-    #[test]
-    fn counter_reset_cannot_masquerade_as_zero_work() {
-        assert!(delta((5, 9), (1, 9)).is_err());
-        assert!(delta((5, 9), (5, 0)).is_err());
-        assert_eq!(delta((5, 9), (6, 9)).unwrap(), (1, 0));
-        assert_eq!(delta((5, 9), (5, 10)).unwrap(), (0, 1));
-    }
-}
+mod tests;

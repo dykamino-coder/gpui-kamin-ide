@@ -8,6 +8,9 @@
 
 mod animation_frame;
 pub(super) mod animation_live;
+pub(crate) mod clock;
 pub mod frames;
+mod keyframe;
+mod keyframe_time;
 pub(crate) mod motion;
 mod transition;
