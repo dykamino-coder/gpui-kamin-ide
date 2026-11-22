@@ -36449,10 +36449,10 @@ index 0000000000000000000000000000000000000000..d5b60cb6936ed95c837d990896502ddc
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/plane3d.rs b/vendor/gpui/src/window/plane3d.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6f95d9842
+index 0000000000000000000000000000000000000000..33eae9fcf97ba219476f48107ad17a978c750f53
 --- /dev/null
 +++ b/vendor/gpui/src/window/plane3d.rs
-@@ -0,0 +1,415 @@
+@@ -0,0 +1,380 @@
 +//! KaminIDE patch: planes of CSS 3D rendering contexts, painted through buffers.
 +//!
 +//! css-transforms-2 §3d-transform-rendering: each plane is rendered flat and
@@ -36463,6 +36463,9 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +//! frame pixel back through H⁻¹ (perspective-correct sampling, like viz
 +//! drawing a textured quad with a full 4×4). Planes of one context are
 +//! ordered and split by a BSP tree (`crate::plane_bsp`) before compositing.
++
++mod coverage;
++mod group;
 +
 +use super::*;
 +use crate::plane_bsp::{PlanePoly, back_to_front};
@@ -36674,11 +36677,13 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +            pending: Vec::new(),
 +            content_mask,
 +        });
-+        let (result, ctx) = self.with_restore(None, |window, ctx| {
-+            *ctx = window.plane_contexts.pop();
-+        }, |window| window.with_paint_scope(|window| {
-+            f(window)
-+        }));
++        let (result, ctx) = self.with_restore(
++            None,
++            |window, ctx| {
++                *ctx = window.plane_contexts.pop();
++            },
++            |window| window.with_paint_scope(|window| f(window)),
++        );
 +        let Some(ctx) = ctx else { return result };
 +        let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();
 +        let mut polys = Vec::new();
@@ -36764,11 +36769,17 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +                mem::replace(&mut window.mask_map, map),
 +                mem::take(&mut window.content_mask_stack),
 +            );
-+            window.with_restore(state, |window, state| {
-+                mem::swap(&mut window.transformation_stack, &mut state.0);
-+                mem::swap(&mut window.mask_map, &mut state.1);
-+                mem::swap(&mut window.content_mask_stack, &mut state.2);
-+            }, f).0
++            window
++                .with_restore(
++                    state,
++                    |window, state| {
++                        mem::swap(&mut window.transformation_stack, &mut state.0);
++                        mem::swap(&mut window.mask_map, &mut state.1);
++                        mem::swap(&mut window.content_mask_stack, &mut state.2);
++                    },
++                    f,
++                )
++                .0
 +        });
 +        scene.finish();
 +        let mut rect = spec.rect;
@@ -36796,7 +36807,8 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +                    return result;
 +                };
 +                let polygon = if clipped { to_points(&pts) } else { Vec::new() };
-+                let id = self.push_plane_group(record.scene, record.projection, polygon, Vec::new());
++                let id =
++                    self.push_plane_group(record.scene, record.projection, polygon, Vec::new());
 +                self.insert_plane_mark(id, 0, content_mask);
 +            }
 +        }
@@ -36820,10 +36832,79 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +        self.next_frame.scene.adopt_backdrops(hoisted);
 +        inner
 +    }
++}
+diff --git a/vendor/gpui/src/window/plane3d/coverage.rs b/vendor/gpui/src/window/plane3d/coverage.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5e503a58ba5a34f606b276e05281cd5ac7a2b76e
+--- /dev/null
++++ b/vendor/gpui/src/window/plane3d/coverage.rs
+@@ -0,0 +1,52 @@
++//! Conservative source ink for projected plane surfaces.
 +
++use super::*;
++
++fn finite(b: Bounds<ScaledPixels>) -> bool {
++    [b.origin.x.0, b.origin.y.0, b.size.width.0, b.size.height.0]
++        .into_iter()
++        .all(f32::is_finite)
++}
++
++#[cfg(test)]
++fn rect(x0: f32, y0: f32, x1: f32, y1: f32) -> Bounds<ScaledPixels> {
++    Bounds::new(
++        point(ScaledPixels(x0), ScaledPixels(y0)),
++        size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
++    )
++}
++
++/// Placed primitive bounds include clipping and nested composites.
++/// Retained layers have their own bounds outside primitive_ink.
++pub(super) fn source(scene: &Scene, fallback: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++    let mut ink = scene.book.primitive_ink;
++    if ink.is_some_and(|b| !finite(b)) {
++        return fallback;
++    }
++    for op in &scene.paint_operations {
++        if let crate::scene::PaintOperation::Layer(layer) = op {
++            if !finite(layer.bounds) {
++                return fallback;
++            }
++            ink = Some(ink.map_or(layer.bounds, |b| b.union(&layer.bounds)));
++        }
++    }
++    ink.filter(|b| finite(*b)).unwrap_or(fallback)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn source_preserves_overflow_and_falls_back_for_invalid_ink() {
++        let mut scene = Scene::default();
++        let frame = rect(0., 0., 800., 600.);
++        scene.book.primitive_ink = Some(rect(-25., 10., 140., 90.));
++        assert_eq!(source(&scene, frame), rect(-25., 10., 140., 90.));
++        scene.book.primitive_ink = Some(rect(f32::NAN, 10., 140., 90.));
++        assert_eq!(source(&scene, frame), frame);
++        scene.book.primitive_ink = None;
++        assert_eq!(source(&scene, frame), frame);
++    }
++}
+diff --git a/vendor/gpui/src/window/plane3d/group.rs b/vendor/gpui/src/window/plane3d/group.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..774afefa91efaec41b8ffe91b40a84232b7e5531
+--- /dev/null
++++ b/vendor/gpui/src/window/plane3d/group.rs
+@@ -0,0 +1,61 @@
++//! Place planes without changing composite geometry or paint order.
++
++use super::*;
++
++impl Window {
 +    /// Move a finished plane scene into the frame's group list (nested
 +    /// groups first, as `paint_group` does); returns its group index.
-+    fn push_plane_group(
++    pub(super) fn push_plane_group(
 +        &mut self,
 +        mut inner: Scene,
 +        projection: Option<[f32; 9]>,
@@ -36842,9 +36923,10 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +        }
 +        let index = self.next_frame.scene.groups.len() as u32;
 +        let size = self.viewport_size.scale(self.scale_factor());
++        let bounds = coverage::source(&inner, Bounds::new(Point::default(), size));
 +        self.next_frame.scene.groups.push(PaintGroup {
 +            scene: std::rc::Rc::new(inner),
-+            bounds: Bounds::new(Point::default(), size),
++            bounds,
 +            polygon,
 +            projection,
 +            fragments,
@@ -36854,18 +36936,26 @@ index 0000000000000000000000000000000000000000..10094599784e631e94f76ff69f48a3d6
 +        index
 +    }
 +
-+    fn insert_plane_mark(&mut self, index: u32, fragment: u32, mask: ContentMask<ScaledPixels>) {
-+        self.next_frame.scene.insert_group_surface(PaintSurface {
-+            order: 0,
-+            bounds: mask.bounds,
-+            content_mask: mask,
-+            corner_radii: Corners::default(),
-+            blur_radius: 0.0,
-+            group: index + 1,
-+            opacity: 1.0,
-+            color_matrix: None,
-+            fragment,
-+        }, self.content_mask_stack.len() == 1);
++    pub(super) fn insert_plane_mark(
++        &mut self,
++        index: u32,
++        fragment: u32,
++        mask: ContentMask<ScaledPixels>,
++    ) {
++        self.next_frame.scene.insert_group_surface(
++            PaintSurface {
++                order: 0,
++                bounds: mask.bounds,
++                content_mask: mask,
++                corner_radii: Corners::default(),
++                blur_radius: 0.0,
++                group: index + 1,
++                opacity: 1.0,
++                color_matrix: None,
++                fragment,
++            },
++            self.content_mask_stack.len() == 1,
++        );
 +    }
 +}
 diff --git a/vendor/gpui/src/window/raster_frame.rs b/vendor/gpui/src/window/raster_frame.rs
