@@ -62,3 +62,68 @@ fn a_scrolled_frame_with_hoisted_fixed_boxes_matches_a_fresh_one(cx: &mut TestAp
         matches_fresh(cx, &rows(&extra));
     }
 }
+
+#[gpui::test]
+fn hoisted_fixed_and_absolute_boxes_share_positive_z_order(cx: &mut TestAppContext) {
+    for fixed_z in [1, i32::MAX] {
+        for absolute_z in [0, 2] {
+            for fixed_first in [false, true] {
+                let fixed = format!(
+                    "<div style='position:fixed;top:0;left:0;width:32px;height:32px;\
+                     background:red;z-index:{fixed_z}'></div>"
+                );
+                let absolute = format!(
+                    "<header style='position:absolute;top:0;left:0;right:0;height:1000px;\
+                     background:blue;z-index:{absolute_z}'></header>"
+                );
+                let siblings = if fixed_first {
+                    format!("{fixed}{absolute}")
+                } else {
+                    format!("{absolute}{fixed}")
+                };
+                let html = format!(
+                    "<style>body{{margin:0;display:flex;flex-direction:column;min-height:100vh}}\
+                     </style>{siblings}<main style='height:1800px'></main>"
+                );
+                let mut app = cx.clone();
+                let (view, vcx) = open(&mut app, &html);
+                for scrolled in [false, true] {
+                    if scrolled {
+                        wheel(vcx);
+                        frame(vcx);
+                        assert!(root(&view, vcx).offset().y < gpui::px(0.));
+                    }
+                    vcx.update(|window, _| {
+                        let quads = window.painted_quads();
+                        let fixed = quads
+                            .iter()
+                            .find(|q| q.background.as_solid() == Some(gpui::red()))
+                            .unwrap();
+                        assert_eq!(
+                            (
+                                (fixed.bounds.origin.x.0 + fixed.transformation.translation[0])
+                                    / window.scale_factor(),
+                                (fixed.bounds.origin.y.0 + fixed.transformation.translation[1])
+                                    / window.scale_factor(),
+                            ),
+                            (0., 0.),
+                            "the fixed viewport anchor survives z-order deferral"
+                        );
+                        let order = |color| {
+                            quads
+                                .iter()
+                                .find(|q| q.background.as_solid() == Some(color))
+                                .unwrap()
+                                .order
+                        };
+                        assert_eq!(
+                            order(gpui::red()) > order(gpui::blue()),
+                            fixed_z > absolute_z,
+                            "fixed={fixed_z}, absolute={absolute_z}, first={fixed_first}, scrolled={scrolled}"
+                        );
+                    });
+                }
+            }
+        }
+    }
+}

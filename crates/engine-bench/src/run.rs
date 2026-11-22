@@ -504,6 +504,7 @@ pub(super) async fn run(
     // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
     report["build"] = super::build_info::json();
     report["cpu_calibration"] = super::process::calibration();
+    report["unavailable_resources"] = super::stylesheet::unavailable().into();
     report::print(&report, args.json)?;
     finished
 }

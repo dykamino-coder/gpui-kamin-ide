@@ -125,6 +125,9 @@ def units_rows(classes, ads, units):
                 for (c2, p, e), recs in list(units.items()):
                     if c2 == c and e == n:
                         units[(cls, p, e)] = recs
+    # resources the page snapshot lacks (reported by our stand): the same page for every engine, so every row says it
+    unav = {p.id: r['unavailable_resources'] for (_, p, _), recs in units.items() for r in recs
+            if r and r.get('unavailable_resources')}
     for (cls, page, eng), recs in units.items():
         base = {'cls': cls, 'page': page.id, 'kind': page.kind, 'engine': eng}
         got = [r for r in recs if r]
@@ -136,6 +139,9 @@ def units_rows(classes, ads, units):
         for ph in M.PHASES:
             r = m['rows'].get(ph) or {'empty': 'not_measured' if len(got) < len(recs) else 'no number'}
             note = r.get('note')
+            if unav.get(page.id):
+                note = '; '.join(x for x in (note, f'{unav[page.id]} resources unavailable (failed fetches, the same page '
+                                             'for every engine)') if x)
             if (cls, eng) in shared or any(k[1] == eng and v == cls for k, v in shared.items()):
                 note = '; '.join(x for x in (note, 'engine rasters on the CPU: this class and ' + (shared.get((cls, eng)) or 'gpu2') + ' coincide, measured once') if x)
             rows.append(dict(base, phase=ph, time_ms=r.get('time_ms'), repeats=r.get('repeats') or [], cpu_ms=r.get('cpu_ms'),
