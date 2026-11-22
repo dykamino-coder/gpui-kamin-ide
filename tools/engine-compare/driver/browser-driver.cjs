@@ -5,6 +5,7 @@
 // answers "ACK" on stdin before the page continues), "RESULT {...}". stdin: {"op":"page",...} | {"op":"quit"} | "ACK".
 // Page op: {probe, cases:"R,C,...", steadyMs, cpuCases:[...], cpuFrames, trace, traceCategories, framesOnly, navTimeoutMs};
 // framesOnly: the probe skips its style / layout loops (repeat visits need only the frame clocks).
+// Servo only: newProcess (start a fresh servoshell for this op), frames (per case), scrollSteps (S).
 // Metric definitions match the probe page (window.__probeStart / window.__loop): see ec/metrics.py.
 'use strict';
 const fs = require('node:fs');
@@ -154,64 +155,92 @@ async function firefox() {
   return { info, page, quit: () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]) };
 }
 
-// Servo: servoshell's own WebDriver server (--webdriver=PORT), driven like Firefox in one window (no new tab per page).
+// Servo: servoshell's own WebDriver server (--webdriver=PORT), one servoshell process per page and class (a new one on
+// every op with newProcess), the page in its one window. Frame work comes from Servo's own time profiler
+// (--profiler-trace-path): its trace file gets one JSON line per finished event (components/profile/trace_dump.rs), with
+// QueryPerformanceCounter nanoseconds (components/shared/base/cross_process_instant.rs), the same clock as
+// process.hrtime here, so the events of each case fall into the window the driver timed around its frames.
 async function servo() {
   const selenium = require(cfg.selenium); const { spawn } = require('node:child_process'); const net = require('node:net');
-  const port = await new Promise((ok, no) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); }).on('error', no); });
   const profile = path.join(cfg.workDir, 'profile'); fs.mkdirSync(profile, { recursive: true });
-  const t0 = clock.now();
-  const child = spawn(cfg.exe, ['--headless', `--webdriver=${port}`, '--window-size=800x600', '--screen-size=800x600',
-    '--device-pixel-ratio=1', '--temporary-storage', '--config-dir', profile], { env, stdio: 'ignore', windowsHide: true });
-  let driver = null;
-  for (let i = 0; i < 100 && !driver; i++) {
-    try { driver = await new selenium.Builder().usingServer(`http://127.0.0.1:${port}`).withCapabilities({ browserName: 'servo' }).build(); }
-    catch (e) { if (child.exitCode !== null) throw new Error('servoshell exited: ' + child.exitCode); await sleep(200); }
+  const hr = () => Number(process.hrtime.bigint());
+  const GAP_MS = 150;  // idle before and after each case: a late Painting of one case stays out of the next window
+  let proc = null; let seq = 0;
+  async function stop() {
+    if (!proc) return;
+    const p = proc; proc = null;
+    await Promise.race([p.driver.quit().catch(() => {}), sleep(5000)]);
+    if (p.child.exitCode === null) await Promise.race([new Promise(r => p.child.once('exit', r)), sleep(5000)]);
+    try { p.child.kill(); } catch (e) { /* gone */ }
+    fs.rmSync(p.trace, { force: true });
   }
-  if (!driver) throw new Error('servoshell WebDriver did not answer within 20 s');
-  await driver.manage().setTimeouts({ pageLoad: 180000, script: 300000 }).catch(() => {});
-  const info = { version: 'servoshell', launchMs: clock.now() - t0, webdriverPort: port };
-  const run = body => driver.executeAsyncScript('const done=arguments[arguments.length-1];(function(){' + body + '})().then(done);');
-  // Request -> pixels for Servo: the edit (one probe loop frame) then a WebDriver screenshot, which Servo answers only
-  // once the rendering is up to date with no pending frame (components/servo/webview.rs take_screenshot); the same with
-  // no edit ('idle') is the transport + encode cost the caller subtracts. S: one 120 px step from the top per sample.
-  async function screenshots(cases, n) {
-    const out = {}; const time = async f => { const a = clock.now(); await f(); await driver.takeScreenshot(); return clock.now() - a; };
-    for (const k of ['idle'].concat(cases)) {
-      const t = []; let moved = 0;
-      if (k === 'S') await driver.executeScript('window.scrollTo(0,0)');
-      for (let i = 0; i < n; i++) {
-        if (k === 'S') {
-          t.push(await time(async () => { moved += await driver.executeScript('var a=scrollY;window.scrollBy(0,120);return Math.abs(scrollY-a-120)<0.5?1:0;'); }));
-        } else {
-          t.push(await time(() => run(LOOP(k, 1))));
-        }
-      }
-      if (k === 'S') { await driver.executeScript('window.scrollTo(0,0)'); out[k] = { ms: t.slice(0, moved), moved }; }
-      else out[k] = { ms: t };
+  async function start() {
+    await stop();
+    const port = await new Promise((ok, no) => { const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => ok(p)); }).on('error', no); });
+    const trace = path.join(cfg.workDir, `servo-trace-${process.pid}-${++seq}.html`);
+    const t0 = clock.now();
+    const child = spawn(cfg.exe, ['--headless', `--webdriver=${port}`, '--window-size=800x600', '--screen-size=800x600',
+      '--device-pixel-ratio=1', '--temporary-storage', '--config-dir', profile, `--profiler-trace-path=${trace}`],
+      { env, stdio: 'ignore', windowsHide: true });
+    let driver = null;
+    for (let i = 0; i < 100 && !driver; i++) {
+      try { driver = await new selenium.Builder().usingServer(`http://127.0.0.1:${port}`).withCapabilities({ browserName: 'servo' }).build(); }
+      catch (e) { if (child.exitCode !== null) throw new Error('servoshell exited: ' + child.exitCode); await sleep(200); }
+    }
+    if (!driver) { try { child.kill(); } catch (e) { /* gone */ } throw new Error('servoshell WebDriver did not answer within 20 s'); }
+    await driver.manage().setTimeouts({ pageLoad: 180000, script: 300000 }).catch(() => {});
+    proc = { driver, child, trace, launchMs: clock.now() - t0 };
+  }
+  function events() {  // every finished profiler event so far: {category, startTime, endTime} in ns
+    let text = ''; try { text = fs.readFileSync(proc.trace, 'utf8'); } catch (e) { return []; }
+    const out = [];
+    for (const l of text.split('\n')) {
+      if (!l.startsWith('{"category"')) continue;
+      try { out.push(JSON.parse(l.replace(/,\s*$/, ''))); } catch (e) { /* a line still being written */ }
     }
     return out;
   }
-  async function page(op) {    const w0 = clock.now();
-    await driver.get('about:blank');
+  // Per window: summed duration (ms) and count of every category whose event starts inside it.
+  function sums(evs, a, b) {
+    const o = {};
+    for (const e of evs) {
+      if (e.startTime < a || e.startTime >= b) continue;
+      const c = o[e.category] || (o[e.category] = { sumMs: 0, count: 0, ms: [] });
+      const d = (e.endTime - e.startTime) / 1e6; c.sumMs += d; c.count++; c.ms.push(d);
+    }
+    return o;
+  }
+  const info = { version: 'servoshell', webdriverPort: null };
+  async function page(op) {
+    const w0 = clock.now();
+    if (op.newProcess || !proc) await start();
+    const driver = proc.driver;
+    const run = body => driver.executeAsyncScript('const done=arguments[arguments.length-1];(function(){' + body + '})().then(done);');
     await mark('nav');
-    const navStart = clock.now();
+    const navStart = clock.now(); const navNs = hr();
     await driver.get(pathToFileURL(op.probe).href);
     const metrics = await run(SETTLE);
-    const navWallMs = clock.now() - navStart;
+    const loadedNs = hr(); const navWallMs = clock.now() - navStart;
     await mark('loaded');
     if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
-    // No in-page probe: Servo's frame is the screenshot difference below, the probe's clocks were never read and took
-    // half of every visit.
-    const probe = null; const probeWallMs = 0;
-    const s0 = clock.now(); const shots = op.cases ? await screenshots(op.cases.split(','), op.shots || 5) : null;
-    const shotWallMs = clock.now() - s0;
+    const p0 = clock.now(); const wins = {};
+    for (const k of op.cases ? op.cases.split(',') : []) {
+      const n = k === 'S' ? Math.max(1, op.scrollSteps || 1) : (op.frames || 10);
+      await sleep(GAP_MS); const a = hr();
+      const r = await run(LOOP(k, n)); await sleep(GAP_MS);
+      wins[k] = { a, b: hr(), frames: r.frames, wallMs: r.wallMs };
+    }
+    const probeWallMs = clock.now() - p0;
     const cpu = {}; const c0 = clock.now();
     for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
-    const res = { navWallMs, probeWallMs, shotWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, shots, cpu };
-    return res;
+    const cpuWallMs = clock.now() - c0;
+    await sleep(GAP_MS); const evs = events();
+    const profiler = { cold: sums(evs, navNs, loadedNs), cases: {} };
+    for (const [k, w] of Object.entries(wins)) profiler.cases[k] = { frames: w.frames, wallMs: w.wallMs, ...sums(evs, w.a, w.b) };
+    return { navWallMs, probeWallMs, cpuWallMs, launchMs: op.newProcess ? proc.launchMs : 0, pageWallMs: clock.now() - w0,
+             ...metrics, probe: null, servo: profiler, cpu };
   }
-  const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch (e) { /* gone */ } });
-  return { info, page, quit };
+  return { info, page, quit: stop };
 }
 
 (async () => {  let b;

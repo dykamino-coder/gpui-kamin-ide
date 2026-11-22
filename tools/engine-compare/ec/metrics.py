@@ -169,8 +169,8 @@ def browser_visit(engine, res):
         ap = (c.get('afterPaint') or {}).get('median') if c.get('afterPaint') else None
         if engine == 'firefox':
             raf = ap; req = rq + max(0.0, ap - fr) if None not in (ap, rq, fr) else None
-        elif engine == 'servo':  # request -> pixels: edit + WebDriver screenshot minus the same without an edit
-            raf, req = None, servo_shot(res.get('shots'), k)
+        elif engine == 'servo':  # Servo's own profiler: Layout (style, layout, display list) + Painting (WebRender)
+            raf, req = servo_frame(c), None
         else:
             rf, rr = ras('frame:' + k), ras('req:' + k)
             raf = fr + rf if None not in (rf, fr) else None
@@ -181,7 +181,11 @@ def browser_visit(engine, res):
         out[k] = {'req': req, 'raf': raf, 'value': min(vals) if vals else None}
     if res.get('twoRafMs') is not None:
         cold = {'req': res.get('twoRafMs'), 'raf': None}; w = tw.get('cold')
-        if w:
+        if engine == 'servo':
+            sc = (res.get('servo') or {}).get('cold') or {}
+            work = sum((sc.get(n) or {}).get('sumMs', 0) for n in SERVO_COLD)
+            cold['raf'] = work or None
+        elif w:
             main = sum((w.get(n) or {}).get('sumMs', 0) for n in ('ParseHTML', 'UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint'))
             cold['raf'] = main + (w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)
         vals = [v for v in (cold['req'], cold['raf']) if v]
@@ -190,11 +194,39 @@ def browser_visit(engine, res):
     return out
 
 
+SERVO_FRAME = ('Layout', 'Painting')  # time profiler categories of one frame (components/shared/profile/time.rs)
+SERVO_COLD = ('ScriptParseHTML', 'ScriptStylesheetLoad', 'Layout', 'Painting')
+SERVO_PARTIAL = ("Servo's profiler has no WebRender scene and frame building (render backend threads): the frame is "
+                 'style + layout + display list + WebRender raster and composite only, not ranked as equal')
+
+
 def cases_of(engine, res):
-    """{phase: probe case} of a visit. Servo has no probe: its phases are the screenshot cases, S with the steps moved."""
+    """{phase: probe case} of a visit. Servo has no probe: its phases are the profiler windows of its frame loops."""
     if engine == 'servo':
-        return {k: {'frame': {'moved': v.get('moved', 1)}} for k, v in (res.get('shots') or {}).items() if k != 'idle'}
+        return {k: dict(v, frame={'moved': v.get('frames') or 0}) for k, v in ((res.get('servo') or {}).get('cases') or {}).items()}
     return (res.get('probe') or {}).get('cases') or {}
+
+
+def servo_frame(c):
+    """Servo ms per frame of one case window: summed Layout + Painting events over the loop's frames."""
+    n = c.get('frames') or 0
+    work = sum((c.get(k) or {}).get('sumMs', 0) for k in SERVO_FRAME)
+    return work / n if n and work > 0 else None
+
+
+def servo_samples(c):
+    """Per-frame samples of a case window: the i-th Layout + the i-th Painting when each frame has one of both,
+    else each Layout + the mean Painting per frame, else the window's mean alone."""
+    n = c.get('frames') or 0
+    lay = (c.get('Layout') or {}).get('ms') or []; pnt = (c.get('Painting') or {}).get('ms') or []
+    if not n or not (lay or pnt):
+        return []
+    if len(lay) == n and len(pnt) == n:
+        return [a + b for a, b in zip(lay, pnt)]
+    if len(lay) == n:
+        return [a + sum(pnt) / n for a in lay]
+    v = servo_frame(c)
+    return [v] if v else []
 
 
 def median_ci(xs, level=0.9):
@@ -263,9 +295,7 @@ def browser_samples(engine, res):
             if rq and ap and fr:
                 lag = max(0.0, med(ap) - med(fr)); cand['req'] = [v + lag for v in rq]
         elif engine == 'servo':
-            a = ((res.get('shots') or {}).get(k) or {}).get('ms'); b = ((res.get('shots') or {}).get('idle') or {}).get('ms')
-            if a and b:
-                cand['shot'] = [v - med(b) for v in a]
+            cand['profiler'] = servo_samples(c)
         else:
             rf, rr = ras('frame:' + k), ras('req:' + k)
             if fr and rf is not None:
@@ -278,19 +308,10 @@ def browser_samples(engine, res):
             out[k] = {'value': med(cand[clock]), 'samples': cand[clock], 'clock': clock}
     return out
 
-def servo_shot(shots, k):
-    """Servo frame of case k: median (edit + screenshot) minus median (screenshot alone); None without a positive value."""
-    a = ((shots or {}).get(k) or {}).get('ms'); b = ((shots or {}).get('idle') or {}).get('ms')
-    if not a or not b:
-        return None
-    v = med(a) - med(b)
-    return v if v > 0 else None
-
-
 def scroll_empty_reason(res):
     c = (((res.get('probe') or {}).get('cases') or {}).get('S') or {}).get('frame') or {}
-    if not c and (res.get('shots') or {}).get('S'):  # Servo: the screenshot steps
-        c = res['shots']['S']
+    if not c and ((res.get('servo') or {}).get('cases') or {}).get('S'):  # Servo: the steps of its frame loop
+        c = {'moved': res['servo']['cases']['S'].get('frames') or 0}
     if (c.get('moved') or 0) < 1:
         return NO_SCROLL
     return None

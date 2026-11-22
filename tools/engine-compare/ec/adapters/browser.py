@@ -21,7 +21,7 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
 
-DEF = 'browser-4'  # 4: warm rows = frames of >= 2 visits, stop on the accuracy rule (Policy.settled); 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
+DEF = 'browser-4'  # 4 (Servo: profiler frames, one process per page and class): warm rows = frames of >= 2 visits, stop on the accuracy rule (Policy.settled); 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
 # The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
 # so its miss is known at once (wrap() recorded it in c.ok). Only that wait changes; every measured frame is the same.
 GUARD = 'setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},250);'
@@ -49,13 +49,16 @@ BOUNDS = {'chromium': ('headless browser, page in a fresh context of a warm brow
                        'raster and swap from the trace of the same window; memory = working-set sum of all browser processes'),
           'firefox': ('headless browser, page in a fresh tab of a warm browser; frame = better of MozAfterPaint and the request '
                       'clock; memory = working-set sum of all browser processes'),
-          'servo': ('headless servoshell driven through its own WebDriver server, the page in the one window of a warm '
-                    'browser; frame = request -> pixels: the edit (one probe frame) then a WebDriver screenshot, which '
-                    'Servo answers only when the rendering is up to date with no pending frame, minus the same without an '
-                    'edit (transport and PNG encode); its probe clocks end before its asynchronous layout and paint, so they are '
-                    'not used; memory = working set of the '
-                    'servoshell process; headless servoshell rasters on the CPU (ANGLE on D3D11 WARP, no GPU driver loaded), so '
-                    'gpu2 is measured once under soft2')}
+          'servo': ('headless servoshell driven through its own WebDriver server, one servoshell process per page and '
+                    'class (its visits reload the page in it); frame = Servo\'s own time profiler '
+                    '(--profiler-trace-path) over a loop of frames of the phase: Layout (style, layout, display list) + '
+                    'Painting (WebRender update, raster and composite) per frame; the profiler has no WebRender scene and '
+                    'frame building (render backend threads), so Servo rows are marked partial and not ranked as equal; '
+                    'cold = the better of navigation -> two rAFs after load and the profiler sum of parse, stylesheet, '
+                    'layout and painting; the loop\'s wall clock per frame is kept for the method check; memory = working '
+                    'set of the servoshell process; headless servoshell rasters on the CPU (ANGLE on D3D11 WARP, no GPU '
+                    'driver loaded), so gpu2 is measured once under soft2')}
+SERVO_FRAMES = 10  # frames per phase loop of a Servo visit
 DRIVER = Path(__file__).resolve().parents[2] / 'driver' / 'browser-driver.cjs'
 
 
@@ -179,6 +182,8 @@ class Browser:
         # rows that have not settled (cold takes the load's sample while it has not settled).
         op = {'probe': probe, 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
               'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': tr, 'traceCategories': cats}
+        sv = {'newProcess': True, 'frames': SERVO_FRAMES, 'scrollSteps': M.scroll_steps(page.meta)} if fam == 'servo' else {}
+        op.update(sv); sv.pop('newProcess', None)
         res, why, extra = s.visit(op, to)
         if res is None or res.get('status') != 'ok':
             why = why or 'did not open: ' + ' '.join(str((res or {}).get('error', '?')).split())[:160]
@@ -215,7 +220,7 @@ class Browser:
             w = [p for p in need if p != 'cold']
             r2, why, _ = s.visit({'probe': probe, 'cases': ','.join(w), 'steadyMs': 0, 'cpuCases': [], 'framesOnly': True,
                                   'trace': tr and (bool(w) or self.e.get('cold_clock', 'min') == 'min'),
-                                  'traceCategories': cats}, to)
+                                  'traceCategories': cats, **sv}, to)
             visits += 1
             if r2 is None or r2.get('status') != 'ok':
                 rec.setdefault('notes', []).append(f'visit {visits} failed: {why or r2.get("error", "?")}'[:200])
@@ -228,6 +233,10 @@ class Browser:
             if r['time_ms'] is None and not r.get('empty'):
                 r['empty'] = (M.scroll_empty_reason(first) if ph == 'S' else None) or 'no frames of this phase in the probe result'
             elif r['time_ms'] is not None:
+                if fam == 'servo':  # the frame lacks WebRender scene / frame building: shown, not ranked as equal
+                    r['note'] = '; '.join(x for x in (r.get('note'), M.SERVO_PARTIAL) if x); r['invalid'] = True
+                    if r.get('alt_wall_ms'):
+                        r['wall_ms'] = M.med(r['alt_wall_ms'])
                 h = M.accuracy(r['repeats'], r.get('visit_medians'))
                 r['ci_pct'] = round(100 * h, 1) if h is not None else None
                 r['settled'] = policy.settled(r['repeats'], ours.get(ph), r.get('visit_medians'))
@@ -249,7 +258,7 @@ class Browser:
         rec = REC.load(self.cfg.store, name, cls, page.id, key) or {}
         return {ph: r.get('time_ms') for ph, r in (rec.get('rows') or {}).items() if r.get('time_ms')}
     def _add(self, rec, res, phases):
-        rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'shotWallMs', 'traceWallMs', 'cpuWallMs')
+        rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'launchMs', 'traceWallMs', 'cpuWallMs')
                                                      if isinstance(res.get(k), (int, float))})
         cases = (res.get('probe') or {}).get('cases') or {}
         missed = {k: (c.get('afterPaint') or {}).get('missed') for k, c in cases.items() if c.get('afterPaint')}
@@ -269,3 +278,6 @@ class Browser:
             elif fr.get(ph):  # warm rows: every frame of the visit's probe is a sample (as ours: frames of a series)
                 r = REC.row(rec, ph); r['repeats'].extend(fr[ph]['samples']); r['clock'] = fr[ph]['clock']
                 r.setdefault('visit_medians', []).append(fr[ph]['value'])
+            c = ((res.get('servo') or {}).get('cases') or {}).get(ph)
+            if c and c.get('frames') and c.get('wallMs') is not None:  # Servo: the loop's wall clock per frame (method check)
+                REC.row(rec, ph).setdefault('alt_wall_ms', []).append(c['wallMs'] / c['frames'])

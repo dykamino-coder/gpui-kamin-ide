@@ -125,14 +125,20 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.browser_visit('firefox', one)['S']['raf'], None)  # no afterPaint: Firefox raf unknown
         self.assertEqual(M.browser_visit('chromium', dict(one, trace={'windows': {'frame:S': {'RasterTask': {'sumMs': 0}}}}))['S']['raf'], 2)
 
-    def test_servo_frame_is_edit_plus_screenshot_minus_screenshot(self):
-        res = {'probe': None, 'shots': {'idle': {'ms': [20, 21, 22]}, 'R': {'ms': [30, 31, 33]}, 'C': {'ms': [19, 20]},
-                                        'S': {'ms': [], 'moved': 0}}}
+    def test_servo_frame_is_layout_plus_painting_from_its_profiler(self):
+        res = {'probe': None, 'twoRafMs': 50, 'servo': {
+            'cold': {'ScriptParseHTML': {'sumMs': 4}, 'Layout': {'sumMs': 10}, 'Painting': {'sumMs': 6}},
+            'cases': {'R': {'frames': 2, 'Layout': {'sumMs': 6, 'ms': [2, 4]}, 'Painting': {'sumMs': 2, 'ms': [1, 1]}},
+                      'C': {'frames': 2, 'Layout': {'sumMs': 3, 'ms': [3]}, 'Painting': {'sumMs': 2, 'ms': [1, 1]}},
+                      'D': {'frames': 2}, 'S': {'frames': 0}}}}
         sv = M.browser_visit('servo', res)
-        self.assertEqual(sv['R']['value'], 10)  # 31 - 21: no probe, the phases come from the screenshot cases
-        self.assertIsNone(sv['C']['value'])     # not above the screenshot alone
-        self.assertIsNone(sv['S']['value'])     # no whole step moved
-        self.assertEqual(M.browser_samples('servo', res)['R']['samples'], [9, 10, 12])
+        self.assertEqual(sv['R']['value'], 4)      # (6 + 2) / 2 frames
+        self.assertEqual(sv['cold']['value'], 20)  # profiler sum below the 50 ms load clock
+        self.assertIsNone(sv['D']['value'])        # no frame work in the window
+        self.assertIsNone(sv['S']['value'])        # no step
+        s = M.browser_samples('servo', res)
+        self.assertEqual(s['R']['samples'], [3, 5])    # i-th Layout + i-th Painting
+        self.assertEqual(s['C']['samples'], [2.5])     # frames without one Layout each: the window mean
         self.assertEqual(M.scroll_empty_reason(res), M.NO_SCROLL)
 
     def test_browser_visit_definitions(self):
