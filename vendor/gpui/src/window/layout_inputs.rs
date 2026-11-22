@@ -14,11 +14,6 @@ impl Default for LayoutInputId {
     }
 }
 
-/// Retries of one draw's prepaint: an input changes once per draw, so chains
-/// of inputs (a container query inside another) end; the limit bounds the
-/// draw's cost for a long chain.
-const MAX_LAYOUT_RETRIES: usize = 8;
-
 pub(super) struct PrepaintRoots {
     /// `None` when the previous root tree is kept (`kept_root`).
     pub(super) root_element: Option<AnyElement>,
@@ -36,11 +31,6 @@ impl Window {
     /// Предок обязан отложить prepaint потомков, если вход изменился:
     /// тогда они будут обработаны только с окончательным стилем предка.
     /// Изолированный prepaint вне сборки кадра входы не публикует.
-    ///
-    /// Every input that changed in one attempt shares one retry of the
-    /// attempt. A retry is recorded where it was asked for (`dirty_sources`,
-    /// kind `layout-retry`), as a frame request is.
-    #[track_caller]
     pub fn update_layout_input(
         &mut self,
         id: LayoutInputId,
@@ -54,18 +44,16 @@ impl Window {
             return false;
         }
         let changed = update();
-        if changed {
-            crate::dirty_sources::note("layout-retry", std::panic::Location::caller());
-        }
         self.layout_retry |= changed;
         changed
     }
 
-    /// Test support: the last draw asked for a frame after it
-    /// (`on_next_frame`), for example to settle what its layout measured.
+    /// Test support: drop the frames asked for since the last call
+    /// (`on_next_frame`, for example to settle what a layout measured) and
+    /// count them; a test that draws directly runs none of them.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn frame_requested_after_draw(&self) -> bool {
-        !self.next_frame_callbacks.borrow().is_empty()
+    pub fn take_frame_requests(&self) -> usize {
+        self.next_frame_callbacks.take().len()
     }
 
     pub(super) fn prepaint_roots_with_layout_inputs(
@@ -77,7 +65,6 @@ impl Window {
         let text_index = self.text_system.layout_index();
         self.layout_inputs = Some(FxHashSet::default());
         let kept_root = self.kept_root(cx);
-        let mut retries = 0;
         loop {
             self.layout_retry = false;
             if self.a11y.is_active() {
@@ -129,14 +116,6 @@ impl Window {
             } else {
                 tooltip_element = self.prepaint_tooltip(cx);
             }
-            // Past the limit the attempt is the frame, and the inputs it
-            // changed settle in the next one.
-            if self.layout_retry && retries == MAX_LAYOUT_RETRIES {
-                crate::dirty_sources::note("layout-retry-limit", std::panic::Location::caller());
-                self.on_next_frame(|window, _| window.refresh());
-                self.layout_retry = false;
-            }
-            retries += 1;
             if !self.layout_retry {
                 self.layout_inputs = None;
                 let counter = if root.is_some() {
