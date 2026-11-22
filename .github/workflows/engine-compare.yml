@@ -1,0 +1,26 @@
+name: Engine comparison tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - tools/engine-compare/**
+      - .github/workflows/engine-compare.yml
+  push:
+    branches: [main]
+    paths:
+      - tools/engine-compare/**
+      - .github/workflows/engine-compare.yml
+
+permissions:
+  contents: read
+
+jobs:
+  comparison:
+    name: Comparison records and empty cells
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Test adapters and generated reports without launching engines
+        run: python -I -m unittest discover -s tools/engine-compare/tests -v
