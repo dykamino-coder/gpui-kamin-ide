@@ -1,36 +1,16 @@
-//! `transition` — плавный переход стиля при наведении.
-//!
-//! Почему отдельным элементом. Наведение в GPUI — это подмена стиля, она
-//! мгновенная: у стиля нет промежуточных состояний, а у анимации нет понятия
-//! «состояние изменилось». Плавность требует памяти между кадрами — где мы
-//! сейчас между «обычным» и «наведённым». Такая память в GPUI есть ровно одна:
-//! состояние элемента, доступное только своей реализации `Element`.
-//!
-//! Как устроено: элемент хранит долю перехода и время прошлого кадра, на
-//! каждом кадре двигает долю к цели (наведён — к единице, нет — к нулю) и
-//! просит следующий кадр, пока цель не достигнута. Поддерево пересобирается
-//! замыканием по этой доле — дерево у нас и так собирается заново каждый кадр,
-//! поэтому лишней работы это не создаёт; для узлов без перехода не создаётся
-//! вообще ничего.
+//! Hover transitions sample the document's shared animation frame.
 
+mod motion;
+
+use super::clock::AnimationTimeSource;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
     IntoElement, LayoutId, Pixels, Window,
 };
+use motion::Motion;
 use std::rc::Rc;
-use std::time::Instant;
 
-/// Память между кадрами.
-#[derive(Default)]
-struct State {
-    /// Где мы между обычным (0) и наведённым (1) стилем.
-    progress: f32,
-    /// Было ли наведение на прошлом кадре.
-    hovered: bool,
-    last: Option<Instant>,
-}
-
-/// Переход: пересобирает поддерево по доле перехода.
+/// Rebuilds the actual subtree from its current hover progress.
 pub struct Transition {
     id: ElementId,
     seconds: f32,
@@ -45,7 +25,7 @@ impl Transition {
         build: Rc<dyn Fn(f32) -> AnyElement>,
         doc: Rc<crate::document::state::DocState>,
     ) -> Self {
-        Transition {
+        Self {
             id,
             seconds: seconds.max(0.01),
             build,
@@ -55,9 +35,7 @@ impl Transition {
 }
 
 impl Element for Transition {
-    /// Собранное поддерево этого кадра.
     type RequestLayoutState = AnyElement;
-    /// Область попадания курсора — по ней узнаётся наведение.
     type PrepaintState = Hitbox;
 
     crate::hooks::keyed_element_identity!();
@@ -70,40 +48,23 @@ impl Element for Transition {
         cx: &mut App,
     ) -> (LayoutId, AnyElement) {
         let Some(global_id) = id else {
-            // Без идентификатора памяти нет — рисуем обычный стиль.
-            let mut el = (self.build)(0.0);
-            let layout_id = el.request_layout(window, cx);
-            return (layout_id, el);
+            let mut child = (self.build)(0.0);
+            return (child.request_layout(window, cx), child);
         };
-        let seconds = self.seconds;
-        let build = self.build.clone();
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let mut st = state.unwrap_or_default();
-            let now = Instant::now();
-            let dt = st
-                .last
-                .map(|t| now.duration_since(t).as_secs_f32())
-                .unwrap_or(0.0)
-                // Потолок шага: после сворачивания окна между кадрами проходят
-                // минуты, и переход обязан доиграть, а не прыгнуть.
-                .min(0.25);
-            st.last = Some(now);
-
-            let target = if st.hovered { 1.0 } else { 0.0 };
-            let step = dt / seconds;
-            if (target - st.progress).abs() <= step {
-                st.progress = target;
-            } else {
-                st.progress += step * (target - st.progress).signum();
-            }
-            if st.progress != target {
+        let frame = self.doc.animation.sample(window, cx);
+        let reduced = cx.reduce_motion();
+        window.with_element_state::<Motion, _>(global_id, |state, window| {
+            let mut state = state.unwrap_or_default();
+            let active = state.sample(frame, self.seconds, reduced);
+            let requested = active && frame.source == AnimationTimeSource::Live;
+            self.doc.animation.transition(requested);
+            if requested {
                 self.doc.values.defer_frame();
                 window.request_animation_frame();
             }
-
-            let mut el = build(st.progress);
-            let layout_id = el.request_layout(window, cx);
-            ((layout_id, el), st)
+            let mut child = (self.build)(state.progress);
+            let layout = child.request_layout(window, cx);
+            ((layout, child), state)
         })
     }
 
@@ -132,17 +93,17 @@ impl Element for Transition {
         child.paint(window, cx);
         let hovered = hitbox.is_hovered(window);
         let Some(global_id) = id else { return };
-        // Наведение известно только после расстановки областей попадания,
-        // поэтому цель перехода записывается здесь, а двигается на следующем
-        // кадре — ровно как в браузере, где переход начинается с события.
-        window.with_element_state::<State, _>(global_id, |state, window| {
-            let mut st = state.unwrap_or_default();
-            if st.hovered != hovered {
+        let frame = self.doc.animation.sample(window, cx);
+        // Hitboxes establish the target after layout. Its event wakes one frame,
+        // including for a stopped snapshot; only live progress keeps scheduling.
+        window.with_element_state::<Motion, _>(global_id, |state, window| {
+            let mut state = state.unwrap_or_default();
+            if state.target(hovered, frame) {
+                self.doc.animation.hover_changed();
                 self.doc.values.defer_frame();
-                st.hovered = hovered;
                 window.request_animation_frame();
             }
-            ((), st)
+            ((), state)
         });
     }
 }

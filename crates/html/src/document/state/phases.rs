@@ -8,6 +8,8 @@ use crate::values::{DocumentValues, ValueCx};
 use std::rc::Rc;
 
 pub struct DocState {
+    /// Shared frame time and diagnostics across revisions of this document.
+    pub(crate) animation: Rc<crate::animation::clock::Clock>,
     /// The full-page view's canonical scroll owner; absent for ordinary builds and print.
     pub(crate) root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
     /// The single mutable box tree of this line of document revisions.
@@ -64,6 +66,7 @@ impl DocState {
     pub(crate) fn adopting(previous: &Self) -> Rc<Self> {
         Rc::new(Self {
             root_scroll: previous.root_scroll.clone(),
+            animation: previous.animation.clone(),
             boxes: previous.boxes.clone(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
@@ -95,6 +98,7 @@ impl DocState {
         };
         Rc::new(Self {
             root_scroll,
+            animation: previous.map(|p| p.animation.clone()).unwrap_or_default(),
             boxes: previous.map(|p| p.boxes.clone()).unwrap_or_default(),
             values,
             layout: Default::default(),
