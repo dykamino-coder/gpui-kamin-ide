@@ -45,6 +45,9 @@ pub struct Frame {
     insets: Rc<Cell<[f32; 4]>>,
     native_reserved: Rc<Cell<[f32; 2]>>,
     decoration_clip: Rc<Cell<Option<gpui::ContentMask<Pixels>>>>,
+    /// The scrollport's extent and bars as an input of the draw's layout:
+    /// settled after layout, they retry the draw's prepaint (settle_in_draw).
+    input: gpui::LayoutInputId,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -65,6 +68,7 @@ impl Default for Frame {
             insets: Rc::default(),
             native_reserved: Rc::default(),
             decoration_clip: Rc::default(),
+            input: gpui::LayoutInputId::default(),
         }
     }
 }

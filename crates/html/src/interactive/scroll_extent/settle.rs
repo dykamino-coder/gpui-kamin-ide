@@ -9,6 +9,17 @@ use crate::dom::Node;
 use crate::values::ValueCx;
 use gpui::ScrollHandle;
 impl Frame {
+    /// The extent or bars `settle` just changed are an input of this draw's
+    /// layout: lay the draw out again with them before it is painted, as
+    /// Blink settles scrollbars and the scroll extent inside the layout of
+    /// the same lifecycle (`PaintLayerScrollableArea::UpdateAfterLayout`).
+    /// One retry serves every scrollport that changed in the attempt. False
+    /// when this draw cannot retry for it (outside a frame's layout, or this
+    /// scrollport already retried this draw).
+    pub(crate) fn settle_in_draw(&self, window: &mut gpui::Window) -> bool {
+        window.update_layout_input(self.input, || true)
+    }
+
     pub(crate) fn settle(
         &self,
         tree: &Element,

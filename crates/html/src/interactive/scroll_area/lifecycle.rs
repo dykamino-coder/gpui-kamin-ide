@@ -128,9 +128,12 @@ impl Element for ScrollArea {
                 self.sticky.as_ref(),
                 self.values.vcx(),
             )
+            && !child.2.settle_in_draw(window)
         {
-            // Invalidation during prepaint is ignored by GPUI. Rebuild after
-            // this frame, once the native extent proxy has its measured size.
+            // No retry inside this draw (an isolated prepaint, or this
+            // scrollport already retried it): invalidation during prepaint is
+            // ignored by GPUI, so rebuild after this frame, once the native
+            // extent proxy has its measured size.
             self.values.vcx().doc.defer_frame();
             let view = window.current_view_opt();
             window.on_next_frame(move |window, cx| {
