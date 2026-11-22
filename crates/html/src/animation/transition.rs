@@ -94,14 +94,16 @@ impl Element for Transition {
         let hovered = hitbox.is_hovered(window);
         let Some(global_id) = id else { return };
         let frame = self.doc.animation.sample(window, cx);
-        // Hitboxes establish the target after layout. Its event wakes one frame,
-        // including for a stopped snapshot; only live progress keeps scheduling.
+        // Hitboxes establish the target after layout. A stopped snapshot keeps
+        // this progress until its next clock input; only live time wakes a frame.
         window.with_element_state::<Motion, _>(global_id, |state, window| {
             let mut state = state.unwrap_or_default();
             if state.target(hovered, frame) {
                 self.doc.animation.hover_changed();
-                self.doc.values.defer_frame();
-                window.request_animation_frame();
+                if frame.source == AnimationTimeSource::Live {
+                    self.doc.values.defer_frame();
+                    window.request_animation_frame();
+                }
             }
             ((), state)
         });

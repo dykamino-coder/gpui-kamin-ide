@@ -86,9 +86,22 @@ fn stopped_hover_transition_changes_once_then_holds_the_sample(cx: &mut TestAppC
     let html = "<style>body{margin:0}.b{height:20px;width:20px;background:red;transition:1s}\
         .b:hover{width:100px}</style><div class=b></div>";
     let (view, cx) = open_document(cx, document(html, 0));
+    cx.simulate_mouse_move(point(px(500.), px(500.)), None, Modifiers::default());
     frame(cx);
+    cx.update(|window, _| window.take_frame_requests());
     cx.simulate_mouse_move(point(px(5.), px(5.)), None, Modifiers::default());
+    cx.update(|window, _| window.take_frame_requests());
     frame(cx);
+    let changed = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
+    assert!(
+        changed.hover_target_changed,
+        "fixture must change the hover target"
+    );
+    assert_eq!(
+        cx.update(|window, _| window.take_frame_requests()),
+        0,
+        "a stopped transition must wait for the next clock input"
+    );
     frame(cx);
     let initial = quads(cx);
     cx.update(|_, app| {
@@ -105,6 +118,28 @@ fn stopped_hover_transition_changes_once_then_holds_the_sample(cx: &mut TestAppC
     assert_eq!(frames(&view, cx), (before.0, before.1 + 1));
     let journal = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
     assert!(!journal.keyframe_requested && !journal.transition_requested);
+}
+
+#[gpui::test]
+fn live_hover_transition_requests_its_next_sample(cx: &mut TestAppContext) {
+    let html = "<style>body{margin:0}.b{height:20px;width:20px;background:red;transition:1s}\
+        .b:hover{width:100px}</style><div class=b></div>";
+    let doc = Document::builder(html, "").build().unwrap();
+    let (view, cx) = open_document(cx, doc);
+    cx.simulate_mouse_move(point(px(500.), px(500.)), None, Modifiers::default());
+    frame(cx);
+    cx.update(|window, _| window.take_frame_requests());
+    cx.simulate_mouse_move(point(px(5.), px(5.)), None, Modifiers::default());
+    cx.update(|window, _| window.take_frame_requests());
+    frame(cx);
+    assert!(cx.update(|_, app| {
+        view.read(app)
+            .doc
+            .animation_frame()
+            .unwrap()
+            .hover_target_changed
+    }));
+    assert!(cx.update(|window, _| window.take_frame_requests()) > 0);
 }
 
 #[gpui::test]
