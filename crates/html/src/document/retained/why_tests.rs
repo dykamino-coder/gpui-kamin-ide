@@ -118,3 +118,39 @@ fn a_text_edit_off_the_plan_names_why(cx: &mut TestAppContext) {
     let cause = find(&causes, "plan_text.refused", "document/revision/adopt.rs");
     assert!(!cause.detail.is_empty());
 }
+
+#[gpui::test]
+fn a_decoration_the_layer_cannot_take_names_its_reason(cx: &mut TestAppContext) {
+    // A filtered box off the device grid whose conic gradient (a decoration,
+    // a child element) gives way to a fill: the layer has no write from its
+    // recorded painter to that paint, and the refusal names the reason, the
+    // box and the painter (`revision::layer_write`).
+    let at = |attr: &str| {
+        format!(
+            "<!doctype html><html><head><style>html{{background:white}}body{{margin:0}}\
+             .g{{position:absolute;width:180px;height:140px;border-radius:25%;filter:blur(.6px);\
+             background:repeating-conic-gradient(from 13deg,#e457,#37e8 10deg,#fc98 30deg);\
+             transform:rotate(7deg);mix-blend-mode:multiply}}[data-edit]{{background:#eee}}\
+             </style></head><body><div class=g style='left:0;top:0'></div>\
+             <div class=g {attr} style='left:31.3px;top:47px'></div></body></html>"
+        )
+    };
+    let (none, set) = (at(""), at("data-edit=1"));
+    let (view, vcx) = settled(cx, &none, &set);
+    update(&view, vcx, &none);
+    let (_one, _sub) = crate::why::test_reader();
+    update(&view, vcx, &set);
+    let causes = crate::why::take().journal.causes;
+    let cause = find(
+        &causes,
+        "paint_path.refused_not_own",
+        "document/revision/layer_write.rs",
+    );
+    assert_eq!(cause.detail, "kind");
+    let cause = find(&causes, "not_own", "document/revision/layer_write.rs");
+    assert!(
+        cause.detail.starts_with("kind: box ") && cause.detail.contains("recorded painter"),
+        "{}",
+        cause.detail
+    );
+}

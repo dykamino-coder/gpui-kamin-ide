@@ -129,7 +129,9 @@ pub(super) fn write_paint_values(
                 return None;
             }
             _ => {
+                // The recorded painter and the new paint have no write between them.
                 refuse_not_own(Refusal::Kind);
+                why::not_own(Refusal::Kind, owner, &b.tag, recorded);
                 return None;
             }
         };
@@ -246,7 +248,10 @@ use fill::kept_decorations;
 pub(super) use fill::painted_background;
 
 /// Count a refusal of a box whose own paint the layer does not hold.
+#[track_caller]
 fn refuse_not_own(reason: Refusal) {
-    crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
+    crate::paint_path::refuse_with(&crate::paint_path::REFUSED_NOT_OWN, || {
+        reason.label().to_string()
+    });
     crate::paint_path::not_own::add(reason.label());
 }

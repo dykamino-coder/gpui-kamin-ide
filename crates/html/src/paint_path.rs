@@ -104,6 +104,17 @@ pub(crate) fn add(counter: &AtomicU64, n: u64) {
     }
 }
 
+/// `add` of one refusal whose journal entry also says why (`detail`).
+#[track_caller]
+pub(crate) fn refuse_with(counter: &AtomicU64, detail: impl FnOnce() -> String) {
+    counter.fetch_add(1, Relaxed);
+    if crate::why::enabled()
+        && let Some(code) = codes::refusal(counter)
+    {
+        crate::why::note(code, detail);
+    }
+}
+
 mod codes;
 
 /// `value`, counting `reason` when it is `None`.
