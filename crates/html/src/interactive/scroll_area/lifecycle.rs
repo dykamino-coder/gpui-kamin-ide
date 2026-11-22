@@ -121,9 +121,17 @@ impl Element for ScrollArea {
                 let content = window.layout_content_size_unrounded(child.3);
                 let size = window.layout_size_unrounded(child.3);
                 crate::why::note("scroll_extent.layout_bars", || {
+                    // The descendants carrying the overflow on each axis whose bar appeared.
+                    let reach = |axis: usize| {
+                        (bars[axis] && !before[axis])
+                            .then(|| window.layout_overflow_reach(child.3, axis == 1).join(" > "))
+                    };
                     format!(
-                        "box {} bars {before:?} -> {bars:?} decided in layout: content {content:?} box {size:?}",
-                        self.tree.as_deref().map_or(0, |t| t.node_id)
+                        "box {} bars {before:?} -> {bars:?} decided in layout: content {content:?} box {size:?}; reach x [{}] y [{}]; sized by [{}]",
+                        self.tree.as_deref().map_or(0, |t| t.node_id),
+                        reach(0).unwrap_or_default(),
+                        reach(1).unwrap_or_default(),
+                        window.layout_ancestry(child.3, 3).join(" < "),
                     )
                 });
             }

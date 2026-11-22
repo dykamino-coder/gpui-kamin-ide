@@ -12,7 +12,7 @@ use super::{NodeId, Style, TaffyView};
 use crate::geometry::{Point, Rect, Size};
 use crate::style::{Direction, Overflow};
 use crate::tree::traits::LayoutPartialTreeExt;
-use crate::tree::{LayoutInput, LayoutOutput, RunMode};
+use crate::tree::{LayoutInput, LayoutOutput, RequestedAxis, RunMode};
 use crate::util::ResolveOrZero;
 
 /// Overflow up to this far past the scrollport needs no bar (as the host's scroll range).
@@ -59,8 +59,12 @@ where
     }
 
     /// After a layout of `node_id`: whether its content asks for other bars, which are
-    /// then set for the layout again. Only a final layout decides: a measure keeps the
-    /// bars it has, as Blink freezes both bars in a measure pass.
+    /// then set for the layout again. A final layout decides. A measure of the block
+    /// size at a known or definite inline size (a flex column measures its items so)
+    /// lays the box out as its final layout will, so a bar
+    /// it finds holds for the size the parent takes from it (Blink lays a scroll
+    /// container out with its bars for a flex or grid measure, and freezes them only
+    /// for intrinsic inline sizes); it only adds bars, as it sees only in-flow overflow.
     #[inline(never)]
     pub(super) fn kamin_settle_scrollbars(
         &mut self,
@@ -71,7 +75,14 @@ where
     ) -> bool {
         let style = &self.taffy.nodes[node_id.into()].style;
         let auto = style.kamin_scrollbars.auto();
-        if inputs.run_mode != RunMode::PerformLayout || !(auto.x || auto.y) || settling.passes >= PASSES {
+        let measure = inputs.run_mode == RunMode::ComputeSize
+            && (inputs.known_dimensions.width.is_some() || inputs.available_space.width.is_definite())
+            && inputs.known_dimensions.height.is_none()
+            && inputs.axis != RequestedAxis::Horizontal;
+        if !(inputs.run_mode == RunMode::PerformLayout || measure)
+            || !(auto.x || auto.y)
+            || settling.passes >= PASSES
+        {
             return false;
         }
         let border = style.border.resolve_or_zero(inputs.parent_size.width, |val, basis| self.calc(val, basis));
@@ -86,9 +97,16 @@ where
         let open = view.width > 0.0 && view.height > 0.0;
         let need = Point { x: open && content.right > view.width + FIT, y: open && content.bottom > view.height + FIT };
         let current = Point { x: style.overflow.x == Overflow::Scroll, y: style.overflow.y == Overflow::Scroll };
+        let keep = |axis_auto: bool, need: bool, appeared: bool, current: bool| {
+            if !axis_auto {
+                current
+            } else {
+                need || appeared || (measure && current)
+            }
+        };
         let next = Point {
-            x: if auto.x { need.x || settling.appeared.x } else { current.x },
-            y: if auto.y { need.y || settling.appeared.y } else { current.y },
+            x: keep(auto.x, need.x, settling.appeared.x, current.x),
+            y: keep(auto.y, need.y, settling.appeared.y, current.y),
         };
         if next == current {
             return false;

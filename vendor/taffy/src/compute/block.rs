@@ -864,6 +864,19 @@ fn compute_inner(
     // Note: it is important that we return the margin-collapsing related outputs here as Parent block containers
     // rely on the `top_margin`/`bottom_margin` of their children to compute their own intrinsic height.
     if run_mode == RunMode::ComputeSize {
+        // KaminIDE patch: a measure reports the in-flow overflow too, from which a
+        // scroll container whose bars layout decides finds a bar its size must hold
+        // (`kamin_scrollbars`). Only measures read it: no cache keeps a measure's
+        // overflow, and a final layout lays its children out again.
+        #[cfg(feature = "content_size")]
+        {
+            if is_scroll_container {
+                inflow_overflow_rect.right +=
+                    if direction.is_rtl() { resolved_padding.left } else { resolved_padding.right };
+                inflow_overflow_rect.bottom += resolved_padding.bottom;
+            }
+            output.scrollable_overflow_rect = inflow_overflow_rect;
+        }
         return output;
     }
 

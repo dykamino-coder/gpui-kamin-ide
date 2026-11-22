@@ -29,7 +29,7 @@
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
 diff --git a/vendor/taffy/src/compute/block.rs b/vendor/taffy/src/compute/block.rs
-index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3f521d011
+index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..58afea766c0796d0253fcc64c02294750f02b1fe
 --- a/vendor/taffy/src/compute/block.rs
 +++ b/vendor/taffy/src/compute/block.rs
 @@ -1,0 +2,6 @@
@@ -251,18 +251,32 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +        },
 @@ -765,0 +857 @@
 +        inline_block_last_y: Some(inline_block_last),
-@@ -971 +1063,2 @@
+@@ -774,0 +867,13 @@
++        // KaminIDE patch: a measure reports the in-flow overflow too, from which a
++        // scroll container whose bars layout decides finds a bar its size must hold
++        // (`kamin_scrollbars`). Only measures read it: no cache keeps a measure's
++        // overflow, and a final layout lays its children out again.
++        #[cfg(feature = "content_size")]
++        {
++            if is_scroll_container {
++                inflow_overflow_rect.right +=
++                    if direction.is_rtl() { resolved_padding.left } else { resolved_padding.right };
++                inflow_overflow_rect.bottom += resolved_padding.bottom;
++            }
++            output.scrollable_overflow_rect = inflow_overflow_rect;
++        }
+@@ -971 +1076,2 @@
 -    item_y_margin_sum: f32,
 +    item_margin: Rect<f32>,
 +    margins_treated_as_zero: Line<bool>,
-@@ -973,0 +1067,3 @@
+@@ -973,0 +1080,3 @@
 +    // KaminIDE patch: CSS Sizing 4 stretch ignores margins adjoining the parent's edges.
 +    let margin_sum = if margins_treated_as_zero.start { 0.0 } else { item_margin.top }
 +        + if margins_treated_as_zero.end { 0.0 } else { item_margin.bottom };
-@@ -976 +1072 @@
+@@ -976 +1085 @@
 -        container_inner_height.maybe_sub(item_y_margin_sum),
 +        container_inner_height.maybe_sub(margin_sum),
-@@ -982,0 +1079,25 @@
+@@ -982,0 +1092,25 @@
 +}
 +
 +// KaminIDE patch: floats and normal blocks share relative inset resolution.
@@ -288,60 +302,60 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +        inset.left.or(inset.right.map(|x| -x))
 +    };
 +    Point { x: x.unwrap_or(0.0), y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0) }
-@@ -1002 +1123,3 @@
+@@ -1002 +1136,3 @@
 -            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
 +            .resolve_or_zero(available_space.width.into_option(), |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -1006 +1129,3 @@
+@@ -1006 +1142,3 @@
 -                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| tree.calc(val, basis)) {
 +                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| {
 +                    tree.calc(val, basis)
 +                }) {
-@@ -1040,0 +1166,6 @@
+@@ -1040,0 +1179,6 @@
 +
 +/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
 +type BlockItemLayout = (
 +    Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet,
 +    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
 +);
-@@ -1057,0 +1189 @@
+@@ -1057,0 +1202 @@
 +    children_margins_adjoin_own_edges: Line<bool>,
-@@ -1060 +1192 @@
+@@ -1060 +1205 @@
 -) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
 +) -> BlockItemLayout {
-@@ -1098,0 +1231,4 @@
+@@ -1098,0 +1244,4 @@
 +    let mut last_baseline: Option<f32> = None;
 +    let mut first_baseline_x: Option<f32> = None;
 +    let mut last_baseline_x: Option<f32> = None;
 +    let mut inline_block_last: Option<f32> = None;
-@@ -1117,3 +1253,3 @@
+@@ -1117,3 +1266,3 @@
 -            let item_margin = item
 -                .margin
 -                .map(|margin| margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)));
 +            let item_margin = item.margin.map(|margin| {
 +                margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1143 +1279,3 @@
+@@ -1143 +1292,3 @@
 -                    Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
 +                    Some(SizingKeywordResolution::Exact(width)) => {
 +                        (Some(width), AvailableSpace::Definite(width))
 +                    }
-@@ -1149 +1287,2 @@
+@@ -1149 +1300,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    Line::FALSE,
-@@ -1181,0 +1321 @@
+@@ -1181,0 +1334 @@
 +                    item.node_id.into(),
-@@ -1199,0 +1340,5 @@
+@@ -1199,0 +1353,5 @@
 +
 +                // Relative painting does not alter float exclusions (CSS 2.2 9.4.3).
 +                let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
 +                location.x += inset_offset.x;
 +                location.y += inset_offset.y;
-@@ -1212,0 +1358 @@
+@@ -1212,0 +1371 @@
 +                    relative_offset: inset_offset,
-@@ -1280,2 +1426,10 @@
+@@ -1280,2 +1439,10 @@
 -                            let slot = block_ctx.find_bfc_slot(min_y, x_margins, direction, item.clear, slot_segment);
 -                            let Some(segment_id) = slot.segment_id else { break slot };
 +                            let slot = block_ctx.find_bfc_slot(
@@ -354,7 +368,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                            let Some(segment_id) = slot.segment_id else {
 +                                break slot;
 +                            };
-@@ -1355,3 +1509,5 @@
+@@ -1355,3 +1522,5 @@
 -                .map(|resolution| match resolution {
 -                    SizingKeywordResolution::Exact(width) => width,
 -                    SizingKeywordResolution::Measure(item_available_width) => tree.measure_child_size(
@@ -363,7 +377,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                        // min-/max-content probes (see `keyword_width`).
 +                        keyword_width::measure(
 +                            tree,
-@@ -1359,5 +1515,3 @@
+@@ -1359,5 +1528,3 @@
 -                        Size::NONE,
 -                        parent_size,
 -                        Size { width: item_available_width, height: AvailableSpace::MaxContent },
@@ -372,14 +386,14 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                            width_style,
 +                            resolution,
 +                            parent_size,
-@@ -1366 +1520 @@
+@@ -1366 +1533 @@
 -                    ),
 +                        )
-@@ -1372 +1526,2 @@
+@@ -1372 +1539,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    children_margins_adjoin_own_edges,
-@@ -1471,17 +1626 @@
+@@ -1471,17 +1639 @@
 -            let inset_percentage_basis =
 -                Size { width: Some(container_inner_width), height: container_percentage_resolution_height };
 -            let inset = item
@@ -398,29 +412,29 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 -                Point::ZERO
 -            };
 +            let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
-@@ -1542 +1681,5 @@
+@@ -1542 +1694,5 @@
 -                        Direction::Rtl => container_outer_width - resolved_content_box_inset.right - final_size.width,
 +                        Direction::Rtl => {
 +                            container_outer_width
 +                                - resolved_content_box_inset.right
 +                                - final_size.width
 +                        }
-@@ -1551 +1694,3 @@
+@@ -1551 +1707,3 @@
 -                        Direction::Rtl => float_avoiding_position.x + float_avoiding_width - final_size.width,
 +                        Direction::Rtl => {
 +                            float_avoiding_position.x + float_avoiding_width - final_size.width
 +                        }
-@@ -1559 +1704,3 @@
+@@ -1559 +1717,3 @@
 -                        Direction::Ltr => resolved_content_box_inset.left + inset_offset.x + resolved_margin.left,
 +                        Direction::Ltr => {
 +                            resolved_content_box_inset.left + inset_offset.x + resolved_margin.left
 +                        }
-@@ -1589 +1736,3 @@
+@@ -1589 +1749,3 @@
 -                        Direction::Ltr => float_avoiding_position.x + extra_margin_left + inset_offset.x,
 +                        Direction::Ltr => {
 +                            float_avoiding_position.x + extra_margin_left + inset_offset.x
 +                        }
-@@ -1682 +1831,33 @@
+@@ -1682 +1844,33 @@
 -                first_baseline = child_baseline.map(|baseline| location.y + baseline);
 +                first_baseline = child_baseline.map(|baseline| (location.y - inset_offset.y) + baseline);
 +            }
@@ -455,9 +469,9 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                item.overflow.x.is_scroll_container(),
 +            )) {
 +                last_baseline_x = Some((location.x - inset_offset.x) + baseline);
-@@ -1711,0 +1893 @@
+@@ -1711,0 +1906 @@
 +                relative_offset: inset_offset,
-@@ -1805 +1987,13 @@
+@@ -1805 +2000,13 @@
 -    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
 +    (
 +        inflow_overflow_rect,
@@ -472,7 +486,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +            inline_block_last,
 +        ),
 +    )
-@@ -1806,0 +2001,15 @@
+@@ -1806,0 +2014,15 @@
 +
 +
 +#[cfg(test)]
@@ -23584,10 +23598,10 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbars.rs b/vendor/taffy/src/tree/kamin_scrollbars.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..17eefe20903787c58dc553f9b156607ccbd5150e
+index 0000000000000000000000000000000000000000..a4668f74ccc837708b8f14ff67ca6fd65a333b33
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbars.rs
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,129 @@
 +//! KaminIDE patch: classic bars decided inside layout (CSS Overflow 3 §3, `overflow: auto`).
 +//!
 +//! A box whose bars layout decides (`ScrollbarLayout::auto`) is laid out with the bars it
@@ -23602,7 +23616,7 @@ index 0000000000000000000000000000000000000000..17eefe20903787c58dc553f9b156607c
 +use crate::geometry::{Point, Rect, Size};
 +use crate::style::{Direction, Overflow};
 +use crate::tree::traits::LayoutPartialTreeExt;
-+use crate::tree::{LayoutInput, LayoutOutput, RunMode};
++use crate::tree::{LayoutInput, LayoutOutput, RequestedAxis, RunMode};
 +use crate::util::ResolveOrZero;
 +
 +/// Overflow up to this far past the scrollport needs no bar (as the host's scroll range).
@@ -23649,8 +23663,12 @@ index 0000000000000000000000000000000000000000..17eefe20903787c58dc553f9b156607c
 +    }
 +
 +    /// After a layout of `node_id`: whether its content asks for other bars, which are
-+    /// then set for the layout again. Only a final layout decides: a measure keeps the
-+    /// bars it has, as Blink freezes both bars in a measure pass.
++    /// then set for the layout again. A final layout decides. A measure of the block
++    /// size at a known or definite inline size (a flex column measures its items so)
++    /// lays the box out as its final layout will, so a bar
++    /// it finds holds for the size the parent takes from it (Blink lays a scroll
++    /// container out with its bars for a flex or grid measure, and freezes them only
++    /// for intrinsic inline sizes); it only adds bars, as it sees only in-flow overflow.
 +    #[inline(never)]
 +    pub(super) fn kamin_settle_scrollbars(
 +        &mut self,
@@ -23661,7 +23679,14 @@ index 0000000000000000000000000000000000000000..17eefe20903787c58dc553f9b156607c
 +    ) -> bool {
 +        let style = &self.taffy.nodes[node_id.into()].style;
 +        let auto = style.kamin_scrollbars.auto();
-+        if inputs.run_mode != RunMode::PerformLayout || !(auto.x || auto.y) || settling.passes >= PASSES {
++        let measure = inputs.run_mode == RunMode::ComputeSize
++            && (inputs.known_dimensions.width.is_some() || inputs.available_space.width.is_definite())
++            && inputs.known_dimensions.height.is_none()
++            && inputs.axis != RequestedAxis::Horizontal;
++        if !(inputs.run_mode == RunMode::PerformLayout || measure)
++            || !(auto.x || auto.y)
++            || settling.passes >= PASSES
++        {
 +            return false;
 +        }
 +        let border = style.border.resolve_or_zero(inputs.parent_size.width, |val, basis| self.calc(val, basis));
@@ -23676,9 +23701,16 @@ index 0000000000000000000000000000000000000000..17eefe20903787c58dc553f9b156607c
 +        let open = view.width > 0.0 && view.height > 0.0;
 +        let need = Point { x: open && content.right > view.width + FIT, y: open && content.bottom > view.height + FIT };
 +        let current = Point { x: style.overflow.x == Overflow::Scroll, y: style.overflow.y == Overflow::Scroll };
++        let keep = |axis_auto: bool, need: bool, appeared: bool, current: bool| {
++            if !axis_auto {
++                current
++            } else {
++                need || appeared || (measure && current)
++            }
++        };
 +        let next = Point {
-+            x: if auto.x { need.x || settling.appeared.x } else { current.x },
-+            y: if auto.y { need.y || settling.appeared.y } else { current.y },
++            x: keep(auto.x, need.x, settling.appeared.x, current.x),
++            y: keep(auto.y, need.y, settling.appeared.y, current.y),
 +        };
 +        if next == current {
 +            return false;

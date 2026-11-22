@@ -6741,6 +6741,23 @@ impl Window {
         self.layout_engine.as_ref()?.layout_scrollbars(layout_id)
     }
 
+    /// KaminIDE patch: the descendants reaching farthest along an axis in the last
+    /// layout of a node (see `TaffyLayoutEngine::overflow_reach`); diagnostics only.
+    pub fn layout_overflow_reach(&self, layout_id: LayoutId, vertical: bool) -> Vec<String> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .map_or_else(Vec::new, |engine| engine.overflow_reach(layout_id, vertical, scale_factor))
+    }
+
+    /// KaminIDE patch: a node and its ancestors' sizing styles (see
+    /// `TaffyLayoutEngine::layout_ancestry`); diagnostics only.
+    pub fn layout_ancestry(&self, layout_id: LayoutId, depth: usize) -> Vec<String> {
+        self.layout_engine
+            .as_ref()
+            .map_or_else(Vec::new, |engine| engine.layout_ancestry(layout_id, depth))
+    }
+
     /// KaminIDE patch: протяжённость содержимого узла без округления (см.
     /// `TaffyLayoutEngine::layout_content_size_unrounded`).
     pub fn layout_content_size_unrounded(&mut self, layout_id: LayoutId) -> Size<Pixels> {
