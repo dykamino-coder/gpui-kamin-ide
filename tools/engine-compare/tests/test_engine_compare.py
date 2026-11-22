@@ -191,5 +191,73 @@ class Repeats(unittest.TestCase):
         self.assertEqual(noise_verdict([10, 10.1], [13, 13.2])[0], 'worse')
 
 
+
+class Native(unittest.TestCase):
+    def test_phase_plan_uses_the_shared_edits_and_the_scenario_steps(self):
+        from ec.adapters.native import phase_plan
+        with tempfile.TemporaryDirectory() as tmp:
+            p = page(tmp)
+            self.assertEqual(phase_plan(p, 'R'), {'name': 'R', 'mode': 'resize', 'widths': [640, 800]})
+            c = phase_plan(p, 'C')
+            self.assertEqual((c['selector'], c['attribute'], c['value'], c['observe'], c['visibility']),
+                             ('html', 'class', 'alt', '[data-deep]', 'offscreen'))
+            self.assertTrue(c['input'].endswith('C.html') and (p.dir / 'C.html').exists())
+            d = phase_plan(p, 'Dvis')
+            self.assertEqual((d['selector'], d['observe'], d['visibility']), ('@middle', 'b4-e', 'visible'))
+            self.assertTrue(d['input'].endswith('vis.html'))
+            self.assertEqual(phase_plan(p, 'S', 5)['steps'], 5)
+
+    def test_fill_cpu_per_frame_named_refusals_and_cold_sample(self):
+        from ec.adapters.native import fill
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = REC.new_record('blitz', 'v', 'all', page(tmp), 'soft2', 'd', 'b')
+            rep = {'phases': [
+                {'name': 'cold', 'status': 'ok', 'frames_ms': [400.0], 'cpu': {'cpu_ms': 450.0, 'cycles': 9}},
+                {'name': 'R', 'status': 'ok', 'frames_ms': [10.0, 20.0, 30.0, 40.0], 'series_elapsed_ms': 510,
+                 'cpu': {'cpu_ms': 120.0, 'cycles': 400}},
+                {'name': 'C', 'status': 'unsupported', 'frames_ms': [],
+                 'error': 'native target has an empty layout rectangle; C:\\x\\geometry.rs:398'},
+                {'name': 'S', 'status': 'ok', 'frames_ms': [5.0, 6.0]}]}
+            self.assertEqual(fill(rec, rep, 'Blitz', want_steps=3), (400.0, 450.0))
+            r = rec['rows']
+            self.assertEqual((r['R']['time_ms'], r['R']['cpu_ms'], r['R']['cpu_cycles']), (25.0, 30.0, 100.0))
+            self.assertIn('empty layout rectangle', r['C']['empty']); self.assertNotIn('C:\\x', r['C']['empty'])
+            self.assertIn('no per-phase CPU', r['S']['cpu_empty']); self.assertIn('2 of the', r['S']['note'])
+            self.assertEqual(REC.validate(rec), [])
+
+
+class WarmUp(unittest.TestCase):
+    def test_one_dropped_run_per_engine_before_its_first_unit(self):
+        from ec.scheduler import Lane, Runner
+
+        class Ad:
+            exclusive = False; calls = []
+
+            def version(self):
+                return 'v'
+
+            def needs_gpu(self, cls):
+                return False
+
+            def close(self, lane):
+                pass
+
+            def measure(self, lane, pg, cls, part, policy):
+                self.calls.append(policy.min_repeats)
+                return {'key': 'k', 'rows': {}, 'engine': 'x', 'cls': cls, 'page': pg.id}
+
+        class Cfg:
+            raw = {}; store = None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Cfg.store = Path(tmp) / 'store'; p = page(tmp); ad = Ad()
+            lanes = [Lane(i, 4 * i, Path(tmp) / f'l{i}') for i in range(2)]
+            r = Runner(Cfg, {'x': ad}, Policy(), lanes, 2, log=lambda m: None)
+            r.run([Task('x', p, c, 'all', 'k', False, None, False) for c in ('soft2', 'soft1', 'gpu4')])
+            self.assertEqual(ad.calls.count(1), 1)  # the quick warm-up, once
+            self.assertEqual(ad.calls.count(3), 3)  # every measured unit
+            self.assertEqual(ad.calls[0], 1)
+
+
 if __name__ == '__main__':
     unittest.main()

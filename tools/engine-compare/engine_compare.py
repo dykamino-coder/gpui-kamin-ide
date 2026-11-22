@@ -32,10 +32,10 @@ def lanes_of(cfg, ids=None):
 
 def execute(cfg, ads, pol, todo, log, keep_memory=False):
     """Run the units group by group (``scheduler.groups``); (wall seconds, [(task, record)])."""
-    wall, done = 0.0, []
+    wall, done, warm = 0.0, [], {}
     for lanes, tasks in groups(todo, lanes_of(cfg), cfg.work, cfg.split_soft1):
         r = Runner(cfg, ads, pol, lanes, cfg.gpu_parallel, log=log)
-        r.keep_memory = keep_memory
+        r.keep_memory = keep_memory; r.warm = warm  # one warm-up per engine for all groups
         wall += r.run(tasks); done += r.done
     return wall, done
 
@@ -122,12 +122,14 @@ def main():
     ap.add_argument('--store', default=None, help='result store (default: the config''s)')
     sub = ap.add_subparsers(dest='cmd', required=True)
     q = sub.add_parser('quick'); q.add_argument('page'); q.add_argument('--cls', default='gpu4', choices=list(CLASSES)); q.add_argument('--engines'); q.add_argument('--ignore-load', action='store_true')
+    q.add_argument('--no-warmup', action='store_true')
     r = sub.add_parser('run')
     for k in ('--pages', '--kinds', '--engines', '--classes', '--phases', '--repeats', '--cpu-frames'):
         r.add_argument(k)
     r.add_argument('--force', action='store_true'); r.add_argument('--dry', action='store_true'); r.add_argument('--ignore-load', action='store_true')
+    r.add_argument('--no-warmup', action='store_true', help='skip the idle run of every engine before its first unit')
     r.add_argument('--redo-between', help='FROM,TO (ISO local time): measure again the cached units started in this window')
-    d =sub.add_parser('doctor'); d.add_argument('--aa', action='store_true'); d.add_argument('--aa-soft1', action='store_true', help='neighbour A/A of one-core soft1 lanes (split_soft1)')
+    d =sub.add_parser('doctor'); d.add_argument('--aa', action='store_true'); d.add_argument('--aa-soft1', action='store_true', help='neighbour A/A of one-core soft1 lanes (split_soft1)'); d.add_argument('--aa-pages', help='pages of the soft1 A/A (default: the first page)')
     rp = sub.add_parser('report'); rp.add_argument('out'); rp.add_argument('--classes'); rp.add_argument('--title', default=''); rp.add_argument('--lang', default='en', choices=['en', 'ru'])
     df = sub.add_parser('diff'); df.add_argument('a'); df.add_argument('b'); df.add_argument('--engine', default='ours')
     a = ap.parse_args()
@@ -139,6 +141,8 @@ def main():
     cfg = Config(a.config)
     if a.store:
         cfg.store = Path(a.store).resolve()
+    if getattr(a, 'no_warmup', False):
+        cfg.raw['warmup'] = False
     if a.cmd == 'quick':
         quick(cfg, a)
     elif a.cmd == 'run':
