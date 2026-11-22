@@ -80,6 +80,9 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         ("capture_copy", Some(ms(input.copy))),
         ("taffy_inclusive", Some(ms(input.layout))),
         ("readback_to_resume", Some(ms(input.readback_to_resume))),
+        // A count, not a time: renders of a layout retry inside the draw,
+        // whose time the phases above already hold.
+        ("layout_retries", Some(phases.layout_retries as f64)),
     ]);
     for (name, scope) in [
         ("build_elements", &phases.build),
@@ -166,6 +169,19 @@ mod tests {
         let mut document = input();
         document.document = Some(us(4));
         assert!(partition(document, &phases).is_err());
+    }
+
+    #[test]
+    fn a_layout_retry_is_one_frame_and_its_count_is_recorded() {
+        let mut phases = Phases::default();
+        phases.layout = Some(us(6));
+        phases.renders = 3;
+        phases.layout_retries = 2;
+        assert_eq!(phases.frame_renders(), 1);
+        let result = partition(input(), &phases).expect("one draw");
+        assert_eq!(result.diagnostics["layout_retries"], Some(2.0));
+        let total = result.phases["first_frame_total"].expect("total");
+        assert!((total - 0.060).abs() < 1e-12, "the whole draw: {total}");
     }
 
     #[test]
