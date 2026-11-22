@@ -103,7 +103,7 @@ class Session:
         kind, res = self._read(timeout)
         t1 = time.perf_counter()
         if kind == 'TIMEOUT':
-            return None, f'hangs: page did not finish within {timeout} s', None
+            return None, f'timeout: page did not finish within {timeout} s', None
         if kind != 'RESULT':
             return None, 'browser exited during the page', None
         samples = [s for s in self.tree.samples if t0 <= s[0] <= t1]

@@ -148,7 +148,7 @@ class OneShot:
         for i in range(max(n, 1) if blank else 0):
             code, wall, pk, err, sm, cpu, sd = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90, page.id)
             if code is None:
-                why = 'hangs: no snapshot within 90 s'; break
+                why = 'timeout: no snapshot within 90 s'; break
             if code != 0:
                 from . import last_error
                 why = f'crashed: exit code {code}: {last_error(err)}'; break

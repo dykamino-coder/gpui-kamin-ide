@@ -287,5 +287,25 @@ class Settle(unittest.TestCase):
         self.assertEqual(s['R'], {'value': 6.0, 'samples': [5.0, 7.0], 'clock': 'raf'})
         self.assertNotIn('S', s)  # no whole scroll step: no sample
 
+class UnitTime(unittest.TestCase):
+    def test_timeouts_are_counted_per_page(self):
+        from types import SimpleNamespace as NS
+        from ec.report import L, add_pass, unit_table
+        cut = {'wall_s': 61.0, 'rows': {'cold': {'empty': 'timeout: no result within 60 s'}}, 'memory': {}}
+        ok = {'wall_s': 9.0, 'rows': {'cold': {'time_ms': 5.0, 'repeats': [5.0]}}, 'memory': {}}
+        self.assertTrue(M.timed_out(cut)); self.assertFalse(M.timed_out(ok))
+        self.assertTrue(M.timed_out({'rows': {'R': {'empty': 'hangs: no result within 300 s'}}}))  # older records
+        ads = {'ours': NS(e={'adapter': 'ours'})}
+        passes = {}
+        for cls, rec in (('gpu2', cut), ('soft1', ok)):
+            ps = passes.setdefault((cls, 'ours'), {'wall': 0.0, 'engine': 0.0, 'pages': set(), 'units': 0, 'missing': 0})
+            add_pass(ps, rec, NS(engine='ours', page=NS(id='p1')), ads, [])
+        self.assertEqual(passes[('gpu2', 'ours')]['per_page']['p1'], [61.0, 61.0])
+        self.assertEqual(passes[('soft1', 'ours')]['per_page']['p1'], [9.0, 0.0])
+        h = unit_table(passes, L['en'], 'ours')
+        self.assertIn('<td class="num">70 <small class="cap">timeout 61 s</small></td>', h)
+        self.assertIn('<td class="num r">61</td>', h)
+
+
 if __name__ == '__main__':
     unittest.main()

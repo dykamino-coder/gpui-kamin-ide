@@ -22,6 +22,15 @@ import statistics
 PHASES = ['cold', 'R', 'C', 'Cvis', 'D', 'Dvis', 'S']
 SCROLL_STEP_PX = 120
 SCROLL_MAX_STEPS = 14  # FRAMES of the browser probe: one scroll pass
+TIMEOUT = 'timeout'  # first word of the reason of a cell whose unit was cut at its time limit
+
+
+def timed_out(rec):
+    """True when the unit was cut at its time limit (a cell or the memory says so)."""
+    why = [r.get('empty') for r in (rec.get('rows') or {}).values()] + [(rec.get('memory') or {}).get('empty')]
+    return any(w and (w.startswith(TIMEOUT) or w.startswith('hangs')) for w in why)
+
+
 NO_SCROLL = 'page does not scroll by one whole 120 px step'
 OURS_MODE = {'cold': 'cold', 'R': 'relayout', 'S': 'scroll'}  # every other phase is an edit
 

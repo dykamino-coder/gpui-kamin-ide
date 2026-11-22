@@ -5,7 +5,9 @@ part "time": timing build. cold + memory = one ``--mode both --runs 5 --memory-s
              mode per process), with N samples of the phase inside it.
 part "cpu":  counters build, the same phases, CPU per frame from its per-phase process CPU.
 Config: {"adapter": "ours", "exe": timing exe, "counters_exe": counters exe, "version": optional label,
-         "timeout_s": {"syn": 300, "default": 120}}
+         "timeout_s": {"syn": 300, "default": 120}, "unit_timeout_s": 60}
+        unit_timeout_s: the whole plan process of one page and class (every phase); a unit that does not finish in it
+        is cut and its cells say "timeout" (default 60 s).
 """
 import shutil
 import time
@@ -35,6 +37,7 @@ BOUNDS_PLAN = ('ours: one engine_bench process per page and class runs every pha
 # 4: adaptive series (stable_mad)
 DEF = 'ours-4'
 STABLE_MAD = 0.03  # the series stop rule, the same as the browsers' repeat visits (adapters.Policy.stable)
+UNIT_TIMEOUT_S = 60  # one plan process (a page in one class, every phase)
 
 
 def edit_input(page, phase):
@@ -100,7 +103,7 @@ class Ours:
         code = p.wait(timeout)
         if code is None:
             p.kill(); p.close(); t.join(5)
-            return None, f'hangs: no result within {timeout} s', round(time.perf_counter() - w0, 2)
+            return None, f'{M.TIMEOUT}: no result within {timeout} s', round(time.perf_counter() - w0, 2)
         t.join(10); p.close(); wall = round(time.perf_counter() - w0, 2)
         text = (out[0] if out else b'').decode('utf-8', 'replace')
         try:
@@ -149,7 +152,8 @@ class Ours:
             pf = lane.work / f'plan-{lane.id}.json'
             import json
             pf.write_text(json.dumps(plan), encoding='utf-8')
-            j, why, wall = self._run(exe, lane, page, cls, [self._page(page, order[0]), '--plan', str(pf)], to * 3)
+            j, why, wall = self._run(exe, lane, page, cls, [self._page(page, order[0]), '--plan', str(pf)],
+                                     self.e.get('unit_timeout_s', UNIT_TIMEOUT_S))
             rec['plan_wall_s'] = wall
             rec['memory'] = {'empty': why} if why else {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': None}
             for ph in order:

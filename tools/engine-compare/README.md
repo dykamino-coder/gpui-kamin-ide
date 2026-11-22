@@ -47,6 +47,13 @@ clock step), or when that range lies wholly beyond our value of the same row by 
 measured first in every class. The report shows the accuracy next to a number (`±N%`) and marks a row stopped at the
 cap (`!`). Scroll keeps the step count of the browser scenario. The cell title gives the number
 of samples.
+## Time limits
+
+One unit (a page in one class on one engine) has a time limit; our plan process gets 60 s for every phase of the page
+(`unit_timeout_s` in the engine config). A unit cut at its limit keeps the reason `timeout` in its cells. The report
+lists the unit time of every page per engine (summed over the classes) and how much of it went into timeouts, slowest
+pages first.
+
 ## Adapters
 
 `ec/adapters/` holds one file per engine kind (`ours`, `browser`, `native`, `oneshot`, `kitesurf`); the contract is in

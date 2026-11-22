@@ -77,7 +77,7 @@ class Kitesurf:
         try:
             r = self._pod('exec', '--user', '65534:65534', self.e['container'], 'sh', '-c', sh, timeout=60 + reps * 130)
         except subprocess.TimeoutExpired:
-            return None, 'hangs: no result within the time limit'
+            return None, 'timeout: no result within the time limit'
         out, cur = {}, None
         for ln in r.stdout.splitlines():
             if ln.startswith('REP '):

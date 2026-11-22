@@ -20,7 +20,7 @@ L = {
            'C': 'style edit, off screen', 'Cvis': 'style edit, visible', 'D': 'content edit, off screen',
            'Dvis': 'content edit, visible', 'S': 'scroll step (120 px)'},
            'summary': 'Summary: where we lead and where we do not', 'worst_t': 'every row by time, best for us first',
-           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'h_cls': 'Class', 'h_engine': 'Engine', 'h_kind': 'Set', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine itself', 'u_ms': 'ms', 'u_mb': 'MB', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
+           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'h_cls': 'Class', 'h_engine': 'Engine', 'h_kind': 'Set', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine itself', 'u_ms': 'ms', 'u_mb': 'MB', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'unit': 'Unit time per page', 'unit_note': 'Seconds of every engine on the page, its units summed over the classes (one unit = one page in one class); slowest pages first. A unit cut at its time limit (ours: 60 s per page and class) counts in the last column and its cells say timeout.', 'unit_total': 'All engines, s', 'unit_to': 'Of it timeouts, s', 'unit_cut': 'timeout {s} s', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
@@ -35,7 +35,7 @@ L = {
            'C': 'правка стиля, вне экрана', 'Cvis': 'правка стиля, видимая', 'D': 'правка содержимого, вне экрана',
            'Dvis': 'правка содержимого, видимая', 'S': 'шаг прокрутки (120 px)'},
            'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'все строки по времени, от лучших для нас к худшим',
-           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'cls': {'gpu4': 'GPU, 4 потока', 'gpu2': 'GPU, 2 ядра', 'soft2': 'софт-растр, 2 ядра', 'soft1': 'софт-растр, 1 ядро'}, 'h_cls': 'Класс', 'h_engine': 'Движок', 'h_kind': 'Набор', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Сам движок', 'u_ms': 'мс', 'u_mb': 'МБ', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
+           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'cls': {'gpu4': 'GPU, 4 потока', 'gpu2': 'GPU, 2 ядра', 'soft2': 'софт-растр, 2 ядра', 'soft1': 'софт-растр, 1 ядро'}, 'h_cls': 'Класс', 'h_engine': 'Движок', 'h_kind': 'Набор', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Сам движок', 'u_ms': 'мс', 'u_mb': 'МБ', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'unit': 'Время юнита по страницам', 'unit_note': 'Секунды каждого движка на странице: его юниты, сложенные по классам (юнит — страница в одном классе); сверху самые долгие. Юнит, обрезанный по пределу времени (у нас 60 с на страницу и класс), входит в последний столбец, а его ячейки помечены «таймаут».', 'unit_total': 'Все движки, с', 'unit_to': 'Из них таймауты, с', 'unit_cut': 'таймаут {s} с', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
@@ -104,6 +104,10 @@ def add_pass(ps, rec, t, ads, dirty):
     if not rec:
         ps['missing'] += 1; return
     ps['wall'] += rec.get('wall_s') or 0; ps['units'] += 1; ps['pages'].add(t.page.id)
+    u = ps.setdefault('per_page', {}).setdefault(t.page.id, [0.0, 0.0])
+    u[0] += rec.get('wall_s') or 0
+    if M.timed_out(rec):
+        u[1] += rec.get('wall_s') or 0
     if ads[t.engine].e.get('adapter') == 'ours':  # frames the engine itself spent; the rest is the stand
         ps['engine'] += sum(sum(x for x in (r.get('repeats') or []) if x) for r in (rec.get('rows') or {}).values()) / 1000
     note = next((d['note'] for d in dirty if d['from'] <= (rec.get('started') or 0) < d['to']), None)
@@ -170,6 +174,32 @@ def main(cfg, a):
 def why(x, T):
     e = x.get('empty')
     return T['not_measured'] if e == 'not_measured' else (e or 'no number')
+
+
+def unit_table(passes, T, ours):
+    """Unit time per page: each engine's units of the page summed over the classes, and how much of it ran into a
+    unit time limit; slowest pages first."""
+    engines = sorted({e for (_, e) in passes}, key=lambda e: (e != ours, e))
+    pages = {}
+    for (_, e), v in passes.items():
+        for pid, (wall, to) in (v.get('per_page') or {}).items():
+            x = pages.setdefault(pid, {}).setdefault(e, [0.0, 0.0]); x[0] += wall; x[1] += to
+    if not pages:
+        return ''
+    h = [f'<h3>{T["unit"]}</h3><p class="note">{html.escape(T["unit_note"])}</p><div class="tw"><table><thead><tr>'
+         f'<th>{T["page"]}</th>' + ''.join(f'<th>{html.escape(e)}, s</th>' for e in engines)
+         + f'<th>{T["unit_total"]}</th><th>{T["unit_to"]}</th></tr></thead><tbody>']
+    for pid, es in sorted(pages.items(), key=lambda kv: -sum(w for w, _ in kv[1].values())):
+        cells = []
+        for e in engines:
+            w, to = es.get(e, (None, 0))
+            tip = f' <small class="cap">{T["unit_cut"].format(s=round(to))}</small>' if to else ''
+            cells.append(f'<td class="num">{"—" if w is None else f"{w:.0f}"}{tip}</td>')
+        tw = sum(w for w, _ in es.values()); tt = sum(t for _, t in es.values())
+        h.append(f'<tr><td>{html.escape(pid)}</td>{"".join(cells)}<td class="num">{tw:.0f}</td>'
+                 f'<td class="num{" r" if tt else ""}">{tt:.0f}</td></tr>')
+    h.append('</tbody></table></div>')
+    return ''.join(h)
 
 
 def pass_table(passes, classes, T, ours):
@@ -394,6 +424,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
     sm.append(gap_table(gap_list(rows, mem, T), T))
     if passes:
         sm.append(pass_table(passes, classes, T, ours))
+        sm.append(unit_table(passes, T, ours))
     # Full lists of every comparable row, best for us first; no top-N cut.
     sm.append(f'<h2 id="all">{T["all"]}</h2>')
     for cls in classes:
