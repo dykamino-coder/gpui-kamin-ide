@@ -24,7 +24,7 @@ L = {
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
-           'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
+           'no_scroll': 'page does not scroll', 'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
            'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'samples': 'samples: {n}', 'series_def': 'Repeats: every row has at least 3 values (ours: frames of one series; browsers: visits), then one more while it is not stable, up to the cap (ours: 500 ms of frames; browsers: 8 visits); stable = MAD / median <= 3 % (MAD = median absolute deviation from the median). The cell title gives the number of samples. Scroll keeps the browsers'' step count.', 'ours_fail': 'did not open / crashed', 'ours_failsum': 'We did not get through: {n} cells (time {t}, CPU {c}, memory {m}); the reason is on each red cell (hover).', 'cpu_none': 'the engine gives no CPU for this phase', 'm_time': 'time', 'm_cpu': 'CPU', 'm_peak': 'peak memory', 'm_steady': 'steady memory', 'cover': 'Coverage: engine x metric x phase', 'cover_note': 'Measured cells / all cells (every page and class). Green: all, yellow: part, red: none; the reasons of every empty cell are in the next table.', 'gaps': 'What is not measured and why', 'gaps_note': 'Every empty cell of every engine, grouped by engine, metric, phase and reason, most cells first.', 'metric': 'Metric', 'cells': 'Cells', 'reason': 'Reason', 'scroll_def': 'Scroll (S), every engine: from the top of the page, as many 120 px steps as the browser probe makes on that page: min(14, (scrollHeight - 600) // 120), down to one step; a step counts only when the root scroller moved by the whole 120 px; a page without one whole step has no S row.', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
            'legend': ['we are faster than the best', 'within 5%', 'slower, up to x2', 'x2-x10', 'x10 and more'],
            'v_style': 'style edit', 'v_content': 'content edit', 'v_vis': 'visible edit', 'source': 'source',
@@ -39,7 +39,7 @@ L = {
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
-           'not_measured': 'ещё не измерено', 'none': 'ни один другой движок не дал числа',
+           'no_scroll': 'страница не прокручивается', 'not_measured': 'ещё не измерено', 'none': 'ни один другой движок не дал числа',
            'fast': 'строка <5 мс: вердикт только при 8 повторах', 'invalid': 'не в счёт: ', 'gap': 'Разрыв пика, МБ',
            'bounds': 'Границы замера', 'samples': 'образцов: {n}', 'series_def': 'Повторы: у каждой строки не меньше 3 значений (у нас — кадры одной серии, у браузеров — визиты), затем ещё по одному, пока строка не устоялась, до потолка (у нас 500 мс кадров, у браузеров 8 визитов); устоялась = MAD / медиана <= 3 % (MAD — медиана модулей отклонений от медианы). Число образцов — в подсказке ячейки. Прокрутка сохраняет число шагов браузеров.', 'ours_fail': 'не открылась / упала', 'ours_failsum': 'Мы не прошли: {n} ячеек (время {t}, процессор {c}, память {m}); причина — во всплывающей подсказке каждой красной ячейки.', 'cpu_none': 'движок не даёт процессорного времени этой фазы', 'm_time': 'время', 'm_cpu': 'процессор', 'm_peak': 'пик памяти', 'm_steady': 'уст. память', 'cover': 'Покрытие: движок × метрика × фаза', 'cover_note': 'Измерено ячеек / всего ячеек (все страницы и классы). Зелёный — всё, жёлтый — часть, красный — ничего; причины каждой пустой ячейки — в следующей таблице.', 'gaps': 'Что не измерено и почему', 'gaps_note': 'Каждая пустая ячейка любого движка, по движку, метрике, фазе и причине, от больших групп к меньшим.', 'metric': 'Метрика', 'cells': 'Ячеек', 'reason': 'Причина', 'scroll_def': 'Прокрутка (S), одинаково у всех движков: от верха страницы столько шагов по 120 px, сколько делает браузерный пробник на этой странице: min(14, (scrollHeight − 600) // 120), вплоть до одного шага; шаг в счёт, только если корневой прокрутчик сдвинулся на целые 120 px; страница без одного целого шага строки S не имеет.', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
            'legend': ['мы быстрее лучшего', '±5 %', 'медленнее до ×2', '×2–10', '×10 и больше'],
@@ -174,6 +174,8 @@ def main(cfg, a):
 
 def why(x, T):
     e = x.get('empty')
+    if e == M.NO_SCROLL:
+        return T['no_scroll']
     return T['not_measured'] if e == 'not_measured' else (e or 'no number')
 
 
