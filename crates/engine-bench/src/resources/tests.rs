@@ -74,3 +74,28 @@ fn utf8_source_is_borrowed_from_the_reused_buffer() {
     assert_eq!(source.capacity(), capacity);
     std::fs::remove_file(path).unwrap();
 }
+
+/// A stylesheet, an import or an image the snapshot lacks is a failed fetch: the page still loads, the stylesheet
+/// is not applied and the URLs are recorded for the report.
+#[test]
+fn unavailable_resources_are_failed_fetches_not_errors() {
+    let dir = std::env::temp_dir().join(format!("kamin-bench-unavailable-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("input.html");
+    std::fs::write(
+        &path,
+        "<!doctype html><link rel=stylesheet href=gone.css><link rel=stylesheet href=https://example.test/a.css>\
+         <style>@import 'gone-import.css'; p{color:blue}</style><img src=gone.png><p>x",
+    )
+    .unwrap();
+    let html = read(&path).unwrap();
+    assert!(html.contains("p{color:blue}") && html.contains("gone.png"));
+    let seen = super::stylesheet::unavailable();
+    for name in ["gone.css", "gone-import.css", "gone.png"] {
+        let url = Url::from_file_path(dir.join(name)).unwrap();
+        assert!(seen.contains(&url.to_string()), "{name}");
+    }
+    assert!(seen.contains(&"https://example.test/a.css".to_string()));
+    std::fs::remove_file(path).unwrap();
+    std::fs::remove_dir(dir).unwrap();
+}

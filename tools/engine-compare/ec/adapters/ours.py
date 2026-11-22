@@ -150,6 +150,8 @@ class Ours:
             pf.write_text(json.dumps(plan), encoding='utf-8')
             j, why, wall = self._run(exe, lane, page, cls, [self._page(page, order[0]), '--plan', str(pf)], to * 3)
             rec['plan_wall_s'] = wall
+            if j:  # resources the page snapshot lacks: failed fetches, the page is measured as a browser shows it
+                rec['unavailable_resources'] = len(j.get('unavailable_resources') or [])
             rec['memory'] = {'empty': why} if why else {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': None}
             for ph in order:
                 r = REC.row(rec, ph)
