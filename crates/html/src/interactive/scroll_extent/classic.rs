@@ -57,6 +57,68 @@ pub(crate) fn reserve(frame: Option<&Frame>, e: &Element, c: &Computed) -> [bool
     model(frame, e, c).bars
 }
 
+/// The `auto` axes whose bars layout decides from the content (Taffy
+/// `ScrollbarLayout`), as Blink `BlockNode::Layout` lays a box out again when
+/// `ComputeScrollbars` changes. Layout reserves a bar's gutter where Taffy
+/// does: the horizontal bar at the bottom always. A vertical bar whose gutter
+/// lies elsewhere (`scrollbar-gutter: stable`, the left side) and every bar of
+/// a reversed or vertical flow keep the bars of the last measured range, and
+/// the frame records why.
+pub(crate) fn layout_axes(frame: Option<&Frame>, e: &Element, c: &Computed) -> [bool; 2] {
+    let Some(frame) = owner(frame, e, c) else {
+        return [false; 2];
+    };
+    let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
+    let auto: [bool; 2] = std::array::from_fn(|axis| {
+        overflow[axis] == Some(Overflow::Scroll) && !c.reset_box_layout.scroll.forced[axis]
+    });
+    let gutters = |bars| {
+        let model = super::super::scrollbar_gutter::Model::new(c, bars);
+        model.used == model.native
+    };
+    let mut auto = auto;
+    let refusal = if !auto.iter().any(|&a| a) {
+        None
+    } else if c.wm().vertical() || super::super::scrollbar_gutter::reversed(c) != [false; 2] {
+        auto = [false; 2];
+        Some("the scroll origin is not the top left corner")
+    } else if !gutters([false; 2]) || !gutters([true; 2]) {
+        // The vertical bar's gutter is not the one Taffy reserves on the
+        // right; the horizontal bar's is, at the bottom: layout decides it.
+        let refusal = (auto[1]).then_some(if !gutters([false; 2]) {
+            "scrollbar-gutter reserves the vertical bar's space without it"
+        } else {
+            "the vertical bar lies on the side layout does not reserve"
+        });
+        auto[1] = false;
+        refusal
+    } else {
+        None
+    };
+    frame.settling.refusal.set(refusal);
+    auto
+}
+
+/// Take the bars layout decided for this scrollport before its content is
+/// painted: its gutters and insets follow them. Whether they differ from the
+/// bars it was built with.
+pub(crate) fn adopt(frame: &Frame, c: &Computed, bars: [bool; 2]) -> bool {
+    if frame.bars.get() == bars {
+        return false;
+    }
+    let model = super::super::scrollbar_gutter::Model::new(c, bars);
+    frame.reserved.set(model.total());
+    frame.insets.set(model.used);
+    frame.native_reserved.set(model.native_total());
+    frame.bars.set(bars);
+    true
+}
+
+/// Why layout does not decide this scrollport's bars, if it does not.
+pub(super) fn refusal(frame: &Frame) -> Option<&'static str> {
+    frame.settling.refusal.get()
+}
+
 pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {
     let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
     let bars = std::array::from_fn(|axis| {

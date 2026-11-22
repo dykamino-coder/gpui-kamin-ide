@@ -71,6 +71,18 @@ pub(crate) fn attach(
     if c.reset_box_layout.overflow_y == Some(crate::style::computed::Overflow::Hidden) {
         div.style().overflow.y = Some(gpui::Overflow::Hidden);
     }
+    // The bars above are the guess layout starts with; it decides the `auto`
+    // ones from the content and lays only this box out again when they differ.
+    let auto =
+        crate::interactive::scroll_extent::classic::layout_axes(cx.scroll.frame.as_ref(), e, c);
+    if auto[0] && horizontal || auto[1] && vertical {
+        let style = div.style();
+        let mut bars = style.kamin_scrollbars.unwrap_or_default();
+        bars.auto = [auto[0] && horizontal, auto[1] && vertical];
+        bars.viewport = e.tag == "html-viewport";
+        bars.bar_left = crate::interactive::scrollbar_gutter::on_left(c);
+        style.kamin_scrollbars = Some(bars);
+    }
     if let Some(marker) =
         crate::interactive::scroll_extent::marker(cx.scroll.frame.as_ref(), e.node_id)
     {

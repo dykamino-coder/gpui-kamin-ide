@@ -111,6 +111,23 @@ impl Element for ScrollArea {
         let hitbox = window.insert_hitbox(paint_bounds, gpui::HitboxBehavior::Normal);
         child.2.set_decoration_clip(window.content_mask());
         child.2.begin(self.tree.as_deref());
+        // The bars layout decided for this scrollport (laying only it out
+        // again when its content asked for others) hold before its content
+        // is prepainted: its gutters, insets and painted bars follow them.
+        if let Some(bars) = window.layout_scrollbars(child.3) {
+            let before = child.2.bars();
+            if crate::interactive::scroll_extent::classic::adopt(&child.2, &self.style, bars) {
+                // DevTools `why`: a scrollport whose bars layout changed.
+                let content = window.layout_content_size_unrounded(child.3);
+                let size = window.layout_size_unrounded(child.3);
+                crate::why::note("scroll_extent.layout_bars", || {
+                    format!(
+                        "box {} bars {before:?} -> {bars:?} decided in layout: content {content:?} box {size:?}",
+                        self.tree.as_deref().map_or(0, |t| t.node_id)
+                    )
+                });
+            }
+        }
         {
             // CSSOM View §6: retain the fractional scroll translation until
             // HTML paint snaps final edges, rather than snapping the offset
@@ -129,15 +146,14 @@ impl Element for ScrollArea {
                 self.values.vcx(),
             )
         {
-            // New bars change the content box this layout placed: lay the
-            // roots out again in this draw with them, as Blink lays a box
-            // out again when `UpdateAfterLayout` finds its scrollbars changed.
-            // One bar can bring the other (or the root's bar narrows a nested
-            // scroller), so each layout again publishes the next of the
-            // frame's inputs, each once per draw: bars that still change
-            // after them (content that only fits without them) wait for the
-            // next frame, and so does a frame no state keeps (it would start
-            // each layout without its bars).
+            // Layout decides the bars of most scrollports itself (`adopt`
+            // above). Bars it did not decide (`classic::layout_axes` says
+            // why, and `settle` notes it) change the content box this layout
+            // placed: lay the roots out again in this draw with them. One bar
+            // can bring the other, so each layout again publishes the next of
+            // the frame's inputs, each once per draw: bars that still change
+            // after them wait for the next frame, and so does a frame no state
+            // keeps (it would start each layout without its bars).
             if id.is_some()
                 && child
                     .2

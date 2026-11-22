@@ -1,9 +1,9 @@
 //! A layout settles the scroll extents and bars it finds inside its own
-//! draw. With the bars as they were, each scroll range takes its proxy's
-//! new size in place (`gpui::ScrollHandle::resize_item`), as Blink updates
-//! a scrollable area's range after layout; new bars lay the roots out again
-//! in the same draw, as Blink lays a box out again when its scrollbars
-//! change. The one draw asks for no frame after it, paints what the next
+//! draw. Layout decides the bars of each `auto` scrollport and lays only
+//! that box out again when they change, as Blink `BlockNode::Layout` does
+//! when `ComputeScrollbars` changes; each scroll range then takes its
+//! proxy's new size in place (`gpui::ScrollHandle::resize_item`), as Blink
+//! updates a scrollable area's range after layout. The one draw asks for no frame after it, paints what the next
 //! draw and a document opened at that size paint, and scrolls as far.
 
 use super::reuse_tests::update;
@@ -41,20 +41,20 @@ fn the_first_draw_paints_its_bars_and_what_an_edit_paints(cx: &mut TestAppContex
     frame(vcx);
     let journal = crate::why::take().journal;
     assert_eq!(requests(vcx), 0, "the first draw left its bars to a frame");
+    // Layout decides the new bars itself: no scrollport is laid out again.
     assert!(
         journal
             .causes
             .iter()
-            .any(|c| c.code == "scroll_extent.relayout" && c.detail.starts_with("bars changed")),
+            .any(|c| c.code == "scroll_extent.layout_bars"),
         "the draw found no new bars: {journal:?}"
     );
-    // The guessed root bar was right: the root itself was not laid out again.
     assert!(
         !journal
             .causes
             .iter()
-            .any(|c| c.code == "scroll_extent.relayout" && c.detail.contains("box 0 ")),
-        "the root's bar was not guessed: {journal:?}"
+            .any(|c| c.code == "scroll_extent.relayout"),
+        "a scrollport was laid out again: {journal:?}"
     );
     let first = quads(vcx);
     frame(vcx);
@@ -105,7 +105,7 @@ fn a_width_change_settles_scroll_extents_in_its_own_draw(cx: &mut TestAppContext
 }
 
 #[gpui::test]
-fn new_bars_lay_the_roots_out_again_in_the_same_draw_and_say_why(cx: &mut TestAppContext) {
+fn layout_decides_new_bars_in_the_same_draw_and_says_why(cx: &mut TestAppContext) {
     // At 400px the 300px box fits; at 250px it overflows and its scrollport
     // gets a horizontal bar, which takes room from its content box.
     let text = "word ".repeat(1500);
@@ -127,16 +127,23 @@ fn new_bars_lay_the_roots_out_again_in_the_same_draw_and_say_why(cx: &mut TestAp
     frame(vcx);
     let journal = crate::why::take().journal;
     assert_eq!(requests(vcx), 0, "the new bar waited for a frame");
+    // Layout itself lays the box out again with the new bar and says so.
     let cause = journal
         .causes
         .iter()
-        .find(|c| c.code == "scroll_extent.relayout")
-        .unwrap_or_else(|| panic!("no relayout cause in {journal:?}"));
-    assert!(cause.detail.starts_with("bars changed"), "{}", cause.detail);
+        .find(|c| c.code == "scroll_extent.layout_bars")
+        .unwrap_or_else(|| panic!("no layout bars cause in {journal:?}"));
     assert!(
-        cause.site().contains("scroll_extent/settle.rs:"),
+        cause.detail.ends_with("decided in layout"),
         "{}",
-        cause.site()
+        cause.detail
+    );
+    assert!(
+        !journal
+            .causes
+            .iter()
+            .any(|c| c.code == "scroll_extent.relayout"),
+        "a scrollport was laid out again: {journal:?}"
     );
     let after = quads(vcx);
     let mut app = cx.clone();
@@ -164,5 +171,29 @@ fn a_bar_that_brings_the_other_settles_in_the_same_draw(cx: &mut TestAppContext)
     let first = quads(vcx);
     frame(vcx);
     assert_eq!(first, quads(vcx), "the draw after the first");
+    assert_eq!(requests(vcx), 0);
+}
+
+/// A padded preformatted scroller whose lines fit, with a positioned link at
+/// its padding edge, decides its bars in layout, and the measured range
+/// agrees: end padding follows only the in-flow content (CSS Overflow 3 §2.2,
+/// as Chrome's `scrollWidth == clientWidth`).
+#[gpui::test]
+fn a_padded_scroller_whose_lines_fit_needs_no_second_layout(cx: &mut TestAppContext) {
+    let html = "<style>body{margin:0}pre{padding:1em;margin:.5em 0;overflow:auto;white-space:pre}</style>\
+                <pre>short <span>line</span>\nand another</pre><pre><code>code <b>in</b> code</code></pre><div style=\"width:3000px;height:3000px\"></div>\
+                <div class=example style=\"position:relative\"><pre class=\"highlight lang-css\" style=\"position:relative\"><a style=\"position:absolute;top:0;right:0;width:30px;height:26px\"></a>h1 {\n  font-weight: bold;\n}\n</pre></div>";
+    let (_one, _sub) = crate::why::test_reader();
+    let mut app = cx.clone();
+    let (_view, vcx) = open(&mut app, html);
+    frame(vcx);
+    let journal = crate::why::take().journal;
+    let relayouts: Vec<_> = journal
+        .causes
+        .iter()
+        .filter(|c| c.code == "scroll_extent.relayout")
+        .map(|c| c.detail.clone())
+        .collect();
+    assert!(relayouts.is_empty(), "laid out again: {relayouts:#?}");
     assert_eq!(requests(vcx), 0);
 }

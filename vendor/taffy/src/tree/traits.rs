@@ -252,6 +252,23 @@ pub trait LayoutContainingBlock: LayoutPartialTree {
         let _ = node_id;
         &DetailedLayoutInfo::None
     }
+
+    /// KaminIDE patch: how far the inset-resolution area of out-of-flow `node_id` moves in on
+    /// each side because the viewport decided other bars than the box was built for
+    /// (`ScrollbarLayout::root_gutter`). `None` leaves the area as it is.
+    #[inline(always)]
+    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
+        let _ = node_id;
+        None
+    }
+
+    /// KaminIDE patch: whether out-of-flow `node_id` is a scroll range proxy, which adds
+    /// nothing to its containing block's scrollable overflow (`ScrollbarLayout::proxy`).
+    #[inline(always)]
+    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
+        let _ = node_id;
+        false
+    }
 }
 
 /// Trait used by the `compute_cached_layout` method which allows cached layout results to be stored and retrieved.

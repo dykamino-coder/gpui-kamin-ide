@@ -28,12 +28,14 @@ struct BoxRecord {
 }
 
 /// What layouts learned of a scrollport's bars: whether one measured its
-/// range (until then the viewport guesses its bar), and the inputs whose
-/// change (new bars) lays the roots out again in the same draw, one per
-/// layout again, as one bar can bring the other.
+/// range (until then the viewport guesses its bar), why layout does not
+/// decide its bars (`classic::layout_axes`), and the inputs whose change
+/// (bars layout did not decide) lays the roots out again in the same draw,
+/// one per layout again, as one bar can bring the other.
 #[derive(Default)]
 struct Settling {
     settled: Cell<bool>,
+    refusal: Cell<Option<&'static str>>,
     inputs: [gpui::LayoutInputId; 3],
 }
 
@@ -111,7 +113,7 @@ impl Frame {
     pub(crate) fn layout_inputs(&self) -> [gpui::LayoutInputId; 3] {
         self.settling.inputs
     }
-    pub(super) fn bars(&self) -> [bool; 2] {
+    pub(crate) fn bars(&self) -> [bool; 2] {
         self.bars.get()
     }
     pub(super) fn insets(&self) -> [f32; 4] {

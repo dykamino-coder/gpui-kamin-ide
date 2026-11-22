@@ -2169,6 +2169,13 @@ impl Element for Div {
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
+        // KaminIDE patch: a box whose bars layout decided takes them before its style is
+        // computed: they set its scrolling axes and the clip of its overflow.
+        if let Some(bars) = request_layout.layout_id.and_then(|id| window.layout_scrollbars(id))
+            && self.interactivity.base_style.differs_from_layout_scrollbars(bars)
+        {
+            Rc::make_mut(&mut self.interactivity.base_style).adopt_layout_scrollbars(bars);
+        }
         let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
         let hitbox = self.interactivity.prepaint(
             global_id,

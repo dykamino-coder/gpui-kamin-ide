@@ -216,6 +216,10 @@ pub(crate) fn measured_layout(
         first_y: baseline,
         last_y: last_baseline,
         lines_y: Some(probe.content_line_baselines(baseline)),
+        // Lines longer than the box overflow it: layout decides the bars of
+        // the scrollport around from them (`scroll_extent::classic`).
+        overflow: (content > known.width.unwrap_or(width))
+            .then(|| size(content, known.height.unwrap_or(across))),
         ..gpui::MeasuredContent::new(size(
             known.width.unwrap_or(width),
             known.height.unwrap_or(across),

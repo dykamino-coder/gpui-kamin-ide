@@ -6,8 +6,12 @@
 use super::geometry::{sides, union};
 use super::*;
 use crate::dom::Node;
+use crate::style::computed::Position;
 use crate::values::ValueCx;
 use gpui::ScrollHandle;
+
+/// How far snapping can move a native child's far edge from its exact one.
+const SNAPPED: f32 = 1.0;
 impl Frame {
     pub(crate) fn settle(
         &self,
@@ -73,6 +77,14 @@ impl Frame {
         ];
         let offset = handle.offset();
         let mut end = [origin[0] + view[0], origin[1] + view[1]];
+        // DevTools `why`: what reaches the far end of the range on each axis.
+        let mut far = [(("the view", tree.node_id), 0.0f32); 2];
+        let mut reach = |end: &mut [f32; 2], axis: usize, at: f32, what: (&'static str, u64)| {
+            if at > end[axis] {
+                end[axis] = at;
+                far[axis] = (what, at - origin[axis]);
+            }
+        };
         let mut start = origin;
         let reversed = crate::interactive::scrollbar_gutter::reversed(c);
         // CSS Grid §5.3 includes the grid itself, even with no grid items.
@@ -81,28 +93,65 @@ impl Frame {
             for axis in 0..2 {
                 let shift = f32::from(if axis == 0 { offset.x } else { offset.y });
                 start[axis] = start[axis].min(rect[axis] - shift - padding[axis]);
-                end[axis] = end[axis].max(rect[axis + 2] - shift + padding[axis + 2]);
+                reach(
+                    &mut end,
+                    axis,
+                    rect[axis + 2] - shift + padding[axis + 2],
+                    ("the grid", tree.node_id),
+                );
             }
         }
+        // Positioned children as the native children loop below sees them.
+        let mut positioned = Vec::new();
         for node in &tree.children {
             if let Node::Element(e) = node
                 && let Some(rect) = area(e, &boxes, &text_boxes)
             {
-                let margin = sides(e.style.used().reset_box_layout.margin, view[0]);
+                let used = e.style.used();
+                let margin = sides(used.reset_box_layout.margin, view[0]);
+                // The end padding follows the in-flow content only (CSS Overflow 3
+                // §2.2, Blink `inflow_bounds`): an absolutely positioned child
+                // brings its border box alone, as Taffy's scrollable overflow does.
+                let inflow = !matches!(
+                    used.reset_positioned.position,
+                    Some(Position::Absolute | Position::Fixed)
+                );
+                let pad = |side: usize| {
+                    if inflow {
+                        (padding[side] + margin[side].min(0.0)).max(0.0)
+                    } else {
+                        0.0
+                    }
+                };
                 for axis in 0..2 {
                     start[axis] = start[axis].min(
                         rect[axis]
                             - f32::from(if axis == 0 { offset.x } else { offset.y })
-                            - (padding[axis] + margin[axis].min(0.0)).max(0.0),
+                            - pad(axis),
                     );
                 }
                 // A negative end margin can consume end padding, but never
                 // remove the descendant's visible border box from overflow.
-                end[0] = end[0].max(
-                    rect[2] - f32::from(offset.x) + (padding[2] + margin[2].min(0.0)).max(0.0),
+                if !inflow && let Some(&(own, _)) = boxes.get(&e.node_id) {
+                    let (x, y) = (f32::from(offset.x), f32::from(offset.y));
+                    positioned.push([own[0] - x, own[1] - y, own[2] - x, own[3] - y]);
+                }
+                let what = if inflow {
+                    "an in-flow child box"
+                } else {
+                    "a positioned child box"
+                };
+                reach(
+                    &mut end,
+                    0,
+                    rect[2] - f32::from(offset.x) + pad(2),
+                    (what, e.node_id),
                 );
-                end[1] = end[1].max(
-                    rect[3] - f32::from(offset.y) + (padding[3] + margin[3].min(0.0)).max(0.0),
+                reach(
+                    &mut end,
+                    1,
+                    rect[3] - f32::from(offset.y) + pad(3),
+                    (what, e.node_id),
                 );
             }
         }
@@ -110,7 +159,12 @@ impl Frame {
             for axis in 0..2 {
                 let shift = f32::from(if axis == 0 { offset.x } else { offset.y });
                 start[axis] = start[axis].min(rect[axis] - shift - padding[axis]);
-                end[axis] = end[axis].max(rect[axis + 2] - shift + padding[axis + 2]);
+                reach(
+                    &mut end,
+                    axis,
+                    rect[axis + 2] - shift + padding[axis + 2],
+                    ("its own lines", tree.node_id),
+                );
             }
         }
         // The proxy is child zero. Native children also cover text-only runs
@@ -125,10 +179,29 @@ impl Frame {
                 if let Some(child) = handle.bounds_for_item(index)
                     && !classic::decoration(child, bounds, gutter)
                 {
-                    end[0] = end[0]
-                        .max(origin[0] + f32::from(child.right() - marker.left()) + padding[2]);
-                    end[1] = end[1]
-                        .max(origin[1] + f32::from(child.bottom() - marker.top()) + padding[3]);
+                    let at = [
+                        origin[0] + f32::from(child.left() - marker.left()),
+                        origin[1] + f32::from(child.top() - marker.top()),
+                        origin[0] + f32::from(child.right() - marker.left()),
+                        origin[1] + f32::from(child.bottom() - marker.top()),
+                    ];
+                    // A positioned child box was measured above, without the
+                    // end padding of the in-flow content.
+                    if positioned
+                        .iter()
+                        .any(|r: &[f32; 4]| r.iter().zip(at).all(|(a, b)| (a - b).abs() <= SNAPPED))
+                    {
+                        continue;
+                    }
+                    // Native bounds are snapped to whole pixels, layout's are not: a
+                    // native child within a pixel of the range is that snapping, not
+                    // overflow layout missed (it decides the bars from exact bounds).
+                    let edge = [at[2] + padding[2], at[3] + padding[3]];
+                    for axis in 0..2 {
+                        if edge[axis] > end[axis] + SNAPPED {
+                            reach(&mut end, axis, edge[axis], ("a native child", index as u64));
+                        }
+                    }
                 }
             }
         }
@@ -166,14 +239,21 @@ impl Frame {
         if bars_changed || (changed && !handle.resize_item(0, extent)) {
             // DevTools `why`: the reason this scrollport is laid out again.
             crate::why::note("scroll_extent.relayout", || {
-                let why = match bars_changed {
-                    true => "bars changed",
-                    false => "the offset lies past the new range",
+                let why = match (bars_changed, classic::refusal(self)) {
+                    (true, Some(refusal)) => {
+                        format!("bars changed, not decided in layout: {refusal}")
+                    }
+                    (true, None) => {
+                        "bars changed: the range disagrees with the bars layout decided".into()
+                    }
+                    (false, _) => "the offset lies past the new range".to_string(),
                 };
                 format!(
-                    "{why}: box {} extent {extent:?} offset {:?}",
+                    "{why}: box {} extent {extent:?} offset {:?} range {:?} view {view:?} bars {:?} far {far:?}",
                     tree.node_id,
-                    handle.offset()
+                    handle.offset(),
+                    self.range.get(),
+                    self.bars.get()
                 )
             });
             return true;
