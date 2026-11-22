@@ -57,27 +57,17 @@ pub(super) fn load(url: &Url, stack: &mut Vec<Url>) -> Result<Option<String>> {
     result.map(Some)
 }
 
-fn quoted_end(text: &str, start: usize) -> Result<usize> {
-    let bytes = text.as_bytes();
-    let quote = bytes[start];
-    let mut i = start + 1;
-    while i < bytes.len() {
-        if bytes[i] == b'\\' {
-            i += 2;
-        } else if bytes[i] == quote {
-            return Ok(i + 1);
-        } else {
-            i += 1;
-        }
-    }
-    Err("unterminated CSS string in local stylesheet".into())
+fn quoted_end(text: &str, start: usize) -> usize {
+    // CSS Syntax 3 §4.3.5: newline ends a bad string; EOF ends a string.
+    // Preserve the source for the CSS parser, sharing its escape/token boundaries.
+    start + 1 + kamin_html::css::skip_string(&text[start + 1..], text.as_bytes()[start] as char)
 }
 
 fn url_end(text: &str, start: usize) -> Result<usize> {
     let mut i = start;
     while i < text.len() {
         match text.as_bytes()[i] {
-            b'\'' | b'"' => i = quoted_end(text, i)?,
+            b'\'' | b'"' => i = quoted_end(text, i),
             b'\\' => i += 2,
             b')' => return Ok(i),
             _ => i += 1,
@@ -99,8 +89,11 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
         let tail = &text[i..];
         if tail.starts_with("/*") {
             i += tail.find("*/").map_or(tail.len(), |n| n + 2);
+        } else if let Some(escaped) = tail.strip_prefix('\\') {
+            // An escaped quote in an identifier cannot open a string token.
+            i += 1 + escaped.chars().next().map_or(0, char::len_utf8);
         } else if matches!(tail.as_bytes()[0], b'\'' | b'"') {
-            i = quoted_end(text, i)?;
+            i = quoted_end(text, i);
         } else if tail
             .get(..7)
             .is_some_and(|s| s.eq_ignore_ascii_case("@import"))
@@ -111,7 +104,7 @@ pub(super) fn expand(text: &str, base: &Url, stack: &mut Vec<Url>) -> Result<Str
             let rest = tail[7..].trim_start();
             let start = text.len() - rest.len();
             let (href, end) = if rest.starts_with(['\'', '"']) {
-                let end = quoted_end(text, start)?;
+                let end = quoted_end(text, start);
                 (bare(&text[start..end])?, end)
             } else if rest
                 .get(..4)
@@ -191,5 +184,21 @@ mod tests {
         let seen = unavailable();
         assert!(seen.contains(&"https://example.test/style.css".to_string()));
         assert!(seen.contains(&"file:///C:/example-missing/gone.css".to_string()));
+    }
+    #[test]
+    fn string_boundaries_share_css_escape_and_newline_recovery() {
+        for newline in ["\n", "\r\n", "\u{c}"] {
+            let text = format!("\"broken{newline}after");
+            assert_eq!(quoted_end(&text, 0), "\"broken".len());
+        }
+        for text in [
+            "\"unfinished",
+            "\"unfinished\\",
+            "\"escaped\\\r\nline\"",
+            "\"hex\\a\nline\"",
+            "\"utf8\\é\"",
+        ] {
+            assert_eq!(quoted_end(text, 0), text.len());
+        }
     }
 }
