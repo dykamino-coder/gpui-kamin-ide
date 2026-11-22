@@ -164,6 +164,18 @@ impl Frame {
         // content box, and an offset past the new range moves the content:
         // those lay the scrollport out again.
         if bars_changed || (changed && !handle.resize_item(0, extent)) {
+            // DevTools `why`: the reason this scrollport is laid out again.
+            crate::why::note("scroll_extent.relayout", || {
+                let why = match bars_changed {
+                    true => "bars changed",
+                    false => "the offset lies past the new range",
+                };
+                format!(
+                    "{why}: box {} extent {extent:?} offset {:?}",
+                    tree.node_id,
+                    handle.offset()
+                )
+            });
             return true;
         }
         if c.reset_box_layout.snap.axis != 0 && !self.snapped.get() && !snap_areas.is_empty() {
