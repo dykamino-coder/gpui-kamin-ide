@@ -86,9 +86,8 @@ impl Window {
         let mut scene = scene;
         scene.end_record_runs();
         if !self.replay_placed_carrying(&scene, scaled, Some(clip)) {
-            let scene = scene.copy_record(scaled, Some(clip));
-            let scene = self.adopt_scene(scene);
-            self.next_frame.scene.replay_record(&scene);
+            // A record with groups: their runs follow the copy (`placed_groups`).
+            self.place_record_copy(&scene, scaled, clip);
         }
         Ok(invocation)
     }

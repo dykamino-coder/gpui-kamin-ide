@@ -147,7 +147,8 @@ impl SceneLayer {
         self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
         // Boxes are kept in paint order: the later ones' commands follow.
         let shift = |index: u32| (index as i64 + op_shift) as u32;
-        for other in &mut self.boxes[at + 1..] {
+        // Runs in the layer's groups index their group's scene.
+        for other in self.boxes[at + 1..].iter_mut().filter(|other| other.group == b.group) {
             other.ops = shift(other.ops.start)..shift(other.ops.end);
         }
         let mut damage = match (b.ink, plan.ink) {

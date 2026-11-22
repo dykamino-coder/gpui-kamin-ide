@@ -141,6 +141,12 @@ impl Scene {
         label: Option<ScrollNodeId>,
         node: &impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
     ) -> PaintGroup {
+        // Unmoved and with no labels to renumber, the replay would be an
+        // exact copy: share the content instead (one copy across frames).
+        let labels = || group.scene.surfaces.iter().any(|surface| surface.group > 0);
+        if label.is_none() && (delta == 0 || !labels()) {
+            return group.clone();
+        }
         let mut scene = Scene { in_group: true, relabel: delta, ..Scene::default() };
         let all = 0..group.scene.paint_operations.len();
         let shift = match label {

@@ -129,11 +129,13 @@ impl PaintPlan {
                     {
                         continue;
                     }
-                    let scene = match presentation {
-                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
-                            .copy_record(Point::default(), Some(mask.bounds)),
-                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
+                    let Some(matrix) = presentation else {
+                        // Its groups' runs follow the copy (`placed_groups`).
+                        window.place_record_copy(&record.0.scene, Point::default(), mask.bounds);
+                        continue;
                     };
+                    let scene = present(record.0.scene.copy_record(Point::default(), None), matrix)
+                        .copy_record(Point::default(), Some(mask.bounds));
                     let scene = window.adopt_scene(scene);
                     window.next_frame.scene.replay_record(&scene);
                 }

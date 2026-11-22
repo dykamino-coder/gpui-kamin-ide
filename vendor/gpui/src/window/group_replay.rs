@@ -126,7 +126,7 @@ impl Window {
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_groups(&self) -> (Vec<(u32, Bounds<ScaledPixels>)>, Vec<(Bounds<ScaledPixels>, Vec<crate::Quad>)>) {
         let scene = &self.rendered_frame.scene;
-        let scenes = std::iter::once(scene).chain(scene.groups.iter().map(|group| &group.scene));
+        let scenes = std::iter::once(scene).chain(scene.groups.iter().map(|group| &*group.scene));
         let labels = scenes
             .flat_map(|scene| scene.surfaces.iter().filter(|surface| surface.group > 0))
             .map(|surface| (surface.group, surface.bounds.intersect(&surface.content_mask.bounds)))

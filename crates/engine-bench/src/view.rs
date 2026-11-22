@@ -19,6 +19,13 @@ pub(super) struct Phases {
     pub(super) prepaint: Duration,
     pub(super) paint: Duration,
     pub(super) renders: usize,
+    /// Renders inside the draw of the previous render: GPUI's layout retry
+    /// (`Window::update_layout_input`) discards an attempt and renders the
+    /// root again in the same draw, for example after a container query
+    /// input changed. No new frame was requested for them.
+    pub(super) layout_retries: usize,
+    /// The draw of the latest render.
+    pass: Option<gpui::PaintPassId>,
     pub(super) observer_setup: Duration,
     pub(super) requested: Option<Instant>,
     pub(super) request_to_render: Option<Duration>,
@@ -26,6 +33,12 @@ pub(super) struct Phases {
 }
 
 impl Phases {
+    /// Draws that rendered the root: a layout retry renders again inside
+    /// its draw and is the same frame, timed whole.
+    pub(super) fn frame_renders(&self) -> usize {
+        self.renders - self.layout_retries
+    }
+
     pub(super) fn requested(observer_setup: Duration) -> Self {
         Self {
             observer_setup,
@@ -95,6 +108,11 @@ impl Render for View {
         let mut phases = self.phases.borrow_mut();
         phases.build += started.elapsed();
         phases.renders += 1;
+        let pass = window.paint_pass_id();
+        if phases.pass.as_ref() == Some(&pass) {
+            phases.layout_retries += 1;
+        }
+        phases.pass = Some(pass);
         Timed {
             root,
             phases: self.phases.clone(),
