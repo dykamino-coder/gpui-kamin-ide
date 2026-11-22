@@ -10,11 +10,10 @@ impl Frames {
         mode: &str,
         index: usize,
     ) -> Result<()> {
-        let (after, inside, contents, blocks, offset) = window.read_with(cx, |view, _| {
+        let (after, contents, blocks, offset) = window.read_with(cx, |view, _| {
             let doc = &view.doc;
             (
-                doc.retained_frames(),
-                doc.builds_inside_draw(),
+                doc.frame_counters(),
                 doc.replayed_contents(),
                 doc.replayed_blocks(),
                 (doc.root_scroll_offset(), doc.root_scroll_max()),
@@ -22,10 +21,17 @@ impl Frames {
         })?;
         let misses = window.read_with(cx, |view, _| view.doc.take_frame_misses())?;
         let cold = mode == "cold";
-        let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
-        let inside = inside
-            .checked_sub(if cold { 0 } else { self.before_inside })
-            .ok_or("document inside-draw build counter regressed")?;
+        let (built, replayed, inside) = if cold {
+            window.read_with(cx, |view, _| {
+                let (built, replayed) = view.doc.retained_frames();
+                (built, replayed, view.doc.builds_inside_draw())
+            })?
+        } else {
+            after
+                .since(self.before.as_ref().ok_or("missing frame checkpoint")?)
+                .ok_or("document frame counter regressed")?
+        };
+        let counts = (built, replayed);
         // A frame built again within the same frame counts both builds.
         if self.relayout && (counts.0 == 0 || counts.1 != 0) {
             return Err(format!(
