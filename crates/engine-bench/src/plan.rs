@@ -188,6 +188,7 @@ pub(super) async fn run(
     report["plan"] = plan.raw;
     report["build"] = super::build_info::json();
     report["cpu_calibration"] = super::process::calibration();
+    report["unavailable_resources"] = super::stylesheet::unavailable().into();
     Ok(super::report::print(&report, base.json)?)
 }
 
