@@ -197,3 +197,35 @@ fn a_padded_scroller_whose_lines_fit_needs_no_second_layout(cx: &mut TestAppCont
     assert!(relayouts.is_empty(), "laid out again: {relayouts:#?}");
     assert_eq!(requests(vcx), 0);
 }
+
+/// A resizable padded scroller around a responsive grid (the layout of a
+/// common CSS demo page): whatever its measured range finds, the bars layout
+/// decided hold, so the page goes quiet after its first draw.
+#[gpui::test]
+fn bars_layout_decided_go_quiet_after_the_first_draw(cx: &mut TestAppContext) {
+    let html = "<style>*{box-sizing:border-box}body{margin:16px;line-height:1.65}\
+        .demo{border:1px solid;padding:1.5rem;max-width:calc(100vi - 2rem);overflow:auto;\
+        position:relative;resize:horizontal}ul{list-style:none;margin:0;padding:0;display:grid;\
+        gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(100%,15ch),1fr))}\
+        li{border:1px dashed;padding:1rem;display:grid;place-content:center;font-size:2rem}</style>\
+        <div class=demo><ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul></div>";
+    let (_one, _sub) = crate::why::test_reader();
+    let mut app = cx.clone();
+    let (_view, vcx) = open(&mut app, html);
+    frame(vcx);
+    let journal = crate::why::take().journal;
+    assert_eq!(requests(vcx), 0, "the first draw asked for another");
+    assert!(
+        !journal
+            .causes
+            .iter()
+            .any(|c| c.code == "scroll_extent.relayout"),
+        "a scrollport was laid out again: {journal:?}"
+    );
+    let first = quads(vcx);
+    for _ in 0..3 {
+        frame(vcx);
+        assert_eq!(requests(vcx), 0, "an idle draw asked for another");
+        assert_eq!(first, quads(vcx), "an idle draw painted something else");
+    }
+}

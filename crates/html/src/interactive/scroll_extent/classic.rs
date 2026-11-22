@@ -223,4 +223,24 @@ mod tests {
             "a hidden scroll container has no bars"
         );
     }
+    #[test]
+    fn a_bar_layout_decided_holds_against_the_measured_range() {
+        // Layout decided both bars of an `auto` scrollport; its measured range
+        // finds only the vertical one. The range checks, it does not lay the box
+        // out again: a disagreement repeated every frame never goes quiet.
+        let mut owner = anon_element("div", vec![]);
+        owner.node_id = 7;
+        let frame = Frame::default().begin(Some(&owner)).unwrap();
+        let style = scrolling(Overflow::Scroll);
+        frame.settling.decided.set([true, true]);
+        assert!(adopt(&frame, &style, [true, true]));
+        frame.range.set([0.0, 15.0]);
+        assert!(!update(&frame, &style, [751.0, 124.0]), "the range changed bars layout decided");
+        assert_eq!(frame.bars(), [true, true]);
+        // An axis layout does not decide still takes the measured range.
+        frame.settling.decided.set([true, false]);
+        frame.range.set([0.0, 0.0]);
+        assert!(update(&frame, &style, [751.0, 124.0]));
+        assert_eq!(frame.bars(), [true, false]);
+    }
 }
