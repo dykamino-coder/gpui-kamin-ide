@@ -11556,14 +11556,14 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 @@ -3936,0 +4091 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
-index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..74a34da35d8cbb4c11a65eb1396e6f068ce813a7
+index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..ca79eab6b89b977eca232a24bafd3d6da81f8d36
 --- a/vendor/gpui/src/gpui.rs
 +++ b/vendor/gpui/src/gpui.rs
 @@ -13,0 +14 @@
 +mod heap_report;
 @@ -15,0 +17 @@
 +mod plane_bsp;
-@@ -18,0 +21,220 @@
+@@ -18,0 +21,221 @@
 +/// KaminIDE patch (INC-2026-0001, диагностика): КТО делает окно грязным —
 +/// место в исходниках вызова notify/refresh/on_next_frame (`#[track_caller]`).
 +/// Без этого 60 кадров/с без кадров CEF, ввода и известных анимаций в логе
@@ -11699,7 +11699,8 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..74a34da35d8cbb4c11a65eb1396e6f06
 +                super::super::note("refresh", Location::caller());
 +                let (events, _) = take();
 +                drop(trace);
-+                let mine: Vec<_> = events.iter().filter(|e| e.kind == "draw" || e.kind == "refresh").collect();
++                // Only this test's events: tests running at once record theirs too.
++                let mine: Vec<_> = events.iter().filter(|e| e.site.file() == file!() && (e.kind == "draw" || e.kind == "refresh")).collect();
 +                assert_eq!(mine.iter().map(|e| e.kind).collect::<Vec<_>>(), ["draw", "refresh"]);
 +                assert_eq!(mine[0].site.line(), line);
 +                mark("after");
@@ -11784,22 +11785,22 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..74a34da35d8cbb4c11a65eb1396e6f06
 +pub mod prepaint_prof;
 +mod instrumentation;
 +pub use instrumentation::*;
-@@ -21,0 +244,2 @@
+@@ -21,0 +245,2 @@
 +mod paint_traversal;
 +pub use paint_traversal::*;
-@@ -61,0 +286,2 @@
+@@ -61,0 +287,2 @@
 +/// KaminIDE patch: GPU readback of drawn frames (WPT runner).
 +pub mod frame_capture;
-@@ -187,0 +414 @@
+@@ -187,0 +415 @@
 +pub use gpui_util::ResultExt;
-@@ -206,0 +434,3 @@
+@@ -206,0 +435,3 @@
 +// KaminIDE patch: растеризация SVG из строки — нужна крейту разметки (функции
 +// модуля публичны и попадают в glob выше); FontStretch и замер — для html.
 +pub use text_system::FontStretch;
-@@ -209 +439 @@
+@@ -209 +440 @@
 -pub use taffy::{AvailableSpace, LayoutId};
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, CompactMeasure, Measure, MeasuredBox, MeasuredContent, MeasuredStaticPosition, RowItemBaseline};
-@@ -214,0 +445 @@
+@@ -214,0 +446 @@
 +pub use heap_report::HeapSink;
 diff --git a/vendor/gpui/src/heap_report.rs b/vendor/gpui/src/heap_report.rs
 new file mode 100644

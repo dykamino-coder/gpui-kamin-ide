@@ -153,7 +153,8 @@ pub mod dirty_sources {
                 super::super::note("refresh", Location::caller());
                 let (events, _) = take();
                 drop(trace);
-                let mine: Vec<_> = events.iter().filter(|e| e.kind == "draw" || e.kind == "refresh").collect();
+                // Only this test's events: tests running at once record theirs too.
+                let mine: Vec<_> = events.iter().filter(|e| e.site.file() == file!() && (e.kind == "draw" || e.kind == "refresh")).collect();
                 assert_eq!(mine.iter().map(|e| e.kind).collect::<Vec<_>>(), ["draw", "refresh"]);
                 assert_eq!(mine[0].site.line(), line);
                 mark("after");
