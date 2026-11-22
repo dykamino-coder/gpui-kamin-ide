@@ -11539,14 +11539,14 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 @@ -3936,0 +4091 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
-index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..2e1c1952f1f01acabd3d3d6f89063c85d151c995
+index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..74a34da35d8cbb4c11a65eb1396e6f068ce813a7
 --- a/vendor/gpui/src/gpui.rs
 +++ b/vendor/gpui/src/gpui.rs
 @@ -13,0 +14 @@
 +mod heap_report;
 @@ -15,0 +17 @@
 +mod plane_bsp;
-@@ -18,0 +21,201 @@
+@@ -18,0 +21,220 @@
 +/// KaminIDE patch (INC-2026-0001, диагностика): КТО делает окно грязным —
 +/// место в исходниках вызова notify/refresh/on_next_frame (`#[track_caller]`).
 +/// Без этого 60 кадров/с без кадров CEF, ввода и известных анимаций в логе
@@ -11591,6 +11591,25 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..2e1c1952f1f01acabd3d3d6f89063c85
 +            pub site: &'static Location<'static>,
 +            /// What the event saw (scroll nodes: index, id, clip, pairing).
 +            pub detail: String,
++        }
++
++        /// A record of the whole process kept for the readers of this domain
++        /// (the engine's journal of causes and cache misses beside these frame
++        /// events, and the serialization of tests that read them): the
++        /// observation domain's one kind of lock, taken only while a reader
++        /// records or reads, never by work that nobody observes.
++        pub struct Shared<T>(Mutex<T>);
++
++        impl<T> Shared<T> {
++            /// A record holding `value`.
++            pub const fn new(value: T) -> Self {
++                Self(Mutex::new(value))
++            }
++
++            /// The record; a reader that panicked leaves it readable.
++            pub fn lock(&self) -> std::sync::MutexGuard<'_, T> {
++                self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
++            }
 +        }
 +
 +        /// Recording lasts while a guard lives.
@@ -11748,22 +11767,22 @@ index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..2e1c1952f1f01acabd3d3d6f89063c85
 +pub mod prepaint_prof;
 +mod instrumentation;
 +pub use instrumentation::*;
-@@ -21,0 +225,2 @@
+@@ -21,0 +244,2 @@
 +mod paint_traversal;
 +pub use paint_traversal::*;
-@@ -61,0 +267,2 @@
+@@ -61,0 +286,2 @@
 +/// KaminIDE patch: GPU readback of drawn frames (WPT runner).
 +pub mod frame_capture;
-@@ -187,0 +395 @@
+@@ -187,0 +414 @@
 +pub use gpui_util::ResultExt;
-@@ -206,0 +415,3 @@
+@@ -206,0 +434,3 @@
 +// KaminIDE patch: растеризация SVG из строки — нужна крейту разметки (функции
 +// модуля публичны и попадают в glob выше); FontStretch и замер — для html.
 +pub use text_system::FontStretch;
-@@ -209 +420 @@
+@@ -209 +439 @@
 -pub use taffy::{AvailableSpace, LayoutId};
 +pub use taffy::{AvailableSpace, FinalLayout, FlexItemLayout, FlexLayout, FlexLineLayout, LayoutEpoch, LayoutId, LayoutMeasurement, LayoutSpace, LayoutTreeId, CompactMeasure, Measure, MeasuredBox, MeasuredContent, MeasuredStaticPosition, RowItemBaseline};
-@@ -214,0 +426 @@
+@@ -214,0 +445 @@
 +pub use heap_report::HeapSink;
 diff --git a/vendor/gpui/src/heap_report.rs b/vendor/gpui/src/heap_report.rs
 new file mode 100644
