@@ -109,7 +109,16 @@ impl Document {
                 Some(id) if open(&change.node, &root) && editable(change, &read) => {
                     texts.insert(id, change);
                 }
-                _ => return why::refuse(&why::REFUSED_PLAN_TEXT),
+                _ => {
+                    crate::why::note("plan_text.refused", || match id {
+                        None => "the edited text has no source id".into(),
+                        Some(_) if !open(&change.node, &root) => {
+                            "the edited text is outside an open root".into()
+                        }
+                        Some(_) => super::text::not_editable_why(change, &read).into(),
+                    });
+                    return why::refuse(&why::REFUSED_PLAN_TEXT);
+                }
             }
         }
         // Пути к правкам ищутся в текущем дереве; без единого пути дерево
