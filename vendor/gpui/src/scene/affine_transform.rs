@@ -54,7 +54,7 @@ impl Scene {
             for fragment in &mut group.fragments {
                 fragment.iter_mut().for_each(|p| *p = map(*p, &matrix));
             }
-            group.scene = group.scene.affine_commands(&matrix, masks);
+            group.scene = std::rc::Rc::new(Scene::unshared(group.scene).affine_commands(&matrix, masks));
             group
         }).collect();
         scene
