@@ -194,7 +194,6 @@ def browser_visit(engine, res):
     return out
 
 
-SERVO_FRAME = ('Layout', 'Painting')  # time profiler categories of one frame (components/shared/profile/time.rs)
 SERVO_COLD = ('ScriptParseHTML', 'ScriptStylesheetLoad', 'Layout', 'Painting')
 SERVO_PARTIAL = ("Servo's profiler has no WebRender scene and frame building (render backend threads): the frame is "
                  'style + layout + display list + WebRender raster and composite only, not ranked as equal')
@@ -203,30 +202,20 @@ SERVO_PARTIAL = ("Servo's profiler has no WebRender scene and frame building (re
 def cases_of(engine, res):
     """{phase: probe case} of a visit. Servo has no probe: its phases are the profiler windows of its frame loops."""
     if engine == 'servo':
-        return {k: dict(v, frame={'moved': v.get('frames') or 0}) for k, v in ((res.get('servo') or {}).get('cases') or {}).items()}
+        return {k: dict(v, frame={'moved': len(v.get('frames') or [])}) for k, v in ((res.get('servo') or {}).get('cases') or {}).items()}
     return (res.get('probe') or {}).get('cases') or {}
 
 
-def servo_frame(c):
-    """Servo ms per frame of one case window: summed Layout + Painting events over the loop's frames."""
-    n = c.get('frames') or 0
-    work = sum((c.get(k) or {}).get('sumMs', 0) for k in SERVO_FRAME)
-    return work / n if n and work > 0 else None
-
-
 def servo_samples(c):
-    """Per-frame samples of a case window: the i-th Layout + the i-th Painting when each frame has one of both,
-    else each Layout + the mean Painting per frame, else the window's mean alone."""
-    n = c.get('frames') or 0
-    lay = (c.get('Layout') or {}).get('ms') or []; pnt = (c.get('Painting') or {}).get('ms') or []
-    if not n or not (lay or pnt):
-        return []
-    if len(lay) == n and len(pnt) == n:
-        return [a + b for a, b in zip(lay, pnt)]
-    if len(lay) == n:
-        return [a + sum(pnt) / n for a in lay]
-    v = servo_frame(c)
-    return [v] if v else []
+    """Per-frame samples of a Servo case: one edit each, its Layout events + the first Painting after it (the
+    driver waits for that Painting to finish; Servo paints asynchronously and would coalesce a loop of edits)."""
+    return [f['layoutMs'] + (f.get('paintMs') or 0) for f in (c.get('frames') or [])
+            if f.get('layoutMs', 0) + (f.get('paintMs') or 0) > 0]
+
+
+def servo_frame(c):
+    """Median Servo frame of a case (ms), None without frame work."""
+    return med(servo_samples(c))
 
 
 def median_ci(xs, level=0.9):

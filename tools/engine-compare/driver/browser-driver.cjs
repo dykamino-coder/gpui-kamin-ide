@@ -164,7 +164,9 @@ async function servo() {
   const selenium = require(cfg.selenium); const { spawn } = require('node:child_process'); const net = require('node:net');
   const profile = path.join(cfg.workDir, 'profile'); fs.mkdirSync(profile, { recursive: true });
   const hr = () => Number(process.hrtime.bigint());
-  const GAP_MS = 150;  // idle before and after each case: a late Painting of one case stays out of the next window
+  const GAP_MS = 30;  // idle before each edit: the previous frame's late work stays out of the next sample
+  const PAINT_WAIT_MS = 3000;  // an edit with no Painting within this is a frame without paint
+  const CASE_MS = 1500;
   let proc = null; let seq = 0;
   async function stop() {
     if (!proc) return;
@@ -223,12 +225,27 @@ async function servo() {
     const loadedNs = hr(); const navWallMs = clock.now() - navStart;
     await mark('loaded');
     if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
-    const p0 = clock.now(); const wins = {};
+    // Servo paints asynchronously and coalesces: a loop of edits gets one long Painting. So one edit at a time: the
+    // edit (one loop frame, S: one 120 px step from the top), then wait for the first Painting that starts after it
+    // and has finished; the sample is that frame's Layout events + that Painting, its wall clock edit -> Painting end.
+    const p0 = clock.now(); const frames = {};
     for (const k of op.cases ? op.cases.split(',') : []) {
-      const n = k === 'S' ? Math.max(1, op.scrollSteps || 1) : (op.frames || 10);
-      await sleep(GAP_MS); const a = hr();
-      const r = await run(LOOP(k, n)); await sleep(GAP_MS);
-      wins[k] = { a, b: hr(), frames: r.frames, wallMs: r.wallMs };
+      const n = k === 'S' ? Math.max(1, Math.min(op.frames || 10, op.scrollSteps || 1)) : (op.frames || 10);
+      const fs_ = [];
+      const c0 = clock.now();  // at least 3 frames, then until the case has taken CASE_MS
+      for (let i = 0; i < n && (i < 3 || clock.now() - c0 < CASE_MS); i++) {
+        await sleep(GAP_MS); const a = hr(); await run(LOOP(k, 1));
+        let paint = null; const until = clock.now() + PAINT_WAIT_MS;
+        while (!paint && clock.now() < until) {
+          paint = events().find(e => e.category === 'Painting' && e.startTime >= a) || null;
+          if (!paint) await sleep(5);
+        }
+        const end = paint ? paint.endTime : hr();
+        const lay = events().filter(e => e.category === 'Layout' && e.startTime >= a && e.startTime < end);
+        fs_.push({ layoutMs: lay.reduce((s, e) => s + (e.endTime - e.startTime) / 1e6, 0), layouts: lay.length,
+                   paintMs: paint ? (paint.endTime - paint.startTime) / 1e6 : null, wallMs: (end - a) / 1e6 });
+      }
+      frames[k] = fs_;
     }
     const probeWallMs = clock.now() - p0;
     const cpu = {}; const c0 = clock.now();
@@ -236,7 +253,7 @@ async function servo() {
     const cpuWallMs = clock.now() - c0;
     await sleep(GAP_MS); const evs = events();
     const profiler = { cold: sums(evs, navNs, loadedNs), cases: {} };
-    for (const [k, w] of Object.entries(wins)) profiler.cases[k] = { frames: w.frames, wallMs: w.wallMs, ...sums(evs, w.a, w.b) };
+    for (const [k, f] of Object.entries(frames)) profiler.cases[k] = { frames: f };
     return { navWallMs, probeWallMs, cpuWallMs, launchMs: op.newProcess ? proc.launchMs : 0, pageWallMs: clock.now() - w0,
              ...metrics, probe: null, servo: profiler, cpu };
   }

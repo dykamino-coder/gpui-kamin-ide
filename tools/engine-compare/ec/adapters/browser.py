@@ -51,11 +51,11 @@ BOUNDS = {'chromium': ('headless browser, page in a fresh context of a warm brow
                       'clock; memory = working-set sum of all browser processes'),
           'servo': ('headless servoshell driven through its own WebDriver server, one servoshell process per page and '
                     'class (its visits reload the page in it); frame = Servo\'s own time profiler '
-                    '(--profiler-trace-path) over a loop of frames of the phase: Layout (style, layout, display list) + '
-                    'Painting (WebRender update, raster and composite) per frame; the profiler has no WebRender scene and '
+                    '(--profiler-trace-path): Layout (style, layout, display list) + '
+                    'Painting (WebRender update, raster and composite), one edit at a time: the edit, then the first Painting after it is awaited (Servo paints asynchronously and coalesces edits); the profiler has no WebRender scene and '
                     'frame building (render backend threads), so Servo rows are marked partial and not ranked as equal; '
                     'cold = the better of navigation -> two rAFs after load and the profiler sum of parse, stylesheet, '
-                    'layout and painting; the loop\'s wall clock per frame is kept for the method check; memory = working '
+                    'layout and painting; the wall clock edit -> end of its Painting is kept for the method check; memory = working '
                     'set of the servoshell process; headless servoshell rasters on the CPU (ANGLE on D3D11 WARP, no GPU '
                     'driver loaded), so gpu2 is measured once under soft2')}
 SERVO_FRAMES = 10  # frames per phase loop of a Servo visit
@@ -261,6 +261,11 @@ class Browser:
         rec.setdefault('visit_walls_ms', []).append({k: round(res[k], 1) for k in ('visitWallMs', 'pageWallMs', 'navWallMs', 'probeWallMs', 'launchMs', 'traceWallMs', 'cpuWallMs')
                                                      if isinstance(res.get(k), (int, float))})
         cases = (res.get('probe') or {}).get('cases') or {}
+        if res.get('servo'):  # Servo: per-category profiler sums of every window, for the method check
+            rec.setdefault('servo_profile', []).append(dict(
+                {k: [[round(f['layoutMs'], 2), f['layouts'], f['paintMs'] and round(f['paintMs'], 2), round(f['wallMs'], 2)]
+                     for f in c.get('frames') or []] for k, c in (res['servo'].get('cases') or {}).items()},
+                cold={n: [round(x['sumMs'], 2), x['count']] for n, x in (res['servo'].get('cold') or {}).items()}))
         missed = {k: (c.get('afterPaint') or {}).get('missed') for k, c in cases.items() if c.get('afterPaint')}
         if missed:  # Firefox: frames whose MozAfterPaint did not come within the probe's guard
             rec.setdefault('paint_missed', []).append(missed)
@@ -279,5 +284,8 @@ class Browser:
                 r = REC.row(rec, ph); r['repeats'].extend(fr[ph]['samples']); r['clock'] = fr[ph]['clock']
                 r.setdefault('visit_medians', []).append(fr[ph]['value'])
             c = ((res.get('servo') or {}).get('cases') or {}).get(ph)
-            if c and c.get('frames') and c.get('wallMs') is not None:  # Servo: the loop's wall clock per frame (method check)
-                REC.row(rec, ph).setdefault('alt_wall_ms', []).append(c['wallMs'] / c['frames'])
+            if c and c.get('frames'):  # Servo: wall clock edit -> end of its Painting (method check)
+                REC.row(rec, ph).setdefault('alt_wall_ms', []).extend(f['wallMs'] for f in c['frames'])
+                np = sum(1 for f in c['frames'] if f.get('paintMs') is None)
+                if np:
+                    REC.row(rec, ph)['note'] = f'{np} edits without a Painting within 3 s (frame = layout only)'

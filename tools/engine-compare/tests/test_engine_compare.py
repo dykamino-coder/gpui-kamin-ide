@@ -128,17 +128,17 @@ class Metrics(unittest.TestCase):
     def test_servo_frame_is_layout_plus_painting_from_its_profiler(self):
         res = {'probe': None, 'twoRafMs': 50, 'servo': {
             'cold': {'ScriptParseHTML': {'sumMs': 4}, 'Layout': {'sumMs': 10}, 'Painting': {'sumMs': 6}},
-            'cases': {'R': {'frames': 2, 'Layout': {'sumMs': 6, 'ms': [2, 4]}, 'Painting': {'sumMs': 2, 'ms': [1, 1]}},
-                      'C': {'frames': 2, 'Layout': {'sumMs': 3, 'ms': [3]}, 'Painting': {'sumMs': 2, 'ms': [1, 1]}},
-                      'D': {'frames': 2}, 'S': {'frames': 0}}}}
+            'cases': {'R': {'frames': [{'layoutMs': 2, 'paintMs': 1}, {'layoutMs': 4, 'paintMs': 1}, {'layoutMs': 3, 'paintMs': 2}]},
+                      'C': {'frames': [{'layoutMs': 3, 'paintMs': None}]},
+                      'D': {'frames': [{'layoutMs': 0, 'paintMs': None}]}, 'S': {'frames': []}}}}
         sv = M.browser_visit('servo', res)
-        self.assertEqual(sv['R']['value'], 4)      # (6 + 2) / 2 frames
+        self.assertEqual(sv['R']['value'], 5)      # median of layout + its painting per edit
         self.assertEqual(sv['cold']['value'], 20)  # profiler sum below the 50 ms load clock
-        self.assertIsNone(sv['D']['value'])        # no frame work in the window
+        self.assertIsNone(sv['D']['value'])        # no frame work
         self.assertIsNone(sv['S']['value'])        # no step
         s = M.browser_samples('servo', res)
-        self.assertEqual(s['R']['samples'], [3, 5])    # i-th Layout + i-th Painting
-        self.assertEqual(s['C']['samples'], [2.5])     # frames without one Layout each: the window mean
+        self.assertEqual(s['R']['samples'], [3, 5, 5])
+        self.assertEqual(s['C']['samples'], [3])       # an edit without a Painting: layout only
         self.assertEqual(M.scroll_empty_reason(res), M.NO_SCROLL)
 
     def test_browser_visit_definitions(self):
