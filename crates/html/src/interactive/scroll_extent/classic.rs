@@ -133,10 +133,19 @@ pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {
     });
     let current = frame.bars.get();
     let decided = frame.settling.decided.get();
-    let bars = std::array::from_fn(|axis| if decided[axis] { current[axis] } else { measured[axis] });
+    let bars = std::array::from_fn(|axis| {
+        if decided[axis] {
+            current[axis]
+        } else {
+            measured[axis]
+        }
+    });
     if bars != measured {
         crate::why::note("scroll_extent.bars_disagree", || {
-            format!("layout decided bars {bars:?}, the measured range {measured:?}: range {:?} view {view:?}", frame.range.get())
+            format!(
+                "layout decided bars {bars:?}, the measured range {measured:?}: range {:?} view {view:?}",
+                frame.range.get()
+            )
         });
     }
     frame.settling.settled.set(true);
@@ -235,7 +244,10 @@ mod tests {
         frame.settling.decided.set([true, true]);
         assert!(adopt(&frame, &style, [true, true]));
         frame.range.set([0.0, 15.0]);
-        assert!(!update(&frame, &style, [751.0, 124.0]), "the range changed bars layout decided");
+        assert!(
+            !update(&frame, &style, [751.0, 124.0]),
+            "the range changed bars layout decided"
+        );
         assert_eq!(frame.bars(), [true, true]);
         // An axis layout does not decide still takes the measured range.
         frame.settling.decided.set([true, false]);
