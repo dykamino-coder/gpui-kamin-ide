@@ -14,3 +14,12 @@ pub(super) fn not_own(reason: Refusal, owner: u32, tag: &str, recorded: Option<L
         )
     });
 }
+
+/// Count a refusal of a box whose own paint the layer does not hold.
+#[track_caller]
+pub(super) fn refuse_not_own(reason: Refusal) {
+    crate::paint_path::refuse_with(&crate::paint_path::REFUSED_NOT_OWN, || {
+        reason.label().to_string()
+    });
+    crate::paint_path::not_own::add(reason.label());
+}

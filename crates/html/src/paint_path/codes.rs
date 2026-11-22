@@ -44,3 +44,14 @@ mod tests {
         }
     }
 }
+
+/// `add` of one refusal whose journal entry also says why (`detail`).
+#[track_caller]
+pub(crate) fn refuse_with(counter: &AtomicU64, detail: impl FnOnce() -> String) {
+    counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if crate::why::enabled()
+        && let Some(code) = refusal(counter)
+    {
+        crate::why::note(code, detail);
+    }
+}
