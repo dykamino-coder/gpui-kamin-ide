@@ -1,19 +1,34 @@
 //! KaminIDE patch: tests of the bars layout decides (`kamin_scrollbars`).
-use crate::prelude::*;
 use crate::geometry::Point;
+use crate::prelude::*;
 use crate::style::{Overflow, RootGutter, ScrollbarLayout};
 
 const BAR: f32 = 15.0;
 
 fn scroller(tree: &mut TaffyTree, guess: bool, viewport: bool, children: &[NodeId]) -> NodeId {
-    let mode = if guess { Overflow::Scroll } else { Overflow::Hidden };
+    let mode = if guess {
+        Overflow::Scroll
+    } else {
+        Overflow::Hidden
+    };
     tree.new_with_children(
         Style {
             display: Display::Block,
-            size: Size { width: length(200.0), height: length(100.0) },
-            overflow: Point { x: Overflow::Hidden, y: mode },
+            size: Size {
+                width: length(200.0),
+                height: length(100.0),
+            },
+            overflow: Point {
+                x: Overflow::Hidden,
+                y: mode,
+            },
             scrollbar_width: BAR,
-            kamin_scrollbars: ScrollbarLayout::new(Point { x: false, y: true }, viewport, false, None),
+            kamin_scrollbars: ScrollbarLayout::new(
+                Point { x: false, y: true },
+                viewport,
+                false,
+                None,
+            ),
             ..Default::default()
         },
         children,
@@ -22,8 +37,15 @@ fn scroller(tree: &mut TaffyTree, guess: bool, viewport: bool, children: &[NodeI
 }
 
 fn block(tree: &mut TaffyTree, height: f32) -> NodeId {
-    tree.new_leaf(Style { display: Display::Block, size: Size { width: auto(), height: length(height) }, ..Default::default() })
-        .unwrap()
+    tree.new_leaf(Style {
+        display: Display::Block,
+        size: Size {
+            width: auto(),
+            height: length(height),
+        },
+        ..Default::default()
+    })
+    .unwrap()
 }
 
 #[test]
@@ -55,7 +77,10 @@ fn a_proxy_does_not_keep_the_bar_of_a_range_measured_before() {
     let proxy = tree
         .new_leaf(Style {
             position: Position::Absolute,
-            size: Size { width: length(200.0), height: length(500.0) },
+            size: Size {
+                width: length(200.0),
+                height: length(500.0),
+            },
             kamin_scrollbars: ScrollbarLayout::new(Point { x: false, y: false }, false, true, None),
             ..Default::default()
         })
@@ -73,14 +98,27 @@ fn boxes_built_for_the_guessed_root_gutter_follow_the_gutter_the_viewport_decide
     let fixed = tree
         .new_leaf(Style {
             position: Position::Absolute,
-            inset: Rect { left: auto(), right: length(BAR), top: length(0.0), bottom: auto() },
-            size: Size { width: length(20.0), height: length(20.0) },
+            inset: Rect {
+                left: auto(),
+                right: length(BAR),
+                top: length(0.0),
+                bottom: auto(),
+            },
+            size: Size {
+                width: length(20.0),
+                height: length(20.0),
+            },
             kamin_scrollbars: ScrollbarLayout::new(
                 Point { x: false, y: false },
                 false,
                 false,
                 Some(RootGutter {
-                    assumed: RootGutter::sides(Rect { left: 0.0, right: BAR, top: 0.0, bottom: 0.0 }),
+                    assumed: RootGutter::sides(Rect {
+                        left: 0.0,
+                        right: BAR,
+                        top: 0.0,
+                        bottom: 0.0,
+                    }),
                     grow: false,
                 }),
             ),
@@ -91,7 +129,13 @@ fn boxes_built_for_the_guessed_root_gutter_follow_the_gutter_the_viewport_decide
     // The box hangs on a box around the viewport, whose area knows no gutter.
     let root = tree
         .new_with_children(
-            Style { size: Size { width: length(200.0), height: length(100.0) }, ..Default::default() },
+            Style {
+                size: Size {
+                    width: length(200.0),
+                    height: length(100.0),
+                },
+                ..Default::default()
+            },
             &[viewport, fixed],
         )
         .unwrap();
@@ -109,10 +153,21 @@ fn lines_longer_than_their_box_bring_the_horizontal_bar() {
         .new_with_children(
             Style {
                 display: Display::Block,
-                size: Size { width: length(200.0), height: length(100.0) },
-                overflow: Point { x: Overflow::Hidden, y: Overflow::Hidden },
+                size: Size {
+                    width: length(200.0),
+                    height: length(100.0),
+                },
+                overflow: Point {
+                    x: Overflow::Hidden,
+                    y: Overflow::Hidden,
+                },
                 scrollbar_width: BAR,
-                kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
+                kamin_scrollbars: ScrollbarLayout::new(
+                    Point { x: true, y: true },
+                    false,
+                    false,
+                    None,
+                ),
                 ..Default::default()
             },
             &[text],
@@ -129,11 +184,30 @@ fn lines_longer_than_their_box_bring_the_horizontal_bar() {
                     AvailableSpace::Definite(width) => width.min(500.0),
                     _ => 500.0,
                 };
-                let line = Size { width: 500.0, height: 20.0 };
-                crate::MeasureOutput { overflow: Some(line), ..Size { width, height: 20.0 }.into() }
+                let line = Size {
+                    width: 500.0,
+                    height: 20.0,
+                };
+                crate::MeasureOutput {
+                    overflow: Some(line),
+                    ..Size {
+                        width,
+                        height: 20.0,
+                    }
+                    .into()
+                }
             },
         )
     })
     .unwrap();
-    assert_eq!(tree.style(root).unwrap().overflow, Point { x: Overflow::Scroll, y: Overflow::Hidden });
+    assert_eq!(
+        tree.style(root).unwrap().overflow,
+        Point {
+            x: Overflow::Scroll,
+            y: Overflow::Hidden
+        }
+    );
 }
+
+#[path = "kamin_scrollbars_dependency_tests.rs"]
+mod dependency_tests;

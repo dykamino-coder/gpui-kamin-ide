@@ -35,7 +35,7 @@ fn explicit_area_can_reuse_borrowed_candidates_without_consuming_the_wrapper() {
     let original = candidates.clone();
     for _ in 0..2 {
         let mut view = TaffyView {
-            taffy: &mut tree,
+            scrollbar_touched: Default::default(),            taffy: &mut tree,
             #[cfg(feature = "grid")]
             grid_memos: Default::default(),
             measure_function: |input, _, _, style| {
@@ -56,6 +56,7 @@ fn explicit_area_can_reuse_borrowed_candidates_without_consuming_the_wrapper() {
             Direction::Ltr,
             ContainingBlockClaims::ALL,
         );
+        drop(view);
         assert_eq!(output.hoisted, vec![child]);
         assert!(output.unclaimed.is_empty());
         assert_eq!(

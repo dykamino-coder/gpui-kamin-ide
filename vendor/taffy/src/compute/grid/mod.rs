@@ -1027,7 +1027,7 @@ pub fn compute_grid_layout<Tree: LayoutGridContainer>(
     // 9. Size, Align, and Position Grid Items
 
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
-    let mut item_overflow_rect = Rect::ZERO;
+    let mut item_overflow_rect = lanes_geometry::grid_inflow_bounds(&columns, &rows, flow, border);
 
     // Out-of-flow candidates in document order: direct out-of-flow children of the grid
     // interleaved with candidates bubbled from in-flow children's subtrees. These are laid out
