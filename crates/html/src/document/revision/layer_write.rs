@@ -118,9 +118,8 @@ pub(super) fn write_paint_values(
                 why::not_own(reason, owner, &b.tag, recorded);
                 return None;
             }
-            (_, now) => {
+            _ => {
                 refuse_not_own(Refusal::Kind);
-                why::not_own_kind(owner, &b.tag, recorded, now);
                 return None;
             }
         };

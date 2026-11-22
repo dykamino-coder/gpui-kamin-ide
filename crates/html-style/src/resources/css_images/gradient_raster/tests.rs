@@ -78,9 +78,7 @@ fn legacy_edge_and_device_center_sampling_have_separate_cache_entries() {
 
 /// The DevTools `why` journal names a tile lookup the cache cannot serve:
 /// a source with document lengths (`uncacheable`), a key that differs from
-/// a seen one (`new_key`; its field is `gradient_why`'s test). `no_key`
-/// guards a cacheable source the key cannot describe: every source that
-/// `cacheable` admits has a key today, so no lookup reaches it.
+/// a seen one (`new_key`; its field is `gradient_why`'s test).
 #[test]
 fn tile_misses_name_their_reason() {
     let (_one, _sub) = crate::journal::test_reader();

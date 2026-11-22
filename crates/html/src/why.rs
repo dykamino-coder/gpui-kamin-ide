@@ -38,7 +38,6 @@ pub const CODES: &[&str] = &[
     "evicted",
     "not_admitted",
     "uncacheable",
-    "no_key",
     // Causes beyond `frame_miss.*` and `paint_path.refused_*` (`codes` below).
     "frame_unpublished",
     "layout_retry.container_size",
@@ -51,7 +50,6 @@ pub const CODES: &[&str] = &[
     "no_layer.unrecorded",
     "no_layer.frame_unrecorded",
     "not_own",
-    "not_own.kind",
     "plan_text.refused",
 ];
 

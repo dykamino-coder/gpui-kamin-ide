@@ -50,9 +50,6 @@ fn cached(
         css
     };
     let Some(image) = super::raster_keys::ImageKey::new(src, size, vcx) else {
-        crate::journal::cache_miss(CACHE, "no_key", || {
-            format!("{w}x{h} source has no image key")
-        });
         return uncached(src, w, h, css, centers, vcx);
     };
     let size = [size.0, size.1].map(FloatKey::from);

@@ -3,11 +3,6 @@
 //! its unpublished record, the paint path's refusals, a box the layer does
 //! not own, a layer that was not made and a text edit off the plan. Every
 //! code recorded belongs to the protocol (`why::is_code`).
-//!
-//! `not_own.kind` has no case here: every style input of a box's painter
-//! kind but `:hover` and decorations is a layout value, so a paint-only edit
-//! keeps the kind it was recorded with (`revision::repaint` refuses the
-//! rest first).
 
 use super::reuse_tests::{settled, update};
 use super::tests::frame;
