@@ -1,17 +1,9 @@
 //! Opt-in natural raster painting preserves source phase on the CSS edge grid.
 
 use super::*;
-use crate::scene::image_resources::ImageLease;
-use std::rc::Rc;
 
 pub(super) type Cache =
-    std::collections::HashMap<(usize, usize, u32, u32, u64, u64, u64), CachedImage>;
-
-#[derive(Clone)]
-pub(super) struct CachedImage {
-    image: Arc<RenderImage>,
-    lease: Rc<ImageLease>,
-}
+    std::collections::HashMap<(usize, usize, u32, u32, u64, u64, u64), Arc<RenderImage>>;
 
 impl Window {
     /// Paint an unresized CSS raster with device-snapped destination edges and
@@ -48,7 +40,6 @@ impl Window {
         };
         let data = resample(
             &mut self.natural_images,
-            &self.sprite_atlas,
             &image,
             frame,
             w,
@@ -56,11 +47,11 @@ impl Window {
             [phase(bounds.left()), phase(bounds.top())],
             f64::from(sf),
         );
-        let (image, frame, lease) = match data {
-            Some(cached) => (cached.image, 0, Some(cached.lease)),
-            None => (image, frame, None),
+        let (image, frame) = match data {
+            Some(image) => (image, 0),
+            None => (image, frame),
         };
-        let tile = self.paint_image_with_sampling_tile(
+        self.paint_image_with_sampling_tile(
             bounds,
             corners,
             image,
@@ -68,9 +59,6 @@ impl Window {
             grayscale,
             ImageSampling::NearestSnapped,
         )?;
-        if let (Some(tile), Some(lease)) = (tile, lease) {
-            self.next_frame.scene.keep_image(tile, lease);
-        }
         Ok(())
     }
 }
@@ -78,14 +66,13 @@ impl Window {
 #[allow(clippy::too_many_arguments)]
 fn resample(
     cache: &mut Cache,
-    atlas: &Arc<dyn PlatformAtlas>,
     image: &Arc<RenderImage>,
     frame: usize,
     w: u32,
     h: u32,
     phase: [f64; 2],
     scale: f64,
-) -> Option<CachedImage> {
+) -> Option<Arc<RenderImage>> {
     let source = image.size(frame);
     let (iw, ih) = (
         u32::try_from(source.width.0).ok()?,
@@ -125,17 +112,6 @@ fn resample(
         }
     }
     let result = crate::bgra_bytes_to_image(w, h, out)?;
-    let result = CachedImage {
-        lease: ImageLease::new(
-            atlas,
-            RenderImageParams {
-                image_id: result.id,
-                frame_index: 0,
-            }
-            .into(),
-        ),
-        image: result,
-    };
     if cache.len() >= 32 {
         cache.clear();
     }
@@ -156,89 +132,30 @@ fn sample(pixel: u32, source: u32, phase: f64, scale: f64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AtlasKey;
 
     #[test]
-    fn natural_cache_eviction_releases_uploads_without_scene_users() {
-        let atlas: Arc<dyn PlatformAtlas> = Arc::new(crate::HeadlessAtlas::default());
+    fn natural_cache_eviction_releases_cpu_images() {
         let image = crate::bgra_bytes_to_image(2, 2, vec![255; 16]).unwrap();
         let mut cache = Cache::default();
-        let mut keys = Vec::new();
+        let mut expired = Vec::new();
         for width in 3..=35 {
-            let entry = resample(&mut cache, &atlas, &image, 0, width, 3, [0.; 2], 1.25).unwrap();
-            let key: AtlasKey = RenderImageParams {
-                image_id: entry.image.id,
-                frame_index: 0,
-            }
-            .into();
-            atlas
-                .get_or_insert_with(key.clone(), &mut || {
-                    Ok(Some((
-                        entry.image.size(0),
-                        Cow::Borrowed(entry.image.as_bytes(0).unwrap()),
-                    )))
-                })
-                .unwrap();
-            keys.push(key);
+            let entry = resample(&mut cache, &image, 0, width, 3, [0.; 2], 1.25).unwrap();
+            expired.push(Arc::downgrade(&entry));
         }
         assert_eq!(cache.len(), 1);
-        assert!(keys[..32].iter().all(|key| !atlas.contains(key)));
-        assert!(atlas.contains(&keys[32]));
-        drop(cache);
-        assert!(!atlas.contains(&keys[32]));
-    }
-
-    #[test]
-    fn scene_leases_bound_atlas_churn_above_cache_capacity() {
-        let atlas: Arc<dyn PlatformAtlas> = Arc::new(crate::HeadlessAtlas::default());
-        let image = crate::bgra_bytes_to_image(2, 2, vec![255; 16]).unwrap();
-        let mut cache = Cache::default();
-        let mut previous = crate::Scene::default();
-        let mut expired = Vec::new();
-        for _ in 0..12 {
-            let mut scene = crate::Scene::default();
-            let mut keys = Vec::new();
-            for width in 3..=42 {
-                let entry =
-                    resample(&mut cache, &atlas, &image, 0, width, 3, [0.; 2], 1.25).unwrap();
-                let key: AtlasKey = RenderImageParams {
-                    image_id: entry.image.id,
-                    frame_index: 0,
-                }
-                .into();
-                let tile = atlas
-                    .get_or_insert_with(key.clone(), &mut || {
-                        Ok(Some((
-                            entry.image.size(0),
-                            Cow::Borrowed(entry.image.as_bytes(0).unwrap()),
-                        )))
-                    })
-                    .unwrap()
-                    .unwrap();
-                scene.keep_image(tile, entry.lease);
-                keys.push(key);
-            }
-            previous.clear();
-            assert!(expired.iter().all(|key| !atlas.contains(key)));
-            assert!(keys.iter().all(|key| atlas.contains(key)));
-            previous = scene;
-            expired = keys;
-        }
-        previous.clear();
+        assert!(expired[..32].iter().all(|image| image.upgrade().is_none()));
+        assert!(expired[32].upgrade().is_some());
         cache.clear();
-        assert!(expired.iter().all(|key| !atlas.contains(key)));
+        assert!(expired[32].upgrade().is_none());
     }
 
     #[test]
-    fn separate_windows_have_independent_upload_owners() {
-        let a: Arc<dyn PlatformAtlas> = Arc::new(crate::HeadlessAtlas::default());
-        let b: Arc<dyn PlatformAtlas> = Arc::new(crate::HeadlessAtlas::default());
+    fn separate_windows_have_independent_resampled_images() {
         let image = crate::bgra_bytes_to_image(2, 2, vec![255; 16]).unwrap();
         let (mut ac, mut bc) = (Cache::default(), Cache::default());
-        let aa = resample(&mut ac, &a, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
-        let bb = resample(&mut bc, &b, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
-        assert_ne!(aa.image.id, bb.image.id);
-        assert_eq!(aa.image.as_bytes(0), bb.image.as_bytes(0));
-        assert!(!Rc::ptr_eq(&aa.lease, &bb.lease));
+        let aa = resample(&mut ac, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
+        let bb = resample(&mut bc, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
+        assert_ne!(aa.id, bb.id);
+        assert_eq!(aa.as_bytes(0), bb.as_bytes(0));
     }
 }
