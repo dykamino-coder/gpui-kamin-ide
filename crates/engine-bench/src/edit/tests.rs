@@ -37,7 +37,12 @@ fn attribute_and_class_edits_add_one_attribute() {
     );
     let edited = Edit::Class.markup(&page).unwrap();
     assert!(edited.starts_with("<html class=\"alt\">"), "{edited}");
-    assert!(Edit::Class.markup("<html class=x>").is_err());
+    assert!(
+        Edit::Class
+            .markup("<html class=x>")
+            .unwrap()
+            .starts_with("<html class=\"x alt\">")
+    );
 }
 
 #[test]
@@ -80,12 +85,63 @@ fn class_goes_on_the_implicit_root_after_the_doctype() {
     let edited = Edit::Class.markup(page).unwrap();
     assert_eq!(
         edited,
-        "<!doctype html><html class=\"alt\"><style>p{}</style><div>x</div>"
+        "<!DOCTYPE html><html class=\"alt\"><head><style>p{}</style></head><body><div>x</div></body></html>"
     );
     assert_eq!(
         Edit::Class.markup("<div>x</div>").unwrap(),
-        "<html class=\"alt\"><div>x</div>"
+        "<html class=\"alt\"><head></head><body><div>x</div></body></html>"
     );
+}
+
+#[test]
+fn class_edit_toggles_the_root_token_and_preserves_other_classes() {
+    for (classes, expected) in [
+        ("client-nojs theme-light", "client-nojs theme-light alt"),
+        ("alt theme-light alt", "theme-light"),
+        ("\talpha\nalpha\r\x0Cbeta ", "alpha beta alt"),
+        ("altitude ALT", "altitude ALT alt"),
+        ("alt\u{a0}theme", "alt&nbsp;theme alt"),
+        ("alt\u{b}theme", "alt\u{b}theme alt"),
+        ("alt", ""),
+    ] {
+        let page = format!("<HTML CLASS='{classes}'><body><p class=alt>x</p>");
+        let edited = Edit::Class.markup(&page).unwrap();
+        assert!(
+            edited.starts_with(&format!("<html class=\"{expected}\">")),
+            "{edited}"
+        );
+        assert!(edited.contains("<p class=\"alt\">x</p>"), "{edited}");
+    }
+}
+
+#[test]
+fn class_edit_uses_the_parsed_root_despite_source_lookalikes() {
+    for page in [
+        "<!-- <html class='fake'> --><!doctype html><html data-class='a>b' class='x&#32;y'><p>x",
+        "<script>const text = '<html class=fake>';</script><p>x",
+        "<!doctype html><!-- <html> --><p>x",
+        "<html data-class='theme' title='a>b'><p>x",
+    ] {
+        let edited = Edit::Class.markup(page).unwrap();
+        use html5ever::tendril::TendrilSink;
+        let canonical = |html: &str| {
+            let dom =
+                html5ever::parse_document(markup5ever_rcdom::RcDom::default(), Default::default())
+                    .one(html);
+            let mut bytes = Vec::new();
+            html5ever::serialize(
+                &mut bytes,
+                &markup5ever_rcdom::SerializableHandle::from(dom.document),
+                Default::default(),
+            )
+            .unwrap();
+            bytes
+        };
+        let restored = Edit::Class.markup(&edited).unwrap();
+        // A newly created empty class attribute is retained by classList.toggle.
+        let restored = restored.replace(" class=\"\"", "");
+        assert_eq!(canonical(&restored), canonical(page), "{edited}");
+    }
 }
 
 #[test]

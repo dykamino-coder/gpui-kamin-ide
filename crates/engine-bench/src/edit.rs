@@ -1,5 +1,7 @@
 //! Deterministic markup edits for the benchmark edit mode.
-//! Attribute edits use parsed DOM identity; text and leaf edits use source positions.
+//! Attribute and class edits use DOM identity; text and leaf edits use source positions.
+
+mod class;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -34,7 +36,7 @@ impl Edit {
         let edited = match self {
             Self::Text => text(html),
             Self::Attr => attr(html),
-            Self::Class => class(html),
+            Self::Class => class::toggle(html),
             Self::Insert => leaf(html).map(|leaf| {
                 let mut out = html.to_owned();
                 out.insert_str(leaf.end, &html[leaf.start..leaf.end]);
@@ -181,34 +183,6 @@ fn leaf(html: &str) -> Option<std::ops::Range<usize>> {
         }
     }
     None
-}
-
-/// Класс на корневом элементе. Без явного `<html>` корень неявный: тег
-/// `<html class="alt">` ставится после doctype (до него он сменил бы режим
-/// документа), и разбор остального не меняется.
-fn class(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let mut out = html.to_owned();
-    match lower.find("<html") {
-        Some(at) => {
-            let open = at + "<html".len();
-            let tag_end = open + lower[open..].find('>')?;
-            if lower[open..tag_end].contains("class") {
-                return None;
-            }
-            out.insert_str(open, " class=\"alt\"");
-        }
-        None => {
-            let lead = lower.len() - lower.trim_start().len();
-            let at = if lower[lead..].starts_with("<!doctype") {
-                lead + lower[lead..].find('>')? + 1
-            } else {
-                lead
-            };
-            out.insert_str(at, "<html class=\"alt\">");
-        }
-    }
-    Some(out)
 }
 
 #[cfg(test)]
