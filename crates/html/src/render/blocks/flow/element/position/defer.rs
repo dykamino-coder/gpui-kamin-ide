@@ -145,7 +145,7 @@ pub(super) fn defer(
             .finish();
         let child = anchored(child, anchor.as_ref());
         let z_index = source.style.used().reset_positioned.z_index;
-        let child = if !fixed && z_index.is_some_and(|z| z > 0) {
+        let child = if z_index.is_some_and(|z| z > 0) {
             crate::paint::stacking::layered(
                 child,
                 &source.style.used(),

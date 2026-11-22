@@ -127,12 +127,14 @@ pub(crate) fn place_element(
             // in-place path gets from `layered` below
             // (`shape-image-009`: `#test` z-index 2 under a z-index 1
             // failure box, both hoisted).
-            let built = if !fixed
-                && e.style
-                    .used()
-                    .reset_positioned
-                    .z_index
-                    .is_some_and(|z| z > 0)
+            // Hoisted fixed boxes keep their viewport anchor in LatePlace,
+            // but still join positive z-order with absolute siblings.
+            let built = if e
+                .style
+                .used()
+                .reset_positioned
+                .z_index
+                .is_some_and(|z| z > 0)
             {
                 layered(built, &e.style.used(), inherited, layer_ok, under_tf)
             } else {
