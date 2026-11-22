@@ -45,6 +45,8 @@ pub struct Frame {
     insets: Rc<Cell<[f32; 4]>>,
     native_reserved: Rc<Cell<[f32; 2]>>,
     decoration_clip: Rc<Cell<Option<gpui::ContentMask<Pixels>>>>,
+    /// The input whose change (new bars) lays the roots out again in the same draw.
+    layout_input: gpui::LayoutInputId,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -65,6 +67,7 @@ impl Default for Frame {
             insets: Rc::default(),
             native_reserved: Rc::default(),
             decoration_clip: Rc::default(),
+            layout_input: gpui::LayoutInputId::default(),
         }
     }
 }
@@ -96,6 +99,9 @@ impl Frame {
         });
     }
 
+    pub(crate) fn layout_input(&self) -> gpui::LayoutInputId {
+        self.layout_input
+    }
     pub(super) fn bars(&self) -> [bool; 2] {
         self.bars.get()
     }

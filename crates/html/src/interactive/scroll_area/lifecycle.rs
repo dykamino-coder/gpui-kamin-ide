@@ -129,6 +129,16 @@ impl Element for ScrollArea {
                 self.values.vcx(),
             )
         {
+            // New bars change the content box this layout placed: lay the
+            // roots out again in this draw with them, as Blink lays a box
+            // out again when `UpdateAfterLayout` finds its scrollbars changed.
+            // A persistent frame publishes once per draw, so bars that change
+            // again in the second layout (content that only fits without
+            // them) wait for the next frame, and so does a frame no state
+            // keeps (it would start each layout without its bars).
+            if id.is_some() && window.update_layout_input(child.2.layout_input(), || true) {
+                return (paint_bounds, hitbox, Vec::new());
+            }
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
             // this frame, once the native extent proxy has its measured size.
             self.values.vcx().doc.defer_frame();
