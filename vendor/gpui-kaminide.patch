@@ -1,64 +1,73 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
 # 1. Scroll replay: rebase transformed primitive bounds together with the matrix so gradient-local coordinates match a fresh paint without large cancelling translations.
-# 2. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
-# 3. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
-# 4. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
-# 5. Raster image lifetime: each window tracks uploads with weak CPU-image owners and shared scene leases, including replay, clipping, transforms and retained scene copies. CPU cache eviction and the final scene release remove the atlas tile; natural resampling uses the same upload owner.
-# 6. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
-# 7. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
-# 8. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 9. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
-# 10. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
-# 11. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
-# 12. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
-# 13. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
-# 14. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
-# 15. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
-# 16. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
-# 17. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 18. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
-# 19. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
-# 20. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
-# 21. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 22. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
-# 23. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
-# 24. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
-# 25. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
-# 26. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
-# 27. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 28. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
-# 29. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
-# 30. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 31. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
-# 32. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 33. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
-# 34. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
-# 35. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
-# 36. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 37. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 38. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 39. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 40. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 41. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 42. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 43. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 44. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 45. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 46. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 47. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 48. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 49. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 50. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 51. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 52. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 53. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 54. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
-# 55. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
+# 2. Fixed-background replay: stationary viewport content uses an independently scrolling clip; canvas clips stay anchored. Position-dependent complex clips rebuild instead of translating.
+# 3. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
+# 4. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
+# 5. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
+# 6. Raster image lifetime: each window tracks uploads with weak CPU-image owners and shared scene leases, including replay, clipping, transforms and retained scene copies. CPU cache eviction and the final scene release remove the atlas tile; natural resampling uses the same upload owner.
+# 7. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
+# 8. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
+# 9. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 10. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
+# 11. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
+# 12. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
+# 13. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
+# 14. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
+# 15. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
+# 16. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
+# 17. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
+# 18. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
+# 19. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
+# 20. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
+# 21. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
+# 22. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
+# 23. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
+# 24. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
+# 25. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
+# 26. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
+# 27. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
+# 28. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
+# 29. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
+# 30. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
+# 31. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
+# 32. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 33. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
+# 34. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
+# 35. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
+# 36. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
+# 37. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
+# 38. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 39. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 40. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 41. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 42. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 43. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 44. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 45. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 46. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 47. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 48. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 49. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 50. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 51. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 52. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 53. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 54. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 55. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 56. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
+diff --git a/vendor/gpui/.cargo-ok b/vendor/gpui/.cargo-ok
+deleted file mode 100644
+index 5f8b795830acbab5961c1a28c76a7916c9631493..0000000000000000000000000000000000000000
+--- a/vendor/gpui/.cargo-ok
++++ /dev/null
+@@ -1 +0,0 @@
+-{"v":1}
+\ No newline at end of file
 diff --git a/vendor/gpui/Cargo.lock b/vendor/gpui/Cargo.lock
 deleted file mode 100644
 index c09b2c7977d933310de9e8fdac42ffeab6888395..0000000000000000000000000000000000000000
@@ -39281,16 +39290,18 @@ index 0000000000000000000000000000000000000000..6bdb8f7a22a111b7b077559814b8635e
 +}
 diff --git a/vendor/gpui/src/window/scroll_masks.rs b/vendor/gpui/src/window/scroll_masks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..966a2af02aa16cae41109849d36b7a09181320ca
+index 0000000000000000000000000000000000000000..2db6c10053e2a0d79b875e2973b1075d3bb0c8d1
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_masks.rs
-@@ -0,0 +1,119 @@
+@@ -0,0 +1,121 @@
 +//! KaminIDE patch: masks under scroll nodes (`scroll_nodes`).
 +//!
 +//! The children of a scroll node are prepainted and painted under the node's
 +//! interest rect instead of its clip, so their own masks (`scene::scroll_marks`)
 +//! cover what a replay at another offset may show. Each primitive and hitbox
 +//! is drawn and hit-tested with own mask ∩ the node's real clip chain.
++
++mod viewport;
 +
 +use super::*;
 +use crate::ScrollHandle;
@@ -39405,12 +39416,157 @@ index 0000000000000000000000000000000000000000..966a2af02aa16cae41109849d36b7a09
 +    }
 +}
 \ No newline at end of file
+diff --git a/vendor/gpui/src/window/scroll_masks/viewport.rs b/vendor/gpui/src/window/scroll_masks/viewport.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e2310192f8a
+--- /dev/null
++++ b/vendor/gpui/src/window/scroll_masks/viewport.rs
+@@ -0,0 +1,139 @@
++//! Stationary viewport paint and scroll-sensitive paint dependencies.
++
++use super::*;
++
++impl Window {
++    /// Record viewport-stationary content under `clip`. Unless `anchored`,
++    /// the clip moves with the enclosing scroll node while the content stays.
++    /// Pair this with `with_scroll_node_paint` using the same stable `id`.
++    pub fn with_viewport_content_prepaint<R>(
++        &mut self,
++        id: ScrollNodeId,
++        clip: Bounds<Pixels>,
++        anchored: bool,
++        f: impl FnOnce(&mut Self) -> R,
++    ) -> R {
++        let source = scroll_nodes::NodeSource::Viewport { anchored };
++        let open = self.open_scroll_node(id, clip, Point::default(), source);
++        let result = f(self);
++        self.end_scroll_node_prepaint(Some(open));
++        result
++    }
++
++    /// The current paint reads its containing scroll position in a way a
++    /// translation cannot reproduce. Moving that node requires a fresh paint.
++    pub fn paint_scroll_position_dependent(&mut self) {
++        if let Some(&(index, _)) = self.next_frame.scroll_paint.open.last() {
++            let id = self.next_frame.scroll_nodes[index as usize].id;
++            let at = self.next_frame.scene.paint_operations.len();
++            let space = self.next_frame.scene.scroll.space;
++            self.next_frame.scroll_dependents.push((id, at, space));
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::scene::{PaintOperation, Primitive};
++    use crate::{Context, IntoElement, Quad, Render, TestAppContext, div};
++
++    struct Empty;
++    impl Render for Empty {
++        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++            div()
++        }
++    }
++    fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
++        Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
++    }
++    fn verify(window: &mut Window, anchored: bool, dependent: bool) {
++        window.scroll_interest_margin = px(100.);
++        let handle = ScrollHandle::new();
++        handle.set_max_offset(point(px(0.), px(10_000.)));
++        let token = Rc::new(());
++        let id = ScrollNodeId::of_token(&token);
++        window.invalidator.set_phase(DrawPhase::Prepaint);
++        let (_, prepaint) = window.record_retained_prepaint(|window| {
++            window.with_scroll_node_prepaint(&handle, rect(0., 0., 100., 50.), |window| {
++                window.with_viewport_content_prepaint(
++                    id,
++                    rect(10., 10., 80., 30.),
++                    anchored,
++                    |_| {},
++                );
++            });
++        });
++        window.invalidator.set_phase(DrawPhase::Paint);
++        let (_, paint) = window.record_retained_paint(|window| {
++            window.with_scroll_node_paint(ScrollNodeId::of(&handle), |window| {
++                if dependent {
++                    window.paint_scroll_position_dependent();
++                }
++                window.with_scroll_node_paint(id, |window| {
++                    let scale = window.scale_factor();
++                    window.insert_scene_primitive(Quad {
++                        bounds: rect(20., 20., 10., 10.).scale(scale),
++                        content_mask: window.content_mask().scale(scale),
++                        ..Default::default()
++                    });
++                });
++            });
++        });
++        std::mem::swap(&mut window.rendered_frame, &mut window.next_frame);
++        window.next_frame.clear();
++        handle.set_offset(point(px(0.), px(-10.)));
++        let plan = window.plan_scrolled_replay(&prepaint, &paint, None);
++        if dependent {
++            assert!(
++                plan.is_none(),
++                "position-sensitive paint cannot be translated"
++            );
++            return;
++        }
++        let plan = plan.expect("viewport paint has enough recorded interest");
++        window.invalidator.set_phase(DrawPhase::Prepaint);
++        window.replay_retained_prepaint_scrolled(&prepaint, &plan);
++        window.invalidator.set_phase(DrawPhase::Paint);
++        window.replay_retained_paint_scrolled(&paint, &plan);
++        let quads: Vec<_> = window
++            .next_frame
++            .scene
++            .paint_operations
++            .iter()
++            .filter_map(|op| match op {
++                PaintOperation::Primitive(p @ Primitive::Quad(_)) => Some(p),
++                _ => None,
++            })
++            .collect();
++        assert_eq!(quads.len(), 1);
++        let scale = window.scale_factor();
++        assert_eq!(
++            crate::scene::placed_bounds(quads[0]),
++            rect(20., 20., 10., 10.).scale(scale)
++        );
++        assert_eq!(
++            quads[0].content_mask().bounds,
++            rect(10., if anchored { 10. } else { 0. }, 80., 30.).scale(scale)
++        );
++    }
++
++    #[crate::test]
++    fn stationary_content_has_a_clip_that_scrolls(cx: &mut TestAppContext) {
++        cx.add_window(|_, _| Empty)
++            .update(cx, |_, window, _| verify(window, false, false))
++            .unwrap();
++    }
++    #[crate::test]
++    fn canvas_content_and_clip_both_stay_in_the_viewport(cx: &mut TestAppContext) {
++        cx.add_window(|_, _| Empty)
++            .update(cx, |_, window, _| verify(window, true, false))
++            .unwrap();
++    }
++    #[crate::test]
++    fn position_sensitive_paint_requires_a_build(cx: &mut TestAppContext) {
++        cx.add_window(|_, _| Empty)
++            .update(cx, |_, window, _| verify(window, false, true))
++            .unwrap();
++    }
++}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1a5c548b6f422e865730af510d2ff447c55db896
+index 0000000000000000000000000000000000000000..458fdba526485c43dfa77ec44bcc627dddc3061c
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,790 @@
+@@ -0,0 +1,767 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -39520,35 +39676,8 @@ index 0000000000000000000000000000000000000000..1a5c548b6f422e865730af510d2ff447
 +    }
 +}
 +
-+/// The offset of a scroll node in the current state (`plan_scrolled_replay`).
-+#[derive(Clone)]
-+pub(crate) enum NodeSource {
-+    Handle(ScrollHandle),
-+    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
-+    /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
-+    /// the change of another node's offset since `base`, the offset that
-+    /// node had when the follower prepainted.
-+    Follow { on: Box<NodeSource>, base: Point<Pixels>, at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>> },
-+}
-+
-+impl NodeSource {
-+    /// The offset now: a handle's clamped to its scroll range, as prepaint
-+    /// clamps it (written back, so the handle reads what is shown).
-+    pub(crate) fn offset(&self) -> Point<Pixels> {
-+        match self {
-+            NodeSource::Handle(handle) => {
-+                let (offset, max) = (handle.offset(), handle.max_offset());
-+                let clamped = point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)));
-+                if clamped != offset {
-+                    handle.set_offset(clamped);
-+                }
-+                clamped
-+            }
-+            NodeSource::Anchor(offset) => offset(),
-+            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
-+        }
-+    }
-+}
++mod source;
++pub(crate) use source::NodeSource;
 +
 +/// Pairing of scroll node paints with their prepaints in one frame.
 +#[derive(Default)]
@@ -39714,15 +39843,19 @@ index 0000000000000000000000000000000000000000..1a5c548b6f422e865730af510d2ff447
 +        }
 +    }
 +
-+    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
-+        let anchored = matches!(source, NodeSource::Anchor(_));
++    pub(super) fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
++        let anchored = matches!(source, NodeSource::Anchor(_) | NodeSource::Viewport { anchored: true });
 +        let index = self.next_frame.scroll_nodes.len() as u32;
 +        let parent = self.next_frame.scroll_node_stack.last().copied();
 +        let clip = match parent {
 +            Some(parent) => self.next_frame.scroll_nodes[parent as usize].clip.intersect(&chain),
 +            None => chain,
 +        };
-+        let interest = clip.dilate(self.scroll_interest_margin);
++        let interest = if matches!(source, NodeSource::Viewport { .. }) {
++            Bounds { origin: Point::default(), size: self.viewport_size() }
++        } else {
++            clip.dilate(self.scroll_interest_margin)
++        };
 +        // Read the stack directly instead of `element_offset()`: opening a
 +        // node is not tied to a draw phase (records are built outside one),
 +        // and outside prepaint the stack is empty, so the base is zero.
@@ -40202,6 +40335,71 @@ index 0000000000000000000000000000000000000000..1a5c548b6f422e865730af510d2ff447
 +    }
 +}
 \ No newline at end of file
+diff --git a/vendor/gpui/src/window/scroll_nodes/source.rs b/vendor/gpui/src/window/scroll_nodes/source.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3463351f421df4a5f75bc8b6becf8a3a5aa8a20
+--- /dev/null
++++ b/vendor/gpui/src/window/scroll_nodes/source.rs
+@@ -0,0 +1,59 @@
++//! Spatial reference frames used by retained scroll replay.
++
++use super::*;
++
++/// The offset of a scroll node in the current state (`plan_scrolled_replay`).
++#[derive(Clone)]
++pub(crate) enum NodeSource {
++    Handle(ScrollHandle),
++    /// Stationary viewport paint with an independently moving clip.
++    Viewport {
++        anchored: bool,
++    },
++    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
++    /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
++    /// the change of another node's offset since `base`, the offset that
++    /// node had when the follower prepainted.
++    Follow {
++        on: Box<NodeSource>,
++        base: Point<Pixels>,
++        at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
++    },
++}
++
++impl NodeSource {
++    /// The offset now: a handle's clamped to its scroll range, as prepaint
++    /// clamps it (written back, so the handle reads what is shown).
++    pub(crate) fn offset(&self) -> Point<Pixels> {
++        match self {
++            NodeSource::Handle(handle) => {
++                let (offset, max) = (handle.offset(), handle.max_offset());
++                let clamped = point(
++                    offset.x.clamp(-max.x, px(0.)),
++                    offset.y.clamp(-max.y, px(0.)),
++                );
++                if clamped != offset {
++                    handle.set_offset(clamped);
++                }
++                clamped
++            }
++            NodeSource::Viewport { .. } => Point::default(),
++            NodeSource::Anchor(offset) => offset(),
++            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
++        }
++    }
++}
++
++impl NodeSource {
++    pub(crate) fn replay_shift(
++        &self,
++        parent: Point<Pixels>,
++        old: Point<Pixels>,
++        new: Point<Pixels>,
++    ) -> Point<Pixels> {
++        match self {
++            Self::Viewport { .. } => Point::default(),
++            _ => parent + (new - old),
++        }
++    }
++}
 diff --git a/vendor/gpui/src/window/scroll_refusal.rs b/vendor/gpui/src/window/scroll_refusal.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89c2045166
@@ -40268,7 +40466,7 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..efe9d488ccb19ae948f5262dd7ed20f2103785b5
+index 0000000000000000000000000000000000000000..9ea9dfc583dfaeec519ea3cb967912ecd6cc98a0
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
 @@ -0,0 +1,362 @@
@@ -40495,7 +40693,7 @@ index 0000000000000000000000000000000000000000..efe9d488ccb19ae948f5262dd7ed20f2
 +                    Some(parent) => parent.clip.intersect(&chain),
 +                    None => node.clip,
 +                };
-+                let shift = parent_shift + (new - node.offset);
++                let shift = node.source.replay_shift(parent_shift, node.offset, new);
 +                let interest = moved(node.interest, shift);
 +                if !inside(clip, interest) {
 +                    return Err(at(ScrollRefusal::Interest));

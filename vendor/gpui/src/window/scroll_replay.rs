@@ -221,7 +221,7 @@ impl Window {
                     Some(parent) => parent.clip.intersect(&chain),
                     None => node.clip,
                 };
-                let shift = parent_shift + (new - node.offset);
+                let shift = node.source.replay_shift(parent_shift, node.offset, new);
                 let interest = moved(node.interest, shift);
                 if !inside(clip, interest) {
                     return Err(at(ScrollRefusal::Interest));

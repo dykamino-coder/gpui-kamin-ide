@@ -14,7 +14,7 @@ pub(super) use drawing::draw_tiles;
 use crate::paint::background::*;
 use crate::style::computed::{BgRepeat, Computed};
 use crate::style::values::value::Len;
-use gpui::{Bounds, Pixels, px};
+use gpui::{Bounds, Pixels};
 
 /// Краска рамки задаёт перекрытые стороны независимо от CSS-геометрии слоя.
 pub(super) struct LayerPaint<'a> {
@@ -173,54 +173,7 @@ pub(super) fn paint_layer_in(
     } else {
         bounds
     };
-    let paint_box = match layer.clip {
-        Some(crate::style::computed::BgClip::PaddingBox)
-        | Some(crate::style::computed::BgClip::Text) => paint_base,
-        Some(crate::style::computed::BgClip::ContentBox) => Bounds {
-            origin: gpui::point(
-                paint_base.origin.x + px(px_of(c.reset_box_layout.padding.left)),
-                paint_base.origin.y + px(px_of(c.reset_box_layout.padding.top)),
-            ),
-            size: gpui::size(
-                (paint_base.size.width
-                    - px(px_of(c.reset_box_layout.padding.left)
-                        + px_of(c.reset_box_layout.padding.right)))
-                .max(px(0.0)),
-                (paint_base.size.height
-                    - px(px_of(c.reset_box_layout.padding.top)
-                        + px_of(c.reset_box_layout.padding.bottom)))
-                .max(px(0.0)),
-            ),
-        },
-        _ => {
-            // Порядок краски (CSS 2.2 Прил. E, css-backgrounds-3 §3.7): фон
-            // лежит ПОД рамкой, рамка рисуется поверх. Слой плитки — ребёнок
-            // коробки и красится ПОСЛЕ её рамки, поэтому под сплошной
-            // непрозрачной рамкой область краски ужимается до её внутреннего
-            // края: результат тот же, что «под рамкой». Пунктир, `double` и
-            // полупрозрачная рамка пропускают фон — там border-box целиком
-            // (`background-repeat-001`, `c548-ln-ht-001`, `margin-shorthand-001`).
-            let covers = |i: usize| {
-                let opaque = paint.opaque_borders[i];
-                // solid / inset / outset / groove / ridge — сплошная краска.
-                matches!(c.reset_border.border_side_styles[i], Some(3..=6) | Some(9)) && opaque
-            };
-            let ext = |side: Option<Len>, i: usize| if covers(i) { 0.0 } else { px_of(side) };
-            let (t, r, b, l) = (
-                ext(border.top, 0),
-                ext(border.right, 1),
-                ext(border.bottom, 2),
-                ext(border.left, 3),
-            );
-            Bounds {
-                origin: gpui::point(paint_base.origin.x - px(l), paint_base.origin.y - px(t)),
-                size: gpui::size(
-                    paint_base.size.width + px(l + r),
-                    paint_base.size.height + px(t + b),
-                ),
-            }
-        }
-    };
+    let paint_box = super::paint_box::resolve(&paint, c, paint_base, &border, px_of);
     // Область позиционирования — по неокруглённой коробке, когда слой её
     // знает (`exact_layer`); краска режется округлённой (`paint_box` выше).
     draw_tiles(
