@@ -52,3 +52,34 @@ fn nested_viewport_does_not_change_following_sibling() {
     assert_eq!(out.matches("translate(100 50)").count(), 2, "{out}");
     assert_eq!(out.matches("translate(40 20)").count(), 1, "{out}");
 }
+
+#[test]
+fn used_viewport_preserves_the_natural_size_and_expands_viewbox_from_css_size() {
+    let doc = DocumentValues::detached(Default::default());
+    let root = find(
+        &parse(
+            r#"<svg width="162" height="81" viewBox="0 0 162 81"><rect/></svg>"#,
+            "",
+        ),
+        "svg",
+    )
+    .expect("svg");
+    let natural = super::size_of(&root);
+    let out = super::serialize_viewport(&root, (90.0, 45.0), 100.0, 50.0, 0.0, 0.0, doc.values());
+    assert!(out.contains(r#"viewBox="0 0 180 90""#), "{out}");
+    assert_eq!(super::size_of(&root), natural);
+}
+
+#[test]
+fn used_viewport_supplies_the_child_percentage_reference_without_a_viewbox() {
+    let doc = DocumentValues::detached(Default::default());
+    let mut root = find(
+        &parse(r#"<svg width="162" height="81"><rect/></svg>"#, ""),
+        "svg",
+    )
+    .expect("svg");
+    translate_rects(&mut root);
+    let out = super::serialize_viewport(&root, (90.0, 45.0), 90.0, 45.0, 0.0, 0.0, doc.values());
+    assert!(out.contains("translate(45 22.5)"), "{out}");
+    assert_eq!(super::size_of(&root), (162.0, 81.0));
+}

@@ -32,7 +32,7 @@ pub(crate) use constraints::{BoxConstraints, FragmentConstraints, WidthBasis, Wi
 pub(crate) use contracts::BuildContext;
 pub use deferred::DeferredPaintContext;
 pub(crate) use fragmentation::FragmentationContext;
-pub(crate) use frame::FrameCx;
+pub(crate) use frame::{FrameCx, FrameDoc};
 pub(crate) use inline::InlineContext;
 pub(crate) use position::PositioningContext;
 pub(crate) use ruby::RubyContext;
