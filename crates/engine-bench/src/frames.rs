@@ -27,15 +27,24 @@ pub(super) type Run<'a, 'b> = (
     &'b super::work::Adapter,
 );
 
-use input::{delta, scrolled, viewport};
+pub(super) use input::keeps_step;
+use input::{delta, memory_only, scrolled, viewport};
 mod fresh;
 mod input;
+mod observe;
 
 pub(super) struct Frames {
     pixels: Vec<Recorder>,
     base: (u32, u32),
     relayout: bool,
     scroll: bool,
+    /// Scroll (`--scroll-back`): whether the next step goes down; it turns at
+    /// either end of the root scroller, so long runs cross the document again.
+    back_down: Option<bool>,
+    /// The root scroll the step of the sample asks for, down positive.
+    step: f32,
+    /// The step of `--scroll-back` (`Args::scroll_step`).
+    jump: f32,
     /// When the step's wheel event was dispatched (prepare).
     dispatched: Option<std::time::Instant>,
     before: (u64, u64),
@@ -68,6 +77,9 @@ impl Frames {
             base: args.viewport,
             relayout,
             scroll: args.mode == Mode::Scroll,
+            back_down: args.scroll_back.then_some(true),
+            step: WHEEL_STEP,
+            jump: args.scroll_step,
             dispatched: None,
             before: (0, 0),
             before_inside: 0,
@@ -89,11 +101,15 @@ impl Frames {
             if self.scroll {
                 // Dispatched as a platform wheel event: the root scroller's handler moves it.
                 let size = window.viewport_size();
+                if let Some(down) = self.back_down {
+                    // `--scroll-back`: down and up between the ends.
+                    self.step = if down { self.jump } else { -self.jump };
+                }
                 let wheel = gpui::ScrollWheelEvent {
                     position: gpui::point(size.width / 2.0, size.height / 2.0),
                     delta: gpui::ScrollDelta::Pixels(gpui::point(
                         gpui::px(0.0),
-                        gpui::px(-WHEEL_STEP),
+                        gpui::px(-self.step),
                     )),
                     modifiers: gpui::Modifiers::default(),
                     touch_phase: gpui::TouchPhase::Moved,
@@ -115,57 +131,6 @@ impl Frames {
         Ok(())
     }
 
-    pub(super) fn observe(
-        &mut self,
-        cx: &AsyncApp,
-        window: WindowHandle<View>,
-        frame: Frame,
-        mode: &str,
-        index: usize,
-    ) -> Result<()> {
-        let (after, inside, contents, blocks, offset) = window.read_with(cx, |view, _| {
-            let doc = &view.doc;
-            (
-                doc.retained_frames(),
-                doc.builds_inside_draw(),
-                doc.replayed_contents(),
-                doc.replayed_blocks(),
-                (doc.root_scroll_offset(), doc.root_scroll_max()),
-            )
-        })?;
-        let misses = window.read_with(cx, |view, _| view.doc.take_frame_misses())?;
-        let cold = mode == "cold";
-        let counts = delta(if cold { (0, 0) } else { self.before }, after)?;
-        let inside = inside
-            .checked_sub(if cold { 0 } else { self.before_inside })
-            .ok_or("document inside-draw build counter regressed")?;
-        // A frame built again within the same frame counts both builds.
-        if self.relayout && (counts.0 == 0 || counts.1 != 0) {
-            return Err(format!(
-                "relayout requires a document build and no replay; received {counts:?}"
-            )
-            .into());
-        }
-        if self.scroll {
-            scrolled(self.wheel_from.take(), offset.0, offset.1)?;
-        }
-        let group = usize::from(self.relayout && !index.is_multiple_of(2));
-        self.samples.push(json!({"mode": mode, "sample_index": index,
-            "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
-            "wheel_step_px": if self.scroll { json!(WHEEL_STEP) } else { Value::Null },
-            "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
-            "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
-            "builds_inside_draw": inside,
-            "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),
-            "block_replays": blocks.saturating_sub(if cold { 0 } else { self.before_blocks }),
-            "animation": super::animation::journal(window.read_with(cx, |view, _| view.doc.animation_frame())?),
-            "frame_misses": misses.into_iter().map(|(k, n)| (k, json!(n))).collect::<serde_json::Map<_, _>>()}));
-        if let (true, Some(offset)) = (self.scroll, offset.0) {
-            self.steps.push(&frame.pixels, offset);
-        }
-        self.pixels[group].observe(frame.pixels, frame.seq, mode, index)
-    }
-
     /// Scroll: frames after the measured one until the document replays its frame (settled), so a
     /// deferred second build of the step counts with the step. At most `SETTLE_FRAMES` frames.
     pub(super) async fn settle(&mut self, run: Run<'_, '_>, step: Step<'_>) -> Result<()> {
@@ -178,7 +143,9 @@ impl Frames {
         while frames < SETTLE_FRAMES && !settled {
             let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
             let (_, frame, _) = sample(cx, window, fonts, args, step, capture, luid).await?;
-            self.steps.settled(&frame.pixels);
+            if !memory_only() {
+                self.steps.settled(&frame.pixels);
+            }
             let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
             let (b, r) = delta(before, after)?;
             frames += 1;

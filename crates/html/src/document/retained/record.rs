@@ -58,6 +58,7 @@ pub(super) struct Record {
 }
 
 mod miss;
+pub(crate) use miss::is_code as frame_miss_code;
 mod replay;
 pub(super) use miss::{FrameMiss, MISSES};
 pub(super) use replay::Replay;
@@ -69,7 +70,15 @@ impl Record {
         store: &crate::layout::reuse::Store,
         same_prepaint: bool,
     ) {
-        let paint = window.replay_retained_paint(&self.paint);
+        // A layer that kept composition groups is copied into each frame, not
+        // drawn by one command: the copy comes from the layer as written since
+        // (`gpui::Window::replay_retained_paint_with_layer`), not from the
+        // rendered frame's stale one.
+        let layer = store.scene_layer().filter(|_| self.layered.is_some());
+        let paint = match &layer {
+            Some(layer) => window.replay_retained_paint_with_layer(&self.paint, layer),
+            None => window.replay_retained_paint(&self.paint),
+        };
         if same_prepaint
             && paint.preserves_window_slots(&self.paint)
             && self.layer.is_some()
@@ -103,12 +112,17 @@ impl Record {
     }
 
     /// Publish the record for replay, or keep why it is not (`refusal`).
+    #[track_caller]
     pub(super) fn publish(&self, slot: &Slot, refusal: Option<FrameMiss>) {
         let read = self
             .inputs
             .as_ref()
             .is_some_and(|inputs| !inputs.layout.scroll_unchanged());
         let refusal = refusal.or(read.then_some(FrameMiss::ScrollRead));
+        if let Some(refusal) = refusal {
+            // The next frame misses for this reason; the journal names it now, at the publish.
+            crate::why::note("frame_unpublished", || refusal.code().into());
+        }
         let inputs = self
             .inputs
             .as_ref()
@@ -122,11 +136,16 @@ impl Record {
 /// Both the rendering step and the element inspect the same recording.
 impl Slot {
     pub(super) fn inputs(&self, key: Option<&FrameKey>) -> Result<Rc<Inputs>, FrameMiss> {
-        let unpublished = || self.unsettled.get().unwrap_or(FrameMiss::Unpublished);
+        let unpublished = || {
+            self.unsettled
+                .get()
+                .unwrap_or(FrameMiss::Unpublished)
+                .noted()
+        };
         let inputs = self.recorded.borrow().upgrade().ok_or_else(unpublished)?;
         (Some(&inputs.key) == key)
             .then_some(inputs)
-            .ok_or(FrameMiss::Key)
+            .ok_or_else(|| FrameMiss::Key.noted())
     }
 
     /// Count a build of the frame record for `miss`.

@@ -1,6 +1,6 @@
 //! Deterministic animation input; elapsed is separate from CPU/GPU timing.
 
-use super::{Args, Mode};
+use super::Args;
 use std::time::Duration;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -13,15 +13,10 @@ pub(super) fn parse(value: &str) -> Result<Duration> {
     Ok(Duration::try_from_secs_f64(milliseconds / 1000.0)?)
 }
 
-pub(super) fn validate(args: &Args) -> Result<()> {
+pub(crate) fn validate(args: &Args) -> Result<()> {
     if let Some(step) = args.animation_step {
         step.checked_mul(u32::try_from(args.runs)?)
             .ok_or("animation series elapsed overflow")?;
-        if args.mode == Mode::Edit && args.fresh_check_dir.is_none() {
-            return Err(
-                "fixed-step edit requires --fresh-check-dir for per-time references".into(),
-            );
-        }
     }
     Ok(())
 }
@@ -49,10 +44,9 @@ mod tests {
     }
 
     #[test]
-    fn cli_bounds_series_and_requires_edit_reference_storage() {
+    fn cli_bounds_series_and_preserves_explicit_step() {
         for options in [
             vec!["--animation-step-ms", "1e20", "--runs", "100000"],
-            vec!["--animation-step-ms", "16", "--mode", "edit"],
             vec!["--animation-step-ms", "0", "--animation-step-ms", "1"],
         ] {
             let error = Args::parse(

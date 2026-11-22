@@ -35,7 +35,7 @@ impl Retained {
                     let replay = record.replay(&self.slot, self.key.as_ref(), &key, window, store);
                     let boxes = |replay| match self.builder.repaint_boxes(window, cx) {
                         true => Ok(replay),
-                        false => Err(FrameMiss::Boxes),
+                        false => Err(FrameMiss::Boxes.noted()),
                     };
                     replay
                         .and_then(boxes)

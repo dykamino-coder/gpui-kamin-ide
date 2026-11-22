@@ -29,10 +29,8 @@ impl References {
         variants: [&str; 2],
     ) -> Result<Self> {
         let references = if args.animation_step.is_some() {
-            let directory = args
-                .fresh_check_dir
-                .as_deref()
-                .ok_or("fixed-step edit requires a reference directory")?;
+            let temporary = std::env::temp_dir();
+            let directory = args.fresh_check_dir.as_deref().unwrap_or(&temporary);
             let mut spool = Spool::new(directory, args.runs)?;
             for index in 1..=args.runs {
                 super::super::animation::prepare(cx, window, args, index)?;

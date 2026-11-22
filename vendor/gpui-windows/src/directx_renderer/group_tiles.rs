@@ -106,7 +106,13 @@ impl DirectXRenderer {
 
     /// Draw the leading composites of `run` that `tiles_take` accepts, on one
     /// atlas page and with one mask image (or none), in one pass; returns how
-    /// many were drawn (0: fewer than two could share a pass, nothing drawn).
+    /// many were drawn (0: none could, nothing drawn). A composite no other
+    /// can join is a pass of one: drawn by the adapter's blender instead, its
+    /// partly covered pixels (an antialiased clip edge, a translucent run)
+    /// could land a code away from the same composite drawn in a pass, so a
+    /// frame would change where an unrelated primitive between two
+    /// composites splits their run (album-cover: a fixed box painted over
+    /// the page moved the clip-path edges of two groups by one code).
     pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
         let mut quads = vec![BlurQuad::default()];
         let mut regions = Vec::new();
@@ -134,7 +140,7 @@ impl DirectXRenderer {
         }
         let mut lists = std::mem::take(&mut self.blur.tile_lists);
         let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
-        if taken < 2 {
+        if taken == 0 {
             self.blur.tile_lists = lists;
             return Ok(0);
         }

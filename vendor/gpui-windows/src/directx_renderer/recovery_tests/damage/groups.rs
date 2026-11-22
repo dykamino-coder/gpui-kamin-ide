@@ -20,7 +20,7 @@ fn groups(cells: &[(usize, Hsla)]) -> Scene {
         inner.quads.push(q);
         let bounds = b(x, y, 44., 44.);
         s.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds,
             ..Default::default()
         });
@@ -73,7 +73,7 @@ fn a_group_atlas_packed_again_within_a_chain_keeps_no_stale_image() {
             q.order = 1;
             inner.quads.push(q);
             s.groups.push(PaintGroup {
-                scene: inner,
+                scene: std::rc::Rc::new(inner),
                 bounds: b(0., 0., W as f32, H as f32),
                 ..Default::default()
             });

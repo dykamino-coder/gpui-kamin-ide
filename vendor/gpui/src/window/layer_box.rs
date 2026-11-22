@@ -31,6 +31,7 @@ impl Window {
             transformation: self.current_transformation(),
             opacity: self.element_opacity(),
             rem_size: self.rem_size(),
+            exact: self.raster_frame.exact_bounds.filter(|(snapped, _)| *snapped == bounds).map(|(_, exact)| exact),
             fill: None,
             layer: None,
             painter,
@@ -46,6 +47,8 @@ impl Window {
         // A paint record keeps the run for its placements (`scene::layer::placed`).
         if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.record_runs.as_mut()) {
             runs.boxes.push(range.clone());
+        } else if let (Some(range), Some(runs)) = (&range, self.next_frame.scene.book.group_runs.as_mut()) {
+            runs.push(range.clone());
         } else if let (Some(range), Some(recording)) = (range, self.layer_recording.as_mut()) {
             recording.boxes.push(range);
         }
@@ -139,9 +142,14 @@ impl Window {
                 None => (scene, bindings),
             };
             let mut current = layer.0.content.borrow_mut();
-            let plan = current.check_box(at, &scene)?;
-            let content = Rc::make_mut(&mut *current);
-            let (damage, shifted) = content.replace_box(at, scene, bindings, plan);
+            let (damage, shifted) = if current.boxes[at].group.is_some() {
+                // The layer is held by no frame (a grouped layer is copied
+                // into frames), so this takes no copy of its top commands.
+                Rc::make_mut(&mut *current).replace_group_run(at, scene, bindings)?
+            } else {
+                let plan = current.check_box(at, &scene)?;
+                Rc::make_mut(&mut *current).replace_box(at, scene, bindings, plan)
+            };
             moved |= shifted;
             if let Some(rect) = damage {
                 let old = layer.0.damage.get();
@@ -157,7 +165,7 @@ impl Window {
     }
 
     /// Paint one run of box `owner` into a scratch scene, in `env`.
-    fn paint_box_run(
+    pub(super) fn paint_box_run(
         &mut self,
         owner: u32,
         area: Bounds<ScaledPixels>,
@@ -178,13 +186,21 @@ impl Window {
         self.invalidator.set_phase(DrawPhase::Paint);
         self.content_mask_stack.push(env.mask);
         let opacity = mem::replace(&mut self.element_opacity, env.opacity);
+        // A run painted under a transformation paints again under it.
+        let unit = env.transformation == TransformationMatrix::unit();
+        let restored = if unit { Vec::new() } else { vec![env.transformation] };
+        let transforms = mem::replace(&mut self.transformation_stack, restored);
         self.box_fill = env.fill;
+        // The unrounded box its border snapping read when it was recorded.
+        let exact = mem::replace(&mut self.raster_frame.exact_bounds, env.exact.map(|exact| (env.bounds, exact)));
         self.next_frame.scene.open_box(owner, area, env);
         self.with_rem_size(Some(env.rem_size), |window| {
             window.with_paint_owner(owner, |window| paint(window, cx, &env))
         });
         self.next_frame.scene.close_box();
+        self.raster_frame.exact_bounds = exact;
         self.box_fill = None;
+        self.transformation_stack = transforms;
         self.element_opacity = opacity;
         self.content_mask_stack.pop();
         self.invalidator.set_phase(phase);

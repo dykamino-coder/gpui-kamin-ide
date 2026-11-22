@@ -23,6 +23,10 @@ impl Frames {
     /// Compare the first captured frame of each width with a fresh document
     /// at that width and animation time. Later changes set frame_pixels_changed.
     async fn fresh(self, report: &mut Value, run: Run<'_, '_>) -> Result<()> {
+        if self.scroll && super::memory_only() {
+            report["scroll_fresh_check"] = json!("skipped: ENGINE_BENCH_SCROLL_MEMORY_ONLY");
+            return Ok(());
+        }
         if self.scroll {
             return crate::scroll_fresh::check(self.steps, report, run).await;
         }

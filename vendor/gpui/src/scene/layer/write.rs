@@ -46,6 +46,15 @@ impl LayerHandle {
         self.accepts(owner, crate::LayerPainter::Box)
     }
 
+    /// Whether box `owner` painted one run, the whole content of its group
+    /// (`SceneLayer::group_root`): `Window::rerecord_layer_group` paints the
+    /// group again with the box and its child elements.
+    pub fn holds_group_root(&self, owner: u32) -> bool {
+        let content = self.0.content.borrow();
+        let mut runs = content.runs_of(owner);
+        runs.next().is_some_and(|at| runs.next().is_none() && content.group_root(at).is_some())
+    }
+
     /// Whether every piece of the owner's band can be recorded again.
     pub fn holds_band(&self, owner: u32) -> bool {
         self.accepts(owner, crate::LayerPainter::Band)
@@ -72,8 +81,12 @@ impl LayerHandle {
         let content = self.0.content.borrow();
         content
             .runs_of(owner)
-            .map(|at| content.boxes[at].area)
-            .reduce(|a, b| a.union(&b))
+            .map(|at| content.run_area(at))
+            .reduce(|a, b| match (a, b) {
+                (Some(a), Some(b)) => Some(a.union(&b)),
+                _ => None,
+            })
+            .flatten()
     }
 
     /// Bounds of the old and proposed decoration paint in the layer's coordinates.
@@ -90,7 +103,8 @@ impl LayerHandle {
         let mut area = None;
         for at in content.runs_of(owner) {
             let run = &content.boxes[at];
-            if run.env.transformation != crate::TransformationMatrix::unit() {
+            // A decoration in a group changes the group's image (PR-B).
+            if run.env.transformation != crate::TransformationMatrix::unit() || run.group.is_some() {
                 return None;
             }
             let outset = match run.env.painter {

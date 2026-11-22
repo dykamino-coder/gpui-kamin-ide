@@ -12,6 +12,8 @@ use gpui::{
 use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
 
 mod groups;
+// KaminIDE patch: a colour sprite reads the same pixels at any atlas place.
+mod sprites;
 // KaminIDE patch: output-merger blend series equal their formulas.
 mod tiles;
 
@@ -108,7 +110,7 @@ impl Frame {
         }
         let group = b(150., 90., 60., 40.);
         s.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: group,
             ..Default::default()
         });

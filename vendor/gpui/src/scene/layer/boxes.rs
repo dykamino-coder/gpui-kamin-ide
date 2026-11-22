@@ -60,6 +60,10 @@ pub(crate) struct BoxEnv {
     pub(crate) transformation: TransformationMatrix,
     pub(crate) opacity: f32,
     pub(crate) rem_size: Pixels,
+    /// The unrounded border box of the painting element when its snapped
+    /// border box is `bounds` (`RasterFrame::exact_bounds`): border snapping
+    /// and child layers read it.
+    pub(crate) exact: Option<Bounds<Pixels>>,
     /// Where the host placed the box's fill (Window::box_fill_bounds).
     pub(crate) fill: Option<Bounds<Pixels>>,
     /// The order of the stacking layer the run was painted in (`None`:
@@ -82,12 +86,17 @@ pub(crate) struct BoxRange {
     /// How the run's commands came here from the paint record its box painted
     /// in (`super::placed`); a recording of the box is placed the same way.
     pub(crate) placed: Option<super::Placed>,
+    /// The group of the layer whose scene holds the run (`None`: the
+    /// layer's own scene); a run there is replaced in that scene
+    /// (`SceneLayer::replace_group_run`).
+    pub(crate) group: Option<u32>,
 }
 
 impl BoxRange {
     pub(crate) fn accepts(&self, painter: LayerPainter) -> bool {
+        // A transformed run is painted again under its transformation
+        // (`Window::paint_box_run`).
         self.replaceable
-            && self.env.transformation == TransformationMatrix::unit()
             && match (self.env.painter, painter) {
                 (RunPainter::Box(BoxContents::Own), LayerPainter::Box) => self.env.layer.is_none(),
                 (RunPainter::Band(Some(_)), LayerPainter::Band) => true,
@@ -132,7 +141,7 @@ impl Scene {
         // result: a run of its commands is no run of the layer.
         // A paint record that keeps box runs (`super::placed`) is no group.
         if self.book.open_box.is_some()
-            || (self.in_group && self.book.record_runs.is_none())
+            || (self.in_group && self.book.record_runs.is_none() && self.book.group_runs.is_none())
             || self.layer_stack.len() > 1
             || self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER)
             || !self.depth.plane_stack.is_empty()
@@ -194,6 +203,7 @@ impl Scene {
             env: open.env,
             replaceable: plain && !open.split,
             placed: None,
+            group: None,
         })
     }
 }

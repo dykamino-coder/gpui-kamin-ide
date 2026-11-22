@@ -1,6 +1,6 @@
 //! Проверяемые параметры CLI; не читает конфигурацию WPT.
 
-mod animation;
+pub(super) mod animation;
 use std::path::PathBuf;
 
 /// Наименьшее окно устойчивой памяти (`--memory-settle-ms`) после последнего кадра.
@@ -9,21 +9,8 @@ use std::path::PathBuf;
 /// тяжелее базы. 2 с — то же окно, что у замера браузеров после загрузки.
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
-pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--animation-step-ms N] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window]\n\
-    engine_bench --list-gpus\n\
-    engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
-    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
-    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
-Scroll dispatches one wheel step of 120 px down over the viewport centre before each frame.\n\
-    Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
-    then checks every captured edit frame against a fresh document; missing captures cannot pass.\n\
-    insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\
-    the second markup itself, for any other mutation.\n\
-    Animation step holds elapsed at index * N ms (initial index 0); edit requires --fresh-check-dir.\n\
-    Surface: offscreen (default) draws into a GPU texture of a message-only window, never seen\n\
-    by the desktop compositor; window parks a presented desktop window off-screen (comparison only).";
-
+mod usage;
+pub(super) use usage::USAGE;
 /// Куда рисует стенд: текстура message-only окна (DWM его не видит) или
 /// прежнее презентуемое окно за краем экрана — только для сверки путей.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -71,6 +58,7 @@ impl Mode {
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone)]
 pub(super) struct Args {
     pub(super) path: PathBuf,
     pub(super) gpu: String,
@@ -82,11 +70,30 @@ pub(super) struct Args {
     pub(super) edit_markup: Option<PathBuf>,
     pub(super) json: bool,
     pub(super) trace_frames: bool,
+    /// Scroll: each wheel step of `scroll_step` lands on the root's scrollbar
+    /// edge, which no nested scroller covers, and turns at either end of the
+    /// document, so a long run crosses it down and up again.
+    pub(super) scroll_back: bool,
+    pub(super) scroll_step: f32,
     pub(super) memory_settle_ms: u64,
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
     pub(super) fresh_check_dir: Option<PathBuf>,
+    /// DevTools `why` journal of each sampled frame into this directory (`why`).
+    pub(super) why: Option<PathBuf>,
     pub(super) surface: Surface,
+    /// Every phase of this plan file in one process (`plan.rs`).
+    pub(super) plan: Option<PathBuf>,
+    /// Memory steady window before each warm phase (the default); a plan replaces it
+    /// with a short quiet window that waits out late frames (`memory::settle`).
+    pub(super) steady_each_phase: bool,
+    /// Frame series: at least `min_runs` samples and `series_ms` of samples, at most
+    /// `runs`; 0 = exactly `runs` (the default).
+    pub(super) series_ms: u64,
+    pub(super) min_runs: usize,
+    /// A timed series also stops once its frame totals are stable: relative MAD
+    /// (median absolute deviation over the median) at most this; 0 = off.
+    pub(super) stable_mad: f64,
 }
 
 impl Args {
@@ -111,15 +118,27 @@ impl Args {
             edit_markup: None,
             json: false,
             trace_frames: false,
+            scroll_back: false,
+            scroll_step: 120.0,
             memory_settle_ms: 0,
             snapshot: None,
             frame_diff_dir: None,
             fresh_check_dir: None,
+            why: None,
             surface: Surface::Offscreen,
+            plan: None,
+            steady_each_phase: true,
+            series_ms: 0,
+            min_runs: 1,
+            stable_mad: 0.0,
         };
         while let Some(flag) = args.next() {
             if flag == "--json" {
                 out.json = true;
+                continue;
+            }
+            if flag == "--scroll-back" {
+                out.scroll_back = true;
                 continue;
             }
             if flag == "--trace-frames" {
@@ -185,8 +204,16 @@ impl Args {
                         .into());
                     }
                 }
+                "--plan" => out.plan = Some(value.into()),
+                "--scroll-step" => {
+                    out.scroll_step = value.parse()?;
+                    if !(1.0..=100_000.0).contains(&out.scroll_step) {
+                        return Err("scroll step must be 1..100000 CSS pixels".into());
+                    }
+                }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 "--fresh-check-dir" => out.fresh_check_dir = Some(value.into()),
+                "--why" => out.why = Some(value.into()),
                 "--surface" => {
                     out.surface = match value.as_str() {
                         "offscreen" => Surface::Offscreen,
@@ -206,6 +233,8 @@ impl Args {
         {
             return Err("memory audit requires at least five unchanged warm frames".into());
         }
+        out.animation_step
+            .get_or_insert(std::time::Duration::from_micros(16_667));
         animation::validate(&out)?;
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()

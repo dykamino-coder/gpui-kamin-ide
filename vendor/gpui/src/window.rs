@@ -71,14 +71,17 @@ mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
+mod group_root;
+mod grouped_layer;
 mod layer_box;
 mod layer_band;
-pub use scene_layer::RecordedLayer;
+pub use scene_layer::{NoLayer, RecordedLayer};
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained; mod group_replay;
+mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
 mod scroll_replay; mod scroll_refusal;
@@ -1065,6 +1068,10 @@ pub(crate) struct DeferredDraw {
     paint_range: Range<PaintIndex>,
     // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
     isolated: Option<IsolatedDraw>,
+    // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
+    scroll: scroll_deferred::DeferredScroll,
+    // KaminIDE patch: the line that deferred it, for DevTools' scroll refusals.
+    pub(crate) site: &'static core::panic::Location<'static>,
 }
 
 pub(crate) struct Frame {
@@ -3173,6 +3180,16 @@ impl Window {
         quads
     }
 
+    /// KaminIDE patch: the areas the most recently rendered frame hit-tests
+    /// (each hitbox's bounds within its content mask), in insertion order,
+    /// and how many deferred draws it painted.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_hit_areas(&self) -> (Vec<Bounds<Pixels>>, usize) {
+        let frame = &self.rendered_frame;
+        let areas = frame.hitboxes.iter().map(|hitbox| hitbox.bounds.intersect(&hitbox.content_mask.bounds)).collect();
+        (areas, frame.deferred_draws.len())
+    }
+
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {
@@ -3862,10 +3879,15 @@ impl Window {
     /// Produces a new frame and assigns it to `rendered_frame`. To actually show
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
+    #[track_caller]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // KaminIDE patch: DevTools `why` reads which requests each draw served
+        // and which caller drew (the platform frame request or a forced draw).
+        crate::dirty_sources::trace::mark("draw");
         // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
         self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        self.trace_unpainted_anchors();
         // A frame takes what reads set aside; the rest is stale, like the
         // states a frame does not access.
         self.read_states.states.clear();
@@ -4377,6 +4399,8 @@ impl Window {
                 self.next_frame.dispatch_tree.set_active_node(parent_node);
 
                 let prepaint_start = self.prepaint_index();
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_prepaint(deferred_draw_ix);
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
                         .layout_owner.clone();
@@ -4391,8 +4415,9 @@ impl Window {
                     });
                     self.next_frame.deferred_draws[deferred_draw_ix].element = Some(element);
                 } else {
-                    self.reuse_prepaint(prepaint_range);
+                    self.reuse_deferred_prepaint(deferred_draw_ix, prepaint_range);
                 }
+                self.leave_deferred_prepaint(entered);
                 let prepaint_end = self.prepaint_index();
                 self.next_frame.deferred_draws[deferred_draw_ix].prepaint_range =
                     prepaint_start..prepaint_end;
@@ -4428,6 +4453,8 @@ impl Window {
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_paint(&deferred_draw.scroll);
                 self.with_retained_layout(&mut deferred_draw.layout_owner, |window| {
                     window.with_rendered_view(deferred_draw.current_view, |window| {
                         window.with_content_mask(content_mask, |window| {
@@ -4436,9 +4463,11 @@ impl Window {
                             });
                         })
                     })
-                })
+                });
+                self.leave_deferred_paint(entered);
             } else {
-                self.reuse_paint(deferred_draw.paint_range.clone());
+                let range = deferred_draw.paint_range.clone();
+                self.reuse_deferred_paint(&mut deferred_draw.scroll, range);
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
@@ -4467,7 +4496,9 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
-        // KaminIDE patch: the scroll nodes prepainted in the range.
+        // KaminIDE patch: the scroll nodes prepainted in the range, and where
+        // they land (deferred draws keep their owner node, `scroll_deferred`).
+        let owners = scroll_deferred::OwnerMap::new(&range, self);
         self.reuse_scroll_nodes(&range);
         for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
@@ -4530,6 +4561,8 @@ impl Window {
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
                     isolated: deferred_draw.isolated.clone(),
+                    scroll: owners.copy(&deferred_draw.scroll),
+                    site: deferred_draw.site,
                 }),
         );
         // KaminIDE patch: reused isolated draws stay isolated in the new frame.
@@ -5287,12 +5320,60 @@ impl Window {
     /// both prepaint and paint. When `None`, no additional clipping is applied.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
+    #[track_caller]
     pub fn defer_draw(
         &mut self,
         element: AnyElement,
         absolute_offset: Point<Pixels>,
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
+    ) {
+        let site = core::panic::Location::caller();
+        self.defer_draw_at(element, absolute_offset, priority, content_mask, site);
+    }
+
+    /// KaminIDE patch: `defer_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        site: &'static core::panic::Location<'static>,
+    ) {
+        self.push_deferred_draw(element, absolute_offset, priority, content_mask, Default::default(), site);
+    }
+
+    /// KaminIDE patch: `defer_draw` of content that belongs to the open scroll
+    /// node (`scroll_deferred`): drawn later, in priority order, but under
+    /// that node, clipped by it and moved with it, as Blink keeps a positioned
+    /// box's paint chunks on its scroll translation whatever its paint order.
+    #[track_caller]
+    pub fn defer_scrolled_draw(&mut self, element: AnyElement, absolute_offset: Point<Pixels>, priority: usize) {
+        let site = core::panic::Location::caller();
+        self.defer_scrolled_draw_at(element, absolute_offset, priority, site);
+    }
+
+    /// KaminIDE patch: `defer_scrolled_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_scrolled_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        site: &'static core::panic::Location<'static>,
+    ) {
+        let scroll = self.deferred_scroll_owner();
+        self.push_deferred_draw(element, absolute_offset, priority, None, scroll, site);
+    }
+
+    fn push_deferred_draw(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        scroll: scroll_deferred::DeferredScroll,
+        site: &'static core::panic::Location<'static>,
     ) {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
@@ -5311,6 +5392,8 @@ impl Window {
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
             isolated: None,
+            scroll,
+            site,
         });
     }
 
@@ -6290,11 +6373,12 @@ impl Window {
         let scaled = bounds.scale(scale_factor);
         let content_mask = self.content_mask().scale(scale_factor);
 
-        let (result, mut inner) = self.with_isolated_scene(f);
+        let (result, mut inner) = self.with_isolated_scene_runs(true, f);
         inner.finish();
         // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
         // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
         let hoisted = inner.take_backdrops();
+        let runs = inner.book.group_runs.take();
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -6302,7 +6386,7 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
@@ -6312,7 +6396,7 @@ impl Window {
             None => (None, Bounds::default(), 0),
         };
         self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: scaled,
             blur_radius: blur_radius * scale_factor,
             blend,
@@ -6325,6 +6409,7 @@ impl Window {
             projection: None,
             fragments: Vec::new(),
         });
+        self.adopt_group_runs(runs, index, base);
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.

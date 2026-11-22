@@ -49,19 +49,7 @@ impl Motion {
 mod tests {
     use super::*;
 
-    fn frame(ms: u64, source: AnimationTimeSource) -> AnimationFrame {
-        AnimationFrame {
-            window_id: 1,
-            frame_serial: ms,
-            source,
-            elapsed: Duration::from_millis(ms),
-            keyframe_samples: 0,
-            transition_samples: 0,
-            keyframe_requested: false,
-            transition_requested: false,
-            hover_target_changed: false,
-        }
-    }
+    use crate::animation::clock::test_frame as frame;
 
     fn at(ms: u64) -> AnimationFrame {
         frame(ms, AnimationTimeSource::DocumentSnapshot)

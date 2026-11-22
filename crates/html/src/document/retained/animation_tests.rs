@@ -65,11 +65,16 @@ fn static_replay_keeps_a_current_zero_work_journal(cx: &mut TestAppContext) {
     frame(cx);
     let before = frames(&view, cx);
     let previous = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
+    cx.update(|_, app| {
+        view.read(app)
+            .doc
+            .set_animation_elapsed(Some(Duration::from_millis(17)))
+    });
     frame(cx);
     let current = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
     assert_eq!(frames(&view, cx), (before.0, before.1 + 1));
     assert!(current.frame_serial > previous.frame_serial);
-    assert_eq!(current.elapsed, Duration::ZERO);
+    assert_eq!(current.elapsed, Duration::from_millis(17));
     assert_eq!(current.keyframe_samples, 0);
     assert_eq!(current.transition_samples, 0);
     assert!(!current.keyframe_requested && !current.transition_requested);

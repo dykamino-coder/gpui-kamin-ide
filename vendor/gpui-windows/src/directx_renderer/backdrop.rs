@@ -165,7 +165,7 @@ mod tests {
             inner.insert_primitive(surface(group));
             inner.finish();
             scene.groups.push(PaintGroup {
-                scene: inner,
+                scene: std::rc::Rc::new(inner),
                 ..Default::default()
             });
             scene

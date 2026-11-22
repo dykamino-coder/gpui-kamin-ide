@@ -101,6 +101,17 @@ impl Spool {
     }
 }
 
+impl Drop for Spool {
+    fn drop(&mut self) {
+        for index in 1..=self.count {
+            if let Ok(path) = self.path(index) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+        let _ = std::fs::remove_dir(&self.directory);
+    }
+}
+
 fn byte_len((width, height): (u32, u32)) -> Result<usize> {
     if width == 0 || height == 0 {
         return Err("fresh reference dimensions must be positive".into());

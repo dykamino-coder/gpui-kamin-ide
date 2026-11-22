@@ -47,7 +47,7 @@ impl WindowKey {
             appearance: window.appearance(),
             elapsed: cx.try_global::<gpui::AnimationElapsedTime>().map(|t| t.0),
             reduce_motion: cx.reduce_motion(),
-            animation: state.animation.retained_key(),
+            animation: state.animation.render_key(),
         }
     }
 }

@@ -1,7 +1,5 @@
-//! Readback and presentation completion outside effect time.
-use super::Result;
-use gpui::AsyncApp;
-use kamin_html::host::capture::CaptureSession;
+//! Wait for readback or a skipped presentation with bounded timeouts.
+use super::*;
 use std::time::{Duration, Instant};
 
 pub(super) async fn wait(cx: &AsyncApp, sequence: u64, capture: &CaptureSession) -> Result<u64> {

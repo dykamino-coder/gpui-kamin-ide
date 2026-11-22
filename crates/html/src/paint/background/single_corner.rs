@@ -6,7 +6,6 @@
 //! не оставлял тёмного покрытия под светлой рамкой.
 
 mod geometry;
-use crate::hooks::IntoHooked;
 use crate::style::computed::{BgClip, BoxStyle};
 use crate::style::values::value::{Color, Len};
 /// Примитив совмещает рамку с собственным used-фоном коробки.
@@ -14,7 +13,7 @@ pub(crate) fn eligible(c: &BoxStyle) -> bool {
     crate::style::computed::single_corner::box_eligible(c)
 }
 use geometry::{inset, square, uniform, virtual_circle};
-use gpui::{AnyElement, Bounds, Pixels, Window, px};
+use gpui::{Bounds, Pixels, Window, px};
 
 fn paint_fill(window: &mut Window, rect: Bounds<Pixels>, i: usize, r: f32, color: Color) {
     let circle = super::sampling::snapped_clip(virtual_circle(rect, i, r), window);
@@ -62,7 +61,8 @@ fn paint_area(
     });
 }
 
-pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
+/// The layer, before it becomes an element (`decorations::Out`).
+pub(crate) fn exact(c: &BoxStyle) -> Option<super::exact_layer::ExactLayer> {
     if !eligible(c) {
         return None;
     }
@@ -92,8 +92,9 @@ pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
         .clip
         .filter(|_| c.background_paint.paints())
         .unwrap_or(BgClip::BorderBox);
-    Some(
-        super::exact_layer::ExactLayer::inset([-b; 4], move |geometry, window| {
+    Some(super::exact_layer::ExactLayer::inset(
+        [-b; 4],
+        move |geometry, window| {
             let bounds = geometry.positioning(geometry.snapped);
             let size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
             let r = match radius {
@@ -194,7 +195,6 @@ pub(crate) fn layer(c: &BoxStyle) -> Option<AnyElement> {
                     |window| window.paint_quad(ring),
                 );
             });
-        })
-        .hooked(),
-    )
+        },
+    ))
 }

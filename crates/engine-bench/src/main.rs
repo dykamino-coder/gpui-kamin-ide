@@ -36,6 +36,8 @@ mod memory;
 #[cfg(windows)]
 mod pixels;
 #[cfg(windows)]
+mod plan;
+#[cfg(windows)]
 mod process;
 #[cfg(all(windows, feature = "work-counters"))]
 mod profile_state;
@@ -45,6 +47,8 @@ mod resources;
 mod run;
 mod scroll_fresh;
 #[cfg(windows)]
+mod series;
+#[cfg(windows)]
 mod startup;
 mod step;
 mod step_frames;
@@ -53,6 +57,8 @@ mod stylesheet;
 mod usage;
 #[cfg(windows)]
 mod view;
+#[cfg(windows)]
+mod why;
 #[cfg(windows)]
 mod work;
 
@@ -104,6 +110,13 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     if std::env::args().skip(1).eq(["--build-info"]) {
         println!("{}", build_info::json());
+        return Ok(());
+    }
+    #[cfg(windows)]
+    if let [flag, a, b] = &std::env::args().skip(1).collect::<Vec<_>>()[..]
+        && flag == "--why-compare"
+    {
+        print!("{}", why::compare::run(a.as_ref(), b.as_ref())?);
         return Ok(());
     }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {

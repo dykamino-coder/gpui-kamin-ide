@@ -56,7 +56,7 @@ fn scene(backdrop: &[([f32; 4], Hsla)], groups: &[G], parent: Option<f32>) -> Sc
         }
         let bounds = b(0., 0., W as f32, H as f32);
         s.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds,
             blur_radius: grp.blur,
             blend: grp.blend,
@@ -81,7 +81,7 @@ fn scene(backdrop: &[([f32; 4], Hsla)], groups: &[G], parent: Option<f32>) -> Sc
             inner.surfaces = marks;
             let bounds = b(0., 0., W as f32, H as f32);
             s.groups.push(PaintGroup {
-                scene: inner,
+                scene: std::rc::Rc::new(inner),
                 bounds,
                 ..Default::default()
             });
@@ -183,6 +183,21 @@ fn modes_of_one_run_interleave_in_document_order() {
     for (gpu, device) in devices() {
         let bg = WindowBackgroundAppearance::Opaque;
         check(&device, &format!("{gpu}: multiply/difference"), &chain(&[1, 10, 1, 0, 10, 1]), bg);
+    }
+}
+
+/// A composite no other joins is a pass of one: its translucent pixels take
+/// the same steps as in a run, so a primitive that splits a run between two
+/// composites leaves both as they were.
+#[test]
+fn a_lone_composite_equals_its_formula_as_in_a_run() {
+    for (gpu, device) in devices() {
+        for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
+            let mut lone = chain(&[0]);
+            lone[0].opacity = 0.6;
+            check(&device, &format!("{gpu}: lone normal {bg:?}"), &lone, bg);
+            check(&device, &format!("{gpu}: lone multiply {bg:?}"), &chain(&[1]), bg);
+        }
     }
 }
 
