@@ -51,6 +51,7 @@ mod prepare;
 mod resource_tests;
 mod retained;
 pub use retained::UpdatePhase;
+pub(crate) use retained::frame_miss_code;
 mod scope;
 mod source;
 use prepare::parse_document;

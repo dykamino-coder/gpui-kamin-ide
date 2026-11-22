@@ -31,6 +31,7 @@ impl Window {
     /// Предок обязан отложить prepaint потомков, если вход изменился:
     /// тогда они будут обработаны только с окончательным стилем предка.
     /// Изолированный prepaint вне сборки кадра входы не публикует.
+    #[track_caller]
     pub fn update_layout_input(
         &mut self,
         id: LayoutInputId,
@@ -44,6 +45,13 @@ impl Window {
             return false;
         }
         let changed = update();
+        if changed {
+            // KaminIDE patch (DevTools `why`): this input lays the roots out
+            // and renders them again in the same draw.
+            crate::dirty_sources::trace::push_with("layout_retry", core::panic::Location::caller(), || {
+                format!("layout input {} changed ({} inputs published in this draw)", id.0, inputs.len())
+            });
+        }
         self.layout_retry |= changed;
         changed
     }

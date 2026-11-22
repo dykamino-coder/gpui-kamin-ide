@@ -9,8 +9,9 @@ use std::path::PathBuf;
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--trace-frames] [--scroll-back [--scroll-step PX]] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window] [--plan PLAN.json]\n\
+    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--why DIR] [--trace-frames] [--scroll-back [--scroll-step PX]] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window] [--plan PLAN.json]\n\
     engine_bench --list-gpus\n\
+    engine_bench --why-compare A B   (what changed between two --why runs: dirs or why.json)\n\
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
@@ -91,6 +92,8 @@ pub(super) struct Args {
     pub(super) snapshot: Option<PathBuf>,
     pub(super) frame_diff_dir: Option<PathBuf>,
     pub(super) fresh_check_dir: Option<PathBuf>,
+    /// DevTools `why` journal of each sampled frame into this directory (`why`).
+    pub(super) why: Option<PathBuf>,
     pub(super) surface: Surface,
     /// Every phase of this plan file in one process (`plan.rs`).
     pub(super) plan: Option<PathBuf>,
@@ -133,6 +136,7 @@ impl Args {
             snapshot: None,
             frame_diff_dir: None,
             fresh_check_dir: None,
+            why: None,
             surface: Surface::Offscreen,
             plan: None,
             steady_each_phase: true,
@@ -212,6 +216,7 @@ impl Args {
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 "--fresh-check-dir" => out.fresh_check_dir = Some(value.into()),
+                "--why" => out.why = Some(value.into()),
                 "--surface" => {
                     out.surface = match value.as_str() {
                         "offscreen" => Surface::Offscreen,

@@ -89,7 +89,7 @@ impl Document {
                                 let slot = &self.retained;
                                 record.replay(slot, Some(&key), &environment, window, &self.reuse)
                             }
-                            false => Err(super::record::FrameMiss::Resources),
+                            false => Err(super::record::FrameMiss::Resources.noted()),
                         };
                         let replay = replay
                             .inspect_err(|miss| self.retained.missed(*miss))

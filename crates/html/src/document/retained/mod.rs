@@ -75,6 +75,7 @@ mod band_rerecord_tests;
 #[cfg(test)]
 mod band_value_tests;
 mod record;
+pub(crate) use record::frame_miss_code;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -93,6 +94,8 @@ mod unread_color_tests;
 mod unseen_tests;
 #[cfg(test)]
 mod used_style_tests;
+#[cfg(test)]
+mod why_tests;
 mod window_key;
 
 use super::Document;
@@ -212,6 +215,11 @@ impl Document {
     /// опциями хоста может его повторить.
     pub(super) fn frame_recorded(&self) -> bool {
         self.retained.recorded.borrow().strong_count() != 0
+    }
+
+    /// Why the last recorded frame of this revision was kept from replay (DevTools `why`).
+    pub(in crate::document) fn unpublished_reason(&self) -> Option<&'static str> {
+        self.retained.unsettled.get().map(record::FrameMiss::code)
     }
 }
 

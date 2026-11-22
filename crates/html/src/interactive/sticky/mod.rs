@@ -86,8 +86,11 @@ pub(crate) fn sticky_wrap(
     if !allowed || !thresholds || z <= 0 {
         return wrapper.hooked();
     }
-    wrapper.deferred = true;
+    // Lifted above the flow in paint order only: the box stays under its
+    // scroller's node, its follower node follows that scroller
+    // (`gpui::Deferred::in_scroll_node`).
     gpui::deferred(wrapper.into_hooked())
         .with_priority(z as usize)
+        .in_scroll_node()
         .into_any_element()
 }

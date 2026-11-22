@@ -104,8 +104,34 @@ pub(super) async fn sample(
 
 /// `sample`; without `present` the frame may skip its presentation (an
 /// edit that changed nothing on screen), and then no frame is captured.
+/// With `--why` the frame's journal entry follows the sample (`why`).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn sample_with(
+    cx: &mut AsyncApp,
+    window: WindowHandle<View>,
+    fonts: &FontContext,
+    args: &Args,
+    step: Step<'_>,
+    capture: &CaptureSession,
+    luid: &super::work::Adapter,
+    present: bool,
+) -> Result<(
+    Measured,
+    Option<kamin_html::host::capture::Frame>,
+    work::Sample,
+)> {
+    let watch = super::why::Watch::begin(args, cx, window)?;
+    let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await;
+    if let Some(watch) = watch {
+        let phases = out.as_ref().ok().map(|out| &out.0.phases);
+        let error = out.as_ref().err().map(|e| e.to_string());
+        watch.end(args, cx, window, step, phases, error)?;
+    }
+    out
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sample_once(
     cx: &mut AsyncApp,
     window: WindowHandle<View>,
     fonts: &FontContext,
@@ -504,6 +530,7 @@ pub(super) async fn run(
     // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
     report["build"] = super::build_info::json();
     report["cpu_calibration"] = super::process::calibration();
+    report["unavailable_resources"] = super::stylesheet::unavailable().into();
     report::print(&report, args.json)?;
     finished
 }
