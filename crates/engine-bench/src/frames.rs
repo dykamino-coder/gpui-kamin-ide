@@ -47,9 +47,8 @@ pub(super) struct Frames {
     jump: f32,
     /// When the step's wheel event was dispatched (prepare).
     dispatched: Option<std::time::Instant>,
-    before: (u64, u64),
-    /// Сборки внутри `Window::draw` до кадра (`Document::builds_inside_draw`).
-    before_inside: u64,
+    before: Option<kamin_html::FrameCounters>,
+    wheel_position: Option<(f32, f32)>,
     /// Contents replayed in the document before the frame (`Document::replayed_contents`).
     before_contents: u64,
     /// Root scroll offset before the wheel step of the sample (`scrolled`).
@@ -81,8 +80,8 @@ impl Frames {
             step: WHEEL_STEP,
             jump: args.scroll_step,
             dispatched: None,
-            before: (0, 0),
-            before_inside: 0,
+            before: None,
+            wheel_position: None,
             before_contents: 0,
             wheel_from: None,
             before_blocks: 0,
@@ -105,8 +104,13 @@ impl Frames {
                     // `--scroll-back`: down and up between the ends.
                     self.step = if down { self.jump } else { -self.jump };
                 }
+                let (x, y) = view
+                    .doc
+                    .root_scroll_wheel_position(window)
+                    .unwrap_or((f32::from(size.width / 2.0), f32::from(size.height / 2.0)));
+                self.wheel_position = Some((x, y));
                 let wheel = gpui::ScrollWheelEvent {
-                    position: gpui::point(size.width / 2.0, size.height / 2.0),
+                    position: gpui::point(gpui::px(x), gpui::px(y)),
                     delta: gpui::ScrollDelta::Pixels(gpui::point(
                         gpui::px(0.0),
                         gpui::px(-self.step),
@@ -122,8 +126,7 @@ impl Frames {
                 // Меняется только CSS-вход: HWND остаётся прежним и не получает WM_SIZE.
                 view.viewport = Some(viewport(self.base, !index.is_multiple_of(2)));
             }
-            self.before = view.doc.retained_frames();
-            self.before_inside = view.doc.builds_inside_draw();
+            self.before = Some(view.doc.frame_counters());
             self.before_contents = view.doc.replayed_contents();
             self.before_blocks = view.doc.replayed_blocks();
             view.doc.take_frame_misses();

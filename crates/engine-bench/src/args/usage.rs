@@ -6,7 +6,7 @@ pub(crate) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--run
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
-Scroll dispatches one wheel step of 120 px down over the viewport centre before each frame.\n\
+Scroll dispatches one wheel step of 120 px down beside the root bar, in its visible content (viewport centre if unavailable).\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
     then checks every captured edit frame against a fresh document; missing captures cannot pass.\n\
     insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\

@@ -29,6 +29,8 @@ mod content_replay_tests;
 #[cfg(test)]
 mod content_resize_tests;
 mod counters;
+mod snapshot;
+pub use snapshot::FrameCounters;
 #[cfg(test)]
 mod decorated_fill_tests;
 #[cfg(test)]
