@@ -42,11 +42,21 @@ report shows the number of samples in each cell's title.
 
 ## Adapters
 
-`ec/adapters/` holds one file per engine kind (`ours`, `browser`, `oneshot`, `kitesurf`); the contract is in
+`ec/adapters/` holds one file per engine kind (`ours`, `browser`, `native`, `oneshot`, `kitesurf`); the contract is in
 `ec/adapters/__init__.py`. Browsers run through `driver/browser-driver.cjs` (Playwright for Chromium, Selenium for
 Firefox and Servo's WebDriver server), one long-lived browser per lane and class. Files the adapters derive next
 to a page (`C.html`, `D.html`, `probe-ec.html`) are not part of the page identity.
 
+`native` drives an engine's own plan harness (protocol `native-plan-v1`, for example Blitz and Kitesurf built with a
+plan runner): one process per page and class runs cold, R, the four edits and S on the engine's API with the same
+inputs, selectors and scroll step count as the other engines; CPU per frame is the process user + kernel time over each
+series divided by its frames. A phase the harness refuses keeps its named reason in the cell.
+
+## Warm-up
+
+The first run of a fresh executable pays the cold disk cache and the GPU driver's shader cache (memory up by a third,
+slower frames). Before its first measured unit every engine gets one quick idle run of that unit per tool run; its
+numbers are dropped and other lanes wait for it. `--no-warmup` (or `"warmup": false` in the config) skips it.
 ## Tests
 
 ```
