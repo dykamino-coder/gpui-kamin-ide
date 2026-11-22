@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[path = "group_visible.rs"]
+mod visible;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Region {
     pub x: u32,
@@ -49,7 +52,10 @@ impl Region {
 
     /// The two rectangles share a pixel.
     pub(super) fn meets(self, o: Self) -> bool {
-        self.x < o.x + o.width && o.x < self.x + self.width && self.y < o.y + o.height && o.y < self.y + self.height
+        self.x < o.x + o.width
+            && o.x < self.x + self.width
+            && self.y < o.y + o.height
+            && o.y < self.y + self.height
     }
 
     pub(super) fn floats(self) -> [f32; 4] {
@@ -67,12 +73,9 @@ impl Region {
         } else {
             0.0
         };
-        // Проекция читает исходные пиксели через H^-1, включая область вне рамки.
-        let raw = if group.projection.is_some() {
-            Self::full(width, height)
-        } else {
-            Self::clipped(group.bounds, margin + 2.0, width, height)
-        };
+        // Source uses raster space; the projection maps the frame into it.
+        let bounds = visible::source(group, width, height);
+        let raw = Self::clipped(bounds, margin + 2.0, width, height);
         [raw, Self::clipped(group.bounds, margin, width, height)]
     }
 }
@@ -81,7 +84,12 @@ impl DirectXRenderer {
     /// Frame rectangle a group composite can write (and whose backdrop it reads).
     pub(super) fn composite_region(&self, s: &PaintSurface) -> Region {
         let target = Region::full(self.width, self.height);
-        let clipped = s.bounds.intersect(&s.content_mask.bounds);
+        let mut clipped = s.bounds.intersect(&s.content_mask.bounds);
+        if s.group > 0 {
+            if let Some((quad, _)) = self.group_composite_quad(s) {
+                clipped = visible::output(&quad, clipped);
+            }
+        }
         let region = Region::clipped(clipped, 0.0, self.width, self.height);
         let x = region.x.max(target.x).min(target.x + target.width - 1);
         let y = region.y.max(target.y).min(target.y + target.height - 1);
@@ -184,7 +192,12 @@ impl DirectXRenderer {
             }
         }
         self.blur.groups.truncate(pages.len());
-        let textures: Vec<(u32, u32)> = self.blur.groups.iter().map(|t| (t.width, t.height)).collect();
+        let textures: Vec<(u32, u32)> = self
+            .blur
+            .groups
+            .iter()
+            .map(|t| (t.width, t.height))
+            .collect();
         self.retained.groups.layout = Some((
             group_atlas::Shelves::of_layout(&self.blur.group_place, &textures),
             textures.len(),
