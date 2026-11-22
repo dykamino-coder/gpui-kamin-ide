@@ -179,6 +179,7 @@ impl Document {
             paths,
             &layer,
             own,
+            |e| crate::paint::box_tree::styled::requested_group_paint(&self.state, e),
             unseen,
             off,
             waits,

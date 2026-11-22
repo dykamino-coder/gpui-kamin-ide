@@ -38,6 +38,8 @@ pub(crate) struct ExactLayer {
     paint: PaintFn,
     exact: Option<Bounds<Pixels>>,
     parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
+    /// `[top, right, bottom, left]` from the parent's padding box.
+    insets: [f32; 4],
 }
 
 impl ExactLayer {
@@ -59,7 +61,36 @@ impl ExactLayer {
             paint: Box::new(paint),
             exact: None,
             parent_edges: None,
+            insets: [t, r, b, l],
         }
+    }
+
+    /// The layer's box from its parent's padding box `padding`: what layout
+    /// gives the absolute child (CSS 2.2 §10.3.7, §10.6.4: insets from the
+    /// padding edge), before rounding.
+    pub(crate) fn bounds_in(&self, padding: Bounds<Pixels>) -> Bounds<Pixels> {
+        let [t, r, b, l] = self.insets.map(px);
+        Bounds::from_corners(
+            gpui::point(padding.left() + l, padding.top() + t),
+            gpui::point(padding.right() - r, padding.bottom() - b),
+        )
+    }
+
+    /// Paint the layer at `bounds` without a layout of its own, for a box
+    /// painted again in its scene layer (`document::retained::box_repaint`).
+    /// The caller gives the box layout would give it only when rounding
+    /// leaves it as it is (unrounded and snapped boxes equal), and only for
+    /// layers that read no parent edges (`decorations::Out::exact`: the
+    /// colour layer, which reads them, is an element there).
+    pub(crate) fn paint_at(&mut self, bounds: Bounds<Pixels>, window: &mut Window) {
+        (self.paint)(
+            PaintGeometry {
+                snapped: bounds,
+                exact: None,
+                parent_edges: None,
+            },
+            window,
+        );
     }
 }
 
