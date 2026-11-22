@@ -96,7 +96,10 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                 }) && attr(&node, "disabled").is_none() =>
             {
                 let href = attr(&node, "href").ok_or("stylesheet link has no href")?;
-                let mut css = stylesheet::load(&base.join(&href)?, &mut vec![])?;
+                // an unavailable stylesheet is not applied: the link stays and nothing is inlined
+                let Some(mut css) = stylesheet::load(&base.join(&href)?, &mut vec![])? else {
+                    continue;
+                };
                 if let Some(media) = attr(&node, "media").filter(|s| !s.trim().is_empty()) {
                     css = format!("@media {media} {{\n{css}\n}}");
                 }
@@ -138,6 +141,11 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                             changed = true;
                         }
                     }
+                }
+            }
+            "img" => {
+                if let Some(src) = attr(&node, "src").filter(|src| !src.starts_with("data:")) {
+                    stylesheet::file(&base.join(&src)?)?;
                 }
             }
             "iframe" | "object" | "embed" => {
