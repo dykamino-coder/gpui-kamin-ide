@@ -125,10 +125,13 @@ pub(super) fn write_paint_values(
             (Some(LayerPainter::Band) | None, Own::Band) => true,
             (_, Own::Not(reason)) => {
                 refuse_not_own(reason);
+                why::not_own(reason, owner, &b.tag, recorded);
                 return None;
             }
             _ => {
+                // The recorded painter and the new paint have no write between them.
                 refuse_not_own(Refusal::Kind);
+                why::not_own(Refusal::Kind, owner, &b.tag, recorded);
                 return None;
             }
         };
@@ -240,11 +243,7 @@ pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> O
 }
 
 mod fill;
+mod why;
 use fill::kept_decorations;
 pub(super) use fill::painted_background;
-
-/// Count a refusal of a box whose own paint the layer does not hold.
-fn refuse_not_own(reason: Refusal) {
-    crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
-    crate::paint_path::not_own::add(reason.label());
-}
+use why::refuse_not_own;

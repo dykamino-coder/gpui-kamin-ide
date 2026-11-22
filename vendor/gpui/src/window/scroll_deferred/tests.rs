@@ -68,6 +68,9 @@ fn a_plain_deferred_draw_has_no_scroll_node(cx: &mut TestAppContext) {
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             assert!(frame.scene.scroll.within(&painted).is_empty());
             assert_eq!(window.deferred_scroll_part(draw).err(), Some(ScrollRefusal::DeferredDraws));
+            // DevTools reads why, and the line that deferred it (`Lifted::render`).
+            assert_eq!(draw.scroll_refusal(), Some("no scroll node (a plain defer_draw)"));
+            assert!(draw.site.file().replace('\\', "/").ends_with("window/scroll_deferred/tests.rs"), "{}", draw.site);
         })
         .unwrap();
 }

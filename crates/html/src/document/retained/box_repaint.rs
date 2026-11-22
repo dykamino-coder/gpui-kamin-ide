@@ -22,7 +22,8 @@ use gpui::{App, Refineable, Styled, Window};
 /// child elements paint them. `None`, the layer unchanged, when the group
 /// cannot take it, or layout would place a decoration otherwise: the box's
 /// recording knew no unrounded box equal to its snapped one, a decoration's
-/// box is off the device grid, or the box clips its children.
+/// box is off the device grid, or the box clips its children. The error
+/// names the reason for the DevTools `why` journal.
 fn group_paint(
     window: &mut Window,
     cx: &mut App,
@@ -30,12 +31,19 @@ fn group_paint(
     owner: u32,
     style: &gpui::Style,
     mut painters: crate::paint::decorations::Painters,
-) -> Option<()> {
-    window.rerecord_layer_group(layer, owner, cx, |window, cx, bounds, exact| {
-        if !painters.is_empty()
-            && (exact != Some(bounds) || style.overflow_mask_snapped(bounds, window).is_some())
-        {
-            return None;
+) -> Result<(), &'static str> {
+    let mut why =
+        "the layer refused the group's new paint (no group root, or it does not fit the group)";
+    let painted = window.rerecord_layer_group(layer, owner, cx, |window, cx, bounds, exact| {
+        if !painters.is_empty() {
+            if exact != Some(bounds) {
+                why = "the recording knew no unrounded box equal to the snapped one";
+                return None;
+            }
+            if style.overflow_mask_snapped(bounds, window).is_some() {
+                why = "the box clips its decorations";
+                return None;
+            }
         }
         style.paint_box(bounds, window, cx);
         if painters.is_empty() {
@@ -46,8 +54,13 @@ fn group_paint(
             gpui::point(bounds.left() + edges.left, bounds.top() + edges.top),
             gpui::point(bounds.right() - edges.right, bounds.bottom() - edges.bottom),
         );
-        painters.paint(padding, window.scale_factor(), window)
-    })
+        let painted = painters.paint(padding, window.scale_factor(), window);
+        if painted.is_none() {
+            why = "a decoration's box is off the device grid";
+        }
+        painted
+    });
+    painted.ok_or(why)
 }
 
 impl Builder {
@@ -128,10 +141,13 @@ impl Builder {
                     Some(painters) if layer.holds_group_root(owner) => {
                         group_paint(window, cx, &layer, owner, &style, painters)
                     }
-                    _ => None,
+                    Some(_) => Err("a decorated box that is not all its group holds"),
+                    None => Err("its decorations need layout (no group painters)"),
                 };
-                if painted.is_none() {
-                    crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                if let Err(why) = painted {
+                    crate::paint_path::refuse_with(&crate::paint_path::REFUSED_BY_LAYER, || {
+                        format!("group repaint of box {owner}: {why}")
+                    });
                     return false;
                 }
                 continue;

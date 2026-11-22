@@ -220,6 +220,7 @@ impl Window {
     /// them while enclosing nodes scroll (a fixed or sticky box), offset
     /// against the enclosing node by `offset` (for a fixed box, minus the
     /// enclosing scroll offset). Its mask does not move with that node.
+    #[track_caller]
     pub fn with_scroll_anchor_prepaint<R>(
         &mut self,
         id: ScrollNodeId,
@@ -228,7 +229,13 @@ impl Window {
     ) -> R {
         let chain = self.content_mask().bounds;
         let now = offset();
-        self.open_scroll_node(id, chain, now, NodeSource::Anchor(offset));
+        let index = self.open_scroll_node(id, chain, now, NodeSource::Anchor(offset));
+        // KaminIDE patch (DevTools `why`): the anchor, where its host opened it.
+        crate::dirty_sources::trace::push_with("scroll_node.open_anchor", core::panic::Location::caller(), || {
+            let node = &self.next_frame.scroll_nodes[index as usize];
+            let tail = self.element_id_stack.iter().rev().take(3).map(|e| format!("{e:?}")).collect::<Vec<_>>();
+            format!("node {index} id {} chain {:?} clip {:?} element ..{}", id.0, node.chain, node.clip, tail.join(" < "))
+        });
         let result = f(self);
         self.end_scroll_node_prepaint(Some(0));
         result
@@ -342,17 +349,23 @@ impl Window {
     /// Paint visits containers in prepaint order, so the cursor only moves
     /// forward and pairing all nodes of a frame is linear; a node a reused
     /// paint range already placed is never paired again.
+    #[track_caller]
     pub(crate) fn begin_scroll_node_paint(&mut self, id: Option<ScrollNodeId>) -> Option<u32> {
         let id = id?;
         let frame = &mut self.next_frame;
         let from = frame.scroll_paint.cursor;
         let free = |node: &ScrollNodeRecord| node.id == id && node.paint.is_none() && !node.pending;
-        let index = frame.scroll_nodes[from..]
+        let found = frame.scroll_nodes[from..]
             .iter()
             .position(free)
             .map(|at| from + at)
             // Out of order (a container painted outside its prepaint order).
-            .or_else(|| frame.scroll_nodes[..from].iter().rposition(free))?;
+            .or_else(|| frame.scroll_nodes[..from].iter().rposition(free));
+        if crate::dirty_sources::trace::enabled() {
+            trace_pairing(&self.next_frame, &self.element_id_stack, id, from, found);
+        }
+        let index = found?;
+        let frame = &mut self.next_frame;
         frame.scroll_paint.cursor = frame.scroll_paint.cursor.max(index + 1);
         let start = frame.scene.paint_operations.len();
         frame.scroll_nodes[index].paint = Some(start..start);
@@ -557,6 +570,62 @@ pub(crate) fn segments(
     out
 }
 
+/// KaminIDE patch (DevTools `why`): a paint pairing with an anchor's id or
+/// one that found no node: the node found, the cursor and, on a miss, what
+/// the nodes of that id are (paired, pending), so a reader tells a paint
+/// that came with another id from one that paired with a foreign node.
+#[track_caller]
+fn trace_pairing(frame: &Frame, elements: &[ElementId], id: ScrollNodeId, cursor: usize, found: Option<usize>) {
+    let same: Vec<(usize, &ScrollNodeRecord)> = frame.scroll_nodes.iter().enumerate().filter(|(_, n)| n.id == id).collect();
+    let anchor = same.iter().any(|(_, n)| n.anchored);
+    if found.is_some() && !anchor {
+        return;
+    }
+    let site = core::panic::Location::caller();
+    let kind = if found.is_some() { "scroll_node.paint_paired" } else { "scroll_node.paint_unpaired" };
+    crate::dirty_sources::trace::push_with(kind, site, || {
+        let nodes: Vec<String> = same
+            .iter()
+            .map(|(at, n)| {
+                let state = match (n.paint.is_some(), n.pending) {
+                    (_, true) => "pending",
+                    (true, false) => "paired",
+                    (false, false) => "free",
+                };
+                format!("{at}:{state}{}", if n.anchored { ":anchor" } else { "" })
+            })
+            .collect();
+        let tail = elements.iter().rev().take(3).map(|e| format!("{e:?}")).collect::<Vec<_>>();
+        format!(
+            "id {} cursor {cursor} found {found:?} nodes of the id [{}] of {} element ..{}",
+            id.0,
+            nodes.join(" "),
+            frame.scroll_nodes.len(),
+            tail.join(" < ")
+        )
+    });
+}
+
+impl Window {
+    /// KaminIDE patch (DevTools `why`): anchors of the frame just drawn whose
+    /// children never painted (`paint` none): prepaint opened them, paint did
+    /// not pair them.
+    #[track_caller]
+    pub(crate) fn trace_unpainted_anchors(&self) {
+        if !crate::dirty_sources::trace::enabled() {
+            return;
+        }
+        let site = core::panic::Location::caller();
+        for (at, node) in self.rendered_frame.scroll_nodes.iter().enumerate() {
+            if node.anchored && node.paint.is_none() {
+                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
+                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}", node.id.0, node.chain, node.clip, node.parent)
+                });
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -687,5 +756,35 @@ mod tests {
                 assert_eq!(window.next_frame.scroll_paint.cursor, 2);
             })
             .unwrap();
+    }
+
+    /// While DevTools trace, an anchor's opening and the pairing of paints
+    /// with its id are recorded with what they saw; a paint of an id no
+    /// node has records why it found none.
+    #[crate::test]
+    fn anchor_pairing_is_traced_while_a_reader_lives(cx: &mut TestAppContext) {
+        use crate::dirty_sources::trace;
+        let window = cx.add_window(|_, _| Nested);
+        let trace = trace::Trace::start();
+        trace::take();
+        window
+            .update(cx, |_, window, _| {
+                let token = Rc::new(());
+                let id = ScrollNodeId::of_token(&token);
+                window.invalidator.set_phase(DrawPhase::Prepaint);
+                window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
+                window.invalidator.set_phase(DrawPhase::Paint);
+                window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
+                window.with_scroll_node_paint(id, |_| {});
+            })
+            .unwrap();
+        let (events, _) = trace::take();
+        drop(trace);
+        let kinds: Vec<_> = events.iter().map(|e| e.kind).filter(|k| k.starts_with("scroll_node.")).collect();
+        assert_eq!(kinds, ["scroll_node.open_anchor", "scroll_node.paint_unpaired", "scroll_node.paint_paired"]);
+        let unpaired = events.iter().find(|e| e.kind == "scroll_node.paint_unpaired").unwrap();
+        assert!(unpaired.detail.contains("found None nodes of the id []"), "{}", unpaired.detail);
+        let paired = events.iter().find(|e| e.kind == "scroll_node.paint_paired").unwrap();
+        assert!(paired.detail.contains("found Some(0) nodes of the id [0:free:anchor]"), "{}", paired.detail);
     }
 }

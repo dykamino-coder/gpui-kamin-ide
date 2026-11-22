@@ -177,6 +177,7 @@ mod canvas;
 mod canvas_extent;
 mod deferred;
 mod groups;
+mod why;
 
 /// Block ranges from the previous layer must not survive the moved scene.
 #[gpui::test]

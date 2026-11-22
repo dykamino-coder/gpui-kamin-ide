@@ -75,7 +75,7 @@ mod group_root;
 mod grouped_layer;
 mod layer_box;
 mod layer_band;
-pub use scene_layer::RecordedLayer;
+pub use scene_layer::{NoLayer, RecordedLayer};
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
@@ -1070,6 +1070,8 @@ pub(crate) struct DeferredDraw {
     isolated: Option<IsolatedDraw>,
     // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
     scroll: scroll_deferred::DeferredScroll,
+    // KaminIDE patch: the line that deferred it, for DevTools' scroll refusals.
+    pub(crate) site: &'static core::panic::Location<'static>,
 }
 
 pub(crate) struct Frame {
@@ -3877,10 +3879,15 @@ impl Window {
     /// Produces a new frame and assigns it to `rendered_frame`. To actually show
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
+    #[track_caller]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // KaminIDE patch: DevTools `why` reads which requests each draw served
+        // and which caller drew (the platform frame request or a forced draw).
+        crate::dirty_sources::trace::mark("draw");
         // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
         self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        self.trace_unpainted_anchors();
         // A frame takes what reads set aside; the rest is stale, like the
         // states a frame does not access.
         self.read_states.states.clear();
@@ -4555,6 +4562,7 @@ impl Window {
                     paint_range: deferred_draw.paint_range.clone(),
                     isolated: deferred_draw.isolated.clone(),
                     scroll: owners.copy(&deferred_draw.scroll),
+                    site: deferred_draw.site,
                 }),
         );
         // KaminIDE patch: reused isolated draws stay isolated in the new frame.
@@ -5312,6 +5320,7 @@ impl Window {
     /// both prepaint and paint. When `None`, no additional clipping is applied.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
+    #[track_caller]
     pub fn defer_draw(
         &mut self,
         element: AnyElement,
@@ -5319,16 +5328,42 @@ impl Window {
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
     ) {
-        self.push_deferred_draw(element, absolute_offset, priority, content_mask, Default::default());
+        let site = core::panic::Location::caller();
+        self.defer_draw_at(element, absolute_offset, priority, content_mask, site);
+    }
+
+    /// KaminIDE patch: `defer_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        site: &'static core::panic::Location<'static>,
+    ) {
+        self.push_deferred_draw(element, absolute_offset, priority, content_mask, Default::default(), site);
     }
 
     /// KaminIDE patch: `defer_draw` of content that belongs to the open scroll
     /// node (`scroll_deferred`): drawn later, in priority order, but under
     /// that node, clipped by it and moved with it, as Blink keeps a positioned
     /// box's paint chunks on its scroll translation whatever its paint order.
+    #[track_caller]
     pub fn defer_scrolled_draw(&mut self, element: AnyElement, absolute_offset: Point<Pixels>, priority: usize) {
+        let site = core::panic::Location::caller();
+        self.defer_scrolled_draw_at(element, absolute_offset, priority, site);
+    }
+
+    /// KaminIDE patch: `defer_scrolled_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_scrolled_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        site: &'static core::panic::Location<'static>,
+    ) {
         let scroll = self.deferred_scroll_owner();
-        self.push_deferred_draw(element, absolute_offset, priority, None, scroll);
+        self.push_deferred_draw(element, absolute_offset, priority, None, scroll, site);
     }
 
     fn push_deferred_draw(
@@ -5338,6 +5373,7 @@ impl Window {
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
         scroll: scroll_deferred::DeferredScroll,
+        site: &'static core::panic::Location<'static>,
     ) {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
@@ -5357,6 +5393,7 @@ impl Window {
             paint_range: PaintIndex::default()..PaintIndex::default(),
             isolated: None,
             scroll,
+            site,
         });
     }
 

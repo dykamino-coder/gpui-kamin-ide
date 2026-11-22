@@ -34,7 +34,49 @@ impl ComputedSlot {
 
     /// Публикуется только результат завершённого layout через оркестратор.
     /// Изменение требует повторного прохода стиля до paint того же кадра.
+    /// A change is noted in the DevTools `why` journal at the caller: it
+    /// lays the window's roots out again in the same draw.
+    #[track_caller]
     pub fn set_container_size(&self, size: (Option<f32>, Option<f32>)) -> bool {
-        self.1.replace(size) != size
+        let old = self.1.replace(size);
+        if old != size {
+            crate::journal::note("layout_retry.container_size", || {
+                format!("container size (width, height) {old:?} -> {size:?}")
+            });
+        }
+        old != size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_changed_container_size_is_noted_at_the_caller() {
+        let (_one, _sub) = crate::journal::test_reader();
+        let slot = super::ComputedSlot::default();
+        let line = line!() + 1;
+        assert!(slot.set_container_size((Some(800.0), None)));
+        assert!(!slot.set_container_size((Some(800.0), None)));
+        let j = crate::journal::take();
+        let mine: Vec<_> = j
+            .causes
+            .iter()
+            .filter(|c| c.code == "layout_retry.container_size")
+            .collect();
+        assert_eq!(mine.len(), 1, "an unchanged size is no retry");
+        assert!(
+            mine[0]
+                .site()
+                .ends_with(&format!("container_input.rs:{line}")),
+            "{}",
+            mine[0].site()
+        );
+        assert!(
+            mine[0]
+                .detail
+                .contains("(None, None) -> (Some(800.0), None)"),
+            "{}",
+            mine[0].detail
+        );
     }
 }

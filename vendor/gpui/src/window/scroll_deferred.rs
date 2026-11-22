@@ -159,7 +159,7 @@ impl Window {
         draw: &DeferredDraw,
     ) -> Result<(Range<usize>, Range<usize>, Range<usize>), ScrollRefusal> {
         let (prepaint, paint) = (&draw.prepaint_range, &draw.paint_range);
-        if !draw.scroll.owned || draw.content_mask.is_some() || draw.isolated.is_some() {
+        if draw.scroll_refusal().is_some() {
             return Err(ScrollRefusal::DeferredDraws);
         }
         let nodes = prepaint.start.scroll_nodes_index..prepaint.end.scroll_nodes_index;
@@ -174,6 +174,19 @@ impl Window {
         frame.deferred_draws[range.start.deferred_draws_index..range.end.deferred_draws_index]
             .iter()
             .flat_map(|draw| &frame.scroll_nodes[draw.prepaint_range.start.scroll_nodes_index..draw.prepaint_range.end.scroll_nodes_index])
+    }
+}
+
+impl DeferredDraw {
+    /// Why a scrolled replay cannot take this draw (`deferred_scroll_part`),
+    /// for DevTools; `None` when it can.
+    pub(super) fn scroll_refusal(&self) -> Option<&'static str> {
+        match () {
+            _ if !self.scroll.owned => Some("no scroll node (a plain defer_draw)"),
+            _ if self.content_mask.is_some() => Some("its own content mask"),
+            _ if self.isolated.is_some() => Some("an isolated view"),
+            _ => None,
+        }
     }
 }
 

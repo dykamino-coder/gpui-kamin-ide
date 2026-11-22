@@ -148,6 +148,7 @@ impl Document {
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
             // A frame replays only from a settled record of this tree.
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
+            self.note_no_layer();
             return false;
         };
         let own = |e: &crate::dom::Element| {
