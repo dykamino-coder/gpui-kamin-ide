@@ -771,7 +771,9 @@ mod tests {
             .update(cx, |_, window, _| {
                 let token = Rc::new(());
                 let id = ScrollNodeId::of_token(&token);
+                window.invalidator.set_phase(DrawPhase::Prepaint);
                 window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
+                window.invalidator.set_phase(DrawPhase::Paint);
                 window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
                 window.with_scroll_node_paint(id, |_| {});
             })

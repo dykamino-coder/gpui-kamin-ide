@@ -38448,10 +38448,10 @@ index 0000000000000000000000000000000000000000..966a2af02aa16cae41109849d36b7a09
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cde3a3e8952ca5fd2a48bffc5a2c3caf0acbc68e
+index 0000000000000000000000000000000000000000..1a5c548b6f422e865730af510d2ff447c55db896
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,788 @@
+@@ -0,0 +1,790 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -39225,7 +39225,9 @@ index 0000000000000000000000000000000000000000..cde3a3e8952ca5fd2a48bffc5a2c3caf
 +            .update(cx, |_, window, _| {
 +                let token = Rc::new(());
 +                let id = ScrollNodeId::of_token(&token);
++                window.invalidator.set_phase(DrawPhase::Prepaint);
 +                window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
++                window.invalidator.set_phase(DrawPhase::Paint);
 +                window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
 +                window.with_scroll_node_paint(id, |_| {});
 +            })
