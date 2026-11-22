@@ -33,6 +33,8 @@ pub struct AnimationFrame {
     pub elapsed: Duration,
     pub keyframe_samples: u64,
     pub transition_samples: u64,
+    /// Matched keyframes or an in-progress transition consume the frame time.
+    pub time_dependent: bool,
     pub keyframe_requested: bool,
     pub transition_requested: bool,
     pub hover_target_changed: bool,
@@ -136,6 +138,7 @@ impl Clock {
                 elapsed,
                 keyframe_samples: 0,
                 transition_samples: 0,
+                time_dependent: state.sampled_effect,
                 keyframe_requested: false,
                 transition_requested: false,
                 hover_target_changed: false,
@@ -149,21 +152,26 @@ impl Clock {
         state.sampled_effect = true;
         if let Some(frame) = &mut state.frame {
             frame.keyframe_samples += 1;
+            frame.time_dependent = true;
             frame.keyframe_requested |= requested;
         }
     }
 
-    pub(crate) fn transition(&self, requested: bool) {
+    pub(crate) fn transition(&self, active: bool, requested: bool) {
         let mut state = self.state.borrow_mut();
-        state.sampled_effect = true;
+        state.sampled_effect |= active;
         if let Some(frame) = &mut state.frame {
+            frame.time_dependent |= active;
             frame.transition_samples += 1;
             frame.transition_requested |= requested;
         }
     }
 
     pub(crate) fn hover_changed(&self) {
-        if let Some(frame) = &mut self.state.borrow_mut().frame {
+        let mut state = self.state.borrow_mut();
+        state.sampled_effect = true;
+        if let Some(frame) = &mut state.frame {
+            frame.time_dependent = true;
             frame.hover_target_changed = true;
         }
     }
@@ -181,6 +189,7 @@ pub(super) fn test_frame(ms: u64, source: AnimationTimeSource) -> AnimationFrame
         elapsed: Duration::from_millis(ms),
         keyframe_samples: 0,
         transition_samples: 0,
+        time_dependent: false,
         keyframe_requested: false,
         transition_requested: false,
         hover_target_changed: false,

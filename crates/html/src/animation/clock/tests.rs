@@ -64,7 +64,7 @@ fn fixed_time_is_held_across_frames_and_reading_does_not_request_frames() {
         let frame = clock.sample_with(1, serial, None, || panic!());
         assert_eq!(frame.elapsed, Duration::ZERO);
         assert!(!frame.keyframe_requested && !frame.transition_requested);
-        clock.transition(false);
+        clock.transition(false, false);
         clock.hover_changed();
         assert!(clock.frame().unwrap().hover_target_changed);
     }
@@ -81,4 +81,32 @@ fn static_render_key_ignores_steps_until_an_effect_is_observed() {
     let animated_key = clock.render_key();
     clock.set_elapsed(Some(ms(34)));
     assert_ne!(clock.render_key(), animated_key);
+    let replay = clock.sample_with(1, 2, None, || panic!());
+    assert!(replay.time_dependent);
+    assert_eq!(replay.keyframe_samples, 0);
+}
+
+#[test]
+fn idle_transition_does_not_consume_time_but_running_snapshot_does() {
+    let clock = Clock::default();
+    clock.set_elapsed(Some(ms(0)));
+    clock.sample_with(1, 1, None, || panic!());
+    let static_key = clock.render_key();
+    clock.transition(false, false);
+    let idle = clock.frame().unwrap();
+    assert_eq!(idle.transition_samples, 1);
+    assert!(!idle.time_dependent);
+    clock.set_elapsed(Some(ms(17)));
+    assert_eq!(clock.render_key(), static_key);
+    clock.sample_with(1, 2, None, || panic!());
+    clock.transition(true, false);
+    let running = clock.frame().unwrap();
+    assert!(running.time_dependent);
+    assert!(
+        !running.transition_requested,
+        "stopped clocks do not self-tick"
+    );
+    let active_key = clock.render_key();
+    clock.set_elapsed(Some(ms(34)));
+    assert_ne!(clock.render_key(), active_key);
 }
