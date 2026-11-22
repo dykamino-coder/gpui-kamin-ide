@@ -47,7 +47,8 @@ pub(crate) fn decoration_painters(
     }
     let mut sink = Sink::default();
     emit(c, empty, frame, cx, &mut sink);
-    sink.elements.is_empty().then_some(Painters(sink.layers))
+    (sink.elements.is_empty() && sink.layers.iter().all(|layer| !layer.needs_layout()))
+        .then_some(Painters(sink.layers))
 }
 
 impl Painters {

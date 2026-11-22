@@ -31,6 +31,14 @@ impl PaintGeometry {
     }
 }
 
+type ClipFn = Box<dyn Fn(PaintGeometry, &Window) -> Bounds<Pixels>>;
+
+struct Viewport {
+    token: std::rc::Rc<()>,
+    anchored: bool,
+    clip: ClipFn,
+}
+
 type PaintFn = Box<dyn FnMut(PaintGeometry, &mut Window)>;
 
 pub(crate) struct ExactLayer {
@@ -40,6 +48,7 @@ pub(crate) struct ExactLayer {
     parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
     /// `[top, right, bottom, left]` from the parent's padding box.
     insets: [f32; 4],
+    viewport: Option<Viewport>,
 }
 
 impl ExactLayer {
@@ -62,7 +71,26 @@ impl ExactLayer {
             exact: None,
             parent_edges: None,
             insets: [t, r, b, l],
+            viewport: None,
         }
+    }
+
+    /// Keep paint in viewport space while its clip follows the containing box.
+    pub(crate) fn viewport(
+        mut self,
+        anchored: bool,
+        clip: impl Fn(PaintGeometry, &Window) -> Bounds<Pixels> + 'static,
+    ) -> Self {
+        self.viewport = Some(Viewport {
+            token: std::rc::Rc::new(()),
+            anchored,
+            clip: Box::new(clip),
+        });
+        self
+    }
+
+    pub(crate) fn needs_layout(&self) -> bool {
+        self.viewport.is_some()
     }
 
     /// The layer's box from its parent's padding box `padding`: what layout
@@ -123,7 +151,22 @@ impl Hooks for ExactLayer {
             && near(exact.right(), bounds.right())
             && near(exact.bottom(), bounds.bottom()))
         .then_some(exact);
-        self.child.prepaint(window, cx);
+        if let Some(viewport) = &self.viewport {
+            let geometry = PaintGeometry {
+                snapped: bounds,
+                exact: self.exact,
+                parent_edges: self.parent_edges,
+            };
+            let clip = (viewport.clip)(geometry, window);
+            window.with_viewport_content_prepaint(
+                gpui::ScrollNodeId::of_token(&viewport.token),
+                clip,
+                viewport.anchored,
+                |window| self.child.prepaint(window, cx),
+            );
+        } else {
+            self.child.prepaint(window, cx);
+        }
     }
 
     fn paint(
@@ -134,13 +177,20 @@ impl Hooks for ExactLayer {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        (self.paint)(
-            PaintGeometry {
-                snapped: bounds,
-                exact: self.exact,
-                parent_edges: self.parent_edges,
-            },
-            window,
-        );
+        let mut paint = |window: &mut Window| {
+            (self.paint)(
+                PaintGeometry {
+                    snapped: bounds,
+                    exact: self.exact,
+                    parent_edges: self.parent_edges,
+                },
+                window,
+            )
+        };
+        if let Some(viewport) = &self.viewport {
+            window.with_scroll_node_paint(gpui::ScrollNodeId::of_token(&viewport.token), paint);
+        } else {
+            paint(window);
+        }
     }
 }

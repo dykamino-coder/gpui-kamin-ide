@@ -5,6 +5,8 @@
 //! cover what a replay at another offset may show. Each primitive and hitbox
 //! is drawn and hit-tested with own mask ∩ the node's real clip chain.
 
+mod viewport;
+
 use super::*;
 use crate::ScrollHandle;
 use crate::scene::{Primitive, Scene, scroll_marks::SceneSpace};
