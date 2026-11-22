@@ -133,8 +133,12 @@ pub(crate) fn layered(
                 cell: cell.clone(),
                 child: el,
             };
+            // The box stays in its scroller's space: lifted above the flow in
+            // paint order only, it moves and clips with that scroller
+            // (`gpui::Deferred::in_scroll_node`), and a wheel step replays it.
             let deferred = gpui::deferred(crate::hooks::IntoHooked::into_hooked(inner))
                 .with_priority(z as usize)
+                .in_scroll_node()
                 .into_any_element();
             let keep = crate::paint::effects::mask::element::MaskKeep {
                 cell,
