@@ -72,6 +72,47 @@ fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut T
     }
 }
 
+/// The decoration of an empty filtered box (a conic gradient, a child
+/// element) gives way to a plain fill on a page that scrolls; then wheel
+/// steps draw what a fresh tree at each offset draws. (Whether the edit is
+/// taken in place is `effects_repaint_tests`' check: here the restyle plan
+/// refuses it, `refused_plan_text`.)
+#[gpui::test]
+fn wheel_steps_after_a_decoration_edit_of_a_group_root_match_fresh(cx: &mut TestAppContext) {
+    let style = format!(
+        "{STYLE}<style>.fx{{height:40px;filter:blur(1px);\
+         background:repeating-conic-gradient(from 13deg,#e457,#37e8 10deg,#fc98 30deg)}}\
+         .fx[data-edit]{{background:#eee}}</style>"
+    );
+    let html = rows(&style).replace(
+        "<div class=r>row 13</div>",
+        "<div class=r>row 13</div><div class=fx></div>",
+    );
+    let edited = html.replace("<div class=fx>", "<div class=fx data-edit>");
+    assert_ne!(html, edited, "the fixture has the filtered box");
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    vcx.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            view.document.update(&edited, "").unwrap();
+            cx.notify();
+        })
+    });
+    frame(vcx);
+    for (i, dy) in [0., -120., -120., 120.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        if dy != 0. {
+            wheel_by(vcx, dy);
+            frame(vcx);
+        }
+        let offset = root(&view, vcx).offset();
+        let (quads, reference) = fresh_with(cx, &edited, offset, |c| (painted(c), groups(c)));
+        assert_same(&name, &painted(vcx), &quads);
+        assert_eq!(groups(vcx), reference, "{name}: groups");
+    }
+}
+
 /// A colour edit inside an opacity group first (the document's layer may
 /// keep its groups, `gpui::Window::paint_grouped_layer`), then wheel steps:
 /// every scrolled frame still draws what a fresh tree at that offset draws.

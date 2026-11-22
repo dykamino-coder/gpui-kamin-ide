@@ -6,11 +6,11 @@ use crate::scene::{PaintGroup, PaintSurface};
 use crate::{Background, Bounds, ContentMask, Hsla, Quad, ScaledPixels, Scene, hsla, point, size};
 use std::rc::Rc;
 
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
+pub(super) fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
     Bounds { origin: point(ScaledPixels(x), ScaledPixels(y)), size: size(ScaledPixels(w), ScaledPixels(h)) }
 }
 
-fn quad(b: Bounds<ScaledPixels>, color: Hsla) -> Quad {
+pub(super) fn quad(b: Bounds<ScaledPixels>, color: Hsla) -> Quad {
     Quad { bounds: b, content_mask: ContentMask { bounds: rect(0., 0., 1000., 1000.) }, background: Background::from(color), ..Default::default() }
 }
 
@@ -21,25 +21,26 @@ fn env() -> super::BoxEnv {
         transformation: crate::TransformationMatrix::unit(),
         opacity: 1.,
         rem_size: crate::px(16.),
+        exact: None,
         fill: None,
         layer: None,
         painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),
     }
 }
 
-fn paint_box(scene: &mut Scene, owner: u32, area: Bounds<ScaledPixels>, color: Hsla) -> BoxRange {
+pub(super) fn paint_box(scene: &mut Scene, owner: u32, area: Bounds<ScaledPixels>, color: Hsla) -> BoxRange {
     assert!(scene.open_box(owner, area, env()), "a run opens in a layer's group");
     scene.insert_primitive(quad(area, color));
     scene.close_box().expect("the box was open")
 }
 
-const LABEL: Bounds<ScaledPixels> = Bounds {
+pub(super) const LABEL: Bounds<ScaledPixels> = Bounds {
     origin: crate::Point { x: ScaledPixels(0.), y: ScaledPixels(0.) },
     size: crate::Size { width: ScaledPixels(100.), height: ScaledPixels(40.) },
 };
 
 /// Boxes 1 and 2 inside group 0 (box 1 in `first`), its label, box 3 on top.
-fn grouped(first: Hsla) -> SceneLayer {
+pub(super) fn grouped(first: Hsla) -> SceneLayer {
     let mut inner = Scene { in_group: true, ..Scene::default() };
     inner.book.group_runs = Some(Vec::new());
     let mut runs = vec![paint_box(&mut inner, 1, rect(0., 0., 100., 20.), first)];
@@ -66,7 +67,7 @@ fn grouped(first: Hsla) -> SceneLayer {
     SceneLayer::finish(scene, Vec::new(), boxes)
 }
 
-fn quads(scene: &Scene) -> Vec<String> {
+pub(super) fn quads(scene: &Scene) -> Vec<String> {
     scene.quads.iter().map(|q| format!("{q:?}")).collect()
 }
 
