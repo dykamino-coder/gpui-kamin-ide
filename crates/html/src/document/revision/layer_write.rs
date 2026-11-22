@@ -14,7 +14,7 @@
 //! layers, decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before; a box with decorations whose
 //! change leaves them as painted (`fill::kept_decorations`) takes a new fill
-//! colour as a value all the same.
+//! colour as a value all the same; a group root records its group (`grouped`).
 
 use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
 use super::patch::{Path, element_at};
@@ -49,6 +49,7 @@ pub(super) fn write_paint_values(
     paths: &[(Path, u64)],
     layer: &LayerHandle,
     own: impl Fn(&Element) -> Own,
+    grouped: impl Fn(&Element) -> bool,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
     waits: impl Fn(Wait, &Path, &Element, &Element) -> Option<super::offscreen::FrameWait>,
@@ -58,8 +59,11 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A replacement must cover every recorded run of the owner.
-    let held = |id: u64| u32::try_from(id).is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o));
+    // A replacement covers every recorded run of the owner (a group root's: its group).
+    let held = |id: u64| {
+        u32::try_from(id)
+            .is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o) || layer.holds_group_root(o))
+    };
     let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
     let mut records: Vec<(Path, u64)> = Vec::new();
     let mut deferred: Vec<(Path, u64)> = Vec::new();
@@ -97,6 +101,9 @@ pub(super) fn write_paint_values(
         // A box whose decorations stay as painted takes its own fill
         // (`kept_decorations`); its decorations are elements of the frame.
         let decorated = recorded == Some(LayerPainter::DecoratedBox);
+        // A box that is all its group holds paints the group again with
+        // its decorations (`retained::box_repaint`, `group_painters`).
+        let group = || layer.holds_group_root(owner) && grouped(b);
         let banded = match (recorded, own(b)) {
             (Some(LayerPainter::Box), Own::Plain) => false,
             (Some(LayerPainter::DecoratedBox), Own::Not(Refusal::Decoration))
@@ -109,16 +116,22 @@ pub(super) fn write_paint_values(
                 Own::Not(Refusal::Decoration),
             )
             | (Some(LayerPainter::DecoratedBox), Own::Plain) => {
-                wait(Wait::Decoration, Refusal::Decoration)?;
-                continue;
+                if !group() {
+                    wait(Wait::Decoration, Refusal::Decoration)?;
+                    continue;
+                }
+                false
             }
             (Some(LayerPainter::Band) | None, Own::Band) => true,
             (_, Own::Not(reason)) => {
                 refuse_not_own(reason);
+                why::not_own(reason, owner, &b.tag, recorded);
                 return None;
             }
             _ => {
+                // The recorded painter and the new paint have no write between them.
                 refuse_not_own(Refusal::Kind);
+                why::not_own(Refusal::Kind, owner, &b.tag, recorded);
                 return None;
             }
         };
@@ -159,7 +172,7 @@ pub(super) fn write_paint_values(
             }
             // The layer records no decorated run again: a fill that appears
             // or goes builds the frame unless it waits off the screen.
-            _ if decorated => {
+            _ if decorated && !group() => {
                 wait(Wait::Decoration, Refusal::Decoration)?;
                 continue;
             }
@@ -230,11 +243,7 @@ pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> O
 }
 
 mod fill;
+mod why;
 use fill::kept_decorations;
 pub(super) use fill::painted_background;
-
-/// Count a refusal of a box whose own paint the layer does not hold.
-fn refuse_not_own(reason: Refusal) {
-    crate::paint_path::add(&crate::paint_path::REFUSED_NOT_OWN, 1);
-    crate::paint_path::not_own::add(reason.label());
-}
+use why::refuse_not_own;

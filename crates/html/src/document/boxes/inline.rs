@@ -19,8 +19,6 @@ use crate::style::computed::{Display, RubyRole};
 use std::string::String;
 
 mod content;
-#[cfg(feature = "heap-report")]
-pub(crate) use content::Chunk;
 pub(super) use content::len as offset;
 use content::{Closed, append, len};
 pub(crate) use content::{InlineContent, Item, ItemKind};

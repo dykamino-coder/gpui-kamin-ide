@@ -12244,10 +12244,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06457b5794
+index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb6a9b04f7
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,257 @@
 +//! KaminIDE patch: a run of overlapping group composites in one pass.
 +//!
 +//! A blend mode mixed in the shader reads a copy of the backdrop, and a
@@ -12356,7 +12356,13 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +
 +    /// Draw the leading composites of `run` that `tiles_take` accepts, on one
 +    /// atlas page and with one mask image (or none), in one pass; returns how
-+    /// many were drawn (0: fewer than two could share a pass, nothing drawn).
++    /// many were drawn (0: none could, nothing drawn). A composite no other
++    /// can join is a pass of one: drawn by the adapter's blender instead, its
++    /// partly covered pixels (an antialiased clip edge, a translucent run)
++    /// could land a code away from the same composite drawn in a pass, so a
++    /// frame would change where an unrelated primitive between two
++    /// composites splits their run (album-cover: a fixed box painted over
++    /// the page moved the clip-path edges of two groups by one code).
 +    pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
 +        let mut quads = vec![BlurQuad::default()];
 +        let mut regions = Vec::new();
@@ -12384,7 +12390,7 @@ index 0000000000000000000000000000000000000000..f3286bf679736300f464d153a831db06
 +        }
 +        let mut lists = std::mem::take(&mut self.blur.tile_lists);
 +        let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
-+        if taken < 2 {
++        if taken == 0 {
 +            self.blur.tile_lists = lists;
 +            return Ok(0);
 +        }
@@ -13218,10 +13224,10 @@ index 0000000000000000000000000000000000000000..d3432f8a2c42f73bcef325254289139c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..20d7c8be69df4b2cbd4e502a08c237d19c54c4a1
+index 0000000000000000000000000000000000000000..4603206bafcd29441088dade26b45392f15d2e82
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,268 @@
 +//! KaminIDE patch (R4): the retained target redrawn only within a frame's
 +//! damage (`retained.rs`) holds byte for byte what a whole redraw of that
 +//! frame draws, for every kind of edit the damage diff must see: a changed,
@@ -13236,6 +13242,8 @@ index 0000000000000000000000000000000000000000..20d7c8be69df4b2cbd4e502a08c237d1
 +use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
 +
 +mod groups;
++// KaminIDE patch: a colour sprite reads the same pixels at any atlas place.
++mod sprites;
 +// KaminIDE patch: output-merger blend series equal their formulas.
 +mod tiles;
 +
@@ -13804,12 +13812,109 @@ index 0000000000000000000000000000000000000000..7ab131822b75566cb51baf38271fc22b
 +    let want = whole(&device, || sized(&recolored, side));
 +    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sprites.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sprites.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..883548b3f54c0076d6717791f81827501be490e5
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sprites.rs
+@@ -0,0 +1,91 @@
++//! KaminIDE patch: a colour sprite draws the same pixels wherever the atlas
++//! holds its tile. A frame after an edit lays the atlas out anew, so a
++//! sampler that resolved normalized atlas coordinates gave a rotated or scaled
++//! image other filter weights there and the frame differed from a fresh one.
++
++use super::*;
++use gpui::{
++    AtlasKey, AtlasTile, Bounds, ContentMask, PlatformAtlas, Point,
++    PolychromeSprite, Radians, RenderImageParams, ScaledPixels, TransformationMatrix,
++};
++use std::borrow::Cow;
++
++const W: i32 = 23;
++const H: i32 = 17;
++
++/// A premultiplied BGRA image whose every texel differs from its neighbours.
++fn texels() -> Vec<u8> {
++    let mut out = Vec::with_capacity((W * H * 4) as usize);
++    for y in 0..H {
++        for x in 0..W {
++            let a = (128 + (x * 5 + y * 3) % 128) as u8;
++            let c = |k: i32| ((x * k + y * (k + 7)) % i32::from(a)) as u8;
++            out.extend_from_slice(&[c(11), c(29), c(53), a]);
++        }
++    }
++    out
++}
++
++fn insert(r: &DirectXRenderer, id: usize, w: i32, h: i32, bytes: Vec<u8>) -> AtlasTile {
++    let size = Size { width: DevicePixels(w), height: DevicePixels(h) };
++    let key = AtlasKey::Image(RenderImageParams { image_id: ImageId(id), frame_index: 0 });
++    let mut bytes = Some(bytes);
++    r.atlas
++        .get_or_insert_with(key, &mut || Ok(Some((size, Cow::Owned(bytes.take().unwrap())))))
++        .unwrap()
++        .unwrap()
++}
++
++fn scaled(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
++    Bounds {
++        origin: Point { x: ScaledPixels(x), y: ScaledPixels(y) },
++        size: Size { width: ScaledPixels(w), height: ScaledPixels(h) },
++    }
++}
++
++/// The image drawn rotated and scaled, and once 1:1 on the device grid.
++fn frame(r: &mut DirectXRenderer, tile: AtlasTile) -> Vec<u8> {
++    let mut scene = Scene::default();
++    let turn = TransformationMatrix::unit()
++        .translate(Point { x: ScaledPixels(30.0), y: ScaledPixels(22.0) })
++        .rotate(Radians(0.37))
++        .translate(Point { x: ScaledPixels(-30.0), y: ScaledPixels(-22.0) });
++    for (bounds, transformation) in [
++        (scaled(12.3, 9.6, 41.5, 29.0), turn),
++        (scaled(4.0, 40.0, W as f32, H as f32), TransformationMatrix::unit()),
++    ] {
++        scene.insert_primitive(PolychromeSprite {
++            order: 0,
++            pad: 0,
++            grayscale: false.into(),
++            opacity: 1.0,
++            bounds,
++            content_mask: ContentMask { bounds: scaled(0.0, 0.0, 64.0, 64.0) },
++            corner_radii: Default::default(),
++            tile,
++            transformation,
++        });
++    }
++    scene.finish();
++    r.render_to_image(&scene, WindowBackgroundAppearance::Opaque).unwrap().into_raw()
++}
++
++#[test]
++fn a_colour_sprite_draws_the_same_pixels_at_any_atlas_place() {
++    use crate::GpuAdapterPreference as P;
++    for (p, name) in [(P::Default, "default"), (P::Software, "software")] {
++        let Ok(device) = DirectXDevices::with_instrumentation(p, gpui::Instrumentation::default()) else {
++            continue;
++        };
++        let mut first = offscreen(&device, 64, 64);
++        let a = insert(&first, 1, W, H, texels());
++        let mut second = offscreen(&device, 64, 64);
++        // Another image first: the same image lands elsewhere in the atlas.
++        insert(&second, 2, 37, 29, vec![255; 37 * 29 * 4]);
++        let b = insert(&second, 1, W, H, texels());
++        assert_ne!(a.bounds.origin, b.bounds.origin, "{name}: the layouts must differ");
++        let (fa, fb) = (frame(&mut first, a), frame(&mut second, b));
++        let differ = fa.chunks(4).zip(fb.chunks(4)).filter(|(x, y)| x != y).count();
++        assert_eq!(differ, 0, "{name}: {differ} pixels depend on the atlas place");
++    }
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e3fb469313ef60dff84036a079d7469570036860
+index 0000000000000000000000000000000000000000..92e3aee4c861ca0051bbd6349683eaf7c78c02d5
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/tiles.rs
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,274 @@
 +//! KaminIDE patch: a composite run drawn in one pass (`group_tiles`) equals
 +//! the canonical group arithmetic: the Compositing formulas of its modes in
 +//! document order, rounded to 8 bits after every step.
@@ -13995,6 +14100,21 @@ index 0000000000000000000000000000000000000000..e3fb469313ef60dff84036a079d74695
 +    for (gpu, device) in devices() {
 +        let bg = WindowBackgroundAppearance::Opaque;
 +        check(&device, &format!("{gpu}: multiply/difference"), &chain(&[1, 10, 1, 0, 10, 1]), bg);
++    }
++}
++
++/// A composite no other joins is a pass of one: its translucent pixels take
++/// the same steps as in a run, so a primitive that splits a run between two
++/// composites leaves both as they were.
++#[test]
++fn a_lone_composite_equals_its_formula_as_in_a_run() {
++    for (gpu, device) in devices() {
++        for bg in [WindowBackgroundAppearance::Opaque, WindowBackgroundAppearance::Transparent] {
++            let mut lone = chain(&[0]);
++            lone[0].opacity = 0.6;
++            check(&device, &format!("{gpu}: lone normal {bg:?}"), &lone, bg);
++            check(&device, &format!("{gpu}: lone multiply {bg:?}"), &chain(&[1]), bg);
++        }
 +    }
 +}
 +
@@ -16434,7 +16554,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaabd5e79d8e
+index ba89c6873354fb7449b8294878e080a68c3dd29b..bd74204d2209d1eea29771bb65cf0b52c37feb86
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -16771,33 +16891,46 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..3284099e72945ba91cf0a1070262aaab
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
 @@ -1256,0 +1413 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1415,23 @@
+@@ -1258,2 +1415,36 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
 +    float2 local_position = untransform(input.position.xy, sprite.transformation);
-+    // KaminIDE patch: кламп UV на полтексела внутрь тайла — линейная выборка
-+    // на краю тянула соседей по атласу, и растянутая картинка получала кайму
-+    // (clamp-to-edge для тайла общего атласа).
-+    float2 atlas_size;
-+    t_sprite.GetDimensions(atlas_size.x, atlas_size.y);
-+    float2 tile_min = (float2(sprite.tile.bounds.origin) + 0.5) / atlas_size;
-+    float2 tile_max = (float2(sprite.tile.bounds.origin) + float2(sprite.tile.bounds.size) - 0.5) / atlas_size;
-+    float2 uv = clamp(input.tile_position, tile_min, tile_max);
-+    float4 sample = t_sprite.Sample(s_sprite, uv);
++    // KaminIDE patch: the image is read in its own texel coordinates, never in
++    // normalized atlas UVs. The sampler resolves an atlas coordinate with a
++    // fixed sub-texel precision, so the same pixel of a rotated or scaled
++    // image got other filter weights wherever the atlas put the tile (a frame
++    // after an edit, whose tiles sit elsewhere, differed from a fresh one by a
++    // code). Texels are fetched by integer address inside the tile, clamped to
++    // its edge (clamp-to-edge of the image, no neighbour of the shared atlas),
++    // and the bilinear weights come from the tile-local position alone.
++    int2 tile_origin = int2(sprite.tile.bounds.origin);
++    int2 tile_last = int2(sprite.tile.bounds.size) - 1;
++    float2 source_position = (local_position - sprite.bounds.origin)
++        / sprite.bounds.size * float2(sprite.tile.bounds.size);
++    float4 sample;
 +    if ((sprite.pad & 1u) != 0u) {
-+        int2 tile_origin = int2(sprite.tile.bounds.origin);
-+        // Source coordinates must not depend on where the atlas allocated a
-+        // tile: interpolated normalized UVs lose precision at texel boundaries.
-+        float2 source_position = (local_position - sprite.bounds.origin)
-+            / sprite.bounds.size * float2(sprite.tile.bounds.size);
-+        int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0),
-+            int2(sprite.tile.bounds.size) - 1);
-+        int2 texel = tile_origin + source_texel;
-+        sample = t_sprite.Load(int3(texel, 0));
++        int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0), tile_last);
++        sample = t_sprite.Load(int3(tile_origin + source_texel, 0));
++    } else {
++        float2 p = source_position - 0.5;
++        float2 base = floor(p);
++        float2 f = p - base;
++        int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
++        sample = t_sprite.Load(int3(tile_origin + t0, 0));
++        // A pixel centre on a texel centre (an image drawn 1:1 on the device
++        // grid, the common case) has zero weights: the one texel is the
++        // bilinear result exactly, so only other pixels read four.
++        if (any(f != 0.0)) {
++            int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
++            float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
++            float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
++            float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
++            sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
++        }
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1447,535 @@
+@@ -1268,0 +1460,535 @@
 +
 +/*
 +**

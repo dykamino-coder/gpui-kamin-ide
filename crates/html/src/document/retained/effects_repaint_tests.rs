@@ -38,33 +38,57 @@ fn page_with(attr: &str, fill: &str) -> String {
 
 #[gpui::test]
 fn a_background_edit_of_an_effect_layer_equals_a_fresh_frame(cx: &mut TestAppContext) {
+    // The conic gradient is a decoration (a child element of the box): the
+    // box is all its group holds, so its group is painted again with it,
+    // in the kept layer, both ways.
     let (none, set) = (page(""), page(" data-edit=\"1\""));
     let (view, vcx) = settled(cx, &none, &set);
     update(&view, vcx, &none);
     let mut edited = Vec::new();
+    // Builds of this document's frame (the path counters are shared by
+    // tests running at once).
+    let builds = |vcx: &mut gpui::VisualTestContext| {
+        vcx.update(|_, cx| view.read(cx).doc.retained_frames().0)
+    };
     for (html, name) in [(&set, "set"), (&none, "unset")] {
-        let restyled = crate::paint_path::read();
+        let (built, paths) = (builds(vcx), crate::paint_path::read());
         update(&view, vcx, html);
-        let at = crate::paint_path::NAMES
+        // The paths taken meanwhile (other tests' too) name a refusal.
+        let taken: Vec<_> = crate::paint_path::NAMES
             .iter()
-            .position(|n| *n == "plan_restyled");
-        let at = at.expect("the plan counter");
-        assert!(
-            crate::paint_path::read()[at] > restyled[at],
-            "{name}: not restyled in place"
+            .zip(crate::paint_path::read().iter().zip(paths))
+            .filter(|(_, (now, then))| *now > then)
+            .map(|(n, (now, then))| (*n, now - then))
+            .collect();
+        assert_eq!(
+            builds(vcx),
+            built,
+            "{name}: the frame was built ({taken:?})"
         );
-        edited.push((html.clone(), name, quads(vcx)));
+        edited.push((html.clone(), name, quads(vcx), groups(vcx)));
     }
-    for (html, name, edited) in edited {
+    for (html, name, edited, edited_groups) in edited {
         let (_, fresh) = open(cx, &html);
         frame(fresh);
         assert_eq!(edited, quads(fresh), "{name}: the edited frame differs");
+        assert_eq!(
+            edited_groups,
+            groups(fresh),
+            "{name}: the edited groups differ"
+        );
     }
 }
 
-/// The rendered frame's group labels and each group's bounds and quads.
+/// The rendered frame's group labels, each group's bounds and quads, and
+/// what each group draws, in order.
 fn groups(cx: &mut gpui::VisualTestContext) -> String {
-    cx.update(|window, _| format!("{:?}", window.painted_groups()))
+    cx.update(|window, _| {
+        format!(
+            "{:?}\n{:?}",
+            window.painted_groups(),
+            window.painted_group_sequences()
+        )
+    })
 }
 
 /// Count `name` of `crate::paint_path::NAMES` now.

@@ -15,7 +15,7 @@ struct Key {
 }
 
 static MASKS: BoundedCache<Key, Option<Arc<RenderImage>>> =
-    BoundedCache::new(32 * MIB, optional_image_bytes);
+    BoundedCache::new(32 * MIB, optional_image_bytes).named("rounded_masks");
 
 pub(super) fn raster(r: &Rrect, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let key = Key {
