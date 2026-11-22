@@ -43,11 +43,11 @@ pub(crate) fn decorations(
     frame: FrameCx<'_>,
     cx: Option<&crate::layout::cx::LayoutCx>,
 ) -> Vec<AnyElement> {
-    let mut out: Vec<AnyElement> = vec![];
+    let mut out = Elements(vec![]);
     if crate::paint::effects::corner_clip::insets(c, frame.values).is_none() {
         emit(c, empty, frame, cx, &mut out);
     }
-    out
+    out.0
 }
 
 pub(crate) use painters::{Painters, decoration_painters};
@@ -60,13 +60,16 @@ trait Out {
     fn elements(&mut self) -> &mut Vec<AnyElement>;
 }
 
-impl Out for Vec<AnyElement> {
+/// Every decoration as an element (decorations).
+struct Elements(Vec<AnyElement>);
+
+impl Out for Elements {
     fn exact(&mut self, layer: ExactLayer) {
-        self.push(layer.hooked());
+        self.0.push(layer.hooked());
     }
 
     fn elements(&mut self) -> &mut Vec<AnyElement> {
-        self
+        &mut self.0
     }
 }
 
