@@ -1,5 +1,6 @@
 //! Проверяемые параметры CLI; не читает конфигурацию WPT.
 
+pub(super) mod animation;
 use std::path::PathBuf;
 
 /// Наименьшее окно устойчивой памяти (`--memory-settle-ms`) после последнего кадра.
@@ -8,23 +9,8 @@ use std::path::PathBuf;
 /// тяжелее базы. 2 с — то же окно, что у замера браузеров после загрузки.
 pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
-pub(super) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
-    [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--why DIR] [--trace-frames] [--scroll-back [--scroll-step PX]] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window] [--plan PLAN.json]\n\
-    engine_bench --list-gpus\n\
-    engine_bench --why-compare A B   (what changed between two --why runs: dirs or why.json)\n\
-    engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
-    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
-    Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
-Scroll dispatches one wheel step of 120 px down over the viewport centre before each frame.\n\
-    Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
-    then checks every captured edit frame against a fresh document; missing captures cannot pass.\n\
-    insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\
-    the second markup itself, for any other mutation.\n\
-    Surface: offscreen (default) draws into a GPU texture of a message-only window, never seen\n\
-    by the desktop compositor; window parks a presented desktop window off-screen (comparison only).\n\
-    Plan: every phase of PLAN.json in this one process (see plan.rs), each on its own input, without the\n\
-    memory steady window before each phase; frame series by duration; one JSON report with all phases.";
-
+mod usage;
+pub(super) use usage::USAGE;
 /// Куда рисует стенд: текстура message-only окна (DWM его не видит) или
 /// прежнее презентуемое окно за краем экрана — только для сверки путей.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,6 +64,7 @@ pub(super) struct Args {
     pub(super) gpu: String,
     pub(super) viewport: (u32, u32),
     pub(super) runs: usize,
+    pub(super) animation_step: Option<std::time::Duration>,
     pub(super) mode: Mode,
     pub(super) edit: super::edit::Edit,
     pub(super) edit_markup: Option<PathBuf>,
@@ -125,6 +112,7 @@ impl Args {
             gpu: "default".into(),
             viewport: (800, 600),
             runs: 30,
+            animation_step: None,
             mode: Mode::Both,
             edit: super::edit::Edit::Text,
             edit_markup: None,
@@ -166,6 +154,15 @@ impl Args {
                         || !(1..=8192).contains(&out.viewport.1)
                     {
                         return Err("viewport dimensions must be 1..8192 CSS pixels".into());
+                    }
+                }
+                "--animation-step-ms" => {
+                    if out
+                        .animation_step
+                        .replace(animation::parse(&value)?)
+                        .is_some()
+                    {
+                        return Err("--animation-step-ms is given twice".into());
                     }
                 }
                 "--runs" => {
@@ -236,6 +233,9 @@ impl Args {
         {
             return Err("memory audit requires at least five unchanged warm frames".into());
         }
+        out.animation_step
+            .get_or_insert(std::time::Duration::from_micros(16_667));
+        animation::validate(&out)?;
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()
             || !out
