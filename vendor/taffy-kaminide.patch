@@ -16407,10 +16407,10 @@ index f6ffa8092af88917af985592c77a132b2b3b6921..10ece19aa5e966b04f1232eb44e47666
 +            }
 diff --git a/vendor/taffy/src/style/kamin_scrollbars.rs b/vendor/taffy/src/style/kamin_scrollbars.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..954dbab91f1463c00f1f698b366e4131d1b64ffa
+index 0000000000000000000000000000000000000000..157032f11f2667247413377829edc088e6c0aa44
 --- /dev/null
 +++ b/vendor/taffy/src/style/kamin_scrollbars.rs
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,124 @@
 +//! KaminIDE patch: classic scrollbars that layout itself decides (CSS Overflow 3 §3,
 +//! `overflow: auto`). A box lays its content out with the bars it guesses (`overflow`), and
 +//! when the content's scrollable overflow asks for other bars it lays out again only itself,
@@ -16427,12 +16427,19 @@ index 0000000000000000000000000000000000000000..954dbab91f1463c00f1f698b366e4131
 +impl ScrollbarLayout {
 +    /// No bar decided by layout, no root gutter followed.
 +    pub const NONE: Self = Self(0);
++    /// Layout decides the horizontal bar.
 +    const AUTO_X: u16 = 1;
++    /// Layout decides the vertical bar.
 +    const AUTO_Y: u16 = 1 << 1;
++    /// The box is the viewport.
 +    const VIEWPORT: u16 = 1 << 2;
++    /// The box is a scroll range proxy.
 +    const PROXY: u16 = 1 << 3;
++    /// The box was built for a root gutter.
 +    const ROOT: u16 = 1 << 4;
++    /// [RootGutter::grow].
 +    const GROW: u16 = 1 << 5;
++    /// Shift of [RootGutter::assumed] in the bits.
 +    const SIDES: u32 = 8;
 +
 +    /// - `auto`: axes (of `overflow`) whose bar the content decides: `Scroll` with a bar,
@@ -16485,7 +16492,7 @@ index 0000000000000000000000000000000000000000..954dbab91f1463c00f1f698b366e4131
 +    #[inline(always)]
 +    pub fn root_gutter(self) -> Option<RootGutter> {
 +        (self.0 & Self::ROOT != 0)
-+            .then(|| RootGutter { assumed: (self.0 >> Self::SIDES) as u8 & 0xf, grow: self.0 & Self::GROW != 0 })
++            .then_some(RootGutter { assumed: (self.0 >> Self::SIDES) as u8 & 0xf, grow: self.0 & Self::GROW != 0 })
 +    }
 +
 +    /// Whether layout decides any bar of the box or publishes the root gutter.
@@ -23598,10 +23605,10 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbars.rs b/vendor/taffy/src/tree/kamin_scrollbars.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a4668f74ccc837708b8f14ff67ca6fd65a333b33
+index 0000000000000000000000000000000000000000..2011e1531bff44ea21f545a669d2c79230fc4b31
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbars.rs
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,131 @@
 +//! KaminIDE patch: classic bars decided inside layout (CSS Overflow 3 §3, `overflow: auto`).
 +//!
 +//! A box whose bars layout decides (`ScrollbarLayout::auto`) is laid out with the bars it
@@ -23627,7 +23634,9 @@ index 0000000000000000000000000000000000000000..a4668f74ccc837708b8f14ff67ca6fd6
 +/// What the layouts of one box learned of its bars in one layout of it.
 +#[derive(Default)]
 +pub(super) struct Settling {
++    /// Layouts of the box again so far.
 +    passes: u8,
++    /// Bars that appeared in this layout; they stay (no bar flip-flop).
 +    appeared: Point<bool>,
 +}
 +

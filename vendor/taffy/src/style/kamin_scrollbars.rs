@@ -14,12 +14,19 @@ pub struct ScrollbarLayout(u16);
 impl ScrollbarLayout {
     /// No bar decided by layout, no root gutter followed.
     pub const NONE: Self = Self(0);
+    /// Layout decides the horizontal bar.
     const AUTO_X: u16 = 1;
+    /// Layout decides the vertical bar.
     const AUTO_Y: u16 = 1 << 1;
+    /// The box is the viewport.
     const VIEWPORT: u16 = 1 << 2;
+    /// The box is a scroll range proxy.
     const PROXY: u16 = 1 << 3;
+    /// The box was built for a root gutter.
     const ROOT: u16 = 1 << 4;
+    /// [RootGutter::grow].
     const GROW: u16 = 1 << 5;
+    /// Shift of [RootGutter::assumed] in the bits.
     const SIDES: u32 = 8;
 
     /// - `auto`: axes (of `overflow`) whose bar the content decides: `Scroll` with a bar,
@@ -72,7 +79,7 @@ impl ScrollbarLayout {
     #[inline(always)]
     pub fn root_gutter(self) -> Option<RootGutter> {
         (self.0 & Self::ROOT != 0)
-            .then(|| RootGutter { assumed: (self.0 >> Self::SIDES) as u8 & 0xf, grow: self.0 & Self::GROW != 0 })
+            .then_some(RootGutter { assumed: (self.0 >> Self::SIDES) as u8 & 0xf, grow: self.0 & Self::GROW != 0 })
     }
 
     /// Whether layout decides any bar of the box or publishes the root gutter.

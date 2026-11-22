@@ -23,7 +23,9 @@ const PASSES: u8 = 2;
 /// What the layouts of one box learned of its bars in one layout of it.
 #[derive(Default)]
 pub(super) struct Settling {
+    /// Layouts of the box again so far.
     passes: u8,
+    /// Bars that appeared in this layout; they stay (no bar flip-flop).
     appeared: Point<bool>,
 }
 
