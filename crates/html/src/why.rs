@@ -128,10 +128,8 @@ pub fn to_json(entry: &Entry) -> Value {
 /// Serializes the tests of this crate that subscribe: the journal is process-wide.
 #[cfg(test)]
 pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription) {
-    static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let guard = ONE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    static ONE: trace::Shared<()> = trace::Shared::new(());
+    let guard = ONE.lock();
     let sub = subscribe();
     take();
     (guard, sub)

@@ -5,20 +5,23 @@
 
 use super::raster_keys::ImageKey;
 use crate::cache::FloatKey;
-use std::sync::Mutex;
+use crate::journal::Shared;
 
 /// The tile key's fields (`gradient_raster::TileKey`).
 pub(super) type Fields = (ImageKey, u32, u32, [FloatKey; 2], bool);
 
 /// Keys of past misses; past the bound the memory starts again.
 const SEEN: usize = 4096;
-static MISSED: Mutex<Vec<Fields>> = Mutex::new(Vec::new());
+static MISSED: Shared<Vec<Fields>> = Shared::new(Vec::new());
+
+/// Drop the keys of past misses (the journal's last reader left).
+pub(super) fn forget() {
+    *MISSED.lock() = Vec::new();
+}
 
 /// The detail of a miss of `key` for `reason` (`BoundedCache::lookup`).
 pub(super) fn explain(reason: &'static str, key: &Fields) -> String {
-    let mut seen = MISSED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut seen = MISSED.lock();
     let detail = detail(reason, key, &seen);
     if seen.len() >= SEEN {
         seen.clear();
@@ -55,10 +58,71 @@ fn detail(reason: &'static str, key: &Fields, seen: &[Fields]) -> String {
     if let Some(other) = seen.iter().rev().find(same_tile) {
         return format!(
             "{at}: first lookup of this image; nearest key at the same size differs in {}",
-            image.differs(&other.0)
+            differs(image, &other.0)
         );
     }
     format!("{at}: first lookup of this image")
+}
+
+/// The first field in which two keys differ, for the DevTools `why`
+/// journal of a cache miss (`gradient_why`); `""` when equal.
+fn differs(a: &ImageKey, b: &ImageKey) -> &'static str {
+    use ImageKey::{Color, Conic, Gradient};
+    match (a, b) {
+        (
+            Gradient {
+                geometry: g1,
+                stops: s1,
+                interpolation: i1,
+                repeating: r1,
+            },
+            Gradient {
+                geometry: g2,
+                stops: s2,
+                interpolation: i2,
+                repeating: r2,
+            },
+        ) => [
+            (g1 != g2, "geometry"),
+            (s1 != s2, "stops"),
+            (i1 != i2, "interpolation"),
+            (r1 != r2, "repeating"),
+        ]
+        .into_iter()
+        .find_map(|(d, name)| d.then_some(name))
+        .unwrap_or(""),
+        (
+            Conic {
+                from: f1,
+                center: c1,
+                stops: s1,
+                hints: h1,
+                interpolation: i1,
+                repeating: r1,
+            },
+            Conic {
+                from: f2,
+                center: c2,
+                stops: s2,
+                hints: h2,
+                interpolation: i2,
+                repeating: r2,
+            },
+        ) => [
+            (f1 != f2, "from"),
+            (c1 != c2, "center"),
+            (s1 != s2, "stops"),
+            (h1 != h2, "hints"),
+            (i1 != i2, "interpolation"),
+            (r1 != r2, "repeating"),
+        ]
+        .into_iter()
+        .find_map(|(d, name)| d.then_some(name))
+        .unwrap_or(""),
+        (Color(x), Color(y)) if x == y => "",
+        (Color(_), Color(_)) => "color",
+        _ => "kind",
+    }
 }
 
 #[cfg(test)]

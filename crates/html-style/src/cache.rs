@@ -14,7 +14,7 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
@@ -40,7 +40,11 @@ struct Store<K, V> {
     gone: HashMap<u64, &'static str>,
 }
 
+mod evict;
+mod keys;
 mod why;
+use evict::evict;
+pub use keys::{FloatKey, Hinted, hint};
 use why::{HELD, remember, same};
 pub use why::{NAMES, held};
 
@@ -183,6 +187,11 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
             clock: 0,
             gone: HashMap::new(),
         });
+        // Keys let go are kept only while observed: the first insert after
+        // the last reader leaves frees them.
+        if !observed && !store.gone.is_empty() {
+            store.gone = HashMap::new();
+        }
         if weight > self.budget {
             if observed {
                 remember(&mut store.gone, hint(&key), "not_admitted");
@@ -220,106 +229,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         self.insert(key, value.clone());
         value
     }
-
-    /// Суммарный вес записей.
-    #[cfg(test)]
-    pub fn bytes(&self) -> usize {
-        self.lock().as_ref().map_or(0, |s| s.bytes)
-    }
-
-    /// Число записей.
-    #[cfg(test)]
-    pub fn len(&self) -> usize {
-        self.lock().as_ref().map_or(0, |s| s.map.len())
-    }
-}
-
-/// Убрать самые давние записи, пока вес не уложится в бюджет. Одна сортировка на
-/// вытеснение; только что вставленная запись новее всех и не тяжелее бюджета, поэтому
-/// остаётся.
-fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize, observed: bool) {
-    let mut ages: Vec<(u64, usize)> = store.map.values().map(|s| (s.used, s.weight)).collect();
-    ages.sort_unstable_by_key(|&(used, _)| used);
-    let mut excess = store.bytes - budget;
-    let mut cutoff = 0;
-    for (used, weight) in ages {
-        if excess == 0 {
-            break;
-        }
-        excess = excess.saturating_sub(weight);
-        cutoff = used;
-    }
-    let mut freed = 0;
-    let gone = &mut store.gone;
-    store.map.retain(|key, slot| {
-        let keep = slot.used > cutoff;
-        if !keep {
-            freed += slot.weight;
-            if observed {
-                remember(gone, hint(key), "evicted");
-            }
-        }
-        keep
-    });
-    store.bytes -= freed;
-}
-
-/// Число в ключе: конечные значения сохраняются точно, оба нуля совпадают,
-/// все NaN образуют одно значение. Бесконечности различаются по знаку.
-/// Сырые `f32` не подходят для `Eq`: NaN не равен себе.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct FloatKey(u32);
-
-impl From<f32> for FloatKey {
-    fn from(value: f32) -> Self {
-        Self(if value == 0.0 {
-            0
-        } else if value.is_nan() {
-            f32::NAN.to_bits()
-        } else {
-            value.to_bits()
-        })
-    }
-}
-
-/// Ключ без своего `Hash`: хэшируется подсказкой `hint`, сравнивается целиком.
-/// Подсказка участвует в равенстве; её строят из канонических полей ключа.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Hinted<K> {
-    pub hint: u64,
-    pub key: K,
-}
-
-impl<K> Hash for Hinted<K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hint.hash(state);
-    }
-}
-
-/// Подсказка из хэшируемой части ключа.
-pub fn hint(part: impl Hash) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    part.hash(&mut hasher);
-    hasher.finish()
 }
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(all(test, feature = "work-counters"))]
-mod work_tests {
-    #[test]
-    fn observes_empty_miss_and_hit_without_repeating_lookup() {
-        use crate::work::{Counter, Phase, Session};
-        let session = Session::begin();
-        let cache = super::BoundedCache::new(1024, |_: &u8| 1).for_paint();
-        assert_eq!(cache.get(&1u8), None);
-        cache.insert(1, 9);
-        assert_eq!(cache.get(&1), Some(9));
-        let counts = session.finish().0[Phase::PipelineOther as usize];
-        assert_eq!(counts[Counter::ResourceCacheMisses as usize], 1);
-        assert_eq!(counts[Counter::ResourceCacheHits as usize], 1);
-        assert_eq!(counts[Counter::PaintCacheMisses as usize], 1);
-        assert_eq!(counts[Counter::PaintCacheHits as usize], 1);
-    }
-}

@@ -9,9 +9,9 @@
 //! source (`#[track_caller]`), so a reader goes from a frame to the line that
 //! decided it. Hosts take the journal between frames ([`take`]).
 
+pub use gpui::dirty_sources::trace::Shared;
 use std::collections::BTreeMap;
 use std::panic::Location;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 /// Version of the journal's shape and codes for protocol readers.
@@ -22,7 +22,7 @@ const CAUSES: usize = 512;
 const EXAMPLES: usize = 4;
 
 static READERS: AtomicUsize = AtomicUsize::new(0);
-static JOURNAL: Mutex<Journal> = Mutex::new(Journal::new());
+static JOURNAL: Shared<Journal> = Shared::new(Journal::new());
 
 /// Whether the journal records (some reader is subscribed).
 #[inline]
@@ -31,7 +31,7 @@ pub fn enabled() -> bool {
 }
 
 /// A reader of the journal: recording lasts while one lives; when the last
-/// goes, what was not taken is dropped.
+/// goes, what was not taken is dropped, with the keys kept to explain misses.
 #[must_use = "the journal records only while the subscription lives"]
 pub struct Subscription(());
 
@@ -45,6 +45,7 @@ impl Drop for Subscription {
     fn drop(&mut self) {
         if READERS.fetch_sub(1, Relaxed) == 1 {
             take();
+            crate::resources::css_images::forget_why();
         }
     }
 }
@@ -102,9 +103,7 @@ impl Journal {
 }
 
 fn with(f: impl FnOnce(&mut Journal)) {
-    f(&mut JOURNAL
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner));
+    f(&mut JOURNAL.lock());
 }
 
 /// Record a decision `code` made at the caller; `detail` runs only while recording.
@@ -180,10 +179,8 @@ pub fn take() -> Journal {
 /// Serializes the tests of this crate that subscribe: the journal is process-wide.
 #[cfg(test)]
 pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription) {
-    static ONE: Mutex<()> = Mutex::new(());
-    let guard = ONE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    static ONE: Shared<()> = Shared::new(());
+    let guard = ONE.lock();
     let sub = subscribe();
     take();
     (guard, sub)

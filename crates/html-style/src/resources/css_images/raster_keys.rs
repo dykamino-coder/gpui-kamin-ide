@@ -66,67 +66,6 @@ pub(super) enum ImageKey {
 }
 
 impl ImageKey {
-    /// The first field in which two keys differ, for the DevTools `why`
-    /// journal of a cache miss (`gradient_why`); `""` when equal.
-    pub(super) fn differs(&self, other: &Self) -> &'static str {
-        use ImageKey::{Color, Conic, Gradient};
-        match (self, other) {
-            (
-                Gradient {
-                    geometry: g1,
-                    stops: s1,
-                    interpolation: i1,
-                    repeating: r1,
-                },
-                Gradient {
-                    geometry: g2,
-                    stops: s2,
-                    interpolation: i2,
-                    repeating: r2,
-                },
-            ) => [
-                (g1 != g2, "geometry"),
-                (s1 != s2, "stops"),
-                (i1 != i2, "interpolation"),
-                (r1 != r2, "repeating"),
-            ]
-            .into_iter()
-            .find_map(|(d, name)| d.then_some(name))
-            .unwrap_or(""),
-            (
-                Conic {
-                    from: f1,
-                    center: c1,
-                    stops: s1,
-                    hints: h1,
-                    interpolation: i1,
-                    repeating: r1,
-                },
-                Conic {
-                    from: f2,
-                    center: c2,
-                    stops: s2,
-                    hints: h2,
-                    interpolation: i2,
-                    repeating: r2,
-                },
-            ) => [
-                (f1 != f2, "from"),
-                (c1 != c2, "center"),
-                (s1 != s2, "stops"),
-                (h1 != h2, "hints"),
-                (i1 != i2, "interpolation"),
-                (r1 != r2, "repeating"),
-            ]
-            .into_iter()
-            .find_map(|(d, name)| d.then_some(name))
-            .unwrap_or(""),
-            (Color(a), Color(b)) if a == b => "",
-            (Color(_), Color(_)) => "color",
-            _ => "kind",
-        }
-    }
-
     /// Память вычисленного ключа, включая стопы и исходные полярные оси.
     pub(super) fn bytes(&self) -> usize {
         match self {

@@ -64,6 +64,25 @@ pub mod dirty_sources {
             pub detail: String,
         }
 
+        /// A record of the whole process kept for the readers of this domain
+        /// (the engine's journal of causes and cache misses beside these frame
+        /// events, and the serialization of tests that read them): the
+        /// observation domain's one kind of lock, taken only while a reader
+        /// records or reads, never by work that nobody observes.
+        pub struct Shared<T>(Mutex<T>);
+
+        impl<T> Shared<T> {
+            /// A record holding `value`.
+            pub const fn new(value: T) -> Self {
+                Self(Mutex::new(value))
+            }
+
+            /// The record; a reader that panicked leaves it readable.
+            pub fn lock(&self) -> std::sync::MutexGuard<'_, T> {
+                self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+            }
+        }
+
         /// Recording lasts while a guard lives.
         pub struct Trace(());
 

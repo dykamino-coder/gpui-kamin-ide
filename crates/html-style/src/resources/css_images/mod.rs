@@ -19,6 +19,12 @@ use crate::values::ValueCx;
 use raster::{place_stops, rasterize_gradient, wrap_repeat};
 pub use source_types::Source;
 pub use sources::{computed_source, element_source, source};
+/// Forget the keys kept to explain past tile misses (DevTools `why`: its
+/// last reader left).
+pub(crate) fn forget_why() {
+    gradient_why::forget();
+}
+
 /// Длина CSS-картинки: база по оси, шрифтовые единицы уже вычислены каскадом.
 pub fn len_px(
     l: Option<crate::style::values::value::Len>,
