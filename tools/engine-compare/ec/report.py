@@ -20,12 +20,12 @@ L = {
            'C': 'style edit, off screen', 'Cvis': 'style edit, visible', 'D': 'content edit, off screen',
            'Dvis': 'content edit, visible', 'S': 'scroll step (120 px)'},
            'summary': 'Summary: where we lead and where we do not', 'worst_t': 'every row by time, best for us first',
-           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'h_cls': 'Class', 'h_engine': 'Engine', 'h_kind': 'Set', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine itself', 'u_ms': 'ms', 'u_mb': 'MB', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
+           'worst_m': 'every page by peak memory, best for us first', 'worst_c': 'every row by CPU per frame, best for us first', 'h_cls': 'Class', 'h_engine': 'Engine', 'h_kind': 'Set', 'all': 'All comparisons', 'pass': 'Time to get through the whole page set', 'pass_note': 'Sum of unit walls per engine and class (lanes run in parallel, so this is machine time, not the run time). Goal: ours is the fastest. Ours is split into the stand (process launches, memory windows, fresh-frame checks, separate CPU build) and the engine (document load and phase frames). CPU-raster engines measure gpu2 once under soft2.', 'pass_total': 'Total', 'pass_page': 'Per page', 'pass_rank': 'Place', 'pass_stand': 'Stand', 'pass_engine': 'Engine itself', 'u_ms': 'ms', 'u_mb': 'MB', 'pass_pages': 'Pages', 'pass_missing': 'units not measured', 'unit': 'Unit time per page', 'unit_note': 'Seconds of every engine on the page, its units summed over the classes (one unit = one page in one class); slowest pages first. A unit cut at its time limit (ours: 60 s per page and class) counts in the last column and its cells say timeout.', 'unit_total': 'All engines, s', 'unit_to': 'Of it timeouts, s', 'unit_cut': 'timeout {s} s', 'count': 'behind (over 5%) in {n}, first in {m}, within 5% in {k}, of {t} comparable', 'causes': 'Causes and how to win',
            'page': 'Page', 'ph': 'Phase', 'ours': 'Ours', 'best': 'Best', 'ratio': 'Ours / best', 'note': 'Note',
            'rows': 'Rows', 'faster': 'We are faster', 'median': 'Median ours / best', 'worst': 'Worst',
            'mem': 'Memory, MB (peak / steady)', 'cpu': 'CPU per frame, ms', 'time': 'Frame time, ms',
            'not_measured': 'not measured yet', 'none': 'no other engine has a number', 'fast': 'row under 5 ms: verdict needs 8 repeats',
-           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'samples': 'samples: {n}', 'series_def': 'Repeats: every row has at least 3 values (ours: frames of one series; browsers: visits), then one more while it is not stable, up to the cap (ours: 500 ms of frames; browsers: 8 visits); stable = MAD / median <= 3 % (MAD = median absolute deviation from the median). The cell title gives the number of samples. Scroll keeps the browsers'' step count.', 'ours_fail': 'did not open / crashed', 'ours_failsum': 'We did not get through: {n} cells (time {t}, CPU {c}, memory {m}); the reason is on each red cell (hover).', 'cpu_none': 'the engine gives no CPU for this phase', 'm_time': 'time', 'm_cpu': 'CPU', 'm_peak': 'peak memory', 'm_steady': 'steady memory', 'cover': 'Coverage: engine x metric x phase', 'cover_note': 'Measured cells / all cells (every page and class). Green: all, yellow: part, red: none; the reasons of every empty cell are in the next table.', 'gaps': 'What is not measured and why', 'gaps_note': 'Every empty cell of every engine, grouped by engine, metric, phase and reason, most cells first.', 'metric': 'Metric', 'cells': 'Cells', 'reason': 'Reason', 'scroll_def': 'Scroll (S), every engine: from the top of the page, as many 120 px steps as the browser probe makes on that page: min(14, (scrollHeight - 600) // 120), down to one step; a step counts only when the root scroller moved by the whole 120 px; a page without one whole step has no S row.', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
+           'invalid': 'not ranked: ', 'gap': 'Peak gap, MB', 'bounds': 'Measurement bounds', 'samples': 'samples: {n}', 'capped': 'stopped at the repeat cap: the interval is still wider than 3 %', 'series_def': 'Repeats: ours: frames of one series until MAD / median <= 3 % or 500 ms; browsers: every probe frame of a visit is a sample, at least 2 visits, further visits only for the rows that did not settle (cold: one load per sample), up to 8; accuracy = the larger of the 90 % confidence interval half-width of the median (order statistics) and half the spread of the visit medians; a row settles when it is within 3 % or the range lies wholly beyond our value by 3 %. ±N% next to a number = that accuracy; ! = stopped at the cap. The cell title gives the number of samples. Scroll keeps the browsers'' step count.', 'ours_fail': 'did not open / crashed', 'ours_failsum': 'We did not get through: {n} cells (time {t}, CPU {c}, memory {m}); the reason is on each red cell (hover).', 'cpu_none': 'the engine gives no CPU for this phase', 'm_time': 'time', 'm_cpu': 'CPU', 'm_peak': 'peak memory', 'm_steady': 'steady memory', 'cover': 'Coverage: engine x metric x phase', 'cover_note': 'Measured cells / all cells (every page and class). Green: all, yellow: part, red: none; the reasons of every empty cell are in the next table.', 'gaps': 'What is not measured and why', 'gaps_note': 'Every empty cell of every engine, grouped by engine, metric, phase and reason, most cells first.', 'metric': 'Metric', 'cells': 'Cells', 'reason': 'Reason', 'scroll_def': 'Scroll (S), every engine: from the top of the page, as many 120 px steps as the browser probe makes on that page: min(14, (scrollHeight - 600) // 120), down to one step; a step counts only when the root scroller moved by the whole 120 px; a page without one whole step has no S row.', 'loads': 'Foreign load on the P lanes at the start of every block (10 s; share of one core; the owner''s programs are left alone)', 'versions': 'Versions',
            'legend': ['we are faster than the best', 'within 5%', 'slower, up to x2', 'x2-x10', 'x10 and more'],
            'v_style': 'style edit', 'v_content': 'content edit', 'v_vis': 'visible edit', 'source': 'source',
            'pages_title': 'Pages under test', 'about': 'What it is', 'size': 'HTML+CSS, KB', 'local': 'local file',
@@ -35,13 +35,13 @@ L = {
            'C': 'правка стиля, вне экрана', 'Cvis': 'правка стиля, видимая', 'D': 'правка содержимого, вне экрана',
            'Dvis': 'правка содержимого, видимая', 'S': 'шаг прокрутки (120 px)'},
            'summary': 'Сводка: где мы первые и где нет', 'worst_t': 'все строки по времени, от лучших для нас к худшим',
-           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'cls': {'gpu4': 'GPU, 4 потока', 'gpu2': 'GPU, 2 ядра', 'soft2': 'софт-растр, 2 ядра', 'soft1': 'софт-растр, 1 ядро'}, 'h_cls': 'Класс', 'h_engine': 'Движок', 'h_kind': 'Набор', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Сам движок', 'u_ms': 'мс', 'u_mb': 'МБ', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
+           'worst_m': 'все страницы по пику памяти, от лучших к худшим', 'worst_c': 'все строки по процессору на кадр, от лучших к худшим', 'cls': {'gpu4': 'GPU, 4 потока', 'gpu2': 'GPU, 2 ядра', 'soft2': 'софт-растр, 2 ядра', 'soft1': 'софт-растр, 1 ядро'}, 'h_cls': 'Класс', 'h_engine': 'Движок', 'h_kind': 'Набор', 'all': 'Все сравнения', 'pass': 'Время прохождения всего набора', 'pass_note': 'Сумма времени единиц по движку и классу (дорожки идут параллельно, это машинное время, а не длительность захода). Цель: наш движок проходит набор быстрее любого. Наш столбец разложен на стенд (запуски процессов, окна памяти, сверка со свежим кадром, отдельная сборка для CPU) и движок (загрузка документа и кадры фаз). Движки с растром на процессоре меряют gpu2 один раз в soft2.', 'pass_total': 'Всего', 'pass_page': 'На страницу', 'pass_rank': 'Место', 'pass_stand': 'Стенд', 'pass_engine': 'Сам движок', 'u_ms': 'мс', 'u_mb': 'МБ', 'pass_pages': 'Страниц', 'pass_missing': 'единиц не измерено', 'unit': 'Время юнита по страницам', 'unit_note': 'Секунды каждого движка на странице: его юниты, сложенные по классам (юнит — страница в одном классе); сверху самые долгие. Юнит, обрезанный по пределу времени (у нас 60 с на страницу и класс), входит в последний столбец, а его ячейки помечены «таймаут».', 'unit_total': 'Все движки, с', 'unit_to': 'Из них таймауты, с', 'unit_cut': 'таймаут {s} с', 'count': 'отстаём (больше 5 %) в {n}, первые в {m}, в пределах 5 % в {k}, из {t} сравнимых',
            'causes': 'Причины и способы обгона', 'page': 'Страница', 'ph': 'Фаза', 'ours': 'Мы', 'best': 'Лучший',
            'ratio': 'Мы / лучший', 'note': 'Пометка', 'rows': 'Строк', 'faster': 'Мы быстрее', 'median': 'Медиана мы / лучший',
            'worst': 'Худшая', 'mem': 'Память, МБ (пик / уст.)', 'cpu': 'Процессор на кадр, мс', 'time': 'Время кадра, мс',
            'not_measured': 'ещё не измерено', 'none': 'ни один другой движок не дал числа',
            'fast': 'строка <5 мс: вердикт только при 8 повторах', 'invalid': 'не в счёт: ', 'gap': 'Разрыв пика, МБ',
-           'bounds': 'Границы замера', 'samples': 'образцов: {n}', 'series_def': 'Повторы: у каждой строки не меньше 3 значений (у нас — кадры одной серии, у браузеров — визиты), затем ещё по одному, пока строка не устоялась, до потолка (у нас 500 мс кадров, у браузеров 8 визитов); устоялась = MAD / медиана <= 3 % (MAD — медиана модулей отклонений от медианы). Число образцов — в подсказке ячейки. Прокрутка сохраняет число шагов браузеров.', 'ours_fail': 'не открылась / упала', 'ours_failsum': 'Мы не прошли: {n} ячеек (время {t}, процессор {c}, память {m}); причина — во всплывающей подсказке каждой красной ячейки.', 'cpu_none': 'движок не даёт процессорного времени этой фазы', 'm_time': 'время', 'm_cpu': 'процессор', 'm_peak': 'пик памяти', 'm_steady': 'уст. память', 'cover': 'Покрытие: движок × метрика × фаза', 'cover_note': 'Измерено ячеек / всего ячеек (все страницы и классы). Зелёный — всё, жёлтый — часть, красный — ничего; причины каждой пустой ячейки — в следующей таблице.', 'gaps': 'Что не измерено и почему', 'gaps_note': 'Каждая пустая ячейка любого движка, по движку, метрике, фазе и причине, от больших групп к меньшим.', 'metric': 'Метрика', 'cells': 'Ячеек', 'reason': 'Причина', 'scroll_def': 'Прокрутка (S), одинаково у всех движков: от верха страницы столько шагов по 120 px, сколько делает браузерный пробник на этой странице: min(14, (scrollHeight − 600) // 120), вплоть до одного шага; шаг в счёт, только если корневой прокрутчик сдвинулся на целые 120 px; страница без одного целого шага строки S не имеет.', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
+           'bounds': 'Границы замера', 'samples': 'образцов: {n}', 'capped': 'остановлено на потолке повторов: интервал всё ещё шире 3 %', 'series_def': 'Повторы: у нас — кадры одной серии, пока MAD / медиана > 3 %, до 500 мс; у браузеров каждый кадр пробы визита — образец, не меньше 2 визитов, дальше визиты только для неустоявшихся строк (cold — одна загрузка на образец), до 8; точность = большее из полуширины 90 % доверительного интервала медианы (порядковые статистики) и половины разброса медиан визитов; строка устоялась, когда точность ≤3 % или диапазон целиком дальше нашего значения на 3 %. ±N% у числа — эта точность; ! — остановлено на потолке. Число образцов — в подсказке ячейки. Прокрутка сохраняет число шагов браузеров.', 'ours_fail': 'не открылась / упала', 'ours_failsum': 'Мы не прошли: {n} ячеек (время {t}, процессор {c}, память {m}); причина — во всплывающей подсказке каждой красной ячейки.', 'cpu_none': 'движок не даёт процессорного времени этой фазы', 'm_time': 'время', 'm_cpu': 'процессор', 'm_peak': 'пик памяти', 'm_steady': 'уст. память', 'cover': 'Покрытие: движок × метрика × фаза', 'cover_note': 'Измерено ячеек / всего ячеек (все страницы и классы). Зелёный — всё, жёлтый — часть, красный — ничего; причины каждой пустой ячейки — в следующей таблице.', 'gaps': 'Что не измерено и почему', 'gaps_note': 'Каждая пустая ячейка любого движка, по движку, метрике, фазе и причине, от больших групп к меньшим.', 'metric': 'Метрика', 'cells': 'Ячеек', 'reason': 'Причина', 'scroll_def': 'Прокрутка (S), одинаково у всех движков: от верха страницы столько шагов по 120 px, сколько делает браузерный пробник на этой странице: min(14, (scrollHeight − 600) // 120), вплоть до одного шага; шаг в счёт, только если корневой прокрутчик сдвинулся на целые 120 px; страница без одного целого шага строки S не имеет.', 'loads': 'Посторонняя нагрузка на P-дорожках в начале каждого блока (10 с; доля одного ядра; программы владельца не трогаются)', 'versions': 'Версии',
            'legend': ['мы быстрее лучшего', '±5 %', 'медленнее до ×2', '×2–10', '×10 и больше'],
            'v_style': 'правка стиля', 'v_content': 'правка содержимого', 'v_vis': 'видимая правка', 'source': 'источник',
            'pages_title': 'Проверяемые страницы', 'about': 'Что это', 'size': 'HTML+CSS, КБ', 'local': 'локальный файл',
@@ -104,6 +104,10 @@ def add_pass(ps, rec, t, ads, dirty):
     if not rec:
         ps['missing'] += 1; return
     ps['wall'] += rec.get('wall_s') or 0; ps['units'] += 1; ps['pages'].add(t.page.id)
+    u = ps.setdefault('per_page', {}).setdefault(t.page.id, [0.0, 0.0])
+    u[0] += rec.get('wall_s') or 0
+    if M.timed_out(rec):
+        u[1] += rec.get('wall_s') or 0
     if ads[t.engine].e.get('adapter') == 'ours':  # frames the engine itself spent; the rest is the stand
         ps['engine'] += sum(sum(x for x in (r.get('repeats') or []) if x) for r in (rec.get('rows') or {}).values()) / 1000
     note = next((d['note'] for d in dirty if d['from'] <= (rec.get('started') or 0) < d['to']), None)
@@ -145,7 +149,8 @@ def units_rows(classes, ads, units):
             if (cls, eng) in shared or any(k[1] == eng and v == cls for k, v in shared.items()):
                 note = '; '.join(x for x in (note, 'engine rasters on the CPU: this class and ' + (shared.get((cls, eng)) or 'gpu2') + ' coincide, measured once') if x)
             rows.append(dict(base, phase=ph, time_ms=r.get('time_ms'), repeats=r.get('repeats') or [], cpu_ms=r.get('cpu_ms'),
-                             cpu_empty=r.get('cpu_empty'), empty=r.get('empty'), note=note, invalid=r.get('invalid'), within_noise=r.get('within_noise')))
+                             cpu_empty=r.get('cpu_empty'), empty=r.get('empty'), note=note, invalid=r.get('invalid'), within_noise=r.get('within_noise'),
+                             ci_pct=r.get('ci_pct'), capped=r.get('capped')))
         if m['memory']:
             mem[(cls, page.id, eng)] = m['memory']
     return rows, mem, bounds, vers
@@ -175,6 +180,32 @@ def main(cfg, a):
 def why(x, T):
     e = x.get('empty')
     return T['not_measured'] if e == 'not_measured' else (e or 'no number')
+
+
+def unit_table(passes, T, ours):
+    """Unit time per page: each engine's units of the page summed over the classes, and how much of it ran into a
+    unit time limit; slowest pages first."""
+    engines = sorted({e for (_, e) in passes}, key=lambda e: (e != ours, e))
+    pages = {}
+    for (_, e), v in passes.items():
+        for pid, (wall, to) in (v.get('per_page') or {}).items():
+            x = pages.setdefault(pid, {}).setdefault(e, [0.0, 0.0]); x[0] += wall; x[1] += to
+    if not pages:
+        return ''
+    h = [f'<h3>{T["unit"]}</h3><p class="note">{html.escape(T["unit_note"])}</p><div class="tw"><table><thead><tr>'
+         f'<th>{T["page"]}</th>' + ''.join(f'<th>{html.escape(e)}, s</th>' for e in engines)
+         + f'<th>{T["unit_total"]}</th><th>{T["unit_to"]}</th></tr></thead><tbody>']
+    for pid, es in sorted(pages.items(), key=lambda kv: -sum(w for w, _ in kv[1].values())):
+        cells = []
+        for e in engines:
+            w, to = es.get(e, (None, 0))
+            tip = f' <small class="cap">{T["unit_cut"].format(s=round(to))}</small>' if to else ''
+            cells.append(f'<td class="num">{"—" if w is None else f"{w:.0f}"}{tip}</td>')
+        tw = sum(w for w, _ in es.values()); tt = sum(t for _, t in es.values())
+        h.append(f'<tr><td>{html.escape(pid)}</td>{"".join(cells)}<td class="num">{tw:.0f}</td>'
+                 f'<td class="num{" r" if tt else ""}">{tt:.0f}</td></tr>')
+    h.append('</tbody></table></div>')
+    return ''.join(h)
 
 
 def pass_table(passes, classes, T, ours):
@@ -310,7 +341,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                         v = x.get('time_ms')
                         if v is not None and x.get('within_noise'):  # shown, never the best: inside the bounds' noise
                             cells.append(f'<td class="num nd" title="{html.escape(x.get("note") or "")}">≈{f(v)}</td>'); continue
-                        cells.append(f'<td class="num" title="{T["samples"].format(n=len(x.get("repeats") or []))}">{f(v)}</td>' if v is not None else
+                        cells.append(numcell(x, v, f, T) if v is not None else
                                      f'<td class="why" title="{html.escape(why(x, T))}">{html.escape(why(x, T))}</td>')
                         if v and v > 0:
                             comp.append((v, e))
@@ -326,7 +357,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
                     elif ov is not None and not best:
                         note.append(T['none'])
                     if ov is not None:
-                        oc = f'<td class="num" title="{T["samples"].format(n=len(o.get("repeats") or []))}">{f(ov)}</td>'
+                        oc = numcell(o, ov, f, T)
                     elif ours_failed(o):  # we did not get through: red, the reason on hover
                         FAIL['time'] += 1
                         oc = f'<td class="r fail" title="{html.escape(why(o, T))}">{T["ours_fail"]}</td>'
@@ -399,6 +430,7 @@ def render(cfg, rows, mem, bounds, vers, classes, T, title, passes=None):
     sm.append(gap_table(gap_list(rows, mem, T), T))
     if passes:
         sm.append(pass_table(passes, classes, T, ours))
+        sm.append(unit_table(passes, T, ours))
     # Full lists of every comparable row, best for us first; no top-N cut.
     sm.append(f'<h2 id="all">{T["all"]}</h2>')
     for cls in classes:
@@ -453,7 +485,7 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:19px;margin:30px 0 8px}h3{font-siz
 th,td{padding:3px 7px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:var(--head);position:sticky;top:0;white-space:nowrap}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.note{color:var(--mut);font-size:12px}.why{color:var(--mut);font-size:11px;max-width:220px}
 .g{background:var(--g)}.n{background:var(--n)}.y{background:var(--y)}.o{background:var(--o)}.r{background:var(--r)}.nd{color:var(--mut)}
-a{color:var(--link)}a:visited{color:var(--visited)}.fail{font-weight:600;cursor:help}.failsum{padding:6px 10px;border-radius:6px;font-weight:600}nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}td .vl{font-size:10.5px;color:var(--mut)}td .vl a{color:var(--mut)}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
+a{color:var(--link)}a:visited{color:var(--visited)}.cap{color:#b45309;font-weight:600}.fail{font-weight:600;cursor:help}.failsum{padding:6px 10px;border-radius:6px;font-weight:600}nav a{margin-right:12px}.leg span{padding:1px 8px;border-radius:3px;margin-right:6px}td .vl{font-size:10.5px;color:var(--mut)}td .vl a{color:var(--mut)}pre.cause{white-space:pre-wrap;font:12px/1.4 ui-monospace,Consolas,monospace;background:var(--head);padding:8px;border-radius:6px}"""
 
 
 def noise_verdict(a, b, floor=0.05):
@@ -471,6 +503,17 @@ def noise_verdict(a, b, floor=0.05):
         return 'noise', r
     return ('better' if r < 1 else 'worse'), r
 
+
+def numcell(x, v, f, T):
+    """A number cell: value, the achieved accuracy (half-width of the median's interval, when known) and a mark when
+    the row stopped at the repeat cap without settling (shown, not hidden)."""
+    tip = T['samples'].format(n=len(x.get('repeats') or []))
+    acc = ''
+    if x.get('ci_pct') is not None:
+        tip += f'; ±{x["ci_pct"]:.1f} %'; acc = f'<small> ±{x["ci_pct"]:.0f}%</small>'
+    if x.get('capped'):
+        tip += '; ' + T['capped']; acc += '<small class="cap">!</small>'
+    return f'<td class="num" title="{html.escape(tip)}">{f(v)}{acc}</td>'
 
 def diff_cli(a):
     A_, B_ = (json.loads(Path(p).read_text(encoding='utf-8')) for p in (a.a, a.b))

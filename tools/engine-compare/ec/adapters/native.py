@@ -150,7 +150,7 @@ class Native:
             except ValueError:
                 rep = None
         if code is None:
-            why = f'hangs: no result within {to:.0f} s'
+            why = f'timeout: no result within {to:.0f} s'
         elif rep is None or rep.get('protocol') != 'native-plan-v1':
             msg = err.read_text(encoding='utf-8', errors='replace') if err.exists() else ''
             why = f'crashed: exit code {code}: {last_error(msg)}'; rep = None

@@ -132,19 +132,17 @@ class Runner:
         # one idle run of every engine before its first measured unit (README: warm-up); numbers are dropped
         self.warmup = bool(cfg.raw.get('warmup', True)); self.warm = {}
 
+    def _warming(self, engine):
+        """True while another lane runs this engine's warm-up (called under ``cv``)."""
+        ev = self.warm.get(engine)
+        return ev is not None and not ev.is_set()
+
     def _warm_up(self, ad, t, lane):
         """The first run of a fresh executable pays cold disk and the driver's shader cache (memory +27..40 %, time):
-        one quick run of the task's own unit per engine and tool run, before its first measured unit; dropped.
-        Other lanes wait for it, so no measured unit of that engine runs before the warm-up has finished."""
-        if not self.warmup:
-            return
+        one quick run of the task's own unit per engine and tool run, before its first measured unit; dropped. While
+        it runs, other lanes take units of other engines (``_warming``), so warm-ups of different engines overlap."""
         from .adapters import QUICK
-        with self.cv:
-            ev = self.warm.get(t.engine); first = ev is None
-            if first:
-                ev = self.warm[t.engine] = threading.Event()
-        if not first:
-            ev.wait(); return
+        ev = self.warm[t.engine]
         s = time.perf_counter()
         try:
             ad.measure(lane, t.page, t.cls, t.part, QUICK)
@@ -152,10 +150,13 @@ class Runner:
             self.log(f'L{lane.id} warm-up {t.engine} failed: {type(e).__name__}: {e}'[:200])
         finally:
             ev.set()
+            with self.cv:
+                self.cv.notify_all()
         self.log(f'L{lane.id} warm-up {t.engine} on {t.page.id} {t.cls} {time.perf_counter() - s:.1f}s (dropped)')
     def run(self, tasks):
         q = list(tasks)
-        q.sort(key=lambda t: (t.exclusive, t.cls, t.engine, t.part, t.page.id))
+        # the reference engine (ours) first in each class: browsers stop a row early once its place against ours is decided
+        q.sort(key=lambda t: (t.exclusive, t.cls, not getattr(self.ad[t.engine], 'reference', False), t.engine, t.part, t.page.id))
         t0 = time.perf_counter()
 
         def worker(lane):
@@ -165,13 +166,20 @@ class Runner:
                     while True:
                         if self.stop or not q:
                             break
-                        i = pick(q, sess, self.gpu, self.gpu_parallel, any(v for k, v in self.busy.items() if k != lane.id))
+                        # a lane does not wait for another lane's warm-up: it takes a unit of an engine that is warm
+                        # or not started (then warms that one), so the warm-ups of different engines run in parallel
+                        ready = [x for x in q if not self._warming(x.engine)]
+                        j = pick(ready, sess, self.gpu, self.gpu_parallel, any(v for k, v in self.busy.items() if k != lane.id))
+                        i = None if j is None else q.index(ready[j])
                         if i is not None:
                             break
                         self.cv.wait(1)
                     if self.stop or not q:
                         break
                     t = q.pop(i); self.busy[lane.id] = t
+                    warm_first = self.warmup and t.engine not in self.warm
+                    if warm_first:  # claimed under the lock: no other lane starts a second warm-up of it
+                        self.warm[t.engine] = threading.Event()
                     if t.gpu:
                         self.gpu += 1
                 if t.exclusive:  # wait until every other lane is idle
@@ -183,7 +191,8 @@ class Runner:
                     for a in self.ad.values():
                         a.close(lane)
                 sess = t.session
-                self._warm_up(ad, t, lane)
+                if warm_first:
+                    self._warm_up(ad, t, lane)
                 s = time.perf_counter()
                 try:
                     rec = ad.measure(lane, t.page, t.cls, t.part, self.policy)

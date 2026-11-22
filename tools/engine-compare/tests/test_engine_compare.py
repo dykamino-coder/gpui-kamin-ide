@@ -125,12 +125,21 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.browser_visit('firefox', one)['S']['raf'], None)  # no afterPaint: Firefox raf unknown
         self.assertEqual(M.browser_visit('chromium', dict(one, trace={'windows': {'frame:S': {'RasterTask': {'sumMs': 0}}}}))['S']['raf'], 2)
 
-    def test_servo_frame_is_edit_plus_screenshot_minus_screenshot(self):
-        res = {'probe': {'cases': {'R': {'frame': {'median': 0.3}, 'frameReq': {'median': 0.5}}, 'C': {'frame': {'median': 1}}}},
-               'shots': {'idle': {'ms': [20, 21, 22]}, 'R': {'ms': [30, 31, 33]}, 'C': {'ms': [19, 20]}}}
+    def test_servo_frame_is_layout_plus_painting_from_its_profiler(self):
+        res = {'probe': None, 'twoRafMs': 50, 'servo': {
+            'cold': {'ScriptParseHTML': {'sumMs': 4}, 'Layout': {'sumMs': 10}, 'Painting': {'sumMs': 6}},
+            'cases': {'R': {'frames': [{'layoutMs': 2, 'paintMs': 1}, {'layoutMs': 4, 'paintMs': 1}, {'layoutMs': 3, 'paintMs': 2}]},
+                      'C': {'frames': [{'layoutMs': 3, 'paintMs': None}]},
+                      'D': {'frames': [{'layoutMs': 0, 'paintMs': None}]}, 'S': {'frames': []}}}}
         sv = M.browser_visit('servo', res)
-        self.assertEqual(sv['R']['value'], 10)  # 31 - 21: the probe clocks are not used
-        self.assertIsNone(sv['C']['value'])     # not above the screenshot alone
+        self.assertEqual(sv['R']['value'], 5)      # median of layout + its painting per edit
+        self.assertEqual(sv['cold']['value'], 20)  # profiler sum below the 50 ms load clock
+        self.assertIsNone(sv['D']['value'])        # no frame work
+        self.assertIsNone(sv['S']['value'])        # no step
+        s = M.browser_samples('servo', res)
+        self.assertEqual(s['R']['samples'], [3, 5, 5])
+        self.assertEqual(s['C']['samples'], [3])       # an edit without a Painting: layout only
+        self.assertEqual(M.scroll_empty_reason(res), M.NO_SCROLL)
 
     def test_browser_visit_definitions(self):
         res = {'twoRafMs': 40, 'probe': {'frames': 10, 'cases': {
@@ -257,6 +266,54 @@ class WarmUp(unittest.TestCase):
             self.assertEqual(ad.calls.count(1), 1)  # the quick warm-up, once
             self.assertEqual(ad.calls.count(3), 3)  # every measured unit
             self.assertEqual(ad.calls[0], 1)
+
+
+class Settle(unittest.TestCase):
+    def test_median_interval_from_order_statistics(self):
+        self.assertIsNone(M.median_ci([1.0]))
+        self.assertEqual(M.median_ci([3, 1, 2]), (1, 3, 0.75))  # too few values: the full range
+        lo, hi, cov = M.median_ci(list(range(14)))
+        self.assertEqual((lo, hi), (3, 10)); self.assertGreaterEqual(cov, 0.9)
+
+    def test_row_settles_on_a_narrow_interval_or_a_decided_place(self):
+        p = Policy()
+        self.assertIsNone(p.settled([10.0, 10.1]))  # fewer than 3
+        self.assertEqual(p.settled([10.0, 10.1, 10.2, 9.9, 10.0]), 'ci')
+        wide = [10, 13, 8, 12, 9]
+        self.assertIsNone(p.settled(wide))
+        self.assertEqual(p.settled(wide, ours=5.0), 'place')  # whole interval above ours by more than 3 %
+        self.assertIsNone(p.settled(wide, ours=10.0))
+        tight = [10.0, 10.1, 10.2, 9.9, 10.0]
+        self.assertIsNone(p.settled(tight, visit_medians=[9.0, 11.0]))  # visits disagree by 20 %: not settled
+        self.assertAlmostEqual(M.accuracy(tight, [9.0, 11.0]), 0.1)
+
+    def test_browser_samples_take_the_lower_clock_with_raster_per_frame(self):
+        res = {'probe': {'frames': 2, 'cases': {
+            'R': {'frame': {'samples': [4.0, 6.0]}, 'frameReq': {'samples': [8.0, 9.0]}},
+            'S': {'frame': {'samples': [1.0], 'moved': 0}}}},
+            'trace': {'windows': {'frame:R': {'RasterTask': {'sumMs': 2.0}}, 'req:R': {'RasterTask': {'sumMs': 0.0}}}}}
+        s = M.browser_samples('chrome', res)
+        self.assertEqual(s['R'], {'value': 6.0, 'samples': [5.0, 7.0], 'clock': 'raf'})
+        self.assertNotIn('S', s)  # no whole scroll step: no sample
+
+class UnitTime(unittest.TestCase):
+    def test_timeouts_are_counted_per_page(self):
+        from types import SimpleNamespace as NS
+        from ec.report import L, add_pass, unit_table
+        cut = {'wall_s': 61.0, 'rows': {'cold': {'empty': 'timeout: no result within 60 s'}}, 'memory': {}}
+        ok = {'wall_s': 9.0, 'rows': {'cold': {'time_ms': 5.0, 'repeats': [5.0]}}, 'memory': {}}
+        self.assertTrue(M.timed_out(cut)); self.assertFalse(M.timed_out(ok))
+        self.assertTrue(M.timed_out({'rows': {'R': {'empty': 'hangs: no result within 300 s'}}}))  # older records
+        ads = {'ours': NS(e={'adapter': 'ours'})}
+        passes = {}
+        for cls, rec in (('gpu2', cut), ('soft1', ok)):
+            ps = passes.setdefault((cls, 'ours'), {'wall': 0.0, 'engine': 0.0, 'pages': set(), 'units': 0, 'missing': 0})
+            add_pass(ps, rec, NS(engine='ours', page=NS(id='p1')), ads, [])
+        self.assertEqual(passes[('gpu2', 'ours')]['per_page']['p1'], [61.0, 61.0])
+        self.assertEqual(passes[('soft1', 'ours')]['per_page']['p1'], [9.0, 0.0])
+        h = unit_table(passes, L['en'], 'ours')
+        self.assertIn('<td class="num">70 <small class="cap">timeout 61 s</small></td>', h)
+        self.assertIn('<td class="num r">61</td>', h)
 
 
 if __name__ == '__main__':

@@ -22,6 +22,15 @@ import statistics
 PHASES = ['cold', 'R', 'C', 'Cvis', 'D', 'Dvis', 'S']
 SCROLL_STEP_PX = 120
 SCROLL_MAX_STEPS = 14  # FRAMES of the browser probe: one scroll pass
+TIMEOUT = 'timeout'  # first word of the reason of a cell whose unit was cut at its time limit
+
+
+def timed_out(rec):
+    """True when the unit was cut at its time limit (a cell or the memory says so)."""
+    why = [r.get('empty') for r in (rec.get('rows') or {}).values()] + [(rec.get('memory') or {}).get('empty')]
+    return any(w and (w.startswith(TIMEOUT) or w.startswith('hangs')) for w in why)
+
+
 NO_SCROLL = 'page does not scroll by one whole 120 px step'
 OURS_MODE = {'cold': 'cold', 'R': 'relayout', 'S': 'scroll'}  # every other phase is an edit
 
@@ -155,13 +164,13 @@ def browser_visit(engine, res):
     def ras(win):
         w = tw.get(win)
         return None if not w else ((w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)) / frames
-    for k, c in (probe.get('cases') or {}).items():
+    for k, c in cases_of(engine, res).items():
         fr = (c.get('frame') or {}).get('median'); rq = (c.get('frameReq') or {}).get('median')
         ap = (c.get('afterPaint') or {}).get('median') if c.get('afterPaint') else None
         if engine == 'firefox':
             raf = ap; req = rq + max(0.0, ap - fr) if None not in (ap, rq, fr) else None
-        elif engine == 'servo':  # request -> pixels: edit + WebDriver screenshot minus the same without an edit
-            raf, req = None, servo_shot(res.get('shots'), k)
+        elif engine == 'servo':  # Servo's own profiler: Layout (style, layout, display list) + Painting (WebRender)
+            raf, req = servo_frame(c), None
         else:
             rf, rr = ras('frame:' + k), ras('req:' + k)
             raf = fr + rf if None not in (rf, fr) else None
@@ -172,7 +181,11 @@ def browser_visit(engine, res):
         out[k] = {'req': req, 'raf': raf, 'value': min(vals) if vals else None}
     if res.get('twoRafMs') is not None:
         cold = {'req': res.get('twoRafMs'), 'raf': None}; w = tw.get('cold')
-        if w:
+        if engine == 'servo':
+            sc = (res.get('servo') or {}).get('cold') or {}
+            work = sum((sc.get(n) or {}).get('sumMs', 0) for n in SERVO_COLD)
+            cold['raf'] = work or None
+        elif w:
             main = sum((w.get(n) or {}).get('sumMs', 0) for n in ('ParseHTML', 'UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint'))
             cold['raf'] = main + (w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)
         vals = [v for v in (cold['req'], cold['raf']) if v]
@@ -181,17 +194,113 @@ def browser_visit(engine, res):
     return out
 
 
-def servo_shot(shots, k):
-    """Servo frame of case k: median (edit + screenshot) minus median (screenshot alone); None without a positive value."""
-    a = ((shots or {}).get(k) or {}).get('ms'); b = ((shots or {}).get('idle') or {}).get('ms')
-    if not a or not b:
-        return None
-    v = med(a) - med(b)
-    return v if v > 0 else None
+SERVO_COLD = ('ScriptParseHTML', 'ScriptStylesheetLoad', 'Layout', 'Painting')
+SERVO_PARTIAL = ("Servo's profiler has no WebRender scene and frame building (render backend threads): the frame is "
+                 'style + layout + display list + WebRender raster and composite only, not ranked as equal')
 
+
+def cases_of(engine, res):
+    """{phase: probe case} of a visit. Servo has no probe: its phases are the profiler windows of its frame loops."""
+    if engine == 'servo':
+        return {k: dict(v, frame={'moved': len(v.get('frames') or [])}) for k, v in ((res.get('servo') or {}).get('cases') or {}).items()}
+    return (res.get('probe') or {}).get('cases') or {}
+
+
+def servo_samples(c):
+    """Per-frame samples of a Servo case: one edit each, its Layout events + the first Painting after it (the
+    driver waits for that Painting to finish; Servo paints asynchronously and would coalesce a loop of edits)."""
+    return [f['layoutMs'] + (f.get('paintMs') or 0) for f in (c.get('frames') or [])
+            if f.get('layoutMs', 0) + (f.get('paintMs') or 0) > 0]
+
+
+def servo_frame(c):
+    """Median Servo frame of a case (ms), None without frame work."""
+    return med(servo_samples(c))
+
+
+def median_ci(xs, level=0.9):
+    """Distribution-free confidence interval of the median from order statistics: (lo, hi, coverage). The narrowest
+    symmetric pair of ranks whose binomial coverage reaches ``level``; with too few values for that, the full range
+    (coverage 1 - 2^(1-n)). None for fewer than two values."""
+    s = sorted(x for x in xs if x is not None); n = len(s)
+    if n < 2:
+        return None
+    from math import comb
+
+    def cover(k):  # ranks k .. n-1-k (0-based): 1 - 2 P(B(n, 1/2) <= k)
+        return 1 - 2 * sum(comb(n, i) for i in range(k + 1)) / 2 ** n
+    k = 0
+    while k + 1 < n - 2 - k and cover(k + 1) >= level:
+        k += 1
+    cov = cover(k)
+    return s[k], s[n - 1 - k], cov
+
+
+def ci_half(xs, level=0.9):
+    """Half-width of the median's confidence interval over the median (relative); None without one."""
+    c = median_ci(xs, level); m = med(xs)
+    return (c[1] - c[0]) / 2 / m if c and m else None
+
+
+def accuracy(samples, visit_medians=None, level=0.9):
+    """Relative accuracy of a row's median: the larger of the confidence-interval half-width of the pooled samples
+    and half the spread of the per-visit medians (frames of one visit understate the visit-to-visit spread)."""
+    h = ci_half(samples, level); m = med(samples)
+    v = [x for x in (visit_medians or []) if x is not None]
+    if len(v) >= 2 and m:
+        h = max(h or 0.0, (max(v) - min(v)) / 2 / m)
+    return h
+
+
+def accuracy_range(samples, visit_medians=None, level=0.9):
+    """(lo, hi) of the median under ``accuracy``: the interval widened to every visit median."""
+    c = median_ci(samples, level)
+    if not c:
+        return None
+    v = [x for x in (visit_medians or []) if x is not None]
+    return min([c[0]] + v), max([c[1]] + v)
+
+def browser_samples(engine, res):
+    """{phase: {'value', 'samples', 'clock'}} of one probe round: per-frame samples of the clock with the lower median
+    (the same choice as ``browser_visit``), each with the round's per-frame raster + swap from the trace (Chromium) or
+    the MozAfterPaint lag (Firefox); Servo: every edit + screenshot minus the median screenshot alone."""
+    tw = (res.get('trace') or {}).get('windows') or {}
+    probe = res.get('probe') or {}; frames = probe.get('frames') or 14; out = {}
+
+    def ras(win):
+        w = tw.get(win)
+        return None if not w else ((w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)) / frames
+
+    def smp(x):
+        return [v for v in ((x or {}).get('samples') or []) if v is not None]
+    for k, c in cases_of(engine, res).items():
+        fr, rq, ap = smp(c.get('frame')), smp(c.get('frameReq')), smp(c.get('afterPaint'))
+        if k == 'S' and ((c.get('frame') or {}).get('moved') or 0) < 1:
+            continue
+        cand = {}
+        if engine == 'firefox':
+            if ap:
+                cand['raf'] = ap
+            if rq and ap and fr:
+                lag = max(0.0, med(ap) - med(fr)); cand['req'] = [v + lag for v in rq]
+        elif engine == 'servo':
+            cand['profiler'] = servo_samples(c)
+        else:
+            rf, rr = ras('frame:' + k), ras('req:' + k)
+            if fr and rf is not None:
+                cand['raf'] = [v + rf for v in fr]
+            if rq and rr is not None:
+                cand['req'] = [v + rr for v in rq]
+        cand = {n: v for n, v in cand.items() if v and med(v) and med(v) > 0}
+        if cand:
+            clock = min(cand, key=lambda n: med(cand[n]))
+            out[k] = {'value': med(cand[clock]), 'samples': cand[clock], 'clock': clock}
+    return out
 
 def scroll_empty_reason(res):
     c = (((res.get('probe') or {}).get('cases') or {}).get('S') or {}).get('frame') or {}
+    if not c and ((res.get('servo') or {}).get('cases') or {}).get('S'):  # Servo: the steps of its frame loop
+        c = {'moved': res['servo']['cases']['S'].get('frames') or 0}
     if (c.get('moved') or 0) < 1:
         return NO_SCROLL
     return None

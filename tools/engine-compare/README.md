@@ -35,10 +35,24 @@ load line into the store's `run.log`, which the report shows under the measureme
 
 ## Repeats
 
-Every row gets at least 3 values (ours: frames of one series in one process; browsers: page visits), then one
-more while it is not stable, up to a cap (ours: 500 ms of frames; browsers: 8 visits). Stable = MAD / median
-<= 3 % (median absolute deviation from the median). Scroll keeps the step count of the browser scenario. The
-report shows the number of samples in each cell's title.
+Ours: frames of one series in one process, at least 3, then until MAD / median <= 3 % or 500 ms of frames. Browsers:
+visit 1 loads the page (one cold sample), keeps it for the steady memory window, probes every warm row (every frame of
+the probe is a sample of its row) and runs the CPU loops; visit 2 is a fresh load with a frames-only probe of every
+warm row; visits 3..8 load again and probe only the rows that have not settled. Cold takes one value per load
+(`"cold_clock": "min"`, the default: every load is traced and the better of navigation -> two rAFs after load and the
+trace's main + raster sum is taken; `"load"`: the first clock only, which read far higher on the stand). A row's
+accuracy is the larger of the 90 % confidence interval half-width of its pooled samples' median (order statistics)
+and half the spread of its visit medians; it settles when that is within 3 % of the median (or within the 0.1 ms
+clock step), or when that range lies wholly beyond our value of the same row by 3 %: its place is decided, so ours is
+measured first in every class. The report shows the accuracy next to a number (`±N%`) and marks a row stopped at the
+cap (`!`). Scroll keeps the step count of the browser scenario. The cell title gives the number
+of samples.
+## Time limits
+
+One unit (a page in one class on one engine) has a time limit; our plan process gets 60 s for every phase of the page
+(`unit_timeout_s` in the engine config). A unit cut at its limit keeps the reason `timeout` in its cells. The report
+lists the unit time of every page per engine (summed over the classes) and how much of it went into timeouts, slowest
+pages first.
 
 ## Adapters
 

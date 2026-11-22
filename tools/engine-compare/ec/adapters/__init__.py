@@ -34,9 +34,25 @@ class Policy:
         r = rel_mad(v)
         return len(v) if r is not None and r <= self.stable else min(self.max_repeats, len(v) + 1)
 
+    def settled(self, samples, ours=None, visit_medians=None, margin=0.03, floor_ms=0.1):
+        """Why a row may stop: 'ci' when its accuracy (``metrics.accuracy``: the median's 90 % confidence interval
+        from order statistics, widened by the spread of the visit medians) is within ``stable`` of the median or within
+        the clock step ``floor_ms``; 'place' when that range lies wholly beyond our value of the same row by ``margin``
+        (its place against ours is decided); None while neither holds or with fewer than ``min_repeats`` samples."""
+        from ..metrics import accuracy, accuracy_range, med
+        v = [x for x in samples if x is not None]
+        if len(v) < self.min_repeats:
+            return None
+        h = accuracy(v, visit_medians); m = med(v)
+        # browsers' performance.now() moves in 0.1 ms steps: an accuracy below that is not measurable
+        if h is not None and (h <= self.stable or h * m <= floor_ms):
+            return 'ci'
+        c = accuracy_range(v, visit_medians)
+        if ours and c and (c[0] > ours * (1 + margin) or c[1] < ours * (1 - margin)):
+            return 'place'
+        return None if m else 'ci'
     def definition(self):
         return f'rep{self.min_repeats}-{self.max_repeats}-mad{self.stable}-cpu{self.cpu_frames}-st{self.steady_ms}'
-
 
 QUICK = Policy(min_repeats=1, max_repeats=1)
 
