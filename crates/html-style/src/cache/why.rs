@@ -5,7 +5,6 @@
 
 use super::BoundedCache;
 use std::collections::HashMap;
-use std::sync::PoisonError;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
 /// Bound of `Store::gone`; past it the memory starts again.
@@ -52,8 +51,7 @@ pub(super) fn remember(gone: &mut HashMap<u64, &'static str>, key: u64, why: &'s
 /// A cache that ends (not a `static`) stops holding its bytes.
 impl<K, V> Drop for BoundedCache<K, V> {
     fn drop(&mut self) {
-        let store = self.store.get_mut().unwrap_or_else(PoisonError::into_inner);
-        if let Some(store) = store {
+        if let Some(store) = &*self.lock() {
             HELD[self.slot].fetch_sub(store.bytes, Relaxed);
         }
     }
