@@ -48,6 +48,7 @@ pub(super) struct Frames {
     /// When the step's wheel event was dispatched (prepare).
     dispatched: Option<std::time::Instant>,
     before: Option<kamin_html::FrameCounters>,
+    wheel_position: Option<(f32, f32)>,
     /// Contents replayed in the document before the frame (`Document::replayed_contents`).
     before_contents: u64,
     /// Root scroll offset before the wheel step of the sample (`scrolled`).
@@ -80,6 +81,7 @@ impl Frames {
             jump: args.scroll_step,
             dispatched: None,
             before: None,
+            wheel_position: None,
             before_contents: 0,
             wheel_from: None,
             before_blocks: 0,
@@ -102,8 +104,13 @@ impl Frames {
                     // `--scroll-back`: down and up between the ends.
                     self.step = if down { self.jump } else { -self.jump };
                 }
+                let (x, y) = view
+                    .doc
+                    .root_scroll_wheel_position(window)
+                    .unwrap_or((f32::from(size.width / 2.0), f32::from(size.height / 2.0)));
+                self.wheel_position = Some((x, y));
                 let wheel = gpui::ScrollWheelEvent {
-                    position: gpui::point(size.width / 2.0, size.height / 2.0),
+                    position: gpui::point(gpui::px(x), gpui::px(y)),
                     delta: gpui::ScrollDelta::Pixels(gpui::point(
                         gpui::px(0.0),
                         gpui::px(-self.step),
