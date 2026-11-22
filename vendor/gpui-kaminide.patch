@@ -33488,11 +33488,11 @@ index 0000000000000000000000000000000000000000..4dd6f006fee72a8210e087a6c2b1d36c
 +}
 diff --git a/vendor/gpui/src/window/image_resources.rs b/vendor/gpui/src/window/image_resources.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9b5fbf06b141f6506a2e1a9e5784b31a3746776f
+index 0000000000000000000000000000000000000000..c91eba2421bcf8d87d79f53c9988e476f260320d
 --- /dev/null
 +++ b/vendor/gpui/src/window/image_resources.rs
 @@ -0,0 +1,152 @@
-+//! CPU-кэш и сцены совместно удерживают загрузки растра до последнего использования.
++//! Raster uploads live until both CPU caches and retained scenes release them.
 +
 +use crate::scene::image_resources::ImageLease;
 +use crate::{PlatformAtlas, RenderImage, RenderImageParams};
@@ -33529,8 +33529,8 @@ index 0000000000000000000000000000000000000000..9b5fbf06b141f6506a2e1a9e5784b31a
 +    }
 +
 +    pub(super) fn release_unused(&mut self) {
-+        // Слабая ссылка разрешает CPU-кэшу вытеснить пиксели. Сохранённые
-+        // и replay-сцены держат загрузку до конца последнего нарисованного кадра.
++        // Weak ownership lets CPU caches evict pixels. Retained and replayed
++        // scenes keep their own leases until their last painted frame is gone.
 +        self.0.retain(|_, upload| upload.image.strong_count() > 0);
 +    }
 +}

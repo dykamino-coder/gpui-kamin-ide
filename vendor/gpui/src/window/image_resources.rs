@@ -1,4 +1,4 @@
-//! CPU-кэш и сцены совместно удерживают загрузки растра до последнего использования.
+//! Raster uploads live until both CPU caches and retained scenes release them.
 
 use crate::scene::image_resources::ImageLease;
 use crate::{PlatformAtlas, RenderImage, RenderImageParams};
@@ -35,8 +35,8 @@ impl ImageUploads {
     }
 
     pub(super) fn release_unused(&mut self) {
-        // Слабая ссылка разрешает CPU-кэшу вытеснить пиксели. Сохранённые
-        // и replay-сцены держат загрузку до конца последнего нарисованного кадра.
+        // Weak ownership lets CPU caches evict pixels. Retained and replayed
+        // scenes keep their own leases until their last painted frame is gone.
         self.0.retain(|_, upload| upload.image.strong_count() > 0);
     }
 }
