@@ -9,6 +9,7 @@ pub fn deferred(child: impl IntoElement) -> Deferred {
     Deferred {
         child: Some(child.into_any_element()),
         priority: 0,
+        scrolled: false,
         site: core::panic::Location::caller(),
     }
 }
@@ -18,6 +19,8 @@ pub fn deferred(child: impl IntoElement) -> Deferred {
 pub struct Deferred {
     child: Option<AnyElement>,
     priority: usize,
+    // KaminIDE patch: the child belongs to the open scroll node (`in_scroll_node`).
+    scrolled: bool,
     // KaminIDE patch: the caller of `deferred`, kept with its draw for DevTools.
     site: &'static core::panic::Location<'static>,
 }
@@ -28,6 +31,15 @@ impl Deferred {
     /// with higher values being drawn on top.
     pub fn with_priority(mut self, priority: usize) -> Self {
         self.priority = priority;
+        self
+    }
+
+    /// KaminIDE patch: the child stays in the space of the scroll node open
+    /// here: drawn later, in priority order, but clipped by that node and
+    /// moved with it (`Window::defer_scrolled_draw`), as a positioned box
+    /// lifted above the flow of its scroller.
+    pub fn in_scroll_node(mut self) -> Self {
+        self.scrolled = true;
         self
     }
 }
@@ -66,7 +78,10 @@ impl Element for Deferred {
     ) {
         let child = self.child.take().unwrap();
         let element_offset = window.element_offset();
-        window.defer_draw_at(child, element_offset, self.priority, None, self.site)
+        match self.scrolled {
+            true => window.defer_scrolled_draw_at(child, element_offset, self.priority, self.site),
+            false => window.defer_draw_at(child, element_offset, self.priority, None, self.site),
+        }
     }
 
     fn paint(
