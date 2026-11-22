@@ -80,6 +80,7 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
                     baseline_x: measured.then_some(4.),
                     last_baseline_x: measured.then_some(4.),
                     baseline_x_from_right: false,
+                    overflow: None,
                 }
             })
         },

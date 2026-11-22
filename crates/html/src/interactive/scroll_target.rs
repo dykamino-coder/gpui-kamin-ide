@@ -68,14 +68,23 @@ pub(crate) fn canvas(
     let Some(handle) = target.map(|t| t.handle.clone()) else {
         return child;
     };
-    let layer = gpui::div()
+    let mut layer = gpui::div()
         .absolute()
         .top(gpui::px(-gutter[1]))
         .left(gpui::px(-gutter[0]))
         .right(gpui::px(-gutter[2]))
         .bottom(gpui::px(-gutter[3]))
-        .child(child)
-        .into_any_element();
+        .child(child);
+    // Built over the guessed gutters: it covers the ones layout decides. It
+    // paints under the bars and is no content: it adds no scrollable overflow
+    // that would decide them (CSS Overflow 3 §2.2 counts boxes, not the canvas).
+    layer.style().kamin_scrollbars = Some(gpui::KaminScrollbars {
+        root_gutter: Some(gutter),
+        root_gutter_grow: true,
+        proxy: true,
+        ..Default::default()
+    });
+    let layer = layer.into_any_element();
     stationary::wrap(layer, handle, clip)
 }
 

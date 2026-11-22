@@ -168,11 +168,16 @@ where
         let is_rtl = style.direction().is_rtl();
         let start_padding = if is_rtl { padding.right } else { padding.left };
         let end_padding = if is_rtl { padding.left } else { padding.right };
+        // KaminIDE patch: lines longer than the box overflow it (`MeasureOutput::overflow`).
+        let extent = measured.overflow.map_or(measured_size, |o| Size {
+            width: o.width.max(measured_size.width),
+            height: o.height.max(measured_size.height),
+        });
         Rect {
             left: 0.0,
-            right: start_padding + measured_size.width + if is_scroll_container { end_padding } else { 0.0 },
+            right: start_padding + extent.width + if is_scroll_container { end_padding } else { 0.0 },
             top: 0.0,
-            bottom: padding.top + measured_size.height + if is_scroll_container { padding.bottom } else { 0.0 },
+            bottom: padding.top + extent.height + if is_scroll_container { padding.bottom } else { 0.0 },
         }
     };
 
@@ -219,6 +224,7 @@ mod measured_baseline_tests {
             baseline_x: None,
             last_baseline_x: None,
             baseline_x_from_right: false,
+            overflow: None,
         }
     }
 

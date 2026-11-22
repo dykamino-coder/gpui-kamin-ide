@@ -24,6 +24,8 @@ mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
 mod final_geometry;
+// KaminIDE patch: the descendants carrying a box's scrollable overflow (DevTools `why`).
+mod overflow_reach;
 mod subtree_bounds;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
@@ -667,6 +669,17 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: the bars (horizontal, vertical) the last layout gave a node whose
+    /// bars layout decides (`KaminScrollbars`); `None` for any other node.
+    pub fn layout_scrollbars(&self, id: LayoutId) -> Option<[bool; 2]> {
+        let style = self.taffy.style(id.into()).ok()?;
+        let scroll = |overflow| overflow == taffy::style::Overflow::Scroll;
+        style
+            .kamin_scrollbars
+            .decides()
+            .then(|| [scroll(style.overflow.x), scroll(style.overflow.y)])
+    }
+
     /// KaminIDE patch: протяжённость СОДЕРЖИМОГО узла (taffy `scrollable_overflow_rect`,
     /// видимое переполнение потомков) без округления к физической точке.
     pub fn layout_content_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
@@ -1133,6 +1146,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             }),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
+            kamin_scrollbars: kamin_scrollbars(self.kamin_scrollbars),
             position: self.position.into(),
             inset: self.inset.to_taffy(rem_size, scale_factor),
             size: self.size.to_taffy(rem_size, scale_factor),
@@ -1702,4 +1716,17 @@ impl Drop for MeasureTimer {
             std::sync::atomic::Ordering::Relaxed,
         );
     }
+}
+
+/// KaminIDE patch: the bars layout decides (`KaminScrollbars`) in Taffy's terms.
+fn kamin_scrollbars(s: crate::KaminScrollbars) -> taffy::style::ScrollbarLayout {
+    taffy::style::ScrollbarLayout::new(
+        taffy::geometry::Point { x: s.auto[0], y: s.auto[1] },
+        s.viewport,
+        s.proxy,
+        s.root_gutter.map(|[left, top, right, bottom]| taffy::style::RootGutter {
+            assumed: taffy::style::RootGutter::sides(taffy::geometry::Rect { left, right, top, bottom }),
+            grow: s.root_gutter_grow,
+        }),
+    )
 }

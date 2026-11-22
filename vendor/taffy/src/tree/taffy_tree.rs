@@ -21,6 +21,8 @@ use super::kamin_calc::calc_value;
 mod calc_size;
 #[path = "computed_output.rs"]
 mod computed_output;
+#[path = "kamin_scrollbars.rs"]
+mod kamin_scrollbars;
 #[path = "node_lifetime.rs"]
 mod node_lifetime;
 #[cfg(feature = "block_layout")]
@@ -294,6 +296,11 @@ pub struct TaffyTree<NodeContext = ()> {
     /// calls (up to 1024 keys of capacity): a host that sweeps a few nodes
     /// every frame allocates no list per sweep.
     swept: Vec<DefaultKey>,
+
+    /// KaminIDE patch: the gutter (left, top, right, bottom) the viewport has in the
+    /// layout pass running now and its bar thickness, once its box publishes them
+    /// (`kamin_scrollbars`).
+    kamin_root_gutter: Option<(crate::geometry::Rect<f32>, f32)>,
 
     /// KaminIDE patch: tests switch the grid contribution memos (contribution_memo) off and read their
     /// use; a build keeps them on and holds nothing for them in the tree.
@@ -692,21 +699,32 @@ where
         //
         // If there was no cache match and a new result needs to be computed then that result will be added to the cache
         compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
-            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
-            let has_children = tree.child_count(node_id) > 0;
+            #[cfg(feature = "block_layout")]
+            let mut block_ctx = block_ctx;
+            // KaminIDE patch: a box whose bars layout decides is laid out again,
+            // alone, when its content asks for other bars (`kamin_scrollbars`).
+            let mut settling = kamin_scrollbars::Settling::default();
+            loop {
+                tree.kamin_publish_root_gutter(node_id);
+                let display_mode = tree.taffy.nodes[node_id.into()].style.display;
+                let has_children = tree.child_count(node_id) > 0;
 
-            debug_log!(display_mode);
-            debug_log_node!(inputs);
+                debug_log!(display_mode);
+                debug_log_node!(inputs);
 
-            // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-            let output = match (display_mode, has_children) {
-                #[cfg(feature = "block_layout")]
-                (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx),
-                #[cfg(feature = "block_layout")]
-                (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
-                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-            };
-            tree.finish_child_layout(node_id, inputs.run_mode, output)
+                // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
+                let output = match (display_mode, has_children) {
+                    #[cfg(feature = "block_layout")]
+                    (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx.as_deref_mut()),
+                    #[cfg(feature = "block_layout")]
+                    (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
+                    _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
+                };
+                let output = tree.finish_child_layout(node_id, inputs.run_mode, output);
+                if !tree.kamin_settle_scrollbars(node_id, inputs, &output, &mut settling) {
+                    return output;
+                }
+            }
         })
     }
 
@@ -825,7 +843,13 @@ where
 
     #[inline(always)]
     fn set_unrounded_layout(&mut self, node_id: NodeId, layout: &Layout) {
-        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
+        let node = &mut self.taffy.nodes[node_id.into()];
+        node.unrounded_layout = *layout;
+        // KaminIDE patch: a parent records the bars from the style it read before the
+        // child's layout, which may have decided its bars since (`kamin_scrollbars`).
+        if node.style.kamin_scrollbars.decides() {
+            node.unrounded_layout.scrollbar_size = kamin_scrollbars::bar_size(&node.style);
+        }
     }
 
     #[inline(always)]
@@ -871,6 +895,18 @@ where
     #[inline(always)]
     fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo {
         &self.taffy.nodes[node_id.into()].detailed_layout_info
+    }
+
+    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
+        let link = self.taffy.nodes[node_id.into()].style.kamin_scrollbars.root_gutter()?;
+        let (now, bar) = self.taffy.kamin_root_gutter?;
+        let shift = link.shift(now, bar);
+        (shift != crate::geometry::Rect::zero()).then_some(shift)
+    }
+
+    #[inline(always)]
+    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
+        self.taffy.nodes[node_id.into()].style.kamin_scrollbars.proxy()
     }
 }
 
@@ -1139,6 +1175,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
             #[cfg(feature = "std")]
             calc: Default::default(),
             swept: Vec::new(),
+            kamin_root_gutter: None,
             #[cfg(all(test, feature = "grid"))]
             contribution_memo_use: ContributionMemoStats::default(),
         }
@@ -1716,6 +1753,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         let use_rounding = self.config.use_rounding;
         #[cfg(feature = "std")]
         let _calc = self.calc_scope();
+        self.kamin_root_gutter = None;
         let mut taffy_view = TaffyView {
             taffy: self,
             #[cfg(feature = "grid")]

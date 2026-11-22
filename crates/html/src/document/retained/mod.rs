@@ -71,6 +71,10 @@ mod rebuild_key_tests;
 mod recolour_layout_tests;
 #[cfg(test)]
 mod record_release_tests;
+#[cfg(test)]
+mod replaced_max_width_tests;
+#[cfg(test)]
+mod slot_display_tests;
 pub use prepared::UpdatePhase;
 #[cfg(test)]
 mod attr_scope_tests;
@@ -227,5 +231,7 @@ impl Document {
     }
 }
 
+#[cfg(test)]
+mod extent_settle_tests;
 #[cfg(test)]
 mod moved_glyph_tests;

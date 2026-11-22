@@ -56,6 +56,14 @@ impl Window {
         changed
     }
 
+    /// Test support: drop the frames asked for since the last call
+    /// (`on_next_frame`, for example to settle what a layout measured) and
+    /// count them; a test that draws directly runs none of them.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_frame_requests(&self) -> usize {
+        self.next_frame_callbacks.take().len()
+    }
+
     pub(super) fn prepaint_roots_with_layout_inputs(
         &mut self,
         root_size: Size<Pixels>,

@@ -110,6 +110,7 @@ fn intermediate_line_metadata_includes_native_child_and_content_insets() {
                 baseline_x: None,
                 last_baseline_x: None,
                 baseline_x_from_right: false,
+                overflow: None,
             }
         })
     })
