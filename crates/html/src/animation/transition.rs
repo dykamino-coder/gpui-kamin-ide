@@ -57,7 +57,7 @@ impl Element for Transition {
             let mut state = state.unwrap_or_default();
             let active = state.sample(frame, self.seconds, reduced);
             let requested = active && frame.source == AnimationTimeSource::Live;
-            self.doc.animation.transition(requested);
+            self.doc.animation.transition(active, requested);
             if requested {
                 self.doc.values.defer_frame();
                 window.request_animation_frame();

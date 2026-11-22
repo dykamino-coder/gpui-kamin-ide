@@ -37,6 +37,7 @@ fn snapshot_seek_matches_fresh_and_equal_time_replays(cx: &mut TestAppContext) {
     let before = frames(&view, cx);
     frame(cx);
     assert_eq!(frames(&view, cx), (before.0, before.1 + 1));
+    assert!(cx.update(|_, app| view.read(app).doc.animation_frame().unwrap().time_dependent));
     for (ms, expected) in [(750, expected_750), (250, expected_250)] {
         cx.update(|_, app| {
             view.read(app)
@@ -104,4 +105,30 @@ fn stopped_hover_transition_changes_once_then_holds_the_sample(cx: &mut TestAppC
     assert_eq!(frames(&view, cx), (before.0, before.1 + 1));
     let journal = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
     assert!(!journal.keyframe_requested && !journal.transition_requested);
+}
+
+#[gpui::test]
+fn declarations_and_idle_hover_transitions_do_not_depend_on_time(cx: &mut TestAppContext) {
+    let html = "<style>body{margin:0}@keyframes unused{to{width:100px}}\
+        .absent{animation:unused 1s infinite}\
+        .b{margin:50px;width:20px;height:20px;background:red;transition:1s}\
+        .b:hover{width:100px}</style><div class=b></div>";
+    let (view, cx) = open_document(cx, document(html, 0));
+    cx.simulate_mouse_move(point(px(500.), px(500.)), None, Modifiers::default());
+    frame(cx);
+    frame(cx);
+    let journal = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
+    assert!(!journal.time_dependent);
+    let before = frames(&view, cx);
+    let pixels = quads(cx);
+    cx.update(|_, app| {
+        view.read(app)
+            .doc
+            .set_animation_elapsed(Some(Duration::from_millis(500)));
+    });
+    frame(cx);
+    assert_eq!(quads(cx), pixels);
+    assert_eq!(frames(&view, cx), (before.0, before.1 + 1));
+    let journal = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
+    assert!(!journal.time_dependent);
 }

@@ -31,6 +31,7 @@ pub(super) fn journal(frame: Option<AnimationFrame>) -> Value {
         "elapsed_ms": frame.elapsed.as_secs_f64() * 1000.0,
         "keyframe_samples": frame.keyframe_samples,
         "transition_samples": frame.transition_samples,
+        "time_dependent": frame.time_dependent,
         "next_frame_causes": {
             "keyframes": frame.keyframe_requested,
             "transition_progress": frame.transition_requested,
