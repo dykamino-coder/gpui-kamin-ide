@@ -18,7 +18,7 @@ use crate::layout::replaced::svg_size::size_of;
 use clip::{shape_box, translate_only};
 use gpui::{AnyElement, IntoElement};
 use masks::masked_layers;
-use serialize::serialize_sized;
+use serialize::serialize_viewport;
 
 use crate::resources::svg_document::clip;
 mod device_image;
@@ -27,6 +27,7 @@ mod masks;
 pub(crate) mod path_commands;
 pub(crate) mod path_scene;
 pub(crate) mod raster;
+mod used;
 pub use crate::resources::svg_document::serialize;
 
 /// Во сколько раз растрировать плотнее логического размера: на дробном
@@ -52,8 +53,14 @@ pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32
 }
 
 pub(crate) fn element(e: &Element, frame: FrameCx<'_>) -> Option<AnyElement> {
+    if used::needs_used_size(e) {
+        return Some(used::element(e, frame));
+    }
+    element_sized(e, frame, size_of(e))
+}
+
+fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<AnyElement> {
     let vcx = frame.values;
-    let (w, h) = size_of(e);
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
     // растр расширяется до содержимого по свободной оси, а коробка остаётся
     // размером канвы — картинка переполняет её, как в браузере.
@@ -183,7 +190,12 @@ pub(crate) fn element(e: &Element, frame: FrameCx<'_>) -> Option<AnyElement> {
     let nx = if visible_x { neg_extent(true) } else { 0.0 };
     let ny = if visible_y { neg_extent(false) } else { 0.0 };
     let (cw, ch) = (rw + nx, rh + ny);
-    let mut img = device_image::element(serialize_sized(e, rw, rh, nx, ny, vcx), cw, ch, vcx)?;
+    let mut img = device_image::element(
+        serialize_viewport(e, (w, h), rw, rh, nx, ny, vcx),
+        cw,
+        ch,
+        vcx,
+    )?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
     if let Some(bg) = e.style.used().reset_background.background {
