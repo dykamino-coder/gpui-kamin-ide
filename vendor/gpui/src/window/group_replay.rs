@@ -133,4 +133,17 @@ impl Window {
             .collect();
         (labels, scene.groups.iter().map(|group| (group.bounds, group.scene.quads.clone())).collect())
     }
+
+    /// The draw sequence of each group of the rendered frame (`painted_sequence`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_group_sequences(&self) -> Vec<Vec<(String, Bounds<ScaledPixels>)>> {
+        let groups = self.rendered_frame.scene.groups.iter();
+        groups
+            .map(|group| {
+                let mut out = Vec::new();
+                crate::scene::draw_sequence(&group.scene, &mut out);
+                out
+            })
+            .collect()
+    }
 }

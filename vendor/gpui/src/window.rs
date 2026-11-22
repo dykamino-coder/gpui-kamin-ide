@@ -71,6 +71,7 @@ mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
 mod scene_layer;
+mod group_root;
 mod grouped_layer;
 mod layer_box;
 mod layer_band;

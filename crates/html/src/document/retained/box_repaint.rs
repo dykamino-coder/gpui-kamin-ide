@@ -6,11 +6,49 @@
 //! layer (`gpui::Window::rerecord_layer_box`), without its descendants,
 //! layout or the element tree. Its style comes from the one `Div` the box
 //! would build, without its children (`paint::box_tree::styled::own_paint_div`),
-//! the interim painter until the boxes own their used style (B1). A box the layer refuses voids the
+//! the interim painter until the boxes own their used style (B1). A box with
+//! decorations (child elements) that is all its composition group holds
+//! paints the group again: its own paint and its decorations without layout
+//! (`styled::group_painters`), the group's scene replaced whole
+//! (`gpui::Window::rerecord_layer_group`). A box the layer refuses voids the
 //! replay and the layer: the frame is built and paints a new one.
 
 use super::Builder;
 use gpui::{App, Refineable, Styled, Window};
+
+/// Paint box `owner`, all its group holds, again with its decorations
+/// (`gpui::Window::rerecord_layer_group`): its own paint, then each
+/// decoration in the box layout gives it from the padding box, as the box's
+/// child elements paint them. `None`, the layer unchanged, when the group
+/// cannot take it, or layout would place a decoration otherwise: the box's
+/// recording knew no unrounded box equal to its snapped one, a decoration's
+/// box is off the device grid, or the box clips its children.
+fn group_paint(
+    window: &mut Window,
+    cx: &mut App,
+    layer: &gpui::LayerHandle,
+    owner: u32,
+    style: &gpui::Style,
+    mut painters: crate::paint::decorations::Painters,
+) -> Option<()> {
+    window.rerecord_layer_group(layer, owner, cx, |window, cx, bounds, exact| {
+        if !painters.is_empty()
+            && (exact != Some(bounds) || style.overflow_mask_snapped(bounds, window).is_some())
+        {
+            return None;
+        }
+        style.paint_box(bounds, window, cx);
+        if painters.is_empty() {
+            return Some(());
+        }
+        let edges = style.border_widths.to_pixels(window.rem_size());
+        let padding = gpui::Bounds::from_corners(
+            gpui::point(bounds.left() + edges.left, bounds.top() + edges.top),
+            gpui::point(bounds.right() - edges.right, bounds.bottom() - edges.bottom),
+        );
+        painters.paint(padding, window.scale_factor(), window)
+    })
+}
 
 impl Builder {
     /// Record the queued boxes again before the frame replays; `false` when
@@ -77,6 +115,27 @@ impl Builder {
             let mut div = crate::paint::box_tree::styled::own_paint_div(e, &self.opts.cx);
             let mut style = gpui::Style::default();
             style.refine(div.style());
+            // A box that is all its group holds paints the group again with
+            // its decorations (`group_paint`): its run may also hold the
+            // decorations an earlier group paint put there, whatever painter
+            // first recorded it. A box with decorations, before or now,
+            // paints no other way.
+            let decorated = layer.painter(owner) == Some(gpui::LayerPainter::DecoratedBox);
+            let painters = crate::paint::box_tree::styled::group_painters(e, &self.opts.cx);
+            let grouped = layer.holds_group_root(owner) && painters.is_some();
+            if grouped || decorated || painters.as_ref().is_some_and(|p| !p.is_empty()) {
+                let painted = match painters {
+                    Some(painters) if layer.holds_group_root(owner) => {
+                        group_paint(window, cx, &layer, owner, &style, painters)
+                    }
+                    _ => None,
+                };
+                if painted.is_none() {
+                    crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                    return false;
+                }
+                continue;
+            }
             let painted = window.rerecord_layer_box(&layer, owner, cx, |window, cx, bounds| {
                 style.paint_box(bounds, window, cx)
             });
