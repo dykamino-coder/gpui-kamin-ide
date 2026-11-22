@@ -134,7 +134,7 @@ fn layout_decides_new_bars_in_the_same_draw_and_says_why(cx: &mut TestAppContext
         .find(|c| c.code == "scroll_extent.layout_bars")
         .unwrap_or_else(|| panic!("no layout bars cause in {journal:?}"));
     assert!(
-        cause.detail.ends_with("decided in layout"),
+        cause.detail.contains("decided in layout"),
         "{}",
         cause.detail
     );

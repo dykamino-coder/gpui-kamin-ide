@@ -38,6 +38,10 @@ pub(crate) fn apply(mut div: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         let style = div.style();
         let mut bars = style.kamin_scrollbars.unwrap_or_default();
         bars.root_gutter = Some(used);
+        // A box fixed to the viewport scrolls with no scroller: it adds no
+        // scrollable overflow that decides bars (CSS Overflow 3 §2.2).
+        bars.proxy = c.reset_positioned.position == Some(Position::Fixed)
+            && !c.reset_transforms.transform_ancestor;
         style.kamin_scrollbars = Some(bars);
     }
     let delta: [f32; 4] = std::array::from_fn(|side| used[side] - native[side]);
