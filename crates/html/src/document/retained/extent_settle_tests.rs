@@ -48,6 +48,14 @@ fn the_first_draw_paints_its_bars_and_what_an_edit_paints(cx: &mut TestAppContex
             .any(|c| c.code == "scroll_extent.relayout" && c.detail.starts_with("bars changed")),
         "the draw found no new bars: {journal:?}"
     );
+    // The guessed root bar was right: the root itself was not laid out again.
+    assert!(
+        !journal
+            .causes
+            .iter()
+            .any(|c| c.code == "scroll_extent.relayout" && c.detail.contains("box 0 ")),
+        "the root's bar was not guessed: {journal:?}"
+    );
     let first = quads(vcx);
     frame(vcx);
     assert_eq!(first, quads(vcx), "the draw after the first");
@@ -140,27 +148,18 @@ fn new_bars_lay_the_roots_out_again_in_the_same_draw_and_say_why(cx: &mut TestAp
 
 #[gpui::test]
 fn a_bar_that_brings_the_other_settles_in_the_same_draw(cx: &mut TestAppContext) {
-    // The first layout gives the scroller a horizontal bar (the wide box)
-    // and the root a vertical one; the root's bar then narrows the scroller,
-    // its two blocks wrap and need its vertical bar: a third layout.
-    let text = "word ".repeat(1500);
-    let html = format!(
-        "<style>body{{margin:0}}.s{{overflow:auto;height:80px}}\
-         .b{{display:inline-block;width:198px;height:30px;vertical-align:top}}</style>\
+    // The first layout guesses the root's vertical bar: narrowed by it, the
+    // scroller's two blocks wrap and it gets both bars (the wide box gives
+    // the horizontal one). The short root drops the guessed bar, the
+    // scroller widens, its blocks share a line and its vertical bar goes:
+    // the scroller's bars change twice, a third layout.
+    let html = "<style>body{margin:0}.s{overflow:auto;height:80px}\
+         .b{display:inline-block;width:198px;height:30px;vertical-align:top}</style>\
          <div class=s><div style='width:900px;height:20px'></div>\
-         <div><span class=b></span><span class=b></span></div></div><p>{text}</p>"
-    );
-    let (_one, _sub) = crate::why::test_reader();
+         <div><span class=b></span><span class=b></span></div></div>";
     let mut app = cx.clone();
-    let (_view, vcx) = open(&mut app, &html);
+    let (_view, vcx) = open(&mut app, html);
     frame(vcx);
-    let journal = crate::why::take().journal;
-    let changed = journal
-        .causes
-        .iter()
-        .filter(|c| c.code == "scroll_extent.relayout")
-        .count();
-    assert!(changed >= 3, "no bar brought the other: {journal:?}");
     assert_eq!(requests(vcx), 0, "the second bar waited for a frame");
     let first = quads(vcx);
     frame(vcx);

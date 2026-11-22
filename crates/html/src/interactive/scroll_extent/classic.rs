@@ -27,7 +27,14 @@ pub(crate) fn model(
     c: &Computed,
 ) -> super::super::scrollbar_gutter::Model {
     let frame = owner(frame, e, c);
-    let cached = frame.as_ref().map_or([false; 2], |f| f.bars.get());
+    let mut cached = frame.as_ref().map_or([false; 2], |f| f.bars.get());
+    // Before its first measured range the viewport guesses a vertical bar,
+    // as Gecko's `ScrollContainerFrame::GuessVScrollbarNeeded` does for the
+    // root: most documents scroll, and a short one is the cheaper document
+    // to lay out again when the guess was wrong (`update` reports it).
+    if frame.is_some_and(|f| f.viewport.get() && !f.settling.settled.get()) {
+        cached[1] = true;
+    }
     let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
     let bars = std::array::from_fn(|axis| {
         frame.is_some()
@@ -57,6 +64,7 @@ pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {
             && (c.reset_box_layout.scroll.forced[axis]
                 || view.into_iter().all(|v| v > 0.0) && frame.range.get()[axis] > 0.0)
     });
+    frame.settling.settled.set(true);
     frame.bars.replace(bars) != bars
 }
 

@@ -27,6 +27,16 @@ struct BoxRecord {
     snap: Option<snap::Area>,
 }
 
+/// What layouts learned of a scrollport's bars: whether one measured its
+/// range (until then the viewport guesses its bar), and the inputs whose
+/// change (new bars) lays the roots out again in the same draw, one per
+/// layout again, as one bar can bring the other.
+#[derive(Default)]
+struct Settling {
+    settled: Cell<bool>,
+    inputs: [gpui::LayoutInputId; 3],
+}
+
 #[derive(Clone)]
 pub struct Frame {
     boxes: Sink<BoxRecord>,
@@ -45,9 +55,7 @@ pub struct Frame {
     insets: Rc<Cell<[f32; 4]>>,
     native_reserved: Rc<Cell<[f32; 2]>>,
     decoration_clip: Rc<Cell<Option<gpui::ContentMask<Pixels>>>>,
-    /// The inputs whose change (new bars) lays the roots out again in the
-    /// same draw: one per layout again, as one bar can bring the other.
-    layout_inputs: [gpui::LayoutInputId; 3],
+    settling: Rc<Settling>,
 }
 impl Default for Frame {
     fn default() -> Self {
@@ -68,7 +76,7 @@ impl Default for Frame {
             insets: Rc::default(),
             native_reserved: Rc::default(),
             decoration_clip: Rc::default(),
-            layout_inputs: std::array::from_fn(|_| gpui::LayoutInputId::default()),
+            settling: Rc::default(),
         }
     }
 }
@@ -101,7 +109,7 @@ impl Frame {
     }
 
     pub(crate) fn layout_inputs(&self) -> [gpui::LayoutInputId; 3] {
-        self.layout_inputs
+        self.settling.inputs
     }
     pub(super) fn bars(&self) -> [bool; 2] {
         self.bars.get()
