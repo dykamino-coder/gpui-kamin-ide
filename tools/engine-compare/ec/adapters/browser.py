@@ -18,7 +18,7 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
 
-DEF = 'browser-3'  # 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
+DEF = 'browser-4'  # 4: classify absent S before startup; 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
 # The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
 # so its miss is known at once (wrap() recorded it in c.ok). Only that wait changes; every measured frame is the same.
 GUARD = 'setTimeout(function(){if(a===my){a=0;miss++;c.ok.pop();next();}},250);'
@@ -149,6 +149,12 @@ class Browser:
         fam = b if b in ('firefox', 'servo') else 'chromium'
         rec = REC.new_record(self.name, self.version(), part, page, cls, f'{DEF}-{policy.definition()}', BOUNDS[fam])
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); rec['family'] = fam; t0 = time.perf_counter()
+        if 'S' in phases and M.scroll_steps(page.meta) == 0:
+            REC.row(rec, 'S')['empty'] = M.NO_SCROLL
+            phases = [p for p in phases if p != 'S']
+            if not phases:
+                rec['wall_s'] = time.perf_counter() - t0
+                return rec
         to = 420 if page.kind != 'syn' else 300
         try:
             s = self._session(lane, cls)
@@ -160,8 +166,6 @@ class Browser:
             return rec
         rec['browser_version'] = s.info.get('version')
         warm = [p for p in phases if p != 'cold']
-        if 'S' in warm and M.scroll_steps(page.meta) == 0:  # nothing to scroll: every step would wait out its guard
-            warm.remove('S'); phases = [p for p in phases if p != 'S']; REC.row(rec, 'S')['empty'] = M.NO_SCROLL
         probe = str(probe_file(page))
         op = {'probe': probe, 'cases': ','.join(warm), 'steadyMs': policy.steady_ms,
               'cpuCases': warm, 'cpuFrames': policy.cpu_frames, 'trace': fam == 'chromium'}
