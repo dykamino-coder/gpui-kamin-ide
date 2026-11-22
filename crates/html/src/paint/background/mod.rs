@@ -150,9 +150,9 @@ pub(crate) fn exact(
             let vcx = values.vcx();
             clip::paint(&style, layer.clip, bounds, window, |window| {
                 if layer.fixed == Some(true) {
-                    // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                    // а красится только внутри своей коробки: сдвиг между
-                    // ними держит сам `paint_tiles`.
+                    // The tile is sized and positioned against the VIEWPORT
+                    // but painted only inside its own box; `paint_tiles`
+                    // keeps the offset between the two.
                     let view = Bounds {
                         origin: gpui::point(px(0.0), px(0.0)),
                         size: window.viewport_size(),
