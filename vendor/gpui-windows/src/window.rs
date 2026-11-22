@@ -835,9 +835,17 @@ impl PlatformWindow for WindowsWindow {
         let scale_factor = self.scale_factor();
         let point = unsafe {
             let mut point: POINT = std::mem::zeroed();
-            GetCursorPos(&mut point)
+            // KaminIDE patch: a desktop that takes no input (or a locked
+            // session) has no cursor position. The pointer is then over no
+            // window, not at the screen origin: a position left of and above
+            // the client area hovers no hitbox (they are clipped to it).
+            if GetCursorPos(&mut point)
                 .context("unable to get cursor position")
-                .log_err();
+                .log_err()
+                .is_none()
+            {
+                return Point::new(px(-1.0), px(-1.0));
+            }
             ScreenToClient(self.0.hwnd, &mut point).ok().log_err();
             point
         };
