@@ -81,6 +81,7 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained; mod group_replay;
+mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
 mod scroll_replay; mod scroll_refusal;
@@ -1067,6 +1068,8 @@ pub(crate) struct DeferredDraw {
     paint_range: Range<PaintIndex>,
     // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
     isolated: Option<IsolatedDraw>,
+    // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
+    scroll: scroll_deferred::DeferredScroll,
 }
 
 pub(crate) struct Frame {
@@ -3175,6 +3178,16 @@ impl Window {
         quads
     }
 
+    /// KaminIDE patch: the areas the most recently rendered frame hit-tests
+    /// (each hitbox's bounds within its content mask), in insertion order,
+    /// and how many deferred draws it painted.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_hit_areas(&self) -> (Vec<Bounds<Pixels>>, usize) {
+        let frame = &self.rendered_frame;
+        let areas = frame.hitboxes.iter().map(|hitbox| hitbox.bounds.intersect(&hitbox.content_mask.bounds)).collect();
+        (areas, frame.deferred_draws.len())
+    }
+
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {
@@ -4379,6 +4392,8 @@ impl Window {
                 self.next_frame.dispatch_tree.set_active_node(parent_node);
 
                 let prepaint_start = self.prepaint_index();
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_prepaint(deferred_draw_ix);
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
                         .layout_owner.clone();
@@ -4393,8 +4408,9 @@ impl Window {
                     });
                     self.next_frame.deferred_draws[deferred_draw_ix].element = Some(element);
                 } else {
-                    self.reuse_prepaint(prepaint_range);
+                    self.reuse_deferred_prepaint(deferred_draw_ix, prepaint_range);
                 }
+                self.leave_deferred_prepaint(entered);
                 let prepaint_end = self.prepaint_index();
                 self.next_frame.deferred_draws[deferred_draw_ix].prepaint_range =
                     prepaint_start..prepaint_end;
@@ -4430,6 +4446,8 @@ impl Window {
             let paint_start = self.paint_index();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_paint(&deferred_draw.scroll);
                 self.with_retained_layout(&mut deferred_draw.layout_owner, |window| {
                     window.with_rendered_view(deferred_draw.current_view, |window| {
                         window.with_content_mask(content_mask, |window| {
@@ -4438,9 +4456,11 @@ impl Window {
                             });
                         })
                     })
-                })
+                });
+                self.leave_deferred_paint(entered);
             } else {
-                self.reuse_paint(deferred_draw.paint_range.clone());
+                let range = deferred_draw.paint_range.clone();
+                self.reuse_deferred_paint(&mut deferred_draw.scroll, range);
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
@@ -4469,7 +4489,9 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
-        // KaminIDE patch: the scroll nodes prepainted in the range.
+        // KaminIDE patch: the scroll nodes prepainted in the range, and where
+        // they land (deferred draws keep their owner node, `scroll_deferred`).
+        let owners = scroll_deferred::OwnerMap::new(&range, self);
         self.reuse_scroll_nodes(&range);
         for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
@@ -4532,6 +4554,7 @@ impl Window {
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
                     isolated: deferred_draw.isolated.clone(),
+                    scroll: owners.copy(&deferred_draw.scroll),
                 }),
         );
         // KaminIDE patch: reused isolated draws stay isolated in the new frame.
@@ -5296,6 +5319,26 @@ impl Window {
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
     ) {
+        self.push_deferred_draw(element, absolute_offset, priority, content_mask, Default::default());
+    }
+
+    /// KaminIDE patch: `defer_draw` of content that belongs to the open scroll
+    /// node (`scroll_deferred`): drawn later, in priority order, but under
+    /// that node, clipped by it and moved with it, as Blink keeps a positioned
+    /// box's paint chunks on its scroll translation whatever its paint order.
+    pub fn defer_scrolled_draw(&mut self, element: AnyElement, absolute_offset: Point<Pixels>, priority: usize) {
+        let scroll = self.deferred_scroll_owner();
+        self.push_deferred_draw(element, absolute_offset, priority, None, scroll);
+    }
+
+    fn push_deferred_draw(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        scroll: scroll_deferred::DeferredScroll,
+    ) {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
         self.next_frame.deferred_draws.push(DeferredDraw {
@@ -5313,6 +5356,7 @@ impl Window {
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
             isolated: None,
+            scroll,
         });
     }
 

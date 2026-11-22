@@ -33,8 +33,6 @@ pub struct Sticky {
     pub frame: StickyCell,
     /// The shift this box applies to its subtree (`ShiftLink`).
     pub(crate) link: crate::interactive::scroll_extent::StickyShift,
-    /// Painted by GPUI's deferred pass, outside the scroller's clip.
-    pub(crate) deferred: bool,
 }
 
 impl Sticky {
@@ -51,7 +49,6 @@ impl Sticky {
             left: None,
             right: None,
             frame,
-            deferred: false,
         }
     }
 
@@ -152,15 +149,9 @@ impl Wrap for Sticky {
     fn paint(&mut self, _bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let id = gpui::ScrollNodeId::of_token(&self.frame);
         let child = &mut self.child;
-        // A box deferred out of its scroller paints outside the scroller's
-        // clip: put the clip back (`sticky_wrap`, positive `z-index`).
-        let view = self.deferred.then(|| self.frame.get().viewport).flatten();
-        window.with_scroll_node_paint(id, |window| match view {
-            Some(view) => window
-                .with_content_mask(Some(gpui::ContentMask { bounds: view }), |window| {
-                    child.paint(window, cx)
-                }),
-            None => child.paint(window, cx),
-        });
+        // A box deferred above its scroller's flow (`sticky_wrap`, positive
+        // `z-index`) paints under the scroller's node again, in its clip
+        // (`gpui::Deferred::in_scroll_node`).
+        window.with_scroll_node_paint(id, |window| child.paint(window, cx));
     }
 }
