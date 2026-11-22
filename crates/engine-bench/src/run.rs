@@ -230,8 +230,8 @@ pub(super) async fn sample_with(
     let after = Counters::read(capture);
     let Ok(completed) = completed else {
         // A skipped presentation: no frame to read, the draw was the frame.
-        if phases.borrow().paints != 1 {
-            return Err("a skipped presentation without exactly one paint".into());
+        if phases.borrow().frame_renders() != 1 {
+            return Err("a skipped presentation without exactly one rendering draw".into());
         }
         let mut out = accounting::partition(
             Input {
@@ -257,15 +257,16 @@ pub(super) async fn sample_with(
     let ambiguous = completed != seq + 1
         || frame.seq != seq + 1
         || after.frames.wrapping_sub(before.frames) != 1
-        || phases.borrow().paints != 1;
-    // Layout inputs can retry render within one draw; scroll cold is not a sample.
+        || phases.borrow().frame_renders() != 1;
+    // Scroll mode's load is no sample: a page may draw again as it loads.
     if ambiguous && !(args.mode == Mode::Scroll && matches!(step, Step::Cold(_))) {
         return Err(format!(
-            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, (renders, paints)={:?}; refusing an ambiguous phase sample",
+            "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, renders={}, layout retries={}; refusing an ambiguous phase sample",
             frame.seq,
             capture.sequence(),
             after.frames.wrapping_sub(before.frames),
-            (phases.borrow().renders, phases.borrow().paints),
+            phases.borrow().renders,
+            phases.borrow().layout_retries,
         ).into());
     }
     let pixels = &frame.pixels;
