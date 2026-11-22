@@ -92,11 +92,14 @@ const BOTTOM_LAYER: DrawOrder = 0;
 /// рисуют теми же конвейерами, только в свою текстуру.
 /// KaminIDE patch: `pub` + `doc(hidden)` — буферы групп рисует рендерер из
 /// отдельного крейта `gpui_windows`, которому доступен лишь публичный API.
-#[derive(Default)]
+#[derive(Default, Clone)]
 #[doc(hidden)]
 #[allow(missing_docs)]
 pub struct PaintGroup {
-    pub scene: Scene,
+    /// KaminIDE patch: shared by the frame, the retained layer and the
+    /// rendered frame that hold this group (one copy of its content), written
+    /// through `scene_mut`; equal handles compare equal without a walk.
+    pub scene: std::rc::Rc<Scene>,
     pub bounds: Bounds<ScaledPixels>,
     /// Радиус размытия готовой картинки группы; 0 — не размывать.
     pub blur_radius: f32,
@@ -130,6 +133,25 @@ pub struct PaintGroup {
     /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
     /// многоугольник на каждую метку (`PaintSurface::fragment`).
     pub fragments: Vec<Vec<Point<ScaledPixels>>>,
+}
+
+impl PaintGroup {
+    /// The group scene to write: copied first while another frame or layer
+    /// still holds it (copy on write), so their content stays as drawn.
+    pub(crate) fn scene_mut(&mut self) -> &mut Scene {
+        if std::rc::Rc::get_mut(&mut self.scene).is_none() {
+            self.scene = std::rc::Rc::new(self.scene.copy_finished());
+        }
+        std::rc::Rc::get_mut(&mut self.scene).expect("unshared after the copy")
+    }
+}
+
+impl Scene {
+    /// The group scene `shared` by value: taken when no one else holds it,
+    /// else a copy (`PaintGroup::scene_mut`).
+    pub(crate) fn unshared(shared: std::rc::Rc<Scene>) -> Scene {
+        std::rc::Rc::try_unwrap(shared).unwrap_or_else(|shared| shared.copy_finished())
+    }
 }
 
 #[derive(Default)]
@@ -221,6 +243,10 @@ pub(crate) struct SceneBook {
     /// The box runs and bindings of a paint record painted while a layer
     /// records (`scene::layer::placed`).
     pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
+    /// The box runs painted into a group's scene while a layer records
+    /// (`grouped_layer`): `paint_group` hands them to the scene around,
+    /// naming the group; `None` outside such a group.
+    pub(crate) group_runs: Option<Vec<layer::BoxRange>>,
     /// Where the commands of a scene being placed here land
     /// (`scene::layer::placed`), one entry per placed command.
     pub(crate) placed_map: Option<layer::PlacedMap>,

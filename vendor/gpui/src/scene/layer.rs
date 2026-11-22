@@ -20,9 +20,11 @@
 
 mod boxes;
 mod frame;
+mod group_runs;
 mod order;
 mod order_line;
 mod placed;
+mod placed_groups;
 mod reorder;
 mod splice;
 mod write;
@@ -168,7 +170,10 @@ impl SceneLayer {
                     scene.paint_operations.get(b.op as usize),
                     Some(super::PaintOperation::Primitive(super::Primitive::Quad(_)))
                 )
-        }) && boxes.iter().all(|b| b.ops.end as usize <= operations);
+        }) && boxes.iter().all(|b| match b.group {
+            None => b.ops.end as usize <= operations,
+            Some(g) => scene.groups.get(g as usize).is_some_and(|x| b.ops.end as usize <= x.scene.paint_operations.len()),
+        });
         if !valid {
             debug_assert!(false, "a layer binding or run names another scene");
             layer_counters::RECORDS_REFUSED.fetch_add(1, Relaxed);
@@ -239,6 +244,12 @@ impl SceneLayer {
     pub fn scene(&self) -> &Scene {
         &self.scene
     }
+
+    /// Whether the layer kept composition groups: a frame draws it by a
+    /// copy of its commands, not by one command (`Window::redraw_scene_layer`).
+    pub fn has_groups(&self) -> bool {
+        !self.scene.groups.is_empty()
+    }
 }
 
 impl LayerHandle {
@@ -267,3 +278,5 @@ mod rerecord_tests;
 mod placed_tests;
 #[cfg(test)]
 mod clipped_tests;
+#[cfg(test)]
+mod group_runs_tests;
