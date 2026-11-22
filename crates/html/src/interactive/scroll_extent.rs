@@ -31,11 +31,13 @@ struct BoxRecord {
 /// range (until then the viewport guesses its bar), why layout does not
 /// decide its bars (`classic::layout_axes`), and the inputs whose change
 /// (bars layout did not decide) lays the roots out again in the same draw,
-/// one per layout again, as one bar can bring the other.
+/// one per layout again, as one bar can bring the other. decided: the axes
+/// whose bar layout decides; the measured range only checks those.
 #[derive(Default)]
 struct Settling {
     settled: Cell<bool>,
     refusal: Cell<Option<&'static str>>,
+    decided: Cell<[bool; 2]>,
     inputs: [gpui::LayoutInputId; 3],
 }
 

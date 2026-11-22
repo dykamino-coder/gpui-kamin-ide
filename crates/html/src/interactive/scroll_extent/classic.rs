@@ -96,6 +96,7 @@ pub(crate) fn layout_axes(frame: Option<&Frame>, e: &Element, c: &Computed) -> [
         None
     };
     frame.settling.refusal.set(refusal);
+    frame.settling.decided.set(auto);
     auto
 }
 
@@ -119,13 +120,25 @@ pub(super) fn refusal(frame: &Frame) -> Option<&'static str> {
     frame.settling.refusal.get()
 }
 
+/// The bars of the measured range. A bar layout decided (layout_axes) is final
+/// for this layout, as Blink keeps the bars BlockNode::Layout settled: the range
+/// only checks it and the why journal notes a disagreement, so no later frame
+/// lays the box out again for it. Whether the bars changed.
 pub(super) fn update(frame: &Frame, c: &Computed, view: [f32; 2]) -> bool {
     let overflow = [c.reset_box_layout.overflow_x, c.reset_box_layout.overflow_y];
-    let bars = std::array::from_fn(|axis| {
+    let measured: [bool; 2] = std::array::from_fn(|axis| {
         overflow[axis] == Some(Overflow::Scroll)
             && (c.reset_box_layout.scroll.forced[axis]
                 || view.into_iter().all(|v| v > 0.0) && frame.range.get()[axis] > 0.0)
     });
+    let current = frame.bars.get();
+    let decided = frame.settling.decided.get();
+    let bars = std::array::from_fn(|axis| if decided[axis] { current[axis] } else { measured[axis] });
+    if bars != measured {
+        crate::why::note("scroll_extent.bars_disagree", || {
+            format!("layout decided bars {bars:?}, the measured range {measured:?}: range {:?} view {view:?}", frame.range.get())
+        });
+    }
     frame.settling.settled.set(true);
     frame.bars.replace(bars) != bars
 }
