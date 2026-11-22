@@ -65,6 +65,7 @@ impl Window {
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
@@ -96,6 +97,11 @@ impl Window {
             tile,
             opacity,
         });
-        Ok((self.next_frame.scene.len() > before).then_some(tile))
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+            Ok(Some(tile))
+        } else {
+            Ok(None)
+        }
     }
 }

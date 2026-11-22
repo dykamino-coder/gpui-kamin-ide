@@ -66,6 +66,7 @@ use uuid::Uuid;
 pub(crate) mod a11y;
 mod prompts;
 mod image_sampling;
+mod image_resources;
 mod natural_image;
 mod absolute_transformation;
 pub(crate) mod vector_transform;
@@ -1394,6 +1395,7 @@ pub struct Window {
     is_minimizable: bool,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     natural_images: natural_image::Cache,
+    image_uploads: image_resources::ImageUploads,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
     rem_size: Pixels,
@@ -2407,6 +2409,7 @@ impl Window {
             is_minimizable,
             sprite_atlas,
             natural_images: Default::default(),
+            image_uploads: Default::default(),
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
             rem_size: px(16.),
@@ -3893,6 +3896,7 @@ impl Window {
         self.read_states.states.clear();
         // KaminIDE patch: the empty base style new elements share must not outlive them.
         crate::elements::refinement_share::release_empty();
+        self.image_uploads.release_unused();
         drawn
     }
 
@@ -6077,6 +6081,7 @@ impl Window {
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
 
         let visible_bounds_snapped = self.snap_bounds(visible_bounds);
 
@@ -6128,6 +6133,7 @@ impl Window {
 
         // KaminIDE patch: картинка едет действующим преобразованием.
         let transformation = self.current_transformation();
+        let before = self.next_frame.scene.len();
         self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
@@ -6139,6 +6145,9 @@ impl Window {
             tile: sub_tile,
             opacity,
         });
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+        }
         Ok(())
     }
 
@@ -6177,6 +6186,7 @@ impl Window {
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
         // Регион внутри тайла: origin смещаем, размер клампим — выйти за
         // пределы тайла нельзя, иначе в спрайт попадут соседние атласные
         // страницы.
@@ -6194,6 +6204,7 @@ impl Window {
         let opacity = self.element_opacity();
 
         let transformation = self.current_transformation();
+        let before = self.next_frame.scene.len();
         self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
@@ -6207,6 +6218,9 @@ impl Window {
             tile,
             opacity,
         });
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+        }
         Ok(())
     }
 
