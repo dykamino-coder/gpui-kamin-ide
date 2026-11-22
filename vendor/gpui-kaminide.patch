@@ -23821,10 +23821,10 @@ index 0000000000000000000000000000000000000000..89000146dbb60f38d82c29c3230d4f1b
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/content_line/tests.rs b/vendor/gpui/src/taffy/content_line/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..44ff1922d2401218197ad0f07236de75eedaf136
+index 0000000000000000000000000000000000000000..41bfa96be3910c80d3d97d8498f8e1ff73a75f86
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/content_line/tests.rs
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,98 @@
 +//! Запрос готового дерева пропускает пустой блок и внепоточных детей.
 +use super::*;
 +use std::{cell::RefCell, rc::Rc};
@@ -23907,6 +23907,7 @@ index 0000000000000000000000000000000000000000..44ff1922d2401218197ad0f07236de75
 +                    baseline_x: measured.then_some(4.),
 +                    last_baseline_x: measured.then_some(4.),
 +                    baseline_x_from_right: false,
++                    overflow: None,
 +                }
 +            })
 +        },
@@ -27614,10 +27615,10 @@ index 0000000000000000000000000000000000000000..9daa38b229041534580f63205b2b4ae4
 +mod tests;
 diff --git a/vendor/gpui/src/taffy/visible_baselines_tests.rs b/vendor/gpui/src/taffy/visible_baselines_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6a72814d8620e070a4edbce684d4fbc1232899da
+index 0000000000000000000000000000000000000000..1ac188027761c085baa681bf9e2863a546fdc555
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/visible_baselines_tests.rs
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,156 @@
 +//! Intermediate lines are extracted from completed native leaf geometry with actual insets.
 +
 +use super::*;
@@ -27730,6 +27731,7 @@ index 0000000000000000000000000000000000000000..6a72814d8620e070a4edbce684d4fbc1
 +                baseline_x: None,
 +                last_baseline_x: None,
 +                baseline_x_from_right: false,
++                overflow: None,
 +            }
 +        })
 +    })
