@@ -54,6 +54,8 @@ mod usage;
 #[cfg(windows)]
 mod view;
 #[cfg(windows)]
+mod why;
+#[cfg(windows)]
 mod work;
 
 // Тот же аллокатор, что у обычного приложения, без тестовой платформы GPUI.
@@ -104,6 +106,13 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     if std::env::args().skip(1).eq(["--build-info"]) {
         println!("{}", build_info::json());
+        return Ok(());
+    }
+    #[cfg(windows)]
+    if let [flag, a, b] = &std::env::args().skip(1).collect::<Vec<_>>()[..]
+        && flag == "--why-compare"
+    {
+        print!("{}", why::compare::run(a.as_ref(), b.as_ref())?);
         return Ok(());
     }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {

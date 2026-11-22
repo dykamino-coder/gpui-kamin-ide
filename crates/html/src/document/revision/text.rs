@@ -38,6 +38,19 @@ pub(super) fn editable(edit: &TextChange, read: &HashSet<usize>) -> bool {
         && !read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize))
 }
 
+/// Which condition of `editable` the edit fails (DevTools `why`).
+pub(super) fn not_editable_why(edit: &TextChange, read: &HashSet<usize>) -> &'static str {
+    use crate::dom::whitespace::blank_text;
+    match () {
+        _ if blank_text(&edit.old) => "the old text is blank by CSS",
+        _ if blank_text(&edit.new) => "the new text is blank by CSS",
+        _ if read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize)) => {
+            "a reader of the frame build read the old text (`Traversal::read_texts`)"
+        }
+        _ => "editable",
+    }
+}
+
 /// Пути к узлам дерева коробок с номерами правленых исходных текстов.
 /// Куски и копии исходного текста несут его номер, поэтому правится
 /// каждый такой узел. Узел с номером правки, но другим содержимым (сборка

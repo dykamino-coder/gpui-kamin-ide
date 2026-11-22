@@ -108,6 +108,8 @@ impl Render for View {
         let mut phases = self.phases.borrow_mut();
         phases.build += started.elapsed();
         phases.renders += 1;
+        // DevTools `why`: each render in the order of the frame requests (`--why`).
+        gpui::dirty_sources::trace::mark("render");
         let pass = window.paint_pass_id();
         if phases.pass.as_ref() == Some(&pass) {
             phases.layout_retries += 1;
