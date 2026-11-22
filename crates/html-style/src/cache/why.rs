@@ -51,7 +51,11 @@ pub(super) fn remember(gone: &mut HashMap<u64, &'static str>, key: u64, why: &'s
 /// A cache that ends (not a `static`) stops holding its bytes.
 impl<K, V> Drop for BoundedCache<K, V> {
     fn drop(&mut self) {
-        if let Some(store) = &*self.lock() {
+        let store = self
+            .store
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(store) = &*store {
             HELD[self.slot].fetch_sub(store.bytes, Relaxed);
         }
     }
