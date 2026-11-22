@@ -200,9 +200,9 @@ async function servo() {
     const navWallMs = clock.now() - navStart;
     await mark('loaded');
     if (op.steadyMs) { await sleep(op.steadyMs); await mark('steady_end'); }
-    const p0 = clock.now();
-    const probe = op.cases ? await run(PROBE(op.cases, op.framesOnly)) : null;
-    const probeWallMs = clock.now() - p0;
+    // No in-page probe: Servo's frame is the screenshot difference below, the probe's clocks were never read and took
+    // half of every visit.
+    const probe = null; const probeWallMs = 0;
     const s0 = clock.now(); const shots = op.cases ? await screenshots(op.cases.split(','), op.shots || 5) : null;
     const shotWallMs = clock.now() - s0;
     const cpu = {}; const c0 = clock.now();

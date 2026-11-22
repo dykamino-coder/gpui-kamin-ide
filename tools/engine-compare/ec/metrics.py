@@ -164,7 +164,7 @@ def browser_visit(engine, res):
     def ras(win):
         w = tw.get(win)
         return None if not w else ((w.get('RasterTask') or {}).get('sumMs', 0) + (w.get('Display::DrawAndSwap') or {}).get('sumMs', 0)) / frames
-    for k, c in (probe.get('cases') or {}).items():
+    for k, c in cases_of(engine, res).items():
         fr = (c.get('frame') or {}).get('median'); rq = (c.get('frameReq') or {}).get('median')
         ap = (c.get('afterPaint') or {}).get('median') if c.get('afterPaint') else None
         if engine == 'firefox':
@@ -188,6 +188,13 @@ def browser_visit(engine, res):
         cold['value'] = min(vals) if vals else None
         out['cold'] = cold
     return out
+
+
+def cases_of(engine, res):
+    """{phase: probe case} of a visit. Servo has no probe: its phases are the screenshot cases, S with the steps moved."""
+    if engine == 'servo':
+        return {k: {'frame': {'moved': v.get('moved', 1)}} for k, v in (res.get('shots') or {}).items() if k != 'idle'}
+    return (res.get('probe') or {}).get('cases') or {}
 
 
 def median_ci(xs, level=0.9):
@@ -245,7 +252,7 @@ def browser_samples(engine, res):
 
     def smp(x):
         return [v for v in ((x or {}).get('samples') or []) if v is not None]
-    for k, c in (probe.get('cases') or {}).items():
+    for k, c in cases_of(engine, res).items():
         fr, rq, ap = smp(c.get('frame')), smp(c.get('frameReq')), smp(c.get('afterPaint'))
         if k == 'S' and ((c.get('frame') or {}).get('moved') or 0) < 1:
             continue
@@ -282,6 +289,8 @@ def servo_shot(shots, k):
 
 def scroll_empty_reason(res):
     c = (((res.get('probe') or {}).get('cases') or {}).get('S') or {}).get('frame') or {}
+    if not c and (res.get('shots') or {}).get('S'):  # Servo: the screenshot steps
+        c = res['shots']['S']
     if (c.get('moved') or 0) < 1:
         return NO_SCROLL
     return None

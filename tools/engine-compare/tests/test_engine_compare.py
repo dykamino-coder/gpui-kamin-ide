@@ -126,11 +126,14 @@ class Metrics(unittest.TestCase):
         self.assertEqual(M.browser_visit('chromium', dict(one, trace={'windows': {'frame:S': {'RasterTask': {'sumMs': 0}}}}))['S']['raf'], 2)
 
     def test_servo_frame_is_edit_plus_screenshot_minus_screenshot(self):
-        res = {'probe': {'cases': {'R': {'frame': {'median': 0.3}, 'frameReq': {'median': 0.5}}, 'C': {'frame': {'median': 1}}}},
-               'shots': {'idle': {'ms': [20, 21, 22]}, 'R': {'ms': [30, 31, 33]}, 'C': {'ms': [19, 20]}}}
+        res = {'probe': None, 'shots': {'idle': {'ms': [20, 21, 22]}, 'R': {'ms': [30, 31, 33]}, 'C': {'ms': [19, 20]},
+                                        'S': {'ms': [], 'moved': 0}}}
         sv = M.browser_visit('servo', res)
-        self.assertEqual(sv['R']['value'], 10)  # 31 - 21: the probe clocks are not used
+        self.assertEqual(sv['R']['value'], 10)  # 31 - 21: no probe, the phases come from the screenshot cases
         self.assertIsNone(sv['C']['value'])     # not above the screenshot alone
+        self.assertIsNone(sv['S']['value'])     # no whole step moved
+        self.assertEqual(M.browser_samples('servo', res)['R']['samples'], [9, 10, 12])
+        self.assertEqual(M.scroll_empty_reason(res), M.NO_SCROLL)
 
     def test_browser_visit_definitions(self):
         res = {'twoRafMs': 40, 'probe': {'frames': 10, 'cases': {
