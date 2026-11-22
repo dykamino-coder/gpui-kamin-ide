@@ -35,6 +35,12 @@ pub(super) async fn check(steps: StepFrames, report: &mut Value, run: Run<'_, '_
         // scrollbars and draws again: the reference is the frame the open
         // settles on, as scroll mode settles the load before its steps.
         super::memory::before_phase(cx, capture, args).await?;
+        // Initial scrollbar discovery can clamp a pre-layout offset to zero.
+        // Set the reference offset after that discovery, outside timed samples,
+        // and settle its frame before demanding a replay-only reference.
+        window.update(cx, |view, _, _| view.doc.set_root_scroll_offset(offset))?;
+        sample(cx, window, fonts, args, Step::Warm, capture, luid).await?;
+        super::memory::before_phase(cx, capture, args).await?;
         let before = window.read_with(cx, |view, _| view.doc.retained_frames())?;
         let (_, fresh, _) = sample(cx, window, fonts, args, Step::Warm, capture, luid).await?;
         let after = window.read_with(cx, |view, _| view.doc.retained_frames())?;
