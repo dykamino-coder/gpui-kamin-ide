@@ -107,35 +107,8 @@ impl ScrollNodeRecord {
     }
 }
 
-/// The offset of a scroll node in the current state (`plan_scrolled_replay`).
-#[derive(Clone)]
-pub(crate) enum NodeSource {
-    Handle(ScrollHandle),
-    Anchor(Rc<dyn Fn() -> Point<Pixels>>),
-    /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
-    /// the change of another node's offset since `base`, the offset that
-    /// node had when the follower prepainted.
-    Follow { on: Box<NodeSource>, base: Point<Pixels>, at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>> },
-}
-
-impl NodeSource {
-    /// The offset now: a handle's clamped to its scroll range, as prepaint
-    /// clamps it (written back, so the handle reads what is shown).
-    pub(crate) fn offset(&self) -> Point<Pixels> {
-        match self {
-            NodeSource::Handle(handle) => {
-                let (offset, max) = (handle.offset(), handle.max_offset());
-                let clamped = point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)));
-                if clamped != offset {
-                    handle.set_offset(clamped);
-                }
-                clamped
-            }
-            NodeSource::Anchor(offset) => offset(),
-            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
-        }
-    }
-}
+mod source;
+pub(crate) use source::NodeSource;
 
 /// Pairing of scroll node paints with their prepaints in one frame.
 #[derive(Default)]
@@ -301,15 +274,19 @@ impl Window {
         }
     }
 
-    fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
-        let anchored = matches!(source, NodeSource::Anchor(_));
+    pub(super) fn open_scroll_node(&mut self, id: ScrollNodeId, chain: Bounds<Pixels>, offset: Point<Pixels>, source: NodeSource) -> u32 {
+        let anchored = matches!(source, NodeSource::Anchor(_) | NodeSource::Viewport { anchored: true });
         let index = self.next_frame.scroll_nodes.len() as u32;
         let parent = self.next_frame.scroll_node_stack.last().copied();
         let clip = match parent {
             Some(parent) => self.next_frame.scroll_nodes[parent as usize].clip.intersect(&chain),
             None => chain,
         };
-        let interest = clip.dilate(self.scroll_interest_margin);
+        let interest = if matches!(source, NodeSource::Viewport { .. }) {
+            Bounds { origin: Point::default(), size: self.viewport_size() }
+        } else {
+            clip.dilate(self.scroll_interest_margin)
+        };
         // Read the stack directly instead of `element_offset()`: opening a
         // node is not tied to a draw phase (records are built outside one),
         // and outside prepaint the stack is empty, so the base is zero.
