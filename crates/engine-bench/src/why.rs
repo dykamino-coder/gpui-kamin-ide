@@ -29,7 +29,7 @@ thread_local! {
 
 /// Counters before one sample.
 pub(super) struct Watch {
-    frames: (u64, u64, u64),
+    frames: kamin_html::FrameCounters,
     path: [u64; kamin_html::paint_path::NAMES.len()],
     /// What was recorded between the previous sample and this one (a frame
     /// that came late belongs to neither).
@@ -51,7 +51,7 @@ impl Watch {
                 .get_or_insert_with(kamin_html::why::subscribe);
         });
         let between = kamin_html::why::to_json(&kamin_html::why::take());
-        let frames = window.read_with(cx, |view, _| frames(&view.doc))?;
+        let frames = window.read_with(cx, |view, _| view.doc.frame_counters())?;
         let path = kamin_html::paint_path::read();
         Ok(Some(Self {
             frames,
@@ -72,25 +72,24 @@ impl Watch {
         error: Option<String>,
     ) -> Result<()> {
         let (frames, mut memory) = window.update(cx, |view, window, cx| {
-            (frames(&view.doc), owners(&view.doc, window, cx))
+            (
+                (view.doc.frame_counters(), frames(&view.doc)),
+                owners(&view.doc, window, cx),
+            )
         })?;
         // What the process holds beyond the named heap owners (allocator, driver, unreported).
         let private = super::process::Snapshot::read()?.commit;
         let heap = memory["heap_bytes"].as_u64().unwrap_or(0);
         memory["process_private_bytes"] = json!(private);
         memory["outside_owners_bytes"] = json!(private as i64 - heap as i64);
-        // A new document (cold) or revision (edit) counts from zero: its counters are the frame's.
-        let fresh = !matches!(step, Step::Warm);
-        let since = |after: u64, before: u64| {
-            if fresh {
-                after
-            } else {
-                after.saturating_sub(before)
-            }
+        let (checkpoint, totals) = frames;
+        let (built, replayed, _) = if matches!(step, Step::Cold(_)) {
+            totals
+        } else {
+            checkpoint
+                .since(&self.frames)
+                .ok_or("document frame counter regressed")?
         };
-        // Builds by the document step and inside the window's draw.
-        let built = since(frames.0, self.frames.0) + since(frames.2, self.frames.2);
-        let replayed = since(frames.1, self.frames.1);
         let after = kamin_html::paint_path::read();
         let path: serde_json::Map<String, Value> = kamin_html::paint_path::NAMES
             .iter()
