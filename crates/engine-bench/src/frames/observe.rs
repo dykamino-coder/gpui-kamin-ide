@@ -63,6 +63,7 @@ impl Frames {
             "working_set_bytes": memory.map(|m| m.0), "private_bytes": memory.map(|m| m.1),
             "css_viewport": viewport(self.base, group == 1), "builds": counts.0, "replays": counts.1,
             "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
+            "wheel_position": self.wheel_position.map(|(x, y)| json!([x, y])),
             "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,

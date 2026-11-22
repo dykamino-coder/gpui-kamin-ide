@@ -50,6 +50,16 @@ impl Document {
         Some((f32::from(max.x), f32::from(max.y)))
     }
 
+    /// A diagnostic wheel target beside the root bar in its visible content.
+    /// Normal input routing and scroll offsets are unchanged.
+    #[cfg(feature = "engine-bench")]
+    pub fn root_scroll_wheel_position(&self, window: &gpui::Window) -> Option<(f32, f32)> {
+        let root = self.state.root_scroll.as_ref()?;
+        let bars = root.bars.borrow();
+        let point = bars.as_ref()?.wheel_position(window)?;
+        Some((f32::from(point.x), f32::from(point.y)))
+    }
+
     /// Open the root scroller at `(x, y)` CSS px from the top left (a fresh
     /// document compared with a scrolled one, engine-bench scroll mode).
     pub fn set_root_scroll_offset(&self, (x, y): (f32, f32)) {
