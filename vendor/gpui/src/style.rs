@@ -186,6 +186,25 @@ pub struct GridTemplate {
     pub min_size: GridTemplateMinSize,
 }
 
+/// KaminIDE patch: the classic scrollbars layout decides (`taffy::style::ScrollbarLayout`).
+/// `overflow` of an `auto` axis is the bar layout starts with (`Scroll` or `Hidden`), and
+/// `overflow_clip_offset` holds its gutter; after layout the box takes the bars layout
+/// decided (`Div::prepaint`).
+#[derive(Copy, Clone, PartialEq, Debug, Default, JsonSchema, Serialize, Deserialize)]
+pub struct KaminScrollbars {
+    /// Axes of `overflow` whose bar layout decides from the content.
+    pub auto: [bool; 2],
+    /// The box is the viewport, whose gutter `root_gutter` boxes follow.
+    pub viewport: bool,
+    /// The box sizes its parent's scroll range from a range measured before.
+    pub proxy: bool,
+    /// An out-of-flow box built for this root gutter (left, top, right, bottom).
+    pub root_gutter: Option<[f32; 4]>,
+    /// The `root_gutter` box covers the gutter instead of stopping at it.
+    pub root_gutter_grow: bool,
+    /// The vertical bar's gutter is on the left (`overflow_clip_offset`).
+    pub bar_left: bool,
+}
 /// The CSS styling that can be applied to an element via the `Styled` trait
 #[derive(Clone, Refineable, Debug)]
 #[refineable(Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -234,6 +253,10 @@ pub struct Style {
     /// Ideally we would match the web's behavior and not have a need for this, but right now we're adding this opt-in
     /// style property to limit the potential blast radius.
     pub restrict_scroll_to_axis: bool,
+
+    /// KaminIDE patch: the classic bars layout decides from the content (`overflow: auto`)
+    /// and the boxes that follow the viewport's bars (`taffy::style::ScrollbarLayout`).
+    pub kamin_scrollbars: KaminScrollbars,
 
     // Position properties
     /// What should the `position` value of this struct use as a base offset?
@@ -490,6 +513,52 @@ impl StyleRefinement {
     /// The grid location of this element
     pub fn grid_location_mut(&mut self) -> &mut GridLocation {
         self.grid_location.get_or_insert_default()
+    }
+
+    /// KaminIDE patch: whether `bars` (horizontal, vertical), which layout decided, differ
+    /// from the bars this style was built with (`KaminScrollbars::auto`).
+    pub fn differs_from_layout_scrollbars(&self, bars: [bool; 2]) -> bool {
+        let Some(k) = self.kamin_scrollbars else {
+            return false;
+        };
+        let built = [self.overflow.x, self.overflow.y].map(|o| o == Some(Overflow::Scroll));
+        (0..2).any(|axis| k.auto[axis] && built[axis] != bars[axis])
+    }
+
+    /// KaminIDE patch: take the bars layout decided: their axes scroll, and the clip of
+    /// the overflow excludes their gutters instead of the guessed ones.
+    pub fn adopt_layout_scrollbars(&mut self, bars: [bool; 2]) {
+        let Some(k) = self.kamin_scrollbars else {
+            return;
+        };
+        let width = match self.scrollbar_width {
+            Some(AbsoluteLength::Pixels(width)) => f32::from(width),
+            _ => 0.0,
+        };
+        for axis in 0..2 {
+            let overflow = if axis == 0 {
+                &mut self.overflow.x
+            } else {
+                &mut self.overflow.y
+            };
+            if !k.auto[axis] || (*overflow == Some(Overflow::Scroll)) == bars[axis] {
+                continue;
+            }
+            *overflow = Some(if bars[axis] {
+                Overflow::Scroll
+            } else {
+                Overflow::Hidden
+            });
+            // Top, right, bottom, left: a horizontal bar takes the bottom.
+            let side = match axis {
+                0 => 2,
+                _ if k.bar_left => 3,
+                _ => 1,
+            };
+            let mut clip = self.overflow_clip_offset.unwrap_or([0.0; 4]);
+            clip[side] += if bars[axis] { -width } else { width };
+            self.overflow_clip_offset = Some(clip);
+        }
     }
 }
 
@@ -1102,6 +1171,7 @@ impl Default for Style {
             overflow_clip_offset: None,
             allow_concurrent_scroll: false,
             restrict_scroll_to_axis: false,
+            kamin_scrollbars: KaminScrollbars::default(),
             scrollbar_width: AbsoluteLength::default(),
             position: Position::Relative,
             inset: Edges::auto(),

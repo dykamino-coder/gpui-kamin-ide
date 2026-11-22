@@ -2169,6 +2169,13 @@ impl Element for Div {
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
+        // KaminIDE patch: a box whose bars layout decided takes them before its style is
+        // computed: they set its scrolling axes and the clip of its overflow.
+        if let Some(bars) = request_layout.layout_id.and_then(|id| window.layout_scrollbars(id))
+            && self.interactivity.base_style.differs_from_layout_scrollbars(bars)
+        {
+            Rc::make_mut(&mut self.interactivity.base_style).adopt_layout_scrollbars(bars);
+        }
         let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
         let hitbox = self.interactivity.prepaint(
             global_id,
@@ -2840,6 +2847,7 @@ impl Interactivity {
 
             if let Some(mut scroll_handle_state) = tracked_scroll_handle {
                 scroll_handle_state.max_offset = scroll_max;
+                scroll_handle_state.padding = padding_size;
                 scroll_handle_state.bounds = bounds;
             }
 
@@ -4654,6 +4662,8 @@ struct ScrollHandleState {
     ongoing_scroll: Rc<RefCell<OngoingScroll>>,
     bounds: Bounds<Pixels>,
     max_offset: Point<Pixels>,
+    // KaminIDE patch: the padding the last clamp added to the content (`resize_item`).
+    padding: Size<Pixels>,
     child_bounds: Vec<Bounds<Pixels>>,
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
@@ -4717,6 +4727,40 @@ impl ScrollHandle {
     #[cfg(test)]
     pub(crate) fn set_max_offset(&self, max: Point<Pixels>) {
         self.0.borrow_mut().max_offset = max;
+    }
+
+    /// KaminIDE patch: child `index` of the last prepaint measures `size`
+    /// now (a proxy its host sizes from what that layout measured): the
+    /// scroll range takes it in place, as the next layout would compute it
+    /// (`clamp_scroll_position`), and nothing has to be laid out again.
+    /// False, the state unchanged, when the handle has no such child, or
+    /// the offset lies outside the new range, or a scroll to the bottom is
+    /// pending: then a layout must place the content (clamp the offset).
+    pub fn resize_item(&self, index: usize, size: Size<Pixels>) -> bool {
+        let mut state = self.0.borrow_mut();
+        if state.scroll_to_bottom || index >= state.child_bounds.len() {
+            return false;
+        }
+        let mut items = state.child_bounds.clone();
+        items[index].size = size;
+        // As the prepaint measures the content (`Div::prepaint`).
+        let (mut min, mut max) = (point(Pixels::MAX, Pixels::MAX), Point::default());
+        for item in &items {
+            min = min.min(&item.origin);
+            max = max.max(&item.bottom_right());
+        }
+        let round = |pixels: Pixels| (pixels * 100.0).round() / 100.0;
+        let content: Size<Pixels> = (max - min).into();
+        let range = Point::from(content + state.padding - state.bounds.size)
+            .map(round)
+            .max(&Default::default());
+        let offset = *state.offset.borrow();
+        if offset.x < -range.x || offset.y < -range.y {
+            return false;
+        }
+        state.child_bounds = items;
+        state.max_offset = range;
+        true
     }
 
     /// Get the top child that's scrolled into view.
@@ -6067,6 +6111,60 @@ mod tests {
             .unwrap();
 
         assert_eq!(scroll_handle.max_offset().y, px(0.));
+    }
+
+    /// KaminIDE patch: a child resized after the prepaint gives the range the
+    /// next layout gives (padding included), unless the offset lies past it.
+    #[gpui::test]
+    fn resize_item_takes_the_range_the_next_layout_gives(cx: &mut TestAppContext) {
+        struct Proxy {
+            scroll_handle: ScrollHandle,
+            height: Rc<Cell<f32>>,
+        }
+
+        impl Render for Proxy {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    div()
+                        .id("container")
+                        .h(px(50.))
+                        .w(px(100.))
+                        .py(px(4.))
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll_handle)
+                        .child(div().absolute().w(px(10.)).h(px(self.height.get())))
+                        .child(div().w_full().h(px(20.))),
+                )
+            }
+        }
+
+        let scroll_handle = ScrollHandle::new();
+        let height = Rc::new(Cell::new(80.));
+        let window: AnyWindowHandle = cx
+            .add_window({
+                let (scroll_handle, height) = (scroll_handle.clone(), height.clone());
+                move |_, _| Proxy { scroll_handle, height }
+            })
+            .into();
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx)
+            })
+            .unwrap()
+        };
+        draw(cx);
+        assert_eq!(scroll_handle.max_offset().y, px(38.));
+        // Taller: the range grows as a layout with the new height gives it.
+        assert!(scroll_handle.resize_item(0, size(px(10.), px(130.))));
+        let resized = scroll_handle.max_offset();
+        height.set(130.);
+        draw(cx);
+        assert_eq!(resized, scroll_handle.max_offset());
+        // Scrolled to the end, a shorter child needs a layout to clamp.
+        scroll_handle.set_offset(point(px(0.), -resized.y));
+        assert!(!scroll_handle.resize_item(0, size(px(10.), px(60.))));
+        assert_eq!(scroll_handle.max_offset(), resized, "unchanged");
     }
 
     struct ContentSizedGrid;

@@ -24,6 +24,7 @@ fn compute(tree: &mut TaffyTree<Vec<f32>>, root: NodeId, absent: bool, finals: &
                 baseline_x: (!absent).then_some(11.0 + offset),
                 last_baseline_x: (!absent).then_some(23.0 + offset),
                 baseline_x_from_right: true,
+                overflow: None,
             },
         )
     })

@@ -111,6 +111,31 @@ impl Element for ScrollArea {
         let hitbox = window.insert_hitbox(paint_bounds, gpui::HitboxBehavior::Normal);
         child.2.set_decoration_clip(window.content_mask());
         child.2.begin(self.tree.as_deref());
+        // The bars layout decided for this scrollport (laying only it out
+        // again when its content asked for others) hold before its content
+        // is prepainted: its gutters, insets and painted bars follow them.
+        if let Some(bars) = window.layout_scrollbars(child.3) {
+            let before = child.2.bars();
+            if crate::interactive::scroll_extent::classic::adopt(&child.2, &self.style, bars) {
+                // DevTools `why`: a scrollport whose bars layout changed.
+                let content = window.layout_content_size_unrounded(child.3);
+                let size = window.layout_size_unrounded(child.3);
+                crate::why::note("scroll_extent.layout_bars", || {
+                    // The descendants carrying the overflow on each axis whose bar appeared.
+                    let reach = |axis: usize| {
+                        (bars[axis] && !before[axis])
+                            .then(|| window.layout_overflow_reach(child.3, axis == 1).join(" > "))
+                    };
+                    format!(
+                        "box {} bars {before:?} -> {bars:?} decided in layout: content {content:?} box {size:?}; reach x [{}] y [{}]; sized by [{}]",
+                        self.tree.as_deref().map_or(0, |t| t.node_id),
+                        reach(0).unwrap_or_default(),
+                        reach(1).unwrap_or_default(),
+                        window.layout_ancestry(child.3, 3).join(" < "),
+                    )
+                });
+            }
+        }
         {
             // CSSOM View §6: retain the fractional scroll translation until
             // HTML paint snaps final edges, rather than snapping the offset
@@ -129,6 +154,23 @@ impl Element for ScrollArea {
                 self.values.vcx(),
             )
         {
+            // Layout decides the bars of most scrollports itself (`adopt`
+            // above). Bars it did not decide (`classic::layout_axes` says
+            // why, and `settle` notes it) change the content box this layout
+            // placed: lay the roots out again in this draw with them. One bar
+            // can bring the other, so each layout again publishes the next of
+            // the frame's inputs, each once per draw: bars that still change
+            // after them wait for the next frame, and so does a frame no state
+            // keeps (it would start each layout without its bars).
+            if id.is_some()
+                && child
+                    .2
+                    .layout_inputs()
+                    .into_iter()
+                    .any(|input| window.update_layout_input(input, || true))
+            {
+                return (paint_bounds, hitbox, Vec::new());
+            }
             // Invalidation during prepaint is ignored by GPUI. Rebuild after
             // this frame, once the native extent proxy has its measured size.
             self.values.vcx().doc.defer_frame();

@@ -36,6 +36,9 @@ pub(crate) fn marker(frame: Option<&Frame>, id: u64) -> Option<AnyElement> {
     let extent = frame.extent.get();
     let mut style = crate::layout::probe::full_box();
     style.size = gpui::size(extent.width.into(), extent.height.into());
+    // The proxy carries the range measured before: the bars layout decides
+    // follow the content, not it.
+    style.kamin_scrollbars.proxy = true;
     Some(frame.marker.record_styled(style, |_, _| ()))
 }
 

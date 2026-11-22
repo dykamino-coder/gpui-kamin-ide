@@ -27,6 +27,21 @@ impl PictureSizing<'_> {
                 raster,
                 size: (!style.reset_flex.flex_item).then_some((w, h)),
             }
+        } else if let (Some(Len::Px(_)), None | Some(Len::Auto), Some(ratio)) = (
+            style.reset_box_layout.width,
+            style.reset_box_layout.height,
+            self.width_limit_in_layout(),
+        ) {
+            // §10.4: a width limit in percentages the build could not resolve
+            // (the containing block's width comes from flex or grid layout)
+            // clamps the named width in layout, and the height follows the
+            // ratio of the clamped width (§10.6.2): the picture fills the box
+            // width layout gives it, as Blink sizes the replaced content box
+            // from its used width. Sized here from the unclamped width, the
+            // picture kept 900×753 in a 513 column: the box clamped its width
+            // only, its height grew to the picture's, and the overflow widened
+            // the scrollport around it.
+            Picture::FullWidth { ratio: Some(ratio) }
         } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) =
             (style.reset_box_layout.width, style.reset_box_layout.height)
         {
@@ -162,5 +177,21 @@ impl PictureSizing<'_> {
             Picture::Natural
         };
         (picture, узкая)
+    }
+
+    /// The ratio, when only layout can apply the width limits: one of them is
+    /// a percentage the build left unresolved, and no height limit could
+    /// change the derived height back (those are applied here, §10.4).
+    fn width_limit_in_layout(&self) -> Option<f32> {
+        let layout = &self.style.reset_box_layout;
+        let pct = |l: Option<Len>| matches!(l, Some(Len::Pct(_)));
+        let none = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
+        (!self.style.reset_flex.flex_item
+            && (pct(layout.max_width) || pct(layout.min_width))
+            && none(layout.max_height)
+            && none(layout.min_height))
+        .then(|| self.ratio())
+        .flatten()
+        .filter(|r| *r > 0.0)
     }
 }

@@ -21,10 +21,10 @@ pub(crate) fn apply(mut div: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     ) {
         return div;
     }
-    let (used, native) = if c.cb_node == 0
+    let icb = c.cb_node == 0
         || c.reset_positioned.position == Some(Position::Fixed)
-            && !c.reset_transforms.transform_ancestor
-    {
+            && !c.reset_transforms.transform_ancestor;
+    let (used, native) = if icb {
         (
             c.reset_positioned.icb_scroll_insets.unwrap_or_default(),
             [0.0; 4],
@@ -32,6 +32,18 @@ pub(crate) fn apply(mut div: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     } else {
         c.cb_scroll_insets
     };
+    if icb {
+        // Built for the viewport's guessed bars: when layout decides other
+        // ones, this box follows them in the same layout (Taffy `RootGutter`).
+        let style = div.style();
+        let mut bars = style.kamin_scrollbars.unwrap_or_default();
+        bars.root_gutter = Some(used);
+        // A box fixed to the viewport scrolls with no scroller: it adds no
+        // scrollable overflow that decides bars (CSS Overflow 3 §2.2).
+        bars.proxy = c.reset_positioned.position == Some(Position::Fixed)
+            && !c.reset_transforms.transform_ancestor;
+        style.kamin_scrollbars = Some(bars);
+    }
     let delta: [f32; 4] = std::array::from_fn(|side| used[side] - native[side]);
     if delta == [0.0; 4] {
         return div;

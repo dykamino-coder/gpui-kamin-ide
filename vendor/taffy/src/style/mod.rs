@@ -3,6 +3,7 @@ mod alignment;
 mod available_space;
 mod compact_length;
 mod dimension;
+mod kamin_scrollbars;
 
 #[cfg(feature = "block_layout")]
 mod block;
@@ -19,6 +20,7 @@ pub use self::alignment::{
 };
 pub use self::available_space::AvailableSpace;
 pub use self::compact_length::CompactLength;
+pub use self::kamin_scrollbars::{RootGutter, ScrollbarLayout};
 pub use self::dimension::{
     Dimension, ExpandedDimension, ExpandedLengthPercentage, ExpandedLengthPercentageAuto, LengthPercentage,
     LengthPercentageAuto,
@@ -968,6 +970,8 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
     pub overflow: Point<Overflow>,
     /// How much space (in points) should be reserved for the scrollbars of `Overflow::Scroll` and `Overflow::Auto` nodes.
     pub scrollbar_width: f32,
+    /// KaminIDE patch: the bars layout decides from the content (`overflow: auto`).
+    pub kamin_scrollbars: ScrollbarLayout,
     /// The layout-affecting parts of the CSS `contain` property
     pub contain: Contain,
     /// Empty content-box intrinsic sizes for size-contained physical axes.
@@ -1229,6 +1233,7 @@ impl<S: CheapCloneStr> Style<S> {
             y: Overflow::Visible,
         },
         scrollbar_width: 0.0,
+        kamin_scrollbars: ScrollbarLayout::NONE,
         contain: Contain::NONE,
         contained_intrinsic_size: Size::NONE,
         #[cfg(feature = "float_layout")]
@@ -2278,6 +2283,7 @@ mod tests {
             block_flow: None,
             overflow: Default::default(),
             scrollbar_width: 0.0,
+            kamin_scrollbars: Default::default(),
             contain: Default::default(),
             contained_intrinsic_size: Size::NONE,
             position: Default::default(),

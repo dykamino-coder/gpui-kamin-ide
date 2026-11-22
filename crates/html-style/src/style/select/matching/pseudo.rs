@@ -71,10 +71,10 @@ pub(super) fn pseudo_holds(
 ) -> bool {
     let (prepared, kind) = sel.pseudo_of(pseudo);
     match kind {
+        // Matches when no selector of its list does (selectors-4 §4.3).
         PseudoKind::Not => prepared
             .filter(|p| p.single)
-            .and_then(|p| p.list.first())
-            .is_some_and(|inner| !matches(inner, me, path, sibs)),
+            .is_some_and(|p| !p.list.iter().any(|inner| matches(inner, me, path, sibs))),
         PseudoKind::Is => list_holds(prepared, me, path, sibs),
         PseudoKind::Empty => me.empty,
         // `:visited` — адрес в истории (`link_visited`, с ограничением

@@ -514,6 +514,18 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
         }
         _ => (area_size, area_offset),
     };
+    // KaminIDE patch: a box built for the root gutter it assumed resolves its insets
+    // against the gutter the viewport decided in this layout (`kamin_scrollbars`).
+    let (area_size, area_offset) = match tree.kamin_oof_area_shift(candidate.node) {
+        Some(shift) => (
+            Size {
+                width: area_size.width - shift.left - shift.right,
+                height: area_size.height - shift.top - shift.bottom,
+            },
+            Point { x: area_offset.x + shift.left, y: area_offset.y + shift.top },
+        ),
+        None => (area_size, area_offset),
+    };
     let area_width = area_size.width;
     let area_height = area_size.height;
 
@@ -878,8 +890,10 @@ pub(crate) fn perform_oof_layout(
             }
         }
 
+        // KaminIDE patch: a scroll range proxy adds nothing to the overflow that decides
+        // the container's bars (`kamin_scrollbars`).
         #[cfg(feature = "content_size")]
-        {
+        if !tree.kamin_oof_is_proxy(candidate.node) {
             // Location is measured from the scroll origin (the inline-start edge: right side in RTL)
             let relative_location = if direction.is_rtl() {
                 Point {
