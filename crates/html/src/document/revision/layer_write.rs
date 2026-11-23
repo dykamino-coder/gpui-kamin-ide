@@ -25,6 +25,7 @@ use gpui::{Hsla, LayerHandle, LayerPainter};
 
 /// An owner's fill before and after.
 type Write = (u32, Option<Hsla>, Option<Hsla>);
+mod values;
 
 /// What the layer takes for the restyled boxes at `paths` (in tree order,
 /// with their box numbers) from the tree `old` to the tree `new`, which share
@@ -47,7 +48,7 @@ pub(super) fn write_paint_values(
     old: &[Node],
     new: &[Node],
     paths: &[(Path, u64)],
-    layer: &LayerHandle,
+    layer_for: impl Fn(u64) -> Option<LayerHandle>,
     own: impl Fn(&Element) -> Own,
     grouped: impl Fn(&Element) -> bool,
     unseen: impl Fn(&Path) -> bool,
@@ -59,12 +60,8 @@ pub(super) fn write_paint_values(
         // No element's style changed: the frame stands as it is.
         return Some(Taken::default());
     }
-    // A replacement covers every recorded run of the owner (a group root's: its group).
-    let held = |id: u64| {
-        u32::try_from(id)
-            .is_ok_and(|o| layer.holds_box(o) || layer.holds_band(o) || layer.holds_group_root(o))
-    };
-    let mut writes: Vec<Write> = Vec::with_capacity(paths.len());
+    let held = |id| layer_for(id).is_some_and(|layer| values::held(&layer, id));
+    let mut writes = values::Values::default();
     let mut records: Vec<(Path, u64)> = Vec::new();
     let mut deferred: Vec<(Path, u64)> = Vec::new();
     for (path, id) in paths {
@@ -88,6 +85,7 @@ pub(super) fn write_paint_values(
         // The pieces of an inline box's band take value writes only, at once:
         // a write paints nothing, on the screen or off it.
         let owner = u32::try_from(a.node_id).ok()?;
+        let layer = layer_for(a.node_id)?;
         let recorded = layer.painter(owner);
         let mut wait = |kind, reason| {
             if let Some(frame) = waits(kind, path, a, b) {
@@ -166,9 +164,7 @@ pub(super) fn write_paint_values(
             Some((Some(from), Some(to))) => {
                 let owner = a.node_id as u32;
                 // Fragments of one element share an owner: one write each.
-                if writes.last().is_none_or(|w: &Write| w.0 != owner) {
-                    writes.push((owner, Some(from), Some(to)));
-                }
+                writes.push(layer.clone(), (owner, Some(from), Some(to)));
             }
             // The layer records no decorated run again: a fill that appears
             // or goes builds the frame unless it waits off the screen.
@@ -196,20 +192,7 @@ pub(super) fn write_paint_values(
         crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
         return None;
     }
-    let mut values = writes.len();
-    if layer.set_backgrounds(&writes).is_none() {
-        // A fill the layer does not hold as painted: its box records again.
-        let owners = writes.iter().map(|w| u64::from(w.0));
-        if !owners.clone().all(held) {
-            crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
-            return None;
-        }
-        let written = paths
-            .iter()
-            .filter(|(_, id)| owners.clone().any(|o| o == *id));
-        records.extend(written.cloned());
-        values = 0;
-    }
+    let values = writes.apply(paths, &mut records)?;
     crate::paint_path::add(&crate::paint_path::RECORDS, records.len() as u64);
     crate::paint_path::add(&crate::paint_path::VALUES, values as u64);
     crate::paint_path::add(&crate::paint_path::DEFERRED, deferred.len() as u64);
