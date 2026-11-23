@@ -5,6 +5,9 @@ use crate::dom::{Element, Node};
 use crate::style::computed::{Computed, Display};
 use std::borrow::Cow;
 
+mod wrapping;
+pub(crate) use wrapping::InlineTables;
+
 /// Табличная роль бесхозного узла: `Some(true)` — структурная (ряд, группа
 /// рядов, колонка, группа колонок), `Some(false)` — ячейка, `None` — обычная
 /// коробка.
@@ -54,72 +57,20 @@ fn anon_role(n: &Node) -> Option<bool> {
 /// `fixup_table_children` внутри собранной таблицы.
 /// Without table-role siblings the list is returned as is, not copied.
 pub fn wrap_anon_tables(nodes: &[Node]) -> Cow<'_, [Node]> {
-    wrap_anon_tables_as(nodes, Display::Table)
+    match wrapping::tables(nodes, Display::Table, &Default::default())
+        .expect("anonymous table allocation")
+    {
+        Some(nodes) => Cow::Owned(nodes.into_vec()),
+        None => Cow::Borrowed(nodes),
+    }
 }
 
-/// CSS 2.1 §17.2.1 step 3 for INLINE parents: "If the box's parent is an
-/// inline box, then an anonymous inline-table box must be generated" around
-/// each run of consecutive proper table child boxes. Without it every orphan
-/// cell in a line got its own wrapper table, and the white space between
-/// consecutive cells (removed by §17.2.1 step 1) stayed in the line.
+/// Общий проход полного документа и локальной публикации коробок.
 pub fn inline_anon_tables(
     admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::postorder(admission, nodes, |e| {
-        if e.style.used().reset_box_layout.display.is_none()
-            && e.inline
-            && e.children.iter().any(|c| anon_role(c).is_some())
-        {
-            e.children = wrap_anon_tables_as(&e.children, Display::InlineTable)
-                .into_owned()
-                .into();
-        }
-    })
-}
-
-fn wrap_anon_tables_as(nodes: &[Node], display: Display) -> Cow<'_, [Node]> {
-    if !nodes.iter().any(|n| anon_role(n).is_some()) {
-        return Cow::Borrowed(nodes);
-    }
-    let flush = |run: &mut Vec<Node>, out: &mut Vec<Node>| {
-        if run.is_empty() {
-            return;
-        }
-        let mut t = anon_element("table", std::mem::take(run));
-        t.style.cascaded_mut().reset_box_layout.display = Some(display);
-        t.marks.anonymous_wrapper = true;
-        // Свой номер узла: по нему таблица просит буферы проб. Нулевой у
-        // всех анонимных узлов общий, и две таблицы делили бы один буфер —
-        // первая забрала бы его, вторая осталась пустой.
-        t.node_id = match t.children.first() {
-            Some(Node::Element(e)) => e.node_id.rotate_left(1) ^ 0x7ab1_e000,
-            _ => 0,
-        };
-        out.push(Node::Element(t));
-    };
-    let mut out: Vec<Node> = vec![];
-    let mut run: Vec<Node> = vec![];
-    let mut gap: Vec<Node> = vec![];
-    for n in nodes {
-        if anon_role(n).is_some() {
-            run.append(&mut gap);
-            run.push(n.clone());
-        } else if is_blank(n) && !run.is_empty() {
-            // Пробел между табличными братьями прогона не рвёт (§17.2.1,
-            // «consecutive»). Место ему решит следующий узел: внутри прогона
-            // он уйдёт в таблицу и там пропадёт, за прогоном — останется
-            // снаружи.
-            gap.push(n.clone());
-        } else {
-            flush(&mut run, &mut out);
-            out.append(&mut gap);
-            out.push(n.clone());
-        }
-    }
-    flush(&mut run, &mut out);
-    out.append(&mut gap);
-    Cow::Owned(out)
+    nodes: Vec<Node>,
+) -> Result<Vec<Node>, crate::budget::admission::Error> {
+    super::normalization::apply(&InlineTables, nodes, false, admission)
 }
 
 pub fn anon_element(tag: &str, children: Vec<Node>) -> Element {

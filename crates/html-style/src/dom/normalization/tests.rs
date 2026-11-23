@@ -5,11 +5,14 @@ use std::cell::Cell;
 
 mod contextual;
 mod display;
+mod hoist;
 mod identity;
 mod list_entry;
 mod ordering;
 mod owned;
 mod siblings;
+mod subgrid;
+mod tables;
 mod tails;
 mod transaction;
 mod transforms;

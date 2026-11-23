@@ -22,17 +22,17 @@ pub(super) fn finish(
     }
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
-    crate::dom::table_boxes::inline_anon_tables(admission, &mut out)?;
+    out = crate::dom::table_boxes::inline_anon_tables(admission, out)?;
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     out = lanes_as_grid(admission, out)?;
     out = subgrid_used::adjust(admission, out)?;
-    hoist_grid_abspos(admission, &mut out)?;
+    out = hoist_grid_abspos(admission, out)?;
     out = grid_static_position::adjust(admission, out)?;
     out = flex_items_lose_float(admission, out)?;
     out = align_self_from_dom_parent(admission, out, None)?;
     out = grid_table_items_keep_stretch(admission, out)?;
-    subgrid_takes_parent_tracks(admission, &mut out)?;
+    out = subgrid_takes_parent_tracks(admission, out)?;
     out = filter_ref_only_empty(admission, out)?;
     out = fold_run_ins(admission, out, None)?;
     out = orthogonal_inlines_become_flow_roots(admission, out, (false, false, false), None)?;
