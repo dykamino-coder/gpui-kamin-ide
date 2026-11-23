@@ -12,15 +12,25 @@ impl Paragraph {
     /// another writes nothing and its container keeps an older stamp.
     pub(super) fn write_fragments(
         &self,
-        cull: Option<&Cull>,
+        cull: Result<&Cull, &'static str>,
         bands: &[(Pixels, Pixels)],
         window: &Window,
     ) {
-        let (Some(target), Some(cull)) = (self.fragments.as_ref(), cull) else {
+        let Some(target) = self.fragments.as_ref() else {
             return;
+        };
+        let cull = match cull {
+            Ok(cull) => cull,
+            Err(reason) => {
+                target.store.fragment_refused(target.owner, reason);
+                return;
+            }
         };
         // Text of no inline box has no fragment: its container keeps no slot.
         if self.runs.iter().all(|r| r.background_owner == 0) {
+            target
+                .store
+                .fragment_refused(target.owner, "paragraph has no band owners");
             return;
         }
         let (extent, bleed) = cull.reach();

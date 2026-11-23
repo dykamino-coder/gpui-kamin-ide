@@ -1,6 +1,6 @@
-//! Опциональная RGB-приёмка edit → scroll вне серии замеров. Переменная
-//! ENGINE_BENCH_EDIT_SCROLL_CHECK задаёт положительный шаг прокрутки в CSS px.
-//! Проверка требует видимого эффекта правки в конечной позиции.
+//! Optional edit/scroll RGB acceptance outside the measured series.
+//! ENGINE_BENCH_EDIT_SCROLL_CHECK sets a positive scroll step in CSS pixels.
+//! The final viewport must reveal the effect of the edit.
 
 use super::{
     args::{Args, Mode},
@@ -17,7 +17,7 @@ pub(super) fn enabled(args: &Args) -> bool {
     args.mode == Mode::Edit && std::env::var_os("ENGINE_BENCH_EDIT_SCROLL_CHECK").is_some()
 }
 
-/// Каждая сторона открывается отдельно, чтобы reference не наследовал dirty state.
+/// Each side opens independently so the reference cannot inherit dirty state.
 async fn fresh(html: &str, offset: (f32, f32), run: Run<'_, '_>) -> Result<Rc<CapturedFrame>> {
     let (cx, window, fonts, args, capture, luid) = run;
     sample(

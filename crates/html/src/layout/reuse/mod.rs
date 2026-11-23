@@ -23,6 +23,7 @@ mod content;
 mod deferred;
 mod far;
 mod flow;
+mod fragment_diagnostics;
 mod frame;
 mod key;
 mod layer;

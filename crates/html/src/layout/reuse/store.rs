@@ -77,16 +77,16 @@ pub(crate) struct Store {
     /// (`FlowKey::strip_boxes`) found them different in paint-only values.
     pub(super) repainted_roots: Cell<bool>,
     pub(super) layer: super::layer::Kept,
+    pub(super) fragment_diagnostics: RefCell<super::fragment_diagnostics::Refusals>,
 }
-
 impl Store {
     /// Generation of the document output. A discontinuity leaves a gap so a
     /// range in an older window frame can never follow the new generation.
     pub(crate) fn epoch(&self) -> u64 {
         self.epoch.get()
     }
-
     pub(crate) fn draw(&self, continued: bool) -> u64 {
+        self.begin_fragment_diagnostics();
         let epoch = self.epoch.get() + if continued { 1 } else { 2 };
         self.epoch.set(epoch);
         epoch

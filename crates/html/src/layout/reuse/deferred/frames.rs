@@ -1,6 +1,6 @@
-//! Отложенная краска хранит не историю правок, а не более двух областей:
-//! по одной на причину. Объединение консервативно и ограничивает память
-//! независимо от числа невидимых мутаций до следующей отрисовки.
+//! Deferred paint stores at most two areas, one for each cause. Conservative
+//! unions bound memory independently of the number of offscreen mutations
+//! before the next paint.
 
 use super::Wait;
 use gpui::{Bounds, ScaledPixels};

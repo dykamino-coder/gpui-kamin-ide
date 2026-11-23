@@ -1,5 +1,5 @@
-//! Невидимая правка без корневого слоя сохраняет кадр, но не старую краску
-//! после прокрутки. Неизвестная или видимая область требует нового кадра.
+//! An offscreen edit without a root layer preserves the frame until scrolling.
+//! Unknown or visible damage requires a new frame.
 
 use crate::document::Document;
 use crate::host::document_view::DocumentView;
@@ -42,7 +42,7 @@ fn open<'a>(
     html: &str,
 ) -> (Entity<DocumentView>, &'a mut VisualTestContext) {
     let (view, cx) = cx.add_window_view(|window, cx| {
-        // Отсутствие слоя задаётся явно: простая opacity может записать слой.
+        // Disable layers explicitly: ordinary opacity can still record a layer.
         window.set_scene_layers(false);
         Page(
             DocumentView::open(
@@ -95,7 +95,7 @@ fn root(view: &Entity<DocumentView>, cx: &mut VisualTestContext) -> gpui::Scroll
     })
 }
 
-/// Перенос при replay и перенос при свежей сборке дают одинаковые границы.
+/// Replay translation and a fresh build produce the same bounds.
 fn quads(cx: &mut VisualTestContext) -> Vec<String> {
     cx.update(|window, _| {
         let viewport = gpui::Bounds {
@@ -147,7 +147,7 @@ fn deferred_inline_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestA
     assert!(after.1 > before.1, "offscreen edit did not replay");
     assert!(waiting > 0, "no deferred edit");
     assert_eq!(quads(vcx), fresh(cx, &new, 0.));
-    // Несколько малых шагов могут оставаться в записанной области интереса.
+    // Several small scroll steps can remain inside the recorded interest area.
     let mut saw_edit = false;
     for _ in 0..8 {
         vcx.simulate_event(gpui::ScrollWheelEvent {
@@ -175,7 +175,7 @@ fn visible_inline_paint_without_a_layer_rebuilds(cx: &mut TestAppContext) {
     let before = vcx.update(|_, cx| view.read(cx).document().retained.clone());
     update(&view, vcx, &new);
     let after = vcx.update(|_, cx| view.read(cx).document().retained.clone());
-    // Новый Slot начинает счётчики с нуля, поэтому сравниваем его identity.
+    // A new Slot resets its counters, so compare its identity.
     assert!(!std::rc::Rc::ptr_eq(&before, &after));
     assert!(stats(&view, vcx).0.0 > 0);
     assert_eq!(quads(vcx), fresh(cx, &new, 0.));

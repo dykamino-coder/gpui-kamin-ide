@@ -79,7 +79,7 @@ impl Builder {
     fn repaint_queued(&self, window: &mut Window, cx: &mut App, scrolled: bool) -> bool {
         // Deferred boxes this replay shows are recorded with the queued ones.
         let shown = window.content_mask().bounds.scale(window.scale_factor());
-        // Отложенная правка требует нового кадра и при отсутствии слоя.
+        // Deferred paint requires a fresh frame even without a scene layer.
         if self.store.due_frames(shown, scrolled) {
             return false;
         }

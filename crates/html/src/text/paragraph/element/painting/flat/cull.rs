@@ -38,27 +38,36 @@ pub(super) struct Cull {
 }
 
 impl Cull {
-    /// Culling for this paint, or `None` when every line is painted.
+    /// Culling for this paint, or the reason every line must be painted.
     pub(super) fn new(
         p: &Paragraph,
         segs: &[Seg],
         pads: &[(f32, f32)],
         bounds: Bounds<Pixels>,
         window: &mut Window,
-    ) -> Option<Self> {
+    ) -> Result<Self, &'static str> {
         // A recorded main copy of a fragmented child admits lines across its
         // cuts with widened masks (`line_admission`): every line is offered.
         let admission = window
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
-        if admission
-            || !window.retained_root_environment()
-            || p.fragment.is_some()
-            || p.ruby_layers.is_some()
-            || !p.emph_spans.is_empty()
-            || p.decor_on()
-        {
-            return None;
+        if admission {
+            return Err("fragment line admission");
+        }
+        if !window.retained_root_environment() {
+            return Err("non-root paint environment");
+        }
+        if p.fragment.is_some() {
+            return Err("paragraph fragment");
+        }
+        if p.ruby_layers.is_some() {
+            return Err("ruby layers");
+        }
+        if !p.emph_spans.is_empty() {
+            return Err("emphasis marks");
+        }
+        if p.decor_on() {
+            return Err("paragraph decorations");
         }
         let mask = window.content_mask().bounds;
         let bleed = bleed(p, segs, pads, window);
@@ -68,7 +77,7 @@ impl Cull {
             .map(|l| l.width + l.indent.abs())
             .fold(px(0.), Pixels::max);
         let viewport = window.viewport_size();
-        Some(Self {
+        Ok(Self {
             top: mask.origin.y,
             bottom: mask.origin.y + mask.size.height,
             bleed,

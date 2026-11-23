@@ -139,7 +139,7 @@ impl Document {
         }
     }
 
-    /// Собственная краска: запись в слой либо доказанная невидимая правка.
+    /// Own paint either updates a layer or waits with proven offscreen bounds.
     fn write_paint_values(&self, nodes: &[Node], paths: &[(super::patch::Path, u64)]) -> bool {
         let _timer = crate::paint_path::Timer::start();
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {

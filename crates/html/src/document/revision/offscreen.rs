@@ -31,8 +31,8 @@ use gpui::{Bounds, LayerHandle, ScaledPixels};
 /// The area an edit off the screen can paint and why it waits for a frame.
 pub(super) type FrameWait = (Bounds<ScaledPixels>, Wait);
 
-/// Отсутствие слоя не отменяет геометрию фрагментов. Невидимые изменения
-/// только собственной краски сохраняют кадр; неизвестная область отвергается.
+/// Fragment geometry remains valid without a layer. Proven offscreen changes
+/// to own paint preserve the frame; unknown bounds are rejected.
 pub(super) fn without_layer(
     store: &Store,
     boxes: &crate::document::boxes::BoxTree,
@@ -77,7 +77,7 @@ pub(super) fn without_layer(
     Some(frames)
 }
 
-/// Отказ геометрического доказательства виден тем же протоколом, что слой.
+/// Geometry refusals use the same observation protocol as layer refusals.
 fn declined<T>(element: &Element, reason: &'static str) -> Option<T> {
     crate::why::note("offscreen.refused_without_layer", || {
         format!(
@@ -158,7 +158,19 @@ fn fragments_of<R>(
     let fragments = boxes
         .slot(container)
         .and_then(|slot| slot.inline.as_deref())
-        .or_else(|| declined(a, "container fragments missing"))?;
+        .or_else(|| {
+            crate::why::note("offscreen.refused_without_layer", || {
+                format!(
+                    "node={} tag={} id={:?} class={:?} reason=container fragments missing {}",
+                    a.node_id,
+                    a.tag,
+                    a.attr("id"),
+                    a.attr("class"),
+                    store.fragment_refusal(container)
+                )
+            });
+            None
+        })?;
     if !store.fragments_hold(fragments.stamp()) {
         return declined(a, "container fragments do not describe recorded frame");
     }

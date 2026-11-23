@@ -83,6 +83,8 @@ pub(crate) fn fragment_target(
     }
     let boxes = opts.cx.doc().boxes.clone();
     let owner = boxes.borrow().box_of(node)?;
+    flow.store
+        .fragment_refused(owner, "paragraph prepared without fragment paint");
     Some(crate::layout::retained::FragmentTarget {
         boxes,
         owner,
@@ -177,9 +179,9 @@ impl Store {
             .set(frames::coalesce(deferred.frames.take(), waits));
     }
 
-    /// Области заданы в координатах записанного кадра. При прокрутке без
-    /// карты их scroll-узлов безопасно перестроить кадр с ожидающей краской;
-    /// сравнение со старой областью просмотра пропустило бы появление правки.
+    /// Areas use recorded-frame coordinates. Without a map of their scroll
+    /// nodes, scrolling safely rebuilds a frame with pending paint; testing
+    /// the old viewport would miss an edit becoming visible.
     pub(crate) fn due_frames(&self, shown: Bounds<ScaledPixels>, scrolled: bool) -> bool {
         let deferred = self.layer.deferred();
         let kept = deferred.frames.take();

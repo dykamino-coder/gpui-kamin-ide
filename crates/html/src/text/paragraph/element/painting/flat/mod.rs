@@ -52,7 +52,7 @@ impl Paragraph {
         for (i, line) in self.lines.iter().enumerate() {
             let band = (y + above(i), y + above(i) + self.line_height);
             bands.push(band);
-            if cull.as_ref().is_some_and(|c| c.skip(band, window)) {
+            if cull.as_ref().is_ok_and(|c| c.skip(band, window)) {
                 if self.lines_reversed {
                     rev_off -= f32::from(step(i + 1));
                     y = bounds.origin.y + px(rev_off);
@@ -226,7 +226,7 @@ impl Paragraph {
             }
         }
         window.replace_glyph_offset(outer_nudge);
-        self.write_fragments(cull.as_ref(), &bands, window);
+        self.write_fragments(cull.as_ref().map_err(|reason| *reason), &bands, window);
         self.paint_atoms(&bands, window, cx);
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {

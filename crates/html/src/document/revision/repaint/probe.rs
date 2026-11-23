@@ -1,11 +1,11 @@
-//! Пропущенные обходом цели и контекст отказа DevTools.
+//! Targets skipped by traversal and their DevTools refusal context.
 
 use crate::paint_path as why;
 use markup5ever_rcdom::Handle;
 
-/// Две отсутствующие коробки не требуют обновления. Исключение — скрытый
-/// html: обход всё равно создаёт его пустую коробку с вычисленным стилем.
-/// Внешний None означает отказ, внутренний — пропущенную с обеих сторон цель.
+/// Two absent boxes need no update. Hidden html is an exception: traversal
+/// still creates its empty box with computed style.
+/// Outer None means refusal; inner None means a target skipped on both sides.
 pub(super) fn pair<T>(target: &Handle, old: Option<T>, new: Option<T>) -> Option<Option<(T, T)>> {
     match (old, new) {
         (Some(old), Some(new)) => Some(Some((old, new))),

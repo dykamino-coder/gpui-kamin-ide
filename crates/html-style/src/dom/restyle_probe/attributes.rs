@@ -1,17 +1,17 @@
-//! Зависимости attr() по именам: чужая правка не запрещает локальный каскад.
+//! Attribute dependencies by name preserve local cascade for unrelated edits.
 
 use crate::css_syntax::{escape_end, functions, strip_comments, unescape};
 use std::collections::HashSet;
 
 #[derive(Default)]
-/// Имена атрибутов, читаемых значениями CSS; типизированные чтения динамичны.
+/// Attributes read by CSS values; typed reads can introduce dynamic dependencies.
 pub struct AttributeReads {
     names: HashSet<String>,
     dynamic: bool,
 }
 
 impl AttributeReads {
-    /// Добавить зависимости листа или собственного стиля элемента.
+    /// Add dependencies from a stylesheet or an element's own style.
     pub fn add(&mut self, css: &str) {
         let clean;
         let css = if css.contains("/*") {
@@ -40,8 +40,8 @@ impl AttributeReads {
                 Some(raw) if raw.eq_ignore_ascii_case("raw-string") => tail[10..].trim_start(),
                 _ => tail,
             };
-            // Типизированный attr разворачивает CSS из значения, в том числе
-            // вложенный attr(). Неизвестные имена и синтаксис требуют отказа.
+            // Typed attr() expands CSS from the attribute, including nested attr().
+            // Unknown names and syntax require conservative invalidation.
             if name.is_empty() || name.contains('|') || !tail.starts_with([',', ')']) {
                 self.dynamic = true;
             } else {
@@ -50,7 +50,7 @@ impl AttributeReads {
         }
     }
 
-    /// Может ли правка этих имён изменить вычисленные значения.
+    /// Whether editing these names can change computed values.
     pub fn reads(&self, names: &[String]) -> bool {
         self.dynamic || names.iter().any(|name| self.names.contains(name))
     }

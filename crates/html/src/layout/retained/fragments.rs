@@ -132,14 +132,20 @@ impl FragmentTarget {
         fill: impl FnOnce(&mut InlineFragments),
     ) {
         let Ok(mut boxes) = self.boxes.try_borrow_mut() else {
+            self.store
+                .fragment_refused(self.owner, "box tree borrowed during fragment paint");
             return;
         };
         let Some(slot) = boxes.slot_mut(self.owner) else {
+            self.store
+                .fragment_refused(self.owner, "fragment owner box missing during paint");
             return;
         };
         let fragments = slot.inline.get_or_insert_with(Default::default);
         fragments.begin(self.store.frame_epoch(), extent, bleed, scale);
         fill(fragments);
+        self.store
+            .fragment_refused(self.owner, "fragments published");
     }
 }
 
