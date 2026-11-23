@@ -12,6 +12,7 @@ pub mod image_values;
 pub mod property_registry;
 pub mod readiness;
 pub mod synthetic_ids;
+pub use synthetic_ids::SyntheticIds;
 pub mod traversal;
 pub use traversal::MAX_DEPTH;
 mod style_storage;
@@ -45,7 +46,7 @@ pub struct DocumentValues {
     /// Ограниченный журнал диагностик ревизии; ёмкость резервируется при создании.
     diagnostics: RefCell<crate::diagnostics::DiagnosticLog>,
     /// Следующий ключ синтетической коробки, независимо от авторских node_id.
-    synthetic_id: RefCell<Vec<u8>>,
+    synthetic_id: SyntheticIds,
     /// Font-face descriptors and source caches belonging to this document.
     pub font_faces: font_facts::FontFaces,
     /// CSS font-face metric descriptors, scoped to this document.
