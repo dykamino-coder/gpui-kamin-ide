@@ -5,6 +5,7 @@ use std::cell::Cell;
 
 mod contextual;
 mod display;
+mod identity;
 mod ordering;
 mod owned;
 mod siblings;

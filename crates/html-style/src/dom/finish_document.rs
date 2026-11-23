@@ -40,7 +40,7 @@ pub(super) fn finish(
     if tree.doc.quirks() {
         quirks_percent_heights(admission, &mut out, None)?;
     }
-    super::state_identity::finalize(admission, &out, vcx)?;
+    out = super::state_identity::finalize(admission, out, vcx)?;
     if let Some(failure) = tree.doc.revision_budget().failure() {
         return Err(failure);
     }

@@ -14,7 +14,6 @@ fn publish(tree: &mut BoxTree, nodes: &[Node], previous: Option<&[Node]>) -> Box
         nodes,
         previous,
         &publish::Keys {
-            text: &[],
             element: &|id| Some(crate::dom::NodeKey::from_packed(id)),
         },
     )

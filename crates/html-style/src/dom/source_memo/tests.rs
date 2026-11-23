@@ -13,6 +13,7 @@ mod publication;
 mod retirement;
 mod stages;
 mod structure;
+mod transaction;
 mod traverse;
 
 fn build(source: &str) -> (Admitted, Rc<DocumentValues>, RestyleCache, Vec<Node>) {

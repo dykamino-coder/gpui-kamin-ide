@@ -20,19 +20,43 @@ impl Element {
     }
 }
 
-/// До кадровых клонов закрепить идентичность всех сгенерированных DOM-коробок.
-/// Поздние layout-коробки получают её лениво при первом запросе состояния.
+/// Assign before frame clones; the pass retains only the identity namespace.
 pub(super) fn finalize(
     admission: &crate::budget::admission::Admission,
-    nodes: &[Node],
+    nodes: Vec<Node>,
     vcx: ValueCx<'_>,
-) -> Result<(), crate::budget::admission::Error> {
-    for node in super::traversal::nodes(admission, nodes, |_| true) {
-        if let Node::Element(e) = node? {
-            if e.node_id == 0 {
-                e.synthetic_state_id(vcx);
-            }
-        }
+) -> Result<Vec<Node>, crate::budget::admission::Error> {
+    super::normalization::apply(
+        &StateIdentity,
+        nodes,
+        IdentityNamespace(vcx.doc.synthetic_ids()),
+        admission,
+    )
+}
+
+#[derive(Clone)]
+pub(super) struct IdentityNamespace(pub crate::values::SyntheticIds);
+
+impl PartialEq for IdentityNamespace {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.same_allocator(&other.0)
     }
-    Ok(())
+}
+
+pub(super) struct StateIdentity;
+
+impl super::normalization::Transform for StateIdentity {
+    type Context = IdentityNamespace;
+
+    fn enter(
+        &self,
+        element: &mut Element,
+        namespace: &IdentityNamespace,
+        _: &crate::budget::admission::Admission,
+    ) -> Result<IdentityNamespace, crate::budget::admission::Error> {
+        if element.node_id == 0 {
+            element.marks.state_id.get_or_init(|| namespace.0.next());
+        }
+        Ok(namespace.clone())
+    }
 }

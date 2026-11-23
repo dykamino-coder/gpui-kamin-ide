@@ -65,7 +65,7 @@ fn run(
     stage.commit(output)
 }
 
-fn assert_fresh(input: &Admitted, actual: &RestyleCache) {
+pub(super) fn assert_fresh(input: &Admitted, actual: &RestyleCache) {
     let (_values, fresh, _) = recascade(input);
     super::retirement::assert_graph(actual.raw(), fresh.raw());
     let mut compared = CascadedMemo::default();
