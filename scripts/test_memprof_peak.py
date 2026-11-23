@@ -21,11 +21,11 @@ class Symbols:
 
 
 class PeakTests(unittest.TestCase):
-    def report(self, lines, header=HEADER):
+    def report(self, lines, header=HEADER, owner_walk=None):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "probe.stacks"
             path.write_text(header + "".join(lines), encoding="utf-8")
-            return peak.reports("test.exe", path, memprof, symbols=Symbols())
+            return peak.reports("test.exe", path, memprof, symbols=Symbols(), owner_walk=owner_walk)
 
     def test_transient_peak_and_surviving_owners_are_separate(self):
         result = self.report([
@@ -82,6 +82,35 @@ class PeakTests(unittest.TestCase):
                               "# end frame=1 live=0\n"])
         self.assertEqual(sum(row["cand_bytes"] for row in result["end"]["sites"]), 100)
 
+    def test_selected_walk_keeps_lifetimes_without_merging_owner_paths(self):
+        lines = ["a 1 style 100 aa 1\n", "o old/document aa 100\n", "g atlas 10 10\n",
+                 "a 2 paint 500 bb 2\n", "f 2 paint 100 aa\n",
+                 "o new/document bb 500\n", "g atlas 20 20\n",
+                 "a 3 paint 900 cc 3\n", "o third/document cc 900\n", "g atlas 30 30\n"]
+        result = self.report(lines, owner_walk="2")
+        self.assertEqual(result["checkpoint"]["live_bytes"], 600)
+        self.assertEqual(result["checkpoint"]["owner_walks"], 3)
+        self.assertEqual(result["end"]["owners_summary"]["cand"]["live_bytes"], 500)
+        self.assertEqual(result["end"]["owners_summary"]["cand"]["reported_bytes"], 500)
+        rendered = json.dumps(result)
+        self.assertNotIn("old/document", rendered)
+        self.assertNotIn("third/document", rendered)
+        last = self.report(lines, owner_walk="last")
+        self.assertEqual(last["checkpoint"]["owner_walk"], 3)
+        self.assertEqual(last["checkpoint"]["live_bytes"], 1400)
+
+    def test_selected_walk_does_not_relabel_reused_addresses(self):
+        result = self.report(["a 1 style 900 aa 1\n", "o old aa 900\n", "g atlas 1 1\n",
+                              "f 2 paint 900 aa\n", "a 2 paint 10 aa 2\n",
+                              "o new aa 10\n", "g atlas 1 1\n"], owner_walk="last")
+        self.assertNotIn("owners", result["peak"])
+        self.assertEqual(result["end"]["owners_summary"]["cand"]["reported_bytes"], 10)
+
+    def test_invalid_walk_is_rejected(self):
+        for chosen in ("0", "-1", "2", "nope", "last"):
+            with self.subTest(chosen=chosen), self.assertRaisesRegex(SystemExit, "owner-walk"):
+                self.report(["a 1 style 100 aa 1\n"], owner_walk=chosen)
+
     def test_v1_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "old.stacks"
@@ -106,6 +135,14 @@ class PeakTests(unittest.TestCase):
         self.assertTrue(args.owners)
         args.at = "layout@1"
         with self.assertRaisesRegex(SystemExit, "whole run"):
+            peak.prepare(args)
+
+    def test_walk_selection_requires_peak_and_rejects_a_single_graph(self):
+        args = argparse.Namespace(peak=False, owner_walk="last", retainers=False)
+        with self.assertRaisesRegex(SystemExit, "requires --peak"):
+            peak.prepare(args)
+        args.peak = args.retainers = True
+        with self.assertRaisesRegex(SystemExit, "captured once"):
             peak.prepare(args)
 
 
