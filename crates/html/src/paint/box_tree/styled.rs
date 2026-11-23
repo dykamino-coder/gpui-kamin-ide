@@ -26,19 +26,8 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
 mod owner;
 pub(crate) use owner::{Own, Refusal};
 
-/// The painter requested by new used values, before program changes are applied.
-pub(crate) fn requested_painter(
-    doc: &std::rc::Rc<crate::document::state::DocState>,
-    e: &Element,
-) -> Own {
-    let style = BoxStyle::shared(e.style.used());
-    owner::painter(e, &style, || {
-        let cx = crate::layout::cx::LayoutCx::default()
-            .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
-        let empty = !e.children.iter().any(|n| !is_blank(n));
-        !decorations(&style, empty, cx.frame(), Some(&cx)).is_empty()
-    })
-}
+mod probes;
+pub(crate) use probes::{requested_group_paint, requested_painter};
 
 /// The decorations of `e` as painters without layout (`decoration_painters`),
 /// for a box with no content painted again as the whole content of its
@@ -59,17 +48,6 @@ pub(crate) fn group_painters(
         return None;
     }
     crate::paint::decorations::decoration_painters(&style, empty, cx.frame(), Some(cx))
-}
-
-/// `group_painters` exist for the new used values of `e`, before program
-/// changes are applied (`requested_painter`).
-pub(crate) fn requested_group_paint(
-    doc: &std::rc::Rc<crate::document::state::DocState>,
-    e: &Element,
-) -> bool {
-    let cx = crate::layout::cx::LayoutCx::default()
-        .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
-    group_painters(e, &cx).is_some()
 }
 
 pub(crate) fn styled_div_with(
