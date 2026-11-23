@@ -52,8 +52,10 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True
 from memprof_symbols import Symbols  # noqa: E402
 import memprof_guard  # noqa: E402
+import memprof_peak  # noqa: E402
 
 SCHEMA = "kamin.memprof.v1"
 # Mean sampling interval of `run` unless --sample says otherwise: an exact probe of a real page writes tens
@@ -744,7 +746,7 @@ def retain_query_command(args):
 
 
 def run_command(args):
-    out = pathlib.Path(args.out)
+    out = memprof_peak.prepare(args)
     out.mkdir(parents=True, exist_ok=True)
     if args.retainers:
         if args.sample:
@@ -808,9 +810,8 @@ def run_command(args):
             if not args.keep_stacks and stacks.exists():
                 drop_stacks(stacks)
             raise SystemExit(f"{name} run failed, see {out / (name + '.err')}")
-        # Each side is folded and its probe file removed before the next side runs: one raw file
-        # on disk at a time.
-        runs.append(Run(exe, stacks, True, frames))
+        # Export both checkpoints before deleting this side's raw probe file.
+        runs.append(memprof_peak.fold_run(args, exe, stacks, frames, sys.modules[__name__], name))
         if not args.keep_stacks:
             drop_stacks(stacks)
         if args.retainers:
@@ -896,12 +897,11 @@ def main(argv=None):
     wsp.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
-    import memprof_build
-    memprof_build.add_parser(sub)
-
+    import memprof_commands
+    memprof_commands.register(sub, run)
     args = parser.parse_args(argv)
-    if args.command == "build":
-        return memprof_build.build_command(args)
+    if memprof_commands.dispatch(args, sys.modules[__name__]):
+        return
     if args.command == "ws":
         import memprof_ws
         os.makedirs(args.out, exist_ok=True)

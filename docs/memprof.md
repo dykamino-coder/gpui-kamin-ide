@@ -2,7 +2,7 @@
 
 One command answers "which subsystem and which stacks hold the heap at point X, candidate against
 base". It works on the Rust heap of `engine_bench` (native/D3D memory is not seen; GPU memory is
-in the bench JSON).
+in the bench JSON). See also [recorded peaks and source exports](memprof-peak.md).
 
 ## In one minute
 
