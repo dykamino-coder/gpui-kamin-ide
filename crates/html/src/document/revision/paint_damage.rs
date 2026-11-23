@@ -13,6 +13,8 @@
 use crate::dom::Element;
 use crate::style::computed::Computed;
 
+pub(super) mod leaf;
+
 /// Painted values of one element that changed, as bits.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PaintValue(u8);

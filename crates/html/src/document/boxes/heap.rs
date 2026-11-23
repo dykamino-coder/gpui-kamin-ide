@@ -22,6 +22,12 @@ impl HeapSize for BoxRecord {
             + ops.at("text/box-ifc", |ops| {
                 self.inline.heap_size(ops) + self.prepared.heap_size(ops)
             })
+            + ops.at("text/physical-paint-bounds", |ops| {
+                self.layout_slot
+                    .as_ref()
+                    .and_then(|slot| slot.text_paint.as_ref())
+                    .map_or(0, |bounds| bounds.heap_size(ops))
+            })
     }
 }
 

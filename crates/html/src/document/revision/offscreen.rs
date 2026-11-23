@@ -17,9 +17,8 @@
 //!   only while that slot's frame is the layer's; a box nested in a band
 //!   owner takes its owner's fragments;
 //! - a box with decorations: its run in the layer, the box with its ink;
-//! - both grown by the reach of the shadows and outline of either style; a
-//!   filter, a border image or a border shape reaches farther than this
-//!   knows, and is never deferred.
+//! - both grown by shadow and outline reach; filters, border images and
+//!   border shapes remain unknown and are never deferred.
 
 use super::patch::{Path, element_at};
 use crate::dom::{Element, Node};
@@ -47,10 +46,13 @@ pub(super) fn without_layer(
             super::layer_write::at(old, path, *id)?,
             super::layer_write::at(new, path, *id)?,
         );
-        let in_svg = || {
-            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
-        };
-        if classify(a, b, in_svg) == PaintDamage::Rebuild {
+        let in_svg =
+            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"));
+        // A leaf's text colour is deferred only here. Own-box layer painters
+        // cannot rerecord its text runs when it becomes visible.
+        if classify(a, b, || in_svg) == PaintDamage::Rebuild
+            && (in_svg || super::paint_damage::leaf::color(a, b).is_none())
+        {
             return declined(a, "not paint-only");
         }
         if unpainted_svg(old, path) || unboxed(a, b) {
@@ -133,6 +135,9 @@ fn inline_area(
     a: &Element,
     outset: f32,
 ) -> Option<Bounds<ScaledPixels>> {
+    if let Some(area) = super::physical_paint::area(store, boxes, a, outset) {
+        return Some(area);
+    }
     fragments_of(store, boxes, old, path, a, |f, owner| f.ink(owner, outset))?
 }
 
@@ -230,11 +235,8 @@ fn fragments_of<R>(
 
 impl crate::document::Document {
     /// The line boxes of the fragments of the inline box at `path`, window
-    /// pixels, as the last recorded frame placed them, read without a build
-    /// (the geometry of `getClientRects()`). `None` when no frame describes
-    /// them now (a frame laid out since, the box in a block it skipped, a
-    /// paragraph painted under effects): a synchronous reader then lays out
-    /// the document first, as a script's layout flush does.
+    /// pixels, as the recorded frame placed them (`getClientRects()`). A
+    /// synchronous reader flushes layout when no frame describes them now.
     #[cfg_attr(not(test), allow(dead_code, reason = "read by the script binding"))]
     pub(crate) fn inline_rects(&self, path: &[usize]) -> Option<Vec<gpui::Bounds<gpui::Pixels>>> {
         let e = element_at(&self.nodes, path)?;

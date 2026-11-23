@@ -126,6 +126,20 @@ fn quads(cx: &mut VisualTestContext) -> Vec<String> {
             })
             .collect();
         keys.sort();
+        let mut underlines: Vec<_> = window
+            .painted_underlines()
+            .into_iter()
+            .filter_map(|mut u| {
+                u.order = 0;
+                let visible = u
+                    .bounds
+                    .intersect(&u.content_mask.bounds)
+                    .intersect(&viewport);
+                (!visible.is_empty()).then(|| format!("{u:?}"))
+            })
+            .collect();
+        underlines.sort();
+        keys.extend(underlines);
         keys
     })
 }
@@ -142,17 +156,26 @@ fn fresh(cx: &mut TestAppContext, html: &str, y: f32) -> Vec<String> {
 
 #[gpui::test]
 fn deferred_inline_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestAppContext) {
-    deferred_paint(cx, false);
+    deferred_paint(cx, false, "");
 }
 
 #[gpui::test]
 fn deferred_list_item_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestAppContext) {
-    deferred_paint(cx, true);
+    deferred_paint(cx, true, "");
 }
 
-fn deferred_paint(cx: &mut TestAppContext, list: bool) {
-    let old = page("", 20, "", list);
-    let new = page(" data-edit", 20, "", list);
+#[gpui::test]
+fn deferred_physical_row_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestAppContext) {
+    deferred_paint(
+        cx,
+        true,
+        "#s0{display:inline-block}span{text-decoration:underline}[data-edit]{background:none;color:red}",
+    );
+}
+
+fn deferred_paint(cx: &mut TestAppContext, list: bool, css: &str) {
+    let old = page("", 20, css, list);
+    let new = page(" data-edit", 20, css, list);
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &old);
     let before = stats(&view, vcx).0;

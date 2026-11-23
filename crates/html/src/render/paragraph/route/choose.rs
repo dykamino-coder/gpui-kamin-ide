@@ -132,6 +132,7 @@ pub(crate) fn route_pieces(
     let record = super::row_record::RowRecord::for_row(inherited, opts);
     let pieces = super::row_record::pieces(record.as_ref(), pieces);
     let text_record = record.clone();
+    let text_bounds = super::text_bounds::TextBounds::new(inherited, opts);
     let mut render_text = |t: String, style: &BoxStyle| -> AnyElement {
         // Стоячие знаки в вертикальном письме (`text-orientation: mixed`,
         // CJK): набор идёт вертикальными формами шрифта — возможность `vert`
@@ -157,9 +158,14 @@ pub(crate) fn route_pieces(
         let d = apply(div(), &style.text_paint_style(), vcx)
             .max_w_full()
             .child(SharedString::from(t));
+        let d = d.into_any_element();
+        let d = match &text_bounds {
+            Some(r) => r.word(d, style.self_node),
+            None => d,
+        };
         match &text_record {
-            Some(r) => r.piece(d.into_any_element()),
-            None => d.into_any_element(),
+            Some(r) => r.piece(d),
+            None => d,
         }
     };
     // Начальное значение `text-align` — `start`, а он при письме справа налево
@@ -187,6 +193,10 @@ pub(crate) fn route_pieces(
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
         &opts.cx,
     );
+    let row = match text_bounds {
+        Some(r) => r.row(row),
+        None => row,
+    };
     match record {
         Some(r) => r.row(row),
         None => row,
@@ -194,56 +204,4 @@ pub(crate) fn route_pieces(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::style::computed::Computed;
-
-    #[test]
-    fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {
-        for physical in [false, true] {
-            for text in ["", "text"] {
-                let mut opts = RenderOpts {
-                    text: gpui::TextStyle::default(),
-                    viewport: (800.0, 600.0),
-                    normal_line_height: 1.2,
-                    cx: Default::default(),
-                    frag: Default::default(),
-                };
-                opts.cx.inline.pure_atom_paragraph = physical;
-                let inherited = Computed {
-                    reset_context: crate::style::computed::StyleGroup::new(
-                        crate::style::computed::ResetContext {
-                            no_select: Some(true),
-                            ..Default::default()
-                        },
-                    ),
-                    ..Default::default()
-                };
-                let pieces = vec![
-                    inline::Piece::Text {
-                        text: text.into(),
-                        style: BoxStyle::from(inherited.clone()),
-                    },
-                    inline::Piece::Overlay(div().into_any_element(), Default::default()),
-                ];
-                let mut element = route_pieces(
-                    pieces,
-                    &BoxStyle::from(inherited.clone()),
-                    &opts,
-                    None,
-                    Default::default(),
-                    None,
-                    None,
-                    vec![],
-                    None,
-                    None,
-                );
-                assert_eq!(
-                    element.downcast_mut::<gpui::StyledText>().is_some(),
-                    !physical || !text.is_empty(),
-                    "physical={physical}, text={text:?}",
-                );
-            }
-        }
-    }
-}
+mod tests;

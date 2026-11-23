@@ -4,8 +4,11 @@
 //! with the box.
 
 mod fragments;
+mod paint_bounds;
 
 pub(crate) use fragments::{FragmentTarget, InlineFragments};
+pub(crate) use paint_bounds::PaintBounds;
+pub(crate) use paint_bounds::finite as finite_paint_bounds;
 
 /// The layout result of one box between frames.
 #[derive(Debug, Default)]
@@ -14,4 +17,6 @@ pub(crate) struct LayoutSlot {
     /// contains, as the last frame that painted them placed them
     /// (`fragments`); `None` until a paragraph of the box is painted.
     pub(crate) inline: Option<Box<InlineFragments>>,
+    /// Physical text pieces: conservative paint damage, never CSSOM geometry.
+    pub(crate) text_paint: Option<Box<PaintBounds>>,
 }

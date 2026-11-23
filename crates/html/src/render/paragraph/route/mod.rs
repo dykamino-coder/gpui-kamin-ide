@@ -23,6 +23,7 @@ mod row_record;
 mod spacer;
 mod spans;
 mod styling;
+mod text_bounds;
 
 pub(crate) use collect::paragraph_pieces_routed;
 pub(crate) use probed::{paint_inline_step7, paragraph_probed};

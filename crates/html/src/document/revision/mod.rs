@@ -16,6 +16,7 @@ mod mutation;
 mod no_layer;
 mod paint_damage;
 mod patch;
+mod physical_paint;
 mod repaint;
 mod restyle;
 mod shape;
