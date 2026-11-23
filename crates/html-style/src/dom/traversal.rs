@@ -67,6 +67,23 @@ pub fn postorder_inherited<C: Clone>(
     mut enter: impl FnMut(&Element, &C) -> C,
     mut leave: impl FnMut(&mut Element, &C) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    postorder_context(
+        admission,
+        nodes,
+        inherited,
+        |element, parent| Ok(enter(element, parent)),
+        |element, parent, _| leave(element, parent),
+    )
+}
+
+/// A single owned-frame walk supports fallible entry and both exit contexts.
+pub fn postorder_context<C: Clone>(
+    admission: &Admission,
+    nodes: &mut [Node],
+    inherited: C,
+    mut enter: impl FnMut(&mut Element, &C) -> Result<C, Error>,
+    mut leave: impl FnMut(&mut Element, &C, &C) -> Result<(), Error>,
+) -> Result<(), Error> {
     struct Frame<C> {
         element: Element,
         next: usize,
@@ -79,10 +96,11 @@ pub fn postorder_inherited<C: Clone>(
         if !matches!(root, Node::Element(_)) {
             continue;
         }
-        let Node::Element(element) = std::mem::replace(root, Node::Text(Default::default())) else {
+        let Node::Element(mut element) = std::mem::replace(root, Node::Text(Default::default()))
+        else {
             unreachable!();
         };
-        let children = enter(&element, &inherited);
+        let children = enter(&mut element, &inherited)?;
         stack.push(
             Frame {
                 element,
@@ -99,13 +117,13 @@ pub fn postorder_inherited<C: Clone>(
                 frame.next += 1;
                 let child = &mut frame.element.children[at];
                 if matches!(child, Node::Element(_)) {
-                    let Node::Element(element) =
+                    let Node::Element(mut element) =
                         std::mem::replace(child, Node::Text(Default::default()))
                     else {
                         unreachable!();
                     };
                     let parent = frame.children.clone();
-                    let children = enter(&element, &parent);
+                    let children = enter(&mut element, &parent)?;
                     stack.push(
                         Frame {
                             element,
@@ -118,7 +136,7 @@ pub fn postorder_inherited<C: Clone>(
                 }
             } else {
                 let mut frame = stack.pop().expect("active DOM frame");
-                leave(&mut frame.element, &frame.parent)?;
+                leave(&mut frame.element, &frame.parent, &frame.children)?;
                 let node = Node::Element(frame.element);
                 if let Some(parent) = stack.last_mut() {
                     parent.element.children[parent.next - 1] = node;
