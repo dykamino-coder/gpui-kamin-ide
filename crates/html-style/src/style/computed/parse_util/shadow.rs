@@ -37,7 +37,7 @@ impl ShadowValue {
     /// Смещения, размытие и растяжение в точках; `None` — длины ещё не решены.
     pub fn offsets(&self, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
         let mut values = [0.0; 4];
-        for (slot, length) in values.iter_mut().zip(self.lengths) {
+        for (slot, length) in values.iter_mut().zip(self.lengths.clone()) {
             *slot = match length {
                 None => 0.0,
                 Some(length @ (Len::Px(_) | Len::Calc(_))) => {
@@ -71,7 +71,7 @@ pub(in crate::style::computed) fn shadow_values(v: &str, vcx: ValueCx<'_>) -> Ve
             match Len::parse(&token, vcx) {
                 Some(Len::Pct(_)) => return vec![],
                 Some(Len::Calc(id))
-                    if crate::style::values::value::calc_get(id, vcx).pct != 0.0 =>
+                    if crate::style::values::value::calc_get(id.clone(), vcx).pct != 0.0 =>
                 {
                     return vec![];
                 }
@@ -89,7 +89,7 @@ pub(in crate::style::computed) fn shadow_values(v: &str, vcx: ValueCx<'_>) -> Ve
             return vec![];
         }
         let mut value = ShadowValue {
-            lengths: [None; 4],
+            lengths: [const { None }; 4],
             color: color.unwrap_or_default(),
             inset: s.contains("inset"),
         };

@@ -24,7 +24,7 @@ pub(super) fn area(
         })
         .chain(text.get(&e.node_id).copied())
         .reduce(union);
-    let Some(&(own, clip)) = boxes.get(&e.node_id) else {
+    let Some(&(own, ref clip)) = boxes.get(&e.node_id) else {
         return descendants;
     };
     Some(

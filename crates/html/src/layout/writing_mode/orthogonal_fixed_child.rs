@@ -86,8 +86,8 @@ pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> Inl
         let margin = |value| px_lossy_zero(value);
         let content = (size
             - edges(style, true)
-            - margin(style.reset_box_layout.margin.top)
-            - margin(style.reset_box_layout.margin.bottom))
+            - margin(style.reset_box_layout.margin.top.clone())
+            - margin(style.reset_box_layout.margin.bottom.clone()))
         .max(0.0);
         parent = InlineConstraint {
             available: content,

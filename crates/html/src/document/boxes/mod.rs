@@ -110,7 +110,7 @@ impl BoxTree {
     /// The source is given by the DOM NodeKey, the synthetic role apart from it.
     #[cfg(test)]
     fn publish(&mut self, nodes: &[Node]) {
-        self.publish_sources(nodes, &[]);
+        self.publish_sources(nodes);
     }
 
     /// `previous`: the input of the previous publication, still alive: the layout epochs
@@ -119,24 +119,17 @@ impl BoxTree {
         &mut self,
         nodes: &[Node],
         previous: Option<&[Node]>,
-        values: &crate::values::DocumentValues,
+        _values: &crate::values::DocumentValues,
     ) -> super::delta::BoxDelta {
-        let text = values.traversal.text_keys();
         let element = |id| Some(crate::dom::NodeKey::from_packed(id));
-        let keys = publish::Keys {
-            text: &text,
-            element: &element,
-        };
+        let keys = publish::Keys { element: &element };
         self.publish_keyed(nodes, previous, &keys)
     }
 
     #[cfg(test)]
-    fn publish_sources(&mut self, nodes: &[Node], text_keys: &[crate::dom::NodeKey]) {
+    fn publish_sources(&mut self, nodes: &[Node]) {
         let element = |id| Some(crate::dom::NodeKey::from_packed(id));
-        let keys = publish::Keys {
-            text: text_keys,
-            element: &element,
-        };
+        let keys = publish::Keys { element: &element };
         self.publish_keyed(nodes, None, &keys);
     }
 

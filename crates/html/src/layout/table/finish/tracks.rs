@@ -26,9 +26,9 @@ pub(super) fn table_tracks(
     let mut col_widths = col_widths.to_vec();
     let vertical = e.style.used().wm().vertical();
     let inline_size = if vertical {
-        e.style.used().reset_box_layout.height
+        e.style.used().reset_box_layout.height.clone()
     } else {
-        e.style.used().reset_box_layout.width
+        e.style.used().reset_box_layout.width.clone()
     };
     let first_row_widths = first_row_widths_of(
         e,
@@ -158,10 +158,10 @@ pub(super) fn first_row_widths_of(
                         let border = border[1] + border[3];
                         let pad = &cell.style.used().reset_box_layout.padding;
                         let pad = axes.logical([
-                            side(pad.top),
-                            side(pad.right),
-                            side(pad.bottom),
-                            side(pad.left),
+                            side(pad.top.clone()),
+                            side(pad.right.clone()),
+                            side(pad.bottom.clone()),
+                            side(pad.left.clone()),
                         ]);
                         pad[1]
                             + pad[3]
@@ -188,9 +188,9 @@ pub(super) fn first_row_widths_of(
                     // требует ещё нижней грани ширины стола по сумме
                     // дорожек — возвращать вместе с ней.
                     match if vertical {
-                        cell.style.used().reset_box_layout.height
+                        cell.style.used().reset_box_layout.height.clone()
                     } else {
-                        cell.style.used().reset_box_layout.width
+                        cell.style.used().reset_box_layout.width.clone()
                     } {
                         Some(Len::Px(v)) if span == 1 => out.push(Some(v + extra)),
                         // Ширина в единицах шрифта — кеглем САМОЙ ячейки
@@ -199,8 +199,8 @@ pub(super) fn first_row_widths_of(
                         // (§17.5.2.1) не складывался (`separated-border-model-004c`).
                         Some(l @ (Len::Em(_) | Len::Ex(_) | Len::Ch(_))) if span == 1 => {
                             let size = super::super::col_measure::cell_font_px(
-                                cell.style.used().inh.font.font_size,
-                                row.element.style.used().inh.font.font_size,
+                                cell.style.used().inh.font.font_size.clone(),
+                                row.element.style.used().inh.font.font_size.clone(),
                                 table_font,
                             );
                             let family = cell
@@ -219,9 +219,9 @@ pub(super) fn first_row_widths_of(
                         // «a percentage value ... of the table width»).
                         // Известна, только когда ширина таблицы в точках.
                         Some(Len::Pct(p)) if span == 1 => match if vertical {
-                            e.style.used().reset_box_layout.height
+                            e.style.used().reset_box_layout.height.clone()
                         } else {
-                            e.style.used().reset_box_layout.width
+                            e.style.used().reset_box_layout.width.clone()
                         } {
                             Some(Len::Px(tw)) => {
                                 let gaps = spacing.0 * (f32::from(cols) + 1.0);

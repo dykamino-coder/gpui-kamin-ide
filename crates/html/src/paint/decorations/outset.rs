@@ -48,8 +48,8 @@ pub(crate) fn outset(c: &BoxStyle) -> Option<f32> {
     {
         // `medium` is 3px; `auto` paints a focus ring beside the width.
         let em = em_size(c);
-        let width = length(o.width, 3., em)?.max(0.);
-        let offset = length(o.offset, 0., em)?.max(0.);
+        let width = length(o.width.clone(), 3., em)?.max(0.);
+        let offset = length(o.offset.clone(), 0., em)?.max(0.);
         let auto = if o.style == Some(2) { width + 2. } else { 0. };
         out = out.max(width + offset + auto);
     }

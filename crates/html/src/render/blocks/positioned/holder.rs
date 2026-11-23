@@ -19,7 +19,7 @@ pub(crate) fn inset_holder_box(
         reset_positioned: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetPositioned {
                 position: e.style.used().reset_positioned.position,
-                inset: e.style.used().reset_positioned.inset,
+                inset: e.style.used().reset_positioned.inset.clone(),
                 z_index: e.style.used().reset_positioned.z_index,
                 ..Default::default()
             },
@@ -50,33 +50,34 @@ pub(crate) fn inset_holder_box(
     // сам абсолют (css-position-3 §3.8; `inline-size: 100px;
     // margin: auto; inset: 0`).
     if block_axis {
-        holder.reset_box_layout.margin.left = e.style.used().reset_box_layout.margin.left;
-        holder.reset_box_layout.margin.right = e.style.used().reset_box_layout.margin.right;
+        holder.reset_box_layout.margin.left = e.style.used().reset_box_layout.margin.left.clone();
+        holder.reset_box_layout.margin.right = e.style.used().reset_box_layout.margin.right.clone();
     } else {
-        holder.reset_box_layout.margin.top = e.style.used().reset_box_layout.margin.top;
-        holder.reset_box_layout.margin.bottom = e.style.used().reset_box_layout.margin.bottom;
+        holder.reset_box_layout.margin.top = e.style.used().reset_box_layout.margin.top.clone();
+        holder.reset_box_layout.margin.bottom =
+            e.style.used().reset_box_layout.margin.bottom.clone();
     }
     // Поперечный размер держателя — border-box внутренней коробки:
     // её рамка и отбивка прибавляются (у держателя своих нет).
     let px_of = px_lossy_zero;
     let bd = e.style.used().borders();
     if block_axis {
-        let extra = px_of(e.style.used().reset_box_layout.padding.left)
-            + px_of(e.style.used().reset_box_layout.padding.right)
+        let extra = px_of(e.style.used().reset_box_layout.padding.left.clone())
+            + px_of(e.style.used().reset_box_layout.padding.right.clone())
             + px_of(bd.left)
             + px_of(bd.right);
-        holder.reset_box_layout.width = match e.style.used().reset_box_layout.width {
+        holder.reset_box_layout.width = match e.style.used().reset_box_layout.width.clone() {
             Some(Len::Px(w)) => Some(Len::Px(w + extra)),
-            other => other.filter(|l| !kw_len(Some(*l))),
+            other => other.filter(|l| !kw_len(Some(l.clone()))),
         };
     } else {
-        let extra = px_of(e.style.used().reset_box_layout.padding.top)
-            + px_of(e.style.used().reset_box_layout.padding.bottom)
+        let extra = px_of(e.style.used().reset_box_layout.padding.top.clone())
+            + px_of(e.style.used().reset_box_layout.padding.bottom.clone())
             + px_of(bd.top)
             + px_of(bd.bottom);
-        holder.reset_box_layout.height = match e.style.used().reset_box_layout.height {
+        holder.reset_box_layout.height = match e.style.used().reset_box_layout.height.clone() {
             Some(Len::Px(h)) => Some(Len::Px(h + extra)),
-            other => other.filter(|l| !kw_len(Some(*l))),
+            other => other.filter(|l| !kw_len(Some(l.clone()))),
         };
     }
     let mut inner = e.clone();

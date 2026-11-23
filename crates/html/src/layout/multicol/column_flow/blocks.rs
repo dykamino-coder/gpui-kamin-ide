@@ -80,11 +80,12 @@ pub(super) fn non_inline_columns(
                         only, &inside,
                     );
                 if !only.marks.spanner_content_box {
-                    dimensions.preferred[1] = inside.reset_box_layout.height.or(only
+                    dimensions.preferred[1] = inside.reset_box_layout.height.clone().or(only
                         .style
                         .used()
                         .reset_box_layout
-                        .height);
+                        .height
+                        .clone());
                 }
                 dimensions
             },

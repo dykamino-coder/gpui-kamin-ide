@@ -40,8 +40,8 @@ pub(crate) fn render(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
         Some(Len::Px(p)) => (p - v).abs() < COORD_EPS,
         _ => false,
     };
-    if !fits(e.style.used().reset_box_layout.width, w)
-        || !fits(e.style.used().reset_box_layout.height, h)
+    if !fits(e.style.used().reset_box_layout.width.clone(), w)
+        || !fits(e.style.used().reset_box_layout.height.clone(), h)
     {
         return None;
     }

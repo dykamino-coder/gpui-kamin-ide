@@ -77,7 +77,7 @@ pub(super) fn paint_layer_in(
     let Some(src) = layer.image.clone() else {
         return;
     };
-    let size = layer.size;
+    let size = layer.size.clone();
     let repeat = layer.repeat.unwrap_or(BgRepeat::Repeat);
     let family = c.inh.font.font_family.clone().unwrap_or_default();
     let font = match c.inh.font.font_size {
@@ -104,8 +104,8 @@ pub(super) fn paint_layer_in(
             other => other,
         };
         crate::style::computed::BgPos {
-            x: to_px(layer.position.x),
-            y: to_px(layer.position.y),
+            x: to_px(layer.position.x.clone()),
+            y: to_px(layer.position.y.clone()),
         }
     };
     let px_of = |l: Option<Len>| crate::text::metrics::spacing_px(l, &family, font, vcx);
@@ -129,16 +129,16 @@ pub(super) fn paint_layer_in(
     let inset = match layer.origin {
         _ if fixed_area => [0.0; 4],
         Some(crate::style::computed::BgClip::BorderBox) => [
-            -px_of(border.top),
-            -px_of(border.right),
-            -px_of(border.bottom),
-            -px_of(border.left),
+            -px_of(border.top.clone()),
+            -px_of(border.right.clone()),
+            -px_of(border.bottom.clone()),
+            -px_of(border.left.clone()),
         ],
         Some(crate::style::computed::BgClip::ContentBox) => [
-            px_of(c.reset_box_layout.padding.top),
-            px_of(c.reset_box_layout.padding.right),
-            px_of(c.reset_box_layout.padding.bottom),
-            px_of(c.reset_box_layout.padding.left),
+            px_of(c.reset_box_layout.padding.top.clone()),
+            px_of(c.reset_box_layout.padding.right.clone()),
+            px_of(c.reset_box_layout.padding.bottom.clone()),
+            px_of(c.reset_box_layout.padding.left.clone()),
         ],
         _ => [0.0; 4],
     };

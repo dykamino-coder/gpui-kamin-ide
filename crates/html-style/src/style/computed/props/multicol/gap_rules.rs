@@ -133,7 +133,7 @@ impl Computed {
                 (&mut group_0.row_rule_width, &mut group_0.row_rule_widths)
             }
         };
-        *scalar = l.first().or(*scalar);
+        *scalar = l.first().or(scalar.clone());
         *list = l.is_plural().then(|| l.clone());
     }
 

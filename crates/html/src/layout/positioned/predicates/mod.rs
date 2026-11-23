@@ -109,10 +109,10 @@ fn stays_own(e: &Element, under_cb: bool) -> Result<bool, bool> {
     let hoisted = pos == Some(Position::Absolute)
         && !under_cb
         && z.unwrap_or(0) >= 0
-        && (edge_set(inset.left)
-            || edge_set(inset.right)
-            || edge_set(inset.top)
-            || edge_set(inset.bottom));
+        && (edge_set(inset.left.clone())
+            || edge_set(inset.right.clone())
+            || edge_set(inset.top.clone())
+            || edge_set(inset.bottom.clone()));
     // A negative `z-index` paints in the bottom layer (CSS 2.1 §9.9,
     // step 3) whatever its document position: hoisting an earlier
     // sibling cannot reorder against it (spec-examples

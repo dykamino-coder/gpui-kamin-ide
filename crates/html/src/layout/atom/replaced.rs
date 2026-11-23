@@ -33,7 +33,7 @@ pub(super) fn container_atom(
         };
         let shrink_to_fit = match (
             e.style.used().reset_fragmentation.column_count,
-            e.style.used().reset_fragmentation.column_width,
+            e.style.used().reset_fragmentation.column_width.clone(),
         ) {
             (Some(c), Some(Len::Px(w))) if w > 0.0 => Some(c as f32 * w + (c as f32 - 1.0) * gap),
             _ => None,
@@ -197,17 +197,17 @@ pub(super) fn canvas_atom(
     let pct = |l: Option<Len>| matches!(l, Some(Len::Pct(_)));
     let d = match ratio {
         Some(r)
-            if (auto(e.style.used().reset_box_layout.width)
-                || pct(e.style.used().reset_box_layout.width))
-                && named(e.style.used().reset_box_layout.height) =>
+            if (auto(e.style.used().reset_box_layout.width.clone())
+                || pct(e.style.used().reset_box_layout.width.clone()))
+                && named(e.style.used().reset_box_layout.height.clone()) =>
         {
             let mut fill = div().h(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);
             d.child(fill)
         }
         Some(r)
-            if auto(e.style.used().reset_box_layout.height)
-                && named(e.style.used().reset_box_layout.width) =>
+            if auto(e.style.used().reset_box_layout.height.clone())
+                && named(e.style.used().reset_box_layout.width.clone()) =>
         {
             let mut fill = div().w(gpui::relative(1.0));
             fill.style().aspect_ratio = Some(r);

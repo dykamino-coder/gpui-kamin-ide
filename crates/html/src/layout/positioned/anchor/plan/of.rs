@@ -27,10 +27,10 @@ impl AnchorPlan {
         }
         let m = px_lossy_zero;
         let margin = [
-            m(own.reset_box_layout.margin.top),
-            m(own.reset_box_layout.margin.right),
-            m(own.reset_box_layout.margin.bottom),
-            m(own.reset_box_layout.margin.left),
+            m(own.reset_box_layout.margin.top.clone()),
+            m(own.reset_box_layout.margin.right.clone()),
+            m(own.reset_box_layout.margin.bottom.clone()),
+            m(own.reset_box_layout.margin.left.clone()),
         ];
         let side = |l: Option<Len>, margin: f32| -> Option<SidePlan> {
             let Some(Len::Anchor(i)) = l else { return None };
@@ -42,16 +42,16 @@ impl AnchorPlan {
             Some(SidePlan { f, margin })
         };
         let inset = [
-            own.reset_positioned.inset.top,
-            own.reset_positioned.inset.right,
-            own.reset_positioned.inset.bottom,
-            own.reset_positioned.inset.left,
+            own.reset_positioned.inset.top.clone(),
+            own.reset_positioned.inset.right.clone(),
+            own.reset_positioned.inset.bottom.clone(),
+            own.reset_positioned.inset.left.clone(),
         ];
         let sides = [
-            side(inset[0], margin[0]),
-            side(inset[1], margin[1]),
-            side(inset[2], margin[2]),
-            side(inset[3], margin[3]),
+            side(inset[0].clone(), margin[0]),
+            side(inset[1].clone(), margin[1]),
+            side(inset[2].clone(), margin[2]),
+            side(inset[3].clone(), margin[3]),
         ];
         let default_anchor = default_anchor_of(own);
         let area = own
@@ -69,21 +69,21 @@ impl AnchorPlan {
         // и коробка без якоря (`position-visibility-anchor-valid`, #target2:
         // `position-area: block-end`, имени нет) не пряталась никогда.
         let anchor_lengths = [
-            own.reset_box_layout.width,
-            own.reset_box_layout.height,
-            own.reset_box_layout.min_width,
-            own.reset_box_layout.min_height,
-            own.reset_box_layout.max_width,
-            own.reset_box_layout.max_height,
-            own.reset_positioned.inset.top,
-            own.reset_positioned.inset.right,
-            own.reset_positioned.inset.bottom,
-            own.reset_positioned.inset.left,
+            own.reset_box_layout.width.clone(),
+            own.reset_box_layout.height.clone(),
+            own.reset_box_layout.min_width.clone(),
+            own.reset_box_layout.min_height.clone(),
+            own.reset_box_layout.max_width.clone(),
+            own.reset_box_layout.max_height.clone(),
+            own.reset_positioned.inset.top.clone(),
+            own.reset_positioned.inset.right.clone(),
+            own.reset_positioned.inset.bottom.clone(),
+            own.reset_positioned.inset.left.clone(),
         ];
         // anchor-size() тоже требует плана: иначе зависимости размера
         // исчезают, а текущая геометрия заменяется запасным значением.
         let has_anchor = anchor_lengths
-            .into_iter()
+            .iter()
             .flatten()
             .any(|l| matches!(l, Len::Anchor(_)));
         let refs_default = own.reset_positioned.position_area.is_some()

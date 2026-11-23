@@ -50,8 +50,9 @@ pub(crate) fn wrap_floats(
     // только у вызывающего.
     let cb = FloatCb {
         margin_basis: cb_px,
-        height: cb_height
-            .or_else(|| crate::style::values::value::px_strict(parent.reset_box_layout.height)),
+        height: cb_height.or_else(|| {
+            crate::style::values::value::px_strict(parent.reset_box_layout.height.clone())
+        }),
         ..FloatCb::of(parent)
     };
     let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);

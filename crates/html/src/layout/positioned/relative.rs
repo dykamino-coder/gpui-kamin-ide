@@ -35,10 +35,10 @@ pub(crate) fn hoist_inset_abs<'a>(
             Some(crate::style::computed::Position::Absolute)
                 | Some(crate::style::computed::Position::Fixed)
         ) && !at_static_position(&e.style.used())
-            && (edge(e.style.used().reset_positioned.inset.left)
-                || edge(e.style.used().reset_positioned.inset.right))
-            && (edge(e.style.used().reset_positioned.inset.top)
-                || edge(e.style.used().reset_positioned.inset.bottom))
+            && (edge(e.style.used().reset_positioned.inset.left.clone())
+                || edge(e.style.used().reset_positioned.inset.right.clone()))
+            && (edge(e.style.used().reset_positioned.inset.top.clone())
+                || edge(e.style.used().reset_positioned.inset.bottom.clone()))
             && !matches!(
                 e.tag.as_str(),
                 "input" | "textarea" | "select" | "button" | "img" | "svg" | "canvas"
@@ -123,8 +123,8 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
     let basis = px_strict;
     let (bw, bh) = parent.map_or((None, None), |p| {
         (
-            basis(p.style.used().reset_box_layout.width),
-            basis(p.style.used().reset_box_layout.height),
+            basis(p.style.used().reset_box_layout.width.clone()),
+            basis(p.style.used().reset_box_layout.height.clone()),
         )
     });
     let len = |l: Option<Len>, base: Option<f32>| match l {
@@ -141,13 +141,13 @@ pub(crate) fn relative_shift(e: &Element, parent: Option<&Element>) -> (f32, f32
         };
     (
         side(
-            e.style.used().reset_positioned.inset.left,
-            e.style.used().reset_positioned.inset.right,
+            e.style.used().reset_positioned.inset.left.clone(),
+            e.style.used().reset_positioned.inset.right.clone(),
             bw,
         ),
         side(
-            e.style.used().reset_positioned.inset.top,
-            e.style.used().reset_positioned.inset.bottom,
+            e.style.used().reset_positioned.inset.top.clone(),
+            e.style.used().reset_positioned.inset.bottom.clone(),
             bh,
         ),
     )
@@ -179,12 +179,12 @@ pub(crate) fn hoist_relative(e: &mut Element) -> (f32, f32) {
                 _ => None,
             };
             let hx = px_side(
-                cur.style.used().reset_positioned.inset.left,
-                cur.style.used().reset_positioned.inset.right,
+                cur.style.used().reset_positioned.inset.left.clone(),
+                cur.style.used().reset_positioned.inset.right.clone(),
             );
             let hy = px_side(
-                cur.style.used().reset_positioned.inset.top,
-                cur.style.used().reset_positioned.inset.bottom,
+                cur.style.used().reset_positioned.inset.top.clone(),
+                cur.style.used().reset_positioned.inset.bottom.clone(),
             );
             if let Some(v) = hx {
                 dx += v;

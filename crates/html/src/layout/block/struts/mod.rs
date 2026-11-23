@@ -132,7 +132,7 @@ pub(crate) fn top_edge_open_at(e: &Element, width: Option<f32>) -> bool {
         Some(Len::Pct(_))
     ) && width == Some(0.0);
     !own_context(e)
-        && (zero_len(e.style.used().reset_box_layout.padding.top) || pct_zero)
+        && (zero_len(e.style.used().reset_box_layout.padding.top.clone()) || pct_zero)
         && zero_len(e.style.used().borders().top)
 }
 
@@ -152,10 +152,10 @@ pub(crate) fn inline_axis_edges(c: &Computed) -> bool {
     let nonzero =
         |l: Option<Len>| matches!(l, Some(Len::Px(v) | Len::Pct(v) | Len::Em(v)) if v != 0.0);
     let b = c.borders();
-    nonzero(c.reset_box_layout.margin.left)
-        || nonzero(c.reset_box_layout.margin.right)
-        || nonzero(c.reset_box_layout.padding.left)
-        || nonzero(c.reset_box_layout.padding.right)
+    nonzero(c.reset_box_layout.margin.left.clone())
+        || nonzero(c.reset_box_layout.margin.right.clone())
+        || nonzero(c.reset_box_layout.padding.left.clone())
+        || nonzero(c.reset_box_layout.padding.right.clone())
         || nonzero(b.left)
         || nonzero(b.right)
 }

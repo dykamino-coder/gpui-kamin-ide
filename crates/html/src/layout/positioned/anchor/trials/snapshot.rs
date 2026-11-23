@@ -51,15 +51,15 @@ impl Accepted {
     pub(super) fn of(c: &Computed) -> Self {
         Self {
             sizes: [
-                c.reset_box_layout.width,
-                c.reset_box_layout.height,
-                c.reset_box_layout.min_width,
-                c.reset_box_layout.min_height,
-                c.reset_box_layout.max_width,
-                c.reset_box_layout.max_height,
+                c.reset_box_layout.width.clone(),
+                c.reset_box_layout.height.clone(),
+                c.reset_box_layout.min_width.clone(),
+                c.reset_box_layout.min_height.clone(),
+                c.reset_box_layout.max_width.clone(),
+                c.reset_box_layout.max_height.clone(),
             ],
-            inset: c.reset_positioned.inset,
-            margin: c.reset_box_layout.margin,
+            inset: c.reset_positioned.inset.clone(),
+            margin: c.reset_box_layout.margin.clone(),
             align: [c.reset_flex.align_self, c.reset_flex.justify_self],
             safe: [c.reset_flex.align_self_safe, c.reset_flex.justify_self_safe],
             normal: [
@@ -72,7 +72,7 @@ impl Accepted {
             calc_max: c.reset_box_layout.calc_size_max,
             basis: c.reset_box_layout.calc_size_basis,
             stretch: c.reset_box_layout.stretch_size,
-            fit: c.reset_context.fit_arg,
+            fit: c.reset_context.fit_arg.clone(),
             own_axis: [
                 c.reset_flex.align_self_own_axis,
                 c.reset_flex.justify_self_own_axis,
@@ -112,9 +112,9 @@ impl Accepted {
             c.reset_box_layout.min_height,
             c.reset_box_layout.max_width,
             c.reset_box_layout.max_height,
-        ] = self.sizes;
-        c.reset_positioned.inset = self.inset;
-        c.reset_box_layout.margin = self.margin;
+        ] = self.sizes.clone();
+        c.reset_positioned.inset = self.inset.clone();
+        c.reset_box_layout.margin = self.margin.clone();
         [c.reset_flex.align_self, c.reset_flex.justify_self] = self.align;
         [c.reset_flex.align_self_safe, c.reset_flex.justify_self_safe] = self.safe;
         [
@@ -127,7 +127,7 @@ impl Accepted {
         c.reset_box_layout.calc_size_max = self.calc_max;
         c.reset_box_layout.calc_size_basis = self.basis;
         c.reset_box_layout.stretch_size = self.stretch;
-        c.reset_context.fit_arg = self.fit;
+        c.reset_context.fit_arg = self.fit.clone();
         [
             c.reset_flex.align_self_own_axis,
             c.reset_flex.justify_self_own_axis,

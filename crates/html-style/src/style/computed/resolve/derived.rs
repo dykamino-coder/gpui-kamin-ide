@@ -22,7 +22,7 @@ impl Computed {
                         vertical_shift: self.reset_text_box.vertical_shift,
                         vertical_shift_pct: self.reset_text_box.vertical_shift_pct,
                         vertical_shift_px: self.reset_text_box.vertical_shift_px,
-                        vertical_shift_len: self.reset_text_box.vertical_shift_len,
+                        vertical_shift_len: self.reset_text_box.vertical_shift_len.clone(),
                         vertical_align_text: self.reset_text_box.vertical_align_text,
                         vertical_align_base: self.reset_text_box.vertical_align_base,
                         ..Default::default()
@@ -71,7 +71,7 @@ impl Computed {
             // Видимость — свойство ТЕКСТА тоже: скрытый кусок держит место, но
             // не красится, а запасная ветка «строка из слов» флаг теряла.
             with_inherited.inh.ui.hidden = self.inh.ui.hidden;
-            with_inherited.inh.font.font_size = self.inh.font.font_size;
+            with_inherited.inh.font.font_size = self.inh.font.font_size.clone();
             // Гарнитура — свойство ТЕКСТА: без неё кусок в строчном ряду
             // набирался подменным системным шрифтом, и `@font-face` (в том
             // числе Ahem у стенда) не доезжал никуда, где рядом стоит
@@ -83,7 +83,7 @@ impl Computed {
             with_inherited.inh.font.oblique = self.inh.font.oblique;
             with_inherited.inh.font.font_oblique_angle = self.inh.font.font_oblique_angle;
             with_inherited.inh.font.font_oblique_only = self.inh.font.font_oblique_only;
-            with_inherited.inh.font.line_height = self.inh.font.line_height;
+            with_inherited.inh.font.line_height = self.inh.font.line_height.clone();
             with_inherited.inh.text_flow.text_align = self.inh.text_flow.text_align;
             with_inherited.inh.text_flow.text_align_last = self.inh.text_flow.text_align_last;
             with_inherited.inh.text_flow.break_word = self.inh.text_flow.break_word;
@@ -92,7 +92,7 @@ impl Computed {
             with_inherited.inh.text_flow.hanging = self.inh.text_flow.hanging;
             with_inherited.inh.text_flow.nowrap = self.inh.text_flow.nowrap;
             with_inherited.inh.font.monospace = self.inh.font.monospace;
-            with_inherited.inh.text_flow.letter_spacing = self.inh.text_flow.letter_spacing;
+            with_inherited.inh.text_flow.letter_spacing = self.inh.text_flow.letter_spacing.clone();
             with_inherited.inh.font.font_features = self.inh.font.font_features.clone();
             with_inherited.inh.font.font_kerning = self.inh.font.font_kerning;
             with_inherited.inh.font.font_settings = self.inh.font.font_settings.clone();

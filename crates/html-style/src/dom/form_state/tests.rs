@@ -95,6 +95,7 @@ fn checked_pseudo_class_matches_subjects_siblings_and_ancestors() {
             .used()
             .reset_box_layout
             .width
+            .clone()
     };
     use crate::style::values::value::Len;
     assert_eq!(width("x"), Some(Len::Px(1.0)));

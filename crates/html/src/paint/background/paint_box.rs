@@ -17,17 +17,17 @@ pub(super) fn resolve(
         | Some(crate::style::computed::BgClip::Text) => paint_base,
         Some(crate::style::computed::BgClip::ContentBox) => Bounds {
             origin: gpui::point(
-                paint_base.origin.x + px(px_of(c.reset_box_layout.padding.left)),
-                paint_base.origin.y + px(px_of(c.reset_box_layout.padding.top)),
+                paint_base.origin.x + px(px_of(c.reset_box_layout.padding.left.clone())),
+                paint_base.origin.y + px(px_of(c.reset_box_layout.padding.top.clone())),
             ),
             size: gpui::size(
                 (paint_base.size.width
-                    - px(px_of(c.reset_box_layout.padding.left)
-                        + px_of(c.reset_box_layout.padding.right)))
+                    - px(px_of(c.reset_box_layout.padding.left.clone())
+                        + px_of(c.reset_box_layout.padding.right.clone())))
                 .max(px(0.0)),
                 (paint_base.size.height
-                    - px(px_of(c.reset_box_layout.padding.top)
-                        + px_of(c.reset_box_layout.padding.bottom)))
+                    - px(px_of(c.reset_box_layout.padding.top.clone())
+                        + px_of(c.reset_box_layout.padding.bottom.clone())))
                 .max(px(0.0)),
             ),
         },
@@ -38,10 +38,10 @@ pub(super) fn resolve(
             };
             let ext = |side: Option<Len>, i: usize| if covers(i) { 0.0 } else { px_of(side) };
             let (t, r, b, l) = (
-                ext(border.top, 0),
-                ext(border.right, 1),
-                ext(border.bottom, 2),
-                ext(border.left, 3),
+                ext(border.top.clone(), 0),
+                ext(border.right.clone(), 1),
+                ext(border.bottom.clone(), 2),
+                ext(border.left.clone(), 3),
             );
             Bounds {
                 origin: gpui::point(paint_base.origin.x - px(l), paint_base.origin.y - px(t)),

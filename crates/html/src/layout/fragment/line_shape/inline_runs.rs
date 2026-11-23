@@ -27,7 +27,7 @@ pub(crate) fn side_margin_wrap(el: AnyElement, copy: &Element, vertical: bool) -
 
 fn has_side_margins(copy: &Element) -> bool {
     let margin = &copy.style.used().reset_box_layout.margin;
-    [margin.left, margin.right]
+    [margin.left.clone(), margin.right.clone()]
         .iter()
         .any(|l| !matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))))
 }

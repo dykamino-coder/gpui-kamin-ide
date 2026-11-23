@@ -70,10 +70,10 @@ impl Computed {
             return false;
         };
         let radii = [
-            self.reset_border.radius.tl,
-            self.reset_border.radius.tr,
-            self.reset_border.radius.br,
-            self.reset_border.radius.bl,
+            self.reset_border.radius.tl.clone(),
+            self.reset_border.radius.tr.clone(),
+            self.reset_border.radius.br.clone(),
+            self.reset_border.radius.bl.clone(),
         ];
         k.iter().zip(radii).any(|(k, r)| {
             let shaped = (*k - 1.0).abs() > 1e-3;
@@ -145,10 +145,10 @@ impl Computed {
         let vis = self.reset_border.border_visible;
         let keep = |w: Option<Len>, i: usize| if vis[i] == Some(true) { w } else { None };
         Sides {
-            top: keep(self.reset_border.border_width.top, 0),
-            right: keep(self.reset_border.border_width.right, 1),
-            bottom: keep(self.reset_border.border_width.bottom, 2),
-            left: keep(self.reset_border.border_width.left, 3),
+            top: keep(self.reset_border.border_width.top.clone(), 0),
+            right: keep(self.reset_border.border_width.right.clone(), 1),
+            bottom: keep(self.reset_border.border_width.bottom.clone(), 2),
+            left: keep(self.reset_border.border_width.left.clone(), 3),
         }
     }
 }

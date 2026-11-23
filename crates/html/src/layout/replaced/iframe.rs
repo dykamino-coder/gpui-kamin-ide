@@ -133,14 +133,14 @@ pub(crate) fn iframe(e: &Element, inherited: &Computed, opts: &RenderOpts) -> Op
     } else {
         (
             px_sum(&[
-                st.reset_box_layout.padding.left,
-                st.reset_box_layout.padding.right,
+                st.reset_box_layout.padding.left.clone(),
+                st.reset_box_layout.padding.right.clone(),
                 bw.left,
                 bw.right,
             ]),
             px_sum(&[
-                st.reset_box_layout.padding.top,
-                st.reset_box_layout.padding.bottom,
+                st.reset_box_layout.padding.top.clone(),
+                st.reset_box_layout.padding.bottom.clone(),
                 bw.top,
                 bw.bottom,
             ]),

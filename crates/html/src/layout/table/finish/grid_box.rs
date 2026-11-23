@@ -22,11 +22,11 @@ pub(super) fn table_grid_box(
                 .map(|row| {
                     let cell_h = |c: &Node| match c {
                         Node::Element(cell) if is_cell(cell) => {
-                            px_strict(cell.style.used().reset_box_layout.height)
+                            px_strict(cell.style.used().reset_box_layout.height.clone())
                         }
                         _ => None,
                     };
-                    let own = px_strict(row.style.used().reset_box_layout.height);
+                    let own = px_strict(row.style.used().reset_box_layout.height.clone());
                     match own
                         .into_iter()
                         .chain(row.children.iter().filter_map(cell_h))

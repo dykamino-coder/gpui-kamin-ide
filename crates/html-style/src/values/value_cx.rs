@@ -1,17 +1,10 @@
-//! Контекст значения: документ, в арены которого разбор кладёт тела
-//! `calc()`/`anchor()` и из которых их читает разрешение, и метрики корня
-//! для `rem`/`rlh`.
-//!
-//! Его передают явно, как `ConstraintSpace` раскладки: разбор листа и каскад
-//! берут его у документа (`SheetCx`, `TreeIndex`), сборка кадра и фазы GPUI —
-//! у `LayoutCx`. Ручка `ArenaKey` читается только в документе, который её
-//! выдал: чужая или устаревшая ручка — ошибка связи, а не чужое значение.
+//! Explicit value-resolution context for root/font metrics, viewport, and theme.
+//! Calc and anchor payloads live with their readers across document replacement.
 
 use super::DocumentValues;
 use std::rc::Rc;
 
-/// Документ значения и область записи его арен: разбор и каскад пишут в
-/// область документа, сборка кадра — в область кадра.
+/// Resolution document and consumer phase.
 #[derive(Clone, Copy)]
 pub struct ValueCx<'a> {
     pub doc: &'a DocumentValues,
@@ -35,7 +28,7 @@ impl DocumentValues {
         }
     }
 
-    /// Контекст значений сборки кадра: записи арен живут до краски кадра.
+    /// Frame value context; expression payloads live with their readers.
     pub fn frame_values(&self) -> ValueCx<'_> {
         ValueCx {
             doc: self,
@@ -84,8 +77,7 @@ impl<'a> ValueCx<'a> {
         self
     }
 
-    /// The same context storing into the document arenas: values that outlive
-    /// the frame (materialized computed styles) must not hold frame records.
+    /// Mark the consumer as a materialized computed style rather than frame work.
     pub fn persistent(mut self) -> Self {
         self.frame = false;
         self

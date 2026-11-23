@@ -16,7 +16,7 @@ fn rule(visible: bool, visibility: u8) -> GapAxisRule {
         }),
         styles: GapList::single(visible),
         brk: 2,
-        inset: [GapInset::Len(Len::Px(0.)); 4],
+        inset: [const { GapInset::Len(Len::Px(0.)) }; 4],
         visibility,
         double: false,
         kinds: GapList::single(0),

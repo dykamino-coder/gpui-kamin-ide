@@ -108,7 +108,7 @@ impl Target {
             handle: self.handle.clone(),
             horizontal: self.horizontal,
             vertical: self.vertical,
-            margin: self.margin,
+            margin: self.margin.clone(),
         })
     }
 

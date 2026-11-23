@@ -28,14 +28,14 @@ pub(super) fn resolve(s: &mut Computed) {
     let (bx, by) = if s.reset_border.border_box == Some(true) {
         (
             sum(
-                s.reset_box_layout.padding.left,
-                s.reset_box_layout.padding.right,
+                s.reset_box_layout.padding.left.clone(),
+                s.reset_box_layout.padding.right.clone(),
                 edges.left,
                 edges.right,
             ),
             sum(
-                s.reset_box_layout.padding.top,
-                s.reset_box_layout.padding.bottom,
+                s.reset_box_layout.padding.top.clone(),
+                s.reset_box_layout.padding.bottom.clone(),
                 edges.top,
                 edges.bottom,
             ),
@@ -43,11 +43,11 @@ pub(super) fn resolve(s: &mut Computed) {
     } else {
         (0.0, 0.0)
     };
-    let w = px(s.reset_box_layout.attr_width).unwrap_or(DEFAULT_CANVAS_SIZE_PX.0);
+    let w = px(s.reset_box_layout.attr_width.clone()).unwrap_or(DEFAULT_CANVAS_SIZE_PX.0);
     // Blink ComputeNormalizedNaturalSize coerces the natural block size
     // from the natural inline size, before applying author constraints.
     let h = ratio.map_or_else(
-        || px(s.reset_box_layout.attr_height).unwrap_or(DEFAULT_CANVAS_SIZE_PX.1),
+        || px(s.reset_box_layout.attr_height.clone()).unwrap_or(DEFAULT_CANVAS_SIZE_PX.1),
         |r| ((w + bx) / r - by).max(0.0),
     );
     if s.reset_box_layout.attr_sized.0 && s.reset_box_layout.attr_sized.1 && ratio.is_some() {
@@ -56,7 +56,7 @@ pub(super) fn resolve(s: &mut Computed) {
     }
     let transfer_y = |width: f32| ratio.map_or(h + by, |r| width / r);
     let intrinsic_h = if !s.reset_box_layout.attr_sized.0 {
-        px(s.reset_box_layout.width).map_or(h + by, transfer_y)
+        px(s.reset_box_layout.width.clone()).map_or(h + by, transfer_y)
     } else {
         h + by
     };
@@ -66,7 +66,7 @@ pub(super) fn resolve(s: &mut Computed) {
             1 => &mut s.reset_box_layout.min_height,
             _ => &mut s.reset_box_layout.max_height,
         };
-        if intrinsic(*v) {
+        if intrinsic(v.clone()) {
             *v = Some(Len::Px(intrinsic_h));
         }
     }
@@ -75,12 +75,12 @@ pub(super) fn resolve(s: &mut Computed) {
             .max(px(min).unwrap_or(0.0))
     };
     let intrinsic_w = if !s.reset_box_layout.attr_sized.1 {
-        px(s.reset_box_layout.height).map_or(w + bx, |height| {
+        px(s.reset_box_layout.height.clone()).map_or(w + bx, |height| {
             ratio.map_or(w + bx, |r| {
                 clamp(
                     height,
-                    s.reset_box_layout.min_height,
-                    s.reset_box_layout.max_height,
+                    s.reset_box_layout.min_height.clone(),
+                    s.reset_box_layout.max_height.clone(),
                 ) * r
             })
         })
@@ -93,7 +93,7 @@ pub(super) fn resolve(s: &mut Computed) {
             1 => &mut s.reset_box_layout.min_width,
             _ => &mut s.reset_box_layout.max_width,
         };
-        if intrinsic(*v) && s.reset_context.fit_arg[index].is_none() {
+        if intrinsic(v.clone()) && s.reset_context.fit_arg[index].is_none() {
             *v = Some(Len::Px(intrinsic_w));
         }
     }

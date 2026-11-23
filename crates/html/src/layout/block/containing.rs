@@ -19,8 +19,8 @@ fn inner_width_px(c: &Computed, sizes: &BoxDimensions, cb: Option<f32>) -> Optio
     let b = c.borders();
     let edges = || {
         Some(
-            side(c.reset_box_layout.padding.left)?
-                + side(c.reset_box_layout.padding.right)?
+            side(c.reset_box_layout.padding.left.clone())?
+                + side(c.reset_box_layout.padding.right.clone())?
                 + side(b.left)?
                 + side(b.right)?,
         )
@@ -32,8 +32,8 @@ fn inner_width_px(c: &Computed, sizes: &BoxDimensions, cb: Option<f32>) -> Optio
         // §10.3.3: блок в потоке с `width: auto` занимает содержащий блок за
         // вычетом своих полей, рамок и отступов (auto-поле — ноль).
         None | Some(Len::Auto) if in_flow(c) => Some(
-            (cb? - side(c.reset_box_layout.margin.left)?
-                - side(c.reset_box_layout.margin.right)?
+            (cb? - side(c.reset_box_layout.margin.left.clone())?
+                - side(c.reset_box_layout.margin.right.clone())?
                 - edges()?)
             .max(0.0),
         ),

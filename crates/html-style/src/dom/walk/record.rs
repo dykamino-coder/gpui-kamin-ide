@@ -2,8 +2,8 @@
 use super::{pending::Pending, sibling_survey::Visit};
 use crate::budget::admission::{Admission, Error};
 use crate::dom::source_memo::{
-    CascadeContext, CascadeEffects, CascadeEntry, EntryInputs, GeneratedContext, GroupInput,
-    MemoUpdate, OutputOwnership, RootOutput, SelectorContext, SourceMemo,
+    CapturedOutput, CascadeContext, CascadeEffects, CascadeEntry, EntryInputs, GeneratedContext,
+    GroupInput, MemoUpdate, OutputOwnership, RootOutput, SelectorContext, SourceMemo,
 };
 use crate::dom::{Node, NodeKey};
 use crate::style::{
@@ -200,8 +200,11 @@ impl<'a, 'm> Recorder<'a, 'm> {
             source_parent,
             ownership,
             start.inputs,
-            copy_nodes(&out[start.first..])?.into(),
-            effects,
+            CapturedOutput {
+                raw: copy_nodes(&out[start.first..])?.into(),
+                effects,
+                bindings: vcx.doc.traversal.end_bindings(node, admission)?,
+            },
             admission,
         )?;
         self.memo.replace(entry)

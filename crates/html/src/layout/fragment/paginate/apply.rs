@@ -44,8 +44,8 @@ fn content_height(k: &Element, h: f32) -> Option<f32> {
     }
     let b = k.style.used().borders();
     Some(
-        h - px_auto_zero(k.style.used().reset_box_layout.padding.top)?
-            - px_auto_zero(k.style.used().reset_box_layout.padding.bottom)?
+        h - px_auto_zero(k.style.used().reset_box_layout.padding.top.clone())?
+            - px_auto_zero(k.style.used().reset_box_layout.padding.bottom.clone())?
             - px_auto_zero(b.top)?
             - px_auto_zero(b.bottom)?,
     )
@@ -119,7 +119,8 @@ pub(crate) fn apply(c: &mut Element, struts: &Struts) -> bool {
                     // BandFlow consumes the same strut as a placement ceiling.
                     // A normal-flow spacer would move the surrounding lines.
                 } else if as_margin {
-                    let Some(m) = px_auto_zero(k.style.used().reset_box_layout.margin.top) else {
+                    let Some(m) = px_auto_zero(k.style.used().reset_box_layout.margin.top.clone())
+                    else {
                         return false;
                     };
                     k.style.used_mut().reset_box_layout.margin.top = Some(Len::Px(m + st.by));

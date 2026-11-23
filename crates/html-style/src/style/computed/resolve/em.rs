@@ -116,7 +116,7 @@ impl Computed {
         // `cap` — высота прописной того же лица (css-values-4 §6.1.4). Щуп
         // вертикальных метрик её уже отдаёт третьим числом (по нему
         // `text-box-trim` считает срез `cap`), своего замера не нужно.
-        let to_px = move |l: &mut Option<Len>| match *l {
+        let to_px = move |l: &mut Option<Len>| match l.clone() {
             Some(Len::Em(k)) => *l = Some(Len::Px(k * base)),
             Some(Len::EmPx(k, add)) => *l = Some(Len::Px(k * base + add)),
             Some(Len::Ch(k)) => *l = Some(Len::Px(k * ch)),

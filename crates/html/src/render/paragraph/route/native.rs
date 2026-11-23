@@ -108,13 +108,13 @@ pub(crate) fn native_paragraph(
         .justify_chars(inherited.inh.text_flow.justify_chars.unwrap_or(1))
         .align_last(super::alignment::last(inherited, opts))
         .letter_spacing(gpui::px(metrics::spacing_px(
-            inherited.inh.text_flow.letter_spacing,
+            inherited.inh.text_flow.letter_spacing.clone(),
             &family,
             biggest,
             opts.cx.vcx(),
         )))
         .word_spacing(gpui::px(metrics::spacing_px(
-            inherited.inh.text_flow.word_spacing,
+            inherited.inh.text_flow.word_spacing.clone(),
             &family,
             biggest,
             opts.cx.vcx(),
@@ -177,8 +177,8 @@ pub(crate) fn native_paragraph(
             // Масштабируемы только интервалы в ДОЛЯХ кегля; `px` и `em`
             // (от вычисленного кегля) подбор не трогает.
             [
-                inherited.inh.text_flow.letter_spacing,
-                inherited.inh.text_flow.word_spacing,
+                inherited.inh.text_flow.letter_spacing.clone(),
+                inherited.inh.text_flow.word_spacing.clone(),
             ]
             .iter()
             .all(|l| matches!(l, None | Some(Len::Pct(_)))),

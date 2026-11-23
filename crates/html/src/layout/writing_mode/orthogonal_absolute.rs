@@ -22,9 +22,9 @@ pub(super) fn constraint(style: &BoxStyle, available: f32) -> Option<InlineConst
     // The inline atomic path can retain a containing-block wrapping fallback.
     // A definite physical height replaces it before RTL text alignment.
     if own.size.is_none()
-        && (definite(style.reset_box_layout.height)
-            || definite(style.reset_positioned.inset.top)
-                && definite(style.reset_positioned.inset.bottom))
+        && (definite(style.reset_box_layout.height.clone())
+            || definite(style.reset_positioned.inset.top.clone())
+                && definite(style.reset_positioned.inset.bottom.clone()))
     {
         return None;
     }

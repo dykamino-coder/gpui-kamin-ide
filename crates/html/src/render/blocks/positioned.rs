@@ -81,13 +81,13 @@ pub(crate) fn static_position_layer(
     // даёт absolute-обёртка (clip-path-rectangle-ref и родня:
     // эталонный зелёный стоял без своих margin: 50px).
     let ml = margin_px(
-        e.style.used().reset_box_layout.margin.left,
+        e.style.used().reset_box_layout.margin.left.clone(),
         &e.style.used(),
         cx.vcx(),
     )
     .unwrap_or(0.0);
     let mt = margin_px(
-        e.style.used().reset_box_layout.margin.top,
+        e.style.used().reset_box_layout.margin.top.clone(),
         &e.style.used(),
         cx.vcx(),
     )
@@ -108,7 +108,7 @@ pub(crate) fn static_position_layer(
     // горизонтальном письме: rtl ставит коробку от правого края
     // обёртки, вертикальный заместитель нулевой и так.
     let mr = margin_px(
-        e.style.used().reset_box_layout.margin.right,
+        e.style.used().reset_box_layout.margin.right.clone(),
         &e.style.used(),
         cx.vcx(),
     )

@@ -84,8 +84,11 @@ pub fn style_first_line(
                     if style.reset_background.background.is_some() {
                         c.inline_decoration.band_owner = 0;
                     }
-                    c.inh.font.line_height =
-                        style.inh.font.line_height.or(base.inh.font.line_height);
+                    c.inh.font.line_height = style.inh.font.line_height.clone().or(base
+                        .inh
+                        .font
+                        .line_height
+                        .clone());
                     // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
                     // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
                     // `vertical-align` к свойствам `::first-line`): краска

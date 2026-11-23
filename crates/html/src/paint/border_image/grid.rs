@@ -80,7 +80,7 @@ mod tests {
         let mut image = c.reset_border.border_image.clone().unwrap();
         image.slice = [BorderImageSlice::Px(80.0); 4];
         let source = Source::Image(CpuSource::Gradient {
-            image: std::sync::Arc::new(
+            image: std::rc::Rc::new(
                 crate::style::computed::ImageSource::parse("linear-gradient(green, green)", vcx)
                     .unwrap(),
             ),

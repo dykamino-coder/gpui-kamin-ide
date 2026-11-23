@@ -19,7 +19,7 @@ use std::{
     rc::Rc,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct BoxRecord {
     id: u64,
     rect: Rect,

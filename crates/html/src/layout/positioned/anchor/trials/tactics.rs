@@ -57,10 +57,10 @@ pub(in crate::layout::positioned::anchor) fn apply(
                 area_side(tracks[1], AreaAxis::Y),
             ));
         }
-        c.reset_positioned.inset = sides(c.reset_positioned.inset, map, |l, old| {
+        c.reset_positioned.inset = sides(c.reset_positioned.inset.clone(), map, |l, old| {
             transform(l, old, map, cb, c, vcx)
         });
-        c.reset_box_layout.margin = sides(c.reset_box_layout.margin, map, |l, _| l);
+        c.reset_box_layout.margin = sides(c.reset_box_layout.margin.clone(), map, |l, _| l);
         let permute = |input: [bool; 4]| {
             let mut out = [false; 4];
             for k in 0..4 {
@@ -138,15 +138,15 @@ pub(in crate::layout::positioned::anchor) fn apply(
 }
 
 fn sides(s: Sides, map: [usize; 4], f: impl Fn(Option<Len>, usize) -> Option<Len>) -> Sides {
-    let mut out = [None; 4];
+    let mut out = [const { None }; 4];
     for (k, l) in [s.top, s.right, s.bottom, s.left].into_iter().enumerate() {
         out[map[k]] = f(l, k);
     }
     Sides {
-        top: out[0],
-        right: out[1],
-        bottom: out[2],
-        left: out[3],
+        top: out[0].clone(),
+        right: out[1].clone(),
+        bottom: out[2].clone(),
+        left: out[3].clone(),
     }
 }
 
@@ -175,7 +175,9 @@ fn transform(
     own: &Computed,
     vcx: ValueCx<'_>,
 ) -> Option<Len> {
-    let Some(Len::Anchor(id)) = l else { return l };
+    let Some(Len::Anchor(ref id)) = l else {
+        return l;
+    };
     let mut f = (*anchor_get(id, vcx)?).clone();
     if f.size.is_some() {
         return l;

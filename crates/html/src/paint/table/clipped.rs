@@ -32,8 +32,8 @@ impl CellsClipped {
                 Some(crate::style::values::value::Len::Em(k)) => k * em,
                 _ => 0.0,
             };
-            let w = px_of(o.width);
-            let out = px_of(o.offset) + w;
+            let w = px_of(o.width.clone());
+            let out = px_of(o.offset.clone()) + w;
             if let (true, true, Some(colour)) = (
                 o.style != Some(0),
                 w > 0.0,

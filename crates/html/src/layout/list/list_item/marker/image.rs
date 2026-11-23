@@ -53,8 +53,8 @@ mod tests {
         assert_eq!(e.tag, "img");
         assert!(e.inline && e.style.used().content_image().is_some());
         (
-            e.style.used().reset_box_layout.width,
-            e.style.used().reset_box_layout.height,
+            e.style.used().reset_box_layout.width.clone(),
+            e.style.used().reset_box_layout.height.clone(),
         )
     }
 

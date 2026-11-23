@@ -124,7 +124,7 @@ fn flip_start_transposes_sizing_inputs_and_anchor_size_before_layout() {
             .contains(crate::style::css::LonghandId::Height)
     );
     assert!(c.reset_box_layout.stretch_size[4]);
-    let Some(Len::Anchor(id)) = c.reset_box_layout.height else {
+    let Some(Len::Anchor(ref id)) = c.reset_box_layout.height else {
         panic!("anchor-size expected")
     };
     let f = anchor_get(id, doc.values()).expect("owned arena entry");
@@ -157,7 +157,7 @@ fn candidate_style_changes_only_accepted_properties() {
     raw.reset_cascade
         .inherit_longhands
         .set(L::BackgroundColor, true);
-    let font = raw.inh.font.font_size;
+    let font = raw.inh.font.font_size.clone();
     apply_style(&mut raw, &computed);
     assert_eq!(raw.reset_box_layout.width, computed.reset_box_layout.width);
     assert_eq!(raw.inh.font.font_size, font);
@@ -208,7 +208,7 @@ fn opposite_axis_flips_anchor_percent_but_transpose_preserves_it() {
     let mut c = Computed::default();
     c.reset_positioned.inset.top = Len::parse("anchor(--a 25%)", doc.values());
     tactics::apply(&mut c, &Computed::default(), FLIP_BLOCK, doc.values());
-    let Some(Len::Anchor(id)) = c.reset_positioned.inset.bottom else {
+    let Some(Len::Anchor(ref id)) = c.reset_positioned.inset.bottom else {
         panic!("anchor inset expected")
     };
     assert_eq!(
@@ -218,7 +218,7 @@ fn opposite_axis_flips_anchor_percent_but_transpose_preserves_it() {
     let mut c = Computed::default();
     c.reset_positioned.inset.top = Len::parse("anchor(--a 25%)", doc.values());
     tactics::apply(&mut c, &Computed::default(), FLIP_START, doc.values());
-    let Some(Len::Anchor(id)) = c.reset_positioned.inset.left else {
+    let Some(Len::Anchor(ref id)) = c.reset_positioned.inset.left else {
         panic!("transposed anchor inset expected")
     };
     assert_eq!(

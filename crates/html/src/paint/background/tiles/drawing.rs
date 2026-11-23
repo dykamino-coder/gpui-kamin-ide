@@ -39,7 +39,7 @@ pub(crate) fn draw_tiles(
         ),
     };
     let box_size = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-    let tile = tile_size(found.intrinsic(), box_size, size, vcx);
+    let tile = tile_size(found.intrinsic(), box_size, size.clone(), vcx);
     // CSS Backgrounds 3 §3.9: cover may require a tile much larger than
     // the painting area. Cap the allocated raster, never this concrete size,
     // its aspect ratio, or the free space used by background-position.
@@ -73,7 +73,7 @@ pub(crate) fn draw_tiles(
     // `auto` size along the other rescales that other axis so the original
     // aspect ratio is restored (`background-size-029`: 52px auto + round
     // repeat → 60×60, not 60×52).
-    let auto_axis = |horizontal: bool| match size {
+    let auto_axis = |horizontal: bool| match &size {
         BgSize::Auto => true,
         BgSize::Fixed(w, h) => {
             if horizontal {
@@ -183,12 +183,12 @@ pub(crate) fn draw_tiles(
         let cur = window.content_mask().bounds;
         Some(Bounds {
             origin: gpui::point(
-                cur.origin.x - px(px_of(border.left)),
-                cur.origin.y - px(px_of(border.top)),
+                cur.origin.x - px(px_of(border.left.clone())),
+                cur.origin.y - px(px_of(border.top.clone())),
             ),
             size: gpui::size(
-                cur.size.width + px(px_of(border.left) + px_of(border.right)),
-                cur.size.height + px(px_of(border.top) + px_of(border.bottom)),
+                cur.size.width + px(px_of(border.left.clone()) + px_of(border.right.clone())),
+                cur.size.height + px(px_of(border.top.clone()) + px_of(border.bottom)),
             ),
         })
     } else {

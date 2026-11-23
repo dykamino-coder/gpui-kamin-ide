@@ -47,16 +47,16 @@ impl Target for Probe<'_> {
 /// Шаг над набором длин одной группы: группа берётся на запись, только если длина изменилась.
 pub(super) fn lengths<T: Target, const N: usize>(
     target: &mut T,
-    moves: impl Fn(Len) -> bool,
+    moves: impl Fn(&Len) -> bool,
     fix: impl Fn(&mut Option<Len>),
-    get: impl Fn(&Computed) -> [Option<Len>; N],
+    get: impl Fn(&Computed) -> [Option<&Len>; N],
     set: impl FnOnce(&mut Computed, [Option<Len>; N]),
 ) {
     target.rewrite(
         |s| get(s).into_iter().flatten().any(&moves),
         |s| {
-            let now = get(s);
-            let next = now.map(|mut value| {
+            let now = get(s).map(|value| value.cloned());
+            let next = now.clone().map(|mut value| {
                 fix(&mut value);
                 value
             });
@@ -70,7 +70,7 @@ pub(super) fn lengths<T: Target, const N: usize>(
 /// Шаг над четырьмя сторонами.
 pub(super) fn sides<T: Target>(
     target: &mut T,
-    moves: impl Fn(Len) -> bool,
+    moves: impl Fn(&Len) -> bool,
     fix: impl Fn(&mut Option<Len>),
     get: fn(&Computed) -> &Sides,
     get_mut: fn(&mut Computed) -> &mut Sides,
@@ -81,7 +81,12 @@ pub(super) fn sides<T: Target>(
         fix,
         |s| {
             let side = get(s);
-            [side.top, side.right, side.bottom, side.left]
+            [
+                side.top.as_ref(),
+                side.right.as_ref(),
+                side.bottom.as_ref(),
+                side.left.as_ref(),
+            ]
         },
         |s, [top, right, bottom, left]| {
             let side = get_mut(s);

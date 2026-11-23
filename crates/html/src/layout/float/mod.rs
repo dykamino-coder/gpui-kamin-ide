@@ -47,8 +47,8 @@ impl FloatCb {
     pub(crate) fn of(cb: &Computed) -> Self {
         FloatCb {
             wm: cb.wm(),
-            width: px_strict(cb.reset_box_layout.width),
-            height: px_strict(cb.reset_box_layout.height),
+            width: px_strict(cb.reset_box_layout.width.clone()),
+            height: px_strict(cb.reset_box_layout.height.clone()),
             icb: cb.reset_context.icb,
             preserve_newlines: cb.inh.text_flow.preserve_newlines.unwrap_or(false),
             margin_basis: None,

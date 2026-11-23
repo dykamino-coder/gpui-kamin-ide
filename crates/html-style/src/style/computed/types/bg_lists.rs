@@ -133,7 +133,7 @@ impl BgLists {
     /// Изменит ли `resolve_lengths` хотя бы один слой: по ссылке, без копии списков.
     pub fn lengths_pending(
         &self,
-        moves: impl Fn(super::super::Len) -> bool + Copy,
+        moves: impl Fn(&super::super::Len) -> bool + Copy,
         vcx: ValueCx<'_>,
     ) -> bool {
         self.lists

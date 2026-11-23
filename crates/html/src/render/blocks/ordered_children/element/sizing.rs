@@ -63,8 +63,8 @@ pub(crate) fn item_sizing(
             // (`-003.tentative`: 10×20 в области 100×100 давал
             // 100×200; то же правило — `grid-aspect-ratio-032/033`).
             if let (Some(Len::Px(w)), Some(Len::Px(h))) = (
-                e.style.used().reset_box_layout.attr_width,
-                e.style.used().reset_box_layout.attr_height,
+                e.style.used().reset_box_layout.attr_width.clone(),
+                e.style.used().reset_box_layout.attr_height.clone(),
             ) && h > 0.0
                 && e.style.used().reset_shapes.aspect_ratio.is_none()
                 && !(both_attrs && sx && sy)
@@ -126,13 +126,13 @@ pub(crate) fn item_sizing(
         let px_of = px_lossy_zero;
         let bd = e.style.used().borders();
         let extra = if crate::layout::box_kind::flex_row(inherited) {
-            px_of(e.style.used().reset_box_layout.padding.left)
-                + px_of(e.style.used().reset_box_layout.padding.right)
+            px_of(e.style.used().reset_box_layout.padding.left.clone())
+                + px_of(e.style.used().reset_box_layout.padding.right.clone())
                 + px_of(bd.left)
                 + px_of(bd.right)
         } else {
-            px_of(e.style.used().reset_box_layout.padding.top)
-                + px_of(e.style.used().reset_box_layout.padding.bottom)
+            px_of(e.style.used().reset_box_layout.padding.top.clone())
+                + px_of(e.style.used().reset_box_layout.padding.bottom.clone())
                 + px_of(bd.top)
                 + px_of(bd.bottom)
         };
@@ -195,12 +195,12 @@ pub(crate) fn item_sizing(
         match inherited.reset_flex.flex_dir {
             Some(FlexDir::Col) | Some(FlexDir::ColReverse) => {
                 e.style.used_mut().reset_box_layout.height = own
-                    .then_some(e.style.used().reset_box_layout.attr_height)
+                    .then_some(e.style.used().reset_box_layout.attr_height.clone())
                     .flatten();
             }
             _ => {
                 e.style.used_mut().reset_box_layout.width = own
-                    .then_some(e.style.used().reset_box_layout.attr_width)
+                    .then_some(e.style.used().reset_box_layout.attr_width.clone())
                     .flatten()
             }
         }
@@ -220,7 +220,7 @@ pub(crate) fn item_sizing(
     {
         e.style.used_mut().reset_flex.flex_basis = None;
         e.style.used_mut().reset_box_layout.height = own
-            .then_some(e.style.used().reset_box_layout.attr_height)
+            .then_some(e.style.used().reset_box_layout.attr_height.clone())
             .flatten();
     }
     Node::Element(e)

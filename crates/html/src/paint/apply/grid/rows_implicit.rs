@@ -108,10 +108,11 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
         let col_gap_normal = c
             .reset_flex
             .gap
+            .clone()
             .and_then(|g| g.1)
-            .or(c.reset_fragmentation.column_gap)
+            .or(c.reset_fragmentation.column_gap.clone())
             .is_none();
-        let row_gap_normal = c.reset_flex.gap.and_then(|g| g.0).is_none();
+        let row_gap_normal = c.reset_flex.gap.clone().and_then(|g| g.0).is_none();
         let (cols, rows, col_gap, row_gap) = if flip {
             (
                 c.reset_grid.subgrid_rows,
@@ -206,10 +207,10 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
         if let Some(mut total) = all_px.filter(|t| *t > 0.0) {
             let px_of = px_lossy_zero;
             let b = c.borders();
-            total += px_of(c.reset_fragmentation.column_gap)
+            total += px_of(c.reset_fragmentation.column_gap.clone())
                 * (tracks.len().saturating_sub(1)) as f32
-                + px_of(c.reset_box_layout.padding.left)
-                + px_of(c.reset_box_layout.padding.right)
+                + px_of(c.reset_box_layout.padding.left.clone())
+                + px_of(c.reset_box_layout.padding.right.clone())
                 + px_of(b.left)
                 + px_of(b.right);
             d = d.w(px(total));

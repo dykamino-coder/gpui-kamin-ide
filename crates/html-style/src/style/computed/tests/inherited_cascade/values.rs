@@ -83,18 +83,27 @@ fn text_box_shorthand_defaults_to_trim_both() {
 fn tab_size_number_and_length_replace_each_other() {
     let c = style("tab-size: 40px; tab-size: 2.5");
     assert_eq!(
-        (c.inh.text_flow.tab_size, c.inh.text_flow.tab_size_len),
+        (
+            c.inh.text_flow.tab_size,
+            c.inh.text_flow.tab_size_len.clone()
+        ),
         (Some(2.5), None)
     );
     let c = style("tab-size: 2.5; tab-size: 40px");
     assert_eq!(
-        (c.inh.text_flow.tab_size, c.inh.text_flow.tab_size_len),
+        (
+            c.inh.text_flow.tab_size,
+            c.inh.text_flow.tab_size_len.clone()
+        ),
         (None, Some(Len::Px(40.0)))
     );
     for invalid in ["-1", "-1px", "10%", "auto", "NaN", "inf", "6.", "1e99"] {
         let c = style(&format!("tab-size: 2.5; tab-size: {invalid}"));
         assert_eq!(
-            (c.inh.text_flow.tab_size, c.inh.text_flow.tab_size_len),
+            (
+                c.inh.text_flow.tab_size,
+                c.inh.text_flow.tab_size_len.clone()
+            ),
             (Some(2.5), None),
             "{invalid}"
         );

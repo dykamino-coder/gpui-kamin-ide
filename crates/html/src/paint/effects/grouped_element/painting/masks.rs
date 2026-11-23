@@ -96,7 +96,7 @@ pub(crate) fn resolve_mask(
                 source.intrinsic(),
                 group.mask_scale,
                 (bw, bh),
-                group.mask_size,
+                group.mask_size.clone(),
                 group.mask_fit,
                 vcx,
             );
@@ -111,7 +111,7 @@ pub(crate) fn resolve_mask(
                 source.intrinsic(),
                 group.mask_scale,
                 (bw, bh),
-                group.mask_size,
+                group.mask_size.clone(),
                 group.mask_fit,
                 vcx,
             );
@@ -184,7 +184,7 @@ pub(crate) fn resolve_mask(
             (img, tw, th)
         }
     };
-    let (ox, oy) = match group.mask_pos {
+    let (ox, oy) = match group.mask_pos.clone() {
         Some((x, y)) => {
             // Доля — от свободного места; `right/bottom` зеркалит
             // отсчёт (css-backgrounds §3.6, mask-position-1a).

@@ -72,7 +72,7 @@ pub(super) fn grouped_with(
         .as_deref()
         .unwrap_or(&[])
         .iter()
-        .map(|&(x, y)| (poly_unit(x), poly_unit(y)))
+        .map(|(x, y)| (poly_unit(x.clone()), poly_unit(y.clone())))
         .collect();
     let polygon = polygon_px.as_slice();
     // Маска-изображение (css-masking §7.1): источник уходит строкой, его
@@ -96,7 +96,7 @@ pub(super) fn grouped_with(
     // вычисленного стиля (`paint_property_tree_builder.cc:3127-3143`).
     let rrect = c.radius_masked(vcx).then(|| {
         let mut own = c.clone();
-        own.resolve_radius_lengths(|r| *r = r.map(poly_unit));
+        own.resolve_radius_lengths(|r| *r = r.clone().map(poly_unit));
         format!(
             "shape:{}",
             crate::paint::background::rrect_spec(&own, None, vcx)
@@ -175,6 +175,7 @@ pub(super) fn grouped_with(
     let clip_rect = c
         .reset_mask
         .clip_len
+        .clone()
         .map(|sides| {
             let base = match c.inh.font.font_size {
                 Some(Len::Px(v)) => v,
@@ -204,7 +205,7 @@ pub(super) fn grouped_with(
     // margin-box шире на поля, padding-box уже на рамку, content-box — на
     // рамку и отбивку (clip-path-marginBox-*, -paddingBox-*, -contentBox-*).
     let (bare_inset, bare_round) = bare_clip(c);
-    let clip_inset = c.reset_mask.clip_inset.or(bare_inset);
+    let clip_inset = c.reset_mask.clip_inset.clone().or(bare_inset);
     if blur <= 0.0
         && blend == 0
         && polygon.is_empty()
@@ -225,26 +226,5 @@ pub(super) fn grouped_with(
     )
 }
 
-pub(super) fn apply_mask_composite(
-    wrapper: &mut crate::paint::effects::grouped_element::Grouped,
-    c: &Computed,
-) {
-    wrapper.mask_composite = c.reset_mask.mask_composite.clone().unwrap_or_default();
-}
-
-pub(super) fn apply_mask_style(
-    wrapper: &mut crate::paint::effects::grouped_element::Grouped,
-    c: &Computed,
-) {
-    wrapper.mask_size = c.reset_mask.mask_size;
-    wrapper.mask_fit = c.reset_mask.mask_fit.unwrap_or(0);
-    wrapper.mask_no_repeat = c.reset_mask.mask_no_repeat.unwrap_or((false, false));
-    wrapper.mask_repeat_list = c.reset_mask.mask_repeat_list.clone().unwrap_or_default();
-    wrapper.mask_repeat_modes = c.reset_mask.mask_repeat_modes.clone().unwrap_or_default();
-    wrapper.mask_luminance = c.reset_mask.mask_luminance == Some(true);
-    wrapper.mask_alpha_mode = c.reset_mask.mask_alpha_mode == Some(true);
-    wrapper.mask_orient_none = c.inh.ui.image_orient_none == Some(true);
-    wrapper.mask_pos = c.reset_mask.mask_pos;
-    wrapper.mask_pos_far = c.reset_mask.mask_pos_far;
-    wrapper.mask_pos_list = c.reset_mask.mask_pos_list.clone().unwrap_or_default();
-}
+mod mask_style;
+pub(super) use mask_style::{apply_mask_composite, apply_mask_style};

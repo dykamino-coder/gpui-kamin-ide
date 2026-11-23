@@ -44,8 +44,8 @@ pub(crate) fn inline_node(
             ) && !at_static_position(&e.style.used())
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.used().reset_positioned.inset.left) || edge(e.style.used().reset_positioned.inset.right))
-                        && (edge(e.style.used().reset_positioned.inset.top) || edge(e.style.used().reset_positioned.inset.bottom))
+                    (edge(e.style.used().reset_positioned.inset.left.clone()) || edge(e.style.used().reset_positioned.inset.right.clone()))
+                        && (edge(e.style.used().reset_positioned.inset.top.clone()) || edge(e.style.used().reset_positioned.inset.bottom.clone()))
                 }
                 // Поле формы и заменяемый элемент строит СВОЙ путь
                 // (`forms::element`, картинка), и краями он распоряжается
@@ -104,10 +104,10 @@ pub(crate) fn inline_node(
                 })
                 && {
                     let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-                    (edge(e.style.used().reset_positioned.inset.left)
-                        || edge(e.style.used().reset_positioned.inset.right))
-                        != (edge(e.style.used().reset_positioned.inset.top)
-                            || edge(e.style.used().reset_positioned.inset.bottom))
+                    (edge(e.style.used().reset_positioned.inset.left.clone())
+                        || edge(e.style.used().reset_positioned.inset.right.clone()))
+                        != (edge(e.style.used().reset_positioned.inset.top.clone())
+                            || edge(e.style.used().reset_positioned.inset.bottom.clone()))
                 } =>
         {
             true

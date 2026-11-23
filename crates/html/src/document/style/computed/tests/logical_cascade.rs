@@ -43,8 +43,8 @@ fn stronger_declaration_wins_between_logical_and_physical_sizes() {
         let e = find(doc.nodes(), id).expect(id);
         assert_eq!(
             (
-                e.style.cascaded().reset_box_layout.width,
-                e.style.cascaded().reset_box_layout.height
+                e.style.cascaded().reset_box_layout.width.clone(),
+                e.style.cascaded().reset_box_layout.height.clone()
             ),
             (Some(Len::Px(w)), Some(Len::Px(h))),
             "{id}"

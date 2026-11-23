@@ -42,7 +42,7 @@ pub(super) fn defer(
     if !opts.cx.position.state.can_defer(fixed, nearest, to_icb) {
         return false;
     }
-    let inset = positioning.inset;
+    let inset = positioning.inset.clone();
     let axes = (
         edge_set(inset.left) || edge_set(inset.right),
         edge_set(inset.top) || edge_set(inset.bottom),
@@ -62,12 +62,12 @@ pub(super) fn defer(
             if axes.0 {
                 0.
             } else {
-                margin(e.style.used().reset_box_layout.margin.left)
+                margin(e.style.used().reset_box_layout.margin.left.clone())
             },
             if axes.1 {
                 0.
             } else {
-                margin(e.style.used().reset_box_layout.margin.top)
+                margin(e.style.used().reset_box_layout.margin.top.clone())
             },
         ),
         replaced: matches!(

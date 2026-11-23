@@ -83,7 +83,7 @@ fn auto_background_side_requires_a_natural_ratio() {
         None,
     );
     assert_eq!(
-        tile_size(width_only, (768.0, 256.0), size, vcx),
+        tile_size(width_only, (768.0, 256.0), size.clone(), vcx),
         (12.0, 256.0)
     );
     let height_only = Intrinsic {
@@ -91,7 +91,7 @@ fn auto_background_side_requires_a_natural_ratio() {
         ..Default::default()
     };
     assert_eq!(
-        tile_size(height_only, (768.0, 256.0), size, vcx),
+        tile_size(height_only, (768.0, 256.0), size.clone(), vcx),
         (12.0, 32.0)
     );
     let ratio = Intrinsic {

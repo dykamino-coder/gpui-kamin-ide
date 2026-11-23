@@ -8,9 +8,9 @@ pub(super) fn drop_inline_side(style: &mut crate::style::computed::Computed, sid
     let zero = Some(crate::style::values::value::Len::Px(0.0));
     let pick = |s: &mut crate::style::computed::Sides| {
         if side == 1 {
-            s.right = zero;
+            s.right = zero.clone();
         } else {
-            s.left = zero;
+            s.left = zero.clone();
         }
     };
     pick(&mut style.reset_box_layout.margin);
@@ -26,14 +26,14 @@ pub(super) fn has_edge(st: &crate::style::computed::Computed, side: usize) -> bo
     let (b, p, m) = if side == 1 {
         (
             st.borders().right,
-            geometry.padding.right,
-            geometry.margin.right,
+            geometry.padding.right.clone(),
+            geometry.margin.right.clone(),
         )
     } else {
         (
             st.borders().left,
-            geometry.padding.left,
-            geometry.margin.left,
+            geometry.padding.left.clone(),
+            geometry.margin.left.clone(),
         )
     };
     nz(b) || nz(p) || nz(m)

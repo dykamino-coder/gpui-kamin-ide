@@ -27,8 +27,8 @@ pub(crate) fn eligible(element: &Element) -> bool {
         && !style.reset_context.intrinsic_wrapper_required
         && !style.contains_width() && !style.contains_height()
         && style.reset_box_layout.calc_size.iter().chain(style.reset_box_layout.calc_size_max.iter()).all(Option::is_none)
-        && (keyword(style.reset_box_layout.width) || keyword(style.reset_box_layout.height))
-        && ![style.reset_box_layout.min_width, style.reset_box_layout.max_width, style.reset_box_layout.min_height, style.reset_box_layout.max_height]
+        && (keyword(style.reset_box_layout.width.clone()) || keyword(style.reset_box_layout.height.clone()))
+        && ![style.reset_box_layout.min_width.clone(), style.reset_box_layout.max_width.clone(), style.reset_box_layout.min_height.clone(), style.reset_box_layout.max_height.clone()]
             .into_iter().any(keyword)
         && !crate::layout::box_kind::replaced_tag(element)
         // These tags use independent form/table/list formatting builders.

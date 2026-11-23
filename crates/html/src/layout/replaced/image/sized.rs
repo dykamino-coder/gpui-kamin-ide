@@ -13,9 +13,10 @@ impl PictureSizing<'_> {
         let (sub_w, sub_h) = self.sub;
         let (max_w, max_h) = (self.max_w, self.max_h);
         let mut узкая = None;
-        let picture = if let (Some(Len::Px(w)), Some(Len::Px(h))) =
-            (style.reset_box_layout.width, style.reset_box_layout.height)
-        {
+        let picture = if let (Some(Len::Px(w)), Some(Len::Px(h))) = (
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
+        ) {
             let raster = ((w - sub_w).max(1.0), (h - sub_h).max(1.0));
             // Элемент ГИБКОГО контейнера: коробку задаёт раскладка (рост,
             // сжатие — css-flexbox-1 §9.7), и картинка заполняет её
@@ -28,8 +29,8 @@ impl PictureSizing<'_> {
                 size: (!style.reset_flex.flex_item).then_some((w, h)),
             }
         } else if let (Some(Len::Px(_)), None | Some(Len::Auto), Some(ratio)) = (
-            style.reset_box_layout.width,
-            style.reset_box_layout.height,
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
             self.width_limit_in_layout(),
         ) {
             // §10.4: a width limit in percentages the build could not resolve
@@ -42,16 +43,17 @@ impl PictureSizing<'_> {
             // only, its height grew to the picture's, and the overflow widened
             // the scrollport around it.
             Picture::FullWidth { ratio: Some(ratio) }
-        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) =
-            (style.reset_box_layout.width, style.reset_box_layout.height)
-        {
+        } else if let (Some(Len::Px(w)), None | Some(Len::Auto)) = (
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
+        ) {
             // Заданная ширина + auto-высота: высота из соотношения (§10.6.2),
             // без соотношения — своя, резерв 150.
             // §10.7: пределы зажимают и НАЗВАННУЮ сторону тоже. Коробку
             // `apply` уже зажал, а картинка шла как написана и вылезала за неё.
             let cw = self.limit(
                 (w - sub_w).max(0.0),
-                self.clamp(style.reset_box_layout.min_width, sub_w),
+                self.clamp(style.reset_box_layout.min_width.clone(), sub_w),
                 max_w,
             );
             let ch = match self.ratio() {
@@ -68,7 +70,7 @@ impl PictureSizing<'_> {
             let ch_free = ch;
             let ch = self.limit(
                 ch,
-                self.clamp(style.reset_box_layout.min_height, sub_h),
+                self.clamp(style.reset_box_layout.min_height.clone(), sub_h),
                 max_h,
             );
             // §10.4: когда потолок или пол ИЗМЕНИЛИ выведенную сторону,
@@ -80,7 +82,7 @@ impl PictureSizing<'_> {
                 Some(r) if r > 0.0 && (ch - ch_free).abs() > COORD_EPS => {
                     let w = self.limit(
                         self.transfer(ch, r, false),
-                        self.clamp(style.reset_box_layout.min_width, sub_w),
+                        self.clamp(style.reset_box_layout.min_width.clone(), sub_w),
                         max_w,
                     );
                     // Коробка ужимается ТОЛЬКО когда предел и правда изменил
@@ -96,13 +98,14 @@ impl PictureSizing<'_> {
                 raster: (cw.max(1.0), ch.max(1.0)),
                 size: (cw, ch),
             }
-        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) =
-            (style.reset_box_layout.width, style.reset_box_layout.height)
-        {
+        } else if let (None | Some(Len::Auto), Some(Len::Px(h))) = (
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
+        ) {
             // Зеркально: заданная высота + auto-ширина (§10.3.2).
             let ch = self.limit(
                 (h - sub_h).max(0.0),
-                self.clamp(style.reset_box_layout.min_height, sub_h),
+                self.clamp(style.reset_box_layout.min_height.clone(), sub_h),
                 max_h,
             );
             let cw = match self.ratio() {
@@ -115,7 +118,7 @@ impl PictureSizing<'_> {
             let cw_free = cw;
             let cw = self.limit(
                 cw,
-                self.clamp(style.reset_box_layout.min_width, sub_w),
+                self.clamp(style.reset_box_layout.min_width.clone(), sub_w),
                 max_w,
             );
             // Зеркально §10.4: изменённая ширина тянет за собой высоту.
@@ -123,7 +126,7 @@ impl PictureSizing<'_> {
                 Some(r) if r > 0.0 && (cw - cw_free).abs() > COORD_EPS => {
                     let h = self.limit(
                         self.transfer(cw, r, true),
-                        self.clamp(style.reset_box_layout.min_height, sub_h),
+                        self.clamp(style.reset_box_layout.min_height.clone(), sub_h),
                         max_h,
                     );
                     узкая = Some((cw, h));
@@ -135,9 +138,10 @@ impl PictureSizing<'_> {
                 raster: (cw.max(1.0), ch.max(1.0)),
                 size: (cw, ch),
             }
-        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) =
-            (style.reset_box_layout.width, style.reset_box_layout.height)
-        {
+        } else if let (Some(Len::Pct(_)), None | Some(Len::Auto)) = (
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
+        ) {
             // Доля ширины при auto-высоте: ширину даёт содержащий блок, высоту
             // — собственное соотношение сторон (§10.3.2, §10.6.2). Раньше доля
             // не попадала ни в одну ветку, и замещаемый рисовался СВОИМ
@@ -149,9 +153,10 @@ impl PictureSizing<'_> {
             Picture::FullWidth {
                 ratio: self.ratio().filter(|r| *r > 0.0),
             }
-        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) =
-            (style.reset_box_layout.width, style.reset_box_layout.height)
-        {
+        } else if let (None | Some(Len::Auto), Some(Len::Pct(_))) = (
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.height.clone(),
+        ) {
             // Зеркально: доля высоты при auto-ширине.
             Picture::FullHeight {
                 ratio: self.ratio().filter(|r| *r > 0.0),
@@ -164,7 +169,10 @@ impl PictureSizing<'_> {
             // (sizing-percentages-replaced-orthogonal-001), а смешанная
             // запись `width:50%; height:15px` раньше падала в size_full и
             // ТЕРЯЛА пиксельную сторону (inline-replaced-width-011..015).
-            match (style.reset_box_layout.width, style.reset_box_layout.height) {
+            match (
+                style.reset_box_layout.width.clone(),
+                style.reset_box_layout.height.clone(),
+            ) {
                 (Some(Len::Pct(_)), Some(Len::Px(h))) => Picture::FullWidthPxHeight(h),
                 (Some(Len::Px(w)), Some(Len::Pct(_))) => Picture::PxWidthFullHeight(w),
                 _ => Picture::Full,
@@ -187,9 +195,9 @@ impl PictureSizing<'_> {
         let pct = |l: Option<Len>| matches!(l, Some(Len::Pct(_)));
         let none = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
         (!self.style.reset_flex.flex_item
-            && (pct(layout.max_width) || pct(layout.min_width))
-            && none(layout.max_height)
-            && none(layout.min_height))
+            && (pct(layout.max_width.clone()) || pct(layout.min_width.clone()))
+            && none(layout.max_height.clone())
+            && none(layout.min_height.clone()))
         .then(|| self.ratio())
         .flatten()
         .filter(|r| *r > 0.0)

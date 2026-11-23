@@ -36,8 +36,10 @@ impl Computed {
                         .map(|w| Len::parse_mixed(w, vcx))
                         .collect::<Option<Vec<_>>>()
                 );
-                self.reset_transforms.translate =
-                    Some((lengths[0], lengths.get(1).copied().unwrap_or(Len::Px(0.0))));
+                self.reset_transforms.translate = Some((
+                    lengths[0].clone(),
+                    lengths.get(1).cloned().unwrap_or(Len::Px(0.0)),
+                ));
             }
 
             // --- Преобразования -----------------------------------------------

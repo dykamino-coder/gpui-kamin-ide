@@ -109,7 +109,7 @@ pub(super) fn operator(e: &Element, style: &BoxStyle, opts: &RenderOpts) -> Oper
             _ => {}
         }
     }
-    let size = px_strict(style.inh.font.font_size).unwrap_or(opts.base_size());
+    let size = px_strict(style.inh.font.font_size.clone()).unwrap_or(opts.base_size());
     let spacing = |name, v| {
         e.attr(name)
             .and_then(|v| super::parameters::length_px(v, style, opts))

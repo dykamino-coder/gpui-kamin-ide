@@ -25,16 +25,21 @@ pub(super) fn layout_sizing(
     // Пороги и размеры здесь — content-box, отбивки добавит цикл ниже.
     let natural_fit: Option<(f32, f32)> = if c.reset_box_layout.attr_sized.0
         && c.reset_box_layout.attr_sized.1
-        && let (Some(Len::Px(w)), Some(Len::Px(h))) = (sizes.preferred[0], sizes.preferred[1])
+        && let (Some(Len::Px(w)), Some(Len::Px(h))) =
+            (sizes.preferred[0].clone(), sizes.preferred[1].clone())
         && w > 0.0
         && h > 0.0
     {
         let px_of = px_strict;
-        let min_w = px_of(sizes.minimum[0]).unwrap_or(0.0);
-        let min_h = px_of(sizes.minimum[1]).unwrap_or(0.0);
+        let min_w = px_of(sizes.minimum[0].clone()).unwrap_or(0.0);
+        let min_h = px_of(sizes.minimum[1].clone()).unwrap_or(0.0);
         // §10.4: «max-width/max-height … less than min-* is treated as min-*».
-        let max_w = px_of(sizes.maximum[0]).unwrap_or(f32::INFINITY).max(min_w);
-        let max_h = px_of(sizes.maximum[1]).unwrap_or(f32::INFINITY).max(min_h);
+        let max_w = px_of(sizes.maximum[0].clone())
+            .unwrap_or(f32::INFINITY)
+            .max(min_w);
+        let max_h = px_of(sizes.maximum[1].clone())
+            .unwrap_or(f32::INFINITY)
+            .max(min_h);
         let r = w / h;
         let fit = if w > max_w && h > max_h {
             if max_w / w <= max_h / h {
@@ -83,19 +88,28 @@ pub(super) fn layout_sizing(
             Some(Len::MaxContent) => Some(gpui::CssSizingKeyword::MaxContent),
             _ => None,
         };
-        d.style().min_sizing_keywords = Some([kw(sizes.minimum[0]), kw(sizes.minimum[1])]);
-        d.style().max_sizing_keywords = Some([kw(sizes.maximum[0]), kw(sizes.maximum[1])]);
+        d.style().min_sizing_keywords =
+            Some([kw(sizes.minimum[0].clone()), kw(sizes.minimum[1].clone())]);
+        d.style().max_sizing_keywords =
+            Some([kw(sizes.maximum[0].clone()), kw(sizes.maximum[1].clone())]);
     }
     for (val, f) in [
         (
-            natural_fit.map(|f| Len::Px(f.0)).or(sizes.preferred[0]),
+            natural_fit
+                .map(|f| Len::Px(f.0))
+                .or(sizes.preferred[0].clone()),
             0u8,
         ),
-        (natural_fit.map(|f| Len::Px(f.1)).or(sizes.preferred[1]), 1),
-        (sizes.minimum[0], 2),
-        (sizes.minimum[1], 3),
-        (sizes.maximum[0], 4),
-        (sizes.maximum[1], 5),
+        (
+            natural_fit
+                .map(|f| Len::Px(f.1))
+                .or(sizes.preferred[1].clone()),
+            1,
+        ),
+        (sizes.minimum[0].clone(), 2),
+        (sizes.minimum[1].clone(), 3),
+        (sizes.maximum[0].clone(), 4),
+        (sizes.maximum[1].clone(), 5),
     ] {
         let Some(l) = val else { continue };
         // Размер по содержимому длиной не выражается: его ставит
@@ -135,11 +149,11 @@ pub(super) fn layout_sizing(
             && f == 1
             && let Len::Px(h) = l
         {
-            if kw(sizes.minimum[1]) {
+            if kw(sizes.minimum[1].clone()) {
                 d = d.min_h(px(h));
                 continue;
             }
-            if kw(sizes.maximum[1]) {
+            if kw(sizes.maximum[1].clone()) {
                 d = d.max_h(px(h));
                 continue;
             }
@@ -148,7 +162,7 @@ pub(super) fn layout_sizing(
         // доля считается от родителя и поправки не требует. Новая пара НЕ
         // кладётся в арену (`calc_store` на каждом кадре раздувал бы её).
         let g = match l {
-            Len::Calc(i) => match crate::style::values::value::calc_get(i, vcx).pct_px() {
+            Len::Calc(ref i) => match crate::style::values::value::calc_get(i, vcx).pct_px() {
                 Some((pct, add)) => {
                     gpui::DefiniteLength::Calc(add + if f % 2 == 0 { pad_x } else { pad_y }, pct)
                 }
@@ -190,18 +204,18 @@ pub(super) fn layout_sizing(
             }
         };
         let bb = sizes.border_box;
-        match (sizes.preferred[0], sizes.preferred[1]) {
+        match (sizes.preferred[0].clone(), sizes.preferred[1].clone()) {
             (Some(Len::Px(w)), _) => {
-                let w = clamp(w, sizes.minimum[0], sizes.maximum[0]);
+                let w = clamp(w, sizes.minimum[0].clone(), sizes.maximum[0].clone());
                 let mh = if bb { (w + pad_x) / r - pad_y } else { w / r };
-                let mh = clamp(mh.max(0.0), None, sizes.maximum[1]);
+                let mh = clamp(mh.max(0.0), None, sizes.maximum[1].clone());
                 d = d.min_h(px(mh + pad_y));
                 d.style().aspect_ratio_preferred_size = Some([None, Some(mh + pad_y)]);
             }
             (_, Some(Len::Px(h))) => {
-                let h = clamp(h, sizes.minimum[1], sizes.maximum[1]);
+                let h = clamp(h, sizes.minimum[1].clone(), sizes.maximum[1].clone());
                 let mw = if bb { (h + pad_y) * r - pad_x } else { h * r };
-                let mw = clamp(mw.max(0.0), None, sizes.maximum[0]);
+                let mw = clamp(mw.max(0.0), None, sizes.maximum[0].clone());
                 d = d.min_w(px(mw + pad_x));
                 d.style().aspect_ratio_preferred_size = Some([Some(mw + pad_x), None]);
             }

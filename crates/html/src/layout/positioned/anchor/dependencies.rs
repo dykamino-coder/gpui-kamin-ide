@@ -74,23 +74,23 @@ impl Inputs {
                 && let Some(f) = anchor_get(i, vcx)
             {
                 names.push(f.name.clone());
-                collect(f.fallback, names, vcx, depth - 1);
+                collect(f.fallback.clone(), names, vcx, depth - 1);
                 for alt in &f.alts {
                     names.push(alt.name.clone());
                 }
             }
         }
         for l in [
-            c.reset_box_layout.width,
-            c.reset_box_layout.height,
-            c.reset_box_layout.min_width,
-            c.reset_box_layout.min_height,
-            c.reset_box_layout.max_width,
-            c.reset_box_layout.max_height,
-            c.reset_positioned.inset.top,
-            c.reset_positioned.inset.right,
-            c.reset_positioned.inset.bottom,
-            c.reset_positioned.inset.left,
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.height.clone(),
+            c.reset_box_layout.min_width.clone(),
+            c.reset_box_layout.min_height.clone(),
+            c.reset_box_layout.max_width.clone(),
+            c.reset_box_layout.max_height.clone(),
+            c.reset_positioned.inset.top.clone(),
+            c.reset_positioned.inset.right.clone(),
+            c.reset_positioned.inset.bottom.clone(),
+            c.reset_positioned.inset.left.clone(),
         ] {
             collect(l, &mut names, vcx, 4);
         }

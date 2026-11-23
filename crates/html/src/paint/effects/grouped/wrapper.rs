@@ -154,10 +154,10 @@ pub(crate) fn grouped_wrapper(
     wrapper.mask_origin_off = box_off(c.reset_mask.mask_origin);
     wrapper.clip_rect = clip_rect;
     wrapper.clip_inset = clip_inset;
-    wrapper.clip_edges = c.reset_mask.clip_edges;
-    wrapper.clip_xywh = c.reset_mask.clip_xywh;
+    wrapper.clip_edges = c.reset_mask.clip_edges.clone();
+    wrapper.clip_xywh = c.reset_mask.clip_xywh.clone();
     if rounded_rect_clip(c) {
-        wrapper.clip_round = c.reset_mask.clip_round_len;
+        wrapper.clip_round = c.reset_mask.clip_round_len.clone();
     } else if bare_round.is_some() {
         wrapper.clip_round = bare_round;
     }
@@ -201,15 +201,16 @@ pub(crate) fn grouped_wrapper(
             let m = c
                 .reset_box_layout
                 .own_margin
-                .unwrap_or(c.reset_box_layout.margin);
+                .clone()
+                .unwrap_or(c.reset_box_layout.margin.clone());
             [side(m.top), side(m.right), side(m.bottom), side(m.left)]
         }
         Some(2) => [-side(b.top), -side(b.right), -side(b.bottom), -side(b.left)],
         Some(3) => [
-            -(side(b.top) + side(c.reset_box_layout.padding.top)),
-            -(side(b.right) + side(c.reset_box_layout.padding.right)),
-            -(side(b.bottom) + side(c.reset_box_layout.padding.bottom)),
-            -(side(b.left) + side(c.reset_box_layout.padding.left)),
+            -(side(b.top) + side(c.reset_box_layout.padding.top.clone())),
+            -(side(b.right) + side(c.reset_box_layout.padding.right.clone())),
+            -(side(b.bottom) + side(c.reset_box_layout.padding.bottom.clone())),
+            -(side(b.left) + side(c.reset_box_layout.padding.left.clone())),
         ],
         _ => [0.0; 4],
     };

@@ -12,22 +12,22 @@ pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, rati
     let vertical = c.reset_flex.flex_main_vertical;
     let (preferred, minimum, maximum, cross, cross_min, cross_max, overflow) = if vertical {
         (
-            c.reset_box_layout.height,
-            c.reset_box_layout.min_height,
-            c.reset_box_layout.max_height,
-            c.reset_box_layout.width,
-            c.reset_box_layout.min_width,
-            c.reset_box_layout.max_width,
+            c.reset_box_layout.height.clone(),
+            c.reset_box_layout.min_height.clone(),
+            c.reset_box_layout.max_height.clone(),
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.min_width.clone(),
+            c.reset_box_layout.max_width.clone(),
             c.reset_box_layout.overflow_y,
         )
     } else {
         (
-            c.reset_box_layout.width,
-            c.reset_box_layout.min_width,
-            c.reset_box_layout.max_width,
-            c.reset_box_layout.height,
-            c.reset_box_layout.min_height,
-            c.reset_box_layout.max_height,
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.min_width.clone(),
+            c.reset_box_layout.max_width.clone(),
+            c.reset_box_layout.height.clone(),
+            c.reset_box_layout.min_height.clone(),
+            c.reset_box_layout.max_height.clone(),
             c.reset_box_layout.overflow_x,
         )
     };
@@ -36,9 +36,15 @@ pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, rati
         || (matches!(cross, None | Some(Len::Auto))
             && matches!(cross_min, None | Some(Len::Auto))
             && matches!(cross_max, None | Some(Len::Auto)))
-        || [cross, cross_min, cross_max, preferred, maximum]
-            .into_iter()
-            .any(|value| !matches!(value, None | Some(Len::Auto | Len::Px(_))))
+        || [
+            cross.clone(),
+            cross_min.clone(),
+            cross_max.clone(),
+            preferred.clone(),
+            maximum.clone(),
+        ]
+        .into_iter()
+        .any(|value| !matches!(value, None | Some(Len::Auto | Len::Px(_))))
     {
         return;
     }
@@ -54,16 +60,16 @@ pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, rati
         })
     };
     let Some(x) = sum([
-        c.reset_box_layout.padding.left,
-        c.reset_box_layout.padding.right,
+        c.reset_box_layout.padding.left.clone(),
+        c.reset_box_layout.padding.right.clone(),
         border.left,
         border.right,
     ]) else {
         return;
     };
     let Some(y) = sum([
-        c.reset_box_layout.padding.top,
-        c.reset_box_layout.padding.bottom,
+        c.reset_box_layout.padding.top.clone(),
+        c.reset_box_layout.padding.bottom.clone(),
         border.top,
         border.bottom,
     ]) else {
@@ -85,7 +91,7 @@ pub(crate) fn apply(native: &mut gpui::Style, c: &Computed, w: f32, h: f32, rati
     let low = px(cross_min, cross_edges).unwrap_or(0.0);
     let high = px(cross_max, cross_edges).unwrap_or(f32::INFINITY).max(low);
     let intrinsic_cross = if vertical { w } else { h };
-    let used_cross = px(cross, cross_edges)
+    let used_cross = px(cross.clone(), cross_edges)
         .unwrap_or(intrinsic_cross)
         .clamp(low, high);
     let mut content = if vertical {

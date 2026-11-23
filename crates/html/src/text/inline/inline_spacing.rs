@@ -53,8 +53,8 @@ pub(super) fn inline_sides(
     let flat = |s: crate::style::computed::Sides| {
         super::physical_sides::project(flow, [s.top, s.right, s.bottom, s.left]).map(px_of)
     };
-    let margin = flat(e.style.used().reset_box_layout.margin);
-    let padding = flat(e.style.used().reset_box_layout.padding);
+    let margin = flat(e.style.used().reset_box_layout.margin.clone());
+    let padding = flat(e.style.used().reset_box_layout.padding.clone());
     let border = flat(border);
     (
         (margin[3], margin[1]),

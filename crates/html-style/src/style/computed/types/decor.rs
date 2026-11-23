@@ -31,7 +31,7 @@ pub enum DecorStyle {
 }
 
 /// Длина украшения: толщина, смещение подчёркивания, отступ концов.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub enum DecorLen {
     #[default]
     Auto,

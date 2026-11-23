@@ -37,10 +37,10 @@ pub(crate) fn insets(c: &BoxStyle, vcx: ValueCx<'_>) -> Option<[f32; 4]> {
     let b = c.borders();
     let border = [side(b.top), side(b.right), side(b.bottom), side(b.left)];
     let padding = [
-        side(c.reset_box_layout.padding.top),
-        side(c.reset_box_layout.padding.right),
-        side(c.reset_box_layout.padding.bottom),
-        side(c.reset_box_layout.padding.left),
+        side(c.reset_box_layout.padding.top.clone()),
+        side(c.reset_box_layout.padding.right.clone()),
+        side(c.reset_box_layout.padding.bottom.clone()),
+        side(c.reset_box_layout.padding.left.clone()),
     ];
     Some(std::array::from_fn(|i| {
         match c.reset_mask.clip_margin_box {

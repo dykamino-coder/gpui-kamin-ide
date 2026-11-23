@@ -45,7 +45,7 @@ impl Computed {
                 |units| units[3],
             )
         };
-        let size = self.inh.font.font_size?;
+        let size = self.inh.font.font_size.clone()?;
         // Without a viewport the size stays unfolded, which is a read of it too.
         if size.folds_viewport(vcx) {
             crate::values::viewport_reads::note(vcx);

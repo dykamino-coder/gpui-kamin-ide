@@ -83,8 +83,8 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     }
     let edges = px(b.top)?
         + px(b.bottom)?
-        + px(style.reset_box_layout.padding.top)?
-        + px(style.reset_box_layout.padding.bottom)?;
+        + px(style.reset_box_layout.padding.top.clone())?
+        + px(style.reset_box_layout.padding.bottom.clone())?;
     match style.reset_box_layout.height {
         Some(Len::Px(h)) => {
             return Some(if style.reset_border.border_box == Some(true) {
@@ -114,8 +114,8 @@ pub(crate) fn own(style: &Computed, parent: &BoxStyle, root: bool, icb_height: f
     } else {
         stretched_flex_item(style, parent)
     }?;
-    let margins =
-        px(style.reset_box_layout.margin.top)? + px(style.reset_box_layout.margin.bottom)?;
+    let margins = px(style.reset_box_layout.margin.top.clone())?
+        + px(style.reset_box_layout.margin.bottom.clone())?;
     Some((space - margins - edges).max(0.0))
 }
 
@@ -139,8 +139,8 @@ fn stretched_flex_item(style: &Computed, parent: &Computed) -> Option<f32> {
     let parent_edges = if parent.reset_border.border_box == Some(true) {
         px(pb.top)?
             + px(pb.bottom)?
-            + px(parent.reset_box_layout.padding.top)?
-            + px(parent.reset_box_layout.padding.bottom)?
+            + px(parent.reset_box_layout.padding.top.clone())?
+            + px(parent.reset_box_layout.padding.bottom.clone())?
     } else {
         0.0
     };

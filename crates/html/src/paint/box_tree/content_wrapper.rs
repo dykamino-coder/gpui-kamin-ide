@@ -67,10 +67,10 @@ fn wrapper_tracks(c: &Computed) -> Option<(Option<gpui::GridTrack>, Option<gpui:
     };
     let (col, row) = (
         (!c.contains_width())
-            .then(|| track(c.reset_box_layout.width))
+            .then(|| track(c.reset_box_layout.width.clone()))
             .flatten(),
         (!c.contains_height())
-            .then(|| track(c.reset_box_layout.height))
+            .then(|| track(c.reset_box_layout.height.clone()))
             .flatten(),
     );
     if col.is_none() && row.is_none() {
@@ -143,10 +143,10 @@ pub(crate) fn content_sized(
             _ => None,
         }
     };
-    if let Some(v) = side(c.reset_box_layout.margin.left) {
+    if let Some(v) = side(c.reset_box_layout.margin.left.clone()) {
         wrap = wrap.ml(px(v));
     }
-    if let Some(v) = side(c.reset_box_layout.margin.right) {
+    if let Some(v) = side(c.reset_box_layout.margin.right.clone()) {
         wrap = wrap.mr(px(v));
     }
     // Intrinsic widths keep their shrink-wrapped box; a height-only wrapper
@@ -159,8 +159,8 @@ pub(crate) fn content_sized(
         gpui::AlignItems::Stretch
     } else {
         match (
-            auto(c.reset_box_layout.margin.left),
-            auto(c.reset_box_layout.margin.right),
+            auto(c.reset_box_layout.margin.left.clone()),
+            auto(c.reset_box_layout.margin.right.clone()),
         ) {
             (true, false) => gpui::AlignItems::FlexEnd,
             (true, true) => gpui::AlignItems::Center,
@@ -173,8 +173,8 @@ pub(crate) fn content_sized(
     // `justify-content` (css-grid-1 §10.5); без него `margin-left: auto;
     // width: max-content` оставался у левого края (`align-baseline-ref`).
     match (
-        auto(c.reset_box_layout.margin.left),
-        auto(c.reset_box_layout.margin.right),
+        auto(c.reset_box_layout.margin.left.clone()),
+        auto(c.reset_box_layout.margin.right.clone()),
     ) {
         (true, false) => wrap.style().justify_content = Some(gpui::AlignContent::FlexEnd),
         (true, true) => wrap.style().justify_content = Some(gpui::AlignContent::Center),

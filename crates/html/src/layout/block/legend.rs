@@ -52,7 +52,7 @@ pub(crate) fn legend_band(legend: Node, merged: &BoxStyle) -> Node {
     };
     match (
         px(merged.borders().top),
-        px(merged.reset_box_layout.padding.top),
+        px(merged.reset_box_layout.padding.top.clone()),
     ) {
         (Some(border), Some(pad)) => Node::Element(band(legend, border, pad)),
         _ => legend,

@@ -44,13 +44,15 @@ fn table_integer_hints_participate_below_author_css() {
         .cascaded()
         .inh
         .table_list
-        .border_spacing;
+        .border_spacing
+        .clone();
     let sides = find(&reference, "td")
         .unwrap()
         .style
         .cascaded()
         .reset_box_layout
-        .padding;
+        .padding
+        .clone();
     let default_padding = [sides.top, sides.right, sides.bottom, sides.left];
     for (raw, value) in [
         ("10", Some(10.0)),
@@ -77,7 +79,7 @@ fn table_integer_hints_participate_below_author_css() {
                 .border_spacing,
             value
                 .map(|n| (Some(Len::Px(n)), Some(Len::Px(n))))
-                .or(default_spacing),
+                .or(default_spacing.clone()),
             "{raw}"
         );
         let sides = find(&nodes, "td")
@@ -85,10 +87,13 @@ fn table_integer_hints_participate_below_author_css() {
             .style
             .cascaded()
             .reset_box_layout
-            .padding;
+            .padding
+            .clone();
         assert_eq!(
             [sides.top, sides.right, sides.bottom, sides.left],
-            value.map_or(default_padding, |n| [Some(Len::Px(n)); 4]),
+            value.map_or(default_padding.clone(), |n| std::array::from_fn(|_| Some(
+                Len::Px(n)
+            ))),
             "{raw}"
         );
     }
@@ -111,7 +116,8 @@ fn table_integer_hints_participate_below_author_css() {
         .style
         .cascaded()
         .reset_box_layout
-        .padding;
+        .padding
+        .clone();
     assert_eq!(
         [sides.top, sides.right, sides.bottom, sides.left],
         [

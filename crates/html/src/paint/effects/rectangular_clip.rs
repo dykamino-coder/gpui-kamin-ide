@@ -71,7 +71,7 @@ pub(super) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
         })
         .or_else(|| {
             // `clip-path: inset(...)` — срезы краёв (css-shapes-1).
-            group.clip_inset.map(|[t, r, b, l]| {
+            group.clip_inset.clone().map(|[t, r, b, l]| {
                 let (bw, bh) = (
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),
@@ -88,7 +88,7 @@ pub(super) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
         })
         .or_else(|| {
             // `clip-path: rect(...)` — края от верхнего-левого угла.
-            group.clip_edges.map(|[t, r, b, l]| {
+            group.clip_edges.clone().map(|[t, r, b, l]| {
                 let (bw, bh) = (
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),
@@ -115,7 +115,7 @@ pub(super) fn resolve(group: &Grouped, clip_bounds: Bounds<Pixels>, sf: f32) -> 
         })
         .or_else(|| {
             // `clip-path: xywh(x y w h)` — прямоугольник от угла.
-            group.clip_xywh.map(|[x, y, w, h]| {
+            group.clip_xywh.clone().map(|[x, y, w, h]| {
                 let (bw, bh) = (
                     f32::from(clip_bounds.size.width),
                     f32::from(clip_bounds.size.height),

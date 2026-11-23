@@ -22,7 +22,7 @@ pub(crate) fn empty_iframe_size(
     // Quirks percentage heights can skip auto-height ancestors (Quirks section 3.5).
     // Resolve that inherited basis before treating an indefinite percentage as auto.
     let merged = crate::style::cascade::materialize::box_style(inherited, &copy.style, vcx);
-    copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height;
+    copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height.clone();
     copy.style.used_mut().reset_context.cb_height_def_hint = merged.cb_height_def;
     if copy.style.used().has_viewport_lengths(vcx) {
         copy.style.used_mut().resolve_viewport(viewport, vcx);
@@ -100,7 +100,7 @@ pub(crate) fn empty_iframe_size(
     if ratio
         && auto_height
         && let (Some(Len::Px(w)), Some(r)) = (
-            copy.style.used().reset_box_layout.width,
+            copy.style.used().reset_box_layout.width.clone(),
             copy.style.used().reset_shapes.aspect_ratio,
         )
     {
@@ -171,13 +171,13 @@ pub(crate) fn svg_replaced(
     let bw = w
         + px_of(b.left)
         + px_of(b.right)
-        + px_of(merged.reset_box_layout.padding.left)
-        + px_of(merged.reset_box_layout.padding.right);
+        + px_of(merged.reset_box_layout.padding.left.clone())
+        + px_of(merged.reset_box_layout.padding.right.clone());
     let bh = h
         + px_of(b.top)
         + px_of(b.bottom)
-        + px_of(merged.reset_box_layout.padding.top)
-        + px_of(merged.reset_box_layout.padding.bottom);
+        + px_of(merged.reset_box_layout.padding.top.clone())
+        + px_of(merged.reset_box_layout.padding.bottom.clone());
     Some(
         opts.cx
             .contracts
@@ -200,10 +200,10 @@ pub(super) fn svg_has_box(c: &Computed) -> bool {
         || nz(b.right)
         || nz(b.bottom)
         || nz(b.left)
-        || nz(c.reset_box_layout.padding.top)
-        || nz(c.reset_box_layout.padding.right)
-        || nz(c.reset_box_layout.padding.bottom)
-        || nz(c.reset_box_layout.padding.left)
+        || nz(c.reset_box_layout.padding.top.clone())
+        || nz(c.reset_box_layout.padding.right.clone())
+        || nz(c.reset_box_layout.padding.bottom.clone())
+        || nz(c.reset_box_layout.padding.left.clone())
 }
 
 #[cfg(test)]

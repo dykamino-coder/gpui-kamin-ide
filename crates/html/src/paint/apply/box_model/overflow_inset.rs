@@ -1,5 +1,4 @@
-//! apply_box, хвостовые этапы: обрезка overflow, полосы прокрутки, ранний выход для
-//! непозиционированных; края inset, избыточные края и translate.
+//! Apply overflow clipping, scrollbars, positioned insets, and translation.
 
 use super::*;
 use crate::style::computed::BoxStyle;
@@ -17,7 +16,7 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // величины — при `width: auto` края решают ширину, и отбрасывать нечего.
     let over = match c.reset_positioned.position {
         Some(Position::Relative) => true,
-        Some(Position::Absolute) | Some(Position::Fixed) => set(c.reset_box_layout.width),
+        Some(Position::Absolute) | Some(Position::Fixed) => set(c.reset_box_layout.width.clone()),
         _ => false,
     };
     // В ВЕРТИКАЛЬНОМ содержащем блоке оси меняются ролями
@@ -35,8 +34,8 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Relative)
     ) && c.context.cb_wm.vertical();
     let drop_left = over
-        && set(c.reset_positioned.inset.left)
-        && set(c.reset_positioned.inset.right)
+        && set(c.reset_positioned.inset.left.clone())
+        && set(c.reset_positioned.inset.right.clone())
         && if vertical_cb {
             c.context.cb_wm.block_rl()
         } else {
@@ -46,26 +45,26 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // для него всегда истинно) — только у абсолюта нужен `height`.
     let drop_top = vertical_cb
         && (c.reset_positioned.position == Some(Position::Relative)
-            || set(c.reset_box_layout.height))
-        && set(c.reset_positioned.inset.top)
-        && set(c.reset_positioned.inset.bottom)
+            || set(c.reset_box_layout.height.clone()))
+        && set(c.reset_positioned.inset.top.clone())
+        && set(c.reset_positioned.inset.bottom.clone())
         && c.context.cb_wm.rtl() != c.context.cb_wm.sideways_lr();
     for (val, f) in [
         (
             if drop_top {
                 None
             } else {
-                c.reset_positioned.inset.top
+                c.reset_positioned.inset.top.clone()
             },
             0u8,
         ),
-        (c.reset_positioned.inset.right, 1),
-        (c.reset_positioned.inset.bottom, 2),
+        (c.reset_positioned.inset.right.clone(), 1),
+        (c.reset_positioned.inset.bottom.clone(), 2),
         (
             if drop_left {
                 None
             } else {
-                c.reset_positioned.inset.left
+                c.reset_positioned.inset.left.clone()
             },
             3,
         ),
@@ -80,7 +79,7 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         // of the containing block is not specified explicitly … the value
         // computes to auto»; Blink `relative_utils.cc::ResolveInset` отдаёт
         // `nullopt` при неопределённом размере).
-        if inset_percent::is_auto(c, l, f, vcx) {
+        if inset_percent::is_auto(c, l.clone(), f, vcx) {
             continue;
         }
         let g = len_to_gpui(l, vcx);
@@ -95,7 +94,7 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     // `translate` двигает элемент ВИЗУАЛЬНО, не трогая раскладку. Считается
     // ПОСЛЕ краёв и складывается с ними: раньше цикл краёв затирал сдвиг, и
     // у абсолютного элемента с `left` он пропадал.
-    if let Some((x, y)) = c.reset_transforms.translate {
+    if let Some((x, y)) = c.reset_transforms.translate.clone() {
         let shift = |base: Option<Len>, delta: Len| -> Option<Len> {
             match (base, delta) {
                 (Some(Len::Px(b)), Len::Px(v)) => Some(Len::Px(b + v)),
@@ -106,10 +105,10 @@ fn box_inset(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
         if c.reset_positioned.position.is_none() {
             d = d.relative();
         }
-        if let Some(l) = shift(c.reset_positioned.inset.left, x) {
+        if let Some(l) = shift(c.reset_positioned.inset.left.clone(), x) {
             d = d.left(len_to_gpui(l, vcx));
         }
-        if let Some(t) = shift(c.reset_positioned.inset.top, y) {
+        if let Some(t) = shift(c.reset_positioned.inset.top.clone(), y) {
             d = d.top(len_to_gpui(t, vcx));
         }
     }
@@ -187,10 +186,10 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
             side(border.left),
         ];
         let pd = [
-            side(c.reset_box_layout.padding.top),
-            side(c.reset_box_layout.padding.right),
-            side(c.reset_box_layout.padding.bottom),
-            side(c.reset_box_layout.padding.left),
+            side(c.reset_box_layout.padding.top.clone()),
+            side(c.reset_box_layout.padding.right.clone()),
+            side(c.reset_box_layout.padding.bottom.clone()),
+            side(c.reset_box_layout.padding.left.clone()),
         ];
         let arr = match c.reset_mask.clip_margin_box {
             Some(2) => [b[0] + m, b[1] + m, b[2] + m, b[3] + m],
@@ -231,6 +230,7 @@ pub(crate) fn static_shift(mut d: Div, c: &Computed) -> Div {
         let (mut dx, mut dy) = c
             .reset_transforms
             .translate
+            .clone()
             .map_or((0.0, 0.0), |(x, y)| (px_of(x), px_of(y)));
         if let Some((fx, fy)) = folded {
             dx += fx;

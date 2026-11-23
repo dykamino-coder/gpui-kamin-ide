@@ -191,12 +191,12 @@ fn valid_inherit_clears_local_inherited_lengths() {
     }));
     assert_eq!(
         [
-            c.reset_positioned.inset.top,
-            c.reset_positioned.inset.right,
-            c.reset_positioned.inset.bottom,
-            c.reset_positioned.inset.left
+            c.reset_positioned.inset.top.clone(),
+            c.reset_positioned.inset.right.clone(),
+            c.reset_positioned.inset.bottom.clone(),
+            c.reset_positioned.inset.left.clone()
         ],
-        [None; 4]
+        [const { None }; 4]
     );
 }
 

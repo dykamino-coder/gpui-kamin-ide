@@ -29,10 +29,10 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
     // стоящая там, где элемент написан, — перестановка увозила бы её к началу
     // родителя.
     let movable = |e: &Element| {
-        let x_set = edge_set(e.style.used().reset_positioned.inset.left)
-            || edge_set(e.style.used().reset_positioned.inset.right);
-        let y_set = edge_set(e.style.used().reset_positioned.inset.top)
-            || edge_set(e.style.used().reset_positioned.inset.bottom);
+        let x_set = edge_set(e.style.used().reset_positioned.inset.left.clone())
+            || edge_set(e.style.used().reset_positioned.inset.right.clone());
+        let y_set = edge_set(e.style.used().reset_positioned.inset.top.clone())
+            || edge_set(e.style.used().reset_positioned.inset.bottom.clone());
         // Элемент сетки с ЯВНЫМИ дорожками по обеим осям место в списке детей
         // тоже не держит: его позицию задаёт размещение, а не порядок
         // (css-grid-2 §8). Значит, его можно переставить ради порядка краски
@@ -75,10 +75,10 @@ pub(crate) fn by_layer(nodes: Vec<Node>, flex_ctx: bool) -> Vec<Node> {
         Node::Text(_) => is_blank(n),
     });
     let over = |e: &Element| {
-        let x_set = edge_set(e.style.used().reset_positioned.inset.left)
-            || edge_set(e.style.used().reset_positioned.inset.right);
-        let y_set = edge_set(e.style.used().reset_positioned.inset.top)
-            || edge_set(e.style.used().reset_positioned.inset.bottom);
+        let x_set = edge_set(e.style.used().reset_positioned.inset.left.clone())
+            || edge_set(e.style.used().reset_positioned.inset.right.clone());
+        let y_set = edge_set(e.style.used().reset_positioned.inset.top.clone())
+            || edge_set(e.style.used().reset_positioned.inset.bottom.clone());
         let free_inline = !x_set
             && block_only
             && e.style.used().reset_positioned.position

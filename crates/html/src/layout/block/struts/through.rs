@@ -90,10 +90,11 @@ fn own_strut(
         e.style.used().reset_box_layout.height,
         None | Some(Len::Auto) | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))
     ) || matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)) if !e.style.used().reset_context.cb_height_def_hint);
-    let min_height_is_zero = zero(BoxDimensions::for_element(e, &e.style.used()).minimum[1])
-        || matches!(BoxDimensions::for_element(e, &e.style.used()).minimum[1], Some(Len::Pct(_)) if !e.style.used().reset_context.cb_height_def_hint);
-    if !zero(e.style.used().reset_box_layout.padding.top)
-        || !zero(e.style.used().reset_box_layout.padding.bottom)
+    let min_height_is_zero = zero(
+        BoxDimensions::for_element(e, &e.style.used()).minimum[1].clone(),
+    ) || matches!(BoxDimensions::for_element(e, &e.style.used()).minimum[1], Some(Len::Pct(_)) if !e.style.used().reset_context.cb_height_def_hint);
+    if !zero(e.style.used().reset_box_layout.padding.top.clone())
+        || !zero(e.style.used().reset_box_layout.padding.bottom.clone())
         || !zero(b.top)
         || !zero(b.bottom)
         || !min_height_is_zero
@@ -108,12 +109,12 @@ fn own_strut(
     }
     let s = adjoin(
         strut_of(margin_or_bail(
-            e.style.used().reset_box_layout.margin.top,
+            e.style.used().reset_box_layout.margin.top.clone(),
             &e.style.used(),
             vcx,
         )?),
         strut_of(margin_or_bail(
-            e.style.used().reset_box_layout.margin.bottom,
+            e.style.used().reset_box_layout.margin.bottom.clone(),
             &e.style.used(),
             vcx,
         )?),
@@ -146,12 +147,12 @@ pub(crate) fn float_only_wrapper(w: &Element) -> Option<(bool, bool, f32)> {
             w.style.used().reset_box_layout.height,
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
-        || !zero(BoxDimensions::for_element(w, &w.style.used()).minimum[1])
+        || !zero(BoxDimensions::for_element(w, &w.style.used()).minimum[1].clone())
         || ![
-            w.style.used().reset_box_layout.margin.top,
-            w.style.used().reset_box_layout.margin.bottom,
-            w.style.used().reset_box_layout.padding.top,
-            w.style.used().reset_box_layout.padding.bottom,
+            w.style.used().reset_box_layout.margin.top.clone(),
+            w.style.used().reset_box_layout.margin.bottom.clone(),
+            w.style.used().reset_box_layout.padding.top.clone(),
+            w.style.used().reset_box_layout.padding.bottom.clone(),
             b.top,
             b.bottom,
         ]

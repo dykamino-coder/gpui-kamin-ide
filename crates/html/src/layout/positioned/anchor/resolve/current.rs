@@ -25,16 +25,16 @@ pub(crate) fn needs_deferred(c: &Computed) -> bool {
         || c.reset_flex.align_self == Some(Align::AnchorCenter)
         || c.reset_flex.justify_self == Some(Align::AnchorCenter)
         || [
-            c.reset_box_layout.width,
-            c.reset_box_layout.height,
-            c.reset_box_layout.min_width,
-            c.reset_box_layout.min_height,
-            c.reset_box_layout.max_width,
-            c.reset_box_layout.max_height,
-            c.reset_positioned.inset.top,
-            c.reset_positioned.inset.right,
-            c.reset_positioned.inset.bottom,
-            c.reset_positioned.inset.left,
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.height.clone(),
+            c.reset_box_layout.min_width.clone(),
+            c.reset_box_layout.min_height.clone(),
+            c.reset_box_layout.max_width.clone(),
+            c.reset_box_layout.max_height.clone(),
+            c.reset_positioned.inset.top.clone(),
+            c.reset_positioned.inset.right.clone(),
+            c.reset_positioned.inset.bottom.clone(),
+            c.reset_positioned.inset.left.clone(),
         ]
         .into_iter()
         .any(|l| matches!(l, Some(Len::Anchor(_)))))

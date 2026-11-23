@@ -47,11 +47,11 @@ pub(in crate::style::cascade::compute) fn inherit_ui(
         .table_list
         .empty_cells_hide
         .or(parent.inh.table_list.empty_cells_hide);
-    c.inh.table_list.border_spacing = own
+    c.inh.table_list.border_spacing = own.inh.table_list.border_spacing.clone().or(parent
         .inh
         .table_list
         .border_spacing
-        .or(parent.inh.table_list.border_spacing);
+        .clone());
     c.inh.ui.caret_color = own
         .inh
         .ui
@@ -84,12 +84,13 @@ pub(in crate::style::cascade::compute) fn inherit_decoration_values(
         .inh
         .text_ink
         .underline_offset
+        .clone()
         .map(|l| match l {
             DecorLen::Raw(raw) => DecorLen::Raw(raw.fold_container(vp, vcx)),
             other => other,
         })
         .map(|l| resolve_decor_len(l, &family, own_px, vcx))
-        .or(parent.inh.text_ink.underline_offset);
+        .or(parent.inh.text_ink.underline_offset.clone());
     c.inh.text_ink.underline_pos = own
         .inh
         .text_ink

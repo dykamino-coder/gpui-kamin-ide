@@ -67,10 +67,10 @@ pub(crate) fn exact(c: &BoxStyle) -> Option<super::exact_layer::ExactLayer> {
         return None;
     }
     let (i, radius) = [
-        c.reset_border.radius.tl,
-        c.reset_border.radius.tr,
-        c.reset_border.radius.br,
-        c.reset_border.radius.bl,
+        c.reset_border.radius.tl.clone(),
+        c.reset_border.radius.tr.clone(),
+        c.reset_border.radius.br.clone(),
+        c.reset_border.radius.bl.clone(),
     ]
     .into_iter()
     .enumerate()
@@ -79,7 +79,7 @@ pub(crate) fn exact(c: &BoxStyle) -> Option<super::exact_layer::ExactLayer> {
         _ => None,
     })?;
     let b = uniform(c.borders())?;
-    let p = uniform(c.reset_box_layout.padding)?;
+    let p = uniform(c.reset_box_layout.padding.clone())?;
     let background = c
         .paint_background()
         .color

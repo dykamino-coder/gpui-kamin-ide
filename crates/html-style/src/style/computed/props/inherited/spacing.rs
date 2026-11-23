@@ -139,11 +139,11 @@ impl Computed {
         match id {
             LetterSpacing => {
                 self.inh.text_flow.letter_spacing =
-                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.letter_spacing)
+                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.letter_spacing.clone())
             }
             WordSpacing => {
                 self.inh.text_flow.word_spacing =
-                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.word_spacing)
+                    Len::parse_spacing(v, vcx).or(self.inh.text_flow.word_spacing.clone())
             }
             TextIndent => {
                 if let Some((length, each, hanging)) = text_indent(v, vcx) {

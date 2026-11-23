@@ -58,14 +58,24 @@ pub(super) fn independent(e: &Element, vcx: ValueCx<'_>) -> Width {
     let (m, p) = (&b.margin, &b.padding);
     let edges = !style.wm().vertical()
         && !style.wm().rtl()
-        && [m.top, m.right, m.bottom, m.left]
-            .into_iter()
-            .all(px_or_none)
-        && [p.top, p.right, p.bottom, p.left]
-            .into_iter()
-            .all(px_or_none)
-        && px_or_none(b.min_width)
-        && px_or_none(b.max_width);
+        && [
+            m.top.clone(),
+            m.right.clone(),
+            m.bottom.clone(),
+            m.left.clone(),
+        ]
+        .into_iter()
+        .all(px_or_none)
+        && [
+            p.top.clone(),
+            p.right.clone(),
+            p.bottom.clone(),
+            p.left.clone(),
+        ]
+        .into_iter()
+        .all(px_or_none)
+        && px_or_none(b.min_width.clone())
+        && px_or_none(b.max_width.clone());
     if !edges || viewport_dependent(e, vcx) {
         return Width::Dependent;
     }
@@ -103,7 +113,7 @@ fn text_only(e: &Element) -> bool {
             flow.text_align,
             None | Some(TextAlign::Start | TextAlign::Left)
         )
-        && px_or_none(flow.text_indent)
+        && px_or_none(flow.text_indent.clone())
         && !e.children.is_empty()
         && e.children.iter().all(|n| matches!(n, Node::Text(_)))
 }

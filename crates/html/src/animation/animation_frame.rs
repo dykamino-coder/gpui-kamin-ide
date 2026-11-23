@@ -21,20 +21,21 @@ pub(super) fn sample(
     // collapsed them (`used_mut`), and editing the cascaded style drops that
     // layer, so the cascaded margin would be applied a second time. Inline-axis
     // margins stay cascaded: `auto` resolves against the sampled width.
-    let used = e.style.used().reset_box_layout.margin;
+    let used = e.style.used().reset_box_layout.margin.clone();
     let style = inner.style.cascaded_mut();
-    style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.or(used.top);
-    style.reset_box_layout.margin.right = frame
+    style.reset_box_layout.margin.top = frame.reset_box_layout.margin.top.clone().or(used.top);
+    style.reset_box_layout.margin.right = frame.reset_box_layout.margin.right.clone().or(style
         .reset_box_layout
         .margin
         .right
-        .or(style.reset_box_layout.margin.right);
-    style.reset_box_layout.margin.bottom = frame.reset_box_layout.margin.bottom.or(used.bottom);
-    style.reset_box_layout.margin.left = frame
+        .clone());
+    style.reset_box_layout.margin.bottom =
+        frame.reset_box_layout.margin.bottom.clone().or(used.bottom);
+    style.reset_box_layout.margin.left = frame.reset_box_layout.margin.left.clone().or(style
         .reset_box_layout
         .margin
         .left
-        .or(style.reset_box_layout.margin.left);
+        .clone());
     if frame.reset_effects.opacity.is_some() {
         style.reset_effects.opacity = frame.reset_effects.opacity;
     }
@@ -45,16 +46,16 @@ pub(super) fn sample(
         style.inh.ui.color = frame.inh.ui.color;
     }
     if frame.reset_box_layout.width.is_some() {
-        style.reset_box_layout.width = frame.reset_box_layout.width;
+        style.reset_box_layout.width = frame.reset_box_layout.width.clone();
     }
     if frame.inh.font.font_size.is_some() {
-        style.inh.font.font_size = frame.inh.font.font_size;
+        style.inh.font.font_size = frame.inh.font.font_size.clone();
     }
     if frame.reset_box_layout.height.is_some() {
-        style.reset_box_layout.height = frame.reset_box_layout.height;
+        style.reset_box_layout.height = frame.reset_box_layout.height.clone();
     }
     if frame.reset_transforms.translate.is_some() {
-        style.reset_transforms.translate = frame.reset_transforms.translate;
+        style.reset_transforms.translate = frame.reset_transforms.translate.clone();
     }
     if frame.reset_effects.filter.is_some() {
         style.set_animated_filter(frame);

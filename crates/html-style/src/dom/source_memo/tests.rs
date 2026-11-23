@@ -5,6 +5,7 @@ use crate::style::css::Media;
 use crate::values::DocumentValues;
 use markup5ever_rcdom::{Handle, NodeData};
 
+mod bindings;
 mod contexts;
 mod effects;
 mod ownership;

@@ -67,7 +67,7 @@ pub fn autospace_spans(
             {
                 let family = p_style.inh.font.font_family.clone().unwrap_or_default();
                 let had = crate::text::metrics::spacing_px(
-                    p_style.inh.text_flow.letter_spacing,
+                    p_style.inh.text_flow.letter_spacing.clone(),
                     &family,
                     p_size,
                     vcx,

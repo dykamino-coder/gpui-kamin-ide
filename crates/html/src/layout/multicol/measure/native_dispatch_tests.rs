@@ -123,7 +123,7 @@ fn independent_groups_bypass_estimates_before_and_after_width_is_known() {
                                 rl,
                                 Some(100.0),
                                 Some(100.0),
-                                width,
+                                width.clone(),
                                 rows,
                                 None,
                             );

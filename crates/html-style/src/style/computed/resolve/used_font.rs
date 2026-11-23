@@ -139,7 +139,11 @@ impl Computed {
 
     /// Псевдоэлемент заменяет размер вместе с его независимой подгонкой.
     pub fn overlay_font_size(&mut self, pseudo: &Computed) {
-        self.inh.font.font_size = pseudo.inh.font.font_size.or(self.inh.font.font_size);
+        self.inh.font.font_size = pseudo.inh.font.font_size.clone().or(self
+            .inh
+            .font
+            .font_size
+            .clone());
         self.inh.font.font_size_adjust = pseudo
             .inh
             .font
@@ -149,7 +153,7 @@ impl Computed {
 
     /// Числовая высота строки относится к computed размеру, не к контурам.
     pub fn numeric_line_px(&self, fallback_px: f32) -> Option<f32> {
-        self.numeric_line_value_px(self.inh.font.line_height, fallback_px)
+        self.numeric_line_value_px(self.inh.font.line_height.clone(), fallback_px)
     }
 
     pub fn numeric_line_value_px(&self, line: Option<Len>, fallback_px: f32) -> Option<f32> {

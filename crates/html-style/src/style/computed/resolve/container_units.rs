@@ -13,7 +13,8 @@ impl Computed {
             .inh
             .font
             .font_size
-            .filter(|l| l.needs_container_context(vcx))
+            .clone()
+            .filter(|l| l.clone().needs_container_context(vcx))
         {
             self.inh.font.font_size = Some(value.fold_container(vp, vcx));
         }
@@ -21,7 +22,8 @@ impl Computed {
             .inh
             .font
             .line_height
-            .filter(|l| l.needs_container_context(vcx))
+            .clone()
+            .filter(|l| l.clone().needs_container_context(vcx))
         {
             self.inh.font.line_height = Some(value.fold_container(vp, vcx));
         }
@@ -31,11 +33,11 @@ impl Computed {
     pub fn resolve_container_units(&mut self, vcx: ValueCx<'_>) {
         let vp = self.viewport_cx(vcx.viewport);
         let fix = |length: &mut Option<Len>| {
-            if let Some(value) = *length {
+            if let Some(value) = length.take() {
                 *length = Some(value.fold_container(vp, vcx));
             }
         };
-        let moves = |l: Len| l.needs_container_context(vcx);
+        let moves = |l: &Len| l.needs_container_context(vcx);
         self.resolve_unit_lengths(moves, fix, vcx);
         self.resolve_container_other_lengths(vp, vcx);
         for length in {
@@ -50,11 +52,11 @@ impl Computed {
         }
         // Без cq-слагаемых общую группу наследуемых копировать не нужно.
         if [
-            self.inh.text_flow.letter_spacing,
-            self.inh.text_flow.word_spacing,
-            self.inh.text_flow.text_indent,
-            self.inh.font.line_height,
-            self.inh.text_flow.tab_size_len,
+            self.inh.text_flow.letter_spacing.clone(),
+            self.inh.text_flow.word_spacing.clone(),
+            self.inh.text_flow.text_indent.clone(),
+            self.inh.font.line_height.clone(),
+            self.inh.text_flow.tab_size_len.clone(),
         ]
         .into_iter()
         .flatten()
@@ -78,8 +80,8 @@ impl Computed {
             fix(&mut outline.width);
             fix(&mut outline.offset);
         }
-        if let Some((row, column)) = self.inh.table_list.border_spacing
-            && [row, column]
+        if let Some((row, column)) = self.inh.table_list.border_spacing.clone()
+            && [row.clone(), column.clone()]
                 .into_iter()
                 .flatten()
                 .any(|l| l.needs_container_context(vcx))

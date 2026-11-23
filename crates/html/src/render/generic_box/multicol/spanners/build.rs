@@ -22,7 +22,7 @@ pub(super) fn build(
     rest: Option<f32>,
     (dimensions, own): (MulticolDimensions, MulticolDimensions),
 ) -> AnyElement {
-    let p = column_plan_in(host, &style, opts, dimensions, own);
+    let p = column_plan_in(host, &style, opts, dimensions.clone(), own.clone());
     let mut d = div();
     let vertical = style.wm().vertical();
     let axes = style.wm().reversed_axes();

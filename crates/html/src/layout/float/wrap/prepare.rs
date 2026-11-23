@@ -1,5 +1,4 @@
-//! Подготовка обтекания: узлы с поднятыми флоатами, ранний выход без флоатов,
-//! бандовый хост пробега.
+//! Prepare float runs, their band host, and the no-float fast path.
 
 use crate::dom::{Element, Node};
 use crate::layout::block::struts::float_only_wrapper;
@@ -81,7 +80,8 @@ pub(super) fn prepare_float_nodes(
                 e.style.used_mut().reset_box_layout.margin =
                     crate::style::cascade::materialize::box_style_unpainted(parent, &e.style, vcx)
                         .reset_box_layout
-                        .margin;
+                        .margin
+                        .clone();
                 Node::Element(e)
             }
             n => n,

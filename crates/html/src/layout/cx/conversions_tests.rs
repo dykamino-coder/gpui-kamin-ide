@@ -31,7 +31,7 @@ fn an_equal_box_reuses_the_conversion_whatever_its_registry_keys() {
     let memo = StyleConversions::default();
     let (input, dimensions) = sized(10.0);
     let converted = refinement(10.0);
-    memo.record(&input, dimensions, vcx, converted.clone());
+    memo.record(&input, dimensions.clone(), vcx, converted.clone());
     let mut twin = input;
     (twin.self_node, twin.anchor_seq, twin.anchor_key) = (41, 5, 99);
     let found = memo.find(&twin, &dimensions, vcx).unwrap();
@@ -44,7 +44,7 @@ fn another_value_size_or_viewport_converts_anew() {
     let vcx = doc.frame_values().with_viewport((800.0, 600.0));
     let memo = StyleConversions::default();
     let (input, dimensions) = sized(10.0);
-    memo.record(&input, dimensions, vcx, refinement(10.0));
+    memo.record(&input, dimensions.clone(), vcx, refinement(10.0));
     let (other, other_dimensions) = sized(11.0);
     assert!(memo.find(&other, &other_dimensions, vcx).is_none());
     assert!(memo.find(&input, &other_dimensions, vcx).is_none());
@@ -90,7 +90,7 @@ fn a_run_of_distinct_styles_pauses_lookups_until_a_probe_hits() {
         assert!(matches!(miss(&memo, width as f32), Lookup::Pass));
     }
     let (repeated, dimensions) = sized(1000.0);
-    memo.record(&repeated, dimensions, vcx, refinement(1000.0));
+    memo.record(&repeated, dimensions.clone(), vcx, refinement(1000.0));
     let looks: Vec<_> = (0..PROBE_EVERY)
         .map(|_| memo.lookup(&repeated, &dimensions, vcx))
         .collect();
@@ -166,7 +166,7 @@ fn the_first_repeated_style_allocates_the_candidates_and_the_next_box_reuses() {
         Lookup::Miss
     ));
     let converted = refinement(1.0);
-    memo.record(&twin, a_dimensions, vcx, converted.clone());
+    memo.record(&twin, a_dimensions.clone(), vcx, converted.clone());
     assert_eq!(capacity(&memo), CANDIDATES);
     let Lookup::Hit(found) = memo.lookup(&a, &a_dimensions, vcx) else {
         panic!("a repeated style is reused");
@@ -205,7 +205,7 @@ fn the_memory_works_only_inside_a_build_of_its_document_and_is_emptied_by_it() {
         let _outer = memo.build();
         memo.active()
             .unwrap()
-            .record(&input, dimensions, vcx, refinement(10.0));
+            .record(&input, dimensions.clone(), vcx, refinement(10.0));
         assert!(memo.find(&input, &dimensions, vcx).is_some());
         {
             // A nested build starts and ends empty.

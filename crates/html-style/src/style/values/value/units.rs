@@ -1,15 +1,4 @@
-//! Единицы окна `vmin`/`vmax`/`vi`/`vb` с приставками `s`/`l`/`d` (css-values-4 §6.1.2) и единицы
-//! контейнера `cq*` (css-conditional-5 §container-lengths): разбор и свёртка в точки.
-//!
-//! Своего варианта `Len` у них нет: `Len` разбирается полусотней `match` по
-//! крейту, поэтому единица доживает слагаемым `Sum::ext` в арене `calc` и
-//! сворачивается до наследования (`Computed::resolve_container_units`); единицы
-//! окна сохраняют стадию `Computed::resolve_viewport`.
-//!
-//! Малое, большое и динамическое окна у нас совпадают: интерфейса браузера,
-//! который прячется при прокрутке, нет, а спецификация в этом случае
-//! разрешает равенство («the large and small viewport sizes are
-//! equivalent»). Поэтому `svh`/`lvh`/`dvh` — тот же `vh`.
+//! Viewport/container units remain Sum::ext terms in owned calc expressions until their context is available.
 
 use super::{Len, Sum};
 use crate::values::ValueCx;
@@ -196,7 +185,7 @@ impl Sum {
 
 impl Len {
     /// Требуется ли размер query container на стадии вычисленных значений.
-    pub fn needs_container_context(self, vcx: ValueCx<'_>) -> bool {
+    pub fn needs_container_context(&self, vcx: ValueCx<'_>) -> bool {
         matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext[Ext::Cqw as usize..]
             .iter().any(|v| *v != 0.0))
     }
@@ -205,7 +194,7 @@ impl Len {
     /// контекста computed-стадии. Потребители на отрисовке (позиция и
     /// радиусы градиента) базы не знают — для них такая длина как прежде
     /// не разобрана, а не молча равна нулю.
-    pub fn needs_unit_context(self, vcx: ValueCx<'_>) -> bool {
+    pub fn needs_unit_context(&self, vcx: ValueCx<'_>) -> bool {
         matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext.iter().any(|v| *v != 0.0))
     }
 }

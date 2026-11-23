@@ -14,7 +14,7 @@ fn kid(tag: &str, height: Len) -> Node {
 
 fn height(n: &Node) -> Option<Len> {
     match n {
-        Node::Element(el) => el.style.used().reset_box_layout.height,
+        Node::Element(el) => el.style.used().reset_box_layout.height.clone(),
         _ => None,
     }
 }

@@ -37,7 +37,14 @@ fn zero(l: Option<Len>) -> bool {
 /// Whether `e` sets padding on any side.
 fn padded(e: &Element) -> bool {
     let p = &e.style.used().reset_box_layout.padding;
-    ![p.top, p.right, p.bottom, p.left].into_iter().all(zero)
+    ![
+        p.top.clone(),
+        p.right.clone(),
+        p.bottom.clone(),
+        p.left.clone(),
+    ]
+    .into_iter()
+    .all(zero)
 }
 
 /// Whether `e` sets a border width on any side: its band is there with or

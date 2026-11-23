@@ -105,9 +105,9 @@ pub(super) fn collapse_flow_kids(
         }
         // В обратном потоке ведущая сторона — правая.
         let lead = if reverse {
-            child.style.used().reset_box_layout.margin.right
+            child.style.used().reset_box_layout.margin.right.clone()
         } else {
-            child.style.used().reset_box_layout.margin.left
+            child.style.used().reset_box_layout.margin.left.clone()
         };
         // Доли кегля разрешаются здесь же: голый разбор точек считал `1em`
         // нулём и ЗАПИСЫВАЛ ноль — поле абзаца вдоль вертикального потока
@@ -124,9 +124,9 @@ pub(super) fn collapse_flow_kids(
         // `-vlr-023` — пустой `widthless-static` перед абсолютом) не должен
         // получить новый `trailing`. Отрицательные поля — прежним путём.
         let tail = if reverse {
-            child.style.used().reset_box_layout.margin.left
+            child.style.used().reset_box_layout.margin.left.clone()
         } else {
-            child.style.used().reset_box_layout.margin.right
+            child.style.used().reset_box_layout.margin.right.clone()
         };
         let tail_px = margin_px_in(tail, &child.style.used(), vcx).unwrap_or(0.0);
         let prev = trailing.unwrap_or(0.0);

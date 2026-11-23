@@ -42,12 +42,13 @@ impl Geometry {
             });
         };
         let center = (
-            len_px(position.x, size.0, vcx)?,
-            len_px(position.y, size.1, vcx)?,
+            len_px(position.x.clone(), size.0, vcx)?,
+            len_px(position.y.clone(), size.1, vcx)?,
         );
         let radii = if let RadialSize::Explicit(first, second) = radial_size {
-            let x = len_px(Some(*first), size.0, vcx)?.max(0.0);
+            let x = len_px(Some(first.clone()), size.0, vcx)?.max(0.0);
             let y = second
+                .clone()
                 .map_or(Some(x), |v| len_px(Some(v), size.1, vcx))?
                 .max(0.0);
             (x, y)

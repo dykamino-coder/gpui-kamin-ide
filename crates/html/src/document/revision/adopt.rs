@@ -72,7 +72,7 @@ impl Document {
                 Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
                     let handles = batch.elements.iter().map(|change| &change.element);
-                    element_ids(&values.traversal.elements(), handles)
+                    element_ids(&values.traversal.bindings(), handles)
                 }
             };
             for (change, id) in batch.elements.iter().zip(ids) {
@@ -98,13 +98,10 @@ impl Document {
             }
         }
         let handles = batch.texts.iter().map(|change| &change.node);
-        let text_ids = source_ids(&values.traversal.texts(), handles);
-        let read = values.traversal.read_texts();
+        let text_ids = text_ids(&values.traversal.bindings(), handles);
+        let read = values.traversal.bindings();
         let mut texts: TextEdits<'_> = HashMap::new();
         for (change, id) in batch.texts.iter().zip(text_ids) {
-            let id = id
-                .and_then(|id| u32::try_from(id).ok())
-                .and_then(crate::dom::TextId::new);
             match id {
                 Some(id) if open(&change.node, &root) && editable(change, &read) => {
                     texts.insert(id, change);
@@ -152,45 +149,30 @@ impl Document {
     }
 }
 
-/// Номера коробок (позиция в списке адресов сборки плюс один) исходных узлов
-/// `handles`, в их порядке. Один проход по списку без карты всех узлов:
-/// карта — только из адресов пакета. `None` — узел не построен или его адрес у
-/// двух номеров (такой узел правкой не адресуется).
-pub(super) fn source_ids<'a>(
-    list: &[usize],
+/// Resolve only the edited texts against the current binding map.
+fn text_ids<'a>(
+    bindings: &crate::values::bindings::BindingStore,
     handles: impl Iterator<Item = &'a Handle>,
-) -> Vec<Option<u64>> {
-    find_sources(list, handles, |_, ordinal| ordinal)
+) -> Vec<Option<crate::dom::TextId>> {
+    handles
+        .map(|handle| {
+            let id = crate::dom::TextId::new(handle.key().packed())?;
+            (bindings.text(id) == Some(Rc::as_ptr(handle) as usize)).then_some(id)
+        })
+        .collect()
 }
 
-/// Ключи исходных элементов, без зависимости от позиции адреса в списке.
+/// Source-element keys independent of address-list positions.
 pub(super) fn element_ids<'a>(
-    list: &[usize],
+    bindings: &crate::values::bindings::BindingStore,
     handles: impl Iterator<Item = &'a Handle>,
 ) -> Vec<Option<u64>> {
-    find_sources(list, handles, |handle, _| handle.key().packed())
-}
-
-fn find_sources<'a>(
-    list: &[usize],
-    handles: impl Iterator<Item = &'a Handle>,
-    id: impl Fn(&Handle, u64) -> u64,
-) -> Vec<Option<u64>> {
-    let wanted: Vec<_> = handles.collect();
-    let mut found: HashMap<usize, Option<u64>> = wanted
-        .iter()
-        .map(|handle| (Rc::as_ptr(handle) as usize, None))
-        .collect();
-    let mut seen = std::collections::HashSet::with_capacity(wanted.len());
-    for (slot, address) in list.iter().enumerate() {
-        if let Some(id) = found.get_mut(address) {
-            // Второе появление адреса делает узел неадресуемым.
-            *id = seen.insert(*address).then_some(slot as u64 + 1);
-        }
-    }
-    wanted
-        .iter()
-        .map(|handle| found[&(Rc::as_ptr(handle) as usize)].map(|ordinal| id(handle, ordinal)))
+    handles
+        .map(|h| {
+            bindings
+                .element(h.key(), Rc::as_ptr(h) as usize)
+                .then_some(h.key().packed())
+        })
         .collect()
 }
 

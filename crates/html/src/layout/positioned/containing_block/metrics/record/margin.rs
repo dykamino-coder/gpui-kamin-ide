@@ -8,12 +8,12 @@ pub(super) fn margin_offset(style: &Computed, rtl: bool, vcx: ValueCx<'_>) -> Po
     use crate::layout::block::struts::margin_px;
     // CSS2 §10.3.7: static right задаёт правый margin edge.
     let x = if rtl {
-        style.reset_box_layout.margin.right
+        style.reset_box_layout.margin.right.clone()
     } else {
-        style.reset_box_layout.margin.left
+        style.reset_box_layout.margin.left.clone()
     };
     point(
         px(margin_px(x, style, vcx).unwrap_or(0.) * if rtl { -1. } else { 1. }),
-        px(margin_px(style.reset_box_layout.margin.top, style, vcx).unwrap_or(0.)),
+        px(margin_px(style.reset_box_layout.margin.top.clone(), style, vcx).unwrap_or(0.)),
     )
 }

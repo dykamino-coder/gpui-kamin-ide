@@ -48,7 +48,7 @@ pub(crate) fn measure_children(
                         c.style.used().reset_box_layout.height,
                         None | Some(Len::Auto)
                     )
-                    && zero_len(c.style.used().reset_box_layout.margin.top)
+                    && zero_len(c.style.used().reset_box_layout.margin.top.clone())
                     && outer_frag.is_some()
                     && line_col_w.is_some()
                     && nested_rows_box(c) =>

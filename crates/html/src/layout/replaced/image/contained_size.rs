@@ -20,12 +20,12 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
     }
     let side = px_lossy_zero;
     let b = style.borders();
-    let pad_x = side(style.reset_box_layout.padding.left)
-        + side(style.reset_box_layout.padding.right)
+    let pad_x = side(style.reset_box_layout.padding.left.clone())
+        + side(style.reset_box_layout.padding.right.clone())
         + side(b.left)
         + side(b.right);
-    let pad_y = side(style.reset_box_layout.padding.top)
-        + side(style.reset_box_layout.padding.bottom)
+    let pad_y = side(style.reset_box_layout.padding.top.clone())
+        + side(style.reset_box_layout.padding.bottom.clone())
         + side(b.top)
         + side(b.bottom);
     let used = |explicit: Option<Len>, ci: Option<f32>| match explicit {
@@ -51,8 +51,8 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
         .filter(|r| r.is_finite() && *r > 0.0)
         .or_else(|| {
             match (
-                style.reset_box_layout.attr_width,
-                style.reset_box_layout.attr_height,
+                style.reset_box_layout.attr_width.clone(),
+                style.reset_box_layout.attr_height.clone(),
             ) {
                 (Some(Len::Px(aw)), Some(Len::Px(ah))) if aw > 0.0 && ah > 0.0 => Some(aw / ah),
                 _ => None,
@@ -60,30 +60,30 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
         });
     let named = |l: Option<Len>| matches!(l, Some(Len::Px(_)));
     let (nw, nh) = (
-        named(style.reset_box_layout.width),
-        named(style.reset_box_layout.height),
+        named(style.reset_box_layout.width.clone()),
+        named(style.reset_box_layout.height.clone()),
     );
     let cw = match ratio {
         Some(r) if !nw && nh => {
             used(
-                style.reset_box_layout.height,
+                style.reset_box_layout.height.clone(),
                 style.reset_context.contain_intrinsic.1,
             ) * r
         }
         _ => used(
-            style.reset_box_layout.width,
+            style.reset_box_layout.width.clone(),
             style.reset_context.contain_intrinsic.0,
         ),
     };
     let ch = match ratio {
         Some(r) if nw && !nh => {
             used(
-                style.reset_box_layout.width,
+                style.reset_box_layout.width.clone(),
                 style.reset_context.contain_intrinsic.0,
             ) / r
         }
         _ => used(
-            style.reset_box_layout.height,
+            style.reset_box_layout.height.clone(),
             style.reset_context.contain_intrinsic.1,
         ),
     };
@@ -104,22 +104,24 @@ pub(crate) fn contained_size(style: &Computed) -> Option<ContainedSize> {
     };
     let cw = clamp(
         cw,
-        style.reset_box_layout.min_width,
-        style.reset_box_layout.max_width,
+        style.reset_box_layout.min_width.clone(),
+        style.reset_box_layout.max_width.clone(),
         pad_x,
     );
     let ch = clamp(
         ch,
-        style.reset_box_layout.min_height,
-        style.reset_box_layout.max_height,
+        style.reset_box_layout.min_height.clone(),
+        style.reset_box_layout.max_height.clone(),
         pad_y,
     );
     let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     Some(ContainedSize {
         content: (cw, ch),
         holder: (
-            (style.contains_width() && auto(style.reset_box_layout.width)).then_some(cw + pad_x),
-            (style.contains_height() && auto(style.reset_box_layout.height)).then_some(ch + pad_y),
+            (style.contains_width() && auto(style.reset_box_layout.width.clone()))
+                .then_some(cw + pad_x),
+            (style.contains_height() && auto(style.reset_box_layout.height.clone()))
+                .then_some(ch + pad_y),
         ),
     })
 }

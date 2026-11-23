@@ -19,7 +19,7 @@ impl FontParameters {
             opts.cx.vcx(),
             opts.cx.layout().run_faces.active(),
         );
-        let size = px_strict(style.inh.font.font_size).unwrap_or(opts.base_size());
+        let size = px_strict(style.inh.font.font_size.clone()).unwrap_or(opts.base_size());
         let (x, rule) = math_metrics(&font, size, opts.cx.text_fonts());
         let constants = math::for_family(&font.family, opts.cx.text_fonts());
         let c = |index: usize, fallback| {

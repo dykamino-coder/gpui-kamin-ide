@@ -11,7 +11,12 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Детям уходит ВЫЧИСЛЕННЫЙ кегль, а не подогнанный `font-size-adjust`:
     // «child elements inherit the computed font-size value (otherwise, the
     // effect of font-size-adjust would compound)» (css-fonts-4 §2.5).
-    c.inh.font.font_size = c.inh.font.font_size.or(parent.inh.font.font_size);
+    c.inh.font.font_size = c
+        .inh
+        .font
+        .font_size
+        .clone()
+        .or(parent.inh.font.font_size.clone());
     // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
     // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
     // микроскопическому: визуально то же «ничего», формулы живы.
@@ -32,7 +37,12 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // То же для высоты строки: `line-height: 2lh` уже переведён в точки от
     // строки родителя; сырое `Lh` уходило в `paint/apply/` как `relative(2)` от
     // СВОЕГО кегля (`lh-unit-001`: 84 вместо 100).
-    c.inh.font.line_height = c.inh.font.line_height.or(parent.inh.font.line_height);
+    c.inh.font.line_height = c
+        .inh
+        .font
+        .line_height
+        .clone()
+        .or(parent.inh.font.line_height.clone());
     c.inh.text_flow.text_align = own
         .inh
         .text_flow
@@ -100,16 +110,16 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Наследуемые текстовые свойства из второй волны разбора. Без них
     // `text-transform` на контейнере не доходил до вложенного текста —
     // а в разметке его ставят именно на контейнер.
-    c.inh.text_flow.letter_spacing = own
+    c.inh.text_flow.letter_spacing = own.inh.text_flow.letter_spacing.clone().or(parent
         .inh
         .text_flow
         .letter_spacing
-        .or(parent.inh.text_flow.letter_spacing);
-    c.inh.text_flow.word_spacing = own
+        .clone());
+    c.inh.text_flow.word_spacing = own.inh.text_flow.word_spacing.clone().or(parent
         .inh
         .text_flow
         .word_spacing
-        .or(parent.inh.text_flow.word_spacing);
+        .clone());
     // Сторона подписи таблицы наследуется (CSS 2.1: caption-side inherited) —
     // читается потом С САМОГО заголовка (caption-side-applies-to-012..015:
     // значение на ряде до заголовка не доходит).
@@ -129,11 +139,11 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     } else {
         parent.inh.text_flow.text_transform_flags
     };
-    c.inh.text_flow.text_indent = own
+    c.inh.text_flow.text_indent = own.inh.text_flow.text_indent.clone().or(parent
         .inh
         .text_flow
         .text_indent
-        .or(parent.inh.text_flow.text_indent);
+        .clone());
     // `text-box-edge` наследуется (css-inline-3 §text-box-edge, Inherited:
     // yes); срез берёт край у корневой строчной коробки СТРОКИ, то есть у
     // блока, которому она принадлежит (`text-box-trim-accumulation-001…003`).

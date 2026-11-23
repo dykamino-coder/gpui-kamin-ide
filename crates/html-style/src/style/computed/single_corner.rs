@@ -20,10 +20,10 @@ pub fn uniform(s: crate::style::computed::Sides) -> Option<f32> {
 pub fn corner(c: &Computed, size: (f32, f32)) -> Option<(usize, f32)> {
     let mut found = None;
     for (i, l) in [
-        c.reset_border.radius.tl,
-        c.reset_border.radius.tr,
-        c.reset_border.radius.br,
-        c.reset_border.radius.bl,
+        c.reset_border.radius.tl.clone(),
+        c.reset_border.radius.tr.clone(),
+        c.reset_border.radius.br.clone(),
+        c.reset_border.radius.bl.clone(),
     ]
     .into_iter()
     .enumerate()
@@ -103,7 +103,7 @@ fn geometry_eligible(c: &Computed, special: bool, shadows: bool, uniform_color: 
     let Some(b) = uniform(c.borders()) else {
         return false;
     };
-    let Some(p) = uniform(c.reset_box_layout.padding) else {
+    let Some(p) = uniform(c.reset_box_layout.padding.clone()) else {
         return false;
     };
     if b > 0.0
@@ -117,9 +117,10 @@ fn geometry_eligible(c: &Computed, special: bool, shadows: bool, uniform_color: 
     if !uniform_color {
         return false;
     }
-    let (Some(Len::Px(w)), Some(Len::Px(h))) =
-        (c.reset_box_layout.width, c.reset_box_layout.height)
-    else {
+    let (Some(Len::Px(w)), Some(Len::Px(h))) = (
+        c.reset_box_layout.width.clone(),
+        c.reset_box_layout.height.clone(),
+    ) else {
         return false;
     };
     let add = if c.reset_border.border_box == Some(true) {

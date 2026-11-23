@@ -17,18 +17,19 @@ pub(super) fn piped_image(
     let values = vcx.keep();
     if let (true, Some(Len::Px(w)), Some(Len::Px(h))) = (
         wants_pipe,
-        e.style.used().reset_box_layout.width,
-        e.style.used().reset_box_layout.height,
+        e.style.used().reset_box_layout.width.clone(),
+        e.style.used().reset_box_layout.height.clone(),
     ) {
-        let pos =
-            e.style
-                .used()
-                .reset_shapes
-                .object_position
-                .unwrap_or(crate::style::computed::BgPos {
-                    x: Some(Len::Pct(0.5)),
-                    y: Some(Len::Pct(0.5)),
-                });
+        let pos = e
+            .style
+            .used()
+            .reset_shapes
+            .object_position
+            .clone()
+            .unwrap_or(crate::style::computed::BgPos {
+                x: Some(Len::Pct(0.5)),
+                y: Some(Len::Pct(0.5)),
+            });
         use crate::style::computed::BgSize;
         let bgc = {
             let mut with_inherited = crate::style::computed::Computed {

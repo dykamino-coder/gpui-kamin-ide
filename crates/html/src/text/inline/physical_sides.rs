@@ -4,7 +4,7 @@
 //! целого `Computed`.
 use crate::style::computed::{Computed, Sides};
 
-pub(super) fn project<T: Copy>(flow: &Computed, sides: [T; 4]) -> [T; 4] {
+pub(super) fn project<T>(flow: &Computed, sides: [T; 4]) -> [T; 4] {
     super::physical_projection::project(
         flow.wm().turned(),
         flow.wm().line().line_turn()
@@ -25,8 +25,8 @@ pub(crate) fn side_values(flow: &Computed, sides: Sides) -> Sides {
 }
 
 pub(super) fn project_box(flow: &Computed, style: &mut Computed) {
-    style.reset_box_layout.padding = side_values(flow, style.reset_box_layout.padding);
-    style.reset_border.border_width = side_values(flow, style.reset_border.border_width);
+    style.reset_box_layout.padding = side_values(flow, style.reset_box_layout.padding.clone());
+    style.reset_border.border_width = side_values(flow, style.reset_border.border_width.clone());
     let colors = style.reset_border.border_colors.clone();
     style.reset_border.border_colors = project(flow, [0, 1, 2, 3]).map(|i| colors[i].clone());
     style.reset_border.border_visible = project(flow, style.reset_border.border_visible);
@@ -35,10 +35,10 @@ pub(super) fn project_box(flow: &Computed, style: &mut Computed) {
     let [tl, tr, br, bl] = project(
         flow,
         [
-            style.reset_border.radius.tl,
-            style.reset_border.radius.tr,
-            style.reset_border.radius.br,
-            style.reset_border.radius.bl,
+            style.reset_border.radius.tl.clone(),
+            style.reset_border.radius.tr.clone(),
+            style.reset_border.radius.br.clone(),
+            style.reset_border.radius.bl.clone(),
         ],
     );
     style.reset_border.radius.tl = tl;
@@ -79,7 +79,7 @@ mod tests {
             bottom: Some(Len::Px(5.0)),
             left: Some(Len::Px(7.0)),
         };
-        style.reset_box_layout.padding = style.reset_border.border_width;
+        style.reset_box_layout.padding = style.reset_border.border_width.clone();
         style.reset_border.radius.tl = Some(Len::Px(11.0));
         style.reset_border.radius.tr = Some(Len::Px(13.0));
         style.reset_border.radius.br = Some(Len::Px(17.0));

@@ -74,7 +74,7 @@ fn resolve_with(
                     let v = if width { b.size.width } else { b.size.height };
                     f32::from(v) + cur.add
                 });
-            match (hit, cur.fallback) {
+            match (hit, cur.fallback.clone()) {
                 (Some(v), _) => return Some(Len::Px(v)),
                 (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),
                 (None, fb) => return fb,
@@ -100,27 +100,27 @@ fn resolve_with(
             other => other,
         };
         let inline = if cb_vertical { ch } else { cw };
-        c.reset_box_layout.width = of(c.reset_box_layout.width, cw);
-        c.reset_box_layout.min_width = of(c.reset_box_layout.min_width, cw);
-        c.reset_box_layout.max_width = of(c.reset_box_layout.max_width, cw);
-        c.reset_box_layout.height = of(c.reset_box_layout.height, ch);
-        c.reset_box_layout.min_height = of(c.reset_box_layout.min_height, ch);
-        c.reset_box_layout.max_height = of(c.reset_box_layout.max_height, ch);
-        c.reset_box_layout.margin.top = of(c.reset_box_layout.margin.top, inline);
-        c.reset_box_layout.margin.right = of(c.reset_box_layout.margin.right, inline);
-        c.reset_box_layout.margin.bottom = of(c.reset_box_layout.margin.bottom, inline);
-        c.reset_box_layout.margin.left = of(c.reset_box_layout.margin.left, inline);
-        c.reset_box_layout.padding.top = of(c.reset_box_layout.padding.top, inline);
-        c.reset_box_layout.padding.right = of(c.reset_box_layout.padding.right, inline);
-        c.reset_box_layout.padding.bottom = of(c.reset_box_layout.padding.bottom, inline);
-        c.reset_box_layout.padding.left = of(c.reset_box_layout.padding.left, inline);
+        c.reset_box_layout.width = of(c.reset_box_layout.width.clone(), cw);
+        c.reset_box_layout.min_width = of(c.reset_box_layout.min_width.clone(), cw);
+        c.reset_box_layout.max_width = of(c.reset_box_layout.max_width.clone(), cw);
+        c.reset_box_layout.height = of(c.reset_box_layout.height.clone(), ch);
+        c.reset_box_layout.min_height = of(c.reset_box_layout.min_height.clone(), ch);
+        c.reset_box_layout.max_height = of(c.reset_box_layout.max_height.clone(), ch);
+        c.reset_box_layout.margin.top = of(c.reset_box_layout.margin.top.clone(), inline);
+        c.reset_box_layout.margin.right = of(c.reset_box_layout.margin.right.clone(), inline);
+        c.reset_box_layout.margin.bottom = of(c.reset_box_layout.margin.bottom.clone(), inline);
+        c.reset_box_layout.margin.left = of(c.reset_box_layout.margin.left.clone(), inline);
+        c.reset_box_layout.padding.top = of(c.reset_box_layout.padding.top.clone(), inline);
+        c.reset_box_layout.padding.right = of(c.reset_box_layout.padding.right.clone(), inline);
+        c.reset_box_layout.padding.bottom = of(c.reset_box_layout.padding.bottom.clone(), inline);
+        c.reset_box_layout.padding.left = of(c.reset_box_layout.padding.left.clone(), inline);
     }
-    c.reset_box_layout.width = one(c.reset_box_layout.width, false);
-    c.reset_box_layout.min_width = one(c.reset_box_layout.min_width, false);
-    c.reset_box_layout.max_width = one(c.reset_box_layout.max_width, false);
-    c.reset_box_layout.height = one(c.reset_box_layout.height, true);
-    c.reset_box_layout.min_height = one(c.reset_box_layout.min_height, true);
-    c.reset_box_layout.max_height = one(c.reset_box_layout.max_height, true);
+    c.reset_box_layout.width = one(c.reset_box_layout.width.clone(), false);
+    c.reset_box_layout.min_width = one(c.reset_box_layout.min_width.clone(), false);
+    c.reset_box_layout.max_width = one(c.reset_box_layout.max_width.clone(), false);
+    c.reset_box_layout.height = one(c.reset_box_layout.height.clone(), true);
+    c.reset_box_layout.min_height = one(c.reset_box_layout.min_height.clone(), true);
+    c.reset_box_layout.max_height = one(c.reset_box_layout.max_height.clone(), true);
     // §position-area: без default anchor box область не действует;
     // явные anchor()-вставки продолжают задавать обычный IMCB.
     let area_active = c.reset_positioned.position_area.is_some()
@@ -143,21 +143,21 @@ fn resolve_with(
     };
     let b = c.borders();
     if x_stretch {
-        let extra = pxv(c.reset_box_layout.margin.left)
-            + pxv(c.reset_box_layout.margin.right)
+        let extra = pxv(c.reset_box_layout.margin.left.clone())
+            + pxv(c.reset_box_layout.margin.right.clone())
             + pxv(b.left)
             + pxv(b.right)
-            + pxv(c.reset_box_layout.padding.left)
-            + pxv(c.reset_box_layout.padding.right);
+            + pxv(c.reset_box_layout.padding.left.clone())
+            + pxv(c.reset_box_layout.padding.right.clone());
         c.reset_box_layout.width = Some(Len::Px((w - extra).max(0.0)));
     }
     if y_stretch {
-        let extra = pxv(c.reset_box_layout.margin.top)
-            + pxv(c.reset_box_layout.margin.bottom)
+        let extra = pxv(c.reset_box_layout.margin.top.clone())
+            + pxv(c.reset_box_layout.margin.bottom.clone())
             + pxv(b.top)
             + pxv(b.bottom)
-            + pxv(c.reset_box_layout.padding.top)
-            + pxv(c.reset_box_layout.padding.bottom);
+            + pxv(c.reset_box_layout.padding.top.clone())
+            + pxv(c.reset_box_layout.padding.bottom.clone());
         c.reset_box_layout.height = Some(Len::Px((h - extra).max(0.0)));
     }
 }

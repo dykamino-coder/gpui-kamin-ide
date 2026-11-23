@@ -57,18 +57,18 @@ pub(crate) fn normalize(element: &Element, containing_width: Option<f32>) -> Opt
                 element.style.used().reset_box_layout.max_width,
                 Some(Len::Pct(_))
             );
-    if !keyword(element.style.used().reset_box_layout.width)
-        && !keyword(element.style.used().reset_box_layout.height)
+    if !keyword(element.style.used().reset_box_layout.width.clone())
+        && !keyword(element.style.used().reset_box_layout.height.clone())
         && !indefinite_height
         && !percentage_limit
     {
         return None;
     }
     let mut normalized = element.clone();
-    if keyword(normalized.style.used().reset_box_layout.width) {
+    if keyword(normalized.style.used().reset_box_layout.width.clone()) {
         normalized.style.used_mut().reset_box_layout.width = None;
     }
-    if keyword(normalized.style.used().reset_box_layout.height) || indefinite_height {
+    if keyword(normalized.style.used().reset_box_layout.height.clone()) || indefinite_height {
         normalized.style.used_mut().reset_box_layout.height = None;
     }
     // The outer box and its content must constrain the same intrinsic ratio.

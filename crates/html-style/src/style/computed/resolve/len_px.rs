@@ -99,7 +99,7 @@ impl Len {
     /// Длина в точках без окна: `LenCx` с базой `basis` и шрифтом `font`.
     /// Единицы окна, `calc` с иной природой, `auto`, размеры по содержимому и
     /// `anchor()` — `None`.
-    pub fn to_px(self, basis: Option<f32>, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
+    pub fn to_px(&self, basis: Option<f32>, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
         super::len_cx::LenCx {
             basis,
             font: Some(font),
@@ -108,7 +108,7 @@ impl Len {
         .px(self, vcx)
     }
 
-    pub fn needs_line_height(self, vcx: ValueCx<'_>) -> bool {
+    pub fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
         match self {
             Len::Lh(_) | Len::LhPx(..) => true,
             Len::Calc(id) => calc_get(id, vcx).lh != 0.0,
@@ -118,9 +118,9 @@ impl Len {
 
     /// Fold a computed line-height basis without resolving percentages.
     pub fn resolve_line_height(&mut self, line: f32, vcx: ValueCx<'_>) {
-        match *self {
+        match self {
             Len::Lh(_) | Len::LhPx(..) => {
-                *self = self.font_units_to_px(
+                *self = self.clone().font_units_to_px(
                     FontCx {
                         line_px: Some(line),
                         ..FontCx::FALLBACK
@@ -129,7 +129,7 @@ impl Len {
                 );
             }
             Len::Calc(id) => {
-                let mut sum = calc_get(id, vcx);
+                let mut sum = calc_get(&*id, vcx);
                 if sum.lh != 0.0 {
                     sum.px += sum.lh * line;
                     sum.lh = 0.0;

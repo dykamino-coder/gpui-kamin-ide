@@ -142,8 +142,8 @@ pub(crate) fn vertical_paragraph(
             inherited.reset_box_layout.height,
             Some(Len::Px(_)) | Some(Len::Pct(_))
         )
-        && !(edge(inherited.reset_positioned.inset.top)
-            && edge(inherited.reset_positioned.inset.bottom));
+        && !(edge(inherited.reset_positioned.inset.top.clone())
+            && edge(inherited.reset_positioned.inset.bottom.clone()));
     // Ячейка вертикальной таблицы: предел строки — мера её КОЛОНКИ, а не
     // инлайн-размер всего стола. Колонку решает решётка (дорожка
     // `MinMax(MinContent, Auto)` = «наибольший min-content ячеек

@@ -94,8 +94,8 @@ pub(crate) fn clone_wrapper_item(w: &Element) -> Option<Element> {
     }
     let mut item = item.clone();
     item.style.used_mut().reset_box_layout.display = Some(Display::Block);
-    item.style.used_mut().reset_box_layout.margin.top = s.reset_box_layout.margin.top;
-    item.style.used_mut().reset_box_layout.margin.bottom = s.reset_box_layout.margin.bottom;
+    item.style.used_mut().reset_box_layout.margin.top = s.reset_box_layout.margin.top.clone();
+    item.style.used_mut().reset_box_layout.margin.bottom = s.reset_box_layout.margin.bottom.clone();
     Some(item)
 }
 

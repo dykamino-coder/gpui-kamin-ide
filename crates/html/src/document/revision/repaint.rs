@@ -28,11 +28,11 @@ use super::commit::{Edited, Plan};
 pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
-use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use crate::paint_path::{self as why, refuse};
 use crate::style::computed::Computed;
+use crate::values::bindings::BindingStore;
 use paths::{painted_borders, style_paths};
 use std::collections::HashMap;
 
@@ -80,10 +80,8 @@ impl Document {
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let index = kept.ids(&values.traversal.elements());
-        let restyles = why::why(index, &why::REFUSED_RESTYLE_PROBE).and_then(|index| {
-            self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache)
-        });
+        let index = values.traversal.bindings();
+        let restyles = self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache);
         values.traversal.retain(input);
         let boxes = why::why(kept.boxes(&self.nodes), &why::REFUSED_PLAN_PATHS)?;
         let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
@@ -154,7 +152,7 @@ impl Document {
         &self,
         batch: &mut Batch,
         changed: &crate::dom::invalidation::Changed,
-        (input, index): (&crate::dom::input::Admitted, &SourceIndex),
+        (input, index): (&crate::dom::input::Admitted, &BindingStore),
         theme_css: &str,
         cache: &mut crate::dom::restyle_probe::RestyleCache,
     ) -> Option<HashMap<u64, Restyle>> {

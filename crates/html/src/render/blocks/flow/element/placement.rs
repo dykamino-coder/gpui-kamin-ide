@@ -61,7 +61,7 @@ pub(crate) fn place_element(
                     0.0
                 } else {
                     margin_px(
-                        e.style.used().reset_box_layout.margin.left,
+                        e.style.used().reset_box_layout.margin.left.clone(),
                         &e.style.used(),
                         opts.cx.vcx(),
                     )
@@ -71,7 +71,7 @@ pub(crate) fn place_element(
                     0.0
                 } else {
                     margin_px(
-                        e.style.used().reset_box_layout.margin.top,
+                        e.style.used().reset_box_layout.margin.top.clone(),
                         &e.style.used(),
                         opts.cx.vcx(),
                     )

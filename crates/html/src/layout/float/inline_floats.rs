@@ -28,12 +28,21 @@ pub(crate) fn transparent_with_clear(e: &Element, clearance_possible: bool) -> b
     let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [
-        s.reset_box_layout.margin,
-        s.reset_box_layout.padding,
+        s.reset_box_layout.margin.clone(),
+        s.reset_box_layout.padding.clone(),
         s.borders(),
     ]
     .iter()
-    .all(|s| [s.top, s.right, s.bottom, s.left].into_iter().all(zero));
+    .all(|s| {
+        [
+            s.top.clone(),
+            s.right.clone(),
+            s.bottom.clone(),
+            s.left.clone(),
+        ]
+        .into_iter()
+        .all(zero)
+    });
     ((e.inline && s.reset_box_layout.display.is_none()) || s.reset_context.inline_display == Some(true))
         // css-ruby-1 §2: ruby boxes pair bases with annotations; splitting
         // them around a float would break that pairing.

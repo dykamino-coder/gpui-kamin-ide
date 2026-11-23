@@ -15,15 +15,15 @@ pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
         [
             b.top,
             b.bottom,
-            style.reset_box_layout.padding.top,
-            style.reset_box_layout.padding.bottom,
+            style.reset_box_layout.padding.top.clone(),
+            style.reset_box_layout.padding.bottom.clone(),
         ]
     } else {
         [
             b.left,
             b.right,
-            style.reset_box_layout.padding.left,
-            style.reset_box_layout.padding.right,
+            style.reset_box_layout.padding.left.clone(),
+            style.reset_box_layout.padding.right.clone(),
         ]
     };
     sides.into_iter().filter_map(px_strict).sum()
@@ -32,15 +32,15 @@ pub(crate) fn edges(style: &Computed, vertical: bool) -> f32 {
 pub(crate) fn axis(style: &Computed, vertical: bool) -> AxisSizes {
     let (size, min, max) = if vertical {
         (
-            style.reset_box_layout.height,
-            style.reset_box_layout.min_height,
-            style.reset_box_layout.max_height,
+            style.reset_box_layout.height.clone(),
+            style.reset_box_layout.min_height.clone(),
+            style.reset_box_layout.max_height.clone(),
         )
     } else {
         (
-            style.reset_box_layout.width,
-            style.reset_box_layout.min_width,
-            style.reset_box_layout.max_width,
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.min_width.clone(),
+            style.reset_box_layout.max_width.clone(),
         )
     };
     let adjustment = if style.reset_border.border_box == Some(true) {
@@ -148,7 +148,7 @@ pub(crate) fn resolve(
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
     // available space for the box's MARGIN box).
-    let em = px_strict(style.inh.font.font_size).unwrap_or(MEDIUM_FONT_SIZE_PX);
+    let em = px_strict(style.inh.font.font_size.clone()).unwrap_or(MEDIUM_FONT_SIZE_PX);
     let margin = |value| match value {
         Some(Len::Pct(k)) => axis(parent, false).size.unwrap_or(0.0) * k,
         Some(Len::Em(k)) => k * em,
@@ -159,7 +159,8 @@ pub(crate) fn resolve(
     let authored = style
         .reset_box_layout
         .own_margin
-        .unwrap_or(style.reset_box_layout.margin);
+        .clone()
+        .unwrap_or(style.reset_box_layout.margin.clone());
     let margins = margin(authored.top) + margin(authored.bottom);
     // A definite containing block size IS the available inline space; the
     // fallback (smallest of max size, scrollport and ICB) only stands in for an

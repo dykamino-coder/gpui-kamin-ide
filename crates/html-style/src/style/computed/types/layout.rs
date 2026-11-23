@@ -114,7 +114,7 @@ impl<T: Clone> GapList<T> {
 /// Втяжка конца линейки (css-gaps-1 §inset): длина, доля ширины
 /// пересекающего зазора или `overlap-join` — дотянуть до дальнего края
 /// поперечной линейки.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GapInset {
     Len(Len),
     OverlapJoin,

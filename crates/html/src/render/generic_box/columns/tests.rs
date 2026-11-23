@@ -28,7 +28,7 @@ fn zero_column_width_uses_one_pixel_without_changing_computed_value() {
         );
         assert_eq!(
             style.reset_fragmentation.column_width,
-            Some(expected),
+            Some(expected.clone()),
             "{css}"
         );
         let e = Element::synthetic("div", style.clone(), Default::default(), vec![]);
@@ -69,7 +69,7 @@ fn measured_inline_size_controls_count_and_percentage_gap_without_css_writes() {
         frag: Default::default(),
     };
     let dimensions = MulticolDimensions::measured(&style, 200., Some(80.));
-    let plan = column_plan_in(&e, &style, &opts, dimensions, dimensions);
+    let plan = column_plan_in(&e, &style, &opts, dimensions.clone(), dimensions);
     assert_eq!(plan.used_gap, 20.);
     assert_eq!(plan.used_count, Some(3));
     assert_eq!(plan.col_inline_size, Some(Len::Px(200.)));

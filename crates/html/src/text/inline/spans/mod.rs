@@ -88,7 +88,7 @@ pub fn line_height_spans(
         }
         if (style.inh.font.line_height != inherited.inh.font.line_height
             || style.inh.font.font_size != inherited.inh.font.font_size)
-            && let Some(lh) = style.inh.font.line_height
+            && let Some(lh) = style.inh.font.line_height.clone()
         {
             let size = text_size(style, base_size);
             let px_of = match lh {

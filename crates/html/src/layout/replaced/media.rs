@@ -85,8 +85,8 @@ pub(crate) fn resolve(
                 return None;
             }
             match (
-                s.reset_box_layout.attr_width,
-                s.reset_box_layout.attr_height,
+                s.reset_box_layout.attr_width.clone(),
+                s.reset_box_layout.attr_height.clone(),
             ) {
                 (Some(Len::Px(w)), Some(Len::Px(h))) if w > 0.0 && h > 0.0 => Some(w / h),
                 _ => None,
@@ -95,8 +95,8 @@ pub(crate) fn resolve(
         .filter(|r| r.is_finite() && *r > 0.0);
     let auto = |v| matches!(v, None | Some(Len::Auto));
     let (aw, ah) = (
-        auto(s.reset_box_layout.width),
-        auto(s.reset_box_layout.height),
+        auto(s.reset_box_layout.width.clone()),
+        auto(s.reset_box_layout.height.clone()),
     );
     let px = |v| px_strict(v);
     let clamp = |v: f32, lo: Option<Len>, hi: Option<Len>| {
@@ -119,29 +119,29 @@ pub(crate) fn resolve(
             let (w, h) = css2_replaced_limits(
                 w,
                 w / r,
-                px(s.reset_box_layout.min_width),
-                px(s.reset_box_layout.max_width),
-                px(s.reset_box_layout.min_height),
-                px(s.reset_box_layout.max_height),
+                px(s.reset_box_layout.min_width.clone()),
+                px(s.reset_box_layout.max_width.clone()),
+                px(s.reset_box_layout.min_height.clone()),
+                px(s.reset_box_layout.max_height.clone()),
             );
             s.reset_box_layout.width = Some(Len::Px(w));
             s.reset_box_layout.height = Some(Len::Px(h));
         }
         (true, false, Some(r)) => {
-            if let Some(h) = px(s.reset_box_layout.height) {
+            if let Some(h) = px(s.reset_box_layout.height.clone()) {
                 s.reset_box_layout.width = Some(Len::Px(clamp(
                     h * r,
-                    s.reset_box_layout.min_width,
-                    s.reset_box_layout.max_width,
+                    s.reset_box_layout.min_width.clone(),
+                    s.reset_box_layout.max_width.clone(),
                 )));
             }
         }
         (false, true, Some(r)) => {
-            if let Some(w) = px(s.reset_box_layout.width) {
+            if let Some(w) = px(s.reset_box_layout.width.clone()) {
                 s.reset_box_layout.height = Some(Len::Px(clamp(
                     w / r,
-                    s.reset_box_layout.min_height,
-                    s.reset_box_layout.max_height,
+                    s.reset_box_layout.min_height.clone(),
+                    s.reset_box_layout.max_height.clone(),
                 )));
             }
         }

@@ -130,15 +130,18 @@ pub(crate) fn atom_line_align(
     }
     let fixed = |l: Option<Len>| !matches!(l, Some(Len::Pct(_)) | Some(Len::Calc(_)));
     let sides = |s: &crate::style::computed::Sides| {
-        fixed(s.top) && fixed(s.right) && fixed(s.bottom) && fixed(s.left)
+        fixed(s.top.clone())
+            && fixed(s.right.clone())
+            && fixed(s.bottom.clone())
+            && fixed(s.left.clone())
     };
     if ![
-        st.reset_box_layout.width,
-        st.reset_box_layout.height,
-        st.reset_box_layout.min_width,
-        st.reset_box_layout.min_height,
-        st.reset_box_layout.max_width,
-        st.reset_box_layout.max_height,
+        st.reset_box_layout.width.clone(),
+        st.reset_box_layout.height.clone(),
+        st.reset_box_layout.min_width.clone(),
+        st.reset_box_layout.min_height.clone(),
+        st.reset_box_layout.max_width.clone(),
+        st.reset_box_layout.max_height.clone(),
     ]
     .into_iter()
     .all(fixed)
@@ -166,7 +169,7 @@ pub(crate) fn atom_line_align(
             None => {
                 if let Some(v) = st.reset_text_box.vertical_shift_px {
                     AtomAlign::Shift(-v)
-                } else if let Some(l) = st.reset_text_box.vertical_shift_len {
+                } else if let Some(l) = st.reset_text_box.vertical_shift_len.clone() {
                     let family = merged.inh.font.font_family.clone().unwrap_or_default();
                     AtomAlign::Shift(crate::text::metrics::spacing_px(
                         Some(l),
@@ -219,9 +222,9 @@ pub(crate) fn atom_inline_size_fixed(e: &Element) -> bool {
             e.tag.as_str(),
             "img" | "svg" | "canvas" | "video" | "embed" | "object" | "iframe"
         )
-        && definite(layout.width)
-        && (layout.min_width.is_none() || definite(layout.min_width))
-        && (layout.max_width.is_none() || definite(layout.max_width))
+        && definite(layout.width.clone())
+        && (layout.min_width.is_none() || definite(layout.min_width.clone()))
+        && (layout.max_width.is_none() || definite(layout.max_width.clone()))
 }
 
 #[cfg(test)]

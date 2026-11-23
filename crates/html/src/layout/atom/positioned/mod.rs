@@ -37,10 +37,10 @@ pub(super) fn absolute_atom(
     let inline_cb = offer.is_some_and(|o| o.take())
         && e.style.used().reset_positioned.position
             == Some(crate::style::computed::Position::Absolute)
-        && (edge_set(e.style.used().reset_positioned.inset.left)
-            || edge_set(e.style.used().reset_positioned.inset.right))
-        && (edge_set(e.style.used().reset_positioned.inset.top)
-            || edge_set(e.style.used().reset_positioned.inset.bottom))
+        && (edge_set(e.style.used().reset_positioned.inset.left.clone())
+            || edge_set(e.style.used().reset_positioned.inset.right.clone()))
+        && (edge_set(e.style.used().reset_positioned.inset.top.clone())
+            || edge_set(e.style.used().reset_positioned.inset.bottom.clone()))
         && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(o) = offer {
         o.note_taken();
@@ -58,10 +58,10 @@ pub(super) fn absolute_atom(
     // не бралась от нулевой пустышки, ничего не меняет (*replaced*,
     // positioning/*, normal-flow/*, *float*).
     let stretched = inline_cb
-        || (edge_set(e.style.used().reset_positioned.inset.left)
-            && edge_set(e.style.used().reset_positioned.inset.right))
-        || (edge_set(e.style.used().reset_positioned.inset.top)
-            && edge_set(e.style.used().reset_positioned.inset.bottom))
+        || (edge_set(e.style.used().reset_positioned.inset.left.clone())
+            && edge_set(e.style.used().reset_positioned.inset.right.clone()))
+        || (edge_set(e.style.used().reset_positioned.inset.top.clone())
+            && edge_set(e.style.used().reset_positioned.inset.bottom.clone()))
         || matches!(e.style.used().reset_box_layout.width, Some(Len::Pct(_)));
     // Замещаемый элемент строит своя ветка: дети `<svg>` — не блоки,
     // путь блоков давал пустую коробку (clip-path-ellipse-2-ref: рисунок
@@ -95,10 +95,10 @@ pub(super) fn absolute_atom(
     // и замещаемая выше: без этого `<span>` с одним краем падал в нулевой
     // держатель, и край считался от него (`abs-pos-non-replaced-vlr-017`:
     // `right: 2em` уводил коробку на свои же 160 влево).
-    let x_set = edge_set(e.style.used().reset_positioned.inset.left)
-        || edge_set(e.style.used().reset_positioned.inset.right);
-    let y_set = edge_set(e.style.used().reset_positioned.inset.top)
-        || edge_set(e.style.used().reset_positioned.inset.bottom);
+    let x_set = edge_set(e.style.used().reset_positioned.inset.left.clone())
+        || edge_set(e.style.used().reset_positioned.inset.right.clone());
+    let y_set = edge_set(e.style.used().reset_positioned.inset.top.clone())
+        || edge_set(e.style.used().reset_positioned.inset.bottom.clone());
     if x_set != y_set && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0 {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         // A block-level box keeps the block-level static position on its free

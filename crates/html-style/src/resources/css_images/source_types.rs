@@ -29,7 +29,7 @@ pub enum Source {
     /// Градиент: своей величины НЕТ вовсе (css-images-3 §4.4) — обе оси
     /// берутся от области, а растрируется он точно в размер плитки.
     Gradient {
-        image: Arc<crate::style::computed::ImageSource>,
+        image: std::rc::Rc<crate::style::computed::ImageSource>,
     },
 }
 

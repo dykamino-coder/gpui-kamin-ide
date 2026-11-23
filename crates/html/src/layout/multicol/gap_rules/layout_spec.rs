@@ -58,7 +58,7 @@ pub(super) fn gap_rule_layout(
         Some(Len::Em(k)) => Some(k * size),
         _ => None,
     };
-    let (row_gap, col_gap) = match s.reset_flex.gap {
+    let (row_gap, col_gap) = match s.reset_flex.gap.clone() {
         Some((r, c)) => (gap_px(r), gap_px(c)),
         None => (None, None),
     };
@@ -149,10 +149,10 @@ pub(super) fn gap_rule_layout(
         _ => 0.0,
     };
     let pad = [
-        pad_px(s.reset_box_layout.padding.top),
-        pad_px(s.reset_box_layout.padding.right),
-        pad_px(s.reset_box_layout.padding.bottom),
-        pad_px(s.reset_box_layout.padding.left),
+        pad_px(s.reset_box_layout.padding.top.clone()),
+        pad_px(s.reset_box_layout.padding.right.clone()),
+        pad_px(s.reset_box_layout.padding.bottom.clone()),
+        pad_px(s.reset_box_layout.padding.left.clone()),
     ];
     let lines_extent = match merged.reset_box_layout.display {
         _ if lanes => 2,

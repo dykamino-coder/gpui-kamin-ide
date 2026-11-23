@@ -49,7 +49,7 @@ pub(crate) fn fragment_box(
             0 => &mut used.reset_box_layout.margin.top,
             _ => &mut used.reset_box_layout.margin.bottom,
         };
-        if let Some(px) = lengths.px_strict(*margin, vcx) {
+        if let Some(px) = lengths.px_strict(margin.clone(), vcx) {
             *margin = Some(Len::Px(px));
         }
     }
@@ -79,7 +79,7 @@ pub(crate) fn vertical_fragment_box(
             0 => &mut used.reset_box_layout.margin.left,
             _ => &mut used.reset_box_layout.margin.right,
         };
-        if let Some(px) = lengths.px_strict(*margin, vcx) {
+        if let Some(px) = lengths.px_strict(margin.clone(), vcx) {
             *margin = Some(Len::Px(px));
         }
     }

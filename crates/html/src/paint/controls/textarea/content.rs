@@ -16,8 +16,8 @@ pub(super) fn content_measure(
 ) -> Option<crate::layout::replaced::ControlMeasure> {
     let intrinsic = |v| matches!(v, Some(Len::MinContent | Len::MaxContent | Len::FitContent));
     let axes = [
-        intrinsic(style.reset_box_layout.width),
-        intrinsic(style.reset_box_layout.height),
+        intrinsic(style.reset_box_layout.width.clone()),
+        intrinsic(style.reset_box_layout.height.clone()),
     ];
     if !axes[0] && !axes[1] {
         return None;

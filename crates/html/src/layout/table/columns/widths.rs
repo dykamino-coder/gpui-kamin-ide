@@ -64,13 +64,13 @@ pub(in crate::layout::table) fn push_col_bands(
 pub(crate) fn definite_col_px(el: &Element) -> Option<f32> {
     let px = px_strict;
     let w = match (
-        px(el.style.used().reset_box_layout.width),
-        px(el.style.used().reset_box_layout.max_width),
+        px(el.style.used().reset_box_layout.width.clone()),
+        px(el.style.used().reset_box_layout.max_width.clone()),
     ) {
         (Some(v), Some(mx)) => Some(v.min(mx)),
         (v, _) => v,
     };
-    match px(el.style.used().reset_box_layout.min_width) {
+    match px(el.style.used().reset_box_layout.min_width.clone()) {
         Some(mn) => Some(w.map_or(mn, |v| v.max(mn))),
         None => w,
     }
@@ -100,11 +100,14 @@ pub(crate) fn col_element_widths(
     // шаг, не этот.
     let used_w = |el: &Element, w: Option<f32>| -> Option<f32> {
         let len_px = px_strict;
-        let capped = match (w, len_px(el.style.used().reset_box_layout.max_width)) {
+        let capped = match (
+            w,
+            len_px(el.style.used().reset_box_layout.max_width.clone()),
+        ) {
             (Some(v), Some(mx)) => Some(v.min(mx)),
             (v, _) => v,
         };
-        match len_px(el.style.used().reset_box_layout.min_width) {
+        match len_px(el.style.used().reset_box_layout.min_width.clone()) {
             Some(mn) => Some(capped.map_or(mn, |v| v.max(mn))),
             None => capped,
         }
@@ -116,8 +119,8 @@ pub(crate) fn col_element_widths(
                 let w = used_w(
                     el,
                     match (
-                        el.style.cascaded().reset_box_layout.width,
-                        el.style.used().reset_box_layout.width,
+                        el.style.cascaded().reset_box_layout.width.clone(),
+                        el.style.used().reset_box_layout.width.clone(),
                     ) {
                         // `ch` на колонке считается с ЕЁ письмом: стоячий ноль
                         // продвигается на кегль (ch-units-vrl-003/004). Кегль
@@ -164,7 +167,10 @@ pub(crate) fn col_element_widths(
                     // же — иначе `min-width-applies-to-005` и
                     // `max-width-applies-to-005` (группа вместо колонки)
                     // остались бы красными при зелёных `-006`.
-                    let ww = used_w(el, px_strict(el.style.used().reset_box_layout.width));
+                    let ww = used_w(
+                        el,
+                        px_strict(el.style.used().reset_box_layout.width.clone()),
+                    );
                     let pp = match el.style.used().reset_box_layout.width {
                         Some(Len::Pct(k)) => Some(k),
                         _ => None,

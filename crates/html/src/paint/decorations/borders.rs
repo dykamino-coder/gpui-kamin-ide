@@ -41,10 +41,10 @@ pub(crate) fn box_borders(
         if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
             let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
-                .rounded_tl(px(rad(c.reset_border.radius.tl)))
-                .rounded_tr(px(rad(c.reset_border.radius.tr)))
-                .rounded_br(px(rad(c.reset_border.radius.br)))
-                .rounded_bl(px(rad(c.reset_border.radius.bl)));
+                .rounded_tl(px(rad(c.reset_border.radius.tl.clone())))
+                .rounded_tr(px(rad(c.reset_border.radius.tr.clone())))
+                .rounded_br(px(rad(c.reset_border.radius.br.clone())))
+                .rounded_bl(px(rad(c.reset_border.radius.bl.clone())));
         }
         out.push(layer.into_any_element());
     }
@@ -83,15 +83,31 @@ pub(crate) fn box_borders(
             let rad = |x: Option<Len>| crate::paint::apply::radius_px(c, x, vcx).unwrap_or(0.0);
             let shrink = |x: Option<Len>, a: f32, b: f32| (rad(x) - a.max(b)).max(0.0);
             outer = outer
-                .rounded_tl(px(rad(c.reset_border.radius.tl)))
-                .rounded_tr(px(rad(c.reset_border.radius.tr)))
-                .rounded_br(px(rad(c.reset_border.radius.br)))
-                .rounded_bl(px(rad(c.reset_border.radius.bl)));
+                .rounded_tl(px(rad(c.reset_border.radius.tl.clone())))
+                .rounded_tr(px(rad(c.reset_border.radius.tr.clone())))
+                .rounded_br(px(rad(c.reset_border.radius.br.clone())))
+                .rounded_bl(px(rad(c.reset_border.radius.bl.clone())));
             inner = inner
-                .rounded_tl(px(shrink(c.reset_border.radius.tl, t - o_t, l - o_l)))
-                .rounded_tr(px(shrink(c.reset_border.radius.tr, t - o_t, r - o_r)))
-                .rounded_br(px(shrink(c.reset_border.radius.br, b - o_b, r - o_r)))
-                .rounded_bl(px(shrink(c.reset_border.radius.bl, b - o_b, l - o_l)));
+                .rounded_tl(px(shrink(
+                    c.reset_border.radius.tl.clone(),
+                    t - o_t,
+                    l - o_l,
+                )))
+                .rounded_tr(px(shrink(
+                    c.reset_border.radius.tr.clone(),
+                    t - o_t,
+                    r - o_r,
+                )))
+                .rounded_br(px(shrink(
+                    c.reset_border.radius.br.clone(),
+                    b - o_b,
+                    r - o_r,
+                )))
+                .rounded_bl(px(shrink(
+                    c.reset_border.radius.bl.clone(),
+                    b - o_b,
+                    l - o_l,
+                )));
         }
         out.push(outer.into_any_element());
         out.push(inner.into_any_element());
@@ -209,11 +225,18 @@ fn square_corners(c: &crate::style::computed::BoxStyle) -> bool {
         Some(_) => false,
     };
     let radius = &c.reset_border.radius;
-    [radius.tl, radius.tr, radius.br, radius.bl]
-        .into_iter()
-        .all(zero)
-        && c.reset_border.radius_ell.is_none_or(|ell| {
-            ell.iter()
-                .all(|e| e.is_none_or(|(x, y)| zero(Some(x)) && zero(Some(y))))
+    [
+        radius.tl.clone(),
+        radius.tr.clone(),
+        radius.br.clone(),
+        radius.bl.clone(),
+    ]
+    .into_iter()
+    .all(zero)
+        && c.reset_border.radius_ell.clone().is_none_or(|ell| {
+            ell.iter().all(|e| {
+                e.clone()
+                    .is_none_or(|(x, y)| zero(Some(x)) && zero(Some(y)))
+            })
         })
 }

@@ -54,13 +54,13 @@ pub(crate) fn emit_margin_struts(
             continue;
         }
         let top = margin_px_in(
-            e.style.used().reset_box_layout.margin.top,
+            e.style.used().reset_box_layout.margin.top.clone(),
             &e.style.used(),
             vcx,
         )
         .unwrap_or(0.0);
         let bottom = margin_px_in(
-            e.style.used().reset_box_layout.margin.bottom,
+            e.style.used().reset_box_layout.margin.bottom.clone(),
             &e.style.used(),
             vcx,
         )

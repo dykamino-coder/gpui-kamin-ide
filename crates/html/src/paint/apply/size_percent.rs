@@ -16,7 +16,7 @@ pub(super) fn resolve_cyclic_size_percentage(
 ) -> Option<Len> {
     let (percentage, length) = match value {
         Len::Pct(p) => (p, 0.0),
-        Len::Calc(index) => match calc_get(index, vcx).pct_px() {
+        Len::Calc(ref index) => match calc_get(index, vcx).pct_px() {
             Some(terms) => terms,
             None => return Some(value),
         },

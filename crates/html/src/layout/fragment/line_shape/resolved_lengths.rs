@@ -73,39 +73,44 @@ pub(crate) fn resolved_lengths(c: &Element, parent: &BoxStyle, vcx: FrameCx<'_>)
 
 fn resolve(t: &mut Element, m: &BoxStyle) {
     fn fix(own: &mut Option<Len>, res: Option<Len>) {
-        if own.is_some_and(|l| !matches!(l, Len::Px(_) | Len::Auto | Len::Pct(_)))
+        if own
+            .clone()
+            .is_some_and(|l| !matches!(l, Len::Px(_) | Len::Auto | Len::Pct(_)))
             && matches!(res, Some(Len::Px(_)))
         {
             *own = res;
         }
     }
     fn fix_sides(own: &mut crate::style::computed::Sides, res: &crate::style::computed::Sides) {
-        fix(&mut own.top, res.top);
-        fix(&mut own.right, res.right);
-        fix(&mut own.bottom, res.bottom);
-        fix(&mut own.left, res.left);
+        fix(&mut own.top, res.top.clone());
+        fix(&mut own.right, res.right.clone());
+        fix(&mut own.bottom, res.bottom.clone());
+        fix(&mut own.left, res.left.clone());
     }
     let style = t.style.used_mut();
-    fix(&mut style.reset_box_layout.width, m.reset_box_layout.width);
+    fix(
+        &mut style.reset_box_layout.width,
+        m.reset_box_layout.width.clone(),
+    );
     fix(
         &mut style.reset_box_layout.height,
-        m.reset_box_layout.height,
+        m.reset_box_layout.height.clone(),
     );
     fix(
         &mut style.reset_box_layout.min_width,
-        m.reset_box_layout.min_width,
+        m.reset_box_layout.min_width.clone(),
     );
     fix(
         &mut style.reset_box_layout.min_height,
-        m.reset_box_layout.min_height,
+        m.reset_box_layout.min_height.clone(),
     );
     fix(
         &mut style.reset_box_layout.max_width,
-        m.reset_box_layout.max_width,
+        m.reset_box_layout.max_width.clone(),
     );
     fix(
         &mut style.reset_box_layout.max_height,
-        m.reset_box_layout.max_height,
+        m.reset_box_layout.max_height.clone(),
     );
     fix_sides(
         &mut style.reset_box_layout.margin,
@@ -125,28 +130,28 @@ fn resolve(t: &mut Element, m: &BoxStyle) {
 /// Только эти длины меняет разрешение копии; проценты остаются отложенными.
 fn relative(style: &crate::style::computed::Computed) -> bool {
     [
-        style.reset_box_layout.width,
-        style.reset_box_layout.height,
-        style.reset_box_layout.min_width,
-        style.reset_box_layout.min_height,
-        style.reset_box_layout.max_width,
-        style.reset_box_layout.max_height,
-        style.reset_box_layout.margin.top,
-        style.reset_box_layout.margin.right,
-        style.reset_box_layout.margin.bottom,
-        style.reset_box_layout.margin.left,
-        style.reset_box_layout.padding.top,
-        style.reset_box_layout.padding.right,
-        style.reset_box_layout.padding.bottom,
-        style.reset_box_layout.padding.left,
-        style.reset_border.border_width.top,
-        style.reset_border.border_width.right,
-        style.reset_border.border_width.bottom,
-        style.reset_border.border_width.left,
-        style.reset_positioned.inset.top,
-        style.reset_positioned.inset.right,
-        style.reset_positioned.inset.bottom,
-        style.reset_positioned.inset.left,
+        style.reset_box_layout.width.clone(),
+        style.reset_box_layout.height.clone(),
+        style.reset_box_layout.min_width.clone(),
+        style.reset_box_layout.min_height.clone(),
+        style.reset_box_layout.max_width.clone(),
+        style.reset_box_layout.max_height.clone(),
+        style.reset_box_layout.margin.top.clone(),
+        style.reset_box_layout.margin.right.clone(),
+        style.reset_box_layout.margin.bottom.clone(),
+        style.reset_box_layout.margin.left.clone(),
+        style.reset_box_layout.padding.top.clone(),
+        style.reset_box_layout.padding.right.clone(),
+        style.reset_box_layout.padding.bottom.clone(),
+        style.reset_box_layout.padding.left.clone(),
+        style.reset_border.border_width.top.clone(),
+        style.reset_border.border_width.right.clone(),
+        style.reset_border.border_width.bottom.clone(),
+        style.reset_border.border_width.left.clone(),
+        style.reset_positioned.inset.top.clone(),
+        style.reset_positioned.inset.right.clone(),
+        style.reset_positioned.inset.bottom.clone(),
+        style.reset_positioned.inset.left.clone(),
     ]
     .into_iter()
     .flatten()

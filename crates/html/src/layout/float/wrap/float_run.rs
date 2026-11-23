@@ -72,7 +72,7 @@ fn floats_alone(
                 let m = &mut f.style.used_mut().reset_box_layout.margin;
                 for side in [&mut m.top, &mut m.right, &mut m.bottom, &mut m.left] {
                     if let Some(l) =
-                        side.filter(|l| !matches!(l, Len::Px(_) | Len::Pct(_) | Len::Auto))
+                        side.clone().filter(|l| !matches!(l, Len::Px(_) | Len::Pct(_) | Len::Auto))
                     {
                         *side = Some(Len::Px(l.to_px(cb.margin_basis, font, vcx).unwrap_or(0.0)));
                     }

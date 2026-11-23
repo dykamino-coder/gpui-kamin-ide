@@ -16,7 +16,13 @@ pub(super) fn configure(para: Paragraph, block: &Computed, opts: &RenderOpts) ->
         _ => opts.base_size(),
     };
     let size = first.used_font(normal, opts.cx.vcx()).size_px;
-    let height = match first.inh.font.line_height.or(block.inh.font.line_height) {
+    let height = match first
+        .inh
+        .font
+        .line_height
+        .clone()
+        .or(block.inh.font.line_height.clone())
+    {
         Some(Len::Px(v)) => v,
         Some(Len::Em(k)) | Some(Len::Pct(k)) => first
             .numeric_line_value_px(Some(Len::Pct(k)), normal)

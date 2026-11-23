@@ -30,6 +30,13 @@ pub use stage::MemoStage;
 pub use traverse::{CascadeInput, ResumeBindings};
 pub use update::MemoUpdate;
 
+/// Direct observations and raw output captured at one source owner's leave.
+pub struct CapturedOutput {
+    pub raw: Children,
+    pub effects: CascadeEffects,
+    pub bindings: Rc<crate::values::bindings::BindingSegment>,
+}
+
 /// One source element can emit zero, one or several sibling boxes.
 pub struct CascadeEntry {
     pub node: NodeKey,
@@ -38,6 +45,7 @@ pub struct CascadeEntry {
     pub inputs: EntryInputs,
     pub raw: Children,
     pub effects: CascadeEffects,
+    pub bindings: Rc<crate::values::bindings::BindingSegment>,
     _lease: Option<crate::budget::LiveReservation>,
 }
 
@@ -47,10 +55,14 @@ impl CascadeEntry {
         source_parent: Option<NodeKey>,
         ownership: OutputOwnership,
         inputs: EntryInputs,
-        raw: Children,
-        effects: CascadeEffects,
+        output: CapturedOutput,
         admission: &Admission,
     ) -> Result<Rc<Self>, Error> {
+        let CapturedOutput {
+            raw,
+            effects,
+            bindings,
+        } = output;
         let bytes = std::mem::size_of::<Self>()
             .checked_add(effects.extra_bytes())
             .and_then(|n| n.checked_add(std::mem::size_of_val(raw.as_slice())))
@@ -64,6 +76,7 @@ impl CascadeEntry {
             inputs,
             raw,
             effects,
+            bindings,
             _lease: lease,
         }))
     }

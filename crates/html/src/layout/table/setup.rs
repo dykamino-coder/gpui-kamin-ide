@@ -19,7 +19,7 @@ pub(super) fn border_spacing_of(
         e,
         opts,
         inherited,
-        e.style.used().inh.table_list.border_spacing,
+        e.style.used().inh.table_list.border_spacing.clone(),
     )
 }
 

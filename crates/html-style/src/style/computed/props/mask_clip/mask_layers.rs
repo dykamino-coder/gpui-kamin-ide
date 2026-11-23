@@ -66,7 +66,7 @@ impl Computed {
                     .map(|l| one(l))
                     .collect();
                 self.reset_mask.mask_no_repeat =
-                    Some(list.first().copied().unwrap_or((false, false)));
+                    Some(list.first().cloned().unwrap_or((false, false)));
                 self.reset_mask.mask_repeat_list = (!list.is_empty()).then_some(list);
                 let mode = |w: &str| match w {
                     "space" => 2u8,
@@ -132,7 +132,7 @@ impl Computed {
                     .iter()
                     .filter_map(|l| one(l))
                     .collect();
-                if let Some((x, y, fx, fy)) = list.first().copied() {
+                if let Some((x, y, fx, fy)) = list.first().cloned() {
                     self.accept_declaration();
                     self.reset_mask.mask_pos = Some((x, y));
                     self.reset_mask.mask_pos_far = (fx, fy);

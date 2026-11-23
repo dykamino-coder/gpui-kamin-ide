@@ -109,8 +109,12 @@ impl Paragraph {
         let d = &item.decor;
         // Ends: `text-decoration-inset` (css-text-decor-4 §4.1).
         let (mut l, mut r) = (0.0f32, 0.0f32);
-        match d.inset {
-            inset if inset.is_none_or(|[st, en]| !(inset_zero(st) && inset_zero(en))) => {
+        match d.inset.clone() {
+            inset
+                if inset
+                    .clone()
+                    .is_none_or(|[st, en]| !(inset_zero(st) && inset_zero(en))) =>
+            {
                 let w = fx1 - fx0;
                 // CSS Text Decoration 4 §4.1: clone slices the decorating
                 // box at line breaks, never at font/style run boundaries.

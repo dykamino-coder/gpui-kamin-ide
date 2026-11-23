@@ -27,7 +27,10 @@ impl Computed {
                 }
                 self.reset_text_box.td_inset = accept_parsed!(
                     self,
-                    Some(Some([lens[0], *lens.get(1).unwrap_or(&lens[0])]))
+                    Some(Some([
+                        lens[0].clone(),
+                        lens.get(1).unwrap_or(&lens[0]).clone()
+                    ]))
                 );
             }
             _ => *hit = false,

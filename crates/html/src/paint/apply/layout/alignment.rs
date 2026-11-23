@@ -63,7 +63,7 @@ pub(super) fn layout_alignment(
     }
     // `flex-basis: auto` — это ОТСУТСТВИЕ основы, а не «во всю ширину»:
     // без отсева `flex: none` растягивал кнопку на всю строку.
-    if let Some(b) = c.reset_flex.flex_basis.filter(|b| *b != Len::Auto) {
+    if let Some(b) = c.reset_flex.flex_basis.clone().filter(|b| *b != Len::Auto) {
         d = d.flex_basis(len_to_gpui(b, vcx));
     }
     if let Some(j) = c.reset_flex.justify_content.filter(|_| !block) {

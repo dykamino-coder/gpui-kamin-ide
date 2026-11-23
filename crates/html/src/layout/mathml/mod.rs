@@ -79,11 +79,11 @@ async fn build_stack(
         (
             vec![],
             Kind::Space(Metrics {
-                width: px_strict(style.reset_box_layout.width)
+                width: px_strict(style.reset_box_layout.width.clone())
                     .unwrap_or(0.0)
                     .max(0.0),
                 ascent,
-                descent: px_strict(style.reset_box_layout.height)
+                descent: px_strict(style.reset_box_layout.height.clone())
                     .unwrap_or(0.0)
                     .max(0.0)
                     - ascent,
@@ -150,8 +150,8 @@ async fn build_stack(
         operator,
         kind,
         rtl: style.wm().rtl(),
-        width: px_strict(style.reset_box_layout.width),
-        height: px_strict(style.reset_box_layout.height),
+        width: px_strict(style.reset_box_layout.width.clone()),
+        height: px_strict(style.reset_box_layout.height.clone()),
         offsets: vec![],
         margins,
         roots: vec![],
@@ -163,7 +163,7 @@ async fn build_stack(
             opts.cx.vcx(),
             opts.cx.layout().run_faces.active(),
         ),
-        font_size: px_strict(style.inh.font.font_size).unwrap_or(opts.base_size()),
+        font_size: px_strict(style.inh.font.font_size.clone()).unwrap_or(opts.base_size()),
         glyph: None,
         glyph_offset: (0.0, 0.0),
     };
@@ -192,5 +192,11 @@ fn margins_px(child: &Computed, opts: &RenderOpts) -> [f32; 4] {
     let mut child = child.clone();
     child.resolve_viewport(opts.viewport, vcx);
     let m = &child.reset_box_layout.margin;
-    [m.top, m.right, m.bottom, m.left].map(|side| px_strict(side).unwrap_or(0.0))
+    [
+        m.top.clone(),
+        m.right.clone(),
+        m.bottom.clone(),
+        m.left.clone(),
+    ]
+    .map(|side| px_strict(side).unwrap_or(0.0))
 }

@@ -140,11 +140,12 @@ fn column_flow_in(
     // `column-gap: -1em` доезжает `Px(-20)`: промежуток `[0,∞]` (css-align-3
     // §column-row-gap), отрицательный невалиден — умолчание
     // (`multicol-gap-negative-001`).
-    let gap = match inherited.reset_fragmentation.column_gap.or(e
+    let gap = match inherited.reset_fragmentation.column_gap.clone().or(e
         .style
         .used()
         .reset_fragmentation
-        .column_gap)
+        .column_gap
+        .clone())
     {
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => size,
@@ -191,8 +192,8 @@ fn column_flow_in(
             // подряд до неё (css-multicol-1 §3.3).
             match (
                 e.style.used().reset_fragmentation.column_fill_auto,
-                dimensions.preferred[1],
-                dimensions.maximum[1],
+                dimensions.preferred[1].clone(),
+                dimensions.maximum[1].clone(),
             ) {
                 (Some(true), Some(Len::Px(h)), _) if h > 0.0 => Some(h),
                 // Высота авто, но задан `max-height`: колонки заполняются подряд до

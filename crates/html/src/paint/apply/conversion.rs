@@ -31,7 +31,8 @@ pub(crate) fn converted_div(
             child_paint_policy(d, c)
         }
         Lookup::Miss => {
-            let mut d = apply_for_decorations_with_dimensions(div(), c, Some(dimensions), vcx);
+            let mut d =
+                apply_for_decorations_with_dimensions(div(), c, Some(dimensions.clone()), vcx);
             let style = d.interactivity().base_style.clone();
             memo.record(c, dimensions, vcx, style);
             d

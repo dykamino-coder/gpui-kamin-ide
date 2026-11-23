@@ -15,7 +15,7 @@ fn scale_calc(
     k: f32,
     vcx: crate::values::ValueCx<'_>,
 ) -> Len {
-    let mut sum = crate::style::values::value::calc_get(i, vcx);
+    let mut sum = crate::style::values::value::calc_get(&i, vcx);
     if sum.px == 0.0 {
         return Len::Calc(i);
     }
@@ -35,7 +35,7 @@ pub(super) fn scale_shadow(sh: &mut Shadow, k: f32) {
 /// домноженного кегля).
 pub fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
     rule_widths::scale(c, k);
-    let mul = |l: &mut Option<Len>| match *l {
+    let mul = |l: &mut Option<Len>| match l.clone() {
         Some(Len::Px(v)) => *l = Some(Len::Px(v * k)),
         Some(Len::EmPx(e, add)) => *l = Some(Len::EmPx(e, add * k)),
         Some(Len::LhPx(e, add)) => *l = Some(Len::LhPx(e, add * k)),

@@ -58,10 +58,10 @@ pub(crate) fn sticky_wrap(
     };
     let link = link.unwrap_or_else(|| crate::interactive::scroll_extent::ShiftLink::inside(None));
     let mut wrapper = crate::interactive::sticky::element::Sticky::new(el, frame.clone(), link);
-    wrapper.top = side(c.reset_positioned.inset.top);
-    wrapper.bottom = side(c.reset_positioned.inset.bottom);
-    wrapper.left = side(c.reset_positioned.inset.left);
-    wrapper.right = side(c.reset_positioned.inset.right);
+    wrapper.top = side(c.reset_positioned.inset.top.clone());
+    wrapper.bottom = side(c.reset_positioned.inset.bottom.clone());
+    wrapper.left = side(c.reset_positioned.inset.left.clone());
+    wrapper.right = side(c.reset_positioned.inset.right.clone());
     // Внутри отложенного поддерева липкий элемент рисуется на месте:
     // откладывать повторно нельзя. Без единого порога (все четыре `auto`)
     // липкий не сдвигается вовсе — css-position-3 §sticky-pos: «If both

@@ -91,7 +91,11 @@ fn letter_style(
 ) -> BoxStyle {
     let mut letter = own.clone();
     letter.overlay_font_size(style);
-    letter.inh.font.line_height = style.inh.font.line_height.or(own.inh.font.line_height);
+    letter.inh.font.line_height = style.inh.font.line_height.clone().or(own
+        .inh
+        .font
+        .line_height
+        .clone());
     letter.overlay_pseudo_color(style.inh.ui.color);
     letter.inh.font.font_weight = style.inh.font.font_weight.or(own.inh.font.font_weight);
     letter.inh.font.italic = style.inh.font.italic.or(own.inh.font.italic);

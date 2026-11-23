@@ -66,7 +66,7 @@ fn grown_table_rebuilds_repeated_bands_with_the_main_source(cx: &mut gpui::TestA
                 assert_eq!(opts.viewport, (321.0, 123.0));
                 capture
                     .borrow_mut()
-                    .push((dom.style.used().reset_box_layout.height, part, band));
+                    .push((dom.style.used().reset_box_layout.height.clone(), part, band));
                 gpui::div().into_any_element()
             });
             let spare = child.frags.len();

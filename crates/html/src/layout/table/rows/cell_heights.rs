@@ -69,13 +69,11 @@ pub(super) fn resolve_cell_heights(
     // без него логическая высота `inline-size: 2em` не проходила
     // Px-ветку ниже и min-height ряда не ставился.
     if let Some(Len::Em(k)) = cell.style.used().reset_box_layout.height {
-        let base = match cell
-            .style
-            .used()
+        let base = match cell.style.used().inh.font.font_size.clone().or(inherited
             .inh
             .font
             .font_size
-            .or(inherited.inh.font.font_size)
+            .clone())
         {
             Some(Len::Px(v)) => v,
             _ => opts.base_size(),
@@ -123,8 +121,9 @@ pub(super) fn resolve_cell_heights(
             .inh
             .font
             .line_height
-            .or(row.style.used().inh.font.line_height)
-            .or(inherited.inh.font.line_height);
+            .clone()
+            .or(row.style.used().inh.font.line_height.clone())
+            .or(inherited.inh.font.line_height.clone());
         let lh = match lh_raw {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Em(k)) => Some(k * base),

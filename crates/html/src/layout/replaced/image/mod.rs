@@ -42,8 +42,8 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
         .or(inherited.reset_positioned.viewport_unit_insets);
     let e = &resolved;
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (
-        e.style.used().reset_box_layout.height,
-        inherited.reset_box_layout.height,
+        e.style.used().reset_box_layout.height.clone(),
+        inherited.reset_box_layout.height.clone(),
     ) else {
         return e.clone();
     };
@@ -71,8 +71,8 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
     let h = if inherited.reset_border.border_box == Some(true) {
         let px_of = px_lossy_zero;
         let b = inherited.borders();
-        (h - px_of(inherited.reset_box_layout.padding.top)
-            - px_of(inherited.reset_box_layout.padding.bottom)
+        (h - px_of(inherited.reset_box_layout.padding.top.clone())
+            - px_of(inherited.reset_box_layout.padding.bottom.clone())
             - px_of(b.top)
             - px_of(b.bottom))
         .max(0.0)
@@ -94,7 +94,7 @@ pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
 /// и сеточного высота приходит от раскладки (та же оговорка, что у
 /// `pct_height_to_px`).
 fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
-    let of = |l: Option<Len>, base: Option<Len>| match (l, base) {
+    let of = |l: Option<Len>, base: Option<Len>| match (l.clone(), base) {
         (Some(Len::Pct(k)), Some(Len::Px(b))) if b > 0.0 => Some(Len::Px(k * b)),
         _ => l,
     };
@@ -103,21 +103,23 @@ fn pct_limits_to_px(e: &Element, inherited: &Computed) -> Element {
         None | Some(Display::Block)
     );
     let h_base = block_cb
-        .then_some(inherited.reset_box_layout.height)
+        .then_some(inherited.reset_box_layout.height.clone())
         .flatten();
     let mut copy = e.clone();
     copy.style.used_mut().reset_box_layout.max_width = of(
-        e.style.used().reset_box_layout.max_width,
-        inherited.reset_box_layout.width,
+        e.style.used().reset_box_layout.max_width.clone(),
+        inherited.reset_box_layout.width.clone(),
     );
     copy.style.used_mut().reset_box_layout.min_width = of(
-        e.style.used().reset_box_layout.min_width,
-        inherited.reset_box_layout.width,
+        e.style.used().reset_box_layout.min_width.clone(),
+        inherited.reset_box_layout.width.clone(),
     );
-    copy.style.used_mut().reset_box_layout.max_height =
-        of(e.style.used().reset_box_layout.max_height, h_base);
+    copy.style.used_mut().reset_box_layout.max_height = of(
+        e.style.used().reset_box_layout.max_height.clone(),
+        h_base.clone(),
+    );
     copy.style.used_mut().reset_box_layout.min_height =
-        of(e.style.used().reset_box_layout.min_height, h_base);
+        of(e.style.used().reset_box_layout.min_height.clone(), h_base);
     copy
 }
 

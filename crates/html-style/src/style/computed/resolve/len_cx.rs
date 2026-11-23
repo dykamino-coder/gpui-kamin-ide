@@ -71,12 +71,13 @@ impl<'a> LenCx<'a> {
     /// Длина в точках; `None` — не решается в этом контексте (нет базы,
     /// шрифта или окна) либо это не длина (`auto`, размеры по содержимому,
     /// `anchor()`).
-    pub fn px(self, l: Len, vcx: ValueCx<'_>) -> Option<f32> {
+    pub fn px(self, l: impl std::borrow::Borrow<Len>, vcx: ValueCx<'_>) -> Option<f32> {
+        let l = l.borrow();
         let pct = |k: f32| self.basis.map(|b| b * k);
-        Some(match l {
+        Some(match *l {
             Len::Px(v) => v,
             Len::Pct(k) => pct(k)?,
-            Len::Calc(i) => {
+            Len::Calc(ref i) => {
                 // Слагаемые окна и контейнера сворачиваются по окну
                 // контекста; после свёртки сумма из одних точек — длина.
                 let mut sum = calc_get(i, vcx);
@@ -129,9 +130,9 @@ impl<'a> LenCx<'a> {
 }
 
 /// Шрифтовые единицы по контексту шрифта.
-fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
+fn font_px(l: &Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
     let lh = || font.line_px.unwrap_or(1.2 * font.font_px);
-    match l {
+    match *l {
         Len::Em(k) => k * font.font_px,
         Len::EmPx(k, add) => k * font.font_px + add,
         Len::Ch(k) => {
@@ -161,7 +162,7 @@ fn font_px(l: Len, font: FontCx<'_>, vcx: ValueCx<'_>) -> f32 {
 impl Len {
     /// Единицы контейнера становятся абсолютными длинами до наследования.
     pub fn fold_container(self, vp: ViewportCx, vcx: ValueCx<'_>) -> Len {
-        if let Len::Calc(i) = self {
+        if let Len::Calc(ref i) = self {
             let mut sum = calc_get(i, vcx);
             if sum.fold_container(vp.container.unwrap_or(vp.size), vp.vertical) {
                 // An axis without a query container is the viewport's.
@@ -172,10 +173,7 @@ impl Len {
         self
     }
 
-    /// Шаг каскада «решить единицы окна»: `vw`/`vh` — в точки, `calc` с
-    /// единицами окна или контейнера — свёрнутая сумма (смесь с долей
-    /// доживает индексом арены). Без слагаемых окна длина не меняется: арена
-    /// append-only, а `collapse` стёр бы процентную смесь.
+    /// Viewport folding preserves the owned expression; without viewport terms the length is unchanged. Collapsing would erase a percentage mixture.
     pub fn fold_viewport(self, vp: ViewportCx, vcx: ValueCx<'_>) -> Len {
         match self {
             Len::Vw(k) => {
@@ -186,7 +184,7 @@ impl Len {
                 crate::values::viewport_reads::note(vcx);
                 Len::Px(k * vp.size.1)
             }
-            Len::Calc(i) => {
+            Len::Calc(ref i) => {
                 let mut sum = calc_get(i, vcx);
                 if sum.fold_viewport(vp.size, vp.vertical, vp.container) {
                     crate::values::viewport_reads::note(vcx);
@@ -200,7 +198,7 @@ impl Len {
     }
 
     /// Меняет ли длину `fold_viewport`: тот же разбор без свёртки.
-    pub fn folds_viewport(self, vcx: ValueCx<'_>) -> bool {
+    pub fn folds_viewport(&self, vcx: ValueCx<'_>) -> bool {
         match self {
             Len::Vw(_) | Len::Vh(_) => true,
             Len::Calc(i) => calc_get(i, vcx).has_viewport_terms(),

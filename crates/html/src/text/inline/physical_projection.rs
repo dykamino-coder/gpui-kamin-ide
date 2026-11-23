@@ -1,10 +1,10 @@
 //! Проекция физических сторон `[top, right, bottom, left]` в плоскость набора текста до его
 //! поворота на четверть при отрисовке: перестановка индексов по направлению поворота,
 //! обратимая противоположным поворотом; без поворота стороны остаются как есть.
-pub(super) fn project<T: Copy>(rotated: bool, counter_clockwise: bool, sides: [T; 4]) -> [T; 4] {
+pub(super) fn project<T>(rotated: bool, counter_clockwise: bool, sides: [T; 4]) -> [T; 4] {
     let [top, right, bottom, left] = sides;
     if !rotated {
-        sides
+        [top, right, bottom, left]
     } else if counter_clockwise {
         [left, top, right, bottom]
     } else {

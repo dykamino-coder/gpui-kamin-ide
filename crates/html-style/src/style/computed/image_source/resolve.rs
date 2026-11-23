@@ -8,7 +8,7 @@ impl ImageSource {
     pub fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
         match self {
             Self::Gradient { value, .. } => value.needs_line_height(vcx),
-            Self::Conic(value) => [value.position.x, value.position.y]
+            Self::Conic(value) => [value.position.x.clone(), value.position.y.clone()]
                 .into_iter()
                 .flatten()
                 .any(|l| l.needs_line_height(vcx)),
@@ -31,7 +31,7 @@ impl ImageSource {
     }
 
     /// Изменит ли `resolve_lengths` изображение (`Gradient::lengths_pending`): по ссылке.
-    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
+    pub fn lengths_pending(&self, moves: impl Fn(&Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
         match self {
             Self::Gradient { value, .. } => value.lengths_pending(moves, vcx),
             Self::Conic(value) => value.lengths_pending(moves),
@@ -64,7 +64,10 @@ impl ImageSource {
 
     /// Arena indices cannot identify a value in a process-wide numeric cache.
     pub fn cacheable(&self) -> bool {
-        let plain = |l: &Option<Len>| l.is_none_or(|l| matches!(l, Len::Px(_) | Len::Pct(_)));
+        let plain = |l: &Option<Len>| {
+            l.clone()
+                .is_none_or(|l| matches!(l, Len::Px(_) | Len::Pct(_)))
+        };
         match self {
             Self::Gradient { value, .. } => {
                 value.stop_lengths.is_empty()
@@ -74,7 +77,7 @@ impl ImageSource {
                                 && plain(&position.y)
                                 && match size {
                                     RadialSize::Explicit(first, second) => {
-                                        plain(&Some(*first)) && plain(second)
+                                        plain(&Some(first.clone())) && plain(second)
                                     }
                                     _ => true,
                                 }

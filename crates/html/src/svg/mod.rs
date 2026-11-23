@@ -73,10 +73,10 @@ fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<
         for c in &e.children {
             if let Node::Element(el) = c {
                 let own = if horiz {
-                    px_len(el.style.used().reset_box_layout.width)
+                    px_len(el.style.used().reset_box_layout.width.clone())
                         .or_else(|| el.attr("width").and_then(|v| v.parse().ok()))
                 } else {
-                    px_len(el.style.used().reset_box_layout.height)
+                    px_len(el.style.used().reset_box_layout.height.clone())
                         .or_else(|| el.attr("height").and_then(|v| v.parse().ok()))
                 };
                 let at = if horiz {
@@ -111,7 +111,7 @@ fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<
                         Some(_) => continue,
                         None => {}
                     }
-                    if let Some((tx, ty)) = el.style.used().reset_transforms.translate {
+                    if let Some((tx, ty)) = el.style.used().reset_transforms.translate.clone() {
                         dx += px_len(Some(tx)).unwrap_or(0.0);
                         dy += px_len(Some(ty)).unwrap_or(0.0);
                     }
@@ -178,7 +178,7 @@ fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<
                 Some(_) => continue,
                 None => {}
             }
-            if let Some((tx, ty)) = el.style.used().reset_transforms.translate {
+            if let Some((tx, ty)) = el.style.used().reset_transforms.translate.clone() {
                 dx += px_len(Some(tx)).unwrap_or(0.0);
                 dy += px_len(Some(ty)).unwrap_or(0.0);
             }

@@ -18,9 +18,9 @@ pub(super) fn zero_width_cols(
         // Ширина стола ДОЛЕЙ решается от содержащего блока: `width: 80%` в
         // шестистах сорока — это 512 (`fixed-table-layout-023`).
         let своя_ширина = match if vertical {
-            e.style.used().reset_box_layout.height
+            e.style.used().reset_box_layout.height.clone()
         } else {
-            e.style.used().reset_box_layout.width
+            e.style.used().reset_box_layout.width.clone()
         } {
             Some(Len::Px(v)) => Some(v),
             Some(Len::Pct(k)) if !vertical => cb_px().filter(|v| *v > 0.0).map(|cb| cb * k),
@@ -64,9 +64,9 @@ pub(super) fn zero_width_cols(
                         // пятьдесят, и вместе со своим отступом дорожка
                         // забирает всё место (`fixed-table-layout-025`).
                         let своя = match if vertical {
-                            cell.style.used().reset_box_layout.height
+                            cell.style.used().reset_box_layout.height.clone()
                         } else {
-                            cell.style.used().reset_box_layout.width
+                            cell.style.used().reset_box_layout.width.clone()
                         } {
                             Some(Len::Px(v)) => Some(v),
                             Some(Len::Pct(k)) => Some(base.max(0.0) * k),
@@ -80,10 +80,10 @@ pub(super) fn zero_width_cols(
                             let b = cell.style.used().borders();
                             let p = &cell.style.used().reset_box_layout.padding;
                             let extra = axes.logical([
-                                side(p.top) + side(b.top),
-                                side(p.right) + side(b.right),
-                                side(p.bottom) + side(b.bottom),
-                                side(p.left) + side(b.left),
+                                side(p.top.clone()) + side(b.top),
+                                side(p.right.clone()) + side(b.right),
+                                side(p.bottom.clone()) + side(b.bottom),
+                                side(p.left.clone()) + side(b.left),
                             ]);
                             *slot = Some(w + extra[1] + extra[3]);
                         }

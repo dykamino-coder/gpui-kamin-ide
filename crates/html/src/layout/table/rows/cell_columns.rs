@@ -32,12 +32,12 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
         reset_fragmentation: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetFragmentation {
                 column_count: s.reset_fragmentation.column_count,
-                column_width: s.reset_fragmentation.column_width,
-                column_height: s.reset_fragmentation.column_height,
+                column_width: s.reset_fragmentation.column_width.clone(),
+                column_height: s.reset_fragmentation.column_height.clone(),
                 column_wrap: s.reset_fragmentation.column_wrap,
-                column_gap: s.reset_fragmentation.column_gap,
+                column_gap: s.reset_fragmentation.column_gap.clone(),
                 column_fill_auto: s.reset_fragmentation.column_fill_auto,
-                column_rule_width: s.reset_fragmentation.column_rule_width,
+                column_rule_width: s.reset_fragmentation.column_rule_width.clone(),
                 column_rule_visible: s.reset_fragmentation.column_rule_visible,
                 column_rule_color: s.reset_fragmentation.column_rule_color.clone(),
                 column_rule_break: s.reset_fragmentation.column_rule_break,
@@ -46,7 +46,7 @@ pub(super) fn column_flow_children(cell: &Element) -> Option<Vec<Node>> {
                 column_rule_double: s.reset_fragmentation.column_rule_double,
                 column_rule_kinds: s.reset_fragmentation.column_rule_kinds.clone(),
                 column_rule_colors: s.reset_fragmentation.column_rule_colors.clone(),
-                column_rule_inset: s.reset_fragmentation.column_rule_inset,
+                column_rule_inset: s.reset_fragmentation.column_rule_inset.clone(),
                 column_rule_visibility: s.reset_fragmentation.column_rule_visibility,
                 ..Default::default()
             },

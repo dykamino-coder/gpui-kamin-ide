@@ -93,13 +93,13 @@ impl Recording {
                 .set(style.reset_positioned.position == Some(Position::Fixed));
             let edges = if self.axis.is_vertical() {
                 [
-                    style.reset_positioned.inset.left,
-                    style.reset_positioned.inset.right,
+                    style.reset_positioned.inset.left.clone(),
+                    style.reset_positioned.inset.right.clone(),
                 ]
             } else {
                 [
-                    style.reset_positioned.inset.top,
-                    style.reset_positioned.inset.bottom,
+                    style.reset_positioned.inset.top.clone(),
+                    style.reset_positioned.inset.bottom.clone(),
                 ]
             };
             flow.static_block.set(

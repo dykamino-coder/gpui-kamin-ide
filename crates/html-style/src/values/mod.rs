@@ -1,17 +1,10 @@
-//! Нижние данные одного документа (`DocumentValues`): его at-правила
-//! (`@page`, `@position-try`, `@property`, `@counter-style`, `@color-profile`),
-//! метрики корня (`rem`/`rlh`), режим quirks, носитель (`Media`), арены
-//! `calc()`/`anchor()` (`arena`), ресурсы, готовность кадра и шрифтовые факты.
-//!
-//! Владелец — документ (`Document` или вложенный документ рамки): верхний
-//! `document::state::DocState` держит эти данные рядом с состояниями фаз
-//! раскладки и текста и выбирает провайдер шрифтовых фактов. Разбор листа и
-//! дерева получает данные параметром (`SheetCx`, `TreeIndex`), значения —
-//! контекстом `ValueCx`, фазы GPUI — элементы, которые держат их сами (`ValueDoc`).
+//! Document-owned rules, root metrics, media, resources, readiness, and font facts.
+//! Expression values own their immutable payloads independently of this context.
 
-mod arena;
+pub mod bindings;
 mod budget;
 mod diagnostics;
+mod expression;
 mod font_facts;
 pub use font_facts::UsedFace;
 pub use font_facts::UsedFontKey;
@@ -27,22 +20,18 @@ pub mod viewport_reads;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
 use crate::style::generated::counter_style_rules::CounterStyles;
-use crate::style::values::value::{AnchorFn, RootMetrics, Sum};
+use crate::style::values::value::RootMetrics;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-pub use arena::ArenaKey;
-pub use arena::{Arena, load, store};
+pub use expression::{ValueId, ValueRef};
 pub use value_cx::{ValueCx, ValueDoc};
 
 /// Профили `@color-profile` документа: имя → байты ICC.
 pub type IccProfiles = HashMap<String, Vec<u8>>;
 
-/// Нижние данные одного документа: арены значений, at-правила, метрики корня,
-/// носитель, ресурсы, готовность кадра и провайдер шрифтовых фактов (ADR3).
-/// Поля пишет его разбор, читают разбор, сборка кадра и фазы GPUI; состояния
-/// фаз раскладки и текста держит верхний `DocState`.
+/// Document rules, root metrics, media, resources, readiness, and font facts; layout/text phase state belongs to the upper DocState.
 pub struct DocumentValues {
     initial_styles: style_storage::InitialStyles,
     /// Группы used-стадии, выведенные из общих групп правками раскладки.
@@ -89,14 +78,7 @@ pub struct DocumentValues {
     pub images: RefCell<crate::resources::images::store::ImageStore>,
     /// Неизменяемые факты CSS-картинок для прохода стиля, подготовленные оркестратором.
     pub background_images: RefCell<Rc<crate::resources::css_images::facts::BackgroundImages>>,
-    /// Смешанные суммы `calc()` (`Len::Calc`).
-    pub calc: Arena<Sum>,
-    /// Функции `anchor()` (`Len::Anchor`).
-    pub anchor: Arena<Rc<AnchorFn>>,
-    /// Номера областей арен: документа и текущего кадра (`arena`).
-    owner: Cell<u32>,
-    frame_owner: Cell<u32>,
-    /// Документ красился после последнего сброса области кадра.
+    /// Readiness observation, independent of expression lifetimes.
     painted: Cell<bool>,
     /// Живые документы этих значений (`hold_document`).
     documents: Cell<u32>,
@@ -142,8 +124,6 @@ impl DocumentValues {
             initial_styles,
             derived: Default::default(),
             media: Cell::new(media),
-            owner: Cell::new(arena::new_owner()),
-            frame_owner: Cell::new(arena::new_owner()),
             budget: Default::default(),
             font_facts: font_facts::DocumentFonts::new(fonts(this.clone())),
             traversal: Default::default(),
@@ -164,8 +144,6 @@ impl DocumentValues {
             profiles: Default::default(),
             images: Default::default(),
             background_images: Default::default(),
-            calc: Default::default(),
-            anchor: Default::default(),
             painted: Default::default(),
             documents: Default::default(),
             readiness: Default::default(),
@@ -187,17 +165,11 @@ impl DocumentValues {
         self.images.borrow_mut().revalidate()
     }
 
-    /// Область кадра прошлого, уже покрашенного кадра больше никто не читает —
-    /// сбросить.
+    /// Start a new readiness observation; retained expressions remain valid.
     pub fn reset_painted_frame(&self) {
-        if self.painted.replace(false) {
-            self.frame_owner.set(arena::new_owner());
-            self.calc.clear_frame();
-            self.anchor.clear_frame();
-        }
+        self.painted.set(false);
     }
 
-    /// Документ покрашен: следующая сборка кадра может сбросить область кадра.
     pub fn mark_painted(&self) {
         self.painted.set(true);
     }

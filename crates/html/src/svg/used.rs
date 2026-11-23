@@ -22,7 +22,7 @@ pub(super) fn needs_used_size(e: &Element) -> bool {
     matches!(b.width, Some(Len::Pct(_)))
         || matches!(b.height, Some(Len::Pct(_)))
         || matches!(
-            (b.width, b.height),
+            (b.width.clone(), b.height.clone()),
             (Some(Len::Px(_)), Some(Len::Auto)) | (Some(Len::Auto), Some(Len::Px(_)))
         )
 }
@@ -57,8 +57,8 @@ fn layout_style(e: &Element) -> (Style, gpui::Size<Pixels>) {
         .filter(|r| r.is_finite() && *r > 0.0);
     let mut style = Style {
         size: size(
-            side(c.reset_box_layout.width, facts.width.map(|_| w)),
-            side(c.reset_box_layout.height, facts.height.map(|_| h)),
+            side(c.reset_box_layout.width.clone(), facts.width.map(|_| w)),
+            side(c.reset_box_layout.height.clone(), facts.height.map(|_| h)),
         ),
         aspect_ratio: ratio,
         flex_shrink: 0.0,
@@ -68,11 +68,17 @@ fn layout_style(e: &Element) -> (Style, gpui::Size<Pixels>) {
     for (target, source) in [
         (
             &mut style.min_size,
-            (c.reset_box_layout.min_width, c.reset_box_layout.min_height),
+            (
+                c.reset_box_layout.min_width.clone(),
+                c.reset_box_layout.min_height.clone(),
+            ),
         ),
         (
             &mut style.max_size,
-            (c.reset_box_layout.max_width, c.reset_box_layout.max_height),
+            (
+                c.reset_box_layout.max_width.clone(),
+                c.reset_box_layout.max_height.clone(),
+            ),
         ),
     ] {
         *target = size(side(source.0, None), side(source.1, None));

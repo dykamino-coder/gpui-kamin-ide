@@ -62,11 +62,12 @@ impl LogicalSides {
     /// block_end).
     pub fn get(&self, side: usize) -> Option<Len> {
         [
-            self.inline_start,
-            self.inline_end,
-            self.block_start,
-            self.block_end,
+            self.inline_start.clone(),
+            self.inline_end.clone(),
+            self.block_start.clone(),
+            self.block_end.clone(),
         ][side]
+            .clone()
     }
 
     pub fn slot(&mut self, side: usize) -> &mut Option<Len> {

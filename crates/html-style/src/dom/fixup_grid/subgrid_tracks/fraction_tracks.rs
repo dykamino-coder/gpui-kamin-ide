@@ -40,9 +40,9 @@ pub fn fr_tracks_to_px(
         return None;
     }
     let size = match if row_dir {
-        style.reset_box_layout.height
+        style.reset_box_layout.height.clone()
     } else {
-        style.reset_box_layout.width
+        style.reset_box_layout.width.clone()
     } {
         Some(Len::Px(v)) => v,
         _ => return None,
@@ -57,15 +57,15 @@ pub fn fr_tracks_to_px(
         let b = style.borders();
         let (p0, p1, b0, b1) = if row_dir {
             (
-                style.reset_box_layout.padding.top,
-                style.reset_box_layout.padding.bottom,
+                style.reset_box_layout.padding.top.clone(),
+                style.reset_box_layout.padding.bottom.clone(),
                 b.top,
                 b.bottom,
             )
         } else {
             (
-                style.reset_box_layout.padding.left,
-                style.reset_box_layout.padding.right,
+                style.reset_box_layout.padding.left.clone(),
+                style.reset_box_layout.padding.right.clone(),
                 b.left,
                 b.right,
             )
@@ -74,7 +74,7 @@ pub fn fr_tracks_to_px(
     } else {
         size
     };
-    let (grow, gcol) = style.reset_flex.gap.unwrap_or((None, None));
+    let (grow, gcol) = style.reset_flex.gap.clone().unwrap_or((None, None));
     let gap = px(if row_dir { grow } else { gcol })?;
     let n = tracks.len() as f32;
     let leftover = (inner - px_sum - gap * (n - 1.0)).max(0.0);

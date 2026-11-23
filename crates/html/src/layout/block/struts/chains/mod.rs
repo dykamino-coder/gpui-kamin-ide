@@ -114,7 +114,7 @@ pub(crate) fn leading_chain(
             s = adjoin(
                 s,
                 strut_of(margin_or_bail(
-                    ch.style.used().reset_box_layout.margin.top,
+                    ch.style.used().reset_box_layout.margin.top.clone(),
                     &ch.style.used(),
                     vcx,
                 )?),
@@ -203,7 +203,7 @@ pub(crate) fn trailing_chain(
             s = adjoin(
                 s,
                 strut_of(margin_or_bail(
-                    ch.style.used().reset_box_layout.margin.bottom,
+                    ch.style.used().reset_box_layout.margin.bottom.clone(),
                     &ch.style.used(),
                     vcx,
                 )?),

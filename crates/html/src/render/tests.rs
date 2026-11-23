@@ -71,7 +71,7 @@ fn margin_collapse_matches_the_browser_on_the_fixture_case() {
         "у обёртки"
     );
     let child_top = stack.children.iter().find_map(|n| match n {
-        Node::Element(e) => Some(e.style.used().reset_box_layout.margin.top),
+        Node::Element(e) => Some(e.style.used().reset_box_layout.margin.top.clone()),
         _ => None,
     });
     assert_eq!(child_top, Some(Some(Len::Px(0.0))), "у ребёнка снят");
@@ -145,7 +145,7 @@ fn margins_in_em_collapse_too() {
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
-        Node::Element(e) => e.style.used().reset_box_layout.margin.top,
+        Node::Element(e) => e.style.used().reset_box_layout.margin.top.clone(),
         _ => panic!("нет второго блока"),
     };
     // 32 всего, из них 16 уже дал нижний отступ предыдущего блока.
@@ -181,7 +181,7 @@ fn adjacent_margins_collapse_into_the_larger() {
         _ => panic!("нет body"),
     };
     let second = match &body[1] {
-        Node::Element(e) => e.style.used().reset_box_layout.margin.top,
+        Node::Element(e) => e.style.used().reset_box_layout.margin.top.clone(),
         _ => panic!("нет второго блока"),
     };
     // 24 всего, из них 10 уже дал нижний отступ предыдущего блока.
@@ -220,9 +220,9 @@ fn first_child_margin_leaks_through_a_borderless_parent() {
         "отступ вынесен на внешнюю коробку"
     );
     let wrap_top = find_class(std::slice::from_ref(&inner[0]), "wrap")
-        .and_then(|e| e.style.used().reset_box_layout.margin.top);
+        .and_then(|e| e.style.used().reset_box_layout.margin.top.clone());
     assert_eq!(wrap_top, Some(Len::Px(0.0)), "у обёртки отступ снят");
     let child_top = find_class(std::slice::from_ref(&inner[0]), "in")
-        .and_then(|e| e.style.used().reset_box_layout.margin.top);
+        .and_then(|e| e.style.used().reset_box_layout.margin.top.clone());
     assert_eq!(child_top, Some(Len::Px(0.0)), "у ребёнка отступ снят");
 }

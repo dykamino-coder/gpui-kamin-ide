@@ -126,12 +126,19 @@ pub(super) fn fixed_edges(e: &Element) -> bool {
     let (m, p) = (&b.margin, &b.padding);
     let px_or_none = |l: Option<Len>| matches!(l, None | Some(Len::Px(_)));
     [
-        m.top, m.right, m.bottom, m.left, p.top, p.right, p.bottom, p.left,
+        m.top.clone(),
+        m.right.clone(),
+        m.bottom.clone(),
+        m.left.clone(),
+        p.top.clone(),
+        p.right.clone(),
+        p.bottom.clone(),
+        p.left.clone(),
     ]
     .into_iter()
     .all(fixed)
         && !matches!(b.height, Some(Len::Pct(_) | Len::Calc(_)))
         && matches!(b.width, Some(Len::Px(_)))
-        && px_or_none(b.min_width)
-        && px_or_none(b.max_width)
+        && px_or_none(b.min_width.clone())
+        && px_or_none(b.max_width.clone())
 }

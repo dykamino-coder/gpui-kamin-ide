@@ -54,38 +54,46 @@ pub fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Compute
             (Len::Pct(x), Len::Pct(y)) => Some(Len::Pct(lerp(x, y))),
             // Разные природы (`0px → 200vw`, `0% → 200vw`) — покомпонентно,
             // как `calc()`; несводимая смесь — ближайший кадр.
-            (x, y) => Some(crate::style::values::value::lerp_len(x, y, k, vcx).unwrap_or(x)),
+            (x, y) => {
+                Some(crate::style::values::value::lerp_len(x.clone(), y, k, vcx).unwrap_or(x))
+            }
         }
     };
-    out.reset_box_layout.width = len(prev.1.reset_box_layout.width, next.1.reset_box_layout.width)
-        .or(out.reset_box_layout.width);
+    out.reset_box_layout.width = len(
+        prev.1.reset_box_layout.width.clone(),
+        next.1.reset_box_layout.width.clone(),
+    )
+    .or(out.reset_box_layout.width.clone());
     out.reset_box_layout.height = len(
-        prev.1.reset_box_layout.height,
-        next.1.reset_box_layout.height,
+        prev.1.reset_box_layout.height.clone(),
+        next.1.reset_box_layout.height.clone(),
     )
-    .or(out.reset_box_layout.height);
-    out.inh.font.font_size =
-        len(prev.1.inh.font.font_size, next.1.inh.font.font_size).or(out.inh.font.font_size);
+    .or(out.reset_box_layout.height.clone());
+    out.inh.font.font_size = len(
+        prev.1.inh.font.font_size.clone(),
+        next.1.inh.font.font_size.clone(),
+    )
+    .or(out.inh.font.font_size.clone());
     out.reset_box_layout.margin.top = len(
-        prev.1.reset_box_layout.margin.top,
-        next.1.reset_box_layout.margin.top,
+        prev.1.reset_box_layout.margin.top.clone(),
+        next.1.reset_box_layout.margin.top.clone(),
     )
-    .or(out.reset_box_layout.margin.top);
+    .or(out.reset_box_layout.margin.top.clone());
     out.reset_box_layout.margin.right = len(
-        prev.1.reset_box_layout.margin.right,
-        next.1.reset_box_layout.margin.right,
+        prev.1.reset_box_layout.margin.right.clone(),
+        next.1.reset_box_layout.margin.right.clone(),
     )
-    .or(out.reset_box_layout.margin.right);
+    .or(out.reset_box_layout.margin.right.clone());
     out.reset_box_layout.margin.bottom = len(
-        prev.1.reset_box_layout.margin.bottom,
-        next.1.reset_box_layout.margin.bottom,
+        prev.1.reset_box_layout.margin.bottom.clone(),
+        next.1.reset_box_layout.margin.bottom.clone(),
     )
-    .or(out.reset_box_layout.margin.bottom);
+    .or(out.reset_box_layout.margin.bottom.clone());
     out.reset_box_layout.margin.left = len(
-        prev.1.reset_box_layout.margin.left,
-        next.1.reset_box_layout.margin.left,
+        prev.1.reset_box_layout.margin.left.clone(),
+        next.1.reset_box_layout.margin.left.clone(),
     )
-    .or(out.reset_box_layout.margin.left);
+    .or(out.reset_box_layout.margin.left.clone());
     // Фильтры интерполируются покомпонентно; `none` = нейтральный
     // (filter-effects-1 §Interpolation, css-filters-animation-*).
     if prev.1.reset_effects.filter.is_some() || next.1.reset_effects.filter.is_some() {
@@ -193,13 +201,11 @@ pub fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Compute
     // … }` над стилем без сдвига стоял на месте.
     if prev.1.reset_transforms.translate.is_some() || next.1.reset_transforms.translate.is_some() {
         let zero = (Len::Px(0.0), Len::Px(0.0));
-        let (a, b) = (
-            prev.1.reset_transforms.translate.unwrap_or(zero),
-            next.1.reset_transforms.translate.unwrap_or(zero),
-        );
+        let a = prev.1.reset_transforms.translate.as_ref().unwrap_or(&zero);
+        let b = next.1.reset_transforms.translate.as_ref().unwrap_or(&zero);
         out.reset_transforms.translate = Some((
-            len(Some(a.0), Some(b.0)).unwrap_or(a.0),
-            len(Some(a.1), Some(b.1)).unwrap_or(a.1),
+            len(Some(a.0.clone()), Some(b.0.clone())).unwrap_or_else(|| a.0.clone()),
+            len(Some(a.1.clone()), Some(b.1.clone())).unwrap_or_else(|| a.1.clone()),
         ));
     }
     if prev.1.reset_transforms.rotate_prop.is_some()
@@ -233,9 +239,8 @@ pub fn frame_at(frames: &[(f32, Computed)], t: f32, vcx: ValueCx<'_>) -> Compute
             out.reset_transforms.transform = mixed.or(near.1.reset_transforms.transform);
         }
     }
-    // Отдельное свойство — тоже преобразование: коробка с ним несёт
-    // `transform` (так делает и разбор `rotate`/`scale`), иначе
-    // `transformed()` вышел бы раньше свёртки.
+    // Individual rotate/scale properties also establish a transform so
+    // transformed() does not return before folding them into the matrix.
     if (out.reset_transforms.rotate_prop.is_some() || out.reset_transforms.scale_prop.is_some())
         && out.reset_transforms.transform.is_none()
     {

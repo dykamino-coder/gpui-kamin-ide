@@ -59,12 +59,12 @@ impl<'a> PictureSizing<'a> {
         let sub = if style.reset_border.border_box == Some(true) {
             let b = style.borders();
             (
-                side(style.reset_box_layout.padding.left)
-                    + side(style.reset_box_layout.padding.right)
+                side(style.reset_box_layout.padding.left.clone())
+                    + side(style.reset_box_layout.padding.right.clone())
                     + side(b.left)
                     + side(b.right),
-                side(style.reset_box_layout.padding.top)
-                    + side(style.reset_box_layout.padding.bottom)
+                side(style.reset_box_layout.padding.top.clone())
+                    + side(style.reset_box_layout.padding.bottom.clone())
                     + side(b.top)
                     + side(b.bottom),
             )
@@ -79,8 +79,8 @@ impl<'a> PictureSizing<'a> {
             max_w: None,
             max_h: None,
         };
-        sizing.max_w = sizing.clamp(style.reset_box_layout.max_width, sub.0);
-        sizing.max_h = sizing.clamp(style.reset_box_layout.max_height, sub.1);
+        sizing.max_w = sizing.clamp(style.reset_box_layout.max_width.clone(), sub.0);
+        sizing.max_h = sizing.clamp(style.reset_box_layout.max_height.clone(), sub.1);
         sizing
     }
 

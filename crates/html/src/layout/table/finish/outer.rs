@@ -130,7 +130,7 @@ pub(super) fn finish_table_outer(
             reset_positioned: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetPositioned {
                     position: e.style.used().reset_positioned.position,
-                    inset: e.style.used().reset_positioned.inset,
+                    inset: e.style.used().reset_positioned.inset.clone(),
                     z_index: e.style.used().reset_positioned.z_index,
                     ..Default::default()
                 },
@@ -206,7 +206,7 @@ fn wrapper_fits(e: &Element) -> bool {
     let wm = style.wm();
     !wm.vertical()
         && !wm.rtl()
-        && [m.left, m.right]
+        && [m.left.clone(), m.right.clone()]
             .into_iter()
             .all(|m| matches!(m, None | Some(Len::Px(_))))
 }

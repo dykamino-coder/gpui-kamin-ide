@@ -65,7 +65,7 @@ pub(super) fn measure(
         let constrained =
             !matches!(sizes.preferred[1], None | Some(Len::Auto)) || sizes.minimum[1].is_some();
         let (content_width, border_size, start_edge) =
-            shell(child, &style, sizes, width, opts, window, cx);
+            shell(child, &style, sizes.clone(), width, opts, window, cx);
         let (_, edges, _) = shell(
             child,
             &style,

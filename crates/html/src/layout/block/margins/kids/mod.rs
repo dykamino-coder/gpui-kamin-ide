@@ -120,7 +120,7 @@ pub(super) fn collapse_kid_margins(
             Some(Len::Pct(_)) => !vcx.collapse.height_def,
             _ => false,
         };
-        if !zero(e.style.used().reset_box_layout.padding.bottom)
+        if !zero(e.style.used().reset_box_layout.padding.bottom.clone())
             || !zero(e.style.used().borders().bottom)
             || !behaves_auto
             || margin_height::separate(e, vcx)
@@ -150,7 +150,7 @@ pub(super) fn collapse_kid_margins(
                     vcx,
                     |vcx| {
                         margin_px_in(
-                            ch.style.used().reset_box_layout.margin.bottom,
+                            ch.style.used().reset_box_layout.margin.bottom.clone(),
                             &ch.style.used(),
                             vcx,
                         )

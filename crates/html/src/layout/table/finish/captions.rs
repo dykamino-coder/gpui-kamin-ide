@@ -150,9 +150,9 @@ pub(super) fn wrap_with_captions(
         // CSS 2.1 §17.4: the wrapper uses the table's border-edge inline size.
         // styled_div_with has resolved box sizing and font units on the grid.
         let inline_size = if vertical {
-            e.style.used().reset_box_layout.height
+            e.style.used().reset_box_layout.height.clone()
         } else {
-            e.style.used().reset_box_layout.width
+            e.style.used().reset_box_layout.width.clone()
         };
         if matches!(inline_size, Some(Len::Px(_) | Len::Pct(_))) {
             if vertical {

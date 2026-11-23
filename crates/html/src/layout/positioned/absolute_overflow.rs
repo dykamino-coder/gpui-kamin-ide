@@ -26,7 +26,7 @@ pub(crate) fn probe(
         return None;
     }
     let id = style.self_node;
-    let padding = style.reset_box_layout.padding;
+    let padding = style.reset_box_layout.padding.clone();
     let sink = positioning.flex_content.clone();
     let values = vcx.keep();
     Some(sink.record_with(move |g, window| {
@@ -92,10 +92,10 @@ impl Plan {
         // Percentage padding requires the parent's actual used box edges;
         // its own width is not necessarily the percentage resolution basis.
         if [
-            parent.reset_box_layout.padding.top,
-            parent.reset_box_layout.padding.right,
-            parent.reset_box_layout.padding.bottom,
-            parent.reset_box_layout.padding.left,
+            parent.reset_box_layout.padding.top.clone(),
+            parent.reset_box_layout.padding.right.clone(),
+            parent.reset_box_layout.padding.bottom.clone(),
+            parent.reset_box_layout.padding.left.clone(),
         ]
         .into_iter()
         .any(|v| !matches!(v, None | Some(Len::Px(_))))
@@ -108,8 +108,8 @@ impl Plan {
         );
         let vertical = parent.wm().vertical();
         let horizontal = column != vertical;
-        let inset = own.reset_positioned.inset;
-        let margin = own.reset_box_layout.margin;
+        let inset = own.reset_positioned.inset.clone();
+        let margin = own.reset_box_layout.margin.clone();
         let (inset, margin) = if horizontal {
             ([inset.left, inset.right], [margin.left, margin.right])
         } else {
@@ -189,7 +189,7 @@ impl Plan {
         let (origin, extent) = axis(bounds);
         let (start, size) = axis(flex);
         let (cb_start, cb_size) = axis(cb);
-        let margin = self.margin.map(|length| {
+        let margin = self.margin.clone().map(|length| {
             f32::from(
                 build
                     .length(length.unwrap_or(Len::Px(0.0)), vcx)

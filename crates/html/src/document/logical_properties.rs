@@ -69,7 +69,7 @@ pub(super) fn resolve_logical(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> Vec<Nod
             if e.style.cascaded().reset_mask.clip_ref == Some(1) || wm.vertical() != parent_vertical
             {
                 e.style.cascaded_mut().reset_box_layout.own_margin =
-                    Some(e.style.cascaded().reset_box_layout.margin);
+                    Some(e.style.cascaded().reset_box_layout.margin.clone());
             }
             walk(&mut e.children, props, sharing, vcx);
         }

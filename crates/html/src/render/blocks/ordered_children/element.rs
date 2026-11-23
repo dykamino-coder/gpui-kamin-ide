@@ -56,8 +56,8 @@ pub(crate) fn ordered_element(
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
             ) && matches!(inherited.reset_box_layout.height, None | Some(Len::Auto))
-                && edge(inherited.reset_positioned.inset.top)
-                && edge(inherited.reset_positioned.inset.bottom);
+                && edge(inherited.reset_positioned.inset.top.clone())
+                && edge(inherited.reset_positioned.inset.bottom.clone());
         let definite = matches!(inherited.reset_box_layout.height, Some(Len::Px(_)))
             || (matches!(inherited.reset_box_layout.height, Some(Len::Pct(_)))
                 && inherited.cb_height_def)
@@ -93,8 +93,8 @@ pub(crate) fn ordered_element(
                 inherited.reset_positioned.position,
                 Some(crate::style::computed::Position::Absolute)
                     | Some(crate::style::computed::Position::Fixed)
-            ) && edge(inherited.reset_positioned.inset.top)
-                && edge(inherited.reset_positioned.inset.bottom))
+            ) && edge(inherited.reset_positioned.inset.top.clone())
+                && edge(inherited.reset_positioned.inset.bottom.clone()))
             || inherited.stretched
             || inherited.reset_context.root_box
             || inherited.reset_shapes.aspect_ratio.is_some();

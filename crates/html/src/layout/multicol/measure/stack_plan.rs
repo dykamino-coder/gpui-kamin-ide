@@ -43,7 +43,7 @@ pub(crate) fn stack_plan(
         e,
         inherited,
         merged,
-        col_inline_size,
+        col_inline_size.clone(),
         col_vert,
         cols,
         used_gap,

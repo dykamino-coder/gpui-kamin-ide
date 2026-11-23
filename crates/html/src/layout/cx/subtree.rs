@@ -34,8 +34,8 @@ fn own(e: &Element, descendants: BoxTreeSummary) -> BoxTreeSummary {
     let zero = |v| matches!(v, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
     let margins = floats
         || split
-        || !zero(style.reset_box_layout.margin.top)
-        || !zero(style.reset_box_layout.margin.bottom);
+        || !zero(style.reset_box_layout.margin.top.clone())
+        || !zero(style.reset_box_layout.margin.bottom.clone());
     let block = if inline || style.reset_box_layout.display == Some(Display::Contents) {
         !out_of_flow(&style) && descendants.block
     } else {

@@ -58,7 +58,7 @@ impl Computed {
                     return;
                 }
                 let raw = parsed_value!(self, shape_value::clip_rect(v, vcx));
-                self.reset_mask.clip_len = raw;
+                self.reset_mask.clip_len = raw.clone();
                 self.reset_mask.clip_rect = raw.map(|sides| {
                     sides.map(|side| match side {
                         Some(Len::Px(n)) => Some(n),

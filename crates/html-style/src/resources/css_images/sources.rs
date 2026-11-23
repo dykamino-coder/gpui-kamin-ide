@@ -24,7 +24,7 @@ pub fn computed_source(
         ImageSource::Invalid => None,
         ImageSource::Fallback { url, color } => load_url(url, orient, vcx).or_else(|| {
             color.as_ref().map(|c| Source::Gradient {
-                image: std::sync::Arc::new(ImageSource::Color(c.clone())),
+                image: std::rc::Rc::new(ImageSource::Color(c.clone())),
             })
         }),
         ImageSource::Filter { image, program } => Some(Source::Filtered {
@@ -32,7 +32,7 @@ pub fn computed_source(
             list: Box::new(program.clone()),
         }),
         _ => Some(Source::Gradient {
-            image: std::sync::Arc::new(image.clone()),
+            image: std::rc::Rc::new(image.clone()),
         }),
     }
 }

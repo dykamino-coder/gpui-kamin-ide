@@ -18,7 +18,7 @@ impl Owned {
         let mut properties = Accepted::of(c);
         let mut lengths = Vec::new();
         properties.lengths(|value| {
-            lengths.push(value.map(|v| Length::of(v, vcx)));
+            lengths.push(value.clone().map(|v| Length::of(v, vcx)));
             *value = None;
         });
         Self {
@@ -57,7 +57,7 @@ impl Length {
     }
     fn load(&self, vcx: ValueCx<'_>) -> Len {
         match self {
-            Self::Plain(value) => *value,
+            Self::Plain(value) => value.clone(),
             Self::Calc(sum) => Len::Calc(calc_store(*sum, vcx)),
             Self::Anchor(f) => Len::Anchor(anchor_store(f.load(vcx), vcx)),
         }
@@ -78,7 +78,7 @@ impl Anchor {
         function.alts.clear();
         Self {
             function,
-            fallback: f.fallback.map(|v| Length::of(v, vcx)),
+            fallback: f.fallback.clone().map(|v| Length::of(v, vcx)),
             alts: f.alts.iter().map(|f| Self::of(f, vcx)).collect(),
         }
     }
@@ -100,7 +100,7 @@ mod tests {
         let doc = DocState::new(Default::default());
         let mut c = Computed::default();
         c.reset_box_layout.width = Len::parse("anchor-size(--a width, 3px)", doc.frame_values());
-        if let Some(Len::Anchor(id)) = c.reset_box_layout.width {
+        if let Some(Len::Anchor(id)) = &c.reset_box_layout.width {
             let mut f = (*anchor_get(id, doc.frame_values()).expect("parsed anchor-size")).clone();
             f.fallback = Len::parse_mixed("calc(3px + 20%)", doc.frame_values());
             c.reset_box_layout.width = Some(Len::Anchor(anchor_store(f, doc.frame_values())));

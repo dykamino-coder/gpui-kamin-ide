@@ -31,15 +31,21 @@ impl Frame {
         let mut bounds = bounds;
         bounds.origin -= super::exact_probe::sticky_shift(sticky);
         let records = self.boxes.borrow();
-        let boxes: HashMap<_, _> = records.iter().map(|r| (r.id, (r.rect, r.clip))).collect();
+        let boxes: HashMap<_, _> = records
+            .iter()
+            .map(|r| (r.id, (r.rect, r.clip.clone())))
+            .collect();
         let snap_areas: HashMap<_, _> = records
             .iter()
-            .filter_map(|r| r.snap.map(|a| (r.id, a)))
+            .filter_map(|r| r.snap.clone().map(|a| (r.id, a)))
             .collect();
         let text_boxes = self.text_boxes.borrow();
         use self::native::area;
         let border = sides(c.borders(), 0.0);
-        let padding = sides(c.reset_box_layout.padding, f32::from(bounds.size.width));
+        let padding = sides(
+            c.reset_box_layout.padding.clone(),
+            f32::from(bounds.size.width),
+        );
         let mut origin = [
             f32::from(bounds.left()) + border[0],
             f32::from(bounds.top()) + border[1],
@@ -86,7 +92,7 @@ impl Frame {
                 && let Some(rect) = area(e, &boxes, &text_boxes)
             {
                 let used = e.style.used();
-                let margin = sides(used.reset_box_layout.margin, view[0]);
+                let margin = sides(used.reset_box_layout.margin.clone(), view[0]);
                 // The end padding follows the in-flow content only (CSS Overflow 3
                 // §2.2, Blink `inflow_bounds`): an absolutely positioned child
                 // brings its border box alone, as Taffy's scrollable overflow does.
@@ -211,7 +217,10 @@ impl Frame {
         }
         if c.reset_box_layout.snap.axis != 0 && !self.snapped.get() && !snap_areas.is_empty() {
             self.snapped.set(true);
-            let mut areas: Vec<_> = snap_areas.iter().map(|(&id, &area)| (id, area)).collect();
+            let mut areas: Vec<_> = snap_areas
+                .iter()
+                .map(|(&id, area)| (id, area.clone()))
+                .collect();
             areas.sort_by_key(|(id, _)| *id);
             return snap::initial(
                 c,

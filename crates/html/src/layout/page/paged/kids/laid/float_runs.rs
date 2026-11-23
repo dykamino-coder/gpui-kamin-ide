@@ -80,7 +80,7 @@ fn anonymous_float_run_retains_original_percentage_cb_and_forced_end() {
     let (nodes, contexts) = flow::page_percentages(&tree, &opts.root_style(), &opts);
     let source = &super::tests::authored(&nodes).children;
     let height = |n: &Node| match n {
-        Node::Element(e) => e.style.used().reset_box_layout.height,
+        Node::Element(e) => e.style.used().reset_box_layout.height.clone(),
         _ => panic!("float box"),
     };
     assert_eq!(height(&source[1]), Some(Len::Px(115.200005)));

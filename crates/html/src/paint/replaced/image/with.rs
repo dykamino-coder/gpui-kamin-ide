@@ -34,7 +34,7 @@ pub(crate) fn image_with(e: &Element, base_font: Option<f32>, cx: &LayoutCx) -> 
     } else {
         e
     };
-    if let Some(vb) = e.style.used().reset_shapes.object_view_box
+    if let Some(vb) = e.style.used().reset_shapes.object_view_box.clone()
         && let Some(el) = view_boxed(e, vb, cx)
     {
         return el;

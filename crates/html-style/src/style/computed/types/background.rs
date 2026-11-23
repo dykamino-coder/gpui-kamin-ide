@@ -26,7 +26,7 @@ pub enum BgClip {
 }
 
 /// `background-size`.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default)]
 pub enum BgSize {
     #[default]
     Auto,
@@ -37,7 +37,7 @@ pub enum BgSize {
 }
 
 /// `background-position`: смещение первой плитки.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BgPos {
     pub x: Option<Len>,
     pub y: Option<Len>,
@@ -57,7 +57,7 @@ pub fn parse_pos_words(v: &str, vcx: ValueCx<'_>) -> BgPos {
     // место, и при картинке больше коробки она отрицательна: `min(0%, 100%)`
     // там равно 100% (`background-position-calc-minmax-001` ловит именно это).
     let length = |t: &str| -> Option<Len> {
-        Len::parse_mixed(t, vcx).filter(|l| !l.needs_unit_context(vcx))
+        Len::parse_mixed(t, vcx).filter(|l| !l.clone().needs_unit_context(vcx))
     };
     let is_kw = |t: &str| matches!(t, "left" | "right" | "top" | "bottom" | "center");
     // Список слоёв (`a, b`): здесь — позиция ПЕРВОГО слоя, как и картинка,

@@ -54,6 +54,8 @@ pub(in crate::dom) fn walk(
         admission.work(1)?;
         match next {
             Work::Leave(p, restore, start) => {
+                let owner_values = p.visit.vcx;
+                let owner = p.visit.handle().key();
                 restore.apply(path);
                 let children = output.pop().expect("children output").into_vec();
                 leave(
@@ -64,6 +66,7 @@ pub(in crate::dom) fn walk(
                     output.last_mut().expect("parent output"),
                     invalidation.as_deref_mut(),
                 )?;
+                owner_values.doc.traversal.end_bindings(owner, &admission)?;
                 if let (Some(recorder), Some(start)) = (&mut recorder, start) {
                     recorder.finish(
                         start,
@@ -71,7 +74,7 @@ pub(in crate::dom) fn walk(
                         counters,
                         output.last().expect("parent output"),
                         &admission,
-                        vcx,
+                        owner_values,
                     )?;
                 }
             }
@@ -116,6 +119,10 @@ pub(in crate::dom) fn walk(
                         {
                             continue;
                         }
+                        let owner_values = v.vcx;
+                        let traversal = &owner_values.doc.traversal;
+                        let owner = v.handle().key();
+                        traversal.begin_bindings(owner);
                         if let Some(mut p) = enter(
                             v,
                             tree,
@@ -136,15 +143,18 @@ pub(in crate::dom) fn walk(
                             while let Some(job) = children.pop() {
                                 work.push(Work::Visit(job), &admission)?;
                             }
-                        } else if let (Some(recorder), Some(start)) = (&mut recorder, start) {
-                            recorder.finish(
-                                start,
-                                path,
-                                counters,
-                                output.last().expect("output"),
-                                &admission,
-                                vcx,
-                            )?;
+                        } else {
+                            traversal.end_bindings(owner, &admission)?;
+                            if let (Some(recorder), Some(start)) = (&mut recorder, start) {
+                                recorder.finish(
+                                    start,
+                                    path,
+                                    counters,
+                                    output.last().expect("output"),
+                                    &admission,
+                                    owner_values,
+                                )?;
+                            }
                         }
                     }
                     _ => {

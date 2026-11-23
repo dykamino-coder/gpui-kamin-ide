@@ -86,7 +86,7 @@ impl ParsedFilter {
                     {
                         return None;
                     }
-                    program.blur_length = Some(len);
+                    program.blur_length = Some(len.clone());
                     f.blur = if let Len::Px(px) = len { px } else { 0.0 };
                 }
                 "drop-shadow" => {

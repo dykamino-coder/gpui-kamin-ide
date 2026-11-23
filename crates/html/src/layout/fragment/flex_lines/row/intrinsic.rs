@@ -19,7 +19,7 @@ pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, 
         return None;
     }
     let (mut maximum, mut minimum) = (0.0f32, 0.0f32);
-    let gap = px_auto_zero(c.style.used().reset_flex.gap.and_then(|g| g.1))?.max(0.0);
+    let gap = px_auto_zero(c.style.used().reset_flex.gap.clone().and_then(|g| g.1))?.max(0.0);
     let mut first = true;
     for n in c.children.iter().filter(|n| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
@@ -41,16 +41,16 @@ pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, 
             None => intrinsic_main(k, main, depth - 1)?,
         };
         let b = k.style.used().borders();
-        let decoration = px_auto_zero(k.style.used().reset_box_layout.padding.left)?
-            + px_auto_zero(k.style.used().reset_box_layout.padding.right)?
+        let decoration = px_auto_zero(k.style.used().reset_box_layout.padding.left.clone())?
+            + px_auto_zero(k.style.used().reset_box_layout.padding.right.clone())?
             + px_auto_zero(b.left)?
             + px_auto_zero(b.right)?;
         let edges = if BoxDimensions::for_element(k, &k.style.used()).border_box {
             0.0
         } else {
             decoration
-        } + px_auto_zero(k.style.used().reset_box_layout.margin.left)?
-            + px_auto_zero(k.style.used().reset_box_layout.margin.right)?;
+        } + px_auto_zero(k.style.used().reset_box_layout.margin.left.clone())?
+            + px_auto_zero(k.style.used().reset_box_layout.margin.right.clone())?;
         maximum += mx + edges;
         minimum = minimum.max(mn + edges);
         if !first {
@@ -59,8 +59,8 @@ pub(super) fn intrinsic_main(c: &Element, main: f32, depth: u8) -> Option<(f32, 
         first = false;
     }
     let b = c.style.used().borders();
-    let edges = px_auto_zero(c.style.used().reset_box_layout.padding.left)?
-        + px_auto_zero(c.style.used().reset_box_layout.padding.right)?
+    let edges = px_auto_zero(c.style.used().reset_box_layout.padding.left.clone())?
+        + px_auto_zero(c.style.used().reset_box_layout.padding.right.clone())?
         + px_auto_zero(b.left)?
         + px_auto_zero(b.right)?;
     let add = if BoxDimensions::for_element(c, &c.style.used()).border_box {

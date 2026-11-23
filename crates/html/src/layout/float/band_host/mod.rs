@@ -54,7 +54,7 @@ pub(super) enum BandPiece {
 pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
     match l {
         Some(Len::Auto) => Some(0.0),
-        other => px_missing_zero(*other),
+        other => px_missing_zero(other.clone()),
     }
 }
 
@@ -65,16 +65,16 @@ pub(super) fn px_margin(l: &Option<Len>) -> Option<f32> {
 pub(super) fn px_margin_box(c: &Computed) -> Option<(f32, f32)> {
     let b = c.borders();
     Some((
-        px_missing_zero(c.reset_box_layout.width)?
-            + px_missing_zero(c.reset_box_layout.padding.left)?
-            + px_missing_zero(c.reset_box_layout.padding.right)?
+        px_missing_zero(c.reset_box_layout.width.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.left.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.right.clone())?
             + px_missing_zero(b.left)?
             + px_missing_zero(b.right)?
             + px_margin(&c.reset_box_layout.margin.left)?
             + px_margin(&c.reset_box_layout.margin.right)?,
-        px_missing_zero(c.reset_box_layout.height)?
-            + px_missing_zero(c.reset_box_layout.padding.top)?
-            + px_missing_zero(c.reset_box_layout.padding.bottom)?
+        px_missing_zero(c.reset_box_layout.height.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.top.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.bottom.clone())?
             + px_missing_zero(b.top)?
             + px_missing_zero(b.bottom)?
             + px_margin(&c.reset_box_layout.margin.top)?

@@ -86,7 +86,7 @@ fn measured_rows_and_auto_prefix_share_constraints_without_mutating_host() {
         frag: Default::default(),
     };
     let input = MulticolDimensions::measured(&e.style.used(), 200., Some(80.));
-    let plan = super::row_plan_in(e, &opts, None, 2, false, None, input);
+    let plan = super::row_plan_in(e, &opts, None, 2, false, None, input.clone());
     assert_eq!(plan.box_h, Some(80.));
     assert_eq!(plan.rows.unwrap().h, Some(80.));
     let prefix = super::row_plan_in(e, &opts, None, 2, false, None, input.prefix());

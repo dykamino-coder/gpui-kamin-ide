@@ -95,7 +95,7 @@ pub(super) mod parse_util;
 pub use crate::style::computed::parse_util::*;
 
 /// Четыре стороны: `top right bottom left`, как в CSS.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Sides {
     pub top: Option<Len>,
     pub right: Option<Len>,
@@ -116,28 +116,28 @@ impl Sides {
             .collect();
         match v.len() {
             1 => Sides {
-                top: v[0],
-                right: v[0],
-                bottom: v[0],
-                left: v[0],
+                top: v[0].clone(),
+                right: v[0].clone(),
+                bottom: v[0].clone(),
+                left: v[0].clone(),
             },
             2 => Sides {
-                top: v[0],
-                right: v[1],
-                bottom: v[0],
-                left: v[1],
+                top: v[0].clone(),
+                right: v[1].clone(),
+                bottom: v[0].clone(),
+                left: v[1].clone(),
             },
             3 => Sides {
-                top: v[0],
-                right: v[1],
-                bottom: v[2],
-                left: v[1],
+                top: v[0].clone(),
+                right: v[1].clone(),
+                bottom: v[2].clone(),
+                left: v[1].clone(),
             },
             4 => Sides {
-                top: v[0],
-                right: v[1],
-                bottom: v[2],
-                left: v[3],
+                top: v[0].clone(),
+                right: v[1].clone(),
+                bottom: v[2].clone(),
+                left: v[3].clone(),
             },
             _ => Sides::default(),
         }
@@ -145,7 +145,7 @@ impl Sides {
 }
 
 /// Четыре угла скругления.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Corners {
     pub tl: Option<Len>,
     pub tr: Option<Len>,

@@ -79,6 +79,7 @@ fn changed_grid_padding_uses_pass_input_and_never_accumulates_old_margins() {
             .reset_box_layout
             .margin
             .top
+            .clone()
     };
     let mut pass = Pass::new(GridStaticPosition);
     let old = check(&mut pass, &GridStaticPosition, &raw, false);

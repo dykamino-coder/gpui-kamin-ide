@@ -28,7 +28,7 @@ pub(super) fn push(
             } else {
                 &mut child.style.used_mut().reset_box_layout.margin.left
             };
-            *margin = Some(Len::Px(px_lossy_zero(*margin) + grow));
+            *margin = Some(Len::Px(px_lossy_zero(margin.clone()) + grow));
             return true;
         }
         if !matches!(&parent.children[at], Node::Element(k) if crate::layout::fragment::breaks::edge_break(k, false, vcx))
@@ -168,13 +168,13 @@ mod tests {
             );
             let (before, after) = if reverse {
                 (
-                    previous.style.used().reset_box_layout.margin.left,
-                    spacer.style.used().reset_box_layout.margin.left,
+                    previous.style.used().reset_box_layout.margin.left.clone(),
+                    spacer.style.used().reset_box_layout.margin.left.clone(),
                 )
             } else {
                 (
-                    previous.style.used().reset_box_layout.margin.right,
-                    spacer.style.used().reset_box_layout.margin.right,
+                    previous.style.used().reset_box_layout.margin.right.clone(),
+                    spacer.style.used().reset_box_layout.margin.right.clone(),
                 )
             };
             assert_eq!(before, None);

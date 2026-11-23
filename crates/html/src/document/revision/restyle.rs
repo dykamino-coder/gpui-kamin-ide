@@ -35,7 +35,7 @@ impl Document {
         {
             return None;
         }
-        let index = self.source_index()?;
+        let index = self.source_index();
         let mut changed = Changed::default();
         for (change, names) in batch.attribute_deltas() {
             if !open(&change.element, &root) {

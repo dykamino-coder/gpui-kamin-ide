@@ -100,7 +100,7 @@ pub(super) fn walk(p: &Element, out: &mut Vec<(u64, Cand)>, vcx: FrameCx<'_>) ->
             out.push((
                 k.node_id,
                 Cand::Forced {
-                    mt: px_auto_zero(k.style.used().reset_box_layout.margin.top)?,
+                    mt: px_auto_zero(k.style.used().reset_box_layout.margin.top.clone())?,
                 },
             ));
         }

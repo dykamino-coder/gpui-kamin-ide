@@ -172,13 +172,23 @@ pub(crate) fn band_kids(
         let shape_values = opts.cx.vcx().keep();
         let is_nest = nest.is_some();
         let vertical = vert.is_some();
-        let cb_height = inherited.reset_box_layout.height;
-        let cb_block_w = inherited.reset_box_layout.width;
+        let cb_height = inherited.reset_box_layout.height.clone();
+        let cb_block_w = inherited.reset_box_layout.width.clone();
         let intrinsic = intrinsic::sizes(&node, &inherited, opts, em, vertical);
         let build = deferred(opts, !is_nest, move |opts, cb, avail, shapes, height| {
             build_band_kid(
-                float, &node, &inherited, opts, is_nest, vertical, cb_height, cb_block_w, cb,
-                avail, shapes, height,
+                float,
+                &node,
+                &inherited,
+                opts,
+                is_nest,
+                vertical,
+                cb_height.clone(),
+                cb_block_w.clone(),
+                cb,
+                avail,
+                shapes,
+                height,
             )
         });
         let clear = if float {

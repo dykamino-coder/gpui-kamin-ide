@@ -139,13 +139,13 @@ pub(crate) fn decorate_atom(
                 line_probe: line_box.filter(|_| {
                     !abs_cb
                         && (crate::layout::positioned::predicates::edge_set(
-                            e.style.used().reset_positioned.inset.left,
+                            e.style.used().reset_positioned.inset.left.clone(),
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.used().reset_positioned.inset.right,
+                            e.style.used().reset_positioned.inset.right.clone(),
                         )) != (crate::layout::positioned::predicates::edge_set(
-                            e.style.used().reset_positioned.inset.top,
+                            e.style.used().reset_positioned.inset.top.clone(),
                         ) || crate::layout::positioned::predicates::edge_set(
-                            e.style.used().reset_positioned.inset.bottom,
+                            e.style.used().reset_positioned.inset.bottom.clone(),
                         ))
                 }),
                 ..Default::default()

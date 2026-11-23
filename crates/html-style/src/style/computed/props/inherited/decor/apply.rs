@@ -12,7 +12,7 @@ impl Computed {
             TextShadow => self.apply_text_shadow(v, vcx),
             TextUnderlineOffset => {
                 self.inh.text_ink.underline_offset =
-                    underline_offset(v, vcx).or(self.inh.text_ink.underline_offset)
+                    underline_offset(v, vcx).or(self.inh.text_ink.underline_offset.clone())
             }
             TextUnderlinePosition => {
                 self.inh.text_ink.underline_pos =

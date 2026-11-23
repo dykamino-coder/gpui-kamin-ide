@@ -53,21 +53,16 @@ pub struct AnchorFn {
     pub max: bool,
 }
 
-/// Ручка `anchor()` (`Len::Anchor`) — как `CalcId`: тело в арене документа.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AnchorId(crate::values::ArenaKey);
+/// Immutable description, without a DOM or geometry owner.
+pub type AnchorId = crate::values::ValueRef<AnchorFn>;
 
-pub fn anchor_store(f: AnchorFn, vcx: ValueCx<'_>) -> AnchorId {
-    AnchorId(crate::values::store(
-        vcx,
-        |d| &d.anchor,
-        std::rc::Rc::new(f),
-    ))
+pub fn anchor_store(f: AnchorFn, _vcx: ValueCx<'_>) -> AnchorId {
+    AnchorId::new(f)
 }
 
-/// Функция по ручке — общим `Rc`, без копии вложенных `alts` на чтение.
-pub fn anchor_get(i: AnchorId, vcx: ValueCx<'_>) -> Option<std::rc::Rc<AnchorFn>> {
-    crate::values::load(vcx, |d| &d.anchor, i.0)
+/// Shared description; target geometry is still resolved against the live tree.
+pub fn anchor_get(i: impl std::borrow::Borrow<AnchorId>, _vcx: ValueCx<'_>) -> Option<AnchorId> {
+    Some(i.borrow().clone())
 }
 
 /// Тело `anchor(...)` без скобок: `[<name> || <side>] , <fallback>?`.

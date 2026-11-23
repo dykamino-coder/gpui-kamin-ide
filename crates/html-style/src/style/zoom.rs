@@ -45,7 +45,7 @@ pub fn apply(
 ) {
     // Кегль — первым и отдельно: от него стадия считает все `em` элемента,
     // и в `scale_own` он НЕ входит (иначе множитель лёг бы дважды).
-    c.inh.font.font_size = match c.inh.font.font_size {
+    c.inh.font.font_size = match c.inh.font.font_size.take() {
         Some(Len::Px(v)) => Some(Len::Px(v * eff)),
         Some(Len::Em(k)) => Some(Len::Em(k * own)),
         Some(Len::Pct(k)) => Some(Len::Pct(k * own)),
@@ -65,7 +65,7 @@ pub fn apply(
     // и должен «still multiply by our own zoom» (relative-units-from-parent:
     // `zoom: 2; line-height: 2lh` ≡ `line-height: 4lh`). Точечная часть
     // `LhPx` уже домножена в `scale_own`.
-    c.inh.font.line_height = match c.inh.font.line_height {
+    c.inh.font.line_height = match c.inh.font.line_height.take() {
         Some(Len::Lh(k)) => Some(Len::Lh(k * own)),
         Some(Len::LhPx(k, add)) => Some(Len::LhPx(k * own, add)),
         other => other,

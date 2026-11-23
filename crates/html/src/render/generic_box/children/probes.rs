@@ -43,8 +43,8 @@ pub(crate) fn child_probes(
             items,
             [bw(b.top), bw(b.right), bw(b.bottom), bw(b.left)],
             [
-                bw(merged.reset_box_layout.margin.right),
-                bw(merged.reset_box_layout.margin.bottom),
+                bw(merged.reset_box_layout.margin.right.clone()),
+                bw(merged.reset_box_layout.margin.bottom.clone()),
             ],
         ));
     }
@@ -87,7 +87,7 @@ pub(crate) fn child_probes(
         // `LineClampAncestorChain`), so an in-flow block with any of them
         // is probed even without paint (`line-clamp-024`, `-auto-027`).
         let bp_after = side(e.style.used().borders().bottom)
-            + side(e.style.used().reset_box_layout.padding.bottom);
+            + side(e.style.used().reset_box_layout.padding.bottom.clone());
         let in_flow_block = !skip
             && merged.reset_box_layout.float.is_none_or(|f| f == 0)
             && !matches!(
@@ -109,18 +109,18 @@ pub(crate) fn child_probes(
             _ => None,
         };
         let end_margin = if in_flow_block || merged.reset_box_layout.float.is_some_and(|f| f != 0) {
-            len_px(merged.reset_box_layout.margin.bottom).unwrap_or(0.0)
+            len_px(merged.reset_box_layout.margin.bottom.clone()).unwrap_or(0.0)
         } else {
             0.0
         };
         // `min-height` as a border-box extent from the border-box top.
-        let min_end = match len_px(sizes.minimum[1]) {
+        let min_end = match len_px(sizes.minimum[1].clone()) {
             Some(m) if in_flow_block && m > 0.0 => {
                 if sizes.border_box {
                     m
                 } else {
                     m + side(e.style.used().borders().top)
-                        + side(e.style.used().reset_box_layout.padding.top)
+                        + side(e.style.used().reset_box_layout.padding.top.clone())
                         + bp_after
                 }
             }

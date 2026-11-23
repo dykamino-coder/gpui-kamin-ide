@@ -48,10 +48,10 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
             && c.reset_mask.clip_xywh.is_none()
             && !c.reset_mask.clip_bare_box;
         let corners = [
-            side(c.reset_border.radius.tl),
-            side(c.reset_border.radius.tr),
-            side(c.reset_border.radius.br),
-            side(c.reset_border.radius.bl),
+            side(c.reset_border.radius.tl.clone()),
+            side(c.reset_border.radius.tr.clone()),
+            side(c.reset_border.radius.br.clone()),
+            side(c.reset_border.radius.bl.clone()),
         ];
         let b = c.borders();
         out.push(
@@ -83,7 +83,7 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
     } else if let Some(radius) = c.reset_effects.backdrop_blur {
         // `backdrop-filter: blur(N)`: размывает то, что под элементом. Рисуется
         // проходом рендера (патч gpui), поэтому это канвас, а не стиль.
-        let corner = px_lossy_zero(c.reset_border.radius.tl);
+        let corner = px_lossy_zero(c.reset_border.radius.tl.clone());
         out.push(
             gpui::canvas(
                 |_, _, _| {},

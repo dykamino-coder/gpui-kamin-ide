@@ -43,9 +43,12 @@ pub(super) fn quirks_percent_heights(
             st.reset_box_layout.display,
             None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem)
         );
-        if let (Some(Len::Pct(k)), Some(b), false, true) =
-            (st.reset_box_layout.height, base, out_of_flow, blockish)
-        {
+        if let (Some(Len::Pct(k)), Some(b), false, true) = (
+            st.reset_box_layout.height.clone(),
+            base,
+            out_of_flow,
+            blockish,
+        ) {
             st.reset_box_layout.height = Some(Len::Px(k * b));
         }
         // Табличные коробки квирка не дают: доля внука ячейки с заданной

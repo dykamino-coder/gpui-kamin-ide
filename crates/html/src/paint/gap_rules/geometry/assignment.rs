@@ -19,7 +19,7 @@ impl RuleSlot {
         }
     }
 
-    pub fn value<T: Copy>(self, list: &GapList<T>) -> Option<T> {
+    pub fn value<T: Clone>(self, list: &GapList<T>) -> Option<T> {
         list.at(self.index, self.count)
     }
 }

@@ -51,12 +51,12 @@ pub fn promote_auto_ratio(style: &mut Computed, tag: &str) {
     }
     let px = px_lossy_zero;
     let b = style.borders();
-    let pad_x = px(style.reset_box_layout.padding.left)
-        + px(style.reset_box_layout.padding.right)
+    let pad_x = px(style.reset_box_layout.padding.left.clone())
+        + px(style.reset_box_layout.padding.right.clone())
         + px(b.left)
         + px(b.right);
-    let pad_y = px(style.reset_box_layout.padding.top)
-        + px(style.reset_box_layout.padding.bottom)
+    let pad_y = px(style.reset_box_layout.padding.top.clone())
+        + px(style.reset_box_layout.padding.bottom.clone())
         + px(b.top)
         + px(b.bottom);
     // Ось, заданная в точках (с зажимом своими пределами), либо её предел.
@@ -71,21 +71,21 @@ pub fn promote_auto_ratio(style: &mut Computed, tag: &str) {
                 _ => x,
             }
         };
-        match (v, lo) {
+        match (v, lo.clone()) {
             (Some(Len::Px(x)), _) => Some(clamp(x)),
             (_, Some(Len::Px(l))) => Some(l),
             _ => None,
         }
     };
     let w = axis(
-        style.reset_box_layout.width,
-        style.reset_box_layout.min_width,
-        style.reset_box_layout.max_width,
+        style.reset_box_layout.width.clone(),
+        style.reset_box_layout.min_width.clone(),
+        style.reset_box_layout.max_width.clone(),
     );
     let h = axis(
-        style.reset_box_layout.height,
-        style.reset_box_layout.min_height,
-        style.reset_box_layout.max_height,
+        style.reset_box_layout.height.clone(),
+        style.reset_box_layout.min_height.clone(),
+        style.reset_box_layout.max_height.clone(),
     );
     let border_ratio = match (w, h) {
         (Some(wb), None) => {
@@ -153,19 +153,21 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
         style.reset_box_layout.attr_width = style
             .reset_box_layout
             .attr_width
+            .clone()
             .or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.0)));
         style.reset_box_layout.attr_height = style
             .reset_box_layout
             .attr_height
+            .clone()
             .or(Some(Len::Px(DEFAULT_CANVAS_SIZE_PX.1)));
     }
     if style.reset_box_layout.width.is_none() {
-        style.reset_box_layout.width = style.reset_box_layout.attr_width;
+        style.reset_box_layout.width = style.reset_box_layout.attr_width.clone();
         style.reset_box_layout.attr_sized.0 =
             tag == "canvas" && style.reset_box_layout.attr_width.is_some();
     }
     if style.reset_box_layout.height.is_none() {
-        style.reset_box_layout.height = style.reset_box_layout.attr_height;
+        style.reset_box_layout.height = style.reset_box_layout.attr_height.clone();
         style.reset_box_layout.attr_sized.1 =
             tag == "canvas" && style.reset_box_layout.attr_height.is_some();
     }
@@ -186,8 +188,8 @@ pub fn apply_presentational_size(style: &mut Computed, tag: &str, attrs: &[(Stri
     if natural_pair && !(style.reset_box_layout.attr_sized.0 && style.reset_box_layout.attr_sized.1)
     {
         if let (Some(Len::Px(w)), Some(Len::Px(h))) = (
-            style.reset_box_layout.attr_width,
-            style.reset_box_layout.attr_height,
+            style.reset_box_layout.attr_width.clone(),
+            style.reset_box_layout.attr_height.clone(),
         ) && w > 0.0
             && h > 0.0
             && style.reset_shapes.aspect_ratio.is_none()

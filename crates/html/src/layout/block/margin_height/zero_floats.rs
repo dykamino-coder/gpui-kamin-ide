@@ -28,7 +28,7 @@ fn zero_inflow(e: &Element, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
         || e.list_item.is_some()
         || matches!(e.tag.as_str(), "html" | "body")
         || !matches!(sizes.preferred[1], None | Some(Len::Auto))
-        || !zero_len(sizes.minimum[1])
+        || !zero_len(sizes.minimum[1].clone())
         || e.style.cascaded().inh.text_flow.keep_spaces == Some(true)
         || e.style.cascaded().inh.text_flow.preserve_newlines == Some(true)
     {
@@ -70,12 +70,12 @@ fn zero_child(node: &Node, inherited: &BoxStyle, vcx: ValueCx<'_>) -> bool {
             sizes.preferred[1],
             None | Some(Len::Auto) | Some(Len::Px(0.0))
         )
-        && zero_len(sizes.minimum[1])
+        && zero_len(sizes.minimum[1].clone())
         && [
-            st.reset_box_layout.margin.top,
-            st.reset_box_layout.margin.bottom,
-            st.reset_box_layout.padding.top,
-            st.reset_box_layout.padding.bottom,
+            st.reset_box_layout.margin.top.clone(),
+            st.reset_box_layout.margin.bottom.clone(),
+            st.reset_box_layout.padding.top.clone(),
+            st.reset_box_layout.padding.bottom.clone(),
             b.top,
             b.bottom,
         ]

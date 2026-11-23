@@ -128,8 +128,8 @@ impl ImageKey {
         Some(Self::Conic {
             from: g.from.into(),
             center: [
-                len_px(g.position.x, css.0, vcx)?,
-                len_px(g.position.y, css.1, vcx)?,
+                len_px(g.position.x.clone(), css.0, vcx)?,
+                len_px(g.position.y.clone(), css.1, vcx)?,
             ]
             .map(FloatKey::from),
             stops: stops(&g.stops),

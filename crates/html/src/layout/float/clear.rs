@@ -38,8 +38,8 @@ pub(crate) fn bfc_no_fit(n: &Element, float_min_w: f32, cb: Option<f32>) -> bool
         Some(w)
     } else {
         match (
-            px_missing_zero(n.style.used().reset_box_layout.padding.left),
-            px_missing_zero(n.style.used().reset_box_layout.padding.right),
+            px_missing_zero(n.style.used().reset_box_layout.padding.left.clone()),
+            px_missing_zero(n.style.used().reset_box_layout.padding.right.clone()),
             px_missing_zero(b.left),
             px_missing_zero(b.right),
         ) {

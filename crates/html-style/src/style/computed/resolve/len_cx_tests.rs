@@ -48,8 +48,8 @@ fn empty_context_matches_the_context_free_contracts() {
         Some(Len::Em(2.0)),
         Some(Len::Vw(0.1)),
     ] {
-        assert_eq!(cx.px_strict(l, vcx), px_strict(l));
-        assert_eq!(cx.px_lossy_zero(l, vcx), px_lossy_zero(l));
+        assert_eq!(cx.px_strict(l.clone(), vcx), px_strict(l.clone()));
+        assert_eq!(cx.px_lossy_zero(l.clone(), vcx), px_lossy_zero(l));
     }
 }
 
@@ -64,7 +64,7 @@ fn to_px_is_the_context_without_viewport() {
         viewport: None,
     };
     for l in [Len::Em(2.0), Len::Pct(0.25), Len::Lh(1.0), Len::Vh(1.0)] {
-        assert_eq!(cx.px(l, vcx), l.to_px(Some(200.0), font, vcx));
+        assert_eq!(cx.px(&l, vcx), l.to_px(Some(200.0), font, vcx));
     }
 }
 
@@ -114,8 +114,8 @@ fn calc_viewport_terms_fold_with_a_viewport_only() {
     let doc = DocumentValues::detached(Media::default());
     let vcx = doc.values();
     let l = Len::parse("calc(100vh - 10px)", vcx).unwrap();
-    assert_eq!(plain(Some((800.0, 600.0))).px(l, vcx), Some(590.0));
-    assert_eq!(plain(None).px(l, vcx), None);
+    assert_eq!(plain(Some((800.0, 600.0))).px(&l, vcx), Some(590.0));
+    assert_eq!(plain(None).px(&l, vcx), None);
     let vmin = Len::parse("10vmin", vcx).unwrap();
     assert_eq!(plain(Some((800.0, 600.0))).px(vmin, vcx), Some(60.0));
 }

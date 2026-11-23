@@ -124,8 +124,11 @@ fn staged_sequence_changes_publish_only_new_reverse_edges() {
             ..old.ownership.clone()
         },
         old.inputs.clone(),
-        old.raw.clone(),
-        old.effects.clone(),
+        CapturedOutput {
+            raw: old.raw.clone(),
+            effects: old.effects.clone(),
+            bindings: old.bindings.clone(),
+        },
         &admission,
     )
     .unwrap();

@@ -35,7 +35,9 @@ impl Computed {
         };
         let (pos, mut math) = position_of(&full, vcx);
         let expression = math[axis].take();
-        let value = [pos.x, pos.y][axis].filter(|v| *v != Len::Pct(0.0) || expression.is_some());
+        let value = [pos.x, pos.y][axis]
+            .clone()
+            .filter(|v| *v != Len::Pct(0.0) || expression.is_some());
         if axis == 0 {
             self.reset_background.bg_pos.x = value;
         } else {

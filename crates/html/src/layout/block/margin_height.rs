@@ -39,8 +39,8 @@ pub(super) fn raises(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
     let st = e.style.used();
     let sizes = BoxDimensions::for_element(e, &st);
     let zero = |l: Option<Len>| matches!(l, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0)));
-    match margin_px_in(sizes.minimum[1], &st, vcx) {
-        None => !zero(sizes.minimum[1]),
+    match margin_px_in(sizes.minimum[1].clone(), &st, vcx) {
+        None => !zero(sizes.minimum[1].clone()),
         Some(mh) if mh <= 0.0 => false,
         Some(mh) => {
             let mut sum = 0.0f32;
@@ -61,9 +61,9 @@ pub(super) fn raises(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
                             _ => None,
                         };
                         let own = match (
-                            margin_px_in(child_sizes.preferred[1], &cs, vcx),
-                            side(cs.reset_box_layout.padding.top),
-                            side(cs.reset_box_layout.padding.bottom),
+                            margin_px_in(child_sizes.preferred[1].clone(), &cs, vcx),
+                            side(cs.reset_box_layout.padding.top.clone()),
+                            side(cs.reset_box_layout.padding.bottom.clone()),
                             side(b.top),
                             side(b.bottom),
                         ) {

@@ -32,16 +32,16 @@ impl Computed {
         // border-box axis. A non-square box therefore needs elliptical corners;
         // the GPUI quad only supports one circular radius per corner.
         let radii = [
-            self.reset_border.radius.tl,
-            self.reset_border.radius.tr,
-            self.reset_border.radius.br,
-            self.reset_border.radius.bl,
+            self.reset_border.radius.tl.clone(),
+            self.reset_border.radius.tr.clone(),
+            self.reset_border.radius.br.clone(),
+            self.reset_border.radius.bl.clone(),
         ];
         // A mixed length-percentage cannot be resolved by the quad, even when
         // the two box axes happen to be equal.
         let calculated = radii.iter().any(|r| match r {
             Some(Len::Calc(i)) => {
-                let sum = crate::style::values::value::calc_get(*i, vcx);
+                let sum = crate::style::values::value::calc_get(i.clone(), vcx);
                 sum.has_percentage || sum.pct != 0.0
             }
             _ => false,
@@ -49,10 +49,13 @@ impl Computed {
         let percentage = radii
             .iter()
             .any(|r| matches!(r, Some(Len::Pct(p)) if *p > 0.0));
-        let square = match (self.reset_box_layout.width, self.reset_box_layout.height) {
+        let square = match (
+            self.reset_box_layout.width.clone(),
+            self.reset_box_layout.height.clone(),
+        ) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => {
                 let sides = |s: super::Sides| [s.top, s.right, s.bottom, s.left].map(px_lossy_zero);
-                let [pt, pr, pb, pl] = sides(self.reset_box_layout.padding);
+                let [pt, pr, pb, pl] = sides(self.reset_box_layout.padding.clone());
                 let [bt, br, bb, bl] = sides(self.borders());
                 let extra = if self.reset_border.border_box == Some(true) {
                     0.0
@@ -108,10 +111,10 @@ impl Computed {
             let bare = |l: Option<Len>| font_len(l).is_none_or(|v| v <= 0.0);
             let b = self.borders();
             if [
-                self.reset_border.radius.tl,
-                self.reset_border.radius.tr,
-                self.reset_border.radius.br,
-                self.reset_border.radius.bl,
+                self.reset_border.radius.tl.clone(),
+                self.reset_border.radius.tr.clone(),
+                self.reset_border.radius.br.clone(),
+                self.reset_border.radius.bl.clone(),
             ]
             .into_iter()
             .any(rounded)
@@ -125,14 +128,14 @@ impl Computed {
         }
         let side = px_lossy_zero;
         let round = [
-            side(self.reset_border.radius.tl),
-            side(self.reset_border.radius.tr),
-            side(self.reset_border.radius.br),
-            side(self.reset_border.radius.bl),
+            side(self.reset_border.radius.tl.clone()),
+            side(self.reset_border.radius.tr.clone()),
+            side(self.reset_border.radius.br.clone()),
+            side(self.reset_border.radius.bl.clone()),
         ];
         let (w, h) = (
-            side(self.reset_box_layout.width),
-            side(self.reset_box_layout.height),
+            side(self.reset_box_layout.width.clone()),
+            side(self.reset_box_layout.height.clone()),
         );
         let max_r = round.iter().cloned().fold(0.0f32, f32::max);
         let uniform = round.iter().all(|r| (r - round[0]).abs() < 0.01);

@@ -71,7 +71,7 @@ pub(super) fn deferred(
                 &opts,
             )
             .into();
-            let plan = column_plan_in(&host, &style, &opts, dimensions, own);
+            let plan = column_plan_in(&host, &style, &opts, dimensions.clone(), own.clone());
             let count = plan.used_count.unwrap_or(1).max(1);
             let column_width = ((width + plan.used_gap) / f32::from(count) - plan.used_gap).max(0.);
             let mut probe_opts = opts.clone();
@@ -146,7 +146,7 @@ pub(super) fn deferred(
                 count,
                 plan.col_vert,
                 outer.clone(),
-                own,
+                own.clone(),
             );
             let rest = match (
                 rows.box_h,

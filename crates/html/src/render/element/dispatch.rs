@@ -127,12 +127,12 @@ pub(crate) async fn dispatch_element(
                 ) =>
         {
             let mut copy = pct_height_to_px(e, inherited);
-            let width = copy.style.used().reset_box_layout.width;
+            let width = copy.style.used().reset_box_layout.width.clone();
             if !matches!(width, Some(Len::Px(_)) | Some(Len::Pct(_))) {
                 copy.style.used_mut().reset_box_layout.width =
                     Some(Len::Px(DEFAULT_REPLACED_WIDTH_PX));
             }
-            let height = copy.style.used().reset_box_layout.height;
+            let height = copy.style.used().reset_box_layout.height.clone();
             let pct_ok = matches!(height, Some(Len::Pct(_))) && merged.cb_height_def;
             if !matches!(height, Some(Len::Px(_))) && !pct_ok {
                 copy.style.used_mut().reset_box_layout.height =

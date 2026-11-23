@@ -37,8 +37,8 @@ pub(crate) fn main_size(c: &Element, vcx: FrameCx<'_>) -> Option<f32> {
                 return None;
             };
             let b = c.style.used().borders();
-            let edges = px_auto_zero(c.style.used().reset_box_layout.padding.left)?
-                + px_auto_zero(c.style.used().reset_box_layout.padding.right)?
+            let edges = px_auto_zero(c.style.used().reset_box_layout.padding.left.clone())?
+                + px_auto_zero(c.style.used().reset_box_layout.padding.right.clone())?
                 + px_auto_zero(b.left)?
                 + px_auto_zero(b.right)?;
             Some(

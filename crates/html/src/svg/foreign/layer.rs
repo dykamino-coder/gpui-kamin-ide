@@ -39,14 +39,14 @@ pub(super) fn prepare(
     if e.tag.eq_ignore_ascii_case("foreignObject") {
         let zoom = merged.inh.font.zoom_eff.unwrap_or(1.0);
         let w = super::geometry::length(
-            e.style.used().reset_box_layout.width,
+            e.style.used().reset_box_layout.width.clone(),
             e.attr("width"),
             viewport.0,
             zoom,
             vcx,
         );
         let h = super::geometry::length(
-            e.style.used().reset_box_layout.height,
+            e.style.used().reset_box_layout.height.clone(),
             e.attr("height"),
             viewport.1,
             zoom,

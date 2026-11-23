@@ -49,7 +49,7 @@ fn ordinary_and_out_of_flow_sizes_do_not_need_an_intrinsic_wrapper() {
         Some(Len::Px(80.0)),
         Some(Len::Pct(0.5)),
     ] {
-        c.reset_box_layout.width = size;
+        c.reset_box_layout.width = size.clone();
         c.reset_box_layout.height = size;
         assert!(wrapper_tracks(&c).is_none());
     }
@@ -67,7 +67,7 @@ fn ordinary_and_out_of_flow_sizes_do_not_need_an_intrinsic_wrapper() {
 fn intrinsic_wrapper_eligibility_respects_each_physical_containment_axis() {
     let mut c = Computed::default();
     for size in [Len::MinContent, Len::MaxContent, Len::FitContent] {
-        c.reset_box_layout.width = Some(size);
+        c.reset_box_layout.width = Some(size.clone());
         c.reset_box_layout.height = None;
         let (col, row) = wrapper_tracks(&c).unwrap();
         assert!(col.is_some() && row.is_none());

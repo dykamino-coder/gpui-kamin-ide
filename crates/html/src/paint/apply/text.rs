@@ -64,7 +64,7 @@ pub fn apply_text(
     if c.inh.font.italic == Some(true) {
         d = d.italic();
     }
-    if let Some(lh) = c.inh.font.line_height {
+    if let Some(lh) = c.inh.font.line_height.clone() {
         d = match lh {
             Len::Px(v) => d.line_height(px(v)),
             Len::Pct(mult) => d.line_height(px(c

@@ -89,7 +89,12 @@ impl Computed {
                 .collect();
             if vals.len() == 4 {
                 self.accept_declaration();
-                self.reset_mask.clip_edges = Some([vals[0], vals[1], vals[2], vals[3]]);
+                self.reset_mask.clip_edges = Some([
+                    vals[0].clone(),
+                    vals[1].clone(),
+                    vals[2].clone(),
+                    vals[3].clone(),
+                ]);
                 self.reset_mask.clip_round_len = inner
                     .split("round")
                     .nth(1)
@@ -113,7 +118,12 @@ impl Computed {
                 .collect();
             if vals.len() == 4 {
                 self.accept_declaration();
-                self.reset_mask.clip_xywh = Some([vals[0], vals[1], vals[2], vals[3]]);
+                self.reset_mask.clip_xywh = Some([
+                    vals[0].clone(),
+                    vals[1].clone(),
+                    vals[2].clone(),
+                    vals[3].clone(),
+                ]);
                 self.reset_mask.clip_round_len = inner
                     .split("round")
                     .nth(1)
@@ -143,10 +153,10 @@ impl Computed {
                 .collect();
             let pick = |i: usize| -> Len {
                 match vals.len() {
-                    1 => vals[0],
-                    2 => vals[i % 2],
+                    1 => vals[0].clone(),
+                    2 => vals[i % 2].clone(),
                     3 => vals[i.min(2)].to_owned(),
-                    4 => vals[i],
+                    4 => vals[i].clone(),
                     _ => Len::Px(0.0),
                 }
             };

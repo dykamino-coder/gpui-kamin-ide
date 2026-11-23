@@ -47,8 +47,8 @@ pub(super) fn element_style(
         let px_of = px_lossy_zero;
         let i = &merged.reset_positioned.inset;
         (
-            px_of(i.left) - px_of(i.right),
-            px_of(i.top) - px_of(i.bottom),
+            px_of(i.left.clone()) - px_of(i.right.clone()),
+            px_of(i.top.clone()) - px_of(i.bottom.clone()),
         )
     } else {
         (0.0, 0.0)
@@ -93,13 +93,14 @@ pub(super) fn element_style(
         merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
-                px_of(e.style.used().reset_box_layout.padding.top),
-                px_of(e.style.used().reset_box_layout.padding.right),
-                px_of(e.style.used().reset_box_layout.padding.bottom),
-                px_of(e.style.used().reset_box_layout.padding.left),
+                px_of(e.style.used().reset_box_layout.padding.top.clone()),
+                px_of(e.style.used().reset_box_layout.padding.right.clone()),
+                px_of(e.style.used().reset_box_layout.padding.bottom.clone()),
+                px_of(e.style.used().reset_box_layout.padding.left.clone()),
             ],
         ));
-        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().reset_border.radius.tl));
+        merged.inline_decoration.corner_radius =
+            Some(px_of(e.style.used().reset_border.radius.tl.clone()));
     }
     // Рамка строчной коробки рисуется прогоном: и ровная, и
     // с РАЗНЫМИ гранями (у прогона теперь пооосевые ширины) —
@@ -163,13 +164,14 @@ pub(super) fn element_style(
         merged.inline_decoration.physical_padding = Some(physical_sides::project(
             inherited,
             [
-                px_of(e.style.used().reset_box_layout.padding.top),
-                px_of(e.style.used().reset_box_layout.padding.right),
-                px_of(e.style.used().reset_box_layout.padding.bottom),
-                px_of(e.style.used().reset_box_layout.padding.left),
+                px_of(e.style.used().reset_box_layout.padding.top.clone()),
+                px_of(e.style.used().reset_box_layout.padding.right.clone()),
+                px_of(e.style.used().reset_box_layout.padding.bottom.clone()),
+                px_of(e.style.used().reset_box_layout.padding.left.clone()),
             ],
         ));
-        merged.inline_decoration.corner_radius = Some(px_of(e.style.used().reset_border.radius.tl));
+        merged.inline_decoration.corner_radius =
+            Some(px_of(e.style.used().reset_border.radius.tl.clone()));
     }
     // Контур строчного куска рисует тот же прогон: коробки у
     // куска нет, а место контур и не занимает. Рисуется только

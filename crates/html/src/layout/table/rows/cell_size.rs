@@ -13,7 +13,7 @@ pub(super) fn vertical_block_floor(
     if style.reset_box_layout.width_from_inline {
         return;
     }
-    let width = match style.reset_box_layout.width {
+    let width = match style.reset_box_layout.width.clone() {
         Some(Len::Px(width)) => width,
         Some(length @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
             crate::text::metrics::spacing_px(Some(length), family, font, vcx)

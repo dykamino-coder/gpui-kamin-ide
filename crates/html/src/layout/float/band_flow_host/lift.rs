@@ -66,8 +66,9 @@ pub(super) fn abs_pinned(c: &Computed) -> bool {
         c.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) && (set(c.reset_positioned.inset.top) || set(c.reset_positioned.inset.bottom))
-        && (set(c.reset_positioned.inset.left) || set(c.reset_positioned.inset.right))
+    ) && (set(c.reset_positioned.inset.top.clone()) || set(c.reset_positioned.inset.bottom.clone()))
+        && (set(c.reset_positioned.inset.left.clone())
+            || set(c.reset_positioned.inset.right.clone()))
 }
 
 /// `band_flow_rest`, где абсолюты с заданными вставками (`abs_pinned`) не

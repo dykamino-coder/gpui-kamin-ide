@@ -1,5 +1,5 @@
-//! Тесты владения: правила, метрики и арены значений принадлежат документу,
-//! вложенный документ и второй документ в том же потоке их не трогают.
+//! Rules and metrics belong to the document; expressions belong to their readers.
+//! Nested documents and later documents on the same thread leave them intact.
 
 use crate::document::{Document, parse_embedded};
 use crate::style::css::page_decls_in;
@@ -73,7 +73,7 @@ fn sum(px: f32) -> Sum {
 }
 
 #[test]
-fn calc_handles_belong_to_their_document() {
+fn calc_expressions_keep_their_own_values() {
     let a = super::DocState::new(Default::default());
     let b = super::DocState::new(Default::default());
     let (ha, hb) = (
@@ -89,24 +89,24 @@ fn calc_handles_belong_to_their_document() {
 }
 
 #[test]
-#[cfg_attr(debug_assertions, should_panic(expected = "ручка арены без записи"))]
-fn foreign_handle_is_a_link_error() {
+fn calc_expression_outlives_its_original_document() {
     let a = super::DocState::new(Default::default());
-    let b = super::DocState::new(Default::default());
+    let weak = std::rc::Rc::downgrade(&a.values);
     let h = calc_store(sum(1.0), a.values());
-    assert_eq!(
-        calc_get(h, b.values()).px,
-        0.0,
-        "explicit fallback in release"
+    drop(a);
+    assert!(
+        weak.upgrade().is_none(),
+        "an expression must not own DocumentValues"
     );
+    let b = super::DocState::new(Default::default());
+    assert_eq!(calc_get(h, b.values()).px, 1.0);
 }
 
 #[test]
-#[cfg_attr(debug_assertions, should_panic(expected = "ручка арены без записи"))]
-fn frame_region_is_reset_after_paint() {
+fn retained_expression_survives_frame_retirement() {
     let a = super::DocState::new(Default::default());
-    let h = calc_store(Sum::default(), a.frame_values());
+    let h = calc_store(sum(3.0), a.frame_values());
     a.values.mark_painted();
     a.begin_frame();
-    calc_get(h, a.frame_values());
+    assert_eq!(calc_get(h, a.frame_values()).px, 3.0);
 }

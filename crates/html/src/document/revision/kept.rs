@@ -1,7 +1,6 @@
 //! What the edits in place of one document keep between them (`Kept`).
 
 use super::boxes::Boxes;
-use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use std::rc::Rc;
@@ -17,7 +16,6 @@ pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
     pub(super) cache: crate::dom::restyle_probe::RestyleCache,
     boxes: Option<Rc<Boxes>>,
-    ids: Option<Rc<SourceIndex>>,
 }
 
 impl Kept {
@@ -29,7 +27,6 @@ impl Kept {
             sheets: None,
             cache,
             boxes: None,
-            ids: None,
         };
         Rc::new(std::cell::Cell::new(Some(Box::new(kept))))
     }
@@ -40,15 +37,6 @@ impl Kept {
             self.boxes = Some(Rc::new(Boxes::of(nodes)?));
         }
         self.boxes.clone()
-    }
-
-    /// The box numbers of the source elements `list` of the build, indexed on
-    /// the first edit in place.
-    pub(super) fn ids(&mut self, list: &[usize]) -> Option<Rc<SourceIndex>> {
-        if self.ids.is_none() {
-            self.ids = Some(Rc::new(SourceIndex::of(list)?));
-        }
-        self.ids.clone()
     }
 }
 
@@ -78,11 +66,7 @@ impl Document {
         }
     }
 
-    /// The box numbers of the source elements of this build (`SourceIndex`).
-    pub(super) fn source_index(&self) -> Option<Rc<SourceIndex>> {
-        let mut kept = self.restyle.take().unwrap_or_default();
-        let ids = kept.ids(&self.state.values.traversal.elements());
-        self.restyle.set(Some(kept));
-        ids
+    pub(super) fn source_index(&self) -> std::cell::Ref<'_, crate::values::bindings::BindingStore> {
+        self.state.values.traversal.bindings()
     }
 }

@@ -23,7 +23,7 @@ fn spacing_length(v: &str, vcx: ValueCx<'_>) -> Option<Len> {
 /// `border-spacing: <length [0,∞]>{1,2}`: одно значение — обе оси.
 pub fn border_spacing(v: &str, vcx: ValueCx<'_>) -> Option<(Len, Len)> {
     match crate::style::computed::split_outside_parens(v).as_slice() {
-        [both] => spacing_length(both, vcx).map(|l| (l, l)),
+        [both] => spacing_length(both, vcx).map(|l| (l.clone(), l)),
         [h, v2] => Some((spacing_length(h, vcx)?, spacing_length(v2, vcx)?)),
         _ => None,
     }

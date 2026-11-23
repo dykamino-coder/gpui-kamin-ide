@@ -69,8 +69,11 @@ fn repeated_publication_keeps_one_current_entry_and_a_held_old_frame() {
             held.source_parent,
             held.ownership.clone(),
             held.inputs.clone(),
-            held.raw.clone(),
-            held.effects.clone(),
+            CapturedOutput {
+                raw: held.raw.clone(),
+                effects: held.effects.clone(),
+                bindings: held.bindings.clone(),
+            },
             &admission,
         )
         .unwrap();
