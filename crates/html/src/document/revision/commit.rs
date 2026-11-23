@@ -139,14 +139,24 @@ impl Document {
         }
     }
 
-    /// Write the paint values the restyle of the boxes at `paths` changed
-    /// from the current tree to `nodes` into the scene layer of the last
-    /// recorded frame; `false`, with nothing written, when there is no such
-    /// layer or a change is not a layer write (`layer_write`).
+    /// Собственная краска: запись в слой либо доказанная невидимая правка.
     fn write_paint_values(&self, nodes: &[Node], paths: &[(super::patch::Path, u64)]) -> bool {
         let _timer = crate::paint_path::Timer::start();
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
-            // A frame replays only from a settled record of this tree.
+            if self.frame_recorded()
+                && self.reuse.scene_layer().is_none()
+                && let Some(frames) = super::offscreen::without_layer(
+                    &self.reuse,
+                    &self.state.boxes.borrow(),
+                    &self.nodes,
+                    nodes,
+                    paths,
+                )
+            {
+                super::offscreen::count(&frames);
+                self.reuse.defer_frames(frames);
+                return true;
+            }
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
             self.note_no_layer();
             return false;
@@ -154,7 +164,6 @@ impl Document {
         let own = |e: &crate::dom::Element| {
             crate::paint::box_tree::styled::requested_painter(&self.state, e)
         };
-        // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
             self.reuse.skipped_any()
                 && (1..=path.len()).any(|k| {
@@ -162,9 +171,7 @@ impl Document {
                         .is_some_and(|e| self.reuse.unpainted(e.node_id))
                 })
         };
-        // A box whose runs showed no pixel of the layer's frame.
         let off = |id: u64| self.reuse.off_screen(&layer, id);
-        // A box the layer cannot record, wholly off the screen (`offscreen`).
         let boxes = self.state.boxes.borrow();
         let waits = |kind,
                      path: &super::patch::Path,

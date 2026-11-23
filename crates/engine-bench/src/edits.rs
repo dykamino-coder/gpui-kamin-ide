@@ -142,6 +142,12 @@ pub(super) async fn run(
     mode["fresh_checks"] = json!(checks);
     mode["start_quiet"] = super::memory::quiet_summary(&quiet);
     mode["document_frame_samples"] = json!(frame_samples);
+    if let Some(check) =
+        super::edit_scroll_fresh::check(&base, &edited, (cx, window, fonts, args, capture, luid))
+            .await?
+    {
+        mode["edit_scroll_fresh"] = check;
+    }
     // Owners of the heap after the last edit frame, as after the frames of
     // every other mode (`memprof.py run --owners`, `holders`).
     #[cfg(feature = "heap-report")]

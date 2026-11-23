@@ -49,6 +49,7 @@ pub const CODES: &[&str] = &[
     "no_layer.dropped",
     "no_layer.unrecorded",
     "no_layer.frame_unrecorded",
+    "offscreen.refused_without_layer",
     "not_own",
     "plan_text.refused",
     "scroll_extent.layout_bars",

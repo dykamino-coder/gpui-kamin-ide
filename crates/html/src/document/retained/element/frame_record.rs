@@ -33,7 +33,11 @@ impl Retained {
                 let replay = self.tree.is_none().then(|| {
                     let store = &self.builder.store;
                     let replay = record.replay(&self.slot, self.key.as_ref(), &key, window, store);
-                    let boxes = |replay| match self.builder.repaint_boxes(window, cx) {
+                    let boxes = |replay| match self.builder.repaint_boxes(
+                        window,
+                        cx,
+                        matches!(&replay, Replay::Scrolled(_)),
+                    ) {
                         true => Ok(replay),
                         false => Err(FrameMiss::Boxes.noted()),
                     };

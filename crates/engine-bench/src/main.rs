@@ -20,6 +20,8 @@ mod build_info;
 mod diagnostics;
 mod edit;
 #[cfg(windows)]
+mod edit_scroll_fresh;
+#[cfg(windows)]
 mod edits;
 #[cfg(windows)]
 mod frames;

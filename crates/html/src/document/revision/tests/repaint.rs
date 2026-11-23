@@ -70,3 +70,30 @@ fn hover_layers_and_floats_below_the_restyled_element_rebuild() {
 }
 
 mod attributes;
+
+#[test]
+fn hidden_targets_do_not_cancel_a_visible_paint_restyle() {
+    let old = page(
+        ".hot span{color:red}.hidden{display:none}",
+        "<section class=hidden><span>hidden</span></section>",
+    );
+    let new = old.replace("<body>", "<body class=hot>");
+    assert_eq!(both(&old, &new), (true, true));
+}
+
+#[test]
+fn appearing_and_disappearing_boxes_still_rebuild() {
+    let old = page(
+        ".hidden{display:none}",
+        "<div class=hidden><span>x</span></div>",
+    );
+    let new = old.replace("class=hidden", "class=shown");
+    assert_eq!(both(&old, &new), (false, false));
+}
+
+#[test]
+fn a_hidden_html_box_still_takes_its_new_style() {
+    let old = page("html{display:none}html.alt{color:red}", "");
+    let new = old.replace("<html>", "<html class=alt>");
+    assert_eq!(both(&old, &new), (false, false));
+}

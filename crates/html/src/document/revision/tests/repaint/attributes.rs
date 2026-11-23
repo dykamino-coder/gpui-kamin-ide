@@ -48,12 +48,17 @@ fn an_inline_generated_attribute_keeps_its_dependency() {
 
 #[test]
 fn typed_attribute_values_can_read_a_name_absent_from_the_stylesheet() {
-    let old = page(".box{--x:attr(data-source type(*));color:var(--x)}", "").replace(
-        "class=box",
-        "class=box data-edit=red data-source='attr(data-edit type(<color>))'",
-    );
-    let new = old.replace("data-edit=red", "data-edit=blue");
-    assert_eq!(both(&old, &new), (false, false));
+    for (css, inline) in [
+        (".box{--x:attr(data-source type(*));color:var(--x)}", ""),
+        ("", " style='--x:attr(data-source type(*));color:var(--x)'"),
+    ] {
+        let old = page(css, "").replace(
+            "class=box",
+            &format!("class=box data-edit=red data-source='attr(data-edit type(<color>))'{inline}"),
+        );
+        let new = old.replace("data-edit=red", "data-edit=blue");
+        assert_eq!(both(&old, &new), (false, false));
+    }
 }
 
 #[test]

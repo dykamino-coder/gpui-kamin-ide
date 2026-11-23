@@ -31,6 +31,63 @@ use gpui::{Bounds, LayerHandle, ScaledPixels};
 /// The area an edit off the screen can paint and why it waits for a frame.
 pub(super) type FrameWait = (Bounds<ScaledPixels>, Wait);
 
+/// Отсутствие слоя не отменяет геометрию фрагментов. Невидимые изменения
+/// только собственной краски сохраняют кадр; неизвестная область отвергается.
+pub(super) fn without_layer(
+    store: &Store,
+    boxes: &crate::document::boxes::BoxTree,
+    old: &[Node],
+    new: &[Node],
+    paths: &[(Path, u64)],
+) -> Option<Vec<FrameWait>> {
+    use super::paint_damage::{PaintDamage, classify, unboxed, unpainted_svg};
+    let mut frames = Vec::new();
+    for (path, id) in paths {
+        let (a, b) = (
+            super::layer_write::at(old, path, *id)?,
+            super::layer_write::at(new, path, *id)?,
+        );
+        let in_svg = || {
+            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
+        };
+        if classify(a, b, in_svg) == PaintDamage::Rebuild {
+            return declined(a, "not paint-only");
+        }
+        if unpainted_svg(old, path) || unboxed(a, b) {
+            continue;
+        }
+        if store.skipped_any()
+            && (1..=path.len())
+                .any(|k| element_at(old, &path[..k]).is_some_and(|e| store.unpainted(e.node_id)))
+        {
+            crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
+            continue;
+        }
+        let Some(outset) = outset(&BoxStyle::shared(b.style.used())) else {
+            return declined(a, "unknown paint outset");
+        };
+        let Some(area) = inline_area(store, boxes, old, path, a, outset) else {
+            return declined(a, "no retained inline fragments");
+        };
+        if !store.misses_shown(area) {
+            return declined(a, "paint reaches recorded area");
+        }
+        frames.push((area, Wait::Inline));
+    }
+    Some(frames)
+}
+
+/// Отказ геометрического доказательства виден тем же протоколом, что слой.
+fn declined<T>(element: &Element, reason: &'static str) -> Option<T> {
+    crate::why::note("offscreen.refused_without_layer", || {
+        format!(
+            "node={} tag={} reason={reason}",
+            element.node_id, element.tag
+        )
+    });
+    None
+}
+
 /// Count the edits waiting for a frame by why they wait.
 pub(super) fn count(frames: &[FrameWait]) {
     for (_, wait) in frames {
@@ -91,13 +148,19 @@ fn fragments_of<R>(
     f: impl FnOnce(&crate::layout::retained::InlineFragments, u32) -> R,
 ) -> Option<R> {
     use crate::document::boxes::inline::ItemKind;
-    let id = boxes.box_of(a.node_id)?;
+    let id = boxes
+        .box_of(a.node_id)
+        .or_else(|| declined(a, "fragment box missing"))?;
     let container = boxes
         .ancestors(id)
-        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()))?;
-    let fragments = boxes.slot(container)?.inline.as_deref()?;
+        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()))
+        .or_else(|| declined(a, "inline container missing"))?;
+    let fragments = boxes
+        .slot(container)
+        .and_then(|slot| slot.inline.as_deref())
+        .or_else(|| declined(a, "container fragments missing"))?;
     if !store.fragments_hold(fragments.stamp()) {
-        return None;
+        return declined(a, "container fragments do not describe recorded frame");
     }
     let own = u32::try_from(a.node_id).ok()?;
     if fragments.has(own) {
@@ -111,7 +174,7 @@ fn fragments_of<R>(
         .iter()
         .any(|item| item.box_id == id && item.kind == ItemKind::Open)
     {
-        return None;
+        return declined(a, "inline opening item missing");
     }
     let owner = (1..path.len())
         .rev()
@@ -120,7 +183,8 @@ fn fragments_of<R>(
             (boxes.box_of(e.node_id)? != container).then_some(e.node_id)
         })
         .filter_map(|node| u32::try_from(node).ok())
-        .find(|owner| fragments.has(*owner))?;
+        .find(|owner| fragments.has(*owner))
+        .or_else(|| declined(a, "inline fragment owner missing"))?;
     Some(f(fragments, owner))
 }
 

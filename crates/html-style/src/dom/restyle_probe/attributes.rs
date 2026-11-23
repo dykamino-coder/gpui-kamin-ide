@@ -1,16 +1,18 @@
-//! Attribute reads: unrelated names keep local style recalculation available.
+//! Зависимости attr() по именам: чужая правка не запрещает локальный каскад.
 
 use crate::css_syntax::{escape_end, functions, strip_comments, unescape};
 use std::collections::HashSet;
 
 #[derive(Default)]
-pub(in crate::dom) struct AttributeReads {
+/// Имена атрибутов, читаемых значениями CSS; типизированные чтения динамичны.
+pub struct AttributeReads {
     names: HashSet<String>,
     dynamic: bool,
 }
 
 impl AttributeReads {
-    pub(in crate::dom) fn add(&mut self, css: &str) {
+    /// Добавить зависимости листа или собственного стиля элемента.
+    pub fn add(&mut self, css: &str) {
         let clean;
         let css = if css.contains("/*") {
             clean = strip_comments(css);
@@ -38,9 +40,8 @@ impl AttributeReads {
                 Some(raw) if raw.eq_ignore_ascii_case("raw-string") => tail[10..].trim_start(),
                 _ => tail,
             };
-            // Typed attr expands CSS from the attribute, including nested attr().
-            // The sheet cannot know those names; keep the conservative refusal.
-            // Unrecognized syntax also cannot prove independence.
+            // Типизированный attr разворачивает CSS из значения, в том числе
+            // вложенный attr(). Неизвестные имена и синтаксис требуют отказа.
             if name.is_empty() || name.contains('|') || !tail.starts_with([',', ')']) {
                 self.dynamic = true;
             } else {
@@ -49,7 +50,8 @@ impl AttributeReads {
         }
     }
 
-    pub(in crate::dom) fn reads(&self, names: &[String]) -> bool {
+    /// Может ли правка этих имён изменить вычисленные значения.
+    pub fn reads(&self, names: &[String]) -> bool {
         self.dynamic || names.iter().any(|name| self.names.contains(name))
     }
 }

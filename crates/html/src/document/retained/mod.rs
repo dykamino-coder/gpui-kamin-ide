@@ -235,3 +235,5 @@ impl Document {
 mod extent_settle_tests;
 #[cfg(test)]
 mod moved_glyph_tests;
+#[cfg(test)]
+mod unlayered_tests;

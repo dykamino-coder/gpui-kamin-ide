@@ -202,7 +202,9 @@ impl Document {
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {
-            let (old, new) = probe::pair(target, old, new)?;
+            let Some((old, new)) = probe::pair(target, old, new)? else {
+                continue;
+            };
             if old.rest != new.rest {
                 return refuse(&why::REFUSED_RESTYLE_REST);
             }

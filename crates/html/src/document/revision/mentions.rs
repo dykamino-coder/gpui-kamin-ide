@@ -16,6 +16,11 @@
 /// `classes` after a dot. Attribute names are ASCII lowercase; classes are as
 /// written and compared ignoring ASCII case (a superset of the matches).
 pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool {
+    let mut reads = crate::dom::restyle_probe::AttributeReads::default();
+    reads.add(css);
+    if reads.reads(attrs) {
+        return true;
+    }
     scan(css, |word, dotted| {
         attrs.iter().any(|a| a == word)
             || dotted && classes.iter().any(|c| c.eq_ignore_ascii_case(word))
@@ -30,12 +35,14 @@ pub(super) fn mentions(css: &str, attrs: &[String], classes: &[String]) -> bool 
 pub(super) struct Mentions {
     words: std::collections::HashSet<String>,
     dotted: std::collections::HashSet<String>,
+    reads: crate::dom::restyle_probe::AttributeReads,
 }
 
 impl Mentions {
     pub(super) fn of<'a>(texts: impl IntoIterator<Item = &'a str>) -> Self {
         let mut index = Self::default();
         for css in texts {
+            index.reads.add(css);
             scan(css, |word, dotted| {
                 if dotted && !index.dotted.contains(word) {
                     index.dotted.insert(word.to_string());
@@ -53,7 +60,8 @@ impl Mentions {
     /// lowercase, so a class written in any case is looked up lowercased
     /// (the same superset of selector matches as `mentions`).
     pub(super) fn any(&self, attrs: &[String], classes: &[String]) -> bool {
-        attrs.iter().any(|a| self.words.contains(a))
+        self.reads.reads(attrs)
+            || attrs.iter().any(|a| self.words.contains(a))
             || (classes.iter()).any(|c| self.dotted.contains(&c.to_ascii_lowercase()))
     }
 }

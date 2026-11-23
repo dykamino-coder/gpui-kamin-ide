@@ -1,0 +1,111 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Deferred inline paint across scroll</title>
+<style>
+html, body { margin: 0; background: white; }
+p { margin: 0; width: 380px; font: 16px/20px sans-serif; text-align: justify; }
+aside { opacity: .5; width: 10px; height: 10px; background: blue; }
+html.alt #target { background: red; }
+.hidden { display: none; }
+.hidden::after { content: attr(title); }
+</style>
+</head>
+<body>
+<aside></aside>
+<div class="hidden"><span title="hidden">hidden</span></div>
+<p>
+<span id="s0">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s1">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s2">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s3">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s4">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s5">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s6">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s7">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s8">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s9">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s10">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s11">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s12">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s13">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s14">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s15">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s16">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s17">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s18">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s19">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s20">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s21">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s22">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s23">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s24">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s25">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s26">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s27">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s28">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s29">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s30">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s31">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s32">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s33">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s34">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s35">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s36">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s37">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s38">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s39">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s40">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s41">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s42">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s43">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s44">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="target">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s46">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s47">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s48">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s49">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s50">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s51">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s52">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s53">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s54">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s55">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s56">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s57">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s58">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s59">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s60">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s61">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s62">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s63">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s64">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s65">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s66">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s67">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s68">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s69">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s70">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s71">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s72">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s73">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s74">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s75">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s76">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s77">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s78">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s79">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s80">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s81">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s82">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s83">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s84">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s85">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s86">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s87">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s88">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+<span id="s89">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
+</p>
+</body>
+</html>

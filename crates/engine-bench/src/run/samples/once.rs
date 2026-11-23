@@ -86,7 +86,7 @@ pub(super) async fn sample_once(
                     .viewport((args.viewport.0 as f32, args.viewport.1 as f32));
                 // Scroll measures the standalone browser view, whose root scroller
                 // takes the wheel (`host::DocumentView`).
-                let doc = if args.mode == Mode::Scroll {
+                let doc = if args.mode == Mode::Scroll || crate::edit_scroll_fresh::enabled(args) {
                     builder.build_root_scroller()?
                 } else {
                     builder.build()?

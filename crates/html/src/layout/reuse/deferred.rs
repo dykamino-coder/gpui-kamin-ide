@@ -17,6 +17,7 @@
 use super::store::Store;
 use gpui::{Bounds, LayerHandle, ScaledPixels};
 use std::cell::Cell;
+mod frames;
 
 /// The area the layer's frame showed and the boxes whose own commands wait.
 #[derive(Default)]
@@ -171,19 +172,20 @@ impl Store {
             return;
         }
         let deferred = self.layer.deferred();
-        let mut kept = deferred.frames.take();
-        kept.extend(waits);
-        deferred.frames.set(kept);
+        deferred
+            .frames
+            .set(frames::coalesce(deferred.frames.take(), waits));
     }
 
-    /// Whether a replay showing `shown` reaches an edit waiting for a frame;
-    /// each reached edit is counted by its reason, and one frame takes all.
-    pub(crate) fn due_frames(&self, shown: Bounds<ScaledPixels>) -> bool {
+    /// Области заданы в координатах записанного кадра. При прокрутке без
+    /// карты их scroll-узлов безопасно перестроить кадр с ожидающей краской;
+    /// сравнение со старой областью просмотра пропустило бы появление правки.
+    pub(crate) fn due_frames(&self, shown: Bounds<ScaledPixels>, scrolled: bool) -> bool {
         let deferred = self.layer.deferred();
         let kept = deferred.frames.take();
         let mut due = false;
         for (area, wait) in &kept {
-            if grown(*area).intersects(&shown) {
+            if scrolled || grown(*area).intersects(&shown) {
                 due = true;
                 let counter = match wait {
                     Wait::Inline => &crate::paint_path::ARRIVED_INLINE,

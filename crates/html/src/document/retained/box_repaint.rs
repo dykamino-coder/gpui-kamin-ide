@@ -66,8 +66,8 @@ fn group_paint(
 impl Builder {
     /// Record the queued boxes again before the frame replays; `false` when
     /// the frame must be built.
-    pub(super) fn repaint_boxes(&self, window: &mut Window, cx: &mut App) -> bool {
-        let done = self.repaint_queued(window, cx);
+    pub(super) fn repaint_boxes(&self, window: &mut Window, cx: &mut App, scrolled: bool) -> bool {
+        let done = self.repaint_queued(window, cx, scrolled);
         if !done {
             // Runs already replaced leave the layer neither old nor new.
             self.store.void_frame_records();
@@ -76,15 +76,14 @@ impl Builder {
         done
     }
 
-    fn repaint_queued(&self, window: &mut Window, cx: &mut App) -> bool {
+    fn repaint_queued(&self, window: &mut Window, cx: &mut App, scrolled: bool) -> bool {
         // Deferred boxes this replay shows are recorded with the queued ones.
+        let shown = window.content_mask().bounds.scale(window.scale_factor());
+        // Отложенная правка требует нового кадра и при отсутствии слоя.
+        if self.store.due_frames(shown, scrolled) {
+            return false;
+        }
         if let Some(layer) = self.store.scene_layer() {
-            let shown = window.content_mask().bounds.scale(window.scale_factor());
-            // An edit the layer cannot record that this replay shows: one
-            // frame is built for every edit waiting (`layout::reuse::Wait`).
-            if self.store.due_frames(shown) {
-                return false;
-            }
             self.store
                 .queue_repaints(self.store.due_repaints(&layer, shown));
         }

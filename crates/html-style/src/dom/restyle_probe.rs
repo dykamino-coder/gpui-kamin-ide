@@ -21,7 +21,7 @@ use std::rc::Rc;
 
 mod attributes;
 mod rules;
-pub(super) use attributes::AttributeReads;
+pub use attributes::AttributeReads;
 
 /// Правила документа одной ревизии для проб его элементов.
 pub struct RestyleProbe {
