@@ -1,4 +1,4 @@
-//! Публикация сообщает только повреждённые коробки и прежние поколения снятых.
+//! Publication reports damaged boxes and the former generations of retired boxes.
 
 use super::*;
 use crate::document::delta::{BoxDelta, LayoutDamage};

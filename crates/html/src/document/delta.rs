@@ -1,13 +1,13 @@
-//! Изменения коробок одной публикации: причина отказа отрисовки не меняет damage.
+//! Box changes from one publication, independent of paint refusal reasons.
 //!
-//! Это результат публикации, а не очередь кадров. Один BoxId может встречаться
-//! несколько раз: потребитель объединяет независимые повреждения, не теряя
-//! paint при обработке layout. Снятые ключи содержат прежнее поколение арены.
+//! This is a publication result, not a frame queue. A BoxId may occur multiple
+//! times: consumers merge independent damage without losing paint when handling
+//! layout. Retired keys identify the former arena generation.
 
 use crate::dom::{BoxId, NodeKey};
 use html5ever::QualName;
 
-/// Итог пакета до записи DOM; rollback не меняет имена и связи журнала.
+/// Net batch changes before DOM writes; rollback preserves journal names and links.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct SourceDelta {
     pub(crate) changes: Vec<SourceChange>,
@@ -40,7 +40,7 @@ impl SourceDelta {
     }
 }
 
-/// Изменение входов раскладки; Content учитывает внешнее ограничение intrinsic.
+/// Changed layout inputs; Content respects external intrinsic constraints.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum LayoutDamage {
     #[default]
@@ -49,7 +49,7 @@ pub(crate) enum LayoutDamage {
     Own,
 }
 
-/// Независимые требования стадий. Структура не означает замену документа.
+/// Independent stage requirements; structural damage does not replace the document.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Damage {
     pub(crate) structure: bool,
@@ -81,7 +81,7 @@ impl Damage {
     };
 }
 
-/// Идентификаторы не удерживают исходный DOM, адаптер или элементы GPUI.
+/// Identifiers do not retain the source DOM, adapters or GPUI elements.
 #[derive(Debug, Default)]
 pub(crate) struct BoxDelta {
     pub(crate) changed: Vec<(BoxId, Damage)>,

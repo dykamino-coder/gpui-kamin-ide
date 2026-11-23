@@ -1,4 +1,4 @@
-//! Delta хранит итог пакета, включая скрытые узлы, перестановку и old/new parent.
+//! Deltas retain net changes for hidden nodes, reorders and old/new parents.
 
 use super::super::{Batch, Mutation, parent};
 use crate::document::{Document, delta::SourceChangeKind};

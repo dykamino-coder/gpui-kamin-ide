@@ -1,4 +1,4 @@
-//! Состав детей и перемещение публикуются раздельно: перестановка сохраняет родителя.
+//! Membership and moves are separate: reordering preserves the parent link.
 
 use super::Changes;
 use crate::document::delta::{SourceChange, SourceChangeKind, SourceDelta};

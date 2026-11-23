@@ -1,4 +1,4 @@
-//! Итоговые изменения DOM до записи: ключи не зависят от видимости или обхода.
+//! Net DOM changes before writes, keyed independently of visibility or traversal.
 
 use super::{Batch, parent};
 use crate::document::delta::{SourceChange, SourceChangeKind, SourceDelta};
@@ -34,7 +34,7 @@ impl Batch {
         delta
     }
 
-    /// Порядок attribute-событий сохраняет порядок свёрнутых scalar-записей.
+    /// Attribute events preserve the order of folded scalar records.
     pub(in crate::document::revision) fn attribute_deltas(
         &self,
     ) -> impl Iterator<Item = (&super::AttrChange, &[QualName])> {

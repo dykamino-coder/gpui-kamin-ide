@@ -1,8 +1,8 @@
-//! Перенос сохраняет коробку до публикации обоих концов связи.
+//! Moves retain a box until both ends of its parent link are published.
 //!
-//! Старый родитель может встретиться раньше нового. Поэтому непринятые коробки
-//! снимаются после обхода, а прежний next переносимой коробки живёт до конца
-//! публикации: новый список уже мог перезаписать её ссылки.
+//! The old parent may be visited first, so unclaimed boxes retire after traversal.
+//! A moved box retains its old next link until publication ends because its new
+//! siblings may already have overwritten its links.
 
 use super::{BoxTree, source::Source};
 use crate::document::delta::BoxDelta;
@@ -87,7 +87,7 @@ impl Claims {
                 pending.push(child);
                 child = next;
             }
-            // Дети снимаются отдельно: среди них может быть уже принятый перенос.
+            // Retire children separately: a child may already have been claimed.
             tree.arena.unlink_first(id);
             tree.remove_subtree(id, delta);
         }

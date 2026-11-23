@@ -13,7 +13,7 @@ pub(super) struct ByNode {
     base: u64,
     dense: Vec<BoxId>,
     more: HashMap<u64, BoxId>,
-    /// Дополнительные коробки одного DOM-узла появляются только при фрагментации.
+    /// Only fragmented source nodes need additional boxes.
     fragments: HashMap<u64, Vec<BoxId>>,
 }
 
@@ -24,21 +24,22 @@ impl ByNode {
     }
 
     pub(super) fn get(&self, key: u64) -> Option<BoxId> {
-        match self.index(key) {
-            Some(at) => Some(self.dense[at]).filter(|id| id.is_some()),
-            None => self.more.get(&key).copied(),
-        }
+        self.index(key)
+            .map(|at| self.dense[at])
+            .filter(|id| id.is_some())
+            .or_else(|| self.more.get(&key).copied())
     }
 
     /// Remember the box if the key has no first one yet.
     pub(super) fn insert_first(&mut self, key: u64, id: BoxId) {
+        if self.get(key).is_some() {
+            return;
+        }
         if self.dense.is_empty() && self.more.is_empty() {
             self.base = key;
         }
         if let Some(at) = self.index(key) {
-            if !self.dense[at].is_some() {
-                self.dense[at] = id;
-            }
+            self.dense[at] = id;
             return;
         }
         // Growth in order (a typical parse) goes to the vector; a far key to the table.
@@ -81,11 +82,11 @@ impl ByNode {
     /// Write the key's box over the previous one.
     pub(super) fn set(&mut self, key: u64, id: BoxId) {
         self.fragments.remove(&key);
+        self.more.remove(&key);
         if let Some(at) = self.index(key) {
             self.dense[at] = id;
             return;
         }
-        self.more.remove(&key);
         self.insert_first(key, id);
     }
 
@@ -105,19 +106,14 @@ impl ByNode {
                 self.fragments.remove(&key);
             }
         }
-        match self.index(key) {
-            Some(at) if self.dense[at] == id => {
+        if first {
+            if let Some(at) = self.index(key) {
                 self.dense[at] = promote.unwrap_or(BoxId::NONE);
-            }
-            Some(_) => {}
-            None => {
-                if self.more.get(&key) == Some(&id) {
-                    if let Some(next) = promote {
-                        self.more.insert(key, next);
-                    } else {
-                        self.more.remove(&key);
-                    }
-                }
+                self.more.remove(&key);
+            } else if let Some(next) = promote {
+                self.more.insert(key, next);
+            } else {
+                self.more.remove(&key);
             }
         }
     }
@@ -170,5 +166,31 @@ mod tests {
         map.remove_if(7, id(7));
         assert_eq!(map.get(7), None);
         assert_eq!(map.get(4), None);
+    }
+
+    #[test]
+    fn dense_growth_preserves_sparse_primary_and_fragment_retirement() {
+        let mut map = ByNode::default();
+        map.insert_first(10, id(10));
+        map.insert_first(2048, id(1));
+        assert_eq!(map.more.get(&2048), Some(&id(1)));
+        for key in [1000, 1900, 2100] {
+            map.insert_first(key, id(key as u32));
+        }
+        assert!(map.index(2048).is_some());
+        assert_eq!(map.get(2048), Some(id(1)));
+        map.insert_first(2048, id(999));
+        map.insert_box(2048, id(2));
+        assert_eq!(map.all(2048).collect::<Vec<_>>(), vec![id(1), id(2)]);
+        map.remove_if(2048, id(1));
+        assert_eq!(map.get(2048), Some(id(2)));
+        assert!(!map.more.contains_key(&2048));
+        map.insert_box(2048, id(3));
+        map.set(2048, id(4));
+        assert_eq!(map.all(2048).collect::<Vec<_>>(), vec![id(4)]);
+        map.remove_if(2048, id(2));
+        assert_eq!(map.get(2048), Some(id(4)));
+        map.remove_if(2048, id(4));
+        assert_eq!(map.get(2048), None);
     }
 }
