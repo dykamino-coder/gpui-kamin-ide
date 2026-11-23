@@ -89,7 +89,14 @@ pub(crate) fn finish_element(
     let _ = hoist_margins;
     // Замещаемому дорожка по содержимому не нужна: его размер по
     // ключевому слову — природный, считается в `image_with`.
-    let layered_built = layered(built, &e.style.used(), inherited, layer_ok, under_tf);
+    let layered_built = layered(
+        built,
+        &e.style.used(),
+        inherited,
+        layer_ok,
+        under_tf,
+        &opts.cx,
+    );
     let mut done = content_wrapper::for_element(layered_built, e, inherited, placement, vcx);
     // Тело под корнем-донором фона холста при `vertical-rl`: записать
     // левый край коробки корня для отрисовки холста (см. `canvas_paint`).

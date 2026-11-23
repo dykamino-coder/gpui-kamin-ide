@@ -21,6 +21,8 @@
 
 mod content;
 mod deferred;
+mod lifted;
+pub(crate) use lifted::deferred_layer;
 mod far;
 mod flow;
 mod frame;

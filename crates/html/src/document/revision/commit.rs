@@ -163,7 +163,13 @@ impl Document {
                 })
         };
         // A box whose runs showed no pixel of the layer's frame.
-        let off = |id: u64| self.reuse.off_screen(&layer, id);
+        let off = |id: u64| {
+            self.reuse.owner_layer(id).is_some_and(|l| {
+                // Lifted draws may use a scroller-local coordinate space. Record
+                // their own paint now rather than defer it using root coordinates.
+                l.content().id() == layer.content().id() && self.reuse.off_screen(&l, id)
+            })
+        };
         // A box the layer cannot record, wholly off the screen (`offscreen`).
         let boxes = self.state.boxes.borrow();
         let waits = |kind,
@@ -177,7 +183,7 @@ impl Document {
             &self.nodes,
             nodes,
             paths,
-            &layer,
+            |id| self.reuse.owner_layer(id),
             own,
             |e| crate::paint::box_tree::styled::requested_group_paint(&self.state, e),
             unseen,

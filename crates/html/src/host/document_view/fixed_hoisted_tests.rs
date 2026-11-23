@@ -109,12 +109,20 @@ fn hoisted_fixed_and_absolute_boxes_share_positive_z_order(cx: &mut TestAppConte
                             (0., 0.),
                             "the fixed viewport anchor survives z-order deferral"
                         );
+                        // Quad orders are local to their scene. The renderer inserts a
+                        // retained layer at its frame order, then draws its own scene.
+                        // Compare the actual batch sequence across those boundaries.
+                        let sequence = window.painted_sequence();
                         let order = |color| {
-                            quads
+                            let quad = quads
                                 .iter()
                                 .find(|q| q.background.as_solid() == Some(color))
+                                .unwrap();
+                            let fill = format!("background: {:?},", quad.background);
+                            sequence
+                                .iter()
+                                .position(|(p, _)| p.starts_with("quad ") && p.contains(&fill))
                                 .unwrap()
-                                .order
                         };
                         assert_eq!(
                             order(gpui::red()) > order(gpui::blue()),

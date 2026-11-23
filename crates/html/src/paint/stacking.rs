@@ -85,9 +85,9 @@ pub(crate) fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
 
 /// `z-index`: порядок наложения.
 ///
-/// Слоёв в GPUI нет, зато есть отложенная отрисовка с приоритетом — она и
-/// задаёт, что рисуется поверх. Отрицательный `z-index` (под потоком) так не
-/// выражается, поэтому применяем только положительный.
+/// Deferred priority defines paint order. A viewport-fixed box keeps a scene
+/// layer after the document root; a box moving with a scroller keeps its
+/// commands in that scroller's primitive replay range.
 ///
 /// `allowed` — снаружи ли мы отложенного поддерева: внутри откладывать нельзя.
 pub(crate) fn layered(
@@ -96,6 +96,7 @@ pub(crate) fn layered(
     parent: &Computed,
     allowed: bool,
     under_tf: bool,
+    cx: &crate::layout::cx::LayoutCx,
 ) -> AnyElement {
     let fixed_to_window =
         c.reset_positioned.position == Some(crate::style::computed::Position::Fixed) && !under_tf;
@@ -118,7 +119,14 @@ pub(crate) fn layered(
     // элемент из потока родителя, а размер окна задаёт его систему координат.
     if fixed_to_window {
         let priority = c.reset_positioned.z_index.unwrap_or(0).max(0) as usize;
-        return gpui::deferred(div().absolute().top_0().left_0().size_full().child(el))
+        let child = div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .child(el)
+            .into_any_element();
+        return gpui::deferred(crate::layout::reuse::deferred_layer(child, cx))
             .with_priority(priority)
             .into_any_element();
     }

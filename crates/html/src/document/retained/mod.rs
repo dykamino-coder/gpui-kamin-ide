@@ -235,5 +235,8 @@ impl Document {
 mod extent_settle_tests;
 #[cfg(test)]
 mod moved_glyph_tests;
+
+#[cfg(test)]
+mod lifted_tests;
 #[cfg(test)]
 mod outline_scroll_tests;
