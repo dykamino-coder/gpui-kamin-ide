@@ -4,41 +4,8 @@
 //! times: consumers merge independent damage without losing paint when handling
 //! layout. Retired keys identify the former arena generation.
 
-use crate::dom::{BoxId, NodeKey};
-use html5ever::QualName;
-
-/// Net batch changes before DOM writes; rollback preserves journal names and links.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub(crate) struct SourceDelta {
-    pub(crate) changes: Vec<SourceChange>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct SourceChange {
-    pub(crate) node: NodeKey,
-    pub(crate) kind: SourceChangeKind,
-    pub(crate) before_parent: Option<NodeKey>,
-    pub(crate) after_parent: Option<NodeKey>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum SourceChangeKind {
-    Attributes(Vec<QualName>),
-    CharacterData,
-    Children,
-    Reparent,
-}
-
-impl SourceDelta {
-    pub(crate) fn changes_children(&self) -> bool {
-        self.changes.iter().any(|change| {
-            matches!(
-                change.kind,
-                SourceChangeKind::Children | SourceChangeKind::Reparent
-            )
-        })
-    }
-}
+use crate::dom::BoxId;
+pub(crate) use crate::dom::source_delta::{SourceChange, SourceChangeKind, SourceDelta};
 
 /// Changed layout inputs; Content respects external intrinsic constraints.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
