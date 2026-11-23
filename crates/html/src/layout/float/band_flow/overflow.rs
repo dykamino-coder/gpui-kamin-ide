@@ -4,13 +4,15 @@ use super::Slot;
 use gpui::{MeasuredContent, Pixels, Size, px, size};
 use std::cell::Cell;
 
+type MeasuredExtent = (Option<bool>, bool, Size<Pixels>);
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct Plan {
     pub(super) width: f32,
     pub(super) height: f32,
     pub(super) slots: Vec<Slot>,
     // Plans are immutable once retained; cache the derived physical extent too.
-    pub(super) measured_extent: Cell<Option<(Option<bool>, bool, Size<Pixels>)>>,
+    pub(super) measured_extent: Cell<Option<MeasuredExtent>>,
 }
 
 impl Plan {
