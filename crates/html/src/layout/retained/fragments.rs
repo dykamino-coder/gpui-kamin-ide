@@ -23,7 +23,7 @@ use crate::dom::BoxId;
 use crate::layout::reuse::Store;
 use gpui::{Bounds, Pixels, ScaledPixels, point, px, size};
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::Weak;
 
 /// One line of a band owner: the band's top and bottom, window pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -113,10 +113,12 @@ impl InlineFragments {
 }
 
 /// Where a paragraph writes its fragments: the slot of its container box.
+/// These are observers: Store owns kept paragraphs, so a paragraph must not
+/// keep Store (or its document's box tree) alive through this back-link.
 pub(crate) struct FragmentTarget {
-    pub(crate) boxes: Rc<RefCell<BoxTree>>,
+    pub(crate) boxes: Weak<RefCell<BoxTree>>,
     pub(crate) owner: BoxId,
-    pub(crate) store: Rc<Store>,
+    pub(crate) store: Weak<Store>,
 }
 
 impl FragmentTarget {
@@ -131,59 +133,20 @@ impl FragmentTarget {
         scale: f32,
         fill: impl FnOnce(&mut InlineFragments),
     ) {
-        let Ok(mut boxes) = self.boxes.try_borrow_mut() else {
+        let (Some(boxes), Some(store)) = (self.boxes.upgrade(), self.store.upgrade()) else {
+            return;
+        };
+        let Ok(mut boxes) = boxes.try_borrow_mut() else {
             return;
         };
         let Some(slot) = boxes.slot_mut(self.owner) else {
             return;
         };
         let fragments = slot.inline.get_or_insert_with(Default::default);
-        fragments.begin(self.store.frame_epoch(), extent, bleed, scale);
+        fragments.begin(store.frame_epoch(), extent, bleed, scale);
         fill(fragments);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn painted(stamp: u64) -> InlineFragments {
-        let mut f = InlineFragments::default();
-        f.begin(stamp, (10., 110.), 2., 1.);
-        f.push(7, 0., 20.);
-        f.push(7, 20., 40.);
-        f.push(8, 20., 40.);
-        f
-    }
-
-    #[test]
-    fn a_box_over_two_lines_has_two_line_rects() {
-        let f = painted(1);
-        let rects: Vec<_> = f.rects(7).collect();
-        assert_eq!(rects.len(), 2);
-        assert_eq!(rects[1].origin, point(px(10.), px(20.)));
-        assert_eq!(rects[1].size, size(px(100.), px(20.)));
-        assert!(!f.has(9));
-    }
-
-    #[test]
-    fn the_ink_grows_by_the_bleed_and_the_outset() {
-        let ink = painted(1).ink(8, 3.).unwrap();
-        assert_eq!(ink.origin, point(ScaledPixels(5.), ScaledPixels(15.)));
-        assert_eq!(ink.size, size(ScaledPixels(110.), ScaledPixels(30.)));
-        assert!(painted(1).ink(9, 0.).is_none());
-    }
-
-    #[test]
-    fn a_new_frame_replaces_and_the_same_frame_adds() {
-        let mut f = painted(1);
-        f.begin(1, (0., 50.), 1., 1.);
-        f.push(9, 40., 60.);
-        assert!(f.has(7) && f.has(9));
-        assert_eq!(f.rects(9).next().unwrap().origin.x, px(0.));
-        f.begin(2, (0., 50.), 1., 1.);
-        f.push(9, 0., 20.);
-        assert!(!f.has(7));
-        assert_eq!(f.stamp(), 2);
-    }
-}
+mod tests;
