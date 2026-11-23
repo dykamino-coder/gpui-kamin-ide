@@ -26,16 +26,16 @@ pub(super) fn finish(
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
     out = lanes_as_grid(admission, out)?;
-    subgrid_used::adjust(admission, &mut out)?;
+    out = subgrid_used::adjust(admission, out)?;
     hoist_grid_abspos(admission, &mut out)?;
-    grid_static_position::adjust(admission, &mut out)?;
+    out = grid_static_position::adjust(admission, out)?;
     out = flex_items_lose_float(admission, out)?;
     out = align_self_from_dom_parent(admission, out, None)?;
     out = grid_table_items_keep_stretch(admission, out)?;
     subgrid_takes_parent_tracks(admission, &mut out)?;
     out = filter_ref_only_empty(admission, out)?;
     fold_run_ins(admission, &mut out, None)?;
-    orthogonal_inlines_become_flow_roots(admission, &mut out, (false, false, false), None)?;
+    out = orthogonal_inlines_become_flow_roots(admission, out, (false, false, false), None)?;
     float_tail::mark(admission, &mut out)?;
     if tree.doc.quirks() {
         quirks_percent_heights(admission, &mut out, None)?;

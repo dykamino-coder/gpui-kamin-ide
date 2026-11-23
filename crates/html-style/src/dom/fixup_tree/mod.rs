@@ -3,7 +3,7 @@
 
 pub(crate) mod alignment;
 pub(crate) mod flow_items;
-mod orthogonal_inline;
+pub(crate) mod orthogonal_inline;
 mod ruby_boxes;
 pub mod ruby_normalize;
 pub(super) use crate::dom::fixup_tree::alignment::align_self_from_dom_parent;

@@ -5,83 +5,81 @@
 //! очищается целиком (дорожки, имена линий, `repeat(auto-*)`). Контейнер лунок
 //! открывает подсетке только ось своей решётки, с учётом ортогонального
 //! письма; `display: contents` прозрачен для контекста сетки.
-use super::Node;
+use super::normalization::{Transform, apply};
+use super::{Element, Node};
+use crate::budget::admission::{Admission, Error};
 use crate::style::computed::{Computed, Display};
 
-#[derive(Clone, Copy)]
-struct GridContext {
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct GridContext {
     vertical: bool,
     lanes_rows: Option<bool>,
 }
 
-pub(super) fn adjust(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    walk(admission, nodes, None, false)
+pub(super) fn adjust(admission: &Admission, nodes: Vec<Node>) -> Result<Vec<Node>, Error> {
+    apply(&UsedSubgrid, nodes, (None, false), admission)
 }
 
-fn walk(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-    parent: Option<GridContext>,
-    inherited_vertical: bool,
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::preorder(
-        admission,
-        nodes,
-        (parent, inherited_vertical),
-        |element, &(parent, inherited_vertical)| {
-            let style = element.style.cascaded();
-            let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
-            let linked_rows = parent.and_then(|grid| {
-                grid.lanes_rows.map(|rows| {
-                    if grid.vertical == vertical {
-                        rows
-                    } else {
-                        !rows
-                    }
-                })
-            });
-            let grid = matches!(
-                style.reset_box_layout.display,
-                Some(Display::Grid | Display::InlineGrid)
-            );
-            let independent = !grid || super::fixup_grid::subgrid_inhibited(style);
-            let columns = style.reset_grid.subgrid_cols
-                && (parent.is_none() || independent || linked_rows == Some(true));
-            let rows = style.reset_grid.subgrid_rows
-                && (parent.is_none() || independent || linked_rows == Some(false));
-            let subgrid = (style.reset_grid.subgrid_cols && !columns)
-                || (style.reset_grid.subgrid_rows && !rows);
-            // Неизменный результат не отделяет общую Grid-группу каждого узла.
-            if columns || rows || style.reset_grid.subgrid != subgrid {
-                let style = element.style.cascaded_mut();
-                if columns {
-                    clear_columns(style);
+pub(crate) struct UsedSubgrid;
+
+impl Transform for UsedSubgrid {
+    type Context = (Option<GridContext>, bool);
+
+    fn enter(
+        &self,
+        element: &mut Element,
+        &(parent, inherited_vertical): &Self::Context,
+        _: &Admission,
+    ) -> Result<Self::Context, Error> {
+        let style = element.style.cascaded();
+        let vertical = style.vertical_decl().unwrap_or(inherited_vertical);
+        let linked_rows = parent.and_then(|grid| {
+            grid.lanes_rows.map(|rows| {
+                if grid.vertical == vertical {
+                    rows
+                } else {
+                    !rows
                 }
-                if rows {
-                    clear_rows(style);
-                }
-                style.reset_grid.subgrid = subgrid;
+            })
+        });
+        let grid = matches!(
+            style.reset_box_layout.display,
+            Some(Display::Grid | Display::InlineGrid)
+        );
+        let independent = !grid || super::fixup_grid::subgrid_inhibited(style);
+        let columns = style.reset_grid.subgrid_cols
+            && (parent.is_none() || independent || linked_rows == Some(true));
+        let rows = style.reset_grid.subgrid_rows
+            && (parent.is_none() || independent || linked_rows == Some(false));
+        let subgrid =
+            (style.reset_grid.subgrid_cols && !columns) || (style.reset_grid.subgrid_rows && !rows);
+        // Неизменный результат не отделяет общую Grid-группу каждого узла.
+        if columns || rows || style.reset_grid.subgrid != subgrid {
+            let style = element.style.cascaded_mut();
+            if columns {
+                clear_columns(style);
             }
-            let style = element.style.cascaded();
-            let next = if style.reset_box_layout.display == Some(Display::Contents) {
-                parent
-            } else if grid {
-                Some(GridContext {
-                    vertical,
-                    lanes_rows: style
-                        .reset_grid
-                        .lanes_taffy
-                        .then(|| super::fixup_grid::lanes_row_dir(style)),
-                })
-            } else {
-                None
-            };
-            Some((next, vertical))
-        },
-    )
+            if rows {
+                clear_rows(style);
+            }
+            style.reset_grid.subgrid = subgrid;
+        }
+        let style = element.style.cascaded();
+        let next = if style.reset_box_layout.display == Some(Display::Contents) {
+            parent
+        } else if grid {
+            Some(GridContext {
+                vertical,
+                lanes_rows: style
+                    .reset_grid
+                    .lanes_taffy
+                    .then(|| super::fixup_grid::lanes_row_dir(style)),
+            })
+        } else {
+            None
+        };
+        Ok((next, vertical))
+    }
 }
 
 fn clear_columns(style: &mut Computed) {
@@ -128,7 +126,7 @@ mod tests {
             panic!("element")
         };
         let published = element.style.published().unwrap();
-        adjust(&Default::default(), &mut nodes).unwrap();
+        nodes = adjust(&Default::default(), nodes).unwrap();
         let Node::Element(element) = &nodes[0] else {
             panic!("element")
         };
@@ -150,7 +148,7 @@ mod tests {
             Marks::default(),
             Vec::new(),
         ))];
-        adjust(&Default::default(), &mut nodes).unwrap();
+        nodes = adjust(&Default::default(), nodes).unwrap();
         let Node::Element(element) = &nodes[0] else {
             panic!("element")
         };
@@ -161,7 +159,7 @@ mod tests {
         assert!(declared.reset_grid.subgrid);
         assert!(declared.reset_border.ptr_eq(&result.reset_border));
         let grid = result.reset_grid.clone();
-        adjust(&Default::default(), &mut nodes).unwrap();
+        nodes = adjust(&Default::default(), nodes).unwrap();
         let Node::Element(element) = &nodes[0] else {
             panic!("element")
         };

@@ -3,6 +3,7 @@ use super::*;
 use crate::dom::Node;
 use std::cell::Cell;
 
+mod contextual;
 mod display;
 mod ordering;
 mod owned;
