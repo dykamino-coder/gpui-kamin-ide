@@ -20,6 +20,16 @@ fn empty_output_value_still_enables_tracking() {
     child("enabled_child", Some(""));
 }
 
+#[test]
+fn selected_checkpoint_defers_the_default_snapshot() {
+    let path =
+        std::env::temp_dir().join(format!("retention-checkpoint-{}.bin", std::process::id()));
+    child("checkpoint_child", Some(path.to_str().unwrap()));
+    #[cfg(windows)]
+    std::fs::remove_file(path.with_extension("stacks")).unwrap();
+    std::fs::remove_file(path).unwrap();
+}
+
 fn child(test: &str, output: Option<&str>) {
     let mut command = Command::new(std::env::current_exe().unwrap());
     command
@@ -30,7 +40,18 @@ fn child(test: &str, output: Option<&str>) {
         ])
         .env(CHILD, "1")
         .env_remove(OUT)
+        .env_remove(config::AT)
         .env(SLOTS, "16");
+    if test == "checkpoint_child" {
+        command
+            .env(config::AT, "paint@42")
+            .env("ENGINE_BENCH_ALLOC_STACKS", "*@0-42")
+            .env("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "paint")
+            .env(
+                "ENGINE_BENCH_ALLOC_STACKS_OUT",
+                std::path::Path::new(output.unwrap()).with_extension("stacks"),
+            );
+    }
     if let Some(output) = output {
         command.env(OUT, output);
     }
@@ -57,6 +78,7 @@ fn disabled_child() {
         track(std::ptr::dangling(), 16);
         untrack(std::ptr::dangling());
         assert!(snapshot("disabled").is_none());
+        checkpoint(42, 0);
     }
     assert_eq!(
         super::super::thread_calls(),
@@ -69,6 +91,38 @@ fn disabled_child() {
         STATE.load(Acquire).is_null(),
         "disabled tracker created state"
     );
+}
+
+#[test]
+fn checkpoint_child() {
+    if std::env::var_os(CHILD).is_none() {
+        return;
+    }
+    kamin_alloc::configure();
+    #[cfg(windows)]
+    super::super::probe::init().unwrap();
+    init().unwrap();
+    let state = state().unwrap();
+    let (frame, phase) = state.target.unwrap();
+    assert!(snapshot("first-mode").is_none());
+    checkpoint(frame - 1, phase);
+    assert!(!state.taken.load(Relaxed));
+    #[cfg(windows)]
+    {
+        for _ in 0..frame {
+            super::super::probe::frame();
+        }
+        super::super::probe::phase(phase);
+        assert!(!state.taken.load(Relaxed));
+        super::super::probe::outside();
+    }
+    #[cfg(not(windows))]
+    checkpoint(frame, phase);
+    assert!(state.taken.load(Relaxed));
+    let file = std::fs::read(&state.path).unwrap();
+    assert!(!file.is_empty());
+    checkpoint(frame, phase);
+    assert_eq!(std::fs::read(&state.path).unwrap(), file);
 }
 
 #[test]

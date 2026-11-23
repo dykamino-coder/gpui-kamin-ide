@@ -26,6 +26,7 @@ const SLOTS: &str = "ENGINE_BENCH_RETAINERS_SLOTS";
 struct State {
     path: PathBuf,
     taken: AtomicBool,
+    target: Option<(u64, usize)>,
     table: table::Table,
 }
 
@@ -59,10 +60,12 @@ pub(crate) fn init() -> Result<(), String> {
             .ok_or_else(|| format!("{SLOTS}={text}: expected 16..30"))?,
         Err(_) => 23,
     };
+    let target = config::target()?;
     let table = table::Table::new(bits)?;
     let state = Box::new(State {
         path: path.into(),
         taken: AtomicBool::new(false),
+        target,
         table,
     });
     // Startup calls init once, before document work and allocator callbacks can track.
@@ -103,6 +106,25 @@ fn ms(since: Instant) -> f64 {
 /// Take one graph snapshot per process and return its benchmark JSON summary.
 pub(crate) fn snapshot(mode: &str) -> Option<Value> {
     let state = state()?;
+    if state.target.is_some() {
+        return None;
+    }
+    capture(state, mode)
+}
+
+/// Called after the allocation probe closes, before transient phase state is released.
+pub(super) fn checkpoint(frame: u64, phase: usize) {
+    let Some(state) = state() else { return };
+    if state.target != Some((frame, phase)) {
+        return;
+    }
+    let name = kamin_html::work::Phase::NAMES[phase];
+    if let Some(summary) = capture(state, &format!("{name}@{frame}")) {
+        eprintln!("retention checkpoint: {summary}");
+    }
+}
+
+fn capture(state: &State, mode: &str) -> Option<Value> {
     let path = &state.path;
     let table = &state.table;
     if state.taken.swap(true, Relaxed) {
