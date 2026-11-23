@@ -115,6 +115,7 @@ fn plan_overflow_uses_physical_slot_placement_in_vertical_modes() {
             },
             ..Default::default()
         }],
+        ..Default::default()
     };
     assert_eq!(
         plan.measured(None, false).overflow,
@@ -127,5 +128,14 @@ fn plan_overflow_uses_physical_slot_placement_in_vertical_modes() {
     assert_eq!(
         plan.measured(Some(false), true).overflow,
         Some(size(px(65.), px(190.)))
+    );
+    // Switching the physical writing axis must not reuse the previous extent.
+    assert_eq!(
+        plan.measured(Some(false), false).overflow,
+        Some(size(px(65.), px(140.)))
+    );
+    assert_eq!(
+        plan.measured(None, false).overflow,
+        Some(size(px(100.), px(150.)))
     );
 }

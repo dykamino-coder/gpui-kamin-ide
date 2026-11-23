@@ -1,13 +1,16 @@
 //! Keep normal-flow height separate from the scrollable overflow of floated children.
 
 use super::Slot;
-use gpui::{MeasuredContent, px, size};
+use gpui::{MeasuredContent, Pixels, Size, px, size};
+use std::cell::Cell;
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct Plan {
     pub(super) width: f32,
     pub(super) height: f32,
     pub(super) slots: Vec<Slot>,
+    // Plans are immutable once retained; cache the derived physical extent too.
+    pub(super) measured_extent: Cell<Option<(Option<bool>, bool, Size<Pixels>)>>,
 }
 
 impl Plan {
@@ -16,8 +19,15 @@ impl Plan {
             None => size(px(self.width), px(self.height)),
             Some(_) => size(px(self.height), px(self.width)),
         });
-        let mut extent = measured.size;
-        self.extend(&self.slots, vert, inline_up, &mut extent);
+        let extent = match self.measured_extent.get() {
+            Some((axis, up, extent)) if axis == vert && up == inline_up => extent,
+            _ => {
+                let mut extent = measured.size;
+                self.extend(&self.slots, vert, inline_up, &mut extent);
+                self.measured_extent.set(Some((vert, inline_up, extent)));
+                extent
+            }
+        };
         measured.overflow = Some(extent);
         measured
     }

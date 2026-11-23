@@ -194,6 +194,7 @@ fn plan(kids: &[Kid], cb: f32, contain_floats: bool, p: &mut Probe) -> Plan {
             y
         },
         slots,
+        ..Default::default()
     }
 }
 
