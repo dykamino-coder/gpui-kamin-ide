@@ -83,9 +83,9 @@ pub(crate) fn fragment_target(
     let boxes = opts.cx.doc().boxes.clone();
     let owner = boxes.borrow().box_of(node)?;
     Some(crate::layout::retained::FragmentTarget {
-        boxes,
+        boxes: std::rc::Rc::downgrade(&boxes),
         owner,
-        store: flow.store.clone(),
+        store: std::rc::Rc::downgrade(&flow.store),
     })
 }
 
