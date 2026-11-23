@@ -1444,7 +1444,6 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
     }
 
     baseline_alignment::align(&mut placed, n, rows);
-
     #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
     let mut item_content_size_contribution = final_placement::position(
         tree,
@@ -1454,6 +1453,7 @@ pub(super) fn compute_grid_lanes_layout<Tree: LayoutGridContainer>(
         stack_content,
         stack_start_inset,
         border,
+        (&grid_tracks, n, stacking_size),
         #[cfg(feature = "content_size")]
         is_scroll_container,
     );

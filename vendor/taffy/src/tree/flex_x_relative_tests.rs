@@ -45,7 +45,7 @@ fn flex_x_baselines_use_normal_flow_origin_for_both_directions_and_axes() {
                 )
                 .unwrap();
             let mut view = TaffyView {
-                taffy: &mut tree,
+            scrollbar_touched: Default::default(),                taffy: &mut tree,
                 #[cfg(feature = "grid")]
                 grid_memos: Default::default(),
                 measure_function: |inputs, _, _, style: &Style| {

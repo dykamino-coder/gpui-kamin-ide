@@ -23,6 +23,8 @@ mod calc_size;
 mod computed_output;
 #[path = "kamin_scrollbars.rs"]
 mod kamin_scrollbars;
+#[path = "kamin_scrollbar_dependencies.rs"]
+mod kamin_scrollbar_dependencies;
 #[path = "node_lifetime.rs"]
 mod node_lifetime;
 #[cfg(feature = "block_layout")]
@@ -138,6 +140,8 @@ struct NodeData {
     /// its subtree (`pin_identity`), so the node must not be reset into another
     /// node. Sits in the padding after `has_context`: no node grows.
     pub(crate) identity_pinned: bool,
+    /// Transaction-local gutter changes; fits beside the existing boolean flags.
+    pub(crate) scrollbar_state: u8,
 
     /// Out-of-flow (absolute/fixed) boxes whose containing block is this node,
     /// as recorded by the out-of-flow positioning pass
@@ -233,6 +237,7 @@ impl NodeData {
             final_layout: None,
             has_context: false,
             identity_pinned: false,
+            scrollbar_state: 0,
             hoisted_children: new_const_children_vec(),
             detailed_layout_info: DetailedLayoutInfo::None,
             #[cfg(feature = "grid")]
@@ -621,6 +626,8 @@ where
     pub(crate) taffy: &'t mut TaffyTree<NodeContext>,
     /// The context provided for passing to measure functions if layout is run over this struct
     pub(crate) measure_function: MeasureFunction,
+    /// Nodes touched by gutter settling; reset when this layout/query view ends.
+    pub(crate) scrollbar_touched: Vec<NodeId>,
     /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
     /// one computation, so the memos are dropped with it.
     #[cfg(feature = "grid")]
@@ -699,32 +706,7 @@ where
         //
         // If there was no cache match and a new result needs to be computed then that result will be added to the cache
         compute_cached_layout(self, node_id, inputs, |tree, node_id, inputs| {
-            #[cfg(feature = "block_layout")]
-            let mut block_ctx = block_ctx;
-            // KaminIDE patch: a box whose bars layout decides is laid out again,
-            // alone, when its content asks for other bars (`kamin_scrollbars`).
-            let mut settling = kamin_scrollbars::Settling::default();
-            loop {
-                tree.kamin_publish_root_gutter(node_id);
-                let display_mode = tree.taffy.nodes[node_id.into()].style.display;
-                let has_children = tree.child_count(node_id) > 0;
-
-                debug_log!(display_mode);
-                debug_log_node!(inputs);
-
-                // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
-                let output = match (display_mode, has_children) {
-                    #[cfg(feature = "block_layout")]
-                    (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx.as_deref_mut()),
-                    #[cfg(feature = "block_layout")]
-                    (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
-                    _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-                };
-                let output = tree.finish_child_layout(node_id, inputs.run_mode, output);
-                if !tree.kamin_settle_scrollbars(node_id, inputs, &output, &mut settling) {
-                    return output;
-                }
-            }
+            tree.compute_with_scrollbar_dependencies(node_id, inputs, #[cfg(feature = "block_layout")] block_ctx)
         })
     }
 
@@ -872,6 +854,13 @@ impl<NodeContext, MeasureFunction> LayoutContainingBlock for TaffyView<'_, NodeC
 where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
+    fn take_intrinsic_size_change(&mut self, node_id: NodeId) -> bool {
+        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
+        let changed = *state & kamin_scrollbar_dependencies::SIZE_DIRTY != 0;
+        *state &= !kamin_scrollbar_dependencies::SIZE_DIRTY;
+        changed
+    }
+
     type OofItemStyle<'a>
         = &'a Style
     where
@@ -1756,6 +1745,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.kamin_root_gutter = None;
         let mut taffy_view = TaffyView {
             taffy: self,
+            scrollbar_touched: Vec::new(),
             #[cfg(feature = "grid")]
             grid_memos: Default::default(),
             measure_function,
@@ -1780,7 +1770,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     {
         #[cfg(feature = "std")]
         let _calc = self.calc_scope();
-        let mut view = TaffyView { taffy: self, measure_function, #[cfg(feature = "grid")] grid_memos: Default::default() };
+        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Vec::new(), #[cfg(feature = "grid")] grid_memos: Default::default() };
         view.compute_child_layout(node_id, LayoutInput {
             run_mode: crate::RunMode::ComputeSize,
             sizing_mode: crate::SizingMode::InherentSize,
@@ -1811,6 +1801,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
         TaffyView {
             taffy: self,
+            scrollbar_touched: Vec::new(),
             #[cfg(feature = "grid")]
             grid_memos: Default::default(),
             measure_function: |inputs, _, _, style| {
