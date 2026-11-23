@@ -76,7 +76,9 @@ fn hiding_a_parent_retires_its_unvisited_descendants_without_an_explicit_retire(
     for entry in replacements {
         stage.replace(entry).unwrap();
     }
-    stage.commit(fresh.raw().output().clone()).unwrap();
+    let prepared = stage.prepare(fresh.raw().output().clone()).unwrap();
+    assert_eq!(prepared.retired(), &HashSet::from([c]));
+    prepared.publish();
     assert_graph(cache.raw(), fresh.raw());
     assert!(cache.raw().get(c).is_none());
     assert!(!held.raw.is_empty());
@@ -112,7 +114,9 @@ fn moving_a_descendant_out_of_a_removed_parent_is_independent_of_staging_order()
         for entry in replacements {
             stage.replace(entry).unwrap();
         }
-        stage.commit(fresh.raw().output().clone()).unwrap();
+        let prepared = stage.prepare(fresh.raw().output().clone()).unwrap();
+        assert_eq!(prepared.retired(), &HashSet::from([p.key(), d]));
+        prepared.publish();
         assert_graph(cache.raw(), fresh.raw());
         assert!(cache.raw().get(p.key()).is_none());
         assert!(cache.raw().get(d).is_none());

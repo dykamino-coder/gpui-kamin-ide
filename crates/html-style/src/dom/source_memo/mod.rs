@@ -23,6 +23,7 @@ pub use context::{CascadeContext, EntryInputs, GeneratedContext, GroupInput};
 pub use dirty::DirtyEntries;
 pub use effects::CascadeEffects;
 pub use ownership::OutputOwnership;
+pub use publication::PreparedMemo;
 pub use root::RootOutput;
 pub use selector_context::SelectorContext;
 pub use stage::MemoStage;

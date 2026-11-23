@@ -8,6 +8,7 @@ use markup5ever_rcdom::{Handle, NodeData};
 mod contexts;
 mod effects;
 mod ownership;
+mod publication;
 mod retirement;
 mod stages;
 mod structure;

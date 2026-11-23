@@ -1,5 +1,8 @@
 //! An aborted cascade drops staged entries; publication touches only changed keys.
-use super::{CascadeEntry, DirtyEntries, EntryInputs, MemoUpdate, NodeKey, RootOutput, SourceMemo};
+use super::{
+    CascadeEntry, DirtyEntries, EntryInputs, MemoUpdate, NodeKey, PreparedMemo, RootOutput,
+    SourceMemo,
+};
 use crate::budget::admission::Error;
 use crate::dom::source_delta::SourceDelta;
 use std::rc::Rc;
@@ -42,7 +45,12 @@ impl<'a> MemoStage<'a> {
     }
 
     /// Reserve before touching the committed map. Allocation failure is an abort.
+    pub fn prepare(self, output: RootOutput) -> Result<PreparedMemo<'a>, Error> {
+        self.base.prepare(self.update, output)
+    }
+
     pub fn commit(self, output: RootOutput) -> Result<(), Error> {
-        self.base.publish(self.update, output)
+        self.prepare(output)?.publish();
+        Ok(())
     }
 }
