@@ -26,3 +26,6 @@ estimate, even though its retention graph is exact. Graph collection still runs
 once, after the first mode's owner report. This option does not select a later
 mode or provide a graph of the allocation peak. All disk, timeout, process-memory
 and host-hold guards remain in force.
+The collector excludes the stack sampler's raw-pointer table from static roots.
+Those addresses label allocations; they do not own them. Other static roots,
+including words adjacent to that table, are still scanned.
