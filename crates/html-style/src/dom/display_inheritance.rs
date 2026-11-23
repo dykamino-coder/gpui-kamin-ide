@@ -8,8 +8,8 @@
 //! `col_role`, `is_caption`).
 
 use super::{
-    Children, Element, Node,
-    normalization::{Pass, Transform},
+    Element, Node,
+    normalization::{Transform, apply},
 };
 use crate::budget::admission::{Admission, Error};
 use crate::style::computed::Display;
@@ -37,14 +37,7 @@ pub(super) fn resolve_display_inherit(
     nodes: Vec<Node>,
     parent: DisplayOf,
 ) -> Result<Vec<Node>, Error> {
-    let input = Children::from(nodes);
-    let mut pass = Pass::new(DisplayInheritance);
-    let prepared = pass.prepare(&input, parent, admission)?;
-    let output = prepared.output().clone();
-    prepared.publish();
-    drop(pass);
-    drop(input);
-    Ok(output.into_vec())
+    apply(&DisplayInheritance, nodes, parent, admission)
 }
 
 pub(super) struct DisplayInheritance;

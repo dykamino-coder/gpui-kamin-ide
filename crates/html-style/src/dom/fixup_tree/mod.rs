@@ -1,8 +1,8 @@
 //! Правки дерева после разбора: quirks-проценты, цвета правил, run-in, флоаты во флексе,
 //! выравнивание, руби.
 
-mod alignment;
-mod flow_items;
+pub(crate) mod alignment;
+pub(crate) mod flow_items;
 mod orthogonal_inline;
 mod ruby_boxes;
 pub mod ruby_normalize;
@@ -16,6 +16,8 @@ pub(super) use crate::dom::fixup_tree::ruby_boxes::own_containing_block;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::ruby_box_role;
 pub(super) use crate::dom::fixup_tree::ruby_boxes::wrap_misparented_ruby;
 
+use crate::budget::admission::{Admission, Error};
+use crate::dom::normalization::{Transform, apply};
 use crate::dom::*;
 use crate::style::computed::Display;
 use crate::style::values::value::Len;
@@ -75,10 +77,18 @@ pub(super) fn quirks_percent_heights(
 /// вынесены в свои слои, и родитель выглядит пустым
 /// (`filter-region-transformed-composited-child-001`).
 pub(super) fn filter_ref_only_empty(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::preorder(admission, nodes, (), |el, _| {
+    admission: &Admission,
+    nodes: Vec<Node>,
+) -> Result<Vec<Node>, Error> {
+    apply(&EmptyFilter, nodes, (), admission)
+}
+
+pub(super) struct EmptyFilter;
+
+impl Transform for EmptyFilter {
+    type Context = ();
+
+    fn enter(&self, el: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
         if el.style.cascaded().reset_effects.filter_ref.is_some()
             && el.children.iter().any(|c| match c {
                 Node::Element(_) => true,
@@ -87,8 +97,8 @@ pub(super) fn filter_ref_only_empty(
         {
             el.style.cascaded_mut().reset_effects.filter_ref = None;
         }
-        Some(())
-    })
+        Ok(())
+    }
 }
 
 fn mark_quirks_fill(nodes: &mut [Node]) {

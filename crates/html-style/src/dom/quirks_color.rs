@@ -5,29 +5,39 @@
 //! которых `color_initial` — то есть цвет пришёл из `table { color: initial }`
 //! листа quirks, а не от авторского `inherit`/`currentColor`/значения.
 
-use crate::dom::Node;
+use crate::budget::admission::{Admission, Error};
+use crate::dom::{
+    Element, Node,
+    normalization::{Transform, apply},
+};
 use crate::style::cascade::preparation::Colors;
 use crate::style::cascade::preparation::colors;
 use crate::style::values::value::Color;
 use crate::values::ValueCx;
 
 pub(super) fn resolve(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
+    admission: &Admission,
+    nodes: Vec<Node>,
     vcx: ValueCx<'_>,
-) -> Result<(), crate::budget::admission::Error> {
+) -> Result<Vec<Node>, Error> {
+    let color = body_color(&nodes, vcx);
+    apply(&TableColor, nodes, color, admission)
+}
+
+/// The root/body read is a pass-wide input, never a hidden retained dependency.
+pub(super) fn body_color(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Color> {
     let Some(Node::Element(root)) = nodes.iter().find(|n| matches!(n, Node::Element(_))) else {
-        return Ok(());
+        return None;
     };
     if root.tag != "html" {
-        return Ok(());
+        return None;
     }
     let parent = colors(&Colors::default(), &root.style, vcx);
     let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),
         _ => None,
     }) else {
-        return Ok(());
+        return None;
     };
     let color = colors(&parent, &body.style, vcx)
         .foreground
@@ -38,20 +48,25 @@ pub(super) fn resolve(
             b: 0.0,
             a: 1.0,
         });
-    apply(admission, nodes, color)
+    Some(color)
 }
 
-fn apply(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-    color: Color,
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::preorder(admission, nodes, (), |e, _| {
-        if e.tag == "table" && e.style.cascaded().reset_cascade.color_initial {
-            e.style.cascaded_mut().inh.ui.color = Some(color);
+pub(super) struct TableColor;
+
+impl Transform for TableColor {
+    type Context = Option<Color>;
+
+    fn enter(
+        &self,
+        e: &mut Element,
+        color: &Option<Color>,
+        _: &Admission,
+    ) -> Result<Option<Color>, Error> {
+        if color.is_some() && e.tag == "table" && e.style.cascaded().reset_cascade.color_initial {
+            e.style.cascaded_mut().inh.ui.color = *color;
         }
-        Some(())
-    })
+        Ok(*color)
+    }
 }
 
 #[cfg(test)]

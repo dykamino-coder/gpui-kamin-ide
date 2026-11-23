@@ -18,22 +18,22 @@ pub(super) fn finish(
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
     out = resolve_display_inherit(admission, out, (None, None, None, None, None))?;
     if tree.doc.quirks() {
-        super::quirks_color::resolve(admission, &mut out, vcx)?;
+        out = super::quirks_color::resolve(admission, out, vcx)?;
     }
     // Anonymous inline-table around orphan table boxes inside inline boxes
     // (CSS 2.1 §17.2.1 step 3); block parents are fixed up by `blocks()`.
     crate::dom::table_boxes::inline_anon_tables(admission, &mut out)?;
     // Лунки, которые умеет taffy, — на путь сетки ДО подъёмов и среза
     // подсетки: дальше они идут тем же кодом, что и сетка.
-    lanes_as_grid(admission, &mut out)?;
+    out = lanes_as_grid(admission, out)?;
     subgrid_used::adjust(admission, &mut out)?;
     hoist_grid_abspos(admission, &mut out)?;
     grid_static_position::adjust(admission, &mut out)?;
-    flex_items_lose_float(admission, &mut out)?;
-    align_self_from_dom_parent(admission, &mut out, None)?;
-    grid_table_items_keep_stretch(admission, &mut out)?;
+    out = flex_items_lose_float(admission, out)?;
+    out = align_self_from_dom_parent(admission, out, None)?;
+    out = grid_table_items_keep_stretch(admission, out)?;
     subgrid_takes_parent_tracks(admission, &mut out)?;
-    filter_ref_only_empty(admission, &mut out)?;
+    out = filter_ref_only_empty(admission, out)?;
     fold_run_ins(admission, &mut out, None)?;
     orthogonal_inlines_become_flow_roots(admission, &mut out, (false, false, false), None)?;
     float_tail::mark(admission, &mut out)?;

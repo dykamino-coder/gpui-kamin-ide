@@ -8,12 +8,14 @@ use crate::dom::{Children, Element};
 use std::rc::Rc;
 
 mod engine;
+mod owned;
 mod record;
 #[cfg(test)]
 mod tests;
+pub(super) use owned::apply;
 use record::Segment;
 
-pub(crate) trait Transform {
+pub trait Transform {
     type Context: Clone + PartialEq;
 
     fn enter(
@@ -36,45 +38,45 @@ pub(crate) trait Transform {
     /// Allocations performed by a transform remain its admission obligation.
     fn sequence(
         &self,
-        nodes: Children,
+        _nodes: &mut Children,
         _parent: &Self::Context,
         _admission: &Admission,
-    ) -> Result<Children, Error> {
-        Ok(nodes)
+    ) -> Result<(), Error> {
+        Ok(())
     }
 }
 
-pub(crate) struct Pass<T: Transform> {
+pub struct Pass<T: Transform> {
     transform: T,
     current: Option<Rc<Segment<T::Context>>>,
 }
 
 /// Preparation has no predecessor link and does not change the committed pass.
-pub(crate) struct Prepared<'a, T: Transform> {
+pub struct Prepared<'a, T: Transform> {
     pass: &'a mut Pass<T>,
     root: Rc<Segment<T::Context>>,
 }
 
 impl<T: Transform> Prepared<'_, T> {
-    pub(crate) fn output(&self) -> &Children {
+    pub fn output(&self) -> &Children {
         &self.root.output
     }
 
     /// All passes and bindings must prepare successfully before publication.
-    pub(crate) fn publish(self) {
+    pub fn publish(self) {
         self.pass.current = Some(self.root);
     }
 }
 
 impl<T: Transform> Pass<T> {
-    pub(crate) fn new(transform: T) -> Self {
+    pub fn new(transform: T) -> Self {
         Self {
             transform,
             current: None,
         }
     }
 
-    pub(crate) fn prepare(
+    pub fn prepare(
         &mut self,
         input: &Children,
         context: T::Context,

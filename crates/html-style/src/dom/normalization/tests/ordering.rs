@@ -23,12 +23,12 @@ impl Transform for Reverse {
 
     fn sequence(
         &self,
-        nodes: Children,
+        nodes: &mut Children,
         reverse: &bool,
         admission: &Admission,
-    ) -> Result<Children, Error> {
+    ) -> Result<(), Error> {
         if !reverse || nodes.len() < 2 {
-            return Ok(nodes);
+            return Ok(());
         }
         let lease = admission.storage(Children::storage_bytes(nodes.len())?)?;
         admission.work(nodes.len())?;
@@ -37,7 +37,8 @@ impl Transform for Reverse {
             .try_reserve_exact(nodes.len())
             .map_err(|_| Error::Allocation)?;
         output.extend(nodes.iter().rev().cloned());
-        Ok(Children::from_reserved(output, lease))
+        *nodes = Children::from_reserved(output, lease);
+        Ok(())
     }
 }
 

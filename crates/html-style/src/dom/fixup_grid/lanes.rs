@@ -7,6 +7,8 @@
 //! а лунками раскладывает taffy. `lanes_row_dir` — ось лунок: явное
 //! `grid-lanes-direction`, иначе та ось, по которой объявлены дорожки.
 
+use crate::budget::admission::{Admission, Error};
+use crate::dom::normalization::{Transform, apply};
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
@@ -48,16 +50,26 @@ pub fn lanes_row_dir(s: &Computed) -> bool {
 /// детей идут тем же путём: срез им режет `subgrid_takes_parent_tracks`
 /// ровно как у сетки-эталона; интрин-дорожки в `repeat(auto-*)` считает
 /// taffy (css-grid-3 §7.2.1).
-pub fn lanes_as_grid(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::postorder(admission, nodes, |el| {
+pub fn lanes_as_grid(admission: &Admission, nodes: Vec<Node>) -> Result<Vec<Node>, Error> {
+    apply(&LanesAsGrid, nodes, (), admission)
+}
+
+pub(crate) struct LanesAsGrid;
+
+impl Transform for LanesAsGrid {
+    type Context = ();
+
+    fn enter(&self, _: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn leave(&self, el: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
         if el.style.cascaded().reset_box_layout.display != Some(Display::GridLanes) {
-            return;
+            return Ok(());
         }
         lanes_to_grid(el.style.cascaded_mut());
-    })
+        Ok(())
+    }
 }
 
 /// Перевод контейнера лунок на путь сетки (см. `lanes_as_grid`).

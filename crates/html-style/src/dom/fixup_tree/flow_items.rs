@@ -7,6 +7,8 @@
 //! `flex_items_lose_float` (css-flexbox-1 §4, css-grid-2 §6): у потокового
 //! ребёнка flex/grid `float` и `clear` вычисляются в `none`.
 
+use crate::budget::admission::{Admission, Error};
+use crate::dom::normalization::{Transform, apply};
 use crate::dom::*;
 use crate::style::computed::{Computed, Display};
 
@@ -175,11 +177,20 @@ fn holds_block(
     Ok(false)
 }
 
-pub fn flex_items_lose_float(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::postorder(admission, nodes, |el| {
+pub fn flex_items_lose_float(admission: &Admission, nodes: Vec<Node>) -> Result<Vec<Node>, Error> {
+    apply(&FlexItemFloat, nodes, (), admission)
+}
+
+pub(crate) struct FlexItemFloat;
+
+impl Transform for FlexItemFloat {
+    type Context = ();
+
+    fn enter(&self, _: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn leave(&self, el: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
         if !matches!(
             el.style.cascaded().reset_box_layout.display,
             Some(Display::Grid)
@@ -187,7 +198,7 @@ pub fn flex_items_lose_float(
                 | Some(Display::Flex)
                 | Some(Display::InlineFlex)
         ) {
-            return;
+            return Ok(());
         }
         for child in el.children.iter_mut() {
             let Node::Element(child) = child else {
@@ -201,5 +212,6 @@ pub fn flex_items_lose_float(
             child.style.cascaded_mut().reset_box_layout.float = None;
             child.style.cascaded_mut().reset_box_layout.clear = None;
         }
-    })
+        Ok(())
+    }
 }

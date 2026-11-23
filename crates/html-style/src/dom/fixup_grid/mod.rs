@@ -1,6 +1,6 @@
 //! Правки сетки: подсетка (дорожки родителя), fr в точки, лунки как сетка, абсолютные в сетке.
 
-mod lanes;
+pub(crate) mod lanes;
 mod subgrid_geometry;
 mod subgrid_tracks;
 pub(super) use crate::dom::fixup_grid::lanes::lanes_as_grid;

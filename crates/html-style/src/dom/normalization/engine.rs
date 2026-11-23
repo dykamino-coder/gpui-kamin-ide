@@ -46,8 +46,8 @@ pub(super) fn prepare<T: Transform>(
         let frame = stack.last_mut().expect("active list");
         if frame.next == frame.input.len() {
             let mut frame = stack.pop().expect("completed list");
-            let nodes = frame.output();
-            let output = transform.sequence(nodes, &frame.context, admission)?;
+            let mut output = frame.output();
+            transform.sequence(&mut output, &frame.context, admission)?;
             completed = Some(frame.finish(output, admission)?);
             continue;
         }

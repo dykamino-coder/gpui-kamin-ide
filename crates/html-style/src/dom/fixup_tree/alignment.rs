@@ -7,6 +7,8 @@
 //! `grid_table_items_keep_stretch`: стол-элемент сетки сохраняет растяжку по
 //! дорожке (css-align-3 §6.2), а не сжатие по содержимому.
 
+use crate::budget::admission::{Admission, Error};
+use crate::dom::normalization::{Transform, apply};
 use crate::dom::*;
 use crate::style::computed::{Display, Position};
 
@@ -26,11 +28,24 @@ use crate::style::computed::{Display, Position};
 ///
 /// TRANSITIONAL(cascade-7b-R06): Авторский align-self гасится в cascaded из-за общего поля с командами layout; удалить гашение после переноса команд в used values и проверки применимости в block layout.
 pub fn align_self_from_dom_parent(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-    parent: Option<&ParentAlign>,
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::preorder(admission, nodes, parent.map(|p| p.block), |el, parent| {
+    admission: &Admission,
+    nodes: Vec<Node>,
+    parent: Option<bool>,
+) -> Result<Vec<Node>, Error> {
+    apply(&AlignSelf, nodes, parent, admission)
+}
+
+pub(crate) struct AlignSelf;
+
+impl Transform for AlignSelf {
+    type Context = Option<bool>;
+
+    fn enter(
+        &self,
+        el: &mut Element,
+        parent: &Option<bool>,
+        _: &Admission,
+    ) -> Result<Option<bool>, Error> {
         let s = el.style.cascaded_mut();
         if parent == &Some(true)
             && s.reset_flex.align_self.is_some()
@@ -50,14 +65,8 @@ pub fn align_self_from_dom_parent(
                 | Some(Display::InlineBlock)
                 | Some(Display::TableCell)
         ) && s.reset_flex.webkit_box != Some(true);
-        Some(Some(block))
-    })
-}
-
-/// Что дети берут у родителя в `align_self_from_dom_parent`.
-pub struct ParentAlign {
-    /// Родитель — блочный контейнер (не flex/grid/contents/таблица).
-    pub block: bool,
+        Ok(Some(block))
+    }
 }
 
 /// Стол — элемент СЕТКИ: растяжка по дорожке остаётся за ним.
@@ -77,21 +86,33 @@ pub struct ParentAlign {
 /// css-grid-1 §9), только когда контейнер не задал своего `align-items`
 /// и автор не задал `align-self` — чужое выравнивание не перебиваем.
 pub fn grid_table_items_keep_stretch(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::postorder(admission, nodes, |el| {
+    admission: &Admission,
+    nodes: Vec<Node>,
+) -> Result<Vec<Node>, Error> {
+    apply(&GridTableStretch, nodes, (), admission)
+}
+
+pub(crate) struct GridTableStretch;
+
+impl Transform for GridTableStretch {
+    type Context = ();
+
+    fn enter(&self, _: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn leave(&self, el: &mut Element, _: &(), _: &Admission) -> Result<(), Error> {
         if !matches!(
             el.style.cascaded().reset_box_layout.display,
             Some(Display::Grid) | Some(Display::InlineGrid)
         ) {
-            return;
+            return Ok(());
         }
         if !matches!(
             el.style.cascaded().reset_flex.align_items,
             None | Some(crate::style::computed::Align::Stretch)
         ) {
-            return;
+            return Ok(());
         }
         for child in el.children.iter_mut() {
             let Node::Element(child) = child else {
@@ -113,5 +134,6 @@ pub fn grid_table_items_keep_stretch(
                     Some(crate::style::computed::Align::Stretch);
             }
         }
-    })
+        Ok(())
+    }
 }

@@ -5,7 +5,9 @@ use std::cell::Cell;
 
 mod display;
 mod ordering;
+mod owned;
 mod transaction;
+mod transforms;
 
 fn node(tag: &str, children: Vec<Node>) -> Node {
     Node::Element(Element::synthetic(
