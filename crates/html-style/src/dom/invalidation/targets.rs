@@ -10,11 +10,12 @@
 //! ancestor kinds are followed: the mutated element itself, and its
 //! descendants that have the subject feature of a rule naming the change in
 //! an ancestor compound. A name inside a sibling compound, a selector
-//! argument (`:is()`, `:not()`, `:has()`) or a pseudo-class or -element of a
-//! dependent subject is not followed: `None`, any element may restyle.
+//! argument with combinators, a relational argument (`:has()`/`nth-of`) or an
+//! unsupported pseudo-class is not followed: `None`, any element may restyle.
+//! Local compound arguments of `:is()`/`:not()` depend on their own element.
 
 use super::{Changed, Kind, LIMIT, kind, name, reads};
-use crate::style::css::{Rule, Selector};
+use crate::style::css::{PseudoKind, Rule, Selector};
 use markup5ever_rcdom::{Handle, NodeData};
 
 /// Where a selector reads a changed name.
@@ -103,22 +104,18 @@ fn reach(sel: &Selector, changed: &Changed) -> Option<Option<Reach>> {
     if !reads(sel, changed) {
         return Some(None);
     }
-    let pseudo = sel.pseudo.is_some() || !sel.also.is_empty();
-    if pseudo
-        || !sel.arguments.is_empty()
-        || sel.prev.as_ref().is_some_and(|p| reads(&p.0, changed))
-    {
+    if !local_pseudos(sel) || sel.prev.as_ref().is_some_and(|p| reads(&p.0, changed)) {
         return None;
     }
     if !sel.ancestor.as_ref().is_some_and(|a| reads(&a.0, changed)) {
         return own(sel, changed).then_some(Some(Reach::Subject));
     }
-    // The name is in the ancestor chain: only plain compounds are followed.
+    // A local argument changes the same compound as a direct class/attribute.
     let mut at = sel.ancestor.as_deref();
     while let Some((ancestor, _)) = at {
-        let extra = ancestor.pseudo.is_some() || !ancestor.also.is_empty();
+        let extra = !local_pseudos(ancestor);
         let sibling = ancestor.prev.as_ref().is_some_and(|p| reads(&p.0, changed));
-        if extra && reads(ancestor, changed) || sibling || !ancestor.arguments.is_empty() {
+        if extra && reads(ancestor, changed) || sibling {
             return None;
         }
         at = ancestor.ancestor.as_deref();
@@ -131,6 +128,35 @@ fn own(sel: &Selector, changed: &Changed) -> bool {
     let among = |names: &[String], n: &str| names.iter().any(|c| c.eq_ignore_ascii_case(n));
     sel.classes.iter().any(|c| among(&changed.classes, c))
         || sel.attrs.iter().any(|a| among(&changed.attrs, &a.name))
+        || sel
+            .arguments
+            .iter()
+            .any(|p| p.list.iter().any(|s| reads(s, changed)))
+}
+
+/// These arguments match only this element. Sibling positions do not change
+/// after an attribute edit; `of S`, relational/state tests and combinators may
+/// read other elements, so they retain the conservative fallback.
+fn local_pseudos(sel: &Selector) -> bool {
+    sel.pseudo.iter().chain(&sel.also).all(|raw| {
+        let Some(arg) = sel.prepared(raw) else {
+            return false;
+        };
+        if raw.contains('\\') {
+            return false;
+        }
+        match arg.kind {
+            PseudoKind::Not | PseudoKind::Is => {
+                !arg.list.is_empty()
+                    && arg
+                        .list
+                        .iter()
+                        .all(|s| s.ancestor.is_none() && s.prev.is_none() && local_pseudos(s))
+            }
+            PseudoKind::Structural(_, _) => arg.list.is_empty(),
+            _ => false,
+        }
+    })
 }
 
 /// The element of tag `tag` and attributes `attrs` has the feature.
@@ -151,3 +177,6 @@ fn has(kind: Kind, feature: &str, tag: &str, attrs: &[html5ever::Attribute]) -> 
         }),
     }
 }
+
+#[cfg(test)]
+mod logical_tests;
