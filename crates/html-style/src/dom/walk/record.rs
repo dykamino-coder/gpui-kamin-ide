@@ -6,7 +6,9 @@ use crate::dom::source_memo::{
     OutputOwnership, RootOutput, SourceMemo,
 };
 use crate::dom::{Node, NodeKey};
-use crate::style::{generated::counters::Counters, select::Ancestor};
+use crate::style::{
+    cascade::sharing::Environment, generated::counters::Counters, select::Ancestor,
+};
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,6 +32,7 @@ pub(super) struct Recorder {
     active: HashMap<NodeKey, Rc<CascadeContext>>,
     owners: Vec<Owner>,
     roots: Vec<NodeKey>,
+    environment: Option<Rc<Environment>>,
 }
 
 fn group(path: &[Ancestor]) -> Option<GroupInput> {
@@ -42,6 +45,20 @@ fn group(path: &[Ancestor]) -> Option<GroupInput> {
 }
 
 impl Recorder {
+    fn environment(&mut self, vcx: crate::values::ValueCx<'_>) -> Rc<Environment> {
+        if self
+            .environment
+            .as_ref()
+            .is_none_or(|old| !old.matches(vcx))
+        {
+            self.environment = Some(Rc::new(Environment::new(vcx)));
+        }
+        self.environment
+            .as_ref()
+            .expect("captured environment")
+            .clone()
+    }
+
     pub fn begin(
         &mut self,
         visit: &Visit<'_>,
@@ -71,8 +88,7 @@ impl Recorder {
                 vars: visit.vars.clone(),
                 preserve: visit.preserve,
                 depth: visit.depth,
-                viewport: visit.vcx.viewport,
-                scheme: visit.vcx.scheme,
+                environment: self.environment(visit.vcx),
                 counters: counters.clone(),
                 group: group(path),
             },
@@ -96,6 +112,8 @@ impl Recorder {
             Rc::new(CascadeContext {
                 parent: start.inputs.parent.clone(),
                 node,
+                tag: me.tag.clone(),
+                attrs: me.attrs.clone(),
                 generated: GeneratedContext {
                     counters: me.counter_style.clone(),
                     counter_style: me.counter_context,

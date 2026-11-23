@@ -1,10 +1,10 @@
 //! Shared cascade inputs detached from traversal caches and source handles.
 use super::NodeKey;
 use crate::dom::shadow::Scope;
+use crate::style::cascade::sharing::Environment;
 use crate::style::computed::ContentItem;
 use crate::style::css::VarMap;
 use crate::style::generated::{counter_style, counters::Counters};
-use crate::style::values::value::Scheme;
 use std::rc::Rc;
 
 #[derive(Clone, PartialEq)]
@@ -21,6 +21,8 @@ pub struct GeneratedContext {
 pub struct CascadeContext {
     pub parent: Option<Rc<Self>>,
     pub node: NodeKey,
+    pub tag: String,
+    pub attrs: Vec<(String, String)>,
     pub generated: GeneratedContext,
 }
 
@@ -44,7 +46,11 @@ impl PartialEq for CascadeContext {
             if std::ptr::eq(left, right) {
                 return true;
             }
-            if left.node != right.node || left.generated != right.generated {
+            if left.node != right.node
+                || left.tag != right.tag
+                || left.attrs != right.attrs
+                || left.generated != right.generated
+            {
                 return false;
             }
             match (&left.parent, &right.parent) {
@@ -69,8 +75,7 @@ pub struct EntryInputs {
     pub vars: Rc<VarMap>,
     pub preserve: bool,
     pub depth: usize,
-    pub viewport: (f32, f32),
-    pub scheme: Scheme,
+    pub(crate) environment: Rc<Environment>,
     pub counters: Counters,
     pub group: Option<GroupInput>,
 }
@@ -84,8 +89,7 @@ impl PartialEq for EntryInputs {
             && self.vars == other.vars
             && self.preserve == other.preserve
             && self.depth == other.depth
-            && self.viewport == other.viewport
-            && self.scheme == other.scheme
+            && self.environment == other.environment
             && self.counters == other.counters
             && self.group == other.group
     }

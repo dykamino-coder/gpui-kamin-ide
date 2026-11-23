@@ -94,7 +94,7 @@ fn repeated_publication_keeps_one_current_entry_and_a_held_old_frame() {
 
 #[test]
 fn reuse_requires_all_entry_inputs_and_no_dirty_descendants() {
-    let (input, _values, mut cache, _) = build("<div id=p><span id=c>x</span></div><p id=q>y</p>");
+    let (input, values, mut cache, _) = build("<div id=p><span id=c>x</span></div><p id=q>y</p>");
     let p = handle(&input, "p").key();
     let c = handle(&input, "c").key();
     let q = handle(&input, "q").key();
@@ -106,7 +106,9 @@ fn reuse_requires_all_entry_inputs_and_no_dirty_descendants() {
     changed.depth += 1;
     assert!(stage.reusable(q, &changed).is_none());
     changed = inputs.clone();
-    changed.viewport.0 += 100.0;
+    let mut vcx = values.values();
+    vcx.viewport.0 += 100.0;
+    changed.environment = Rc::new(crate::style::cascade::sharing::Environment::new(vcx));
     assert!(stage.reusable(q, &changed).is_none());
     changed = inputs;
     changed.counters.reset("number", 7);

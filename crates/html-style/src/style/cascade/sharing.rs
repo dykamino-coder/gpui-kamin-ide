@@ -5,7 +5,6 @@
 use crate::style::cascade::{map::CascadeMap, vars::CascadeCx};
 use crate::style::computed::Computed;
 use crate::style::css::{DeclBlock, LinkMatch, Origin, Rule, VarMap};
-use crate::style::values::value::{RootMetrics, Scheme};
 use crate::values::ValueCx;
 use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -13,6 +12,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 /// Записей в кэше: чередование больше этого числа разных входов (91 разный
 /// `style="flex:…"` по кругу) выбивало бы каждую запись до повторного входа.
 const CAPACITY: usize = 128;
+
+mod environment;
+pub(crate) use environment::Environment;
 
 #[derive(Default)]
 struct Cache {
@@ -73,56 +75,6 @@ impl RuleInput {
             && self.specificity == rule.sel.specificity()
             && self.link == rule.link
             && self.decls == rule.decls
-    }
-}
-
-pub(crate) struct Environment {
-    root: RootMetrics,
-    font_generation: u64,
-    viewport: [u32; 2],
-    media: (u32, u32, bool, bool),
-    scheme: Scheme,
-    quirks: bool,
-    clearance: bool,
-    frame: bool,
-}
-
-impl Environment {
-    pub(crate) fn new(vcx: ValueCx<'_>) -> Self {
-        let media = vcx.doc.media.get();
-        Self {
-            root: vcx.doc.root.borrow().clone(),
-            font_generation: vcx.doc.font_generation(),
-            viewport: [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()],
-            media: (
-                media.width.to_bits(),
-                media.height.to_bits(),
-                media.dark,
-                media.print,
-            ),
-            scheme: vcx.scheme,
-            quirks: vcx.doc.quirks(),
-            clearance: vcx.clearance_possible,
-            frame: vcx.frame,
-        }
-    }
-
-    pub(crate) fn matches(&self, vcx: ValueCx<'_>) -> bool {
-        let media = vcx.doc.media.get();
-        self.font_generation == vcx.doc.font_generation()
-            && self.viewport == [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()]
-            && self.media
-                == (
-                    media.width.to_bits(),
-                    media.height.to_bits(),
-                    media.dark,
-                    media.print,
-                )
-            && self.scheme == vcx.scheme
-            && self.quirks == vcx.doc.quirks()
-            && self.clearance == vcx.clearance_possible
-            && self.frame == vcx.frame
-            && self.root.same_inputs(&vcx.doc.root.borrow())
     }
 }
 
