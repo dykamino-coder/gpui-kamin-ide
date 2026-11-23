@@ -40,7 +40,7 @@ impl Changes {
                 after_parent,
             });
         }
-        for &(ref node, _, _) in &self.links {
+        for (node, _, _) in &self.links {
             let &(before_parent, after_parent) = parents.get(&node.key()).expect("changed parent");
             delta.changes.push(SourceChange {
                 node: node.key(),
