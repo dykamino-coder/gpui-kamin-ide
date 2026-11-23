@@ -1574,6 +1574,8 @@ impl DirectXRenderer {
             )?;
         }
 
+        self.pipelines.quad_pipeline.upload_gradients(
+            &devices.device, &devices.device_context, &scene.gradient_data())?;
         if !scene.quads.is_empty() {
             self.pipelines.quad_pipeline.update_buffer(
                 &devices.device,
@@ -2642,6 +2644,7 @@ const _: () = assert!(std::mem::size_of::<BatchParams>() == 16);
 
 struct PipelineState<T> {
     label: &'static str,
+    gradients: Option<analytic_gradient::GradientBuffers>,
     // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
     shader_executables: [String; 2],
     vertex: ID3D11VertexShader,
@@ -2694,6 +2697,7 @@ impl<T> PipelineState<T> {
         vertex_count: u32,
         instance_count: u32,
     ) -> Result<()> {
+        self.bind_gradients(device_context);
         set_pipeline_state(
             device_context,
             slice::from_ref(&self.view),
@@ -2760,6 +2764,7 @@ impl<T> PipelineState<T> {
         instance_count: u32,
         blend_override: Option<&ID3D11BlendState>,
     ) -> Result<()> {
+        self.bind_gradients(device_context);
         set_pipeline_state(
             device_context,
             slice::from_ref(&self.view),
@@ -2791,6 +2796,7 @@ impl<T> PipelineState<T> {
             self.label
         );
         update_batch_start(device_context, batch_params_buffer, first_instance)?;
+        self.bind_gradients(device_context);
         set_pipeline_state(
             device_context,
             slice::from_ref(&self.view),
@@ -2820,6 +2826,7 @@ impl<T> PipelineState<T> {
             self.label
         );
         update_batch_start(device_context, batch_params_buffer, first_instance)?;
+        self.bind_gradients(device_context);
         set_pipeline_state(
             device_context,
             slice::from_ref(&self.view),
@@ -3653,6 +3660,7 @@ mod amd {
 
 
 mod backdrop;
+mod analytic_gradient;
 mod layer_cache;
 mod recovery;
 mod batch_cost;

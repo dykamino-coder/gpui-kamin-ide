@@ -67,7 +67,12 @@ impl Scene {
             match &mut command {
                 PaintOperation::Primitive(p) => match p {
                     // Live paint carries the active matrix on these primitives only.
-                    Primitive::Quad(p) => {
+                    Primitive::Gradient(g) => {
+            let p = &mut g.quad;
+                        p.transformation = matrix.compose(p.transformation);
+                        mask(&mut p.content_mask.bounds);
+                    }
+        Primitive::Quad(p) => {
                         p.transformation = matrix.compose(p.transformation);
                         mask(&mut p.content_mask.bounds);
                     }

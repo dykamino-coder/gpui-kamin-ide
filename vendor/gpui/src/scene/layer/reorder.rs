@@ -115,6 +115,7 @@ impl SceneLayer {
                     quad_of[at] = quads.len() as u32;
                     quads.push(*x);
                 }
+                Primitive::Gradient(x) => quads.push(x.quad),
                 Primitive::Path(x) => paths.push(x.clone()),
                 Primitive::Underline(x) => underlines.push(*x),
                 Primitive::MonochromeSprite(x) => monochrome_sprites.push(x.clone()),
@@ -136,7 +137,7 @@ impl SceneLayer {
 fn slot(p: &Primitive) -> usize {
     match p {
         Primitive::Shadow(_) => 0,
-        Primitive::Quad(_) => 1,
+        Primitive::Quad(_) | Primitive::Gradient(_) => 1,
         Primitive::Path(_) => 2,
         Primitive::Underline(_) => 3,
         Primitive::MonochromeSprite(_) => 4,

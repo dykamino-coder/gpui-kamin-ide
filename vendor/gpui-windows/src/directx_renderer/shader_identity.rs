@@ -47,6 +47,7 @@ impl<T> PipelineState<T> {
 
         Ok(PipelineState {
             label,
+            gradients: None,
             shader_executables,
             vertex,
             fragment,

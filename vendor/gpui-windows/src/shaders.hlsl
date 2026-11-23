@@ -413,6 +413,62 @@ float2x2 rotate2d(float angle) {
     return float2x2(c, -s, s, c);
 }
 
+
+// KaminIDE patch: analytic gradients avoid intermediate BGRA tiles.
+struct GradientDescriptor {
+    float4 geometry;
+    float2 css_size;
+    uint radial;
+    uint repeating;
+    uint first;
+    uint count;
+    uint2 pad;
+};
+struct GradientStop {
+    float4 color;
+    float offset;
+    uint3 pad;
+};
+StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
+StructuredBuffer<GradientStop> analytic_stops : register(t6);
+
+float4 analytic_gradient(uint index, float2 relative) {
+    GradientDescriptor g = analytic_gradients[index];
+    float2 p = relative * g.css_size;
+    precise float t;
+    if (g.radial != 0) {
+        t = (g.geometry.z <= 0.0 || g.geometry.w <= 0.0)
+            ? asfloat(0x7f800000) : length((p - g.geometry.xy) / g.geometry.zw);
+    } else {
+        t = dot(p - g.css_size * 0.5, g.geometry.xy) / max(g.geometry.z, 1.192092896e-7) + 0.5;
+    }
+    GradientStop a = analytic_stops[g.first];
+    GradientStop last = analytic_stops[g.first + g.count - 1];
+    if (g.repeating != 0) {
+        float period = last.offset - a.offset;
+        if (period > 0.0) {
+            float v = t - a.offset;
+            t = a.offset + (v - floor(v / period) * period);
+        } else { return floor(saturate(last.color) * 255.0 + 0.5) / 255.0; }
+    }
+    precise float4 color = last.color;
+    if (t <= a.offset) { color = a.color; }
+    else {
+        [loop] for (uint i = 1; i < g.count; ++i) {
+            GradientStop b = analytic_stops[g.first + i];
+            if (t >= a.offset && t <= b.offset) {
+                precise float k = b.offset > a.offset ? (t - a.offset) / (b.offset - a.offset) : 1.0;
+                precise float alpha = a.color.a + (b.color.a - a.color.a) * k;
+                precise float kc = alpha > 0.0 ? k * b.color.a / alpha : k;
+                color = float4(a.color.rgb + (b.color.rgb - a.color.rgb) * kc, alpha);
+                break;
+            }
+            a = b;
+        }
+    }
+    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
+}
+
 float4 gradient_color(Background background,
                       float2 position,
                       Bounds bounds,
@@ -420,6 +476,10 @@ float4 gradient_color(Background background,
     float4 color;
 
     switch (background.tag) {
+        case 5:
+            color = analytic_gradient(background.stop_count, (position - bounds.origin) / bounds.size);
+            color.a *= background.solid.a;
+            break;
         case 0:
             color = solid_color;
             break;
