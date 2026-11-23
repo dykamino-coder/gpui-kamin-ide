@@ -246,6 +246,14 @@ python scripts/memprof.py run --exe CAND.exe --retainers [--heapsnapshot] --out 
   -- PAGE.html --viewport 800x600 --mode relayout --runs 1
 ```
 
+Add `--at paint@42` to capture the graph when that phase ends in that frame instead of after
+the first mode. The allocation window closes before scanning, so snapshot work is excluded from
+the allocation report. Late owner walks are disabled: their labels could describe reused addresses,
+not the selected heap. Graph labels then come only from allocation stacks; unsampled blocks stay
+in the exact graph without a name. `ENGINE_BENCH_RETAINERS_AT=<phase>@<frame>` selects this
+checkpoint internally. An absent phase produces no graph and the command fails. Select a boundary
+near a recorded `--peak`; this is a phase snapshot, not an automatic snapshot at the exact peak.
+
 Owners name only what a reporter reaches, and a stack names only where a block was allocated. The
 retention graph names who holds it now, without a line of reporter code. With
 `ENGINE_BENCH_RETAINERS_OUT` the allocator shim of an `allocation-audit` or `heap-profile` bench keeps a

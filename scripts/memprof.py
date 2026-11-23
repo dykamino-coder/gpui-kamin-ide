@@ -321,7 +321,8 @@ class Run:
         if snapshot is not None:
             self.owners = self._owners(snapshot, measured, paths)
         # The retention graph (memprof_retain) names its blocks from the same moment.
-        self.held, self.measured = snapshot, measured
+        self.held = snapshot if snapshot is not None else blocks if self.until != "-" else None
+        self.measured = measured
         return groups
 
     def _owners(self, snapshot, owned, paths):
@@ -723,6 +724,8 @@ def diff_command(args):
 def retain_outputs(run, graph, stem, args):
     """Retention report of one side: <stem>.txt, <stem>.json and, if asked, <stem>.heapsnapshot."""
     import memprof_retain
+    if not pathlib.Path(graph).is_file():
+        raise SystemExit(f"{graph}: no retention graph; check the requested phase/frame and bench stderr")
     text = pathlib.Path(f"{stem}.txt")
     with open(text, "w", encoding="utf-8") as out:
         data = memprof_retain.report(graph, run, out, args.top)
@@ -750,9 +753,11 @@ def run_command(args):
     out.mkdir(parents=True, exist_ok=True)
     if args.retainers:
         # Sampling labels never samples the independently collected retention graph.
-        args.sample, args.owners = args.sample or 0, True
+        args.sample, args.owners = args.sample or 0, not args.at
     elif args.sample is None:
         args.sample = DEFAULT_SAMPLE
+    if args.owners and args.at:
+        raise SystemExit("--owners uses a late owner walk; use --retainers --at for a phase graph")
     if args.owners:
         # The owner report follows the last frame of a mode: the probe records the whole run.
         phase, spec = None, "*"
@@ -760,8 +765,10 @@ def run_command(args):
         if not args.at:
             raise SystemExit("run needs --at <phase>@<frame> or --owners")
         phase, _, frame = args.at.partition("@")
-        if not frame:
-            raise SystemExit("--at needs <phase>@<frame>, e.g. build_elements@2")
+        if not phase or not frame.isdecimal() or int(frame) < 1:
+            raise SystemExit("--at needs <phase>@<positive frame>, e.g. build_elements@2")
+        if args.retainers and args.start:
+            raise SystemExit("--retainers --at needs --start 0 to name blocks from process start")
         spec = f"*@{args.start}-{frame}"
     sides = [("cand", args.exe)] + ([("base", args.base_exe)] if args.base_exe else [])
     bench = list(args.bench)
@@ -778,10 +785,12 @@ def run_command(args):
         stacks = out / f"{name}.stacks"
         env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(stacks))
         for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT",
-                    "ENGINE_BENCH_RETAINERS_OUT"):
+                    "ENGINE_BENCH_RETAINERS_OUT", "ENGINE_BENCH_RETAINERS_AT"):
             env.pop(key, None)
         if args.retainers:
             env["ENGINE_BENCH_RETAINERS_OUT"] = str(out / f"{name}.retain")
+            if phase:
+                env["ENGINE_BENCH_RETAINERS_AT"] = args.at
         if phase:
             env["ENGINE_BENCH_ALLOC_STACKS_UNTIL"] = phase
         if args.owners:
@@ -839,7 +848,7 @@ def main(argv=None):
     run.add_argument("--owners", action="store_true",
                      help="who holds the heap: owner report after the last frame against the live heap")
     run.add_argument("--retainers", action="store_true",
-                     help="who keeps each block alive: retention graph after the owner report (implies --owners)")
+                     help="retention graph after the first owner report, or at --at <phase>@<frame>")
     run.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
     run.add_argument("--sample", type=int, default=None,
