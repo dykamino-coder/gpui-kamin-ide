@@ -95,6 +95,13 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
                     .border(px(width))
                     .border_color(colour.to_hsla())
                     .rounded(px(radius));
+                // Outline ink is excluded from scrollable overflow (CSS Overflow 3, section 2).
+                // This absolute paint box must not expand the content geometry used
+                // to decide an ancestor's scrollbars.
+                ring.style().kamin_scrollbars = Some(gpui::KaminScrollbars {
+                    proxy: true,
+                    ..Default::default()
+                });
                 // Outlines and CSS borders share the device-pixel edge grid
                 // (CSS UI 4 outline-style refers to border-style). Keeping
                 // a fractional inner outline edge can expose a border that
