@@ -169,6 +169,34 @@ fn fragments_of<R>(
                     store.fragment_refusal(container)
                 )
             });
+            crate::why::note("offscreen.fragment_ancestors", || {
+                (1..path.len())
+                    .filter_map(|n| element_at(old, &path[..n]))
+                    .map(|e| {
+                        let id = boxes.box_of(e.node_id);
+                        let geometry = id
+                            .and_then(|id| boxes.slot(id))
+                            .and_then(|slot| slot.inline.as_deref())
+                            .map(|f| {
+                                (
+                                    f.stamp(),
+                                    u32::try_from(a.node_id).ok().is_some_and(|id| f.has(id)),
+                                )
+                            });
+                        format!(
+                            "node={} tag={} id={:?} class={:?} box={id:?} display={:?} \
+                             geometry={geometry:?} capture={}",
+                            e.node_id,
+                            e.tag,
+                            e.attr("id"),
+                            e.attr("class"),
+                            e.style.used().reset_box_layout.display,
+                            id.map(|id| store.fragment_refusal(id)).unwrap_or_default()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            });
             None
         })?;
     if !store.fragments_hold(fragments.stamp()) {
