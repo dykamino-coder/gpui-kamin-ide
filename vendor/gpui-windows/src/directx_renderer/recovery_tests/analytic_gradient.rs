@@ -155,3 +155,50 @@ fn stop_alpha_and_changed_content_survive_retained_upload_and_group_batches() {
     read(&mut r, &Scene::default());
     assert!(r.pipelines.quad_pipeline.gradients.is_none());
 }
+
+#[test]
+fn translated_hard_stops_keep_the_same_pixels_on_an_iso_line() {
+    let d = device();
+    let mut r = offscreen(&d, 100, 280);
+    let clip = rect(50., 50., 38., 218.);
+    let mut expected = None;
+    for origin in [38., 42., 50.] {
+        let mut scene = Scene::default();
+        let bounds = rect(origin, origin, 50., 230.);
+        scene.insert_primitive(Primitive::Gradient(GradientQuad {
+            quad: Quad {
+                bounds,
+                content_mask: ContentMask { bounds: clip },
+                background: Background::from(gpui::rgba(0xffffffff)),
+                ..Default::default()
+            },
+            gradient: AnalyticGradient::new(
+                [
+                    std::f32::consts::FRAC_1_SQRT_2,
+                    -std::f32::consts::FRAC_1_SQRT_2,
+                    280. * std::f32::consts::FRAC_1_SQRT_2,
+                    0.,
+                ],
+                [50., 230.],
+                false,
+                false,
+                vec![
+                    [1., 0., 0., 1., 0.],
+                    [1., 0., 0., 1., 0.5],
+                    [0., 0., 1., 1., 0.5],
+                    [0., 0., 1., 1., 0.75],
+                    [0., 1., 0., 1., 0.75],
+                    [0., 1., 0., 1., 1.],
+                ],
+            )
+            .unwrap(),
+        }));
+        scene.finish();
+        let pixels = read(&mut r, &scene);
+        if let Some(expected) = &expected {
+            assert_eq!(&pixels, expected, "origin={origin}");
+        } else {
+            expected = Some(pixels);
+        }
+    }
+}

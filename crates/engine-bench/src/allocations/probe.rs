@@ -165,6 +165,7 @@ fn rearm() {
                 String::new()
             };
             sink::trailer(&format!("# end frame={frame} after={name}{counter}\n"));
+            super::retain::checkpoint(frame, until);
             return;
         }
         *window = next;

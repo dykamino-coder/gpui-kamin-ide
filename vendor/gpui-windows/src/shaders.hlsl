@@ -432,15 +432,22 @@ struct GradientStop {
 StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
 StructuredBuffer<GradientStop> analytic_stops : register(t6);
 
-float4 analytic_gradient(uint index, float2 relative) {
+float4 analytic_gradient(uint index, float2 position, Bounds bounds) {
     GradientDescriptor g = analytic_gradients[index];
-    float2 p = relative * g.css_size;
+    // Preserve exact local pixel centers at unit scale, including clipped tiles.
+    // Dividing the point before multiplying the size perturbs hard-stop boundaries.
+    precise float2 p = position - bounds.origin;
+    if (any(g.css_size != bounds.size)) {
+        p *= g.css_size / bounds.size;
+    }
     precise float t;
     if (g.radial != 0) {
         t = (g.geometry.z <= 0.0 || g.geometry.w <= 0.0)
             ? asfloat(0x7f800000) : length((p - g.geometry.xy) / g.geometry.zw);
     } else {
-        t = dot(p - g.css_size * 0.5, g.geometry.xy) / max(g.geometry.z, 1.192092896e-7) + 0.5;
+        precise float2 centered = p - g.css_size * 0.5;
+        precise float2 projected = centered * g.geometry.xy;
+        t = (projected.x + projected.y) / max(g.geometry.z, 1.192092896e-7) + 0.5;
     }
     GradientStop a = analytic_stops[g.first];
     GradientStop last = analytic_stops[g.first + g.count - 1];
@@ -477,7 +484,7 @@ float4 gradient_color(Background background,
 
     switch (background.tag) {
         case 5:
-            color = analytic_gradient(background.stop_count, (position - bounds.origin) / bounds.size);
+            color = analytic_gradient(background.stop_count, position, bounds);
             color.a *= background.solid.a;
             break;
         case 0:

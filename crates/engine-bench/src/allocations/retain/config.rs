@@ -1,5 +1,25 @@
 //! Allocation-free presence check before opt-in configuration is read.
 
+pub(super) const AT: &str = "ENGINE_BENCH_RETAINERS_AT";
+
+/// Only read after retention tracking has been explicitly enabled.
+pub(super) fn target() -> Result<Option<(u64, usize)>, String> {
+    let Some(text) = std::env::var_os(AT) else {
+        return Ok(None);
+    };
+    let text = text.to_string_lossy();
+    let parsed = text.split_once('@').and_then(|(phase, frame)| {
+        let phase = kamin_html::work::Phase::NAMES
+            .iter()
+            .position(|name| *name == phase)?;
+        let frame = frame.parse::<u64>().ok().filter(|frame| *frame > 0)?;
+        Some((frame, phase))
+    });
+    parsed
+        .map(Some)
+        .ok_or_else(|| format!("{AT}={text}: expected <phase>@<positive frame>"))
+}
+
 #[cfg(windows)]
 pub(super) fn present() -> bool {
     #[link(name = "kernel32")]

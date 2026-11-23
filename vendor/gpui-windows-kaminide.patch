@@ -13527,10 +13527,10 @@ index 0000000000000000000000000000000000000000..dbdd135742f1b6e1550d3c2eecc2093c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8538cab01ef9a9c312da0dbc5f8d8b710c429ca1
+index 0000000000000000000000000000000000000000..a3bcf0918c2fb8a10bde475a2035e77ba3a6c32d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs
-@@ -0,0 +1,157 @@
+@@ -0,0 +1,204 @@
 +//! Analytic geometry and stops draw directly in the target without a bitmap tile.
 +use super::*;
 +use gpui::{
@@ -13687,6 +13687,53 @@ index 0000000000000000000000000000000000000000..8538cab01ef9a9c312da0dbc5f8d8b71
 +    }
 +    read(&mut r, &Scene::default());
 +    assert!(r.pipelines.quad_pipeline.gradients.is_none());
++}
++
++#[test]
++fn translated_hard_stops_keep_the_same_pixels_on_an_iso_line() {
++    let d = device();
++    let mut r = offscreen(&d, 100, 280);
++    let clip = rect(50., 50., 38., 218.);
++    let mut expected = None;
++    for origin in [38., 42., 50.] {
++        let mut scene = Scene::default();
++        let bounds = rect(origin, origin, 50., 230.);
++        scene.insert_primitive(Primitive::Gradient(GradientQuad {
++            quad: Quad {
++                bounds,
++                content_mask: ContentMask { bounds: clip },
++                background: Background::from(gpui::rgba(0xffffffff)),
++                ..Default::default()
++            },
++            gradient: AnalyticGradient::new(
++                [
++                    std::f32::consts::FRAC_1_SQRT_2,
++                    -std::f32::consts::FRAC_1_SQRT_2,
++                    280. * std::f32::consts::FRAC_1_SQRT_2,
++                    0.,
++                ],
++                [50., 230.],
++                false,
++                false,
++                vec![
++                    [1., 0., 0., 1., 0.],
++                    [1., 0., 0., 1., 0.5],
++                    [0., 0., 1., 1., 0.5],
++                    [0., 0., 1., 1., 0.75],
++                    [0., 1., 0., 1., 0.75],
++                    [0., 1., 0., 1., 1.],
++                ],
++            )
++            .unwrap(),
++        }));
++        scene.finish();
++        let pixels = read(&mut r, &scene);
++        if let Some(expected) = &expected {
++            assert_eq!(&pixels, expected, "origin={origin}");
++        } else {
++            expected = Some(pixels);
++        }
++    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
@@ -17021,7 +17068,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde2148b8b54ad
+index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d89cbf88b4
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -17120,7 +17167,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +    return m;
 +}
 +
-@@ -340,0 +414,56 @@
+@@ -340,0 +414,63 @@
 +}
 +
 +
@@ -17142,15 +17189,22 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
 +StructuredBuffer<GradientStop> analytic_stops : register(t6);
 +
-+float4 analytic_gradient(uint index, float2 relative) {
++float4 analytic_gradient(uint index, float2 position, Bounds bounds) {
 +    GradientDescriptor g = analytic_gradients[index];
-+    float2 p = relative * g.css_size;
++    // Preserve exact local pixel centers at unit scale, including clipped tiles.
++    // Dividing the point before multiplying the size perturbs hard-stop boundaries.
++    precise float2 p = position - bounds.origin;
++    if (any(g.css_size != bounds.size)) {
++        p *= g.css_size / bounds.size;
++    }
 +    precise float t;
 +    if (g.radial != 0) {
 +        t = (g.geometry.z <= 0.0 || g.geometry.w <= 0.0)
 +            ? asfloat(0x7f800000) : length((p - g.geometry.xy) / g.geometry.zw);
 +    } else {
-+        t = dot(p - g.css_size * 0.5, g.geometry.xy) / max(g.geometry.z, 1.192092896e-7) + 0.5;
++        precise float2 centered = p - g.css_size * 0.5;
++        precise float2 projected = centered * g.geometry.xy;
++        t = (projected.x + projected.y) / max(g.geometry.z, 1.192092896e-7) + 0.5;
 +    }
 +    GradientStop a = analytic_stops[g.first];
 +    GradientStop last = analytic_stops[g.first + g.count - 1];
@@ -17177,12 +17231,12 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +        }
 +    }
 +    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
-@@ -349,0 +479,4 @@
+@@ -349,0 +486,4 @@
 +        case 5:
-+            color = analytic_gradient(background.stop_count, (position - bounds.origin) / bounds.size);
++            color = analytic_gradient(background.stop_count, position, bounds);
 +            color.a *= background.solid.a;
 +            break;
-@@ -359,8 +492,5 @@
+@@ -359,8 +499,5 @@
 -            // Expand the short side to be the same as the long side
 -            if (bounds.size.x > bounds.size.y) {
 -                direction.y *= bounds.size.y / bounds.size.x;
@@ -17196,7 +17250,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +            // невадратной коробке заваливала угол: у наклонного градиента
 +            // полосы шли круче браузерных. Длина линии — проекция коробки на
 +            // направление, доля точки считается от её середины.
-@@ -369,39 +499,23 @@
+@@ -369,39 +506,23 @@
 -            float2 center_to_point = position - center;
 -            float t = dot(center_to_point, direction) / length(direction);
 -            // Check the direct to determine the use x or y
@@ -17259,7 +17313,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +            float t = length(d);
 +
 +            color = gradient_mix(background, t, color0, color1);
-@@ -440,0 +555,22 @@
+@@ -440,0 +562,22 @@
 +    // KaminIDE patch: сглаживание ступенек градиента.
 +    //
 +    // Плавный переход между близкими цветами ложится в 8 бит с видимыми
@@ -17282,21 +17336,21 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +        color.rgb += noise / 255.0;
 +    }
 +
-@@ -509,0 +646,4 @@
+@@ -509,0 +653,4 @@
 +    // KaminIDE patch: преобразование квада. Поле обязано идти последним и
 +    // совпадать с `Quad` в scene.rs — раскладка структуры не проверяется
 +    // сборкой, расхождение видно только мусором на экране.
 +    TransformationMatrix transformation;
-@@ -537 +677,3 @@
+@@ -537 +684,3 @@
 -    float4 device_position = to_device_position(unit_vertex, quad.bounds);
 +    // KaminIDE patch: вершина проходит через матрицу — так же, как у спрайтов.
 +    float4 device_position =
 +        to_device_position_transformed(unit_vertex, quad.bounds, quad.transformation);
-@@ -545 +687,2 @@
+@@ -545 +694,2 @@
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, quad.bounds, quad.content_mask, quad.transformation);
-@@ -558,0 +702,16 @@
+@@ -558,0 +709,16 @@
 +// KaminIDE patch: обратное преобразование точки в систему координат квада.
 +//
 +// Форма квада (скругления, рамки, градиент) считается по его собственным
@@ -17313,17 +17367,17 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +    return mul(p, inv);
 +}
 +
-@@ -559,0 +719 @@
+@@ -559,0 +726 @@
 +    input.position.xy += global_origin;
-@@ -561 +721,3 @@
+@@ -561 +728,3 @@
 -    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
 +    // KaminIDE patch: дальше работаем в координатах самого квада.
 +    float2 local_position = untransform(input.position.xy, quad.transformation);
 +    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
-@@ -580 +742 @@
+@@ -580 +749 @@
 -    float2 the_point = input.position.xy - quad.bounds.origin;
 +    float2 the_point = local_position - quad.bounds.origin;
-@@ -619 +781,17 @@
+@@ -619 +788,17 @@
 -    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
 +    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
 +    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
@@ -17342,21 +17396,21 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +    float2 inner_max = half_size - reduced_edges.zw;
 +    float2 straight_border_inner_corner_to_point =
 +        max(inner_min - center_to_point, center_to_point - inner_max);
-@@ -671 +849,2 @@
+@@ -671 +856,2 @@
 -        if (quad.border_style == 1) {
 +        // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
 +        if (quad.border_style == 1 || quad.border_style == 2) {
-@@ -685 +864,3 @@
+@@ -685 +871,3 @@
 -            const float dash_length_per_width = 2.0;
 +            // KaminIDE patch: у точечной рамки штрих равен зазору — так её и
 +            // рисует браузер; у штриховой штрих вдвое длиннее.
 +            const float dash_length_per_width = (quad.border_style == 2) ? 1.0 : 2.0;
-@@ -862,0 +1044,2 @@
+@@ -862,0 +1051,2 @@
 +    // KaminIDE patch: прежние наши `inset` + `box_bounds` слиты в поля
 +    // upstream; раскладка обязана совпадать с `struct Shadow` в scene.rs.
-@@ -913,0 +1097 @@
+@@ -913,0 +1104 @@
 +    input.position.xy += global_origin;
-@@ -952,0 +1137,12 @@
+@@ -952,0 +1144,12 @@
 +    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
 +    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
 +    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
@@ -17369,22 +17423,22 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +                             shadow.element_corner_radii);
 +        alpha *= saturate(own + 0.5);
 +    }
-@@ -966,0 +1163,2 @@
+@@ -966,0 +1170,2 @@
 +    Bounds color_bounds;
 +    TransformationMatrix color_transform;
-@@ -1002 +1200 @@
+@@ -1002 +1207 @@
 -    Bounds bounds = sprite.bounds;
 +    Bounds bounds = sprite.color_bounds;
-@@ -1017 +1215,3 @@
+@@ -1017 +1222,3 @@
 -    float4 color = gradient_color(background, input.position.xy, bounds,
 +    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
 +        + sprite.color_transform.translation;
 +    float4 color = gradient_color(background, color_position, bounds,
-@@ -1055,0 +1256 @@
+@@ -1055,0 +1263 @@
 +    input.position.xy += global_origin;
-@@ -1107,0 +1309 @@
+@@ -1107,0 +1316 @@
 +    input.position.xy += global_origin;
-@@ -1116,3 +1318,10 @@
+@@ -1116,3 +1325,10 @@
 -        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
 -        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
 -        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
@@ -17398,17 +17452,17 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +        float2 st = (local / height) - float2(0., 0.5);
 +        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
 +        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
-@@ -1123 +1332 @@
+@@ -1123 +1339 @@
 -        float distance_in_pixels = distance * underline.bounds.size.y;
 +        float distance_in_pixels = distance * height;
-@@ -1184,0 +1394 @@
+@@ -1184,0 +1401 @@
 +    input.position.xy += global_origin;
-@@ -1194,0 +1405 @@
+@@ -1194,0 +1412 @@
 +    input.position.xy += global_origin;
-@@ -1221,0 +1433,2 @@
+@@ -1221,0 +1440,2 @@
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1456,6 @@
+@@ -1243,3 +1463,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -17418,9 +17472,9 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1256,0 +1473 @@
+@@ -1256,0 +1480 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1475,36 @@
+@@ -1258,2 +1482,36 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -17459,7 +17513,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..16a50bb0fa2e3cce26a7cbc98cbde214
 +        }
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1520,535 @@
+@@ -1268,0 +1527,535 @@
 +
 +/*
 +**
