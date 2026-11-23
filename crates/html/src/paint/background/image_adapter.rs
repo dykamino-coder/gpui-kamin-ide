@@ -84,6 +84,7 @@ fn dense(cpu: &CpuRaster) -> bool {
         && cpu.bytes.len() == cpu.stride * cpu.height as usize
 }
 pub(crate) fn upload(cpu: &Arc<CpuRaster>) -> Image {
+    crate::work::time!(_upload, PaintUploadNs);
     IDENTITIES.get_or_insert_with(RasterIdentity(cpu.clone()), || {
         let ready = if dense(cpu) {
             cpu.clone()
