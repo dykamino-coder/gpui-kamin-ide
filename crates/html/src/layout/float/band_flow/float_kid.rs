@@ -59,6 +59,7 @@ pub(super) fn place_float(
     }
     let (bw, bh) = probe(kid, cbw, avail, None, p);
     let geometry = p.last_geometry.clone();
+    let overflow = p.last_overflow;
     let prepared = p.last_prepared.clone();
     let clamp = p.last_clamp.clone();
     // Правила 5 и 6 §9.5.1: флоат не выше низа предыдущего блока
@@ -124,6 +125,7 @@ pub(super) fn place_float(
     slots[k] = Slot {
         prepared,
         geometry,
+        overflow,
         clamp,
         x: fx + ml,
         y: fy + mt,

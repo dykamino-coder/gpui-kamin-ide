@@ -93,6 +93,9 @@ fn probe_layout(
     };
     // (строчный, блочный) размер: в вертикальном письме — (высота, ширина).
     let (w, h) = unrounded(&tap, p.window);
+    p.last_overflow = tap.get().map_or_else(Default::default, |id| {
+        p.window.layout_overflow_contribution(id)
+    });
     p.last_geometry = match (&p.fragment, tap.get()) {
         (Some(f), Some(id)) => f.probes.relative(id, f.node.axis, p.window),
         _ => Default::default(),

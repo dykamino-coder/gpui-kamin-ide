@@ -5,6 +5,7 @@ use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AvailableSpace, Bounds, ParentElement, Pixels, Styled, point, size};
 
 mod lifetime;
+mod overflow;
 mod painting;
 mod persistent;
 mod placement;

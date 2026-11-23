@@ -1,29 +1,30 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
-# 22. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
-# 23. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
-# 24. Layout-decided scrollbars (CSS Overflow 3 section 3): a box whose overflow:auto bars layout decides is laid out with its guessed bars, and when its scrollable overflow (a scroll range proxy excluded) asks for others, only that box is laid out again in the same pass, at most twice, a bar that appeared staying (Blink AddScrollbarFreeze); the viewport publishes its gutter first, and out-of-flow boxes built for another root gutter resolve their insets against the decided one; a parent records the decided scrollbar size. Descendant gutter changes invalidate intrinsic ancestor measurements and repeat their size selection with transaction-frozen bars; empty grid and lane tracks contribute their in-flow overflow area.
+# 1. Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.
+# 2. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 21. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 23. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
+# 24. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
+# 25. Layout-decided scrollbars (CSS Overflow 3 section 3): a box whose overflow:auto bars layout decides is laid out with its guessed bars, and when its scrollable overflow (a scroll range proxy excluded) asks for others, only that box is laid out again in the same pass, at most twice, a bar that appeared staying (Blink AddScrollbarFreeze); the viewport publishes its gutter first, and out-of-flow boxes built for another root gutter resolve their insets against the decided one; a parent records the decided scrollbar size. Descendant gutter changes invalidate intrinsic ancestor measurements and repeat their size selection with transaction-frozen bars; empty grid and lane tracks contribute their in-flow overflow area.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -1363,6 +1364,13 @@ index f7807e92326b0d908f6b254aa427ea35c3671557..f2269671bfdecce6b094fe30bdf3dc4d
 @@ -6,0 +7,2 @@
 +
 +pub(crate) mod aspect_ratio_constraints;
+diff --git a/vendor/taffy/src/compute/common/scrollable_overflow.rs b/vendor/taffy/src/compute/common/scrollable_overflow.rs
+index 08937627b7354f93c464aa0590b9d6dd78cf15c7..72f5eef5ea1de71273f27633f275f24bab6255eb
+--- a/vendor/taffy/src/compute/common/scrollable_overflow.rs
++++ b/vendor/taffy/src/compute/common/scrollable_overflow.rs
+@@ -25 +25 @@
+-pub(crate) fn compute_scrollable_overflow_contribution(
++pub fn compute_scrollable_overflow_contribution(
 diff --git a/vendor/taffy/src/compute/common/sizing_keyword.rs b/vendor/taffy/src/compute/common/sizing_keyword.rs
 index 86f630aa35a4a256fb22eaf2b0dce4b3dec55d3a..f16dd288029b682a6e37f2a0f8558fee19e4101d
 --- a/vendor/taffy/src/compute/common/sizing_keyword.rs
@@ -15569,7 +15577,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5dff50ab583
+index 1366d8349f1668c19f04bd2d85e88422918b6604..780b2639d5ab2abf013364aaf9373f1b3f151e78
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15581,25 +15589,30 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +mod block_flow;
 +#[cfg(feature = "block_layout")]
 +mod root_block_constraints;
-@@ -50,2 +57,4 @@
+@@ -39,0 +47,4 @@
++// KaminIDE patch: independent measured hosts use the native overflow propagation rule.
++#[cfg(feature = "content_size")]
++pub use common::scrollable_overflow::compute_scrollable_overflow_contribution;
++
+@@ -50,2 +61,4 @@
 -pub use self::grid::compute_grid_layout;
 -
 +pub use self::grid::{compute_grid_layout, ContributionMemo};
 +
 +#[cfg(feature = "float_layout")]
 +pub use self::block::FloatMark;
-@@ -56 +65 @@
+@@ -56 +69 @@
 -use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow, Position};
 +use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
-@@ -58,2 +67,2 @@
+@@ -58,2 +71,2 @@
 -    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Layout, LayoutInput, LayoutOutput, LayoutPartialTree,
 -    LayoutPartialTreeExt, NodeId, OofCandidate, OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
 +    Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
 +    OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
-@@ -64 +73 @@
+@@ -64 +77 @@
 -use crate::{CacheTree, MaybeMath, MaybeResolve};
 +use crate::CacheTree;
-@@ -68,9 +77,6 @@
+@@ -68,9 +81,6 @@
 -/// The root's containing block is the initial containing block (ICB), which has the dimensions of the
 -/// viewport (`available_space`) and is anchored at the canvas origin. The root's `position` and `inset`
 -/// styles are resolved against it:
@@ -15615,19 +15628,19 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +88 @@
+@@ -82,5 +92 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
 -    drop(style);
 -
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +89,0 @@
+@@ -88,4 +93,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +96,2 @@
+@@ -98,35 +100,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15665,10 +15678,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
-@@ -168 +133 @@
+@@ -168 +137 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -194,10 +158,0 @@
+@@ -194,10 +162,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -15679,7 +15692,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +160,3 @@
+@@ -205,50 +164,3 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -15733,10 +15746,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +    let known_dimensions = root_block_constraints::known(tree, root, available_space);
 +    #[cfg(not(feature = "block_layout"))]
 +    let known_dimensions = Size::NONE;
-@@ -260 +168 @@
+@@ -260 +172 @@
 -        available_space: root_available_space,
 +        available_space,
-@@ -271,6 +179,25 @@
+@@ -271,6 +183,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15768,7 +15781,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,7 +208,5 @@
+@@ -281,7 +212,5 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -15781,7 +15794,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        Size {
 +            width: style.direction().is_rtl(),
 +            height: false,
-@@ -289,13 +214,20 @@
+@@ -289,13 +218,20 @@
 -        y: margin.top,
 -    };
 -
@@ -15815,7 +15828,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +                .width
 +                .into_option()
 +                .map_or(0.0, |available_width| available_width - output.size.width)
-@@ -303 +235,10 @@
+@@ -303 +239,10 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
@@ -15827,16 +15840,16 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        } else {
 +            0.0
 +        },
-@@ -305,2 +246 @@
+@@ -305,2 +250 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 -    }
 +
-@@ -311,0 +252 @@
+@@ -311,0 +256 @@
 +        relative_offset: Point::ZERO,
-@@ -355 +296 @@
+@@ -355 +300 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +302,13 @@
+@@ -360,0 +306,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,

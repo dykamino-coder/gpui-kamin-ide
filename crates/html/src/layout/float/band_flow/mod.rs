@@ -87,6 +87,7 @@ struct Slot {
     prepared: prepared::Prepared,
     clamp: crate::text::clamp::MeasuredClamp,
     geometry: crate::layout::fragment::flow::FlowGeometry,
+    overflow: gpui::Bounds<gpui::Pixels>,
     x: f32,
     y: f32,
     avail: f32,
@@ -120,14 +121,11 @@ pub(super) struct Probe<'a> {
     last_clamp: crate::text::clamp::MeasuredClamp,
     positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
     last_geometry: crate::layout::fragment::flow::FlowGeometry,
+    last_overflow: gpui::Bounds<gpui::Pixels>,
 }
 
-#[derive(Clone, Debug, Default)]
-struct Plan {
-    width: f32,
-    height: f32,
-    slots: Vec<Slot>,
-}
+mod overflow;
+use overflow::Plan;
 
 pub(super) use crate::tolerance::COORD_EPS;
 
