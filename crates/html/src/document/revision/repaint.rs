@@ -22,6 +22,7 @@
 
 mod fold;
 mod paths;
+mod probe;
 
 use super::boxes::Boxes;
 use super::commit::{Edited, Plan};
@@ -201,7 +202,7 @@ impl Document {
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {
-            let (old, new) = why::why(old.zip(new), &why::REFUSED_RESTYLE_PROBE)?;
+            let (old, new) = probe::pair(target, old, new)?;
             if old.rest != new.rest {
                 return refuse(&why::REFUSED_RESTYLE_REST);
             }
