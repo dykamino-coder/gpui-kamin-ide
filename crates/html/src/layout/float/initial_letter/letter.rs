@@ -123,8 +123,8 @@ pub(super) fn initial_letter_style(
         style.reset_background.bg_image = first.reset_background.bg_image.clone();
         style.reset_background.gradient = first.reset_background.gradient.clone();
         style.reset_background.gradient_raw = first.reset_background.gradient_raw.clone();
-        style.reset_background.bg_size = first.reset_background.bg_size;
-        style.reset_background.bg_pos = first.reset_background.bg_pos;
+        style.reset_background.bg_size = first.reset_background.bg_size.clone();
+        style.reset_background.bg_pos = first.reset_background.bg_pos.clone();
         style.reset_background.bg_repeat = first.reset_background.bg_repeat;
         style.reset_background.bg_origin = first.reset_background.bg_origin;
         style.reset_background.bg_clip = first.reset_background.bg_clip;
@@ -137,22 +137,22 @@ pub(super) fn initial_letter_style(
     // = 15 + (−4).
     let (mt, ml, mr) = (
         own(
-            first.reset_box_layout.margin.top,
-            inherited.reset_box_layout.margin.top,
+            first.reset_box_layout.margin.top.clone(),
+            inherited.reset_box_layout.margin.top.clone(),
         ),
         own(
-            first.reset_box_layout.margin.left,
-            inherited.reset_box_layout.margin.left,
+            first.reset_box_layout.margin.left.clone(),
+            inherited.reset_box_layout.margin.left.clone(),
         ),
         own(
-            first.reset_box_layout.margin.right,
-            inherited.reset_box_layout.margin.right,
+            first.reset_box_layout.margin.right.clone(),
+            inherited.reset_box_layout.margin.right.clone(),
         ),
     );
     style.reset_box_layout.margin.top = Some(Len::Px(if vert { mt } else { mt + top }));
     style.reset_box_layout.margin.bottom = Some(Len::Px(own(
-        first.reset_box_layout.margin.bottom,
-        inherited.reset_box_layout.margin.bottom,
+        first.reset_box_layout.margin.bottom.clone(),
+        inherited.reset_box_layout.margin.bottom.clone(),
     )));
     style.reset_box_layout.margin.left = Some(Len::Px(if vert && !block_rl {
         ml + top

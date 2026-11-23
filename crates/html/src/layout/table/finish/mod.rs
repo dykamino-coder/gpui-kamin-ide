@@ -118,8 +118,8 @@ pub(super) async fn table_finish(
         geom.inherited.reset_positioned.position,
         Some(crate::style::computed::Position::Absolute)
             | Some(crate::style::computed::Position::Fixed)
-    ) && edge_set(geom.inherited.reset_positioned.inset.left)
-        && edge_set(geom.inherited.reset_positioned.inset.right)
+    ) && edge_set(geom.inherited.reset_positioned.inset.left.clone())
+        && edge_set(geom.inherited.reset_positioned.inset.right.clone())
         && geom.e.style.used().reset_box_layout.width.is_none();
     // Стиль СЕТКИ — без позиционирования и краёв: их заберёт обёртка.
     let grid_style = split_wrapper.then(|| {

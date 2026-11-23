@@ -55,13 +55,13 @@ pub fn shape_box(e: &Element, stroke: bool) -> Option<(f32, f32, f32, f32)> {
     let (x, y, w, h) = match e.tag.to_ascii_lowercase().as_str() {
         "rect" | "image" => (
             num("x")
-                .or(css(e.style.used().reset_svg_math.svg_x))
+                .or(css(e.style.used().reset_svg_math.svg_x.clone()))
                 .unwrap_or(0.0),
             num("y")
-                .or(css(e.style.used().reset_svg_math.svg_y))
+                .or(css(e.style.used().reset_svg_math.svg_y.clone()))
                 .unwrap_or(0.0),
-            num("width").or(css(e.style.used().reset_box_layout.width))?,
-            num("height").or(css(e.style.used().reset_box_layout.height))?,
+            num("width").or(css(e.style.used().reset_box_layout.width.clone()))?,
+            num("height").or(css(e.style.used().reset_box_layout.height.clone()))?,
         ),
         "circle" => {
             let r = num("r")?;

@@ -111,7 +111,7 @@ impl AnchorPlan {
     /// точках от края содержащего блока (запасное значение); ничего.
     fn resolve_anchor(
         &self,
-        first: std::rc::Rc<AnchorFn>,
+        first: crate::style::values::value::AnchorId,
         y_axis: bool,
         end_side: bool,
         vcx: ValueCx<'_>,
@@ -121,7 +121,7 @@ impl AnchorPlan {
         for _ in 0..4 {
             let Some(cur) = f.take() else { break };
             let hit = self.hit_of(&cur, y_axis, end_side);
-            match (hit, cur.fallback) {
+            match (hit, cur.fallback.clone()) {
                 (Some(want), _) => return Edge::Abs(want),
                 (None, Some(Len::Px(v))) => return Edge::FromEdge(v),
                 (None, Some(Len::Anchor(j))) => f = anchor_get(j, vcx),

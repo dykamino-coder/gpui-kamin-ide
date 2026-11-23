@@ -13,7 +13,6 @@ use crate::dom::{BoxId, Element, Node};
 
 /// What the publication knows about the input besides the nodes themselves.
 pub(super) struct Keys<'a> {
-    pub(super) text: &'a [crate::dom::NodeKey],
     pub(super) element: &'a dyn Fn(u64) -> Option<crate::dom::NodeKey>,
 }
 
@@ -240,6 +239,6 @@ impl BoxTree {
         if Source::authored(e) && (keys.element)(e.node_id).is_some() {
             return Default::default();
         }
-        super::sources::Extent::of(e, keys.text, keys.element)
+        super::sources::Extent::of(e, keys.element)
     }
 }

@@ -144,24 +144,24 @@ pub(super) fn gradient_stripes(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>) {
                 if vertical {
                     if first_edge {
                         layer = layer
-                            .rounded_tl(px(corner(c.reset_border.radius.tl)))
-                            .rounded_tr(px(corner(c.reset_border.radius.tr)));
+                            .rounded_tl(px(corner(c.reset_border.radius.tl.clone())))
+                            .rounded_tr(px(corner(c.reset_border.radius.tr.clone())));
                     }
                     if last_edge {
                         layer = layer
-                            .rounded_bl(px(corner(c.reset_border.radius.bl)))
-                            .rounded_br(px(corner(c.reset_border.radius.br)));
+                            .rounded_bl(px(corner(c.reset_border.radius.bl.clone())))
+                            .rounded_br(px(corner(c.reset_border.radius.br.clone())));
                     }
                 } else {
                     if first_edge {
                         layer = layer
-                            .rounded_tl(px(corner(c.reset_border.radius.tl)))
-                            .rounded_bl(px(corner(c.reset_border.radius.bl)));
+                            .rounded_tl(px(corner(c.reset_border.radius.tl.clone())))
+                            .rounded_bl(px(corner(c.reset_border.radius.bl.clone())));
                     }
                     if last_edge {
                         layer = layer
-                            .rounded_tr(px(corner(c.reset_border.radius.tr)))
-                            .rounded_br(px(corner(c.reset_border.radius.br)));
+                            .rounded_tr(px(corner(c.reset_border.radius.tr.clone())))
+                            .rounded_br(px(corner(c.reset_border.radius.br.clone())));
                     }
                 }
                 out.push(

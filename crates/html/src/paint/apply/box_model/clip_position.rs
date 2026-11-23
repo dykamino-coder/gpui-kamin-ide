@@ -15,7 +15,10 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
         .clip_round
         .filter(|_| !crate::paint::effects::grouped::rounded_rect_clip(c))
     {
-        let base = match (c.reset_box_layout.width, c.reset_box_layout.height) {
+        let base = match (
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.height.clone(),
+        ) {
             (Some(Len::Px(w)), Some(Len::Px(h))) => w.min(h),
             (Some(Len::Px(w)), _) => w,
             (_, Some(Len::Px(h))) => h,
@@ -35,7 +38,7 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
         };
         // Обрезка НЕ отменяет собственное скругление: берётся более сильное
         // из двух, иначе `border-radius` рядом с `clip-path` пропадал.
-        let own = px_lossy_zero(c.reset_border.radius.tl);
+        let own = px_lossy_zero(c.reset_border.radius.tl.clone());
         d = d.rounded(px(radius.max(own))).overflow_hidden();
     }
     // `contain: paint` — содержимое не выходит за коробку.
@@ -76,8 +79,8 @@ pub(super) fn box_clip_position(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> D
             // элемент занимает ширину содержимого без переносов; повторяем это.
             // Явный `auto` краем не считается (CSS 2.1 §9.3.2).
             let edge = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
-            let horizontal =
-                edge(c.reset_positioned.inset.left) && edge(c.reset_positioned.inset.right);
+            let horizontal = edge(c.reset_positioned.inset.left.clone())
+                && edge(c.reset_positioned.inset.right.clone());
             if !horizontal && c.reset_box_layout.width.is_none() {
                 d = d.flex_shrink_0().whitespace_nowrap();
             }

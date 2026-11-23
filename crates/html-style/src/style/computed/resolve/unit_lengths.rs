@@ -1,10 +1,4 @@
-//! Общий обход длин в единицах окна и контейнера.
-//!
-//! Обход один для записи и для проверки без записи (`Computed::has_viewport_lengths`): шаг —
-//! пара «изменит ли запись стиль» и сама запись (`unit_change::Target`). `moves` отвечает, какую
-//! длину `fix` меняет, и саму свёртку не вызывает: `calc` пишет в арену кадра. Группа берётся на
-//! запись, только если в ней есть что менять: общая группа остаётся общей (Blink `ComputedStyle`
-//! setters сравнивают перед записью, `computed_style.h` `SetBorderImageOutset`).
+//! Share one read/write traversal: probe changes before deriving a group; calc folding creates a new owned expression only when needed.
 use super::unit_change::{Target, lengths, sides};
 use super::*;
 
@@ -18,22 +12,25 @@ fn radius(fix: &impl Fn(&mut Option<Len>), mut radius: Option<Len>) -> Option<Le
 }
 
 /// Изменит ли `resolve_radius_lengths` радиусы: длина сворачивается или отрицательна.
-fn radius_pending(s: &Computed, moves: impl Fn(Len) -> bool) -> bool {
-    let moves = |l: Len| moves(l) || matches!(l, Len::Px(v) if v < 0.0);
+fn radius_pending(s: &Computed, moves: impl Fn(&Len) -> bool) -> bool {
+    let moves = |l: &Len| moves(l) || matches!(l, Len::Px(v) if *v < 0.0);
     let r = &s.reset_border.radius;
-    [r.tl, r.tr, r.br, r.bl].into_iter().flatten().any(moves)
+    [r.tl.as_ref(), r.tr.as_ref(), r.br.as_ref(), r.bl.as_ref()]
+        .into_iter()
+        .flatten()
+        .any(moves)
         || s.reset_border
             .radius_ell
             .iter()
             .flatten()
             .flatten()
-            .any(|&(x, y)| moves(x) || moves(y))
+            .any(|(x, y)| moves(x) || moves(y))
 }
 
-/// Обход длин стиля приёмника. Порядок свёртки постоянный: `calc` пишет в арену кадра по порядку.
+/// Visit target-style lengths in a deterministic order, creating owned calc expressions as needed.
 pub(super) fn walk_unit_lengths<T: Target>(
     target: &mut T,
-    moves: impl Fn(Len) -> bool + Copy,
+    moves: impl Fn(&Len) -> bool + Copy,
     fix: impl Fn(&mut Option<Len>) + Copy,
     vcx: ValueCx<'_>,
 ) {
@@ -44,12 +41,12 @@ pub(super) fn walk_unit_lengths<T: Target>(
         |s| {
             let l = &*s.reset_box_layout;
             [
-                l.width,
-                l.height,
-                l.min_width,
-                l.min_height,
-                l.max_width,
-                l.max_height,
+                l.width.as_ref(),
+                l.height.as_ref(),
+                l.min_width.as_ref(),
+                l.min_height.as_ref(),
+                l.max_width.as_ref(),
+                l.max_height.as_ref(),
             ]
         },
         |s, [w, h, min_w, min_h, max_w, max_h]| {
@@ -63,14 +60,14 @@ pub(super) fn walk_unit_lengths<T: Target>(
         target,
         moves,
         fix,
-        |s| [s.reset_flex.flex_basis],
+        |s| [s.reset_flex.flex_basis.as_ref()],
         |s, [basis]| s.reset_flex.flex_basis = basis,
     );
     lengths(
         target,
         moves,
         fix,
-        |s| [s.reset_svg_math.svg_path_length],
+        |s| [s.reset_svg_math.svg_path_length.as_ref()],
         |s, [path]| s.reset_svg_math.svg_path_length = path,
     );
     // Кегль — в общей группе наследуемых: правится, только если он в
@@ -79,7 +76,7 @@ pub(super) fn walk_unit_lengths<T: Target>(
         target,
         moves,
         fix,
-        |s| [s.inh.font.font_size],
+        |s| [s.inh.font.font_size.as_ref()],
         |s, [size]| s.inh.font.font_size = size,
     );
     sides(
@@ -167,7 +164,12 @@ pub(super) fn walk_unit_lengths<T: Target>(
         target,
         moves,
         fix,
-        |s| s.reset_flex.gap.map_or([None; 2], |(row, col)| [row, col]),
+        |s| {
+            s.reset_flex
+                .gap
+                .as_ref()
+                .map_or([None; 2], |(row, col)| [row.as_ref(), col.as_ref()])
+        },
         |s, [row, col]| s.reset_flex.gap = Some((row, col)),
     );
 }
@@ -175,7 +177,7 @@ pub(super) fn walk_unit_lengths<T: Target>(
 impl Computed {
     pub(super) fn resolve_unit_lengths(
         &mut self,
-        moves: impl Fn(Len) -> bool + Copy,
+        moves: impl Fn(&Len) -> bool + Copy,
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
@@ -186,18 +188,20 @@ impl Computed {
     /// на запись, только если радиус изменился.
     pub fn resolve_radius_lengths(&mut self, fix: impl Fn(&mut Option<Len>)) {
         let r = &self.reset_border.radius;
-        let now = [r.tl, r.tr, r.br, r.bl];
-        let next = now.map(|corner| radius(&fix, corner));
+        let now = [r.tl.clone(), r.tr.clone(), r.br.clone(), r.bl.clone()];
+        let next = now.clone().map(|corner| radius(&fix, corner));
         if next != now {
             let r = &mut self.reset_border.radius;
             [r.tl, r.tr, r.br, r.bl] = next;
         }
-        let Some(now) = self.reset_border.radius_ell else {
+        let Some(ref now) = self.reset_border.radius_ell else {
             return;
         };
         let axis = |v| radius(&fix, Some(v)).unwrap_or(Len::Px(0.0));
-        let next = now.map(|corner| corner.map(|(x, y)| (axis(x), axis(y))));
-        if next != now {
+        let next = now
+            .clone()
+            .map(|corner| corner.map(|(x, y)| (axis(x), axis(y))));
+        if next != *now {
             self.reset_border.radius_ell = Some(next);
         }
     }

@@ -109,8 +109,8 @@ pub(super) fn collect_grid(e: &Element, cx: ShapeCx, vcx: FrameCx<'_>) -> GridBo
         });
         out.items.push(GridItem {
             id: k.node_id,
-            mt: px(k.style.used().reset_box_layout.margin.top),
-            mb: px(k.style.used().reset_box_layout.margin.bottom),
+            mt: px(k.style.used().reset_box_layout.margin.top.clone()),
+            mb: px(k.style.used().reset_box_layout.margin.bottom.clone()),
             force_before: edge_break(k, false, vcx),
             force_after: edge_break(k, true, vcx),
             avoid_before: edge_avoid(k, false, vcx),

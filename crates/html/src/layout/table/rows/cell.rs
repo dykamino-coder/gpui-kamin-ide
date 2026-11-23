@@ -46,14 +46,14 @@ pub(super) async fn table_cell(
         let zero = Some(Len::Px(0.0));
         let style = cell.style.used_mut();
         if geom.table_is_vertical {
-            style.reset_box_layout.padding.top = zero;
-            style.reset_box_layout.padding.bottom = zero;
-            style.reset_border.border_width.top = zero;
+            style.reset_box_layout.padding.top = zero.clone();
+            style.reset_box_layout.padding.bottom = zero.clone();
+            style.reset_border.border_width.top = zero.clone();
             style.reset_border.border_width.bottom = zero;
         } else {
-            style.reset_box_layout.padding.left = zero;
-            style.reset_box_layout.padding.right = zero;
-            style.reset_border.border_width.left = zero;
+            style.reset_box_layout.padding.left = zero.clone();
+            style.reset_box_layout.padding.right = zero.clone();
+            style.reset_border.border_width.left = zero.clone();
             style.reset_border.border_width.right = zero;
         }
     }

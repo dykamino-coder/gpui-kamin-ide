@@ -17,8 +17,10 @@ impl Axes {
         Self([block, inline.opposite(), block.opposite(), inline].map(|side| side.index()))
     }
 
-    pub(super) fn logical<T: Copy>(self, physical: [T; 4]) -> [T; 4] {
-        self.0.map(|side| physical[side])
+    pub(super) fn logical<T>(self, physical: [T; 4]) -> [T; 4] {
+        let mut physical = physical.map(Some);
+        self.0
+            .map(|side| physical[side].take().expect("axis permutation"))
     }
 
     pub(super) fn physical<T: Copy>(self, logical: [T; 4]) -> [T; 4] {

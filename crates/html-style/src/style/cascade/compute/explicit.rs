@@ -21,8 +21,8 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
             c.reset_border.corner_shape = parent.reset_border.corner_shape;
         }
         if on(inh::RADIUS) {
-            c.reset_border.radius = parent.reset_border.radius;
-            c.reset_border.radius_ell = parent.reset_border.radius_ell;
+            c.reset_border.radius = parent.reset_border.radius.clone();
+            c.reset_border.radius_ell = parent.reset_border.radius_ell.clone();
         }
         if on(inh::DISPLAY) {
             c.reset_box_layout.display = parent.reset_box_layout.display;
@@ -31,7 +31,7 @@ pub(super) fn inherit_explicit(parent: &Computed, own: &Computed, c: &mut Comput
         }
         if on(inh::CLIP) {
             c.reset_mask.clip_rect = parent.reset_mask.clip_rect;
-            c.reset_mask.clip_len = parent.reset_mask.clip_len;
+            c.reset_mask.clip_len = parent.reset_mask.clip_len.clone();
         }
         if on(inh::TRANSFORM) {
             c.reset_transforms.transform = parent.reset_transforms.transform;

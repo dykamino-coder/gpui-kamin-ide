@@ -22,14 +22,16 @@ pub(super) fn fill_anchor_pairs(
     if c.reset_positioned.position == Some(Position::Fixed) || matches!(grid_parent, Some(true)) {
         return;
     }
-    let x = auto(c.reset_box_layout.width)
-        && set(c.reset_positioned.inset.left)
-        && set(c.reset_positioned.inset.right)
-        && (anchored(c.reset_positioned.inset.left) || anchored(c.reset_positioned.inset.right));
-    let y = auto(c.reset_box_layout.height)
-        && set(c.reset_positioned.inset.top)
-        && set(c.reset_positioned.inset.bottom)
-        && (anchored(c.reset_positioned.inset.top) || anchored(c.reset_positioned.inset.bottom));
+    let x = auto(c.reset_box_layout.width.clone())
+        && set(c.reset_positioned.inset.left.clone())
+        && set(c.reset_positioned.inset.right.clone())
+        && (anchored(c.reset_positioned.inset.left.clone())
+            || anchored(c.reset_positioned.inset.right.clone()));
+    let y = auto(c.reset_box_layout.height.clone())
+        && set(c.reset_positioned.inset.top.clone())
+        && set(c.reset_positioned.inset.bottom.clone())
+        && (anchored(c.reset_positioned.inset.top.clone())
+            || anchored(c.reset_positioned.inset.bottom.clone()));
     if !x && !y {
         return;
     }
@@ -50,23 +52,23 @@ pub(super) fn fill_anchor_pairs(
     };
     if x {
         let e = edge(
-            c.reset_box_layout.margin.left,
-            c.reset_box_layout.margin.right,
+            c.reset_box_layout.margin.left.clone(),
+            c.reset_box_layout.margin.right.clone(),
             b.left,
             b.right,
-            c.reset_box_layout.padding.left,
-            c.reset_box_layout.padding.right,
+            c.reset_box_layout.padding.left.clone(),
+            c.reset_box_layout.padding.right.clone(),
         );
         c.reset_box_layout.width = Some(Len::Px((w - e).max(0.0)));
     }
     if y {
         let e = edge(
-            c.reset_box_layout.margin.top,
-            c.reset_box_layout.margin.bottom,
+            c.reset_box_layout.margin.top.clone(),
+            c.reset_box_layout.margin.bottom.clone(),
             b.top,
             b.bottom,
-            c.reset_box_layout.padding.top,
-            c.reset_box_layout.padding.bottom,
+            c.reset_box_layout.padding.top.clone(),
+            c.reset_box_layout.padding.bottom.clone(),
         );
         c.reset_box_layout.height = Some(Len::Px((h - e).max(0.0)));
     }

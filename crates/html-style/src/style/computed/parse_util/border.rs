@@ -163,6 +163,6 @@ pub(in crate::style::computed) fn uniform_round(r: &str, vcx: ValueCx<'_>) -> Op
         .split(|c: char| c == '/' || c.is_whitespace())
         .filter(|t| !t.is_empty());
     let first = Len::parse(it.next()?, vcx)?;
-    it.all(|t| Len::parse(t, vcx) == Some(first))
+    it.all(|t| Len::parse(t, vcx) == Some(first.clone()))
         .then_some(first)
 }

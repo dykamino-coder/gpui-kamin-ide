@@ -26,8 +26,8 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
     let bw = c.borders();
     let mbp_y = side(bw.top)
         + side(bw.bottom)
-        + side(c.reset_box_layout.padding.top)
-        + side(c.reset_box_layout.padding.bottom);
+        + side(c.reset_box_layout.padding.top.clone())
+        + side(c.reset_box_layout.padding.bottom.clone());
     if !multicol && !measuring && e.style.used().clamp_by_height() && auto_clamp_limit(c).is_some()
     {
         if let Some(cut) = cx
@@ -40,7 +40,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
                 d.style(),
                 e.node_id,
                 cut,
-                side(c.reset_box_layout.padding.bottom),
+                side(c.reset_box_layout.padding.bottom.clone()),
                 cx,
             );
         }
@@ -65,7 +65,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
         // (css-overflow-4 §5.3; `webkit-line-clamp-with-max-height`). The
         // box is border-box here, the style value content-box unless
         // `box-sizing: border-box`.
-        let style_max = px_strict(c.reset_box_layout.max_height);
+        let style_max = px_strict(c.reset_box_layout.max_height.clone());
         let style_max = style_max.map(|m| {
             if c.reset_border.border_box == Some(true) {
                 m
@@ -90,7 +90,7 @@ pub(super) fn apply(mut d: gpui::Div, e: &Element, c: &Computed, cx: &LayoutCx) 
             // обрезано краем паддинга; Blink — `is_hidden_for_paint`):
             // нижний край обрезки — край поля содержимого
             // (`webkit-line-clamp-050`: «Line4» в паддинге 10px).
-            let pad_bottom = side(c.reset_box_layout.padding.bottom);
+            let pad_bottom = side(c.reset_box_layout.padding.bottom.clone());
             if pad_bottom > 0.0 && d.style().overflow_clip_offset.is_none() {
                 d.style().overflow_clip_offset = Some([0.0, 0.0, -pad_bottom, 0.0]);
             }

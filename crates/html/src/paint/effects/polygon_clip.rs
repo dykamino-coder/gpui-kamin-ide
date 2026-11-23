@@ -26,8 +26,8 @@ pub(super) fn points(group: &Grouped, bounds: Bounds<Pixels>) -> Vec<Point<Pixel
         .iter()
         .map(|(x, y)| {
             point(
-                base.origin.x + coord(*x, base.size.width),
-                base.origin.y + coord(*y, base.size.height),
+                base.origin.x + coord(x.clone(), base.size.width),
+                base.origin.y + coord(y.clone(), base.size.height),
             )
         })
         .collect()

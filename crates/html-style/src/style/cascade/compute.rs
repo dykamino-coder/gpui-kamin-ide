@@ -127,7 +127,8 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
         .inh
         .text_flow
         .tab_size_len
-        .and(c.inh.text_flow.tab_size_len)
+        .clone()
+        .and(c.inh.text_flow.tab_size_len.clone())
     {
         Some(len) => Some(Len::Px(crate::style::font_metrics::spacing_px(
             Some(len),
@@ -136,13 +137,14 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
             vcx,
         ))),
         None if own.inh.text_flow.tab_size.is_some() => None,
-        None => parent.inh.text_flow.tab_size_len,
+        None => parent.inh.text_flow.tab_size_len.clone(),
     };
     text::inherit_decoration_values(parent, own, &mut c, own_px, vcx);
     // `path-length` вычисляется в абсолютную длину (SVG 2 §pathLength).
     if let Some(mut length) = c
         .reset_svg_math
         .svg_path_length
+        .clone()
         .filter(|l| !matches!(l, Len::Px(_) | Len::Auto))
     {
         let font = c.font_cx(vcx);

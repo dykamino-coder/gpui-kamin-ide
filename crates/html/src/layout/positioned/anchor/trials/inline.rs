@@ -41,10 +41,10 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             .as_ref()
             .is_some_and(|o| o.take())
         && !fixed
-        && (edge_set(e.style.used().reset_positioned.inset.left)
-            || edge_set(e.style.used().reset_positioned.inset.right))
-        && (edge_set(e.style.used().reset_positioned.inset.top)
-            || edge_set(e.style.used().reset_positioned.inset.bottom))
+        && (edge_set(e.style.used().reset_positioned.inset.left.clone())
+            || edge_set(e.style.used().reset_positioned.inset.right.clone()))
+        && (edge_set(e.style.used().reset_positioned.inset.top.clone())
+            || edge_set(e.style.used().reset_positioned.inset.bottom.clone()))
         && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0;
     if inline_cb && let Some(offer) = &opts.cx.position.inline_cb {
         offer.note_taken();
@@ -66,10 +66,10 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
             "img" | "svg" | "iframe" | "canvas" | "video" | "object" | "embed"
         ),
         fixed_axes: (
-            edge_set(e.style.used().reset_positioned.inset.left)
-                || edge_set(e.style.used().reset_positioned.inset.right),
-            edge_set(e.style.used().reset_positioned.inset.top)
-                || edge_set(e.style.used().reset_positioned.inset.bottom),
+            edge_set(e.style.used().reset_positioned.inset.left.clone())
+                || edge_set(e.style.used().reset_positioned.inset.right.clone()),
+            edge_set(e.style.used().reset_positioned.inset.top.clone())
+                || edge_set(e.style.used().reset_positioned.inset.bottom.clone()),
         ),
         ..Default::default()
     });

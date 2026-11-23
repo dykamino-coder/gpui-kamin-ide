@@ -77,6 +77,7 @@ fn natural(
         .inh
         .font
         .line_height
+        .clone()
         .and_then(|v| v.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or_else(|| {
             crate::text::metrics::normal_px(

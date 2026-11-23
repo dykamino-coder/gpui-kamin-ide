@@ -30,7 +30,7 @@ pub(crate) fn column_layout_width(
 ) -> Option<f32> {
     let u = col_inline_size.or_else(|| {
         (!col_vert && auto_fills_parent(e))
-            .then_some(inherited.reset_box_layout.width)
+            .then_some(inherited.reset_box_layout.width.clone())
             .flatten()
     });
     column_of(u, &BoxDimensions::for_element(e, merged), cols, used_gap)
@@ -125,7 +125,7 @@ pub(crate) fn column_measure_width(
                             && matches!(k.style.used().reset_box_layout.height, None | Some(Len::Auto)))
                 }
             }))
-        .then_some(inherited.reset_box_layout.width)
+        .then_some(inherited.reset_box_layout.width.clone())
         .flatten()
         .filter(|w| matches!(w, Len::Px(_)))
     });
@@ -156,11 +156,11 @@ mod tests {
         e.marks.spanner_content_box = true;
         let width = Some(Len::Px(220.));
         assert_eq!(
-            column_layout_width(&e, &style, &style, width, false, 2, 20.),
+            column_layout_width(&e, &style, &style, width.clone(), false, 2, 20.),
             Some(100.)
         );
         assert_eq!(
-            column_measure_width(&e, &style, &style, width, false, 2, 20.),
+            column_measure_width(&e, &style, &style, width.clone(), false, 2, 20.),
             Some(100.)
         );
         e.marks.spanner_content_box = false;

@@ -28,21 +28,39 @@ pub fn finish_slice(
     let bs = child.style.cascaded().borders();
     let (lead, trail) = if row_dir {
         (
-            px(child.style.cascaded().reset_box_layout.margin.top)
+            px(child.style.cascaded().reset_box_layout.margin.top.clone())
                 + px(bs.top)
-                + px(child.style.cascaded().reset_box_layout.padding.top),
-            px(child.style.cascaded().reset_box_layout.margin.bottom)
+                + px(child.style.cascaded().reset_box_layout.padding.top.clone()),
+            px(child
+                .style
+                .cascaded()
+                .reset_box_layout
+                .margin
+                .bottom
+                .clone())
                 + px(bs.bottom)
-                + px(child.style.cascaded().reset_box_layout.padding.bottom),
+                + px(child
+                    .style
+                    .cascaded()
+                    .reset_box_layout
+                    .padding
+                    .bottom
+                    .clone()),
         )
     } else {
         (
-            px(child.style.cascaded().reset_box_layout.margin.left)
+            px(child.style.cascaded().reset_box_layout.margin.left.clone())
                 + px(bs.left)
-                + px(child.style.cascaded().reset_box_layout.padding.left),
-            px(child.style.cascaded().reset_box_layout.margin.right)
+                + px(child.style.cascaded().reset_box_layout.padding.left.clone()),
+            px(child.style.cascaded().reset_box_layout.margin.right.clone())
                 + px(bs.right)
-                + px(child.style.cascaded().reset_box_layout.padding.right),
+                + px(child
+                    .style
+                    .cascaded()
+                    .reset_box_layout
+                    .padding
+                    .right
+                    .clone()),
         )
     };
     let mut slice = slice;
@@ -64,15 +82,16 @@ pub fn finish_slice(
     // получает половину разницы с каждой стороны внутреннего
     // стыка, а свой зазор остаётся. Менять только симметрично
     // обоим путям.
-    let (prow, pcol) = parent.reset_flex.gap.unwrap_or((None, None));
+    let (prow, pcol) = parent.reset_flex.gap.clone().unwrap_or((None, None));
     let (crow, ccol) = child
         .style
         .cascaded()
         .reset_flex
         .gap
+        .clone()
         .unwrap_or((None, None));
     let par = if row_dir { prow } else { pcol };
-    let own = if row_dir { crow } else { ccol };
+    let own = if row_dir { crow.clone() } else { ccol.clone() };
     // Незаданный зазор подсетки — это `normal`, а он по
     // css-grid-2 §subgrid-gaps значит «такие же зазоры, как у
     // родителя», то есть разница НОЛЬ. Пока `None` считался
@@ -84,12 +103,15 @@ pub fn finish_slice(
     // оставались без зазора (`subgrid-gap-decorations-007`: ряды
     // 0/100/200 вместо 0/110/220 при эталоне `grid-010-ref`).
     let unset = own.is_none();
-    let own = own.or(par);
+    let own = own.or(par.clone());
     if own != Some(Len::Px(0.0)) && unset {
-        child.style.cascaded_mut().reset_flex.gap =
-            Some(if row_dir { (par, ccol) } else { (crow, par) });
+        child.style.cascaded_mut().reset_flex.gap = Some(if row_dir {
+            (par.clone(), ccol)
+        } else {
+            (crow, par.clone())
+        });
         if !row_dir {
-            child.style.cascaded_mut().reset_fragmentation.column_gap = par;
+            child.style.cascaded_mut().reset_fragmentation.column_gap = par.clone();
         }
     }
     subgrid_gap_slice(&mut slice, par, own);

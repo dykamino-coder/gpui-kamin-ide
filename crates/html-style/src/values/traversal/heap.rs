@@ -1,17 +1,11 @@
-//! Memory of the source DOM indexes; the owner of the source tree measures the nodes.
-
+//! Memory of the source bindings; source DOM owns its nodes.
 use super::TraversalState;
 use kamin_heap::{HeapSize, Ops};
-
 impl HeapSize for TraversalState {
     fn heap_size(&self, ops: &mut Ops) -> usize {
         if !ops.once(self) {
             return 0;
         }
-        let keys = self.text_keys.borrow();
-        self.elements.heap_size(ops)
-            + self.texts.heap_size(ops)
-            + ops.buffer(keys.as_ptr(), keys.capacity())
-            + self.read.heap_size(ops)
+        self.binding_owner().borrow().heap_size(ops) + self.recording.borrow().heap_size(ops)
     }
 }

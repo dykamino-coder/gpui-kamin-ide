@@ -121,7 +121,7 @@ pub(crate) fn mask_layer(
             source.intrinsic(),
             group.mask_scale,
             (bw, bh),
-            group.mask_size,
+            group.mask_size.clone(),
             group.mask_fit,
             vcx,
         );
@@ -131,8 +131,12 @@ pub(crate) fn mask_layer(
         } else {
             modes[i % modes.len()]
         };
-        let (tw, th) =
-            mask_size::round_tile((tw, th), (bw, bh), (mx == 3, my == 3), group.mask_size);
+        let (tw, th) = mask_size::round_tile(
+            (tw, th),
+            (bw, bh),
+            (mx == 3, my == 3),
+            group.mask_size.clone(),
+        );
         // Плитка кладётся не в угол, а в точку СВОЕГО
         // слоя: без этого `mask-position: top, bottom`
         // сваливал оба слоя в (0,0) (mask-position-5).

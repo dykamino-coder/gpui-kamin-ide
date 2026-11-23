@@ -26,8 +26,8 @@ pub(super) fn intrinsic(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<f32> {
-    let length = b.intrinsic[usize::from(!horizontal)];
-    if !keyword(length) {
+    let length = b.intrinsic[usize::from(!horizontal)].clone();
+    if !keyword(length.clone()) {
         return None;
     }
     let mut measure = |axis| measure(b, horizontal, other, axis, window, cx);

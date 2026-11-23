@@ -82,7 +82,7 @@ impl Computed {
                 } else {
                     &mut self.reset_fragmentation.row_rule_inset
                 };
-                arr.get_or_insert([GapInset::Len(Len::Px(0.0)); 4])[slot] = inset;
+                arr.get_or_insert([const { GapInset::Len(Len::Px(0.0)) }; 4])[slot] = inset;
             }
             _ => self.apply_multicol_rule_flags(key, v, hit, vcx),
         }

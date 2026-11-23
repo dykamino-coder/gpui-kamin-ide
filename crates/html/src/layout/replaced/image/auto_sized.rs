@@ -50,8 +50,8 @@ impl PictureSizing<'_> {
             };
             if w0 > 0.0 && h0 > 0.0 {
                 // §10.4: пределы — по таблице (`css2_replaced_limits`).
-                let min_w = self.clamp(style.reset_box_layout.min_width, sub_w);
-                let min_h = self.clamp(style.reset_box_layout.min_height, sub_h);
+                let min_w = self.clamp(style.reset_box_layout.min_width.clone(), sub_w);
+                let min_h = self.clamp(style.reset_box_layout.min_height.clone(), sub_h);
                 // Без СОБСТВЕННОГО соотношения стороны независимы: потолок
                 // высоты режет только высоту, и ширина остаётся своей
                 // (§10.4, таблица «no intrinsic ratio»). Прежде общий

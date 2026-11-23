@@ -109,7 +109,10 @@ pub(super) fn animation_frames(
             .into_iter()
             .zip(animated)
             {
-                *edge = active.then_some(edge.unwrap_or(crate::style::values::value::Len::Px(0.0)));
+                *edge = active.then_some(
+                    edge.clone()
+                        .unwrap_or(crate::style::values::value::Len::Px(0.0)),
+                );
             }
         }
     }

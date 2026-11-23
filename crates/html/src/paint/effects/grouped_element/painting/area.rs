@@ -66,7 +66,7 @@ pub(crate) fn group_area(
     // Опорная коробка шире `bounds` (`clip-path: margin-box`, срезы с
     // отрицательными краями): буфер группы кроет и поля, иначе краска
     // там (outline) терялась бы вместе с буфером.
-    let (sl, st, sr, sb) = match group.clip_inset {
+    let (sl, st, sr, sb) = match group.clip_inset.clone() {
         Some([t, r, b, l]) => {
             let neg = |v: crate::style::values::value::Len| match v {
                 crate::style::values::value::Len::Px(p) if p < 0.0 => -p,

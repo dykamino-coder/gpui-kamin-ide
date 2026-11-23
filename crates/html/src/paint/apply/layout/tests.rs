@@ -122,7 +122,7 @@ fn explicit_content_dimensions_choose_compensation_and_native_percentages() {
     let mut sizes = BoxDimensions::from_computed(&css).unconstrained_height();
     sizes.border_box = false;
     sizes.preferred[1] = Some(Len::Px(80.));
-    let mut actual = apply_layout_with_dimensions(gpui::div(), &css, sizes, doc.values());
+    let mut actual = apply_layout_with_dimensions(gpui::div(), &css, sizes.clone(), doc.values());
     assert_eq!(actual.style().size.height, Some(px(90.).into()));
     assert_eq!(actual.style().min_size.height, None);
     sizes.preferred[1] = Some(Len::Pct(0.5));

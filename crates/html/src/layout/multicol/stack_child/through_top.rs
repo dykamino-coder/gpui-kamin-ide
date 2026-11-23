@@ -36,7 +36,7 @@ pub(super) fn strip_through_top(c: &mut Element, depth: u8) {
     {
         return;
     }
-    let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
+    let px = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(l.clone());
     let b = c.style.used().borders();
     if px(&c.style.used().reset_box_layout.padding.top) + px(&b.top) != 0.0 {
         return;

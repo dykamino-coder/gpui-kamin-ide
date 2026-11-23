@@ -76,8 +76,8 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             },
             _ => 0.0,
         };
-        let margins = margin(ch.style.used().reset_box_layout.margin.top)
-            + margin(ch.style.used().reset_box_layout.margin.bottom);
+        let margins = margin(ch.style.used().reset_box_layout.margin.top.clone())
+            + margin(ch.style.used().reset_box_layout.margin.bottom.clone());
         ch.style.used_mut().reset_box_layout.max_height =
             Some(match container.reset_box_layout.height {
                 Some(Len::Px(h)) => Len::Px((h - margins).max(0.0)),
@@ -114,8 +114,8 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
                 let b = container.borders();
                 h - px(b.top)
                     - px(b.bottom)
-                    - px(container.reset_box_layout.padding.top)
-                    - px(container.reset_box_layout.padding.bottom)
+                    - px(container.reset_box_layout.padding.top.clone())
+                    - px(container.reset_box_layout.padding.bottom.clone())
             } else {
                 h
             };

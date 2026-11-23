@@ -115,16 +115,23 @@ pub(crate) fn float_shape_of(
             // both radii (`shape-outside-border-box-border-radius-007`).
             // Each axis resolves a percentage against its own box side.
             radius: {
-                let ell = f.style.used().reset_border.radius_ell.unwrap_or([None; 4]);
+                let ell = f
+                    .style
+                    .used()
+                    .reset_border
+                    .radius_ell
+                    .clone()
+                    .unwrap_or([const { None }; 4]);
                 let axis = |l: crate::style::values::value::Len, base: f32| match l {
                     crate::style::values::value::Len::Px(v) => v,
                     crate::style::values::value::Len::Pct(k) => k * base,
                     _ => 0.0,
                 };
-                let pair = |i: usize, c: &Option<crate::style::values::value::Len>| match ell[i] {
-                    Some((x, y)) => (axis(x, bw), axis(y, bh)),
-                    None => radius_of(c),
-                };
+                let pair =
+                    |i: usize, c: &Option<crate::style::values::value::Len>| match ell[i].clone() {
+                        Some((x, y)) => (axis(x, bw), axis(y, bh)),
+                        None => radius_of(c),
+                    };
                 [
                     pair(0, &f.style.used().reset_border.radius.tl),
                     pair(1, &f.style.used().reset_border.radius.tr),

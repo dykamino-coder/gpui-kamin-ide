@@ -46,7 +46,7 @@ pub(crate) mod trials;
 use gpui::{Bounds, Pixels};
 
 use crate::style::computed::Align;
-use crate::style::values::value::{AnchorFn, Len};
+use crate::style::values::value::Len;
 use area::Tracks;
 use settle::DefaultAnchor;
 mod probe;
@@ -103,7 +103,7 @@ struct Placement {
 /// а `prepaint` видит рамку без полей.
 #[derive(Clone)]
 struct SidePlan {
-    f: std::rc::Rc<AnchorFn>,
+    f: crate::style::values::value::AnchorId,
     margin: f32,
 }
 

@@ -23,11 +23,18 @@ fn update(old: &str, new: &str, theme: &str) -> bool {
 /// номера прочитанных сборкой исходных текстов.
 fn state(doc: &Document) -> String {
     let values = &doc.state.values;
-    let elements = values.traversal.elements();
-    let texts = values.traversal.texts();
-    let read = values.traversal.read_texts();
-    let read: Vec<usize> = (0..texts.len())
-        .filter(|&i| read.contains(&texts[i]))
+    let bindings = values.traversal.bindings();
+    let elements: Vec<_> = bindings.elements().collect();
+    let mut texts: Vec<_> = bindings.texts().collect();
+    texts.sort_unstable_by_key(|(id, _)| *id);
+    let read: Vec<usize> = texts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (id, address))| {
+            bindings
+                .was_read(markup5ever_rcdom::NodeKey::from_packed(id.get()), *address)
+                .then_some(i)
+        })
         .collect();
     format!(
         "{} {:?} {} {:?} {} {} {:?} {}",
@@ -36,9 +43,9 @@ fn state(doc: &Document) -> String {
         values.page_rules().len(),
         values.diagnostics_snapshot(),
         elements.len(),
-        elements.iter().filter(|&&a| a != 0).count(),
+        elements.iter().filter(|(_, address)| *address != 0).count(),
         read,
-        values.traversal.read_texts().len(),
+        bindings.reads().count(),
     )
 }
 

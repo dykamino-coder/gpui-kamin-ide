@@ -1,8 +1,4 @@
-//! Элемент-узел при сборе кусков абзаца: особые теги (`special_nodes`), атом от вызывающего
-//! (с соединителем руби и зазором предка), иначе строчная коробка — слитый стиль (`box_paint`),
-//! ограничители атомарной коробки, распорки полей/отступов/рамок по CSS 2.1 §8.6 с меткой
-//! коробки для bidi-переупорядочивания, пустая коробка (`blank_box`), знаки направления,
-//! строчный содержащий блок для абсолютов, дети (`list_item`) и сдвиг наложений.
+//! Collect element fragments, atomic and bidi boundaries, inline spacing, and positioned children.
 
 mod list_item;
 mod special_nodes;
@@ -246,5 +242,8 @@ pub(super) async fn collect_element(
     // того, что идёт следом, лежит ВНУТРИ текущего узла — значит,
     // и величина его отсюда (css-text-3 §8.2). Ставится всегда, а
     // снимается ниже с последнего куска: за ним границы уже нет.
-    set_parent_boundary_spacing(&mut out[from..], inherited.inh.text_flow.letter_spacing);
+    set_parent_boundary_spacing(
+        &mut out[from..],
+        inherited.inh.text_flow.letter_spacing.clone(),
+    );
 }

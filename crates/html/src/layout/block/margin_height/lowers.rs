@@ -24,14 +24,14 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
     ) {
         return false;
     }
-    let Some(mut cap) = margin_px_in(sizes.maximum[1], &st, vcx) else {
+    let Some(mut cap) = margin_px_in(sizes.maximum[1].clone(), &st, vcx) else {
         return false;
     };
     let edges = |style: &Computed| -> Option<f32> {
         let b = style.borders();
         [
-            style.reset_box_layout.padding.top,
-            style.reset_box_layout.padding.bottom,
+            style.reset_box_layout.padding.top.clone(),
+            style.reset_box_layout.padding.bottom.clone(),
             b.top,
             b.bottom,
         ]
@@ -48,9 +48,9 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
         };
         cap = (cap - inset).max(0.0);
     }
-    if let Some(min) = margin_px_in(sizes.minimum[1], &st, vcx) {
+    if let Some(min) = margin_px_in(sizes.minimum[1].clone(), &st, vcx) {
         cap = cap.max(min);
-    } else if !zero_len(sizes.minimum[1]) {
+    } else if !zero_len(sizes.minimum[1].clone()) {
         return false;
     }
     let mut bottom = None;
@@ -75,7 +75,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
             previous_margin = adjoin(previous_margin, through);
             continue;
         }
-        let height = match margin_px_in(child_sizes.preferred[1], &cs, vcx) {
+        let height = match margin_px_in(child_sizes.preferred[1].clone(), &cs, vcx) {
             Some(height) => height,
             // Пустой блочный контейнер без строк имеет auto-высоту 0
             // (CSS2 §10.6.3/§10.6.7), в том числе пустой flow-root.
@@ -96,7 +96,7 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
         let Some(inset) = edges(&cs) else {
             return false;
         };
-        let Some(top) = margin_or_bail(cs.reset_box_layout.margin.top, &cs, vcx) else {
+        let Some(top) = margin_or_bail(cs.reset_box_layout.margin.top.clone(), &cs, vcx) else {
             return false;
         };
         let height = if child_sizes.border_box {
@@ -112,7 +112,8 @@ pub(crate) fn lowers(e: &Element, vcx: crate::layout::block::margins::MarginCx<'
             solve(adjoin(previous_margin, strut_of(top)))
         };
         bottom = Some(bottom.unwrap_or(0.0) + gap + height);
-        let Some(margin) = margin_or_bail(cs.reset_box_layout.margin.bottom, &cs, vcx) else {
+        let Some(margin) = margin_or_bail(cs.reset_box_layout.margin.bottom.clone(), &cs, vcx)
+        else {
             return false;
         };
         previous_margin = strut_of(margin);

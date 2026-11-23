@@ -198,7 +198,8 @@ pub(super) fn cell_cascaded_style(
         && let Some(Len::Px(h)) = st
             .reset_box_layout
             .height
-            .or(st.reset_box_layout.max_height)
+            .clone()
+            .or(st.reset_box_layout.max_height.clone())
     {
         cm.reset_context.ortho_limit = Some(h);
     }

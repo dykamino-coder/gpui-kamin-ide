@@ -68,17 +68,17 @@ mod tests {
                 if zero {
                     assert_eq!(
                         if vertical {
-                            copy.style.used().reset_box_layout.width
+                            copy.style.used().reset_box_layout.width.clone()
                         } else {
-                            copy.style.used().reset_box_layout.height
+                            copy.style.used().reset_box_layout.height.clone()
                         },
                         Some(Len::Px(0.0))
                     );
                     assert_eq!(
                         if vertical {
-                            copy.style.used().reset_box_layout.height
+                            copy.style.used().reset_box_layout.height.clone()
                         } else {
-                            copy.style.used().reset_box_layout.width
+                            copy.style.used().reset_box_layout.width.clone()
                         },
                         None
                     );

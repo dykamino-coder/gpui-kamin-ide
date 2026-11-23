@@ -88,8 +88,8 @@ pub(super) fn frame(e: &Element, cx: ShapeCx, vcx: ValueCx<'_>) -> BlockBox {
         inside_avoid: e.style.used().reset_fragmentation.break_inside_avoid,
         clips_block: !crate::layout::page::paged::visible_overflow(&e.style.used()),
         edge_kids: edges(e),
-        head: px(e.style.used().reset_box_layout.padding.top) + px(b.top),
-        tail: px(e.style.used().reset_box_layout.padding.bottom) + px(b.bottom),
+        head: px(e.style.used().reset_box_layout.padding.top.clone()) + px(b.top),
+        tail: px(e.style.used().reset_box_layout.padding.bottom.clone()) + px(b.bottom),
         end_margin: crate::layout::box_kind::bfc_root(e)
             && !grid_container(e)
             && !flex_container(e)

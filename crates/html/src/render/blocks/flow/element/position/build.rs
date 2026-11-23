@@ -42,10 +42,10 @@ pub(super) async fn build(
     let auto_len = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
     let holder_axis = if positioned_out
         && e.style.used().inh.writing.writing_mode.is_none()
-        && auto_len(e.style.used().reset_box_layout.height)
-        && kw_len(e.style.used().reset_box_layout.max_height)
-        && edge_set(e.style.used().reset_positioned.inset.top)
-        && edge_set(e.style.used().reset_positioned.inset.bottom)
+        && auto_len(e.style.used().reset_box_layout.height.clone())
+        && kw_len(e.style.used().reset_box_layout.max_height.clone())
+        && edge_set(e.style.used().reset_positioned.inset.top.clone())
+        && edge_set(e.style.used().reset_positioned.inset.bottom.clone())
     {
         Some(true)
     } else if positioned_out
@@ -58,9 +58,9 @@ pub(super) async fn build(
         // `left/right` во всё окно (`div-{min,max,fit}-content-
         // orthogonal-*`: 13.5 %). Ветка высоты выше гейт сохраняет: в
         // вертикальном письме это строчная ось, её пары не разбирались.
-        && auto_len(e.style.used().reset_box_layout.width) && kw_len(e.style.used().reset_box_layout.max_width)
-        && edge_set(e.style.used().reset_positioned.inset.left)
-        && edge_set(e.style.used().reset_positioned.inset.right)
+        && auto_len(e.style.used().reset_box_layout.width.clone()) && kw_len(e.style.used().reset_box_layout.max_width.clone())
+        && edge_set(e.style.used().reset_positioned.inset.left.clone())
+        && edge_set(e.style.used().reset_positioned.inset.right.clone())
     {
         Some(false)
     } else {

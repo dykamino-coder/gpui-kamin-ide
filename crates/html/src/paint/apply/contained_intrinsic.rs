@@ -27,15 +27,16 @@ pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
     let gap = if inline {
         c.reset_flex
             .gap
+            .clone()
             .and_then(|g| g.1)
-            .or(c.reset_fragmentation.column_gap)
+            .or(c.reset_fragmentation.column_gap.clone())
     } else {
-        c.reset_flex.gap.and_then(|g| g.0)
+        c.reset_flex.gap.clone().and_then(|g| g.0)
     };
     if inline
         && let (Some(count), Some(Len::Px(w))) = (
             c.reset_fragmentation.column_count,
-            c.reset_fragmentation.column_width,
+            c.reset_fragmentation.column_width.clone(),
         )
         && count > 0
         && w > 0.0

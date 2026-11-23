@@ -7,24 +7,24 @@ use crate::values::ValueCx;
 
 pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
     {
-        let first_value = c.reset_box_layout.width;
-        let second_value = c.reset_box_layout.height;
+        let first_value = c.reset_box_layout.width.clone();
+        let second_value = c.reset_box_layout.height.clone();
         let first = &mut c.reset_box_layout.width;
         *first = second_value;
         let second = &mut c.reset_box_layout.height;
         *second = first_value;
     }
     {
-        let first_value = c.reset_box_layout.min_width;
-        let second_value = c.reset_box_layout.min_height;
+        let first_value = c.reset_box_layout.min_width.clone();
+        let second_value = c.reset_box_layout.min_height.clone();
         let first = &mut c.reset_box_layout.min_width;
         *first = second_value;
         let second = &mut c.reset_box_layout.min_height;
         *second = first_value;
     }
     {
-        let first_value = c.reset_box_layout.max_width;
-        let second_value = c.reset_box_layout.max_height;
+        let first_value = c.reset_box_layout.max_width.clone();
+        let second_value = c.reset_box_layout.max_height.clone();
         let first = &mut c.reset_box_layout.max_width;
         *first = second_value;
         let second = &mut c.reset_box_layout.max_height;
@@ -58,7 +58,7 @@ pub(super) fn transpose(c: &mut Computed, vcx: ValueCx<'_>) {
             4 => &mut c.reset_box_layout.max_width,
             _ => &mut c.reset_box_layout.max_height,
         };
-        *l = size_len(*l, vcx);
+        *l = size_len(l.clone(), vcx);
     }
 }
 

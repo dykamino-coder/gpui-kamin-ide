@@ -43,15 +43,15 @@ pub(crate) fn orthogonal_limit(
             let b = e.style.used().borders();
             px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.used().reset_box_layout.padding.top).unwrap_or(0.0)
-                + px_of(e.style.used().reset_box_layout.padding.bottom).unwrap_or(0.0)
+                + px_of(e.style.used().reset_box_layout.padding.top.clone()).unwrap_or(0.0)
+                + px_of(e.style.used().reset_box_layout.padding.bottom.clone()).unwrap_or(0.0)
         } else {
             0.0
         };
         let content = |v: f32| (v - own_edges).max(0.0);
-        let h = px_of(e.style.used().reset_box_layout.height).map(content);
-        let min_h = px_of(e.style.used().reset_box_layout.min_height).map(content);
-        let max_h = px_of(e.style.used().reset_box_layout.max_height).map(content);
+        let h = px_of(e.style.used().reset_box_layout.height.clone()).map(content);
+        let min_h = px_of(e.style.used().reset_box_layout.min_height.clone()).map(content);
+        let max_h = px_of(e.style.used().reset_box_layout.max_height.clone()).map(content);
         // Предел, поставленный СВОЕЙ высотой, уже содержимый (content-box
         // по умолчанию, border-box переведён выше) — вычитать из него нечего. Вычет нужен
         // только УНАСЛЕДОВАННОМУ пределу, см. ниже.
@@ -66,8 +66,8 @@ pub(crate) fn orthogonal_limit(
         // развязка.
         let h = h.or(
             match (
-                e.style.used().reset_box_layout.height,
-                inherited.reset_box_layout.height,
+                e.style.used().reset_box_layout.height.clone(),
+                inherited.reset_box_layout.height.clone(),
             ) {
                 (Some(Len::Pct(k)), Some(Len::Px(ph)))
                     if in_flow(&e.style.used())
@@ -133,8 +133,8 @@ pub(crate) fn orthogonal_limit(
             let b = e.style.used().borders();
             let edges = px_of(b.top).unwrap_or(0.0)
                 + px_of(b.bottom).unwrap_or(0.0)
-                + px_of(e.style.used().reset_box_layout.padding.top).unwrap_or(0.0)
-                + px_of(e.style.used().reset_box_layout.padding.bottom).unwrap_or(0.0);
+                + px_of(e.style.used().reset_box_layout.padding.top.clone()).unwrap_or(0.0)
+                + px_of(e.style.used().reset_box_layout.padding.bottom.clone()).unwrap_or(0.0);
             if edges > 0.0 {
                 set_ortho_limit(merged, (l - edges).max(0.0), opts);
             }

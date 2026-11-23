@@ -128,7 +128,7 @@ fn built_div(
     let paint = auto_height.as_ref().unwrap_or(paint);
     let dimensions = dimensions.unwrap_or_else(|| BoxDimensions::for_element(e, paint));
     let memo = cx.layout().conversions.active();
-    let mut d = converted_div(paint, dimensions, vcx, memo);
+    let mut d = converted_div(paint, dimensions.clone(), vcx, memo);
     if native_intrinsic::eligible(e) {
         d.style().sizing_keywords =
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));

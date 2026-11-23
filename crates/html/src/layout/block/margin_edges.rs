@@ -45,7 +45,7 @@ pub(super) fn collapse_top(
     if let (Some(s), Some(own)) = (
         chain,
         margin_or_bail(
-            e.style.used().reset_box_layout.margin.top,
+            e.style.used().reset_box_layout.margin.top.clone(),
             &e.style.used(),
             vcx,
         ),
@@ -68,7 +68,7 @@ pub(super) fn collapse_bottom(e: &mut Element, vcx: crate::layout::block::margin
     );
     let Some(chain) = chain else { return };
     let Some(own) = margin_or_bail(
-        e.style.used().reset_box_layout.margin.bottom,
+        e.style.used().reset_box_layout.margin.bottom.clone(),
         &e.style.used(),
         vcx,
     ) else {
@@ -126,7 +126,7 @@ fn bottom_chain(
             strut = adjoin(
                 strut,
                 strut_of(margin_or_bail(
-                    child.style.used().reset_box_layout.margin.bottom,
+                    child.style.used().reset_box_layout.margin.bottom.clone(),
                     &child.style.used(),
                     vcx,
                 )?),
@@ -148,9 +148,11 @@ fn bottom_chain(
             }
             let next = eat.add(parent, i, false);
             if !own_context(child)
-                && zero_len(child.style.used().reset_box_layout.padding.bottom)
+                && zero_len(child.style.used().reset_box_layout.padding.bottom.clone())
                 && zero_len(child.style.used().borders().bottom)
-                && zero_len(BoxDimensions::for_element(child, &child.style.used()).minimum[1])
+                && zero_len(
+                    BoxDimensions::for_element(child, &child.style.used()).minimum[1].clone(),
+                )
                 && matches!(
                     child.style.used().reset_box_layout.height,
                     None | Some(Len::Auto)

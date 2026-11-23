@@ -43,7 +43,7 @@ pub(super) fn boundary_gap_after_box(
         _ => MEDIUM_FONT_SIZE_PX,
     };
     let gap = crate::text::metrics::spacing_px(
-        inherited.inh.text_flow.letter_spacing,
+        inherited.inh.text_flow.letter_spacing.clone(),
         &inherited.inh.font.font_family.clone().unwrap_or_default(),
         size,
         vcx,

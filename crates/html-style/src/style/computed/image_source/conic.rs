@@ -146,8 +146,8 @@ impl ConicGradient {
     }
 
     /// Изменит ли `resolve_lengths` позицию центра.
-    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool) -> bool {
-        [self.position.x, self.position.y]
+    pub fn lengths_pending(&self, moves: impl Fn(&Len) -> bool) -> bool {
+        [self.position.x.as_ref(), self.position.y.as_ref()]
             .into_iter()
             .flatten()
             .any(moves)

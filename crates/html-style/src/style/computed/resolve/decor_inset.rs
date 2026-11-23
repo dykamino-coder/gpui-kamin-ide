@@ -12,12 +12,12 @@ fn map_length(value: DecorLen, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>)
     let DecorLen::Raw(raw) = value else {
         return value;
     };
-    let mut length = Some(raw);
+    let mut length = Some(raw.clone());
     fix(&mut length);
     match length.unwrap_or(raw) {
         Len::Px(v) => DecorLen::Px(v),
         Len::Pct(v) => DecorLen::Pct(v),
-        Len::Calc(i) => calc_get(i, vcx)
+        Len::Calc(i) => calc_get(&i, vcx)
             .pct_px()
             .map_or(DecorLen::Raw(Len::Calc(i)), |(pct, px)| {
                 DecorLen::Mix(pct, px)
@@ -45,7 +45,7 @@ impl Computed {
         if let Some(Some(pair)) = &mut self.reset_text_box.td_inset {
             for value in pair {
                 *value = map_length(
-                    *value,
+                    value.clone(),
                     |length| {
                         fix(length);
                         if let Some(length) = length {
@@ -69,7 +69,7 @@ impl Computed {
     pub fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
         let vp = self.viewport_cx(viewport);
         let fix = |length: &mut Option<Len>| {
-            if let Some(v) = *length {
+            if let Some(v) = length.take() {
                 *length = Some(v.fold_viewport(vp, vcx));
             }
         };
@@ -78,7 +78,7 @@ impl Computed {
 
     pub(super) fn resolve_decor_inset_lengths(
         &mut self,
-        moves: impl Fn(Len) -> bool + Copy,
+        moves: impl Fn(&Len) -> bool + Copy,
         fix: impl Fn(&mut Option<Len>) + Copy,
         vcx: ValueCx<'_>,
     ) {
@@ -89,18 +89,19 @@ impl Computed {
 /// Обход отступов линий оформления: общий для записи и проверки без записи.
 pub(super) fn walk_decor_inset_lengths<T: Target>(
     target: &mut T,
-    moves: impl Fn(Len) -> bool + Copy,
+    moves: impl Fn(&Len) -> bool + Copy,
     fix: impl Fn(&mut Option<Len>) + Copy,
     vcx: ValueCx<'_>,
 ) {
     // Запись меняет отступ, если длина сворачивается или ещё не приведена к точкам и долям.
     let pending = |pair: &[DecorLen; 2]| {
-        pair.iter().any(|&value| {
+        pair.iter().any(|value| {
             matches!(value, DecorLen::Raw(raw) if moves(raw))
-                || map_length(value, |_| {}, vcx) != value
+                || map_length(value.clone(), |_| {}, vcx) != *value
         })
     };
-    let map = |pair: &mut [DecorLen; 2]| *pair = pair.map(|value| map_length(value, fix, vcx));
+    let map =
+        |pair: &mut [DecorLen; 2]| *pair = pair.clone().map(|value| map_length(value, fix, vcx));
     target.rewrite(
         |s| matches!(&s.reset_text_box.td_inset, Some(Some(pair)) if pending(pair)),
         |s| {

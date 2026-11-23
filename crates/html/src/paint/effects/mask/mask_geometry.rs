@@ -20,10 +20,10 @@ pub(crate) fn offsets(c: &Computed, kind: Option<u8>) -> [f32; 4] {
         // CSS Masking section 7.5: fill-box on a CSS layout box uses content-box;
         // stroke-box and view-box use border-box.
         Some(3) | Some(4) => [
-            side(b.top) + side(c.reset_box_layout.padding.top),
-            side(b.right) + side(c.reset_box_layout.padding.right),
-            side(b.bottom) + side(c.reset_box_layout.padding.bottom),
-            side(b.left) + side(c.reset_box_layout.padding.left),
+            side(b.top) + side(c.reset_box_layout.padding.top.clone()),
+            side(b.right) + side(c.reset_box_layout.padding.right.clone()),
+            side(b.bottom) + side(c.reset_box_layout.padding.bottom.clone()),
+            side(b.left) + side(c.reset_box_layout.padding.left.clone()),
         ],
         _ => [0.0; 4],
     }

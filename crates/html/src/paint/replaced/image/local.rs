@@ -204,7 +204,7 @@ fn position(
     style: &crate::style::computed::Computed,
     vcx: ValueCx<'_>,
 ) -> gpui::Img {
-    if let Some(position) = style.reset_shapes.object_position {
+    if let Some(position) = style.reset_shapes.object_position.clone() {
         image = image.object_position(gpui::point(
             crate::paint::apply::len_to_gpui(position.x.unwrap_or(Len::Pct(0.5)), vcx),
             crate::paint::apply::len_to_gpui(position.y.unwrap_or(Len::Pct(0.5)), vcx),

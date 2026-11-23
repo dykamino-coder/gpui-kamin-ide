@@ -44,7 +44,7 @@ pub(super) fn blank_box(
         let px_of = px_lossy_zero;
         let size = merged.used_font(MEDIUM_FONT_SIZE_PX, cx.vcx()).size_px;
         let bs = e.style.used().borders();
-        let padding = e.style.used().reset_box_layout.padding;
+        let padding = e.style.used().reset_box_layout.padding.clone();
         let flat = physical_sides::project(
             inherited,
             [
@@ -97,8 +97,8 @@ pub(super) fn blank_box(
         // выходила нулевой высоты — рамка `border-left` и фон
         // под отступом не рисовались вовсе.
         let mut sized = merged.clone();
-        sized.reset_box_layout.width = copy.style.used().reset_box_layout.width;
-        sized.reset_box_layout.height = copy.style.used().reset_box_layout.height;
+        sized.reset_box_layout.width = copy.style.used().reset_box_layout.width.clone();
+        sized.reset_box_layout.height = copy.style.used().reset_box_layout.height.clone();
         sized.reset_box_layout.margin = Default::default();
         sized.reset_positioned.position = None;
         physical_sides::project_box(inherited, copy.style.used_mut());

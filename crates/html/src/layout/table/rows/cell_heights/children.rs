@@ -27,7 +27,7 @@ fn anchored_share(child: &Node) -> Option<f32> {
     };
     let style = el.style.used();
     let layout = &style.reset_box_layout;
-    match (layout.height, layout.min_height) {
+    match (layout.height.clone(), layout.min_height.clone()) {
         (Some(Len::Pct(k)), Some(Len::Px(m)))
             if layout
                 .overflow_y
@@ -46,7 +46,7 @@ pub(super) fn resolve_child_percents(cell: &mut Element, h: f32) {
         matches!(n, Node::Element(el) if {
             let style = el.style.used();
             let layout = &style.reset_box_layout;
-            share(layout.height) || share(layout.max_height) || share(layout.min_height)
+            share(layout.height.clone()) || share(layout.max_height.clone()) || share(layout.min_height.clone())
         })
     }) {
         return;

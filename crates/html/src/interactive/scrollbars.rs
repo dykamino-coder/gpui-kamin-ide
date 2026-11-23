@@ -68,10 +68,10 @@ pub(crate) fn paint(
         _ => 0.0,
     };
     let mut b = bounds;
-    b.origin.x += px(edge(edges.left));
-    b.origin.y += px(edge(edges.top));
-    b.size.width -= px(edge(edges.left) + edge(edges.right));
-    b.size.height -= px(edge(edges.top) + edge(edges.bottom));
+    b.origin.x += px(edge(edges.left.clone()));
+    b.origin.y += px(edge(edges.top.clone()));
+    b.size.width -= px(edge(edges.left.clone()) + edge(edges.right.clone()));
+    b.size.height -= px(edge(edges.top.clone()) + edge(edges.bottom));
     let paint_color = |mut color: Color| {
         for filter in c.paint_filter_ops() {
             color = filter.apply(color);

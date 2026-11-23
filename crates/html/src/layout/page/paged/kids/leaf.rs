@@ -37,9 +37,9 @@ pub(super) fn paint_leaf(
                 unreachable!()
             };
             let used = c.style.used_mut();
-            used.reset_box_layout.height = style.reset_box_layout.height;
-            used.reset_box_layout.min_height = style.reset_box_layout.min_height;
-            used.reset_box_layout.max_height = style.reset_box_layout.max_height;
+            used.reset_box_layout.height = style.reset_box_layout.height.clone();
+            used.reset_box_layout.min_height = style.reset_box_layout.min_height.clone();
+            used.reset_box_layout.max_height = style.reset_box_layout.max_height.clone();
             if leaf.edges.clone {
                 let edges = leaf
                     .edges

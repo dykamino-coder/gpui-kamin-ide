@@ -10,7 +10,7 @@ impl Computed {
         if !self.has_other_container_lengths(vcx) {
             return;
         }
-        let fold = |l: &mut Len| *l = l.fold_container(vp, vcx);
+        let fold = |l: &mut Len| *l = l.clone().fold_container(vp, vcx);
         for l in {
             let group_0 = &mut *self.reset_svg_math;
             let group_1 = &mut *self.reset_fragmentation;
@@ -103,19 +103,19 @@ impl Computed {
     fn has_other_container_lengths(&self, vcx: ValueCx<'_>) -> bool {
         let needs = |l: &Len| l.needs_container_context(vcx);
         [
-            self.reset_grid.lanes_tolerance,
-            self.reset_svg_math.svg_x,
-            self.reset_svg_math.svg_y,
-            self.reset_transforms.offset_distance,
-            self.reset_text_box.vertical_shift_len,
-            self.reset_mask.clip_round_len,
-            self.reset_fragmentation.column_rule_width,
-            self.reset_fragmentation.row_rule_width,
-            self.reset_shapes.shape_margin,
+            self.reset_grid.lanes_tolerance.as_ref(),
+            self.reset_svg_math.svg_x.as_ref(),
+            self.reset_svg_math.svg_y.as_ref(),
+            self.reset_transforms.offset_distance.as_ref(),
+            self.reset_text_box.vertical_shift_len.as_ref(),
+            self.reset_mask.clip_round_len.as_ref(),
+            self.reset_fragmentation.column_rule_width.as_ref(),
+            self.reset_fragmentation.row_rule_width.as_ref(),
+            self.reset_shapes.shape_margin.as_ref(),
         ]
         .into_iter()
         .flatten()
-        .any(|l| needs(&l))
+        .any(needs)
             || self.reset_context.fit_arg.iter().flatten().any(needs)
             || [
                 self.reset_transforms.translate.as_ref(),
@@ -158,7 +158,7 @@ impl Computed {
                     .chain(&list.tail)
                     .any(needs)
             })
-            || matches!(self.reset_text_box.td_thickness, Some(DecorLen::Raw(l)) if needs(&l))
+            || matches!(&self.reset_text_box.td_thickness, Some(DecorLen::Raw(l)) if needs(&l))
     }
 }
 
@@ -193,6 +193,7 @@ mod tests {
         assert!(
             base.reset_shapes
                 .shape_margin
+                .clone()
                 .unwrap()
                 .needs_container_context(doc.values())
         );

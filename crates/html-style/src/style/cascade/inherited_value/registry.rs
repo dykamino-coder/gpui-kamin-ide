@@ -17,10 +17,10 @@ macro_rules! properties {
             pub fn copy(self, p: &Computed, c: &mut Computed, vcx: ValueCx<'_>) {
                 match self {
                     $(Self::$id => { $(c.$field $(.$part)* = p.$field $(.$part)*.clone();)+ },)*
-                    Self::RowGap => c.reset_flex.gap.get_or_insert((None, None)).0 = p.reset_flex.gap.and_then(|g| g.0),
+                    Self::RowGap => c.reset_flex.gap.get_or_insert((None, None)).0 = p.reset_flex.gap.clone().and_then(|g| g.0),
                     Self::ColumnGap => {
-                        c.reset_fragmentation.column_gap = p.reset_fragmentation.column_gap;
-                        c.reset_flex.gap.get_or_insert((None, None)).1 = p.reset_flex.gap.and_then(|g| g.1);
+                        c.reset_fragmentation.column_gap = p.reset_fragmentation.column_gap.clone();
+                        c.reset_flex.gap.get_or_insert((None, None)).1 = p.reset_flex.gap.clone().and_then(|g| g.1);
                     }
                     // Грань размещения сетки: своя половина линий и имён.
                     Self::GridLine(row, end) => {
@@ -43,12 +43,12 @@ macro_rules! properties {
                     // Грань втяжки линейки (css-gaps-1 §inset).
                     Self::RuleInset(column, slot) => {
                         let (from, to) = if column {
-                            (p.reset_fragmentation.column_rule_inset, &mut c.reset_fragmentation.column_rule_inset)
+                            (p.reset_fragmentation.column_rule_inset.clone(), &mut c.reset_fragmentation.column_rule_inset)
                         } else {
-                            (p.reset_fragmentation.row_rule_inset, &mut c.reset_fragmentation.row_rule_inset)
+                            (p.reset_fragmentation.row_rule_inset.clone(), &mut c.reset_fragmentation.row_rule_inset)
                         };
                         let zero = crate::style::computed::GapInset::Len(crate::style::values::value::Len::Px(0.0));
-                        to.get_or_insert([zero; 4])[usize::from(slot)] = from.map_or(zero, |f| f[usize::from(slot)]);
+                        to.get_or_insert_with(|| std::array::from_fn(|_| zero.clone()))[usize::from(slot)] = from.map_or_else(|| zero.clone(), |f| f[usize::from(slot)].clone());
                     }
                     Self::MaskBorderPart(part) => {
                         let initial = crate::style::computed::initial_mask_border(vcx);
@@ -90,8 +90,8 @@ macro_rules! properties {
                     _ => None,
                 };
                 if let Some(i) = corner.filter(|_| c.reset_border.radius_ell.is_some() || p.reset_border.radius_ell.is_some()) {
-                    c.reset_border.radius_ell.get_or_insert([None; 4])[i] = p.reset_border.radius_ell.and_then(|r| r[i]);
-                    if c.reset_border.radius_ell.is_some_and(|r| r.iter().all(Option::is_none)) {
+                    c.reset_border.radius_ell.get_or_insert([const { None }; 4])[i] = p.reset_border.radius_ell.as_ref().and_then(|r| r[i].clone());
+                    if c.reset_border.radius_ell.as_ref().is_some_and(|r| r.iter().all(Option::is_none)) {
                         c.reset_border.radius_ell = None;
                     }
                 }

@@ -165,13 +165,13 @@ pub(crate) fn vertical_kid(
     };
     let (start, end) = if reverse {
         (
-            c.style.used().reset_box_layout.margin.right,
-            c.style.used().reset_box_layout.margin.left,
+            c.style.used().reset_box_layout.margin.right.clone(),
+            c.style.used().reset_box_layout.margin.left.clone(),
         )
     } else {
         (
-            c.style.used().reset_box_layout.margin.left,
-            c.style.used().reset_box_layout.margin.right,
+            c.style.used().reset_box_layout.margin.left.clone(),
+            c.style.used().reset_box_layout.margin.right.clone(),
         )
     };
     let shape = FlowMargins {

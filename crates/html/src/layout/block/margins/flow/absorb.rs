@@ -20,13 +20,13 @@ pub(crate) fn absorb_margin(
 ) -> f32 {
     let own = if tail_side == reverse {
         margin_px_in(
-            e.style.used().reset_box_layout.margin.left,
+            e.style.used().reset_box_layout.margin.left.clone(),
             &e.style.used(),
             vcx,
         )
     } else {
         margin_px_in(
-            e.style.used().reset_box_layout.margin.right,
+            e.style.used().reset_box_layout.margin.right.clone(),
             &e.style.used(),
             vcx,
         )
@@ -40,9 +40,12 @@ pub(crate) fn absorb_margin(
     }
     let b = e.style.used().borders();
     let (border, pad) = if tail_side == reverse {
-        (b.left, e.style.used().reset_box_layout.padding.left)
+        (b.left, e.style.used().reset_box_layout.padding.left.clone())
     } else {
-        (b.right, e.style.used().reset_box_layout.padding.right)
+        (
+            b.right,
+            e.style.used().reset_box_layout.padding.right.clone(),
+        )
     };
     let sealed = margin_px_in(border, &e.style.used(), vcx).unwrap_or(0.0) > 0.0
         || margin_px_in(pad, &e.style.used(), vcx).unwrap_or(0.0) > 0.0;
@@ -147,11 +150,11 @@ pub(crate) fn collapses_through(e: &Element) -> bool {
         && e.style.used().reset_context.flow_root != Some(true)
         && e.style.used().reset_context.contain_layout != Some(true)
         && e.style.used().reset_context.contain_paint != Some(true)
-        && none_or_zero(e.style.used().reset_box_layout.width)
-        && none_or_zero(e.style.used().reset_box_layout.min_width)
+        && none_or_zero(e.style.used().reset_box_layout.width.clone())
+        && none_or_zero(e.style.used().reset_box_layout.min_width.clone())
         && none_or_zero(b.left)
         && none_or_zero(b.right)
-        && none_or_zero(e.style.used().reset_box_layout.padding.left)
-        && none_or_zero(e.style.used().reset_box_layout.padding.right)
+        && none_or_zero(e.style.used().reset_box_layout.padding.left.clone())
+        && none_or_zero(e.style.used().reset_box_layout.padding.right.clone())
         && e.children.iter().all(is_blank)
 }

@@ -70,7 +70,7 @@ pub(super) fn copy_whole_box(
         {
             mc.style.used_mut().reset_box_layout.width = Some(Len::Px(w));
         } else if let (Some(Len::Pct(k)), Some(cw)) =
-            (mc.style.used().reset_box_layout.width, line_col_w)
+            (mc.style.used().reset_box_layout.width.clone(), line_col_w)
         {
             // Доля — от внешней колонки (CSS 2.1 §10.2): в точках её ждёт
             // доля `column-gap` коробки (`column_plan`).

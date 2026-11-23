@@ -14,7 +14,7 @@ pub(crate) fn grouped_replaced(el: AnyElement, c: &BoxStyle, frame: FrameCx<'_>)
     let side = px_lossy_zero;
     let ring =
         crate::paint::decorations::shaped_ring::spec(c, vcx).map(|(spec, colour, [t, r, b, l])| {
-            let p = c.reset_box_layout.padding;
+            let p = c.reset_box_layout.padding.clone();
             let insets = [
                 t + side(p.top),
                 r + side(p.right),

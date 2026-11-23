@@ -56,9 +56,9 @@ pub(crate) fn row_plan_in(
     };
     // Блочный размер коробки: в вертикальном письме — ширина.
     let box_h = match if col_vert {
-        dimensions.preferred[0]
+        dimensions.preferred[0].clone()
     } else {
-        dimensions.preferred[1]
+        dimensions.preferred[1].clone()
     } {
         Some(Len::Px(h)) if h > 0.0 => Some(h),
         _ => None,
@@ -73,7 +73,7 @@ pub(crate) fn row_plan_in(
         Some(Len::Px(size)) => size,
         _ => opts.base_size(),
     };
-    let row_gap = match e.style.used().reset_flex.gap.and_then(|g| g.0) {
+    let row_gap = match e.style.used().reset_flex.gap.clone().and_then(|g| g.0) {
         Some(Len::Px(v)) => v.max(0.0),
         Some(Len::Em(k)) => k * em,
         _ => em,
@@ -104,9 +104,9 @@ pub(crate) fn row_plan_in(
     // точках (доля, `em`) — потолка нет, как до P5: ниже используемой
     // высоты резать нельзя, а её здесь не знаем.
     let (max_block, min_block) = if col_vert {
-        (dimensions.maximum[0], dimensions.minimum[0])
+        (dimensions.maximum[0].clone(), dimensions.minimum[0].clone())
     } else {
-        (dimensions.maximum[1], dimensions.minimum[1])
+        (dimensions.maximum[1].clone(), dimensions.minimum[1].clone())
     };
     let cap_h = box_h.and_then(|h| {
         let h = match max_block {

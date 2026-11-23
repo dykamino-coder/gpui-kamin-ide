@@ -16,7 +16,7 @@ use track_list::tokenize_tracks;
 pub(super) use track_list::{count_tracks, parse_tracks};
 
 /// Одна дорожка сетки в терминах CSS.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Track {
     Px(f32),
     Fr(f32),
@@ -39,7 +39,7 @@ impl Track {
     /// Перевести отложенную длину в точки: единицы шрифта известны только
     /// после разрешения кегля узла.
     pub fn resolve_font_one(&mut self, font: super::FontCx<'_>, vcx: crate::values::ValueCx<'_>) {
-        if let Track::Font(l) = *self {
+        if let Track::Font(l) = self.clone() {
             *self = Track::Px(l.to_px(None, font, vcx).unwrap_or(0.0));
         }
     }

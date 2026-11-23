@@ -107,9 +107,9 @@ pub(super) fn column_stack_div(
         // (Blink `PaintColumnRules`), без спаннеров и рядов (`multicol-rule-nested-balancing-001`).
         .with_rule_stretch(
             match if col_vert {
-                merged.reset_box_layout.width
+                merged.reset_box_layout.width.clone()
             } else {
-                merged.reset_box_layout.height
+                merged.reset_box_layout.height.clone()
             } {
                 Some(Len::Px(h))
                     if h > 0.0
@@ -151,8 +151,8 @@ pub(super) fn finish_column_stack(
                 _ => None,
             };
             let b = e.style.used().borders();
-            let pad = px(e.style.used().reset_box_layout.padding.top)?
-                + px(e.style.used().reset_box_layout.padding.bottom)?;
+            let pad = px(e.style.used().reset_box_layout.padding.top.clone())?
+                + px(e.style.used().reset_box_layout.padding.bottom.clone())?;
             let bor = px(b.top)? + px(b.bottom)?;
             match e.style.used().reset_box_layout.height {
                 Some(Len::Px(h)) if BoxDimensions::for_element(e, &e.style.used()).border_box => {

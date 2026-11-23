@@ -35,8 +35,8 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.reset_box_layout.padding.top)
-            + side(c.reset_box_layout.padding.bottom)
+        let pad = side(c.reset_box_layout.padding.top.clone())
+            + side(c.reset_box_layout.padding.bottom.clone())
             + side(b.top)
             + side(b.bottom);
         let ci = px(c
@@ -84,8 +84,8 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.reset_box_layout.padding.left)
-            + side(c.reset_box_layout.padding.right)
+        let pad = side(c.reset_box_layout.padding.left.clone())
+            + side(c.reset_box_layout.padding.right.clone())
             + side(b.left)
             + side(b.right);
         d = d.w(px(c
@@ -107,8 +107,8 @@ pub(super) fn apply_box(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     {
         let side = px_lossy_zero;
         let b = c.borders();
-        let pad = side(c.reset_box_layout.padding.left)
-            + side(c.reset_box_layout.padding.right)
+        let pad = side(c.reset_box_layout.padding.left.clone())
+            + side(c.reset_box_layout.padding.right.clone())
             + side(b.left)
             + side(b.right);
         d = d.min_w(px(c.reset_context.contain_intrinsic.0.unwrap_or(0.0) + pad));
@@ -136,7 +136,12 @@ enum SideKind {
 }
 
 fn apply_sides(mut d: Div, s: &Sides, kind: SideKind, vcx: ValueCx<'_>) -> Div {
-    for (val, side) in [(s.top, 0u8), (s.right, 1), (s.bottom, 2), (s.left, 3)] {
+    for (val, side) in [
+        (s.top.clone(), 0u8),
+        (s.right.clone(), 1),
+        (s.bottom.clone(), 2),
+        (s.left.clone(), 3),
+    ] {
         let Some(l) = val else { continue };
         // `margin: auto` — это центрирование блока, а не «нет значения».
         // Отступы и рамки с `auto` смысла не имеют, их пропускаем.
@@ -151,7 +156,7 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind, vcx: ValueCx<'_>) -> Div {
             }
             continue;
         }
-        let g = len_to_gpui(l, vcx);
+        let g = len_to_gpui(l.clone(), vcx);
         d = match (&kind, side) {
             (SideKind::Padding, 0) => d.pt(g),
             (SideKind::Padding, 1) => d.pr(g),
@@ -190,15 +195,18 @@ fn apply_sides(mut d: Div, s: &Sides, kind: SideKind, vcx: ValueCx<'_>) -> Div {
 pub(crate) fn radius_px(c: &Computed, l: Option<Len>, vcx: ValueCx<'_>) -> Option<f32> {
     let px_len = px_lossy_zero;
     let b = c.borders();
-    let extra_w = px_len(c.reset_box_layout.padding.left)
-        + px_len(c.reset_box_layout.padding.right)
+    let extra_w = px_len(c.reset_box_layout.padding.left.clone())
+        + px_len(c.reset_box_layout.padding.right.clone())
         + px_len(b.left)
         + px_len(b.right);
-    let extra_h = px_len(c.reset_box_layout.padding.top)
-        + px_len(c.reset_box_layout.padding.bottom)
+    let extra_h = px_len(c.reset_box_layout.padding.top.clone())
+        + px_len(c.reset_box_layout.padding.bottom.clone())
         + px_len(b.top)
         + px_len(b.bottom);
-    let base = match (c.reset_box_layout.width, c.reset_box_layout.height) {
+    let base = match (
+        c.reset_box_layout.width.clone(),
+        c.reset_box_layout.height.clone(),
+    ) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w + extra_w).min(h + extra_h),
         (Some(Len::Px(w)), _) => w + extra_w,
         (_, Some(Len::Px(h))) => h + extra_h,
@@ -224,7 +232,12 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     }
     let r = &c.reset_border.radius;
     let resolve = |l: Option<Len>| radius_px(c, l, vcx);
-    for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
+    for (val, corner) in [
+        (r.tl.clone(), 0u8),
+        (r.tr.clone(), 1),
+        (r.br.clone(), 2),
+        (r.bl.clone(), 3),
+    ] {
         let Some(v) = resolve(val) else { continue };
         d = match corner {
             0 => d.rounded_tl(px(v)),

@@ -24,14 +24,14 @@ pub(super) fn prepare_cell_box(
     let marked = cell.style.cascaded().reset_cascade.inherit_longhands;
     let inherits = |group: G| (0..4).any(|i| marked.contains(L::physical(group, i)));
     if inherits(G::Padding) {
-        cell.style.used_mut().reset_box_layout.padding = cm.reset_box_layout.padding;
+        cell.style.used_mut().reset_box_layout.padding = cm.reset_box_layout.padding.clone();
     }
     if cell.style.used().reset_border.border_inherit
         || inherits(G::BorderWidth)
         || inherits(G::BorderStyle)
         || inherits(G::BorderColor)
     {
-        cell.style.used_mut().reset_border.border_width = cm.reset_border.border_width;
+        cell.style.used_mut().reset_border.border_width = cm.reset_border.border_width.clone();
         cell.style.used_mut().reset_border.border_visible = cm.reset_border.border_visible;
         cell.style.used_mut().reset_border.border_side_styles = cm.reset_border.border_side_styles;
         cell.style.used_mut().reset_border.border_colors = cm.reset_border.border_colors.clone();
@@ -153,8 +153,8 @@ pub(super) fn prepare_cell_box(
     // Preserve authored cell width as a minimum, then stretch to the row.
     if geom.table_is_vertical {
         let size = crate::layout::table::col_measure::cell_font_px(
-            cell.style.used().inh.font.font_size,
-            row_state.row.style.used().inh.font.font_size,
+            cell.style.used().inh.font.font_size.clone(),
+            row_state.row.style.used().inh.font.font_size.clone(),
             geom.table_font,
         );
         let family = cell

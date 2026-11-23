@@ -21,10 +21,10 @@ impl Computed {
                 Some(v) => v,
                 None => return,
             },
-            None => h,
+            None => h.clone(),
         };
         self.accept_declaration();
-        self.reset_border.radius = h;
+        self.reset_border.radius = h.clone();
         // CSS Backgrounds 3 §5.1: the slash supplies independent vertical radii.
         // Preserve the units; percentage bases are only available at paint time.
         let pair = |a, b| match (a, b) {
@@ -58,12 +58,16 @@ impl Computed {
             _ => 3,
         };
         match slot {
-            0 => self.reset_border.radius.tl = x,
-            1 => self.reset_border.radius.tr = x,
-            2 => self.reset_border.radius.br = x,
-            _ => self.reset_border.radius.bl = x,
+            0 => self.reset_border.radius.tl = x.clone(),
+            1 => self.reset_border.radius.tr = x.clone(),
+            2 => self.reset_border.radius.br = x.clone(),
+            _ => self.reset_border.radius.bl = x.clone(),
         }
-        let mut ell = self.reset_border.radius_ell.unwrap_or([None; 4]);
+        let mut ell = self
+            .reset_border
+            .radius_ell
+            .clone()
+            .unwrap_or([const { None }; 4]);
         ell[slot] = match (x, y) {
             (Some(x), Some(y)) if x != y => Some((x, y)),
             _ => None,
@@ -110,10 +114,10 @@ fn shorthand(raw: &str, vcx: ValueCx<'_>) -> Option<Corners> {
         .map(|s| length(s, vcx))
         .collect::<Option<_>>()?;
     let [tl, tr, br, bl] = match values.as_slice() {
-        [a] => [*a; 4],
-        [a, b] => [*a, *b, *a, *b],
-        [a, b, c] => [*a, *b, *c, *b],
-        [a, b, c, d] => [*a, *b, *c, *d],
+        [a] => std::array::from_fn(|_| a.clone()),
+        [a, b] => [a.clone(), b.clone(), a.clone(), b.clone()],
+        [a, b, c] => [a.clone(), b.clone(), c.clone(), b.clone()],
+        [a, b, c, d] => [a.clone(), b.clone(), c.clone(), d.clone()],
         _ => return None,
     };
     Some(Corners {

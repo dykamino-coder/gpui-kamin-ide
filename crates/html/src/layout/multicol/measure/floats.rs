@@ -42,7 +42,7 @@ fn floats_in(
     // лежит под флоатом, CSS 2.1 §9.5), а стопка поставила бы его ниже
     // (`spanner-in-child-after-parallel-flow-001`: флоат 50px в колонке
     // 50px, дальше только пустой обломок предка спаннера).
-    let wide_px = |c: &Element| matches!((c.style.used().reset_box_layout.width, col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
+    let wide_px = |c: &Element| matches!((c.style.used().reset_box_layout.width.clone(), col_w), (Some(Len::Px(w)), Some(cw)) if cw > 0.0 && w >= cw - COORD_EPS);
     let inert = |n: &Node| match n {
         Node::Text(_) => is_blank(n),
         Node::Element(k) => {

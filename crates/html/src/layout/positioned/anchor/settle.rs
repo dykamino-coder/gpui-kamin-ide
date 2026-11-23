@@ -48,7 +48,7 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
                 }
                 _ => false,
             };
-            let inset = e.style.used().reset_positioned.inset;
+            let inset = e.style.used().reset_positioned.inset.clone();
             // §anchor-resolution меняет только anchor(): обычные вставки не
             // требуют отдельной копии стиля и сохраняют ключ materialization.
             if [inset.top, inset.right, inset.bottom, inset.left]
@@ -57,7 +57,7 @@ pub fn settle_static(nodes: &mut [Node], vcx: ValueCx<'_>) {
             {
                 let s = &mut e.style.used_mut().reset_positioned.inset;
                 for slot in [&mut s.top, &mut s.right, &mut s.bottom, &mut s.left] {
-                    *slot = settle_len(*slot, has_default, known, vcx);
+                    *slot = settle_len(slot.clone(), has_default, known, vcx);
                 }
             }
             let abs = matches!(
@@ -90,7 +90,7 @@ fn settle_len(
 ) -> Option<Len> {
     let mut cur = l;
     for _ in 0..4 {
-        let Some(Len::Anchor(i)) = cur else {
+        let Some(Len::Anchor(ref i)) = cur else {
             return cur;
         };
         let f = anchor_get(i, vcx)?;
@@ -104,7 +104,7 @@ fn settle_len(
         if resolvable {
             return cur;
         }
-        cur = f.fallback;
+        cur = f.fallback.clone();
     }
     cur
 }

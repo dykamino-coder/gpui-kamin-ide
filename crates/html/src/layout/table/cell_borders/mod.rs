@@ -86,7 +86,7 @@ pub(super) fn collapsed_cell_edge(
     // 0.5em` теряла отступ целиком — одни полкромки без
     // внутренности (`border-conflict-element-001e`: сетка 100
     // точек вместо 200).
-    let merged_pad = cm.reset_box_layout.padding;
+    let merged_pad = cm.reset_box_layout.padding.clone();
     let half = |i: usize, own: Option<Len>, merged: Option<Len>| {
         let base = match own {
             Some(Len::Px(v)) => v,
@@ -95,7 +95,7 @@ pub(super) fn collapsed_cell_edge(
         };
         Some(Len::Px(base + win[i] / 2.0))
     };
-    let own_pad = cell.style.used().reset_box_layout.padding;
+    let own_pad = cell.style.used().reset_box_layout.padding.clone();
     let padding = crate::style::computed::Sides {
         top: half(0, own_pad.top, merged_pad.top),
         right: half(1, own_pad.right, merged_pad.right),
@@ -132,7 +132,7 @@ pub(super) fn collapsed_group_edges(
         if matches!(i, 0 | 2) && own[i].is_none() && visible[i].is_none() {
             default_w
         } else {
-            px_of(own[i])
+            px_of(own[i].clone())
         }
     });
     let start_col = col_ix - span_cols as usize;

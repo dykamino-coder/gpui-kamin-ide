@@ -88,8 +88,8 @@ pub(super) fn fit_own_layout(
         let b = c.borders();
         px(b.left)
             + px(b.right)
-            + px(c.reset_box_layout.padding.left)
-            + px(c.reset_box_layout.padding.right)
+            + px(c.reset_box_layout.padding.left.clone())
+            + px(c.reset_box_layout.padding.right.clone())
     };
     c.reset_box_layout.width = Some(Len::Px((avail - edges).max(0.0)));
 }

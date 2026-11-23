@@ -30,7 +30,7 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
             Computed {
                 reset_box_layout: crate::style::computed::StyleGroup::new(
                     crate::style::computed::ResetBoxLayout {
-                        height,
+                        height: height.clone(),
                         ..Default::default()
                     },
                 ),

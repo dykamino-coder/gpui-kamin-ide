@@ -18,7 +18,7 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
     ) {
         return false;
     }
-    let original = child.style.used().reset_box_layout.width;
+    let original = child.style.used().reset_box_layout.width.clone();
     child.style.used_mut().reset_box_layout.width = Some(Len::FitContent);
     if !native_intrinsic::eligible(child) {
         child.style.used_mut().reset_box_layout.width = original;
@@ -34,8 +34,8 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
     );
     let px = |value| px_lossy_zero(value);
     let outer = fallback
-        - px(child.style.used().reset_box_layout.margin.left)
-        - px(child.style.used().reset_box_layout.margin.right);
+        - px(child.style.used().reset_box_layout.margin.left.clone())
+        - px(child.style.used().reset_box_layout.margin.right.clone());
     let adjustment = if child.style.used().reset_border.border_box == Some(true) {
         0.0
     } else {

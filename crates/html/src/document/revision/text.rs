@@ -31,20 +31,23 @@ pub(super) type TextEdits<'a> = HashMap<TextId, &'a TextChange>;
 /// Не меняет ли правка `edit` ни одного каскадного значения: оба текста
 /// непустые по CSS, и содержимое прежнего не читал ни один читатель сборки
 /// (`read` — адреса прочитанных исходных текстов).
-pub(super) fn editable(edit: &TextChange, read: &HashSet<usize>) -> bool {
+pub(super) fn editable(edit: &TextChange, read: &crate::values::bindings::BindingStore) -> bool {
     use crate::dom::whitespace::blank_text;
     !blank_text(&edit.old)
         && !blank_text(&edit.new)
-        && !read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize))
+        && !read.was_read(edit.node.key(), std::rc::Rc::as_ptr(&edit.node) as usize)
 }
 
 /// Which condition of `editable` the edit fails (DevTools `why`).
-pub(super) fn not_editable_why(edit: &TextChange, read: &HashSet<usize>) -> &'static str {
+pub(super) fn not_editable_why(
+    edit: &TextChange,
+    read: &crate::values::bindings::BindingStore,
+) -> &'static str {
     use crate::dom::whitespace::blank_text;
     match () {
         _ if blank_text(&edit.old) => "the old text is blank by CSS",
         _ if blank_text(&edit.new) => "the new text is blank by CSS",
-        _ if read.contains(&(std::rc::Rc::as_ptr(&edit.node) as usize)) => {
+        _ if read.was_read(edit.node.key(), std::rc::Rc::as_ptr(&edit.node) as usize) => {
             "a reader of the frame build read the old text (`Traversal::read_texts`)"
         }
         _ => "editable",

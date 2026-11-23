@@ -62,7 +62,7 @@ impl BackgroundValues {
     pub fn resolve_viewport(&mut self, root: &Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
         let vp = root.viewport_cx(viewport);
         let fix = |l: &mut Option<crate::style::values::value::Len>| {
-            *l = l.map(|l| l.fold_viewport(vp, vcx));
+            *l = l.clone().map(|l| l.fold_viewport(vp, vcx));
         };
         if let Some(gradient) = &mut self.gradient {
             gradient.resolve_lengths(fix, vcx);

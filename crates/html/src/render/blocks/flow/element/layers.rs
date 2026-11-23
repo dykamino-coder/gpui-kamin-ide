@@ -105,8 +105,8 @@ pub(crate) fn finish_element(
     if record_root {
         let side = px_lossy_zero;
         let root_b = inherited.borders();
-        let offset = side(e.style.used().reset_box_layout.margin.left)
-            + side(inherited.reset_box_layout.padding.left)
+        let offset = side(e.style.used().reset_box_layout.margin.left.clone())
+            + side(inherited.reset_box_layout.padding.left.clone())
             + side(root_b.left);
         done = crate::text::vertical::record_root_left(done, offset, opts.cx.layout());
     }

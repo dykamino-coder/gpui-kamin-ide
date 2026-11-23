@@ -33,18 +33,18 @@ pub(crate) fn render(
         || c.reset_mask.mask_image.is_some()
         || c.reset_mask.clip_ref.is_some()
         || [
-            c.reset_box_layout.padding.left,
-            c.reset_box_layout.padding.right,
-            c.reset_box_layout.padding.top,
-            c.reset_box_layout.padding.bottom,
+            c.reset_box_layout.padding.left.clone(),
+            c.reset_box_layout.padding.right.clone(),
+            c.reset_box_layout.padding.top.clone(),
+            c.reset_box_layout.padding.bottom.clone(),
             border.left,
             border.right,
             border.top,
             border.bottom,
-            c.reset_border.radius.tl,
-            c.reset_border.radius.tr,
-            c.reset_border.radius.br,
-            c.reset_border.radius.bl,
+            c.reset_border.radius.tl.clone(),
+            c.reset_border.radius.tr.clone(),
+            c.reset_border.radius.br.clone(),
+            c.reset_border.radius.bl.clone(),
         ]
         .into_iter()
         .any(|v| !matches!(v, None | Some(Len::Px(0.0))))
@@ -55,11 +55,16 @@ pub(crate) fn render(
         Some(Len::Px(v)) => v,
         _ => default,
     };
-    let w = natural(c.reset_box_layout.attr_width, DEFAULT_CANVAS_SIZE_PX.0);
-    let ratio = c
-        .reset_shapes
-        .aspect_ratio
-        .unwrap_or_else(|| w / natural(c.reset_box_layout.attr_height, DEFAULT_CANVAS_SIZE_PX.1));
+    let w = natural(
+        c.reset_box_layout.attr_width.clone(),
+        DEFAULT_CANVAS_SIZE_PX.0,
+    );
+    let ratio = c.reset_shapes.aspect_ratio.unwrap_or_else(|| {
+        w / natural(
+            c.reset_box_layout.attr_height.clone(),
+            DEFAULT_CANVAS_SIZE_PX.1,
+        )
+    });
     if !ratio.is_finite() || ratio <= 0.0 || w <= 0.0 {
         return None;
     }

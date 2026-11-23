@@ -58,7 +58,7 @@ pub(crate) fn inner_with_dimensions(
     {
         return None;
     }
-    content_block_size_with_dimensions(st, sizes, false, sizes.preferred[1], outer, width)
+    content_block_size_with_dimensions(st, sizes, false, sizes.preferred[1].clone(), outer, width)
 }
 
 /// Определённый размер содержимого по блочной оси: box-sizing и пределы
@@ -87,15 +87,15 @@ pub(crate) fn content_block_size_with_dimensions(
         let b = st.borders();
         let (a, z, ba, bz) = if vertical {
             (
-                st.reset_box_layout.padding.left,
-                st.reset_box_layout.padding.right,
+                st.reset_box_layout.padding.left.clone(),
+                st.reset_box_layout.padding.right.clone(),
                 b.left,
                 b.right,
             )
         } else {
             (
-                st.reset_box_layout.padding.top,
-                st.reset_box_layout.padding.bottom,
+                st.reset_box_layout.padding.top.clone(),
+                st.reset_box_layout.padding.bottom.clone(),
                 b.top,
                 b.bottom,
             )
@@ -107,16 +107,16 @@ pub(crate) fn content_block_size_with_dimensions(
     // Auto height stays indefinite even when min-height is definite.
     let height = (length(preferred)? - edges).max(0.0);
     let minimum = length(if vertical {
-        sizes.minimum[0]
+        sizes.minimum[0].clone()
     } else {
-        sizes.minimum[1]
+        sizes.minimum[1].clone()
     })
     .map(|v| (v - edges).max(0.0))
     .unwrap_or(0.0);
     let maximum = length(if vertical {
-        sizes.maximum[0]
+        sizes.maximum[0].clone()
     } else {
-        sizes.maximum[1]
+        sizes.maximum[1].clone()
     })
     .map(|v| (v - edges).max(0.0))
     .unwrap_or(f32::INFINITY);

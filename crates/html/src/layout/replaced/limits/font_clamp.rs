@@ -110,10 +110,10 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
         )
     };
     let c = &*e.style.used();
-    if !(kw(c.reset_box_layout.min_width)
-        || kw(c.reset_box_layout.max_width)
-        || kw(c.reset_box_layout.min_height)
-        || kw(c.reset_box_layout.max_height))
+    if !(kw(c.reset_box_layout.min_width.clone())
+        || kw(c.reset_box_layout.max_width.clone())
+        || kw(c.reset_box_layout.min_height.clone())
+        || kw(c.reset_box_layout.max_height.clone()))
     {
         return e.clone();
     }
@@ -122,13 +122,13 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
         .reset_shapes
         .aspect_ratio
         .filter(|r| r.is_finite() && *r > 0.0);
-    let nat_w = match (px(c.reset_box_layout.height), ratio) {
+    let nat_w = match (px(c.reset_box_layout.height.clone()), ratio) {
         (Some(h), Some(r)) => Some(h * r),
-        _ => px(c.reset_box_layout.attr_width),
+        _ => px(c.reset_box_layout.attr_width.clone()),
     };
-    let nat_h = match (px(c.reset_box_layout.width), ratio) {
+    let nat_h = match (px(c.reset_box_layout.width.clone()), ratio) {
         (Some(w), Some(r)) => Some(w / r),
-        _ => px(c.reset_box_layout.attr_height),
+        _ => px(c.reset_box_layout.attr_height.clone()),
     };
     let mut copy = e.clone();
     let s = &mut *copy.style.used_mut();
@@ -139,7 +139,7 @@ pub(crate) fn canvas_limit_keywords(e: &Element) -> Element {
             2 => (&mut s.reset_box_layout.min_height, nat_h),
             _ => (&mut s.reset_box_layout.max_height, nat_h),
         };
-        if kw(*lim) {
+        if kw(lim.clone()) {
             *lim = nat.map(Len::Px);
         }
     }

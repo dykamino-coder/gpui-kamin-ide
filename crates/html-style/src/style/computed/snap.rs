@@ -7,7 +7,7 @@ use super::{Computed, Sides, split_outside_parens};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct SnapStyle {
     /// 0 none, 1 x, 2 y, 3 block, 4 inline, 5 both.
     pub axis: u8,
@@ -118,7 +118,7 @@ impl Computed {
                                 | Len::Vw(n)
                                 | Len::Vh(n) => !padding || n >= 0.0,
                                 Len::Pct(n) => padding && n >= 0.0,
-                                Len::Calc(i) => {
+                                Len::Calc(ref i) => {
                                     padding
                                         || !crate::style::values::value::calc_get(i, vcx)
                                             .has_percentage
@@ -132,10 +132,10 @@ impl Computed {
                 let Some(lengths) = lengths else { return };
                 match key.strip_prefix(prefix).unwrap_or("") {
                     "" if (1..=4).contains(&lengths.len()) => *sides = Sides::shorthand(v, vcx),
-                    "-top" if lengths.len() == 1 => sides.top = Some(lengths[0]),
-                    "-right" if lengths.len() == 1 => sides.right = Some(lengths[0]),
-                    "-bottom" if lengths.len() == 1 => sides.bottom = Some(lengths[0]),
-                    "-left" if lengths.len() == 1 => sides.left = Some(lengths[0]),
+                    "-top" if lengths.len() == 1 => sides.top = Some(lengths[0].clone()),
+                    "-right" if lengths.len() == 1 => sides.right = Some(lengths[0].clone()),
+                    "-bottom" if lengths.len() == 1 => sides.bottom = Some(lengths[0].clone()),
+                    "-left" if lengths.len() == 1 => sides.left = Some(lengths[0].clone()),
                     _ => *hit = false,
                 }
                 if *hit {
@@ -162,12 +162,12 @@ pub fn inherit(parent: &Computed, c: &mut Computed) {
         [
             (
                 &mut group_0.snap.padding,
-                parent.reset_box_layout.snap.padding,
+                parent.reset_box_layout.snap.padding.clone(),
                 2,
             ),
             (
                 &mut group_0.snap.margin,
-                parent.reset_box_layout.snap.margin,
+                parent.reset_box_layout.snap.margin.clone(),
                 6,
             ),
         ]

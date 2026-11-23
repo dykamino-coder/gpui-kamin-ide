@@ -24,9 +24,9 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
     }
     let vertical = st.wm().vertical();
     let size = if vertical {
-        st.reset_box_layout.width
+        st.reset_box_layout.width.clone()
     } else {
-        st.reset_box_layout.height
+        st.reset_box_layout.height.clone()
     };
     if !matches!(size, None | Some(Len::Auto))
         || st.reset_box_layout.calc_size[usize::from(!vertical)].is_some()
@@ -48,22 +48,22 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
         if vertical {
             px(b.left, style)
                 + px(b.right, style)
-                + px(style.reset_box_layout.padding.left, style)
-                + px(style.reset_box_layout.padding.right, style)
+                + px(style.reset_box_layout.padding.left.clone(), style)
+                + px(style.reset_box_layout.padding.right.clone(), style)
         } else {
             px(b.top, style)
                 + px(b.bottom, style)
-                + px(style.reset_box_layout.padding.top, style)
-                + px(style.reset_box_layout.padding.bottom, style)
+                + px(style.reset_box_layout.padding.top.clone(), style)
+                + px(style.reset_box_layout.padding.bottom.clone(), style)
         }
     };
     let margins = |style: &Computed| {
         if vertical {
-            px(style.reset_box_layout.margin.left, style)
-                + px(style.reset_box_layout.margin.right, style)
+            px(style.reset_box_layout.margin.left.clone(), style)
+                + px(style.reset_box_layout.margin.right.clone(), style)
         } else {
-            px(style.reset_box_layout.margin.top, style)
-                + px(style.reset_box_layout.margin.bottom, style)
+            px(style.reset_box_layout.margin.top.clone(), style)
+                + px(style.reset_box_layout.margin.bottom.clone(), style)
         }
     };
     let viewport = if vertical {
@@ -75,14 +75,14 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
         viewport
     } else {
         let parent_size = if vertical {
-            parent.reset_box_layout.width
+            parent.reset_box_layout.width.clone()
         } else {
-            parent.reset_box_layout.height
+            parent.reset_box_layout.height.clone()
         };
         let parent_min = if vertical {
-            parent.reset_box_layout.min_width
+            parent.reset_box_layout.min_width.clone()
         } else {
-            parent.reset_box_layout.min_height
+            parent.reset_box_layout.min_height.clone()
         };
         match parent_size {
             _ if !vertical && opts.cx.constraints.avail_h.is_some() => {
@@ -117,9 +117,9 @@ pub(super) fn fill(e: &Element, st: &mut Computed, parent: &BoxStyle, opts: &Ren
         })
     .max(0.0);
     let old = if vertical {
-        st.reset_box_layout.min_width
+        st.reset_box_layout.min_width.clone()
     } else {
-        st.reset_box_layout.min_height
+        st.reset_box_layout.min_height.clone()
     };
     let old = old
         .and_then(|v| v.to_px(Some(available), st.font_cx(vcx), vcx))

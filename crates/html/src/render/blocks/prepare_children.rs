@@ -126,7 +126,7 @@ pub(crate) fn prepare_children(
                     {
                         e.style.used_mut().reset_box_layout.width = Some(Len::FitContent);
                     }
-                    if !auto(e.style.used().reset_box_layout.margin.left) && !auto(e.style.used().reset_box_layout.margin.right) {
+                    if !auto(e.style.used().reset_box_layout.margin.left.clone()) && !auto(e.style.used().reset_box_layout.margin.right.clone()) {
                         let rtl = inherited.wm().rtl();
                         match (e.style.used().reset_flex.justify_self, rtl) {
                             (Some(Align::Center), _) => {
@@ -192,7 +192,7 @@ pub(crate) fn prepare_children(
             let mcx =
                 crate::layout::block::margins::MarginCx::new(vcx).with_collapse(CollapseInputs {
                     font: base,
-                    width: px_strict(sizes.preferred[0]),
+                    width: px_strict(sizes.preferred[0].clone()),
                     height_def: cb_h_def,
                 });
             collapse_margins_prepared(

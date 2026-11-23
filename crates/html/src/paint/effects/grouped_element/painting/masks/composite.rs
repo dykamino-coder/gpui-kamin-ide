@@ -42,9 +42,10 @@ pub(crate) fn composite_mask(
         let pick = if v.is_empty() {
             group
                 .mask_pos
+                .clone()
                 .map(|(x, y)| (x, y, group.mask_pos_far.0, group.mask_pos_far.1))
         } else {
-            Some(v[i % v.len()])
+            Some(v[i % v.len()].clone())
         };
         let Some((x, y, fx, fy)) = pick else {
             return (0.0, 0.0);

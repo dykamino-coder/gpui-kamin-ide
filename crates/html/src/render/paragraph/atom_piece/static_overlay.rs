@@ -131,7 +131,8 @@ pub(crate) fn static_overlay(
     // (`CSS2/text/text-indent-013-ref`: `margin-left: -10em` — чёрная
     // полоса на 328 вместо 168 закрывала PASS).
     let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v.abs() > 0.001);
-    let inner = if nz(merged.reset_box_layout.margin.left) || nz(merged.reset_box_layout.margin.top)
+    let inner = if nz(merged.reset_box_layout.margin.left.clone())
+        || nz(merged.reset_box_layout.margin.top.clone())
     {
         div()
             .flex()

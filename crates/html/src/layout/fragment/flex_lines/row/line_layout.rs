@@ -20,7 +20,7 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
     if depth == 0 || !row_container(c) || main <= 0.0 {
         return None;
     }
-    let gap = px_auto_zero(c.style.used().reset_flex.gap.and_then(|g| g.1))?.max(0.0);
+    let gap = px_auto_zero(c.style.used().reset_flex.gap.clone().and_then(|g| g.1))?.max(0.0);
     let mut items = Vec::new();
     for (source, n) in c.children.iter().enumerate().filter(|(_, n)| !is_blank(n)) {
         let Node::Element(k) = n else { return None };
@@ -62,12 +62,12 @@ pub(super) fn collect_lines(c: &Element, main: f32, depth: u8) -> Option<Lines> 
         let edges = if sizes.border_box {
             0.0
         } else {
-            px_auto_zero(s.reset_box_layout.padding.left)?
-                + px_auto_zero(s.reset_box_layout.padding.right)?
+            px_auto_zero(s.reset_box_layout.padding.left.clone())?
+                + px_auto_zero(s.reset_box_layout.padding.right.clone())?
                 + px_auto_zero(b.left)?
                 + px_auto_zero(b.right)?
-        } + px_auto_zero(s.reset_box_layout.margin.left)?
-            + px_auto_zero(s.reset_box_layout.margin.right)?;
+        } + px_auto_zero(s.reset_box_layout.margin.left.clone())?
+            + px_auto_zero(s.reset_box_layout.margin.right.clone())?;
         let outer = hypothetical + edges;
         let actual = if outer > main + 0.01 {
             // This item necessarily occupies a line alone. Its known intrinsic

@@ -34,15 +34,15 @@ pub(crate) fn view_box_size(
     let (vx, vy, vw, vh) = match vb.0 {
         // inset(top right bottom left)
         0 => (
-            at(d, w0),
-            at(a, h0),
+            at(d.clone(), w0),
+            at(a.clone(), h0),
             w0 - at(d, w0) - at(b, w0),
             h0 - at(a, h0) - at(c, h0),
         ),
         // rect(top right bottom left)
         1 => (
-            at(d, w0),
-            at(a, h0),
+            at(d.clone(), w0),
+            at(a.clone(), h0),
             at(b, w0) - at(d, w0),
             at(c, h0) - at(a, h0),
         ),
@@ -55,17 +55,17 @@ pub(crate) fn view_box_size(
     let px_of = px_strict;
     let (bw, bh) = if style.contains_width() || style.contains_height() {
         (
-            px_of(style.reset_box_layout.width)
+            px_of(style.reset_box_layout.width.clone())
                 .or(style.reset_context.contain_intrinsic.0)
                 .unwrap_or(0.0),
-            px_of(style.reset_box_layout.height)
+            px_of(style.reset_box_layout.height.clone())
                 .or(style.reset_context.contain_intrinsic.1)
                 .unwrap_or(0.0),
         )
     } else {
         match (
-            px_of(style.reset_box_layout.width),
-            px_of(style.reset_box_layout.height),
+            px_of(style.reset_box_layout.width.clone()),
+            px_of(style.reset_box_layout.height.clone()),
         ) {
             (Some(w), Some(h)) => (w, h),
             (Some(w), None) => (w, w * vh / vw),

@@ -25,21 +25,21 @@ pub(crate) fn native_content_box_with(
                 Some(Len::Px(_) | Len::Pct(_))
             ))
             || [
-                sizes.preferred[0],
-                sizes.preferred[1],
-                sizes.minimum[0],
-                sizes.maximum[0],
-                sizes.minimum[1],
-                sizes.maximum[1],
+                sizes.preferred[0].clone(),
+                sizes.preferred[1].clone(),
+                sizes.minimum[0].clone(),
+                sizes.maximum[0].clone(),
+                sizes.minimum[1].clone(),
+                sizes.maximum[1].clone(),
             ]
             .into_iter()
             .zip(style.reset_box_layout.stretch_size)
             .any(|(size, stretch)| !stretch && matches!(size, Some(Len::Pct(_))))
             || [
-                style.reset_box_layout.padding.left,
-                style.reset_box_layout.padding.right,
-                style.reset_box_layout.padding.top,
-                style.reset_box_layout.padding.bottom,
+                style.reset_box_layout.padding.left.clone(),
+                style.reset_box_layout.padding.right.clone(),
+                style.reset_box_layout.padding.top.clone(),
+                style.reset_box_layout.padding.bottom.clone(),
             ]
             .into_iter()
             .any(|side| matches!(side, Some(Len::Pct(_)))))

@@ -28,17 +28,18 @@ impl Carried {
         };
         let px = px_strict;
         Self {
-            line_height: px(c.inh.font.line_height),
-            letter_spacing: px(c.inh.text_flow.letter_spacing),
-            word_spacing: px(c.inh.text_flow.word_spacing),
-            text_indent: px(c.inh.text_flow.text_indent),
-            tab_size: px(c.inh.text_flow.tab_size_len),
+            line_height: px(c.inh.font.line_height.clone()),
+            letter_spacing: px(c.inh.text_flow.letter_spacing.clone()),
+            word_spacing: px(c.inh.text_flow.word_spacing.clone()),
+            text_indent: px(c.inh.text_flow.text_indent.clone()),
+            tab_size: px(c.inh.text_flow.tab_size_len.clone()),
             text_shadow: c.inh.text_ink.text_shadow.clone(),
             text_shadow_rest: c.inh.text_ink.text_shadow_rest.clone(),
             border_spacing: c
                 .inh
                 .table_list
                 .border_spacing
+                .clone()
                 .map(|(row, col)| (px(row), px(col))),
             underline_offset: match c.inh.text_ink.underline_offset {
                 Some(crate::style::computed::DecorLen::Px(v)) => Some(v),

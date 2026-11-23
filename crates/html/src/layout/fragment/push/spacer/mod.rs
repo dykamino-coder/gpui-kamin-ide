@@ -50,7 +50,7 @@ pub(super) fn spacer_before_laid(c: &mut Element, id: u64, grow: f32) -> bool {
         // `margin-bottom: 50px`, обе зелёные).
         let pi = c.children[..i].iter().rposition(|n| !is_blank(n));
         let prev_mb = match pi.map(|j| &c.children[j]) {
-            Some(Node::Element(k)) => k.style.used().reset_box_layout.margin.bottom,
+            Some(Node::Element(k)) => k.style.used().reset_box_layout.margin.bottom.clone(),
             _ => None,
         };
         if prev_mb.is_some()

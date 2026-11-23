@@ -62,14 +62,14 @@ pub(super) fn segments(
             continue;
         }
         let s2 = s + inset_px(
-            rule.inset[if s_join { lo_join } else { lo_cap }],
+            rule.inset[if s_join { lo_join } else { lo_cap }].clone(),
             s_cw,
             s_join,
             s_dw,
             main_like,
         );
         let e2 = e - inset_px(
-            rule.inset[if e_join { hi_join } else { hi_cap }],
+            rule.inset[if e_join { hi_join } else { hi_cap }].clone(),
             e_cw,
             e_join,
             e_dw,

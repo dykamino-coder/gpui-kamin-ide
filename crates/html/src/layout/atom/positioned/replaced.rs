@@ -67,10 +67,10 @@ pub(super) fn replaced_abs_atom(
     if crate::layout::positioned::anchor::trials::inline::is_root(e, opts) {
         return Some(holder);
     }
-    let x_set = edge_set(e.style.used().reset_positioned.inset.left)
-        || edge_set(e.style.used().reset_positioned.inset.right);
-    let y_set = edge_set(e.style.used().reset_positioned.inset.top)
-        || edge_set(e.style.used().reset_positioned.inset.bottom);
+    let x_set = edge_set(e.style.used().reset_positioned.inset.left.clone())
+        || edge_set(e.style.used().reset_positioned.inset.right.clone());
+    let y_set = edge_set(e.style.used().reset_positioned.inset.top.clone())
+        || edge_set(e.style.used().reset_positioned.inset.bottom.clone());
     if x_set != y_set && e.style.used().reset_positioned.z_index.unwrap_or(0) >= 0 {
         let spot: crate::layout::positioned::containing_block::SpotCell = Default::default();
         spot.set(crate::layout::positioned::containing_block::Spot {

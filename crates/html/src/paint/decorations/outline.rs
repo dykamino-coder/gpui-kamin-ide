@@ -29,7 +29,7 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
         // контур молча пропадал (`outline-offset-inset-005` зелёна впустую).
         let w = match o.width {
             None => 3.0,
-            other => px_of(other),
+            ref other => px_of(other.clone()),
         };
         // Рисуется только ЗАДАННЫЙ видимый стиль: начальное `outline-style`
         // — `none`, и `outline: 3px red` без стиля не рисуется вовсе.
@@ -58,8 +58,8 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
                     _ => None,
                 };
                 match (
-                    half(c.reset_box_layout.width),
-                    half(c.reset_box_layout.height),
+                    half(c.reset_box_layout.width.clone()),
+                    half(c.reset_box_layout.height.clone()),
                 ) {
                     (Some(hw), Some(hh)) => raw.max(-hw.min(hh)),
                     (Some(hw), None) => raw.max(-hw),
@@ -70,7 +70,7 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
             // Угол контура повторяет угол коробки, раздвинутый сдвигом и
             // толщиной (css-ui-4 §outline): доля решается так же, как у
             // рамки, — прежде она читалась нулём (`outline-005`).
-            let corner = crate::paint::apply::radius_px(c, c.reset_border.radius.tl, vcx)
+            let corner = crate::paint::apply::radius_px(c, c.reset_border.radius.tl.clone(), vcx)
                 .filter(|v| *v > 0.0)
                 .map_or(0.0, |v| v + off + w);
             // Абсолютный ребёнок отсчитывается от padding-box (CSS 2.1
@@ -88,10 +88,10 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
             let ring_at = |reach: f32, width: f32, radius: f32| {
                 let mut ring = div()
                     .absolute()
-                    .top(px(-(reach + bpx(bw.top))))
-                    .left(px(-(reach + bpx(bw.left))))
-                    .right(px(-(reach + bpx(bw.right))))
-                    .bottom(px(-(reach + bpx(bw.bottom))))
+                    .top(px(-(reach + bpx(bw.top.clone()))))
+                    .left(px(-(reach + bpx(bw.left.clone()))))
+                    .right(px(-(reach + bpx(bw.right.clone()))))
+                    .bottom(px(-(reach + bpx(bw.bottom.clone()))))
                     .border(px(width))
                     .border_color(colour.to_hsla())
                     .rounded(px(radius));

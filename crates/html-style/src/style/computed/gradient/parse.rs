@@ -103,7 +103,7 @@ pub(super) fn parse_gradient(v: &str, current: Color, vcx: ValueCx<'_>) -> Optio
                 // только при отрисовке. Хранится своим списком.
                 raw.push((colour, None));
                 raw_px.push((colour, Some(v)));
-            } else if let Some((pct, px)) = length.and_then(|length| match length {
+            } else if let Some((pct, px)) = length.as_ref().and_then(|length| match length {
                 Len::Calc(id) => crate::style::values::value::calc_get(id, vcx).pct_px(),
                 _ => None,
             }) {

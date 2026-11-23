@@ -4,6 +4,7 @@ use super::*;
 use html5ever::tree_builder::{NodeOrText, TreeSink};
 use html5ever::{QualName, local_name, ns};
 use markup5ever_rcdom::{Handle, RcDom};
+use std::rc::Rc;
 
 fn authored(dom: &RcDom) -> Handle {
     dom.create_element(
@@ -73,7 +74,11 @@ fn the_text_source_index_records_keys_without_retaining_nodes() {
     let key = text.key();
     let traversal = crate::values::traversal::TraversalState::default();
     let id = traversal.record_text(&text).unwrap();
-    assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
+    assert_eq!(id.get(), key.packed());
+    let address = Rc::as_ptr(&text) as usize;
+    let weak = Rc::downgrade(&text);
     drop(text);
-    assert_eq!(traversal.text_keys()[id.get() as usize - 1], key);
+    assert!(weak.upgrade().is_none());
+    traversal.publish_bindings(&Default::default()).unwrap();
+    assert_eq!(traversal.bindings().text(id), Some(address));
 }

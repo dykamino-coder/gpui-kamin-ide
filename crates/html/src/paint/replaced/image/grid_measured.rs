@@ -35,10 +35,10 @@ pub(super) fn measured(
         || style.reset_mask.mask_image.is_some()
         || style.reset_mask.clip_ref.is_some()
         || ![
-            style.reset_border.radius.tl,
-            style.reset_border.radius.tr,
-            style.reset_border.radius.br,
-            style.reset_border.radius.bl,
+            style.reset_border.radius.tl.clone(),
+            style.reset_border.radius.tr.clone(),
+            style.reset_border.radius.br.clone(),
+            style.reset_border.radius.bl.clone(),
         ]
         .into_iter()
         .all(zero_length)
@@ -50,14 +50,14 @@ pub(super) fn measured(
     let border = style.borders();
     if !style.reset_flex.flex_item
         && ![
-            style.reset_box_layout.padding.left,
-            style.reset_box_layout.padding.right,
-            style.reset_box_layout.padding.top,
-            style.reset_box_layout.padding.bottom,
-            border.left,
-            border.right,
-            border.top,
-            border.bottom,
+            style.reset_box_layout.padding.left.clone(),
+            style.reset_box_layout.padding.right.clone(),
+            style.reset_box_layout.padding.top.clone(),
+            style.reset_box_layout.padding.bottom.clone(),
+            border.left.clone(),
+            border.right.clone(),
+            border.top.clone(),
+            border.bottom.clone(),
         ]
         .into_iter()
         .all(zero)
@@ -75,13 +75,13 @@ pub(super) fn measured(
         crate::paint::background::Source::Image(CpuSource::Raster(_))
     ) && (!style.reset_flex.flex_item
         || [
-            style.reset_box_layout.padding.left,
-            style.reset_box_layout.padding.right,
-            style.reset_box_layout.padding.top,
-            style.reset_box_layout.padding.bottom,
-            border.left,
-            border.right,
-            border.top,
+            style.reset_box_layout.padding.left.clone(),
+            style.reset_box_layout.padding.right.clone(),
+            style.reset_box_layout.padding.top.clone(),
+            style.reset_box_layout.padding.bottom.clone(),
+            border.left.clone(),
+            border.right.clone(),
+            border.top.clone(),
             border.bottom,
         ]
         .into_iter()

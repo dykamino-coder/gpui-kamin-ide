@@ -4,7 +4,7 @@ use super::*;
 use crate::values::ValueCx;
 
 /// Длина в терминах, которые понимает GPUI.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Len {
     /// `12px`, `1.5rem` — переводим всё в px по базовому размеру шрифта.
     Px(f32),
@@ -26,10 +26,7 @@ pub enum Len {
     /// после каскада: раньше `em` считался от постоянных 16 точек, и на
     /// вложенных размерах шрифта отступы расходились с браузером.
     Em(f32),
-    /// Смешанный `calc()`: слагаемые разных природ, сворачивается по мере
-    /// появления баз (css-values-4 §10.9). Хранится ИНДЕКСОМ в арене:
-    /// сумма внутри варианта раздувала `Len` с 12 до 40 байт, и рекурсивный
-    /// рендер вложенного документа переполнял стек (vh-support-transform-*).
+    /// Mixed calc terms resolve as bases become available (CSS Values 4 section 10.9). Styles share an immutable payload independently of revisions.
     Calc(CalcId),
     /// `1.5vh`, `50vw` — доля высоты и ширины окна. Размер окна известен
     /// только сборщику дерева, поэтому единица доживает до него как есть.
@@ -53,11 +50,7 @@ pub enum Len {
     /// `5lh` — доля ВЫСОТЫ СТРОКИ (CSS Values §6.1.2): она известна только
     /// после каскада, единица доживает до слияния стилей.
     Lh(f32),
-    /// `anchor(<name>? <side>, <fallback>?)` (css-anchor-position-1
-    /// §anchor-fn) — ИНДЕКС в арене `anchor_store`, как у `Calc`. Раскладке
-    /// такая вставка уходит нулём (`apply::len_to_gpui`), а сдвиг до края
-    /// якоря считает `anchor::AnchorPlace` на подготовке кадра. Законна
-    /// только во вставках абсолюта; в размерах разбор её не порождает.
+    /// An owned anchor expression (css-anchor-position-1 anchor-fn); layout resolves its inset against the prepared anchor placement.
     Anchor(AnchorId),
     /// `auto`
     Auto,

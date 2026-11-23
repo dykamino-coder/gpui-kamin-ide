@@ -48,7 +48,11 @@ fn clip_body(
     if let Some(points) = &c.reset_mask.clip_polygon {
         let mut pts = String::new();
         for (x, y) in points {
-            pts.push_str(&format!("{},{} ", bx + at(*x, bw)?, by + at(*y, bh)?));
+            pts.push_str(&format!(
+                "{},{} ",
+                bx + at(x.clone(), bw)?,
+                by + at(y.clone(), bh)?
+            ));
         }
         let rule = if c.reset_mask.clip_polygon_evenodd {
             "evenodd"
@@ -60,7 +64,7 @@ fn clip_body(
             pts.trim_end()
         ));
     }
-    if let Some([t, r, b, l]) = c.reset_mask.clip_inset {
+    if let Some([t, r, b, l]) = c.reset_mask.clip_inset.clone() {
         let (t, r, b, l) = (at(t, bh)?, at(r, bw)?, at(b, bh)?, at(l, bw)?);
         let (w, h) = ((bw - l - r).max(0.0), (bh - t - b).max(0.0));
         let round = c.reset_mask.clip_round.unwrap_or(0.0).max(0.0);

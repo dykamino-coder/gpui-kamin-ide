@@ -39,7 +39,7 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
                 v + spread * (1.0 + (k - 1.0).powi(3))
             }
             Some(Len::Px(v)) if v > 0.0 => (v + spread).max(0.0),
-            Some(Len::Pct(k)) => match (c.reset_box_layout.width, c.reset_box_layout.height) {
+            Some(Len::Pct(k)) => match (&c.reset_box_layout.width, &c.reset_box_layout.height) {
                 (Some(Len::Px(w)), Some(Len::Px(h))) => {
                     k * (w + 2.0 * spread).min(h + 2.0 * spread)
                 }
@@ -64,12 +64,17 @@ pub(super) fn outer_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         // кольцо ложилось ВНУТРЬ неё (`box-shadow-039`: оранжевое на чёрном).
         let bw = c.borders();
         let side = px_lossy_zero;
-        let (bt, br, bb, bl) = (side(bw.top), side(bw.right), side(bw.bottom), side(bw.left));
+        let (bt, br, bb, bl) = (
+            side(bw.top.clone()),
+            side(bw.right.clone()),
+            side(bw.bottom.clone()),
+            side(bw.left.clone()),
+        );
         let square = [
-            c.reset_border.radius.tl,
-            c.reset_border.radius.tr,
-            c.reset_border.radius.br,
-            c.reset_border.radius.bl,
+            c.reset_border.radius.tl.clone(),
+            c.reset_border.radius.tr.clone(),
+            c.reset_border.radius.br.clone(),
+            c.reset_border.radius.bl.clone(),
         ]
         .iter()
         .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
@@ -159,10 +164,10 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
             continue;
         }
         let square = [
-            c.reset_border.radius.tl,
-            c.reset_border.radius.tr,
-            c.reset_border.radius.br,
-            c.reset_border.radius.bl,
+            c.reset_border.radius.tl.clone(),
+            c.reset_border.radius.tr.clone(),
+            c.reset_border.radius.br.clone(),
+            c.reset_border.radius.bl.clone(),
         ]
         .iter()
         .all(|r| matches!(r, None | Some(Len::Px(0.0)) | Some(Len::Pct(0.0))));
@@ -218,10 +223,26 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
                     .max(0.0)
             };
             ring = ring
-                .rounded_tl(px(pad(c.reset_border.radius.tl, bw.top, bw.left)))
-                .rounded_tr(px(pad(c.reset_border.radius.tr, bw.top, bw.right)))
-                .rounded_br(px(pad(c.reset_border.radius.br, bw.bottom, bw.right)))
-                .rounded_bl(px(pad(c.reset_border.radius.bl, bw.bottom, bw.left)));
+                .rounded_tl(px(pad(
+                    c.reset_border.radius.tl.clone(),
+                    bw.top.clone(),
+                    bw.left.clone(),
+                )))
+                .rounded_tr(px(pad(
+                    c.reset_border.radius.tr.clone(),
+                    bw.top.clone(),
+                    bw.right.clone(),
+                )))
+                .rounded_br(px(pad(
+                    c.reset_border.radius.br.clone(),
+                    bw.bottom.clone(),
+                    bw.right.clone(),
+                )))
+                .rounded_bl(px(pad(
+                    c.reset_border.radius.bl.clone(),
+                    bw.bottom.clone(),
+                    bw.left.clone(),
+                )));
         }
         out.push(ring.into_any_element());
     }

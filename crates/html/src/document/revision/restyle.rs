@@ -35,7 +35,7 @@ impl Document {
         {
             return None;
         }
-        let index = self.source_index()?;
+        let index = self.source_index();
         let mut changed = Changed::default();
         for change in &batch.elements {
             if !open(&change.element, &root) {

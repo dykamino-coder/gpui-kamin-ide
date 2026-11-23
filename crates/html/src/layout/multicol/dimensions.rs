@@ -27,16 +27,16 @@ impl MulticolDimensions {
         self
     }
 
-    pub(crate) fn prefix(self) -> Self {
+    pub(crate) fn prefix(&self) -> Self {
         Self {
-            preferred: [self.preferred[0], None],
-            ..self
+            preferred: [self.preferred[0].clone(), None],
+            ..self.clone()
         }
     }
 
     /// Процентный CB колонок соблюдает те же границы, что обычный блок.
     pub(crate) fn percentage_height(
-        self,
+        &self,
         style: &Computed,
         outer: Option<f32>,
         inline: Option<f32>,
@@ -69,16 +69,16 @@ impl MulticolDimensions {
 
     /// Определённая физическая высота содержимого для процентов и линеек.
     pub(crate) fn content_height(
-        self,
+        &self,
         style: &Computed,
         outer: Option<f32>,
         inline: Option<f32>,
     ) -> Option<f32> {
         crate::layout::block::available_height::content_block_size_with_dimensions(
             style,
-            &self,
+            &self.clone(),
             false,
-            self.preferred[1],
+            self.preferred[1].clone(),
             outer,
             inline,
         )

@@ -24,7 +24,7 @@ pub(super) fn sides(s: Sides, base: f32) -> [f32; 4] {
     [value(s.left), value(s.top), value(s.right), value(s.bottom)]
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) struct Clip {
     border: Sides,
     padding: Sides,
@@ -48,7 +48,7 @@ impl Clip {
         };
         Self {
             border: c.borders(),
-            padding: c.reset_box_layout.padding,
+            padding: c.reset_box_layout.padding.clone(),
             axes: [
                 axis(c.reset_box_layout.overflow_x),
                 axis(c.reset_box_layout.overflow_y),
@@ -58,11 +58,11 @@ impl Clip {
         }
     }
     pub(super) fn border(&self) -> [f32; 4] {
-        sides(self.border, 0.0)
+        sides(self.border.clone(), 0.0)
     }
     pub(super) fn intersect(&self, own: Rect, mut child: Rect) -> Option<Rect> {
         let border = self.border();
-        let padding = sides(self.padding, own[2] - own[0]);
+        let padding = sides(self.padding.clone(), own[2] - own[0]);
         for axis in 0..2 {
             if self.axes[axis] == 0 {
                 continue;

@@ -30,7 +30,7 @@ fn inset_rejects_an_entire_invalid_declaration() {
         computed("text-decoration-inset: 3px", vcx)
             .reset_text_box
             .td_inset,
-        Some(Some([DecorLen::Px(3.0); 2]))
+        Some(Some([const { DecorLen::Px(3.0) }; 2]))
     );
     assert_eq!(
         computed("text-decoration-inset: auto", vcx)
@@ -72,7 +72,7 @@ fn inset_explicitly_inherits_the_computed_parent_value() {
     );
     assert_eq!(
         child.reset_text_box.td_inset,
-        Some(Some([DecorLen::Px(40.0); 2]))
+        Some(Some([const { DecorLen::Px(40.0) }; 2]))
     );
     let initial = inherit_unpainted(&parent, &computed("text-decoration-inset:unset", vcx), vcx);
     assert_eq!(initial.reset_text_box.td_inset, None);

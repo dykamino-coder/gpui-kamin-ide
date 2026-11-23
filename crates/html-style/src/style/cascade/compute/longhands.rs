@@ -45,7 +45,13 @@ pub(super) fn inherit_longhands(c: &mut Computed, p: &Computed, vcx: ValueCx<'_>
 
 /// Сторона `i` в порядке верх, право, низ, лево.
 fn of(s: &Sides, i: usize) -> Option<Len> {
-    [s.top, s.right, s.bottom, s.left][i]
+    [
+        s.top.clone(),
+        s.right.clone(),
+        s.bottom.clone(),
+        s.left.clone(),
+    ][i]
+        .clone()
 }
 
 fn side(s: &mut Sides, i: usize) -> &mut Option<Len> {
@@ -67,12 +73,12 @@ fn size(c: &mut Computed, p: &Computed, i: usize) {
         c.reset_box_layout.calc_size_max[i - 4] = p.reset_box_layout.calc_size_max[i - 4];
     }
     match i {
-        0 => c.reset_box_layout.width = p.reset_box_layout.width,
-        1 => c.reset_box_layout.height = p.reset_box_layout.height,
-        2 => c.reset_box_layout.min_width = p.reset_box_layout.min_width,
-        3 => c.reset_box_layout.min_height = p.reset_box_layout.min_height,
-        4 => c.reset_box_layout.max_width = p.reset_box_layout.max_width,
-        _ => c.reset_box_layout.max_height = p.reset_box_layout.max_height,
+        0 => c.reset_box_layout.width = p.reset_box_layout.width.clone(),
+        1 => c.reset_box_layout.height = p.reset_box_layout.height.clone(),
+        2 => c.reset_box_layout.min_width = p.reset_box_layout.min_width.clone(),
+        3 => c.reset_box_layout.min_height = p.reset_box_layout.min_height.clone(),
+        4 => c.reset_box_layout.max_width = p.reset_box_layout.max_width.clone(),
+        _ => c.reset_box_layout.max_height = p.reset_box_layout.max_height.clone(),
     }
 }
 
@@ -111,12 +117,12 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
             bg_list(c, BgListProp::Image);
         }
         L::BackgroundPositionX => {
-            c.reset_background.bg_pos.x = p.reset_background.bg_pos.x;
+            c.reset_background.bg_pos.x = p.reset_background.bg_pos.x.clone();
             c.reset_background.bg_position_math[0] = p.reset_background.bg_position_math[0].clone();
             bg_list(c, BgListProp::PositionX);
         }
         L::BackgroundPositionY => {
-            c.reset_background.bg_pos.y = p.reset_background.bg_pos.y;
+            c.reset_background.bg_pos.y = p.reset_background.bg_pos.y.clone();
             c.reset_background.bg_position_math[1] = p.reset_background.bg_position_math[1].clone();
             bg_list(c, BgListProp::PositionY);
         }
@@ -133,7 +139,7 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
             bg_list(c, BgListProp::Clip);
         }
         L::BackgroundSize => {
-            c.reset_background.bg_size = p.reset_background.bg_size;
+            c.reset_background.bg_size = p.reset_background.bg_size.clone();
             bg_list(c, BgListProp::Size);
         }
         L::BackgroundAttachment => {

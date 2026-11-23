@@ -17,10 +17,10 @@ pub(crate) fn layer_route(
     idx: usize,
     cx: &crate::layout::cx::LayoutCx,
 ) -> (bool, bool, bool, bool, bool, bool, bool) {
-    let x_set = edge_set(e.style.used().reset_positioned.inset.left)
-        || edge_set(e.style.used().reset_positioned.inset.right);
-    let y_set = edge_set(e.style.used().reset_positioned.inset.top)
-        || edge_set(e.style.used().reset_positioned.inset.bottom);
+    let x_set = edge_set(e.style.used().reset_positioned.inset.left.clone())
+        || edge_set(e.style.used().reset_positioned.inset.right.clone());
+    let y_set = edge_set(e.style.used().reset_positioned.inset.top.clone())
+        || edge_set(e.style.used().reset_positioned.inset.bottom.clone());
     // `fixed` считается ОТ ОКНА всегда (§10.1 п.3): позиционированный
     // предок ему не содержащий блок, и заданной оси от него не
     // требуется — незаданная сторона держит статическое место. Пока он

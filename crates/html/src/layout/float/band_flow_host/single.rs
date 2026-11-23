@@ -41,24 +41,24 @@ pub(super) async fn build(
         || c.clamp_lines().is_some()
         || c.clamp_by_height()
         || ![
-            c.reset_box_layout.margin.top,
-            c.reset_box_layout.margin.right,
-            c.reset_box_layout.margin.bottom,
-            c.reset_box_layout.margin.left,
+            c.reset_box_layout.margin.top.clone(),
+            c.reset_box_layout.margin.right.clone(),
+            c.reset_box_layout.margin.bottom.clone(),
+            c.reset_box_layout.margin.left.clone(),
         ]
         .into_iter()
         .all(zero)
         || ![
-            c.reset_box_layout.width,
-            c.reset_box_layout.height,
-            c.reset_box_layout.min_width,
-            c.reset_box_layout.max_width,
-            c.reset_box_layout.min_height,
-            c.reset_box_layout.max_height,
-            c.reset_box_layout.padding.top,
-            c.reset_box_layout.padding.right,
-            c.reset_box_layout.padding.bottom,
-            c.reset_box_layout.padding.left,
+            c.reset_box_layout.width.clone(),
+            c.reset_box_layout.height.clone(),
+            c.reset_box_layout.min_width.clone(),
+            c.reset_box_layout.max_width.clone(),
+            c.reset_box_layout.min_height.clone(),
+            c.reset_box_layout.max_height.clone(),
+            c.reset_box_layout.padding.top.clone(),
+            c.reset_box_layout.padding.right.clone(),
+            c.reset_box_layout.padding.bottom.clone(),
+            c.reset_box_layout.padding.left.clone(),
         ]
         .into_iter()
         .all(absolute)

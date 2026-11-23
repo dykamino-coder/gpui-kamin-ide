@@ -42,9 +42,20 @@ pub(super) fn cell_box_div(
             bottom: fixup(own.bottom, merged.bottom),
             left: fixup(own.left, merged.left),
         };
-        let padding = sides(own.reset_box_layout.padding, cm.reset_box_layout.padding);
-        let height = fixup(own.reset_box_layout.height, cm.reset_box_layout.height);
-        if (padding, height) != (own.reset_box_layout.padding, own.reset_box_layout.height) {
+        let padding = sides(
+            own.reset_box_layout.padding.clone(),
+            cm.reset_box_layout.padding.clone(),
+        );
+        let height = fixup(
+            own.reset_box_layout.height.clone(),
+            cm.reset_box_layout.height.clone(),
+        );
+        if (padding.clone(), height.clone())
+            != (
+                own.reset_box_layout.padding.clone(),
+                own.reset_box_layout.height.clone(),
+            )
+        {
             let layout = &mut c.used_mut().reset_box_layout;
             layout.padding = padding;
             layout.height = height;
@@ -54,7 +65,10 @@ pub(super) fn cell_box_div(
         // только `Px` (`paint/apply/`: прочие длины молча отбрасываются),
         // и рамка пропадала целиком (`table-height-algorithm-008b/c`
         // против зелёной `-008a`, где то же самое написано отступом).
-        let border = sides(own.reset_border.border_width, cm.reset_border.border_width);
+        let border = sides(
+            own.reset_border.border_width.clone(),
+            cm.reset_border.border_width.clone(),
+        );
         if border != own.reset_border.border_width {
             c.used_mut().reset_border.border_width = border;
         }
@@ -63,16 +77,21 @@ pub(super) fn cell_box_div(
         // (`table-cell-align-002`: `.5em` at 20px drew at 8px).
         let (own_bg, merged_bg) = (&own.reset_background, &cm.reset_background);
         let pos = (
-            fixup(own_bg.bg_pos.x, merged_bg.bg_pos.x),
-            fixup(own_bg.bg_pos.y, merged_bg.bg_pos.y),
+            fixup(own_bg.bg_pos.x.clone(), merged_bg.bg_pos.x.clone()),
+            fixup(own_bg.bg_pos.y.clone(), merged_bg.bg_pos.y.clone()),
         );
-        let size = match (own_bg.bg_size, merged_bg.bg_size) {
+        let size = match (own_bg.bg_size.clone(), merged_bg.bg_size.clone()) {
             (BgSize::Fixed(w, h), BgSize::Fixed(mw, mh)) => {
                 BgSize::Fixed(fixup(w, mw), fixup(h, mh))
             }
             (own, _) => own,
         };
-        if (pos, size) != ((own_bg.bg_pos.x, own_bg.bg_pos.y), own_bg.bg_size) {
+        if (pos.clone(), size.clone())
+            != (
+                (own_bg.bg_pos.x.clone(), own_bg.bg_pos.y.clone()),
+                own_bg.bg_size.clone(),
+            )
+        {
             let background = &mut c.used_mut().reset_background;
             (background.bg_pos.x, background.bg_pos.y) = pos;
             background.bg_size = size;
@@ -150,10 +169,10 @@ pub(super) fn cell_box_div(
     let own_pct = cell.style.used().reset_positioned.position
         == Some(crate::style::computed::Position::Relative)
         && [
-            cell.style.used().reset_positioned.inset.left,
-            cell.style.used().reset_positioned.inset.right,
-            cell.style.used().reset_positioned.inset.top,
-            cell.style.used().reset_positioned.inset.bottom,
+            cell.style.used().reset_positioned.inset.left.clone(),
+            cell.style.used().reset_positioned.inset.right.clone(),
+            cell.style.used().reset_positioned.inset.top.clone(),
+            cell.style.used().reset_positioned.inset.bottom.clone(),
         ]
         .iter()
         .any(|l| matches!(l, Some(Len::Pct(_))));

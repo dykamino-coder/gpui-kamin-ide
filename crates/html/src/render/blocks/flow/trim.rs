@@ -64,12 +64,12 @@ pub(super) fn para_flags(own: Trim, first: bool, last: bool) -> Trim {
 fn first_line_root(line_style: &Computed) -> Computed {
     let mut c = line_style.clone();
     if let Some(fl) = line_style.reset_text_box.first_line.as_deref() {
-        let base = px_strict(line_style.inh.font.font_size);
+        let base = px_strict(line_style.inh.font.font_size.clone());
         c.overlay_font_size(fl);
-        c.inh.font.font_size = match (fl.inh.font.font_size, base) {
+        c.inh.font.font_size = match (fl.inh.font.font_size.clone(), base) {
             (Some(Len::Em(k)), Some(b)) | (Some(Len::Pct(k)), Some(b)) => Some(Len::Px(k * b)),
             (Some(v), _) => Some(v),
-            (None, _) => line_style.inh.font.font_size,
+            (None, _) => line_style.inh.font.font_size.clone(),
         };
         if fl
             .inh
@@ -80,7 +80,11 @@ fn first_line_root(line_style: &Computed) -> Computed {
         {
             c.inh.font.font_family = fl.inh.font.font_family.clone();
         }
-        c.inh.font.line_height = fl.inh.font.line_height.or(line_style.inh.font.line_height);
+        c.inh.font.line_height = fl.inh.font.line_height.clone().or(line_style
+            .inh
+            .font
+            .line_height
+            .clone());
     }
     c
 }

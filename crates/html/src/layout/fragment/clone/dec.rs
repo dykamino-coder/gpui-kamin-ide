@@ -51,7 +51,7 @@ pub(crate) fn clone_dec(c: &Element) -> Option<(f32, f32)> {
     {
         return None;
     }
-    let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(*l);
+    let px_of = |l: &Option<Len>| crate::style::values::value::px_lossy_zero(l.clone());
     let b = c.style.used().borders();
     let dt = px_of(&c.style.used().reset_box_layout.padding.top) + px_of(&b.top);
     let db = px_of(&c.style.used().reset_box_layout.padding.bottom) + px_of(&b.bottom);

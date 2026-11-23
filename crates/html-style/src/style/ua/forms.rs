@@ -37,6 +37,7 @@ pub fn text_style(style: &BoxStyle, vcx: ValueCx<'_>) -> BoxStyle {
         .inh
         .font
         .line_height
+        .clone()
         .and_then(|l| l.to_px(None, FontCx::new(family, font), vcx))
         .unwrap_or(normal);
     c.inh.font.line_height = Some(Len::Px(line.max(normal)));
@@ -70,7 +71,8 @@ mod tests {
         let normal = text_style(&BoxStyle::from(c.clone()), vcx)
             .inh
             .font
-            .line_height;
+            .line_height
+            .clone();
         c.inh.font.line_height = Some(Len::Px(1.));
         assert_eq!(
             text_style(&BoxStyle::from(c.clone()), vcx)

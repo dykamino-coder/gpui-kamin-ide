@@ -16,11 +16,12 @@ pub(crate) fn column_flow(
 ) -> Option<AnyElement> {
     let mut dimensions: MulticolDimensions = MulticolDimensions::for_element(e, inherited);
     if !e.marks.spanner_content_box {
-        dimensions.preferred[1] = inherited.reset_box_layout.height.or(e
+        dimensions.preferred[1] = inherited.reset_box_layout.height.clone().or(e
             .style
             .used()
             .reset_box_layout
-            .height);
+            .height
+            .clone());
         dimensions.border_box = e.style.used().reset_border.border_box == Some(true);
     }
     column_flow_with_dimensions(e, inherited, opts, count, col_w, outer, dimensions)

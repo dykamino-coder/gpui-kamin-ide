@@ -16,8 +16,8 @@ impl Paragraph {
                 .color
                 .is_some_and(|color| color.a == 1.0)
             && c.paint_background().top.clip != Some(crate::style::computed::BgClip::Text)
-            && !empty(c.reset_box_layout.width)
-            && !empty(c.reset_box_layout.height);
+            && !empty(c.reset_box_layout.width.clone())
+            && !empty(c.reset_box_layout.height.clone());
         self
     }
 

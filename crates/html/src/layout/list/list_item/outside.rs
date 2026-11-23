@@ -17,7 +17,7 @@ pub(super) fn position(m: Div, item: &Computed, merged: &Computed) -> Div {
     }
     .absolute();
     let b = item.borders();
-    let border = [b.top, b.right, b.bottom, b.left][wm.inline_start().index()];
+    let border = [b.top, b.right, b.bottom, b.left][wm.inline_start().index()].clone();
     let border = match border {
         Some(Len::Px(v)) if v > 0.0 => v,
         _ => 0.0,

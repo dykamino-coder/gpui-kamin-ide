@@ -51,7 +51,7 @@ impl AnchorPlan {
         let y_axis = k.is_multiple_of(2);
         let end_side = k == 1 || k == 2;
         let sign = if end_side { -1.0 } else { 1.0 };
-        match self.inset[k] {
+        match self.inset[k].clone() {
             Some(Len::Px(v)) => cell_edge + sign * v,
             Some(Len::Pct(p)) => cell_edge + sign * p * cell_len,
             Some(Len::Anchor(i)) => match anchor_get(i, vcx) {
@@ -92,9 +92,9 @@ impl AnchorPlan {
         }
         let set = |l: Option<Len>| !matches!(l, None | Some(Len::Auto));
         let (s_set, e_set) = if x_axis {
-            (set(self.inset[3]), set(self.inset[1]))
+            (set(self.inset[3].clone()), set(self.inset[1].clone()))
         } else {
-            (set(self.inset[0]), set(self.inset[2]))
+            (set(self.inset[0].clone()), set(self.inset[2].clone()))
         };
         match (s_set, e_set) {
             (true, false) => (Al::Start, false, false),

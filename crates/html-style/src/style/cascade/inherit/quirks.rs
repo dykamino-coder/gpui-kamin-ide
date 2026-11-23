@@ -32,15 +32,15 @@ pub(super) fn percentage_height(
     );
     // Опора считается по ЗАДАННОЙ высоте коробки (своя запись или доля,
     // решённая квирком), как её видит предок-коробка.
-    let mut height = own.reset_box_layout.height;
+    let mut height = own.reset_box_layout.height.clone();
     if let (Some(L::Pct(k)), false, false, Some(base)) = (
-        own.reset_box_layout.height,
+        own.reset_box_layout.height.clone(),
         c.cb_height_def,
         tabular,
         parent.quirk_pct_base,
     ) {
         height = Some(L::Px(k * base));
-        set!(c.reset_box_layout.height, height);
+        set!(c.reset_box_layout.height, height.clone());
     }
     // Only block containers and table wrappers transmit an indefinite
     // percentage basis. Flex/grid containers stop the quirks ancestor walk.

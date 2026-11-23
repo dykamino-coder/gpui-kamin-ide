@@ -30,13 +30,13 @@ pub(super) fn table_size_floors(
     };
     let pad = &e.style.used().reset_box_layout.padding;
     let pad_px = [
-        px_of(pad.top),
-        px_of(pad.right),
-        px_of(pad.bottom),
-        px_of(pad.left),
+        px_of(pad.top.clone()),
+        px_of(pad.right.clone()),
+        px_of(pad.bottom.clone()),
+        px_of(pad.left.clone()),
     ];
     let min_h = min_fix(
-        e.style.used().reset_box_layout.min_height,
+        e.style.used().reset_box_layout.min_height.clone(),
         bw[0] + bw[2] + pad_px[0] + pad_px[2],
     );
     // Проверено: поднимать нижнюю грань ширины таблицы до суммы дорожек с
@@ -45,7 +45,7 @@ pub(super) fn table_size_floors(
     // `fixed-table-layout-02*`): минимум доезжает, но заданную ширину не
     // перебивает — упирается ниже, в раздачу дорожек внутри сетки.
     let min_w = min_fix(
-        e.style.used().reset_box_layout.min_width,
+        e.style.used().reset_box_layout.min_width.clone(),
         bw[1] + bw[3] + pad_px[1] + pad_px[3],
     );
     // У ТЕГА `<table>` ширина считается по BORDER-BOX (UA-правило

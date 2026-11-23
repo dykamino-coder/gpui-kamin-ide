@@ -31,9 +31,9 @@ pub(crate) fn ratio_as_auto_min(c: &Computed, sizes: &BoxDimensions) -> bool {
         // действует как у блока (`abspos-012/013`).
         && !(matches!(c.reset_positioned.position, Some(Position::Absolute) | Some(Position::Fixed))
             && (if px_w {
-                set_len(c.reset_positioned.inset.top) && set_len(c.reset_positioned.inset.bottom)
+                set_len(c.reset_positioned.inset.top.clone()) && set_len(c.reset_positioned.inset.bottom.clone())
             } else {
-                set_len(c.reset_positioned.inset.left) && set_len(c.reset_positioned.inset.right)
+                set_len(c.reset_positioned.inset.left.clone()) && set_len(c.reset_positioned.inset.right.clone())
             }))
         && (px_w != px_h)
         && (if px_w {

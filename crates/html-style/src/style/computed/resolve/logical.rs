@@ -85,13 +85,14 @@ impl Computed {
                 self.reset_box_layout.width_from_inline = true;
             }
             let value = [
-                logical.inline_size,
-                logical.block_size,
-                logical.min_inline,
-                logical.min_block,
-                logical.max_inline,
-                logical.max_block,
-            ][i];
+                logical.inline_size.clone(),
+                logical.block_size.clone(),
+                logical.min_inline.clone(),
+                logical.min_block.clone(),
+                logical.max_inline.clone(),
+                logical.max_block.clone(),
+            ][i]
+                .clone();
             self.set_physical_size(phys, value, logical.size_inherit[i]);
         }
         let (b_start, i_start) = (wm.block_start(), wm.inline_start());

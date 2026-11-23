@@ -96,23 +96,23 @@ pub(crate) fn scrollable(
                     other => other,
                 };
                 inner.style.used_mut().reset_box_layout.height =
-                    of(inner.style.used().reset_box_layout.height);
+                    of(inner.style.used().reset_box_layout.height.clone());
                 inner.style.used_mut().reset_box_layout.min_height =
-                    of(inner.style.used().reset_box_layout.min_height);
+                    of(inner.style.used().reset_box_layout.min_height.clone());
                 inner.style.used_mut().reset_box_layout.max_height =
-                    of(inner.style.used().reset_box_layout.max_height);
+                    of(inner.style.used().reset_box_layout.max_height.clone());
             }
             // Наружный отступ принадлежит коробке, а не видимой области:
             // оставленный внутри, он увеличивал ленту на свою величину, и
             // содержимое было видно ниже края панели.
-            let outer_margin = inner.style.used().reset_box_layout.margin;
+            let outer_margin = inner.style.used().reset_box_layout.margin.clone();
             inner.style.used_mut().reset_box_layout.margin = Default::default();
             let target = crate::interactive::scroll_target::Target::new(
                 node.node_id,
                 handle,
                 h,
                 v,
-                outer_margin,
+                outer_margin.clone(),
             );
             let inner_opts = opts.inner(|cx| {
                 cx.scroll.enter(target.clone(), frame, handle.clone());
@@ -165,8 +165,8 @@ pub(crate) fn scrollable(
                     _ => None,
                 };
                 let b = sized.borders();
-                let edges = side(dimensions.padding.left)
-                    .zip(side(dimensions.padding.right))
+                let edges = side(dimensions.padding.left.clone())
+                    .zip(side(dimensions.padding.right.clone()))
                     .zip(side(b.left).zip(side(b.right)))
                     .map(|((pl, pr), (bl, br))| pl + pr + bl + br);
                 let lane = if inner.style.used().reset_border.border_box == Some(true) {

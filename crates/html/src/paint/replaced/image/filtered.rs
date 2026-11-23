@@ -44,7 +44,12 @@ impl FilteredImage {
             Some(Len::Pct(p)) => p * free,
             _ => free * 0.5,
         };
-        let pos = self.style.reset_shapes.object_position.unwrap_or_default();
+        let pos = self
+            .style
+            .reset_shapes
+            .object_position
+            .clone()
+            .unwrap_or_default();
         Bounds {
             origin: gpui::point(
                 bounds.origin.x + px(position(pos.x, bw - w)),

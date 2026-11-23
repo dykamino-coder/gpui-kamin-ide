@@ -50,8 +50,8 @@ fn rasterize_uncached(
     let repeating = g.repeating;
     let from = g.from;
     let center = (
-        len_px(g.position.x, size.0, vcx)?,
-        len_px(g.position.y, size.1, vcx)?,
+        len_px(g.position.x.clone(), size.0, vcx)?,
+        len_px(g.position.y.clone(), size.1, vcx)?,
     );
     let stops = &g.stops;
     let hints = &g.hints;

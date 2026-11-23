@@ -200,7 +200,7 @@ pub(super) fn inherit_containing(
             || laid_out_parent
             || parent.stretched
             || ratio_height
-            || match parent.reset_box_layout.height {
+            || match parent.reset_box_layout.height.clone() {
                 Some(crate::style::values::value::Len::Px(_)) => true,
                 // Доля высоты у абсолютной/фиксированной коробки решается ВСЕГДА
                 // (§10.5: оговорка «not absolutely positioned»; её же держит гейт
@@ -212,7 +212,7 @@ pub(super) fn inherit_containing(
                 // `calc(100% - 16px)` is a length-percentage: definite exactly when its
                 // percentage basis is (css-values-4 §10.9, CSS 2.1 §10.5).
                 Some(crate::style::values::value::Len::Calc(i))
-                    if crate::style::values::value::calc_get(i, vcx)
+                    if crate::style::values::value::calc_get(i.clone(), vcx)
                         .pct_px()
                         .is_some_and(|(pct, _)| pct == 0.0) =>
                 {

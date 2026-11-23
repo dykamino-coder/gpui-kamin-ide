@@ -13,7 +13,7 @@ impl Computed {
     /// которую свернул бы `Len::fold_viewport`, или обход пишет в стиль и без неё (не
     /// приведённые стопы градиента, отрицательный радиус).
     pub fn has_viewport_lengths(&self, vcx: ValueCx<'_>) -> bool {
-        let moves = |length: Len| length.folds_viewport(vcx);
+        let moves = |length: &Len| length.folds_viewport(vcx);
         let fix = |_: &mut Option<Len>| {};
         let mut probe = Probe {
             style: self,

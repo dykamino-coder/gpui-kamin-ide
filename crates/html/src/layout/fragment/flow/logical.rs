@@ -18,41 +18,41 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
         return None;
     }
     let turn = |s: &crate::style::computed::Sides| crate::style::computed::Sides {
-        top: if rl { s.right } else { s.left },
-        bottom: if rl { s.left } else { s.right },
+        top: if rl { s.right.clone() } else { s.left.clone() },
+        bottom: if rl { s.left.clone() } else { s.right.clone() },
         left: if c.style.cascaded().wm().rtl() {
-            s.bottom
+            s.bottom.clone()
         } else {
-            s.top
+            s.top.clone()
         },
         right: if c.style.cascaded().wm().rtl() {
-            s.top
+            s.top.clone()
         } else {
-            s.bottom
+            s.bottom.clone()
         },
     };
     let mut t = c.clone();
     let source = c.style.used();
     let used = &mut *t.style.used_mut();
     {
-        let first_value = used.reset_box_layout.width;
-        let second_value = used.reset_box_layout.height;
+        let first_value = used.reset_box_layout.width.clone();
+        let second_value = used.reset_box_layout.height.clone();
         let first = &mut used.reset_box_layout.width;
         *first = second_value;
         let second = &mut used.reset_box_layout.height;
         *second = first_value;
     }
     {
-        let first_value = used.reset_box_layout.min_width;
-        let second_value = used.reset_box_layout.min_height;
+        let first_value = used.reset_box_layout.min_width.clone();
+        let second_value = used.reset_box_layout.min_height.clone();
         let first = &mut used.reset_box_layout.min_width;
         *first = second_value;
         let second = &mut used.reset_box_layout.min_height;
         *second = first_value;
     }
     {
-        let first_value = used.reset_box_layout.max_width;
-        let second_value = used.reset_box_layout.max_height;
+        let first_value = used.reset_box_layout.max_width.clone();
+        let second_value = used.reset_box_layout.max_height.clone();
         let first = &mut used.reset_box_layout.max_width;
         *first = second_value;
         let second = &mut used.reset_box_layout.max_height;
@@ -83,7 +83,7 @@ pub(super) fn recorded_tree(c: &Element, rl: bool) -> Option<Element> {
     used.reset_box_layout.overflow_x = source.reset_box_layout.overflow_y;
     // `border-spacing` физическое (`horizontal vertical`), ряды таблицы идут
     // по оси потока: между рядами в вертикали — ГОРИЗОНТАЛЬНАЯ составляющая.
-    if let Some((x, y)) = source.inh.table_list.border_spacing {
+    if let Some((x, y)) = source.inh.table_list.border_spacing.clone() {
         used.inh.table_list.border_spacing = Some((y, x));
     }
     t.children = c

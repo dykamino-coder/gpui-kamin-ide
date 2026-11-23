@@ -99,6 +99,7 @@ pub fn element_transform(e: &Element, viewport: (f32, f32)) -> (Option<String>, 
         .used()
         .reset_transforms
         .translate
+        .clone()
         .filter(|_| e.tag != "svg")
         .and_then(|(x, y)| {
             let axis = |l: crate::style::values::value::Len, base: f32| match l {

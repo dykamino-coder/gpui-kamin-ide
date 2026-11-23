@@ -1,15 +1,13 @@
-//! Суммы calc() в арене документа (Len::Calc хранит ручку), свёртка простых сумм, интерполяция и числа.
+//! Immutable calc sums, interpolation, simple folding, and numeric expressions.
 
 use super::*;
 use crate::values::ValueCx;
 
-/// Ручка смешанной суммы `calc()` (`Len::Calc`): тело живёт в арене
-/// документа (`values::arena`) и освобождается вместе с ним.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CalcId(crate::values::ArenaKey);
+/// Immutable sum shared by exactly the styles and frames that read it.
+pub type CalcId = crate::values::ValueRef<Sum>;
 
-pub fn calc_store(s: Sum, vcx: ValueCx<'_>) -> CalcId {
-    CalcId(crate::values::store(vcx, |d| &d.calc, s))
+pub fn calc_store(s: Sum, _vcx: ValueCx<'_>) -> CalcId {
+    CalcId::new(s)
 }
 
 /// Margins and padding resolve percentages against the containing block's
@@ -19,7 +17,7 @@ pub fn calc_store(s: Sum, vcx: ValueCx<'_>) -> CalcId {
 /// an indefinite basis changes behaviour (heights, insets: CSS Values 4 §10.11).
 pub fn fold_zero_percentage(l: Option<Len>, vcx: ValueCx<'_>) -> Option<Len> {
     match l {
-        Some(Len::Calc(i)) => {
+        Some(Len::Calc(ref i)) => {
             let s = calc_get(i, vcx);
             if s.has_percentage && s.pct == 0.0 {
                 Sum {
@@ -36,10 +34,9 @@ pub fn fold_zero_percentage(l: Option<Len>, vcx: ValueCx<'_>) -> Option<Len> {
     }
 }
 
-/// Сумма по ручке. Чужая или устаревшая ручка — ошибка связи
-/// (`debug_assert` в арене); запасное значение — нулевая сумма, явно.
-pub fn calc_get(i: CalcId, vcx: ValueCx<'_>) -> Sum {
-    crate::values::load(vcx, |d| &d.calc, i.0).unwrap_or_default()
+/// Reading an expression does not depend on the document providing its bases.
+pub fn calc_get(i: impl std::borrow::Borrow<CalcId>, _vcx: ValueCx<'_>) -> Sum {
+    *i.borrow().read()
 }
 
 /// Интерполяция длин РАЗНЫХ природ покомпонентно, как `calc()` (css-values-4
@@ -73,12 +70,7 @@ pub fn number(s: &str, vcx: ValueCx<'_>) -> Option<f32> {
     css_number(s)
 }
 
-/// `calc()` из долей и точек — парой `(доля, точки)`, БЕЗ записи в арену.
-///
-/// Для потребителей на отрисовке (`shape()`, центр `circle()`/`ellipse()`):
-/// они зовутся каждый кадр, и `parse_mixed` копил бы по записи на кадр в
-/// области кадра документа. Любая другая
-/// природа (`em`, `vw`…) — `None`.
+/// Read a percentage/pixel calc pair without allocating an expression. Paint consumers call this every frame; other units return None.
 pub fn calc_pct_px(raw: &str, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     let inner = raw.trim().strip_prefix("calc(")?.strip_suffix(')')?;
     let s = Calc::new(inner).sum(vcx)?;

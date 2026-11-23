@@ -125,11 +125,11 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Cow
                         Some(crate::style::computed::Position::Relative);
                     if block.style.used().reset_positioned.inset.left.is_none() {
                         block.style.used_mut().reset_positioned.inset.left =
-                            e.style.used().reset_positioned.inset.left;
+                            e.style.used().reset_positioned.inset.left.clone();
                     }
                     if block.style.used().reset_positioned.inset.top.is_none() {
                         block.style.used_mut().reset_positioned.inset.top =
-                            e.style.used().reset_positioned.inset.top;
+                            e.style.used().reset_positioned.inset.top.clone();
                     }
                 }
                 // `inherit` на размере вынесенного блока брал бы значение уже
@@ -144,7 +144,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Cow
                     .contains(L::Width)
                 {
                     block.style.used_mut().reset_box_layout.width =
-                        e.style.used().reset_box_layout.width;
+                        e.style.used().reset_box_layout.width.clone();
                     block
                         .style
                         .used_mut()
@@ -160,7 +160,7 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Cow
                     .contains(L::Height)
                 {
                     block.style.used_mut().reset_box_layout.height =
-                        e.style.used().reset_box_layout.height;
+                        e.style.used().reset_box_layout.height.clone();
                     block
                         .style
                         .used_mut()
@@ -188,9 +188,9 @@ pub(crate) fn split_block_in_inline_dir(nodes: &[Node], parent_rtl: bool) -> Cow
                     shifter.style.used_mut().reset_positioned.position =
                         Some(crate::style::computed::Position::Relative);
                     shifter.style.used_mut().reset_positioned.inset.left =
-                        e.style.used().reset_positioned.inset.left;
+                        e.style.used().reset_positioned.inset.left.clone();
                     shifter.style.used_mut().reset_positioned.inset.top =
-                        e.style.used().reset_positioned.inset.top;
+                        e.style.used().reset_positioned.inset.top.clone();
                     out.push(Node::Element(shifter));
                     continue;
                 }

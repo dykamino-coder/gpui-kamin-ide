@@ -15,7 +15,7 @@ fn scalar_background_lengths_compute_without_an_image_and_inherit_absolutely() {
         own.apply_one("background-position", "calc(50% + 2em) 3em", vcx);
         own.apply_one("background-size", "calc(25% + 4em) 5em", vcx);
         let parent = computed(&Computed::default(), &own, vcx);
-        let Some(Len::Calc(position)) = parent.reset_background.bg_pos.x else {
+        let Some(Len::Calc(ref position)) = parent.reset_background.bg_pos.x else {
             panic!("percentage must remain in computed position: {image}")
         };
         assert_eq!(
@@ -23,7 +23,7 @@ fn scalar_background_lengths_compute_without_an_image_and_inherit_absolutely() {
             Some((0.5, 40.0))
         );
         assert_eq!(parent.reset_background.bg_pos.y, Some(Len::Px(60.0)));
-        let BgSize::Fixed(Some(Len::Calc(size)), Some(Len::Px(height))) =
+        let BgSize::Fixed(Some(Len::Calc(ref size)), Some(Len::Px(height))) =
             parent.reset_background.bg_size
         else {
             panic!("percentage must remain in computed size: {image}")
@@ -57,7 +57,7 @@ fn scalar_background_line_units_compute_without_an_image() {
     own.apply_one("background-size", "3lh 50%", vcx);
     let result = computed(&Computed::default(), &own, vcx);
     assert_eq!(result.reset_background.bg_pos.x, Some(Len::Px(40.0)));
-    let Some(Len::Calc(position)) = result.reset_background.bg_pos.y else {
+    let Some(Len::Calc(ref position)) = result.reset_background.bg_pos.y else {
         panic!("percentage must remain in computed position")
     };
     assert_eq!(

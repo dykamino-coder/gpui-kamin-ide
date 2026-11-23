@@ -57,14 +57,14 @@ pub(crate) async fn generic_children(
                 let (border, pad, own) = if reverse {
                     (
                         b.right,
-                        e.style.used().reset_box_layout.padding.right,
-                        e.style.used().reset_box_layout.margin.right,
+                        e.style.used().reset_box_layout.padding.right.clone(),
+                        e.style.used().reset_box_layout.margin.right.clone(),
                     )
                 } else {
                     (
                         b.left,
-                        e.style.used().reset_box_layout.padding.left,
-                        e.style.used().reset_box_layout.margin.left,
+                        e.style.used().reset_box_layout.padding.left.clone(),
+                        e.style.used().reset_box_layout.margin.left.clone(),
                     )
                 };
                 // Независимый контекст форматирования (overflow не

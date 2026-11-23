@@ -6,7 +6,8 @@ use crate::values::ValueCx;
 
 impl Gradient {
     pub fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
-        let needs_line = |length: &Option<Len>| length.is_some_and(|l| l.needs_line_height(vcx));
+        let needs_line =
+            |length: &Option<Len>| length.as_ref().is_some_and(|l| l.needs_line_height(vcx));
         self.stop_lengths.iter().any(needs_line)
             || match &self.shape {
                 GradientShape::Radial { position, size, .. } => {
@@ -14,7 +15,7 @@ impl Gradient {
                         || needs_line(&position.y)
                         || match size {
                             RadialSize::Explicit(first, second) => {
-                                needs_line(&Some(*first)) || needs_line(second)
+                                first.needs_line_height(vcx) || needs_line(second)
                             }
                             _ => false,
                         }
@@ -31,21 +32,22 @@ impl Gradient {
     /// Изменит ли `resolve_lengths` градиент: `moves` — длины, которые меняет его `fix`. Ответ
     /// по ссылке, без копии: стоп сворачивается или уже приводится к доле и точкам, список
     /// длин стопов пора очистить, у радиального сворачивается позиция или размер.
-    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool, vcx: ValueCx<'_>) -> bool {
-        let moves = |length: &Option<Len>| length.is_some_and(&moves);
+    pub fn lengths_pending(&self, moves: impl Fn(&Len) -> bool, vcx: ValueCx<'_>) -> bool {
+        let moves_one = moves;
+        let moves = |length: &Option<Len>| length.as_ref().is_some_and(&moves_one);
         let stops = &self.stop_lengths;
         (!stops.is_empty()
             && (stops.iter().all(Option::is_none)
                 || stops
                     .iter()
-                    .any(|l| moves(l) || stop_terms(*l, vcx).is_some())))
+                    .any(|l| moves(l) || stop_terms(l.as_ref(), vcx).is_some())))
             || match &self.shape {
                 GradientShape::Radial { position, size, .. } => {
                     moves(&position.x)
                         || moves(&position.y)
                         || match size {
                             RadialSize::Explicit(first, second) => {
-                                moves(&Some(*first)) || moves(second)
+                                moves_one(first) || moves(second)
                             }
                             _ => false,
                         }
@@ -58,7 +60,7 @@ impl Gradient {
         if !self.stop_lengths.is_empty() {
             for (length, stop) in self.stop_lengths.iter_mut().zip(&mut self.stops_raw) {
                 fix(length);
-                if let Some((pct, px)) = stop_terms(*length, vcx) {
+                if let Some((pct, px)) = stop_terms(length.as_ref(), vcx) {
                     stop.1 = (pct != 0.0 || matches!(length, Some(Len::Pct(_) | Len::Calc(_))))
                         .then_some(pct);
                     stop.2 = (px != 0.0 || pct == 0.0).then_some(px);
@@ -91,7 +93,7 @@ impl Gradient {
             fix(&mut position.x);
             fix(&mut position.y);
             if let RadialSize::Explicit(first, second) = size {
-                let mut length = Some(*first);
+                let mut length = Some(first.clone());
                 fix(&mut length);
                 if let Some(length) = length {
                     *first = length;
@@ -103,10 +105,10 @@ impl Gradient {
 }
 
 /// Доля и точки стопа, который уже можно нормализовать; `None` — длина ещё не решена.
-fn stop_terms(length: Option<Len>, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
+fn stop_terms(length: Option<&Len>, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
     match length? {
-        Len::Px(px) => Some((0.0, px)),
-        Len::Pct(pct) => Some((pct, 0.0)),
+        Len::Px(px) => Some((0.0, *px)),
+        Len::Pct(pct) => Some((*pct, 0.0)),
         Len::Calc(id) => calc_get(id, vcx).length_percentage(),
         _ => None,
     }
@@ -114,13 +116,13 @@ fn stop_terms(length: Option<Len>, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
 
 impl Computed {
     pub fn resolve_gradient_lengths(&mut self, fix: impl Fn(&mut Option<Len>), vcx: ValueCx<'_>) {
-        let size = match self.reset_background.bg_size {
+        let size = match self.reset_background.bg_size.clone() {
             BgSize::Fixed(w, h) => [w, h],
             _ => [None, None],
         };
         let uses_line = [
-            self.reset_background.bg_pos.x,
-            self.reset_background.bg_pos.y,
+            self.reset_background.bg_pos.x.clone(),
+            self.reset_background.bg_pos.y.clone(),
         ]
         .into_iter()
         .chain(size)
@@ -169,23 +171,23 @@ impl Computed {
         // Позиция и размер вычисляются и без изображения (css-backgrounds-3
         // §2.6, §2.9); процент остаётся для области позиционирования.
         let background = &*self.reset_background;
-        let pos = [background.bg_pos.x, background.bg_pos.y].map(|mut v| {
+        let pos = [background.bg_pos.x.clone(), background.bg_pos.y.clone()].map(|mut v| {
             fix(&mut v);
             v
         });
-        let size = match background.bg_size {
+        let size = match background.bg_size.clone() {
             BgSize::Fixed(w, h) => Some([w, h].map(|mut v| {
                 fix(&mut v);
                 v
             })),
             _ => None,
         };
-        if pos != [background.bg_pos.x, background.bg_pos.y] {
+        if pos != [background.bg_pos.x.clone(), background.bg_pos.y.clone()] {
             let group = &mut *self.reset_background;
-            (group.bg_pos.x, group.bg_pos.y) = (pos[0], pos[1]);
+            (group.bg_pos.x, group.bg_pos.y) = (pos[0].clone(), pos[1].clone());
         }
         if let Some([w, h]) = size
-            && self.reset_background.bg_size != BgSize::Fixed(w, h)
+            && self.reset_background.bg_size != BgSize::Fixed(w.clone(), h.clone())
         {
             self.reset_background.bg_size = BgSize::Fixed(w, h);
         }

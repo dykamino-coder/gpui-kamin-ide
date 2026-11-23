@@ -13,7 +13,7 @@ impl Computed {
     pub fn border_shape_stroke(&self) -> (f32, Color) {
         let side = self.border_shape_side();
         let w = self.borders();
-        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side]);
+        let width = px_lossy_zero([w.top, w.right, w.bottom, w.left][side].clone());
         (width, self.used_border_color(side))
     }
 
@@ -49,16 +49,16 @@ impl Computed {
         let b = self.borders();
         let bw = [px(b.top), px(b.right), px(b.bottom), px(b.left)];
         let pd = [
-            px(self.reset_box_layout.padding.top),
-            px(self.reset_box_layout.padding.right),
-            px(self.reset_box_layout.padding.bottom),
-            px(self.reset_box_layout.padding.left),
+            px(self.reset_box_layout.padding.top.clone()),
+            px(self.reset_box_layout.padding.right.clone()),
+            px(self.reset_box_layout.padding.bottom.clone()),
+            px(self.reset_box_layout.padding.left.clone()),
         ];
         let mg = [
-            px(self.reset_box_layout.margin.top),
-            px(self.reset_box_layout.margin.right),
-            px(self.reset_box_layout.margin.bottom),
-            px(self.reset_box_layout.margin.left),
+            px(self.reset_box_layout.margin.top.clone()),
+            px(self.reset_box_layout.margin.right.clone()),
+            px(self.reset_box_layout.margin.bottom.clone()),
+            px(self.reset_box_layout.margin.left.clone()),
         ];
         let mut out = [0.0f32; 4];
         for i in 0..4 {
@@ -166,14 +166,14 @@ impl Computed {
             Some(Len::Em(k)) => k * em,
             _ => 0.0,
         };
-        let w = match o.width {
+        let w = match o.width.clone() {
             None => 3.0,
             other => px_of(other),
         };
         if w <= 0.0 {
             return None;
         }
-        let off = if o.inset { -w } else { px_of(o.offset) };
+        let off = if o.inset { -w } else { px_of(o.offset.clone()) };
         let colour = self.used_outline_color(o);
         Some((w, off, colour))
     }

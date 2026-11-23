@@ -65,8 +65,10 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     }
     let px_of = px_lossy_zero;
     let (dx, dy) = (
-        px_of(style.reset_positioned.inset.left) - px_of(style.reset_positioned.inset.right),
-        px_of(style.reset_positioned.inset.top) - px_of(style.reset_positioned.inset.bottom),
+        px_of(style.reset_positioned.inset.left.clone())
+            - px_of(style.reset_positioned.inset.right.clone()),
+        px_of(style.reset_positioned.inset.top.clone())
+            - px_of(style.reset_positioned.inset.bottom.clone()),
     );
     if dx == 0.0 && dy == 0.0 {
         return pieces;

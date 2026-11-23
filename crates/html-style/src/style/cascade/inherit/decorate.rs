@@ -57,21 +57,22 @@ pub(super) fn decorate(
         let thickness = match c
             .reset_text_box
             .td_thickness
+            .clone()
             .map(resolve)
             .unwrap_or_default()
         {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             t => t,
         };
-        let offset = match c.inh.text_ink.underline_offset.unwrap_or_default() {
+        let offset = match c.inh.text_ink.underline_offset.clone().unwrap_or_default() {
             DecorLen::Pct(k) => DecorLen::Px(k * own_px),
             DecorLen::Px(v) => DecorLen::Px(v),
             _ => DecorLen::Auto,
         };
-        let inset = match c.reset_text_box.td_inset {
+        let inset = match c.reset_text_box.td_inset.clone() {
             Some(None) => None,
             Some(Some(pair)) => Some(pair),
-            None => Some([DecorLen::Px(0.0); 2]),
+            None => Some([const { DecorLen::Px(0.0) }; 2]),
         };
         let d = Decor {
             lines,

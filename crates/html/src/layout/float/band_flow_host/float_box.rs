@@ -85,7 +85,7 @@ pub(super) async fn float_box_stack(
         // The host owns placement margins; the clamp probe still needs the
         // float's non-collapsing end margin for the containing BFC's extent.
         probed.reset_box_layout.margin.bottom =
-            match source.style.used().reset_box_layout.margin.bottom {
+            match source.style.used().reset_box_layout.margin.bottom.clone() {
                 Some(crate::style::values::value::Len::Pct(k)) => {
                     Some(crate::style::values::value::Len::Px(k * cb))
                 }

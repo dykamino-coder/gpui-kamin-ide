@@ -112,14 +112,14 @@ pub(crate) fn canvas_layer(
             };
             let b = st.borders();
             let root_left = e.style.cascaded().wm().block_rl();
-            let padding = geometry.padding;
+            let padding = geometry.padding.clone();
             let area = crate::paint::background::RootArea {
                 scroll: target.map(|t| t.handle().clone()),
                 measured,
-                left: side(geometry.margin.left) + side(b.left),
-                top: side(geometry.margin.top) + side(b.top),
-                right: side(geometry.margin.right) + side(b.right),
-                bottom: side(geometry.margin.bottom) + side(b.bottom),
+                left: side(geometry.margin.left.clone()) + side(b.left),
+                top: side(geometry.margin.top.clone()) + side(b.top),
+                right: side(geometry.margin.right.clone()) + side(b.right),
+                bottom: side(geometry.margin.bottom.clone()) + side(b.bottom),
                 width: match geometry.width {
                     Some(Len::Px(w)) => Some(w + side(padding.left) + side(padding.right)),
                     _ => None,
@@ -182,12 +182,13 @@ pub(crate) fn canvas_layer(
         let mut band = div().absolute().top_0().bottom_0();
         band = match geometry.width {
             Some(Len::Px(w)) => {
-                let pad_w = w + side(geometry.padding.left) + side(geometry.padding.right);
+                let pad_w =
+                    w + side(geometry.padding.left.clone()) + side(geometry.padding.right.clone());
                 let band = band.w(px(pad_w));
                 if e.style.cascaded().wm().block_rl() {
-                    band.right(px(side(geometry.margin.right) + side(b.right)))
+                    band.right(px(side(geometry.margin.right.clone()) + side(b.right)))
                 } else {
-                    band.left(px(side(geometry.margin.left) + side(b.left)))
+                    band.left(px(side(geometry.margin.left.clone()) + side(b.left)))
                 }
             }
             _ => band.left_0().right_0(),

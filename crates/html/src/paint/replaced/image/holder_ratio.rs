@@ -24,8 +24,8 @@ pub(crate) fn apply(
     }
     let automatic = |length| matches!(length, None | Some(Len::Auto));
     let (width_auto, height_auto) = (
-        automatic(style.reset_box_layout.width),
-        automatic(style.reset_box_layout.height),
+        automatic(style.reset_box_layout.width.clone()),
+        automatic(style.reset_box_layout.height.clone()),
     );
     if width_auto == height_auto {
         // Both-auto flex images retain their intrinsic measured contribution.
@@ -63,16 +63,16 @@ fn natural_content_box(holder: &mut Div, style: &BoxStyle, vcx: ValueCx<'_>) -> 
     };
     let offsets = if style.reset_border.border_box == Some(true) {
         let Some(x) = edge([
-            style.reset_box_layout.padding.left,
-            style.reset_box_layout.padding.right,
+            style.reset_box_layout.padding.left.clone(),
+            style.reset_box_layout.padding.right.clone(),
             border.left,
             border.right,
         ]) else {
             return false;
         };
         let Some(y) = edge([
-            style.reset_box_layout.padding.top,
-            style.reset_box_layout.padding.bottom,
+            style.reset_box_layout.padding.top.clone(),
+            style.reset_box_layout.padding.bottom.clone(),
             border.top,
             border.bottom,
         ]) else {
@@ -83,19 +83,21 @@ fn natural_content_box(holder: &mut Div, style: &BoxStyle, vcx: ValueCx<'_>) -> 
         [0.0, 0.0]
     };
     let values = [
-        style.reset_box_layout.width,
-        style.reset_box_layout.height,
-        style.reset_box_layout.min_width,
-        style.reset_box_layout.min_height,
-        style.reset_box_layout.max_width,
-        style.reset_box_layout.max_height,
+        style.reset_box_layout.width.clone(),
+        style.reset_box_layout.height.clone(),
+        style.reset_box_layout.min_width.clone(),
+        style.reset_box_layout.min_height.clone(),
+        style.reset_box_layout.max_width.clone(),
+        style.reset_box_layout.max_height.clone(),
     ];
     let mut converted: [Option<Length>; 6] = [None; 6];
     for (index, value) in values.into_iter().enumerate() {
         let offset = offsets[index % 2];
         let percentage = match value {
             Some(Len::Pct(_)) => true,
-            Some(Len::Calc(index)) => crate::style::values::value::calc_get(index, vcx).pct != 0.0,
+            Some(Len::Calc(ref index)) => {
+                crate::style::values::value::calc_get(index, vcx).pct != 0.0
+            }
             _ => false,
         };
         if percentage

@@ -65,7 +65,7 @@ pub(crate) fn gap_rule_spec(
                 &s.reset_fragmentation.column_rule_styles,
                 &s.reset_fragmentation.column_rule_colors,
                 s.reset_fragmentation.column_rule_break,
-                s.reset_fragmentation.column_rule_inset,
+                s.reset_fragmentation.column_rule_inset.clone(),
                 s.reset_fragmentation.column_rule_visibility,
             )
         } else {
@@ -77,7 +77,7 @@ pub(crate) fn gap_rule_spec(
                 &s.reset_fragmentation.row_rule_styles,
                 &s.reset_fragmentation.row_rule_colors,
                 s.reset_fragmentation.row_rule_break,
-                s.reset_fragmentation.row_rule_inset,
+                s.reset_fragmentation.row_rule_inset.clone(),
                 s.reset_fragmentation.row_rule_visibility,
             )
         };
@@ -93,7 +93,7 @@ pub(crate) fn gap_rule_spec(
             .map(|l| l.map(|c| c.resolve(fallback)))
             .unwrap_or_else(|| GapList::single(c.resolve(fallback)));
         let inset = inset
-            .unwrap_or([GapInset::Len(Len::Px(0.0)); 4])
+            .unwrap_or([const { GapInset::Len(Len::Px(0.0)) }; 4])
             .map(|i| match i {
                 GapInset::Len(Len::Em(k)) => GapInset::Len(Len::Px(k * size)),
                 other => other,

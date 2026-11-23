@@ -14,7 +14,7 @@ pub(crate) fn orthogonal_children(
     icb_w: f32,
 ) -> Vec<Node> {
     let mut out = children;
-    let inline_size = px_strict(container.reset_box_layout.height);
+    let inline_size = px_strict(container.reset_box_layout.height.clone());
     for node in out.iter_mut() {
         let Node::Element(ch) = node else { continue };
         if ch.inline || ch.style.cascaded().vertical_decl() != Some(false) {
@@ -90,8 +90,8 @@ pub(crate) fn orthogonal_children(
             && ch.style.used().reset_box_layout.max_width.is_none()
         {
             let side = px_lossy_zero;
-            let margins = side(ch.style.used().reset_box_layout.margin.left)
-                + side(ch.style.used().reset_box_layout.margin.right);
+            let margins = side(ch.style.used().reset_box_layout.margin.left.clone())
+                + side(ch.style.used().reset_box_layout.margin.right.clone());
             match container.reset_box_layout.width {
                 // Заданный размер контейнера — доступное место потока
                 // целиком: авто-размер блочного ортогонального ребёнка
@@ -110,8 +110,8 @@ pub(crate) fn orthogonal_children(
                 // вместо неё ломает stretch-fit, описанный выше.
                 Some(Len::Px(w)) if explicit_auto => {
                     let b = ch.style.used().borders();
-                    let extra = side(ch.style.used().reset_box_layout.padding.left)
-                        + side(ch.style.used().reset_box_layout.padding.right)
+                    let extra = side(ch.style.used().reset_box_layout.padding.left.clone())
+                        + side(ch.style.used().reset_box_layout.padding.right.clone())
                         + side(b.left)
                         + side(b.right);
                     ch.style.used_mut().reset_box_layout.max_width =
@@ -123,8 +123,8 @@ pub(crate) fn orthogonal_children(
                     // общий разбор): их доля вычитается заранее, иначе
                     // ребёнок вылезал из контейнера на их толщину.
                     let b = ch.style.used().borders();
-                    let extra = side(ch.style.used().reset_box_layout.padding.left)
-                        + side(ch.style.used().reset_box_layout.padding.right)
+                    let extra = side(ch.style.used().reset_box_layout.padding.left.clone())
+                        + side(ch.style.used().reset_box_layout.padding.right.clone())
                         + side(b.left)
                         + side(b.right);
                     ch.style.used_mut().reset_box_layout.width =
@@ -142,8 +142,8 @@ pub(crate) fn orthogonal_children(
                     // (рендер доложит к нему рамку и отбивки), поэтому их доля
                     // вычитается заранее (`htb-in-vlr-016`: рамка 35).
                     let b = ch.style.used().borders();
-                    let extra = side(ch.style.used().reset_box_layout.padding.left)
-                        + side(ch.style.used().reset_box_layout.padding.right)
+                    let extra = side(ch.style.used().reset_box_layout.padding.left.clone())
+                        + side(ch.style.used().reset_box_layout.padding.right.clone())
                         + side(b.left)
                         + side(b.right);
                     ch.style.used_mut().reset_box_layout.max_width =

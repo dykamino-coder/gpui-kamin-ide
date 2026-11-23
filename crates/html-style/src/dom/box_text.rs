@@ -1,18 +1,16 @@
 //! Узел текста дерева коробок: его содержимое и номер исходного текстового
 //! узла DOM, из которого он построен.
 //!
-//! Номер (`TextId`) даёт обход при сборке, как `node_id` элементу: порядковый
-//! номер исходного текста в порядке обхода, начиная с единицы. Одинаковая по
-//! форме разметка получает одинаковые номера. Куски и копии одного исходного
-//! текста несут его номер; текст, склеенный из нескольких исходных, и текст,
-//! созданный сборкой (`content`, маркеры, пробелы-заполнители), — без номера.
+//! `TextId` is the persistent source NodeKey, not a traversal ordinal. Skipping
+//! or moving a sibling cannot change an existing text's identity. Generated
+//! and coalesced text has no single source identity.
 
 use std::fmt;
-use std::num::NonZeroU32;
+use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 
-/// Номер исходного текстового узла документа.
-pub type TextId = NonZeroU32;
+/// Persistent identity within the source document, independent of traversal.
+pub type TextId = NonZeroU64;
 
 #[derive(Clone, Default)]
 pub struct Text {

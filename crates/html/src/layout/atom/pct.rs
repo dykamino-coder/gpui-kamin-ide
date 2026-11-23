@@ -38,8 +38,8 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         Some(Len::Px(h)) if inherited.reset_border.border_box == Some(true) => {
             let b = inherited.borders();
             Some(
-                h - px_of(inherited.reset_box_layout.padding.top)
-                    - px_of(inherited.reset_box_layout.padding.bottom)
+                h - px_of(inherited.reset_box_layout.padding.top.clone())
+                    - px_of(inherited.reset_box_layout.padding.bottom.clone())
                     - px_of(b.top)
                     - px_of(b.bottom),
             )
@@ -53,7 +53,7 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         None | Some(Len::Auto) if inherited.reset_border.border_box != Some(true) => {
             match (
                 inherited.reset_shapes.aspect_ratio,
-                inherited.reset_box_layout.width,
+                inherited.reset_box_layout.width.clone(),
             ) {
                 (Some(r), Some(Len::Px(w))) if r.is_finite() && r > 0.0 => Some(w / r),
                 _ => None,
@@ -66,8 +66,8 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
         Some(Len::Px(w)) if inherited.reset_border.border_box == Some(true) => {
             let b = inherited.borders();
             Some(
-                w - px_of(inherited.reset_box_layout.padding.left)
-                    - px_of(inherited.reset_box_layout.padding.right)
+                w - px_of(inherited.reset_box_layout.padding.left.clone())
+                    - px_of(inherited.reset_box_layout.padding.right.clone())
                     - px_of(b.left)
                     - px_of(b.right),
             )
@@ -85,12 +85,12 @@ pub(crate) fn pct_resolved_against_block(e: &Element, inherited: &Computed) -> O
     // (вместе с общей группой размеров) стоила сборке столько же, сколько остальное.
     let used = e.style.used();
     let own = &used.reset_box_layout;
-    let height = of(own.height, base_h);
+    let height = of(own.height.clone(), base_h);
     let sides_px = [
-        own.padding.top,
-        own.padding.bottom,
-        own.padding.left,
-        own.padding.right,
+        own.padding.top.clone(),
+        own.padding.bottom.clone(),
+        own.padding.left.clone(),
+        own.padding.right.clone(),
     ]
     .map(|side| of(side, base_w));
     drop(used);

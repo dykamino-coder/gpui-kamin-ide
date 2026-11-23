@@ -107,13 +107,13 @@ pub(super) fn own_box_atom(
             Some(Len::Em(k)) => Some(k * em_base),
             _ => None,
         };
-        if let Some(h) = px_of(e.style.used().reset_box_layout.height) {
+        if let Some(h) = px_of(e.style.used().reset_box_layout.height.clone()) {
             let b = e.style.used().borders();
             let edges = if e.style.used().reset_border.border_box == Some(true) {
                 px_of(b.top).unwrap_or(0.0)
                     + px_of(b.bottom).unwrap_or(0.0)
-                    + px_of(e.style.used().reset_box_layout.padding.top).unwrap_or(0.0)
-                    + px_of(e.style.used().reset_box_layout.padding.bottom).unwrap_or(0.0)
+                    + px_of(e.style.used().reset_box_layout.padding.top.clone()).unwrap_or(0.0)
+                    + px_of(e.style.used().reset_box_layout.padding.bottom.clone()).unwrap_or(0.0)
             } else {
                 0.0
             };

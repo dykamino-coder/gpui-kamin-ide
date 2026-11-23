@@ -79,7 +79,13 @@ pub(super) fn inherit_lh_units(
                 String::new()
             }
         });
-    let line = match c.inh.font.line_height.or(parent.inh.font.line_height) {
+    let line = match c
+        .inh
+        .font
+        .line_height
+        .clone()
+        .or(parent.inh.font.line_height.clone())
+    {
         Some(crate::style::values::value::Len::Px(v)) => v,
         Some(crate::style::values::value::Len::Em(k))
         | Some(crate::style::values::value::Len::Pct(k)) => k * font,

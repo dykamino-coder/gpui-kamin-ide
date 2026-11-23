@@ -71,7 +71,7 @@ impl Flows {
             if let Node::Text(text) = node
                 && let Some(source) = text.first_source()
             {
-                self.texts.set(u64::from(source.get()), id);
+                self.texts.set(source.get(), id);
             }
         }
     }
@@ -106,7 +106,7 @@ impl BoxTree {
             ),
             Node::Text(text) => text
                 .first_source()
-                .map(|source| self.flows.texts.get(u64::from(source.get()))),
+                .map(|source| self.flows.texts.get(source.get())),
             Node::Element(_) => None,
         }
     }

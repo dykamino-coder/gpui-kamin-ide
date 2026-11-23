@@ -100,8 +100,24 @@ fn settled(
         nest_rows,
         outer_space,
     } = match dimensions {
-        Some((_, own)) => row_plan_in(e, opts, column_width, cols, col_vert, outer_space, own),
-        None => row_plan(e, &merged, opts, column_width, cols, col_vert, outer_space),
+        Some((_, ref own)) => row_plan_in(
+            e,
+            opts,
+            column_width.clone(),
+            cols,
+            col_vert,
+            outer_space,
+            own.clone(),
+        ),
+        None => row_plan(
+            e,
+            &merged,
+            opts,
+            column_width.clone(),
+            cols,
+            col_vert,
+            outer_space,
+        ),
     };
     // Путь спаннера подготовлен native-фазой при разрешённой ширине.
     let span_prev: Option<Option<u64>> = None;

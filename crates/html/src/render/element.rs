@@ -118,8 +118,8 @@ async fn element_inner(
         let mut copy = e.clone();
         let url = e.attr("data").unwrap_or_default().to_string();
         copy.attrs.push(("src".to_string(), url));
-        copy.style.used_mut().reset_box_layout.width = merged.reset_box_layout.width;
-        copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height;
+        copy.style.used_mut().reset_box_layout.width = merged.reset_box_layout.width.clone();
+        copy.style.used_mut().reset_box_layout.height = merged.reset_box_layout.height.clone();
         iframe(&copy, inherited, opts)
     } else {
         None

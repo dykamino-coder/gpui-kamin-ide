@@ -28,7 +28,7 @@ pub(super) fn parse(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
             Some(length)
         }
         Len::EmPx(a, b) | Len::LhPx(a, b) if valid_number(a) && valid_number(b) => Some(length),
-        Len::Calc(id) => {
+        Len::Calc(ref id) => {
             let s = calc_get(id, vcx);
             (!s.has_percentage
                 && s.pct == 0.0

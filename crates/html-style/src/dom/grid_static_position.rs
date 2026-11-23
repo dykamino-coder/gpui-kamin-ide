@@ -45,7 +45,7 @@ pub(super) fn adjust(
                 return Ok(());
             }
             let static_grid = grid && !establishes_cb && !*containing_grid;
-            let pad = el.style.cascaded().reset_box_layout.padding;
+            let pad = el.style.cascaded().reset_box_layout.padding.clone();
             for child in el.children.iter_mut() {
                 let Node::Element(child) = child else {
                     continue;
@@ -70,23 +70,31 @@ pub(super) fn adjust(
                 // `left: auto` — это ОТСУТСТВИЕ края, а не заданный край: именно
                 // при `auto` с обеих сторон элемент стоит на статической позиции.
                 let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
-                let inset = child.style.cascaded().reset_positioned.inset;
+                let inset = child.style.cascaded().reset_positioned.inset.clone();
                 if auto(inset.left) && auto(inset.right) {
                     child.style.cascaded_mut().reset_box_layout.margin.left = add_len(
-                        child.style.cascaded().reset_box_layout.margin.left,
-                        pad.left,
+                        child.style.cascaded().reset_box_layout.margin.left.clone(),
+                        pad.left.clone(),
                     );
                     child.style.cascaded_mut().reset_box_layout.margin.right = add_len(
-                        child.style.cascaded().reset_box_layout.margin.right,
-                        pad.right,
+                        child.style.cascaded().reset_box_layout.margin.right.clone(),
+                        pad.right.clone(),
                     );
                 }
                 if auto(inset.top) && auto(inset.bottom) {
-                    child.style.cascaded_mut().reset_box_layout.margin.top =
-                        add_len(child.style.cascaded().reset_box_layout.margin.top, pad.top);
+                    child.style.cascaded_mut().reset_box_layout.margin.top = add_len(
+                        child.style.cascaded().reset_box_layout.margin.top.clone(),
+                        pad.top.clone(),
+                    );
                     child.style.cascaded_mut().reset_box_layout.margin.bottom = add_len(
-                        child.style.cascaded().reset_box_layout.margin.bottom,
-                        pad.bottom,
+                        child
+                            .style
+                            .cascaded()
+                            .reset_box_layout
+                            .margin
+                            .bottom
+                            .clone(),
+                        pad.bottom.clone(),
                     );
                 }
             }

@@ -43,12 +43,13 @@ pub(crate) fn install_first_letter(element: &Element, merged: &mut BoxStyle) {
     merged.reset_text_box.first_letter = element
         .first_letter
         .as_ref()
-        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.inh.font.font_size));
+        .map(|l| resolve_first_letter_font_size(l.cascaded(), merged.inh.font.font_size.clone()));
 }
 
 fn resolve_first_letter_font_size(layer: &Computed, base: Option<Len>) -> Box<Computed> {
     let mut layer = layer.clone();
-    if let (Some(Len::Px(base)), Some(Len::Pct(factor))) = (base, layer.inh.font.font_size) {
+    if let (Some(Len::Px(base)), Some(Len::Pct(factor))) = (base, layer.inh.font.font_size.clone())
+    {
         layer.inh.font.font_size = Some(Len::Px(base * factor));
     }
     // Leave em values for inline::max_font_size, which resolves them

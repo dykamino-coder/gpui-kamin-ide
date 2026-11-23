@@ -71,7 +71,7 @@ fn transferred_maximum_does_not_cap_content_based_automatic_minimum() {
         ..Computed::default()
     };
     let input = BoxDimensions::from_computed(&style);
-    assert_eq!(input.transfer_ratio(&style), input);
+    assert_eq!(input.clone().transfer_ratio(&style), input);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn percentage_and_auto_inputs_survive_repeated_constraint_transfer() {
     };
     let input = BoxDimensions::from_computed(&style);
     for _ in 0..2 {
-        let result = input.transfer_ratio(&style);
+        let result = input.clone().transfer_ratio(&style);
         assert_eq!(result.preferred, [Some(Len::Pct(0.5)), Some(Len::Auto)]);
         assert_eq!(result.minimum[0], Some(Len::Px(40.0)));
         assert_eq!(result.maximum, [None, Some(Len::Pct(0.75))]);

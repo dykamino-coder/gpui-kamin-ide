@@ -20,8 +20,8 @@ impl BgLayer {
     pub fn from_computed(c: &Computed) -> Self {
         Self {
             image: c.reset_background.bg_image.clone(),
-            size: c.reset_background.bg_size,
-            position: c.reset_background.bg_pos,
+            size: c.reset_background.bg_size.clone(),
+            position: c.reset_background.bg_pos.clone(),
             position_math: c.reset_background.bg_position_math.clone(),
             repeat: c.reset_background.bg_repeat,
             origin: c.reset_background.bg_origin,
@@ -35,13 +35,13 @@ impl BgLayer {
     pub fn copy_component(&mut self, prop: BgListProp, source: &Self) {
         match prop {
             BgListProp::Image => self.image = source.image.clone(),
-            BgListProp::Size => self.size = source.size,
+            BgListProp::Size => self.size = source.size.clone(),
             BgListProp::PositionX => {
-                self.position.x = source.position.x;
+                self.position.x = source.position.x.clone();
                 self.position_math[0] = source.position_math[0].clone();
             }
             BgListProp::PositionY => {
-                self.position.y = source.position.y;
+                self.position.y = source.position.y.clone();
                 self.position_math[1] = source.position_math[1].clone();
             }
             BgListProp::Repeat => self.repeat = source.repeat,
@@ -71,8 +71,8 @@ impl BgLayer {
         }
         Self {
             image: c.reset_background.bg_image.take(),
-            size: c.reset_background.bg_size,
-            position: c.reset_background.bg_pos,
+            size: c.reset_background.bg_size.clone(),
+            position: c.reset_background.bg_pos.clone(),
             position_math: std::mem::take(&mut c.reset_background.bg_position_math),
             repeat: c.reset_background.bg_repeat,
             origin: c.reset_background.bg_origin,
@@ -83,14 +83,14 @@ impl BgLayer {
     }
 
     pub(super) fn needs_line_height(&self, vcx: ValueCx<'_>) -> bool {
-        let size = match self.size {
-            BgSize::Fixed(w, h) => [w, h],
+        let size = match &self.size {
+            BgSize::Fixed(w, h) => [w.as_ref(), h.as_ref()],
             _ => [None, None],
         };
         self.image
             .as_ref()
             .is_some_and(|i| i.needs_line_height(vcx))
-            || [self.position.x, self.position.y]
+            || [self.position.x.as_ref(), self.position.y.as_ref()]
                 .into_iter()
                 .chain(size)
                 .flatten()
@@ -98,15 +98,15 @@ impl BgLayer {
     }
 
     /// Изменит ли `resolve_lengths` слой: по ссылке, без копии.
-    pub fn lengths_pending(&self, moves: impl Fn(Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
-        let size = match self.size {
-            BgSize::Fixed(w, h) => [w, h],
+    pub fn lengths_pending(&self, moves: impl Fn(&Len) -> bool + Copy, vcx: ValueCx<'_>) -> bool {
+        let size = match &self.size {
+            BgSize::Fixed(w, h) => [w.as_ref(), h.as_ref()],
             _ => [None, None],
         };
         self.image
             .as_ref()
             .is_some_and(|image| image.lengths_pending(moves, vcx))
-            || [self.position.x, self.position.y]
+            || [self.position.x.as_ref(), self.position.y.as_ref()]
                 .into_iter()
                 .chain(size)
                 .flatten()

@@ -5,7 +5,8 @@ use super::DocumentValues;
 use crate::dom::input::Admitted;
 use crate::dom::outcome::{FailureScope, TraversalKind, TraversalLimit};
 use markup5ever_rcdom::Handle;
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
+use std::rc::Rc;
 
 #[cfg(feature = "heap-report")]
 mod heap;
@@ -17,17 +18,8 @@ pub const MAX_DEPTH: usize = crate::budget::DocumentLimits::BOX_DEPTH;
 #[derive(Default)]
 pub struct TraversalState {
     source: RefCell<Option<Admitted>>,
-    /// Адреса построенных элементов; порядок списка не является идентичностью.
-    /// Ключ хранится в самом исходном узле и не зависит от style walk.
-    elements: RefCell<Vec<usize>>,
-    /// Адрес исходного текстового узла по его `TextId - 1`.
-    texts: RefCell<Vec<usize>>,
-    /// Keys of the same source texts; the traversal number is not an IFC identity.
-    text_keys: RefCell<Vec<crate::dom::NodeKey>>,
-    /// Адреса исходных текстов, содержимое которых прочитала сборка сверх
-    /// «пустой ли узел по CSS»: первый сильный знак для `dir=auto`/`<bdi>`,
-    /// текст листа `<style>`. Правка такого текста может изменить стиль.
-    read: RefCell<std::collections::HashSet<usize>>,
+    bindings: OnceCell<Rc<RefCell<super::bindings::BindingStore>>>,
+    recording: RefCell<super::bindings::BindingRecorder>,
     first_limit: Cell<Option<TraversalLimit>>,
     embedded: Cell<bool>,
     /// A computation read the viewport size (`values::viewport_reads`).
@@ -42,14 +34,6 @@ pub struct TraversalState {
 impl TraversalState {
     pub fn retain(&self, source: Admitted) {
         self.source.replace(Some(source));
-        // Обход наращивал адреса удвоением: удерживаемая копия — один точный
-        // блок, выделенный после обхода, а промежуточные блоки освобождаются.
-        let exact = self.elements.borrow().as_slice().to_vec();
-        self.elements.replace(exact);
-        let exact = self.texts.borrow().as_slice().to_vec();
-        self.texts.replace(exact);
-        let exact = self.text_keys.borrow().as_slice().to_vec();
-        self.text_keys.replace(exact);
     }
 
     /// Borrow the admitted source of the current revision.
@@ -65,56 +49,102 @@ impl TraversalState {
         self.source.take()
     }
 
-    /// Обход дошёл до исходного текста `handle`: его номер, следующий по
-    /// порядку обхода (`None` после `u32::MAX` текстов).
+    /// A full conversion has no retained owners; failed prior drafts are aborted.
+    pub fn begin_full_bindings(&self) {
+        self.recording.replace(Default::default());
+    }
+
+    fn binding_owner(&self) -> &Rc<RefCell<super::bindings::BindingStore>> {
+        self.bindings.get_or_init(Default::default)
+    }
+
+    /// Share only current identity metadata, never the previous DocumentValues.
+    pub fn binding_store(&self) -> Rc<RefCell<super::bindings::BindingStore>> {
+        self.binding_owner().clone()
+    }
+
+    /// Attach before a new ValueCx reads source identities. Recording stays local
+    /// to this traversal; only the common prepared publisher may change the map.
+    pub fn attach_bindings(
+        &self,
+        store: Rc<RefCell<super::bindings::BindingStore>>,
+    ) -> Result<(), Rc<RefCell<super::bindings::BindingStore>>> {
+        self.bindings.set(store)
+    }
+
+    /// Exclusive current map for the common prepared memo/binding publisher.
+    pub fn bindings_mut(&self) -> std::cell::RefMut<'_, super::bindings::BindingStore> {
+        self.binding_owner().borrow_mut()
+    }
+
+    /// Start/end one output owner's direct source observations.
+    pub fn begin_bindings(&self, owner: markup5ever_rcdom::NodeKey) {
+        self.recording.borrow_mut().begin_owner(owner);
+    }
+
+    pub fn end_bindings(
+        &self,
+        owner: markup5ever_rcdom::NodeKey,
+        admission: &crate::budget::admission::Admission,
+    ) -> Result<std::rc::Rc<super::bindings::BindingSegment>, crate::budget::admission::Error> {
+        self.recording.borrow_mut().finish_owner(owner, admission)
+    }
+
+    /// A capability already finalized by the ordinary walk; no descendant scan.
+    pub fn binding_segment(
+        &self,
+        owner: markup5ever_rcdom::NodeKey,
+    ) -> Option<std::rc::Rc<super::bindings::BindingSegment>> {
+        self.recording.borrow().segment(owner)
+    }
+
     pub fn record_text(&self, handle: &Handle) -> Option<crate::dom::TextId> {
-        let mut texts = self.texts.borrow_mut();
-        let id = u32::try_from(texts.len() + 1).ok()?;
-        texts.push(std::rc::Rc::as_ptr(handle) as usize);
-        self.text_keys.borrow_mut().push(handle.key());
-        crate::dom::TextId::new(id)
+        self.recording.borrow_mut().text(handle)
     }
 
-    /// Адреса исходных текстов удерживаемого DOM по `TextId - 1`.
-    pub fn texts(&self) -> std::cell::Ref<'_, Vec<usize>> {
-        self.texts.borrow()
-    }
-
-    /// Persistent DOM keys by `TextId - 1`, without holding the source handles.
-    pub fn text_keys(&self) -> std::cell::Ref<'_, Vec<crate::dom::NodeKey>> {
-        self.text_keys.borrow()
-    }
-
-    /// Сборка прочитала содержимое исходного текста `handle`.
     pub fn read_source_text(&self, handle: &Handle) {
-        self.read
-            .borrow_mut()
-            .insert(std::rc::Rc::as_ptr(handle) as usize);
+        self.recording.borrow_mut().read(handle);
     }
 
-    /// Сборка прочитала содержимое текста коробок с номером `id`.
     pub fn read_text(&self, id: crate::dom::TextId) {
-        let address = self.texts.borrow().get(id.get() as usize - 1).copied();
-        if let Some(address) = address {
-            self.read.borrow_mut().insert(address);
-        }
-    }
-
-    /// Адреса исходных текстов, содержимое которых прочитала сборка.
-    pub fn read_texts(&self) -> std::cell::Ref<'_, std::collections::HashSet<usize>> {
-        self.read.borrow()
-    }
-
-    /// Обход построил коробку исходного элемента; его ключ выдан при создании.
-    pub fn record_element(&self, handle: &Handle) {
-        self.elements
+        self.recording
             .borrow_mut()
-            .push(std::rc::Rc::as_ptr(handle) as usize);
+            .read_text(id, &self.binding_owner().borrow());
     }
 
-    /// Адреса построенных исходных элементов удерживаемого DOM.
-    pub fn elements(&self) -> std::cell::Ref<'_, Vec<usize>> {
-        self.elements.borrow()
+    pub fn record_element(&self, handle: &Handle) {
+        self.recording.borrow_mut().element(handle);
+    }
+
+    /// One common map, not copied descendant lists or an ordinal source index.
+    pub fn bindings(&self) -> std::cell::Ref<'_, super::bindings::BindingStore> {
+        self.binding_owner().borrow()
+    }
+
+    /// Initial conversion publishes only after every fallible conversion step.
+    /// Retained conversion instead passes its update to the common publisher.
+    pub fn publish_bindings(
+        &self,
+        admission: &crate::budget::admission::Admission,
+    ) -> Result<(), crate::budget::admission::Error> {
+        let recording = self.take_binding_recording(admission)?;
+        let mut replacement = super::bindings::BindingStore::default();
+        let mut stage = replacement.stage();
+        stage.recorded(recording)?;
+        let update = stage.into_update();
+        replacement
+            .prepare(update, [], admission)?
+            .expect("fresh source bindings")
+            .publish();
+        self.binding_owner().replace(replacement);
+        Ok(())
+    }
+
+    pub fn take_binding_recording(
+        &self,
+        admission: &crate::budget::admission::Admission,
+    ) -> Result<super::bindings::BindingRecording, crate::budget::admission::Error> {
+        std::mem::take(&mut *self.recording.borrow_mut()).into_recording(admission)
     }
 
     pub fn set_embedded(&self) {

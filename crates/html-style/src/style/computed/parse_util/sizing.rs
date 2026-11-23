@@ -116,10 +116,10 @@ pub(in crate::style::computed) fn parse_view_box(
         })
         .collect::<Option<Vec<_>>>()?;
     let four = match (kind, parts.as_slice()) {
-        (_, [a, b, c, d]) => [*a, *b, *c, *d],
-        (0, [a]) => [*a, *a, *a, *a],
-        (0, [a, b]) => [*a, *b, *a, *b],
-        (0, [a, b, c]) => [*a, *b, *c, *b],
+        (_, [a, b, c, d]) => [a.clone(), b.clone(), c.clone(), d.clone()],
+        (0, [a]) => [a.clone(), a.clone(), a.clone(), a.clone()],
+        (0, [a, b]) => [a.clone(), b.clone(), a.clone(), b.clone()],
+        (0, [a, b, c]) => [a.clone(), b.clone(), c.clone(), b.clone()],
         _ => return None,
     };
     Some((kind, four))

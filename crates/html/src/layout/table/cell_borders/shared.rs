@@ -84,7 +84,7 @@ impl EdgeStyles {
             return;
         }
         style.reset_background.bg_border_insets = Some(insets);
-        style.reset_box_layout.padding = padding;
+        style.reset_box_layout.padding = padding.clone();
         style.reset_border.border_width = Default::default();
         style.reset_border.border_visible = [None; 4];
         let written = groups(style);

@@ -36,8 +36,11 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
         return None;
     }
     let percentages = [
-        ("width", element.style.used().reset_box_layout.width),
-        ("height", element.style.used().reset_box_layout.height),
+        ("width", element.style.used().reset_box_layout.width.clone()),
+        (
+            "height",
+            element.style.used().reset_box_layout.height.clone(),
+        ),
     ]
     .map(|(name, dimension)| {
         if dimension.is_some() {
@@ -58,10 +61,10 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
         _ => 0.0,
     };
     let padding = [
-        pixels(parent.reset_box_layout.padding.left)
-            + pixels(parent.reset_box_layout.padding.right),
-        pixels(parent.reset_box_layout.padding.top)
-            + pixels(parent.reset_box_layout.padding.bottom),
+        pixels(parent.reset_box_layout.padding.left.clone())
+            + pixels(parent.reset_box_layout.padding.right.clone()),
+        pixels(parent.reset_box_layout.padding.top.clone())
+            + pixels(parent.reset_box_layout.padding.bottom.clone()),
     ];
     let border = [
         pixels(borders.left) + pixels(borders.right),
@@ -69,12 +72,12 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     ];
     let padding_is_definite = [
         [
-            parent.reset_box_layout.padding.left,
-            parent.reset_box_layout.padding.right,
+            parent.reset_box_layout.padding.left.clone(),
+            parent.reset_box_layout.padding.right.clone(),
         ],
         [
-            parent.reset_box_layout.padding.top,
-            parent.reset_box_layout.padding.bottom,
+            parent.reset_box_layout.padding.top.clone(),
+            parent.reset_box_layout.padding.bottom.clone(),
         ],
     ]
     .map(|sides| {
@@ -88,11 +91,11 @@ pub(crate) fn resolve(element: &Element, parent: &Computed) -> Option<Element> {
     for axis in 0..2 {
         let (base, dimension) = match axis {
             0 => (
-                parent.reset_box_layout.width,
+                parent.reset_box_layout.width.clone(),
                 &mut style.reset_box_layout.width,
             ),
             _ => (
-                parent.reset_box_layout.height,
+                parent.reset_box_layout.height.clone(),
                 &mut style.reset_box_layout.height,
             ),
         };

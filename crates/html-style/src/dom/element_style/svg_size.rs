@@ -30,12 +30,12 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
         || style.contains_width()
         || style.contains_height()
         || ![
-            style.reset_box_layout.width,
-            style.reset_box_layout.min_width,
-            style.reset_box_layout.max_width,
-            style.reset_box_layout.height,
-            style.reset_box_layout.min_height,
-            style.reset_box_layout.max_height,
+            style.reset_box_layout.width.clone(),
+            style.reset_box_layout.min_width.clone(),
+            style.reset_box_layout.max_width.clone(),
+            style.reset_box_layout.height.clone(),
+            style.reset_box_layout.min_height.clone(),
+            style.reset_box_layout.max_height.clone(),
         ]
         .into_iter()
         .any(is_keyword)
@@ -74,14 +74,14 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     let (bx, by) = if style.reset_border.border_box == Some(true) {
         (
             sum(
-                style.reset_box_layout.padding.left,
-                style.reset_box_layout.padding.right,
+                style.reset_box_layout.padding.left.clone(),
+                style.reset_box_layout.padding.right.clone(),
                 edges.left,
                 edges.right,
             ),
             sum(
-                style.reset_box_layout.padding.top,
-                style.reset_box_layout.padding.bottom,
+                style.reset_box_layout.padding.top.clone(),
+                style.reset_box_layout.padding.bottom.clone(),
                 edges.top,
                 edges.bottom,
             ),
@@ -89,8 +89,8 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
     } else {
         (0.0, 0.0)
     };
-    let given_w = px(style.reset_box_layout.width).map(|w| (w - bx).max(0.0));
-    let given_h = px(style.reset_box_layout.height).map(|h| (h - by).max(0.0));
+    let given_w = px(style.reset_box_layout.width.clone()).map(|w| (w - bx).max(0.0));
+    let given_h = px(style.reset_box_layout.height.clone()).map(|h| (h - by).max(0.0));
     let auto_h = match (given_w, ratio) {
         (Some(w), Some(r)) => w / r,
         _ => nat_h
@@ -109,7 +109,7 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
             1 => &mut style.reset_box_layout.min_height,
             _ => &mut style.reset_box_layout.max_height,
         };
-        if is_keyword(*v) {
+        if is_keyword(v.clone()) {
             *v = Some(Len::Px(auto_h + by));
         }
     }
@@ -119,7 +119,7 @@ pub fn resolve(style: &mut Computed, tag: &str, attrs: &[(String, String)]) {
             1 => &mut style.reset_box_layout.min_width,
             _ => &mut style.reset_box_layout.max_width,
         };
-        if is_keyword(*v) && style.reset_context.fit_arg[i].is_none() {
+        if is_keyword(v.clone()) && style.reset_context.fit_arg[i].is_none() {
             *v = Some(Len::Px(auto_w + bx));
         }
     }

@@ -62,6 +62,7 @@ pub(super) fn column_plan_in(
     let column_width = merged
         .reset_fragmentation
         .column_width
+        .clone()
         .filter(|_| multicol)
         .map(|width| match width {
             Len::Px(w) => Len::Px(w.max(1.0)),
@@ -84,11 +85,11 @@ pub(super) fn column_plan_in(
     };
     let col_vert = col_axis.is_vertical();
     let col_inline_size = if col_vert {
-        dimensions.preferred[1]
+        dimensions.preferred[1].clone()
     } else {
-        dimensions.preferred[0]
+        dimensions.preferred[0].clone()
     };
-    let count_from_width = match (column_width, col_inline_size) {
+    let count_from_width = match (column_width.clone(), col_inline_size.clone()) {
         (Some(Len::Px(w)), Some(Len::Px(box_w))) if w > 0.0 => {
             Some((((box_w + used_gap) / (w + used_gap)).floor().max(1.0)) as u16)
         }

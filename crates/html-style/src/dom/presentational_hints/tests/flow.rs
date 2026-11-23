@@ -14,14 +14,16 @@ fn author_resets_and_nearest_table_control_cell_hints() {
         .cascaded()
         .inh
         .table_list
-        .border_spacing;
+        .border_spacing
+        .clone();
     assert_eq!(spacing, Some((Some(Len::Px(0.0)), Some(Len::Px(0.0)))));
     let padding = find(&nodes, "td")
         .unwrap()
         .style
         .cascaded()
         .reset_box_layout
-        .padding;
+        .padding
+        .clone();
     // css-box-4 §4.1: the initial value of a padding side is 0.
     assert_eq!(padding.top, Some(Len::Px(0.0)));
     assert_eq!(padding.bottom, Some(Len::Px(10.0)));
@@ -78,7 +80,8 @@ fn css_wide_keywords_override_table_hints() {
             "{keyword}"
         );
         assert!(
-            auto(t.cascaded().reset_box_layout.width) && auto(t.cascaded().reset_box_layout.height),
+            auto(t.cascaded().reset_box_layout.width.clone())
+                && auto(t.cascaded().reset_box_layout.height.clone()),
             "{keyword}"
         );
         assert!(
@@ -88,7 +91,10 @@ fn css_wide_keywords_override_table_hints() {
                 .is_none_or(|c| c.a == 0.0),
             "{keyword}"
         );
-        assert!(zero(t.cascaded().reset_box_layout.margin.left), "{keyword}");
+        assert!(
+            zero(t.cascaded().reset_box_layout.margin.left.clone()),
+            "{keyword}"
+        );
         assert_eq!(
             t.cascaded().reset_box_layout.margin.right,
             Some(Len::Auto),
@@ -127,7 +133,8 @@ fn css_wide_keywords_override_table_hints() {
         .cascaded()
         .inh
         .table_list
-        .border_spacing;
+        .border_spacing
+        .clone();
     assert_eq!(spacing, None);
     let td = &find(nodes, "td").unwrap().style;
     assert!(

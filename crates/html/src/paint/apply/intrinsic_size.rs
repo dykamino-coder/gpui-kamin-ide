@@ -42,12 +42,15 @@ pub(crate) fn keywords_with_dimensions(
         stretch(0).or(if style.contains_width() {
             None
         } else {
-            keyword(sizes.preferred[0], style.reset_context.fit_arg[0])
+            keyword(
+                sizes.preferred[0].clone(),
+                style.reset_context.fit_arg[0].clone(),
+            )
         }),
         stretch(1).or(if style.contains_height() {
             None
         } else {
-            keyword(sizes.preferred[1], None)
+            keyword(sizes.preferred[1].clone(), None)
         }),
     ]
 }

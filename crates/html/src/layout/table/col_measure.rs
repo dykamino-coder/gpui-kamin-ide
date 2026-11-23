@@ -37,13 +37,13 @@ pub(super) fn measure_col_widths(
                     // (table-cell-align-005/006); колонку задаёт block-size,
                     // осевший в height.
                     (
-                        cell.style.cascaded().reset_box_layout.height,
-                        cell.style.used().reset_box_layout.height,
+                        cell.style.cascaded().reset_box_layout.height.clone(),
+                        cell.style.used().reset_box_layout.height.clone(),
                     )
                 } else {
                     (
-                        cell.style.cascaded().reset_box_layout.width,
-                        cell.style.used().reset_box_layout.width,
+                        cell.style.cascaded().reset_box_layout.width.clone(),
+                        cell.style.used().reset_box_layout.width.clone(),
                     )
                 };
                 // `ch` ячейки таблица решает сама — кеглем и шрифтом ячейки
@@ -79,11 +79,11 @@ pub(super) fn measure_col_widths(
                         side(b.left) + side(b.right)
                     };
                     let pad = if table_vertical {
-                        side(cell.style.used().reset_box_layout.padding.top)
-                            + side(cell.style.used().reset_box_layout.padding.bottom)
+                        side(cell.style.used().reset_box_layout.padding.top.clone())
+                            + side(cell.style.used().reset_box_layout.padding.bottom.clone())
                     } else {
-                        side(cell.style.used().reset_box_layout.padding.left)
-                            + side(cell.style.used().reset_box_layout.padding.right)
+                        side(cell.style.used().reset_box_layout.padding.left.clone())
+                            + side(cell.style.used().reset_box_layout.padding.right.clone())
                     };
                     // В сросшейся модели дорожка считает ПОЛОВИНУ победившей
                     // линии — ту же, что легла в паддинг ячейки; своя кромка
@@ -119,14 +119,15 @@ pub(super) fn measure_col_widths(
                     // `table { font: 50px }` — колонка 100px, не пропуск.
                     Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_))) => {
                         let size = cell_font_px(
-                            cell.style.used().inh.font.font_size,
+                            cell.style.used().inh.font.font_size.clone(),
                             row.element
                                 .style
                                 .used()
                                 .inh
                                 .font
                                 .font_size
-                                .or(inherited.inh.font.font_size),
+                                .clone()
+                                .or(inherited.inh.font.font_size.clone()),
                             table_font,
                         );
                         let family = cell

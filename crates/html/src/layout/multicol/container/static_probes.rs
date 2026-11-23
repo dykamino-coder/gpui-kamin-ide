@@ -36,10 +36,10 @@ pub(in crate::layout::multicol) fn insert_static_probes(
         // Щуп правит только пустую ось; заданную считает CB (CSS 2.1 §10.3.7), как fixed_axes.
         oof_spots[i].set(crate::layout::positioned::containing_block::Spot {
             fixed_axes: (
-                edge_set(oof.style.used().reset_positioned.inset.left)
-                    || edge_set(oof.style.used().reset_positioned.inset.right),
-                edge_set(oof.style.used().reset_positioned.inset.top)
-                    || edge_set(oof.style.used().reset_positioned.inset.bottom),
+                edge_set(oof.style.used().reset_positioned.inset.left.clone())
+                    || edge_set(oof.style.used().reset_positioned.inset.right.clone()),
+                edge_set(oof.style.used().reset_positioned.inset.top.clone())
+                    || edge_set(oof.style.used().reset_positioned.inset.bottom.clone()),
             ),
             rtl: merged.wm().rtl(),
             vertical: merged.wm().vertical(),
@@ -119,7 +119,7 @@ pub(in crate::layout::multicol) fn insert_static_probes(
 /// Блочное начальное поле OOF в точках (`Len::Px`; прочее — ноль).
 fn block_start_margin(merged: &Computed, oof: &Element) -> f32 {
     let wm = merged.wm();
-    let margin = oof.style.used().reset_box_layout.margin;
+    let margin = oof.style.used().reset_box_layout.margin.clone();
     let side = if !wm.vertical() {
         margin.top
     } else if wm.block_rl() {

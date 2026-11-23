@@ -57,12 +57,12 @@ impl GradientShape {
         let words = crate::style::css::value_tokens::split_top(shape);
         let explicit: Vec<_> = words
             .iter()
-            .filter_map(|w| Len::parse_mixed(w, vcx).filter(|l| !l.needs_unit_context(vcx)))
+            .filter_map(|w| Len::parse_mixed(w, vcx).filter(|l| !l.clone().needs_unit_context(vcx)))
             .collect();
         let circle =
             words.contains(&"circle") || (explicit.len() == 1 && !words.contains(&"ellipse"));
         let size = if let Some(first) = explicit.first() {
-            RadialSize::Explicit(*first, explicit.get(1).copied())
+            RadialSize::Explicit(first.clone(), explicit.get(1).cloned())
         } else {
             RadialSize::Extent(if words.contains(&"closest-side") {
                 RadialExtent::ClosestSide

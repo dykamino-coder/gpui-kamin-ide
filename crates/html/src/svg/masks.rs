@@ -141,15 +141,17 @@ pub(super) fn masked_layers(
             style.reset_mask.mask_size = style
                 .reset_mask
                 .mask_size
+                .clone()
                 .map(|(x, y)| (scale_len(x), scale_len(y)));
             style.reset_mask.mask_pos = style
                 .reset_mask
                 .mask_pos
+                .clone()
                 .map(|(x, y)| (scale_len(x), scale_len(y)));
             if let Some(list) = style.reset_mask.mask_pos_list.as_mut() {
                 for (x, y, _, _) in list.iter_mut() {
-                    *x = scale_len(*x);
-                    *y = scale_len(*y);
+                    *x = scale_len(x.clone());
+                    *y = scale_len(y.clone());
                 }
             }
         }

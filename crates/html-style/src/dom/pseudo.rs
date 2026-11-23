@@ -223,9 +223,14 @@ fn anchor_positioned(c: &crate::style::computed::Computed) -> bool {
     let i = &c.reset_positioned.inset;
     abspos
         && (c.reset_positioned.position_area.is_some()
-            || [i.top, i.right, i.bottom, i.left]
-                .iter()
-                .any(|l| matches!(l, Some(Len::Anchor(_))))
+            || [
+                i.top.clone(),
+                i.right.clone(),
+                i.bottom.clone(),
+                i.left.clone(),
+            ]
+            .iter()
+            .any(|l| matches!(l, Some(Len::Anchor(_))))
             || c.reset_flex.align_self == Some(Align::AnchorCenter)
             || c.reset_flex.justify_self == Some(Align::AnchorCenter)
             || matches!(

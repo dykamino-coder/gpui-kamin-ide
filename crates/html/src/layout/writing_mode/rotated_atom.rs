@@ -114,7 +114,7 @@ pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
 }
 
 pub(crate) fn margin(style: &Computed, flow: &Computed) -> Sides {
-    crate::text::inline::physical_sides::side_values(flow, style.reset_box_layout.margin)
+    crate::text::inline::physical_sides::side_values(flow, style.reset_box_layout.margin.clone())
 }
 
 #[cfg(test)]

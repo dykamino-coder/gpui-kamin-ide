@@ -68,7 +68,7 @@ fn paragraph_routed(
                 opts.cx.vcx(),
                 opts.cx.layout().run_faces.active(),
             );
-            let base_lh = base.inh.font.line_height;
+            let base_lh = base.inh.font.line_height.clone();
             let for_build = first.clone();
             // Абзац соберётся при раскладке, вне цикла `blocks_flow`: флаги
             // среза строк (`InlineContext::trim_para`) едут с ним в `opts_owned`.
@@ -99,7 +99,7 @@ fn paragraph_routed(
             // унаследованный — числовой пересчитывается от её кегля.
             // The root inline inherits this strut, including a smaller height
             // (css-pseudo-4 §first-line-styling).
-            let first_lh = match first.inh.font.line_height.or(base_lh) {
+            let first_lh = match first.inh.font.line_height.clone().or(base_lh) {
                 Some(Len::Px(v)) => v,
                 Some(Len::Pct(k)) | Some(Len::Em(k)) => first
                     .numeric_line_value_px(Some(Len::Pct(k)), computed_base)

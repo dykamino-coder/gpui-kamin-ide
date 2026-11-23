@@ -22,15 +22,15 @@ pub(super) fn fixed_column_height(
     }
     let (preferred, maximum, outer, inline) = if col_vert {
         (
-            sizes.preferred[0],
-            sizes.maximum[0],
+            sizes.preferred[0].clone(),
+            sizes.maximum[0].clone(),
             parent.avail_w(),
             parent.avail_h,
         )
     } else {
         (
-            sizes.preferred[1],
-            sizes.maximum[1],
+            sizes.preferred[1].clone(),
+            sizes.maximum[1].clone(),
             parent.avail_h,
             parent.cb_width(),
         )
@@ -64,7 +64,10 @@ pub(super) fn box_block_limit(
         ),
         _ => None,
     };
-    match (content(sizes.preferred[1]), content(sizes.maximum[1])) {
+    match (
+        content(sizes.preferred[1].clone()),
+        content(sizes.maximum[1].clone()),
+    ) {
         (Some(p), Some(m)) => Some(p.min(m)),
         (p, m) => p.or(m),
     }

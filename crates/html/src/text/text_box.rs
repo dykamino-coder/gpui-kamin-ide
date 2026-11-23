@@ -80,9 +80,10 @@ pub(crate) fn text_box_line_style(
             let px_of = px_lossy_zero;
             let bs = merged.borders();
             let blocked = if start {
-                px_of(merged.reset_box_layout.padding.top) != 0.0 || px_of(bs.top) != 0.0
+                px_of(merged.reset_box_layout.padding.top.clone()) != 0.0 || px_of(bs.top) != 0.0
             } else {
-                px_of(merged.reset_box_layout.padding.bottom) != 0.0 || px_of(bs.bottom) != 0.0
+                px_of(merged.reset_box_layout.padding.bottom.clone()) != 0.0
+                    || px_of(bs.bottom) != 0.0
             };
             if blocked {
                 return None;

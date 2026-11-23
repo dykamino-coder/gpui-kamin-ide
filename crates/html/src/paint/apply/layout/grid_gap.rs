@@ -47,7 +47,7 @@ pub(super) fn layout_grid_gap(
     {
         d.style().aspect_ratio = Some(r);
     }
-    if let Some((row, col)) = c.reset_flex.gap {
+    if let Some((row, col)) = c.reset_flex.gap.clone() {
         // При вертикальном письме ось блока горизонтальна: `row-gap` — зазор
         // ПО ГОРИЗОНТАЛИ, `column-gap` — по вертикали. Главную ось выше уже
         // переставили, зазор обязан ехать за ней. Сокращение `gap: 20px`
@@ -68,25 +68,25 @@ pub(super) fn layout_grid_gap(
         let edges = c.borders();
         let content = |size: Option<Len>, sides: [Option<Len>; 4]| match size {
             Some(Len::Px(v)) if sizes.border_box => {
-                Some((v - sides.iter().map(|s| px_or_0(*s)).sum::<f32>()).max(0.0))
+                Some((v - sides.iter().map(|s| px_or_0(s.clone())).sum::<f32>()).max(0.0))
             }
             Some(Len::Px(v)) => Some(v),
             _ => None,
         };
         let basis_y = content(
-            sizes.preferred[1],
+            sizes.preferred[1].clone(),
             [
-                c.reset_box_layout.padding.top,
-                c.reset_box_layout.padding.bottom,
+                c.reset_box_layout.padding.top.clone(),
+                c.reset_box_layout.padding.bottom.clone(),
                 edges.top,
                 edges.bottom,
             ],
         );
         let basis_x = content(
-            sizes.preferred[0],
+            sizes.preferred[0].clone(),
             [
-                c.reset_box_layout.padding.left,
-                c.reset_box_layout.padding.right,
+                c.reset_box_layout.padding.left.clone(),
+                c.reset_box_layout.padding.right.clone(),
                 edges.left,
                 edges.right,
             ],
@@ -98,7 +98,7 @@ pub(super) fn layout_grid_gap(
             if real_grid && basis.is_none() {
                 return Some(len_to_gpui(l, vcx));
             }
-            if let Len::Calc(i) = l
+            if let Len::Calc(ref i) = l
                 && let Some((k, add)) = crate::style::values::value::calc_get(i, vcx).pct_px()
             {
                 return basis.map(|b| px((add + k * b).max(0.0)).into());

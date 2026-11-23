@@ -77,8 +77,8 @@ pub(crate) fn atom_element(
     let inline_axis_only = !inherited.wm().vertical()
         && !inherited.wm().turned()
         && !e.style.cascaded().wm().vertical()
-        && keyword(e.style.used().reset_box_layout.width)
-        && !keyword(e.style.used().reset_box_layout.height);
+        && keyword(e.style.used().reset_box_layout.width.clone())
+        && !keyword(e.style.used().reset_box_layout.height.clone());
     let wraps = inline_axis_only
         && content_sized_wraps(e)
         && !replaced_tag(e)

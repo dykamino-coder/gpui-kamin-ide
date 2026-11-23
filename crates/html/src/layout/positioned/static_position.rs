@@ -76,10 +76,10 @@ pub(crate) fn cb_padding_shifts_replaced(e: &Element, inherited: &Computed) -> b
         return false;
     }
     let side = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
-    side(inherited.reset_box_layout.padding.top)
-        || side(inherited.reset_box_layout.padding.right)
-        || side(inherited.reset_box_layout.padding.bottom)
-        || side(inherited.reset_box_layout.padding.left)
+    side(inherited.reset_box_layout.padding.top.clone())
+        || side(inherited.reset_box_layout.padding.right.clone())
+        || side(inherited.reset_box_layout.padding.bottom.clone())
+        || side(inherited.reset_box_layout.padding.left.clone())
 }
 
 /// Абсолютный элемент, которому не задан ни один край.
@@ -107,10 +107,10 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
     // сборщик дерева; пустышка в потоке ломала бы этот слой.
     c.reset_positioned.position == Some(crate::style::computed::Position::Absolute)
         && !relative_size
-        && !edge_set(c.reset_positioned.inset.top)
-        && !edge_set(c.reset_positioned.inset.right)
-        && !edge_set(c.reset_positioned.inset.bottom)
-        && !edge_set(c.reset_positioned.inset.left)
+        && !edge_set(c.reset_positioned.inset.top.clone())
+        && !edge_set(c.reset_positioned.inset.right.clone())
+        && !edge_set(c.reset_positioned.inset.bottom.clone())
+        && !edge_set(c.reset_positioned.inset.left.clone())
 }
 
 /// An absolute box with no inset whose percentage size keeps it off the static
@@ -118,10 +118,10 @@ pub(crate) fn at_static_position(c: &Computed) -> bool {
 pub(crate) fn static_place_in_flow_only(c: &Computed) -> bool {
     c.reset_positioned.position == Some(crate::style::computed::Position::Absolute)
         && !at_static_position(c)
-        && !edge_set(c.reset_positioned.inset.top)
-        && !edge_set(c.reset_positioned.inset.right)
-        && !edge_set(c.reset_positioned.inset.bottom)
-        && !edge_set(c.reset_positioned.inset.left)
+        && !edge_set(c.reset_positioned.inset.top.clone())
+        && !edge_set(c.reset_positioned.inset.right.clone())
+        && !edge_set(c.reset_positioned.inset.bottom.clone())
+        && !edge_set(c.reset_positioned.inset.left.clone())
 }
 
 /// Whether the box's hypothetical static box (`position: static`) is

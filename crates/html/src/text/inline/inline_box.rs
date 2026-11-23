@@ -79,7 +79,12 @@ pub(super) fn mark_inline_box(
         cb,
         own_cb: merged.cb_node,
         seq: crate::layout::positioned::anchor::next_seq(anchors),
-        pad: px4(p.top, p.right, p.bottom, p.left),
+        pad: px4(
+            p.top.clone(),
+            p.right.clone(),
+            p.bottom.clone(),
+            p.left.clone(),
+        ),
         border: px4(b.top, b.right, b.bottom, b.left),
         hidden: merged.inh.ui.hidden == Some(true),
         font_style: (**merged).clone(),

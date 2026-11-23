@@ -69,6 +69,7 @@ pub fn convert_restyling(
     mut invalidation: Option<&mut super::invalidation::Invalidation>,
     keep: Option<&mut super::restyle_probe::RestyleCache>,
 ) -> Result<Vec<Node>, DocumentFailure> {
+    doc.traversal.begin_full_bindings();
     let asked = media;
     let vcx = doc.values();
     vcx.doc.reset_font_alternates();
@@ -157,6 +158,7 @@ pub fn convert_restyling(
         invalidation,
     )?;
     let nodes = super::finish_document::finish(&tree, &admission, out, vcx)?;
+    values.traversal.publish_bindings(&admission)?;
     if let Some(keep) = marked {
         keep.keep_has(tree.take_has());
     }

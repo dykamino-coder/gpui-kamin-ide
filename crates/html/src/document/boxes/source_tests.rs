@@ -38,18 +38,15 @@ fn text_fragment_identity_uses_dom_keys_instead_of_text_order() {
     let right_key = NodeKey::from_packed(9);
     let text =
         |value: &str, id| Node::Text(Text::from_source(value.into(), crate::dom::TextId::new(id)));
-    let left = wrapper(text("left", 1));
-    let right = wrapper(text("right", 2));
+    let left = wrapper(text("left", left_key.packed()));
+    let right = wrapper(text("right", right_key.packed()));
     let mut tree = BoxTree::default();
-    tree.publish_sources(
-        &[Node::Element(element(1, vec![left, right]))],
-        &[left_key, right_key],
-    );
+    tree.publish_sources(&[Node::Element(element(1, vec![left, right]))]);
     let parent = tree.first;
     let removed = tree.get(parent).unwrap().first;
     let retained = tree.get(removed).unwrap().next;
-    let right = wrapper(text("edited", 1));
-    tree.publish_sources(&[Node::Element(element(1, vec![right]))], &[right_key]);
+    let right = wrapper(text("edited", right_key.packed()));
+    tree.publish_sources(&[Node::Element(element(1, vec![right]))]);
     assert_eq!(tree.get(parent).unwrap().first, retained);
     assert!(tree.get(removed).is_none());
 }

@@ -34,7 +34,7 @@ fn row_item_strut_moves_its_margin_and_keeps_the_gap() {
             Some(Len::Px(3.0 + by))
         );
         assert_eq!(
-            parent.style.used().reset_flex.gap.unwrap().0,
+            parent.style.used().reset_flex.gap.clone().unwrap().0,
             Some(Len::Px(10.0))
         );
         assert_eq!(

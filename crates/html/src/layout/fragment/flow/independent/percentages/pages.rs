@@ -95,18 +95,18 @@ impl PagePercentages {
         for style_field_index in 0..3 {
             let (original, resolved, target) = match style_field_index {
                 0 => (
-                    context.style.reset_box_layout.height,
-                    style.reset_box_layout.height,
+                    context.style.reset_box_layout.height.clone(),
+                    style.reset_box_layout.height.clone(),
                     &mut used.reset_box_layout.height,
                 ),
                 1 => (
-                    context.style.reset_box_layout.min_height,
-                    style.reset_box_layout.min_height,
+                    context.style.reset_box_layout.min_height.clone(),
+                    style.reset_box_layout.min_height.clone(),
                     &mut used.reset_box_layout.min_height,
                 ),
                 _ => (
-                    context.style.reset_box_layout.max_height,
-                    style.reset_box_layout.max_height,
+                    context.style.reset_box_layout.max_height.clone(),
+                    style.reset_box_layout.max_height.clone(),
                     &mut used.reset_box_layout.max_height,
                 ),
             };
@@ -190,8 +190,8 @@ impl Context {
         };
         let border = style.borders();
         let edges = Edges {
-            start: side(style.reset_box_layout.padding.top) + side(border.top),
-            end: side(style.reset_box_layout.padding.bottom) + side(border.bottom),
+            start: side(style.reset_box_layout.padding.top.clone()) + side(border.top),
+            end: side(style.reset_box_layout.padding.bottom.clone()) + side(border.bottom),
             clone: style.reset_fragmentation.bdb_clone,
         };
         let subtract = if style.reset_border.border_box == Some(true) {
@@ -203,10 +203,10 @@ impl Context {
             Some(Len::Px(value)) => Some((value - subtract).max(0.0)),
             _ => None,
         };
-        let content_block = content(style.reset_box_layout.height)
+        let content_block = content(style.reset_box_layout.height.clone())
             .unwrap_or(0.0)
-            .min(content(style.reset_box_layout.max_height).unwrap_or(f32::INFINITY))
-            .max(content(style.reset_box_layout.min_height).unwrap_or(0.0));
+            .min(content(style.reset_box_layout.max_height.clone()).unwrap_or(f32::INFINITY))
+            .max(content(style.reset_box_layout.min_height.clone()).unwrap_or(0.0));
         (
             Leaf {
                 content_block,

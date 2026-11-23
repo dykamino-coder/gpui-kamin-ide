@@ -211,16 +211,16 @@ fn fill_inline(
         Some(px(m)? + inner)
     };
     let sum = edge(
-        style.reset_box_layout.margin.top,
-        style.reset_border.border_width.top,
+        style.reset_box_layout.margin.top.clone(),
+        style.reset_border.border_width.top.clone(),
         style.reset_border.border_visible[0],
-        style.reset_box_layout.padding.top,
+        style.reset_box_layout.padding.top.clone(),
     )
     .zip(edge(
-        style.reset_box_layout.margin.bottom,
-        style.reset_border.border_width.bottom,
+        style.reset_box_layout.margin.bottom.clone(),
+        style.reset_border.border_width.bottom.clone(),
         style.reset_border.border_visible[2],
-        style.reset_box_layout.padding.bottom,
+        style.reset_box_layout.padding.bottom.clone(),
     ));
     match sum {
         Some((a, b)) if a + b > 0.0 => {

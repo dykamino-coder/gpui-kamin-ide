@@ -40,10 +40,14 @@ pub(super) fn abspos_normal(
         let auto = |l: Option<crate::style::values::value::Len>| {
             matches!(l, None | Some(crate::style::values::value::Len::Auto))
         };
-        if auto(c.reset_positioned.inset.left) && auto(c.reset_positioned.inset.right) {
+        if auto(c.reset_positioned.inset.left.clone())
+            && auto(c.reset_positioned.inset.right.clone())
+        {
             style.justify_self = None;
         }
-        if auto(c.reset_positioned.inset.top) && auto(c.reset_positioned.inset.bottom) {
+        if auto(c.reset_positioned.inset.top.clone())
+            && auto(c.reset_positioned.inset.bottom.clone())
+        {
             style.align_self = None;
         }
     }

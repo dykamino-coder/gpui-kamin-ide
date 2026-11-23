@@ -27,21 +27,14 @@ impl Extent {
 impl Extent {
     /// The first and last source key inside element `e`: an authored
     /// element gives its own key, a text the key of its node, an anonymous one its own.
-    pub(super) fn of(
-        e: &Element,
-        text_keys: &[NodeKey],
-        element_key: &dyn Fn(u64) -> Option<NodeKey>,
-    ) -> Self {
+    pub(super) fn of(e: &Element, element_key: &dyn Fn(u64) -> Option<NodeKey>) -> Self {
         let mut out = Self::default();
         let mut pending = vec![e.children.iter()];
         while let Some(siblings) = pending.last_mut() {
             match siblings.next() {
                 Some(Node::Text(text)) => {
-                    if let Some(key) = text
-                        .source()
-                        .and_then(|id| text_keys.get(id.get() as usize - 1))
-                    {
-                        out.append(Self::node(*key));
+                    if let Some(key) = text.source().map(|id| NodeKey::from_packed(id.get())) {
+                        out.append(Self::node(key));
                     }
                 }
                 Some(Node::Element(child)) => {

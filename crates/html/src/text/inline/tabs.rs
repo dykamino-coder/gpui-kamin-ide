@@ -42,8 +42,13 @@ pub fn tab_stops(
     let font = super::strut_font(block, base, vcx, None);
     let space = metrics::space_advance(&font, size, fonts)
         .unwrap_or_else(|| metrics::ch_ex_px(family, size, fonts, vcx).0)
-        + metrics::spacing_px(block.inh.text_flow.letter_spacing, family, size, vcx)
-        + metrics::spacing_px(block.inh.text_flow.word_spacing, family, size, vcx);
+        + metrics::spacing_px(
+            block.inh.text_flow.letter_spacing.clone(),
+            family,
+            size,
+            vcx,
+        )
+        + metrics::spacing_px(block.inh.text_flow.word_spacing.clone(), family, size, vcx);
     let step = |style: &Computed| match style.inh.text_flow.tab_size_len {
         Some(Len::Px(v)) if v >= 0.0 => v,
         _ => style.inh.text_flow.tab_size.unwrap_or(8.0).max(0.0) * space,

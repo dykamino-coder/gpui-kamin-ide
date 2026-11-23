@@ -56,7 +56,7 @@ impl Computed {
         {
             return None;
         }
-        if let Some((x, y)) = self.reset_transforms.translate
+        if let Some((x, y)) = self.reset_transforms.translate.clone()
             && !matches!((x, y), (Len::Px(_), Len::Px(_)))
         {
             return None;
@@ -76,7 +76,7 @@ impl Computed {
         self.resolve_decor_inset_viewport(viewport, vcx);
         let vp = self.viewport_cx(viewport);
         let fix = |l: &mut Option<Len>| {
-            if let Some(v) = *l {
+            if let Some(v) = l.take() {
                 *l = Some(v.fold_viewport(vp, vcx));
             }
         };

@@ -84,7 +84,10 @@ fn shorthand_and_longhand_follow_the_order_of_appearance() {
     let mut c = Computed::default();
     c.apply_decls(&parse_decls_in("inset: 1px; top: 5px", vcx), vcx);
     assert_eq!(
-        (c.reset_positioned.inset.top, c.reset_positioned.inset.left),
+        (
+            c.reset_positioned.inset.top.clone(),
+            c.reset_positioned.inset.left.clone()
+        ),
         (Some(Len::Px(5.0)), Some(Len::Px(1.0)))
     );
 }

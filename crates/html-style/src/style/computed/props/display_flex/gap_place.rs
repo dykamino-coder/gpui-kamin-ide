@@ -9,11 +9,14 @@ impl Computed {
         match key {
             "row-gap" => {
                 let parsed = parsed_value!(self, super::values::gap(v, vcx));
-                self.reset_flex.gap = Some((parsed, self.reset_flex.gap.and_then(|g| g.1)));
+                self.reset_flex.gap = Some((parsed, self.reset_flex.gap.clone().and_then(|g| g.1)));
             }
             "column-gap" => {
                 let parsed = parsed_value!(self, super::values::gap(v, vcx));
-                self.reset_flex.gap = Some((self.reset_flex.gap.and_then(|g| g.0), parsed));
+                self.reset_flex.gap = Some((
+                    self.reset_flex.gap.clone().and_then(|g| g.0),
+                    parsed.clone(),
+                ));
                 self.reset_fragmentation.column_gap = parsed;
             }
             "order" => self.reset_flex.order = apply_parsed!(self, v.parse().ok()),

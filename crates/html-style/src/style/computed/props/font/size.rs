@@ -5,7 +5,7 @@ use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
 /// Кегль (css-fonts-4 §font-size-prop).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FontSize {
     /// `math` (MathML Core §3.2.2): кегль по `math-depth`.
     Math,

@@ -202,7 +202,7 @@ pub(super) struct MotionStyle<'a> {
 pub(super) fn motion_style(c: &Computed) -> MotionStyle<'_> {
     MotionStyle {
         offset_path: &c.reset_transforms.offset_path,
-        offset_distance: c.reset_transforms.offset_distance,
+        offset_distance: c.reset_transforms.offset_distance.clone(),
         offset_rotate: &c.reset_transforms.offset_rotate,
         offset_anchor: &c.reset_transforms.offset_anchor,
         offset_position: &c.reset_transforms.offset_position,

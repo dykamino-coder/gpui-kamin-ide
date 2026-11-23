@@ -68,8 +68,8 @@ pub(super) fn round_tile(
         if ry { fit(th, bh) } else { th },
     );
     match (rx, ry) {
-        (true, false) if auto(size.map(|s| s.1)) && tw > 0.0 => (nw, th * nw / tw),
-        (false, true) if auto(size.map(|s| s.0)) && th > 0.0 => (tw * nh / th, nh),
+        (true, false) if auto(size.as_ref().map(|s| s.1.clone())) && tw > 0.0 => (nw, th * nw / tw),
+        (false, true) if auto(size.as_ref().map(|s| s.0.clone())) && th > 0.0 => (tw * nh / th, nh),
         _ => (nw, nh),
     }
 }

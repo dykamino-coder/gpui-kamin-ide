@@ -44,7 +44,10 @@ fn reference_stays(nodes: &[Node], under_cb: bool) -> bool {
         let hoisted = pos == Some(Position::Absolute)
             && !under_cb
             && s.reset_positioned.z_index.unwrap_or(0) >= 0
-            && (edge_set(i.left) || edge_set(i.right) || edge_set(i.top) || edge_set(i.bottom));
+            && (edge_set(i.left.clone())
+                || edge_set(i.right.clone())
+                || edge_set(i.top.clone())
+                || edge_set(i.bottom.clone()));
         if positioned && s.reset_positioned.z_index.is_some_and(|z| z < 0) {
             return false;
         }

@@ -8,7 +8,7 @@ mod fragment;
 pub(crate) use auto_min::ratio_as_auto_min;
 
 /// Физические оси x/y. Неразрешённые проценты и auto сохраняют прежний смысл.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BoxDimensions {
     pub(crate) preferred: [Option<Len>; 2],
     pub(crate) minimum: [Option<Len>; 2],
@@ -19,14 +19,17 @@ pub(crate) struct BoxDimensions {
 impl BoxDimensions {
     pub(crate) fn from_computed(style: &Computed) -> Self {
         Self {
-            preferred: [style.reset_box_layout.width, style.reset_box_layout.height],
+            preferred: [
+                style.reset_box_layout.width.clone(),
+                style.reset_box_layout.height.clone(),
+            ],
             minimum: [
-                style.reset_box_layout.min_width,
-                style.reset_box_layout.min_height,
+                style.reset_box_layout.min_width.clone(),
+                style.reset_box_layout.min_height.clone(),
             ],
             maximum: [
-                style.reset_box_layout.max_width,
-                style.reset_box_layout.max_height,
+                style.reset_box_layout.max_width.clone(),
+                style.reset_box_layout.max_height.clone(),
             ],
             border_box: style.reset_border.border_box == Some(true),
         }
@@ -40,20 +43,24 @@ impl BoxDimensions {
         else {
             return self;
         };
+        let ratio_min = ratio_as_auto_min(style, &self);
         let sizes = self.preferred;
         let mins = self.minimum;
         let maxs = self.maximum;
-        let mut resolved_min = mins;
-        let mut resolved_max = maxs;
+        let mut resolved_min = mins.clone();
+        let mut resolved_max = maxs.clone();
         for axis in 0..2 {
             let factor = if axis == 0 { ratio } else { 1.0 / ratio };
             // CSS Sizing 4, size transfers: собственные ограничения и preferred
             // size оси имеют приоритет перед переносом с противоположной оси.
             if matches!(mins[axis], None | Some(Len::Auto))
-                && let Some(value) = pixels(mins[1 - axis])
+                && let Some(value) = pixels(mins[1 - axis].clone())
             {
                 let mut value = value * factor;
-                for cap in [sizes[axis], maxs[axis]].into_iter().filter_map(pixels) {
+                for cap in [sizes[axis].clone(), maxs[axis].clone()]
+                    .into_iter()
+                    .filter_map(pixels)
+                {
                     value = value.min(cap);
                 }
                 resolved_min[axis] = Some(Len::Px(value));
@@ -61,12 +68,12 @@ impl BoxDimensions {
             // Content-based автоминимум может превышать перенесённый максимум.
             // Адаптер сохраняет auto зависимой оси; жёсткий максимум здесь
             // подавил бы её автоминимум (CSS Sizing 4 §5.2).
-            if !ratio_as_auto_min(style, &self)
+            if !ratio_min
                 && matches!(maxs[axis], None | Some(Len::Auto))
-                && let Some(value) = pixels(maxs[1 - axis])
+                && let Some(value) = pixels(maxs[1 - axis].clone())
             {
                 let mut value = value * factor;
-                for floor in [sizes[axis], resolved_min[axis]]
+                for floor in [sizes[axis].clone(), resolved_min[axis].clone()]
                     .into_iter()
                     .filter_map(pixels)
                 {
@@ -92,7 +99,7 @@ fn pixels(value: Option<Len>) -> Option<f32> {
 }
 
 /// Края входят в расчёт размеров отдельно от свойств коробки.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct BoxEdges {
     pub(crate) outer: Sides,
     pub(crate) inner: Sides,
@@ -102,8 +109,8 @@ pub(crate) struct BoxEdges {
 impl BoxEdges {
     pub(crate) fn from_computed(style: &Computed) -> Self {
         Self {
-            outer: style.reset_box_layout.margin,
-            inner: style.reset_box_layout.padding,
+            outer: style.reset_box_layout.margin.clone(),
+            inner: style.reset_box_layout.padding.clone(),
             stroke: style.borders(),
         }
     }

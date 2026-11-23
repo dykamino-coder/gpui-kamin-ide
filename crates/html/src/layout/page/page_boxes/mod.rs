@@ -1,8 +1,4 @@
-//! Порождение марджин-боксов листа из объявлений `@page` (css-page-3 §margin-boxes,
-//! §populating-margin-boxes): контекст страницы и счётчики, коробка только при `content`
-//! не `none`/`normal`, стиль коробки с логическими свойствами по её письму, рамки, отбивки
-//! и поля в точках листа, замыкания сборки элемента на готовый размер и меры по содержимому.
-//! Раскладку готовых `MarginBox` делает `page_stack`.
+//! Build page-margin boxes and their generated content.
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::dom::{Element, Node};
@@ -152,7 +148,10 @@ fn page_margin_boxes(
         // `vertical-align` терял высоту (`alignment-001`: буквы у верха).
         let opts = opts.clone();
         let ctx_style = ctx_style.clone();
-        let intrinsic = [own.reset_box_layout.width, own.reset_box_layout.height];
+        let intrinsic = [
+            own.reset_box_layout.width.clone(),
+            own.reset_box_layout.height.clone(),
+        ];
         let vertical = resolved.wm().vertical();
         let build = move |size: Option<(f32, f32)>, inline: Option<Len>| -> AnyElement {
             let vcx = opts.cx.vcx();

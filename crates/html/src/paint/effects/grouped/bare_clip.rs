@@ -15,15 +15,16 @@ pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
                 let m = c
                     .reset_box_layout
                     .own_margin
-                    .unwrap_or(c.reset_box_layout.margin);
+                    .clone()
+                    .unwrap_or(c.reset_box_layout.margin.clone());
                 [-s(m.top), -s(m.right), -s(m.bottom), -s(m.left)]
             }
             Some(2) => [s(b.top), s(b.right), s(b.bottom), s(b.left)],
             Some(3) => [
-                s(b.top) + s(c.reset_box_layout.padding.top),
-                s(b.right) + s(c.reset_box_layout.padding.right),
-                s(b.bottom) + s(c.reset_box_layout.padding.bottom),
-                s(b.left) + s(c.reset_box_layout.padding.left),
+                s(b.top) + s(c.reset_box_layout.padding.top.clone()),
+                s(b.right) + s(c.reset_box_layout.padding.right.clone()),
+                s(b.bottom) + s(c.reset_box_layout.padding.bottom.clone()),
+                s(b.left) + s(c.reset_box_layout.padding.left.clone()),
             ],
             _ => [0.0; 4],
         };
@@ -36,15 +37,15 @@ pub(crate) fn bare_clip(c: &Computed) -> (Option<[Len; 4]>, Option<Len>) {
     // border-radius)»): радиус коробки — радиус рамки, сдвинутый на ту же
     // толщину (css-backgrounds-3 §5.2 inner/outer curves). Пока — только
     // равные круглые углы и равные стороны сдвига.
-    let bare_round = bare_inset.and_then(|inset| {
+    let bare_round = bare_inset.clone().and_then(|inset| {
         if c.reset_border.radius_ell.is_some() {
             return None;
         }
         let r = match (
-            c.reset_border.radius.tl,
-            c.reset_border.radius.tr,
-            c.reset_border.radius.br,
-            c.reset_border.radius.bl,
+            c.reset_border.radius.tl.clone(),
+            c.reset_border.radius.tr.clone(),
+            c.reset_border.radius.br.clone(),
+            c.reset_border.radius.bl.clone(),
         ) {
             (Some(Len::Px(a)), Some(Len::Px(b)), Some(Len::Px(d)), Some(Len::Px(e)))
                 if a == b && b == d && d == e && a > 0.0 =>

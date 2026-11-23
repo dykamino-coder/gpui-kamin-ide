@@ -58,7 +58,7 @@ pub(super) fn clip_rect(
     if words.len() != 4 {
         return None;
     }
-    let mut sides = [None; 4];
+    let mut sides = [const { None }; 4];
     for (slot, word) in sides.iter_mut().zip(words) {
         *slot = if word == "auto" {
             None

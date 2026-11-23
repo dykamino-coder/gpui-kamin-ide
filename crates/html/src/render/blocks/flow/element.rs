@@ -142,8 +142,8 @@ pub(crate) async fn paint_element(
     };
     let hoist_margins = content_sized_wraps(e)
         && !replaced_tag(e)
-        && (negative(e.style.used().reset_box_layout.margin.left)
-            || negative(e.style.used().reset_box_layout.margin.right));
+        && (negative(e.style.used().reset_box_layout.margin.left.clone())
+            || negative(e.style.used().reset_box_layout.margin.right.clone()));
     // Размещение в сетке тоже уезжает на обёртку (см.
     // `content_sized`): в дорожках родителя стоит она. Внутри обёртки
     // (своя сетка в одну дорожку) элемент с прежним `grid-row: 2`

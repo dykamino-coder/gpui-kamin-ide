@@ -20,9 +20,10 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         Some(crate::style::values::value::Len::Px(v)) => Some(v),
         _ => None,
     };
-    let given_w = css(e.style.used().reset_box_layout.width).or_else(|| facts.width.map(|v| v * z));
+    let given_w =
+        css(e.style.used().reset_box_layout.width.clone()).or_else(|| facts.width.map(|v| v * z));
     let given_h =
-        css(e.style.used().reset_box_layout.height).or_else(|| facts.height.map(|v| v * z));
+        css(e.style.used().reset_box_layout.height.clone()).or_else(|| facts.height.map(|v| v * z));
     // Обособление размера снимает у рисунка ПРИРОДНЫЕ стороны и природное
     // соотношение (`viewBox`), но не написанные автором: «All CSS properties
     // of the size containment box are taken into account as they would be
@@ -62,13 +63,13 @@ pub fn size_of(e: &Element) -> (f32, f32) {
         return (
             clamp(
                 w,
-                e.style.used().reset_box_layout.min_width,
-                e.style.used().reset_box_layout.max_width,
+                e.style.used().reset_box_layout.min_width.clone(),
+                e.style.used().reset_box_layout.max_width.clone(),
             ),
             clamp(
                 h,
-                e.style.used().reset_box_layout.min_height,
-                e.style.used().reset_box_layout.max_height,
+                e.style.used().reset_box_layout.min_height.clone(),
+                e.style.used().reset_box_layout.max_height.clone(),
             ),
         );
     }

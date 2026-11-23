@@ -76,8 +76,8 @@ impl Serial {
             || s.reset_box_layout.clear.is_some_and(|v| v != 0)
             || s.reset_fragmentation.margin_trim != 0
             || ![
-                s.reset_box_layout.margin.top,
-                s.reset_box_layout.margin.bottom,
+                s.reset_box_layout.margin.top.clone(),
+                s.reset_box_layout.margin.bottom.clone(),
             ]
             .iter()
             .all(|v| matches!(v, None | Some(Len::Px(0.))))

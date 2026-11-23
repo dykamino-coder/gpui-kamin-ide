@@ -112,7 +112,7 @@ async fn build(
     // блока, только если того не отделяют ни рамка, ни отбивка и он не
     // заводит своего контекста форматирования.
     let cb_top_open = !own_context_style(inherited)
-        && zero_len(inherited.reset_box_layout.padding.top)
+        && zero_len(inherited.reset_box_layout.padding.top.clone())
         && zero_len(inherited.borders().top);
     // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
     // горизонтального письма: в гибком и сетке `float` не

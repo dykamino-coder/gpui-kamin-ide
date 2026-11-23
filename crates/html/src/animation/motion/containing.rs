@@ -66,23 +66,26 @@ pub(super) fn cb_is_parent(c: &Computed, parent_establishes: bool) -> bool {
 /// и путь строится ровно теми ветками, которым содержащий блок не нужен.
 pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
     let px = px_lossy_zero;
-    let (w, h) = match (p.reset_box_layout.width, p.reset_box_layout.height) {
+    let (w, h) = match (
+        p.reset_box_layout.width.clone(),
+        p.reset_box_layout.height.clone(),
+    ) {
         (Some(Len::Px(w)), Some(Len::Px(h))) => (w, h),
         _ => return None,
     };
     let b = p.borders();
     let (bt, br, bb, bl) = (px(b.top), px(b.right), px(b.bottom), px(b.left));
     let (pt, pr, pb, pl) = (
-        px(p.reset_box_layout.padding.top),
-        px(p.reset_box_layout.padding.right),
-        px(p.reset_box_layout.padding.bottom),
-        px(p.reset_box_layout.padding.left),
+        px(p.reset_box_layout.padding.top.clone()),
+        px(p.reset_box_layout.padding.right.clone()),
+        px(p.reset_box_layout.padding.bottom.clone()),
+        px(p.reset_box_layout.padding.left.clone()),
     );
     let (mt, mr, mb, ml) = (
-        px(p.reset_box_layout.margin.top),
-        px(p.reset_box_layout.margin.right),
-        px(p.reset_box_layout.margin.bottom),
-        px(p.reset_box_layout.margin.left),
+        px(p.reset_box_layout.margin.top.clone()),
+        px(p.reset_box_layout.margin.right.clone()),
+        px(p.reset_box_layout.margin.bottom.clone()),
+        px(p.reset_box_layout.margin.left.clone()),
     );
     // `box-sizing: border-box` — записанная длина уже включает рамку и поля
     // (css-sizing-3 §3.1).
@@ -103,20 +106,20 @@ pub(super) fn cb_of(p: &Computed) -> Option<Cb> {
     };
     let rad = [
         (
-            r(p.reset_border.radius.tl, bw),
-            r(p.reset_border.radius.tl, bh),
+            r(p.reset_border.radius.tl.clone(), bw),
+            r(p.reset_border.radius.tl.clone(), bh),
         ),
         (
-            r(p.reset_border.radius.tr, bw),
-            r(p.reset_border.radius.tr, bh),
+            r(p.reset_border.radius.tr.clone(), bw),
+            r(p.reset_border.radius.tr.clone(), bh),
         ),
         (
-            r(p.reset_border.radius.br, bw),
-            r(p.reset_border.radius.br, bh),
+            r(p.reset_border.radius.br.clone(), bw),
+            r(p.reset_border.radius.br.clone(), bh),
         ),
         (
-            r(p.reset_border.radius.bl, bw),
-            r(p.reset_border.radius.bl, bh),
+            r(p.reset_border.radius.bl.clone(), bw),
+            r(p.reset_border.radius.bl.clone(), bh),
         ),
     ];
     Some(Cb {
@@ -151,22 +154,25 @@ pub(super) fn with_self(mut g: Cb, c: &Computed) -> Cb {
         _ => 0.0,
     };
     g.self_off = (
-        base.0 + len(c.reset_positioned.inset.left, base.2),
-        base.1 + len(c.reset_positioned.inset.top, base.3),
+        base.0 + len(c.reset_positioned.inset.left.clone(), base.2),
+        base.1 + len(c.reset_positioned.inset.top.clone(), base.3),
     );
     let b = c.borders();
     g.self_size = if c.reset_border.border_box == Some(true) {
-        (px(c.reset_box_layout.width), px(c.reset_box_layout.height))
+        (
+            px(c.reset_box_layout.width.clone()),
+            px(c.reset_box_layout.height.clone()),
+        )
     } else {
         (
-            px(c.reset_box_layout.width)
-                + px(c.reset_box_layout.padding.left)
-                + px(c.reset_box_layout.padding.right)
+            px(c.reset_box_layout.width.clone())
+                + px(c.reset_box_layout.padding.left.clone())
+                + px(c.reset_box_layout.padding.right.clone())
                 + px(b.left)
                 + px(b.right),
-            px(c.reset_box_layout.height)
-                + px(c.reset_box_layout.padding.top)
-                + px(c.reset_box_layout.padding.bottom)
+            px(c.reset_box_layout.height.clone())
+                + px(c.reset_box_layout.padding.top.clone())
+                + px(c.reset_box_layout.padding.bottom.clone())
                 + px(b.top)
                 + px(b.bottom),
         )

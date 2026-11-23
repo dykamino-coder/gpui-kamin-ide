@@ -40,8 +40,8 @@ pub(crate) fn inner_with_dimensions(
         return None;
     }
     let b = st.borders();
-    let pb = side(st.reset_box_layout.padding.left)?
-        + side(st.reset_box_layout.padding.right)?
+    let pb = side(st.reset_box_layout.padding.left.clone())?
+        + side(st.reset_box_layout.padding.right.clone())?
         + side(b.left)?
         + side(b.right)?;
     let bb = sizes.border_box;
@@ -82,8 +82,8 @@ pub(crate) fn inner_with_dimensions(
             }
 
             outer?
-                - side(st.reset_box_layout.margin.left)?
-                - side(st.reset_box_layout.margin.right)?
+                - side(st.reset_box_layout.margin.left.clone())?
+                - side(st.reset_box_layout.margin.right.clone())?
                 - pb
         }
         _ => return None,
@@ -97,8 +97,10 @@ pub(crate) fn inner_with_dimensions(
         _ => None,
     };
     let content_bound = |value: f32| (value - if bb { pb } else { 0.0 }).max(0.0);
-    let minimum = bound(sizes.minimum[0])?.map(content_bound).unwrap_or(0.0);
-    let maximum = bound(sizes.maximum[0])?
+    let minimum = bound(sizes.minimum[0].clone())?
+        .map(content_bound)
+        .unwrap_or(0.0);
+    let maximum = bound(sizes.maximum[0].clone())?
         .map(content_bound)
         .unwrap_or(f32::INFINITY);
     let w = w.min(maximum).max(minimum);

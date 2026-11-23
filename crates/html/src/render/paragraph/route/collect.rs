@@ -169,7 +169,7 @@ pub(crate) fn paragraph_pieces_routed(
     // считает раскладка строк, когда ширина решена.
     // `calc(50% - 3px)` несёт обе части разом: `Paragraph` складывает
     // `px + pct × ширина строки` сам (`lines.rs`, css-text-3 §2.1).
-    let mixed = match inherited.inh.text_flow.text_indent {
+    let mixed = match inherited.inh.text_flow.text_indent.clone() {
         Some(Len::Calc(i)) => crate::style::values::value::calc_get(i, vcx).pct_px(),
         _ => None,
     };

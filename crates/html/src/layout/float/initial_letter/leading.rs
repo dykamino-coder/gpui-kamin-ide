@@ -181,9 +181,9 @@ pub(crate) fn inline_float_host(e: &Element) -> Option<Element> {
 pub(crate) fn px_margin_w(c: &Computed) -> Option<f32> {
     let b = c.borders();
     Some(
-        px_missing_zero(c.reset_box_layout.width)?
-            + px_missing_zero(c.reset_box_layout.padding.left)?
-            + px_missing_zero(c.reset_box_layout.padding.right)?
+        px_missing_zero(c.reset_box_layout.width.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.left.clone())?
+            + px_missing_zero(c.reset_box_layout.padding.right.clone())?
             + px_missing_zero(b.left)?
             + px_missing_zero(b.right)?
             + px_margin(&c.reset_box_layout.margin.left)?

@@ -58,6 +58,7 @@ fn derive(style: &Computed, mut font: gpui::Font, base_px: f32, vcx: ValueCx<'_>
     // TRANSITIONAL(cascade-7b-font-size-adjust): A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face.
     let font_size = font_style
         .font_size
+        .clone()
         .map(|_| gpui::px(style.used_font(base_px, vcx).size_px));
     (font, font_size)
 }

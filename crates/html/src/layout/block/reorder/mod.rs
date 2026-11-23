@@ -132,22 +132,22 @@ pub(crate) fn resolve_inline_pct(
     let b = container.borders();
     let (size, edges) = if vertical {
         (
-            sizes.preferred[1],
+            sizes.preferred[1].clone(),
             [
                 b.top,
                 b.bottom,
-                container.reset_box_layout.padding.top,
-                container.reset_box_layout.padding.bottom,
+                container.reset_box_layout.padding.top.clone(),
+                container.reset_box_layout.padding.bottom.clone(),
             ],
         )
     } else {
         (
-            sizes.preferred[0],
+            sizes.preferred[0].clone(),
             [
                 b.left,
                 b.right,
-                container.reset_box_layout.padding.left,
-                container.reset_box_layout.padding.right,
+                container.reset_box_layout.padding.left.clone(),
+                container.reset_box_layout.padding.right.clone(),
             ],
         )
     };
@@ -157,7 +157,10 @@ pub(crate) fn resolve_inline_pct(
     // Строчный размер СБ — его content-box: при `border-box` заданная
     // величина включает рамки и отступы по той же оси.
     if sizes.border_box {
-        base -= edges.iter().map(|l| px(*l).unwrap_or(0.0)).sum::<f32>();
+        base -= edges
+            .iter()
+            .map(|l| px(l.clone()).unwrap_or(0.0))
+            .sum::<f32>();
     }
     let base = base.max(0.0);
     for node in children.iter_mut() {

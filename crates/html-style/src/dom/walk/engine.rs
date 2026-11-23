@@ -160,6 +160,8 @@ pub fn walk_children(
         admission.work(1)?;
         match next {
             Work::Leave(p, restore) => {
+                let owner_doc = p.visit.vcx.doc;
+                let owner = p.visit.handle().key();
                 restore.apply(path);
                 let children = output.pop().expect("children output").into_vec();
                 leave(
@@ -170,6 +172,7 @@ pub fn walk_children(
                     output.last_mut().expect("parent output"),
                     invalidation.as_deref_mut(),
                 )?;
+                owner_doc.traversal.end_bindings(owner, &admission)?;
             }
             Work::Visit(v) => {
                 let limit = crate::values::MAX_DEPTH;
@@ -195,6 +198,9 @@ pub fn walk_children(
                         output.last_mut().expect("output"),
                     ),
                     NodeData::Element { .. } => {
+                        let traversal = &v.vcx.doc.traversal;
+                        let owner = v.handle().key();
+                        traversal.begin_bindings(owner);
                         if let Some(mut p) = enter(
                             v,
                             tree,
@@ -209,6 +215,8 @@ pub fn walk_children(
                             while let Some(job) = children.pop() {
                                 work.push(Work::Visit(job), &admission)?;
                             }
+                        } else {
+                            traversal.end_bindings(owner, &admission)?;
                         }
                     }
                     _ => {

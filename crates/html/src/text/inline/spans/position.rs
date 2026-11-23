@@ -63,7 +63,7 @@ pub fn shift_spans(
             .or_else(|| {
                 // Единица шрифта разрешается ЗДЕСЬ: кегль и гарнитура куска
                 // уже известны.
-                style.reset_text_box.vertical_shift_len.map(|l| {
+                style.reset_text_box.vertical_shift_len.clone().map(|l| {
                     let family = style.inh.font.font_family.clone().unwrap_or_default();
                     -crate::text::metrics::spacing_px(Some(l), &family, size, opts.cx.vcx())
                 })

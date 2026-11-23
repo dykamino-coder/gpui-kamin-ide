@@ -14,14 +14,14 @@ pub(super) fn truncate(style: &mut Computed, dt: f32, db: f32, fh: f32, clip: f3
                 0 => (
                     &mut style.reset_box_layout.padding.top,
                     &mut style.reset_border.border_width.top,
-                    borders.top,
+                    borders.top.clone(),
                     dt,
                     top,
                 ),
                 _ => (
                     &mut style.reset_box_layout.padding.bottom,
                     &mut style.reset_border.border_width.bottom,
-                    borders.bottom,
+                    borders.bottom.clone(),
                     db,
                     bottom,
                 ),
