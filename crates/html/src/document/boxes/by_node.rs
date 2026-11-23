@@ -13,6 +13,8 @@ pub(super) struct ByNode {
     base: u64,
     dense: Vec<BoxId>,
     more: HashMap<u64, BoxId>,
+    /// Дополнительные коробки одного DOM-узла появляются только при фрагментации.
+    fragments: HashMap<u64, Vec<BoxId>>,
 }
 
 impl ByNode {
@@ -50,14 +52,35 @@ impl ByNode {
         }
     }
 
+    pub(super) fn insert_box(&mut self, key: u64, id: BoxId) {
+        self.insert_first(key, id);
+        if self.get(key) != Some(id) {
+            let fragments = self.fragments.entry(key).or_default();
+            if !fragments.contains(&id) {
+                fragments.push(id);
+            }
+        }
+    }
+
+    pub(super) fn all(&self, key: u64) -> impl Iterator<Item = BoxId> + '_ {
+        self.get(key).into_iter().chain(
+            self.fragments
+                .get(&key)
+                .into_iter()
+                .flat_map(|ids| ids.iter().copied()),
+        )
+    }
+
     /// Drop the growth slack once the boxes of a document are in.
     pub(super) fn fit(&mut self) {
         self.dense.shrink_to_fit();
         self.more.shrink_to_fit();
+        self.fragments.shrink_to_fit();
     }
 
     /// Write the key's box over the previous one.
     pub(super) fn set(&mut self, key: u64, id: BoxId) {
+        self.fragments.remove(&key);
         if let Some(at) = self.index(key) {
             self.dense[at] = id;
             return;
@@ -66,14 +89,34 @@ impl ByNode {
         self.insert_first(key, id);
     }
 
-    /// Forget the key if its first box is `id`.
+    /// Remove one fragment, promoting the next live fragment when necessary.
     pub(super) fn remove_if(&mut self, key: u64, id: BoxId) {
+        let mut promote = None;
+        let first = self.get(key) == Some(id);
+        if let Some(ids) = self.fragments.get_mut(&key) {
+            ids.retain(|&other| other != id);
+            if first {
+                promote = ids.first().copied();
+                if promote.is_some() {
+                    ids.remove(0);
+                }
+            }
+            if ids.is_empty() {
+                self.fragments.remove(&key);
+            }
+        }
         match self.index(key) {
-            Some(at) if self.dense[at] == id => self.dense[at] = BoxId::NONE,
+            Some(at) if self.dense[at] == id => {
+                self.dense[at] = promote.unwrap_or(BoxId::NONE);
+            }
             Some(_) => {}
             None => {
                 if self.more.get(&key) == Some(&id) {
-                    self.more.remove(&key);
+                    if let Some(next) = promote {
+                        self.more.insert(key, next);
+                    } else {
+                        self.more.remove(&key);
+                    }
                 }
             }
         }
@@ -82,12 +125,19 @@ impl ByNode {
     pub(super) fn clear(&mut self) {
         self.dense.clear();
         self.more.clear();
+        self.fragments.clear();
     }
 
     #[cfg(feature = "heap-report")]
     pub(super) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
         ops.buffer(self.dense.as_ptr(), self.dense.capacity())
             + ops.table::<(u64, BoxId)>(self.more.capacity())
+            + ops.table::<(u64, Vec<BoxId>)>(self.fragments.capacity())
+            + self
+                .fragments
+                .values()
+                .map(|ids| ops.buffer(ids.as_ptr(), ids.capacity()))
+                .sum::<usize>()
     }
 }
 

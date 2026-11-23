@@ -8,9 +8,12 @@ mod arena;
 #[cfg(test)]
 mod box_of_tests;
 mod by_node;
+mod claims;
 #[cfg(test)]
 mod delta_tests;
 mod epochs;
+mod record;
+mod reservations;
 pub(crate) use epochs::Epochs;
 #[cfg(test)]
 mod epochs_tests;
@@ -24,6 +27,8 @@ pub(crate) mod inline;
 mod key_tests;
 mod level;
 mod links;
+#[cfg(test)]
+mod move_tests;
 mod publish;
 mod reuse;
 mod source;

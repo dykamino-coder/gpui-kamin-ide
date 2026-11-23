@@ -2,9 +2,9 @@
 //! with the previous input.
 
 use super::BoxTree;
+use super::claims::Claims;
 use super::reuse::Reuse;
 use super::source::Source;
-use crate::document::delta::BoxDelta;
 use crate::dom::{BoxId, Element, Node};
 
 /// What the siblings of a walk level are compared with.
@@ -66,24 +66,42 @@ impl<'a> Level<'a> {
 
     /// The previous box of this source among the children of the same parent: first
     /// in order, after a divergence by source.
-    pub(super) fn take(&mut self, tree: &BoxTree, origin: &Source) -> Option<BoxId> {
+    pub(super) fn take(
+        &mut self,
+        tree: &BoxTree,
+        claims: &mut Claims,
+        origin: &Source,
+    ) -> Option<BoxId> {
         if self.rest.is_none() {
+            while claims.used(self.cursor) {
+                self.cursor = claims.next(tree, self.cursor)?;
+                self.reshaped = true;
+            }
             if let Some(record) = tree.get(self.cursor)
                 && record.origin == *origin
             {
                 let id = self.cursor;
                 self.cursor = record.next;
+                claims.accept(id);
                 return Some(id);
             }
             let mut rest = Reuse::default();
             while let Some(record) = tree.get(self.cursor) {
-                rest.insert(record.origin.clone(), self.cursor);
-                self.cursor = record.next;
+                if !claims.used(self.cursor) {
+                    rest.insert(record.origin.clone(), self.cursor);
+                }
+                self.cursor = claims.next(tree, self.cursor).unwrap_or(BoxId::NONE);
             }
             self.rest = Some(rest);
         }
         self.reshaped = true;
-        self.rest.as_mut()?.take(origin)
+        while let Some(id) = self.rest.as_mut()?.take(origin) {
+            if !claims.used(id) {
+                claims.accept(id);
+                return Some(id);
+            }
+        }
+        None
     }
 
     pub(super) fn append(&mut self, tree: &mut BoxTree, id: BoxId) {
@@ -103,16 +121,20 @@ impl<'a> Level<'a> {
 
     /// Remove the previous children that found no source; `true` if the child list
     /// changed.
-    pub(super) fn finish(self, tree: &mut BoxTree, delta: &mut BoxDelta) -> bool {
+    pub(super) fn finish(self, tree: &BoxTree, claims: &mut Claims) -> bool {
         let mut reshaped = self.reshaped;
         let mut cursor = self.cursor;
-        while let Some(next) = tree.get(cursor).map(|r| r.next) {
-            tree.remove_subtree(cursor, delta);
+        while let Some(next) = claims.next(tree, cursor) {
+            if !claims.used(cursor) {
+                claims.remove(cursor);
+            }
             cursor = next;
             reshaped = true;
         }
         for id in self.rest.into_iter().flat_map(Reuse::into_ids) {
-            tree.remove_subtree(id, delta);
+            if !claims.used(id) {
+                claims.remove(id);
+            }
             reshaped = true;
         }
         reshaped
