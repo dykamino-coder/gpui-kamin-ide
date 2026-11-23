@@ -4,16 +4,20 @@ mod ancestor;
 mod descent;
 mod engine;
 mod enter;
+mod full;
 mod kids;
 mod leave;
 mod marker;
 mod pending;
 mod probe;
 mod record;
+mod resume;
 pub use probe::{Chains, Probed, ProbedRest, probe};
 mod sibling_survey;
 pub use ancestor::element_attrs;
-pub(super) use engine::walk_children;
+pub(super) use engine::walk;
+pub(super) use full::walk_children;
+pub(super) use record::Recorder;
 
 mod text_nodes;
 

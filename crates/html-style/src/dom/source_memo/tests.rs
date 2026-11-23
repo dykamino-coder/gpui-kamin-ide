@@ -11,6 +11,7 @@ mod ownership;
 mod retirement;
 mod stages;
 mod structure;
+mod traverse;
 
 fn build(source: &str) -> (Admitted, Rc<DocumentValues>, RestyleCache, Vec<Node>) {
     let input = Admitted::parse(source, false).unwrap();

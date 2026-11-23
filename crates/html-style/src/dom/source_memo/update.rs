@@ -14,6 +14,14 @@ impl MemoUpdate {
         self.entries.get(&node)
     }
 
+    pub(super) fn merge(&mut self, update: Self) -> Result<(), Error> {
+        self.entries
+            .try_reserve(update.entries.len())
+            .map_err(|_| Error::Allocation)?;
+        self.entries.extend(update.entries);
+        Ok(())
+    }
+
     pub fn replace(&mut self, entry: Rc<CascadeEntry>) -> Result<(), Error> {
         self.entries.try_reserve(1).map_err(|_| Error::Allocation)?;
         self.entries.insert(entry.node, entry);

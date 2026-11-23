@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 pub struct MemoStage<'a> {
     base: &'a mut SourceMemo,
-    update: MemoUpdate,
+    pub(super) update: MemoUpdate,
     dirty: DirtyEntries,
 }
 

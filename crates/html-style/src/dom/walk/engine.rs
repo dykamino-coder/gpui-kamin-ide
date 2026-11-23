@@ -19,7 +19,7 @@ enum Work<'a> {
     Leave(Box<Pending<'a>>, Restore, Option<super::record::Start>),
 }
 #[allow(clippy::too_many_arguments)]
-pub fn walk_children(
+pub(in crate::dom) fn walk(
     handle: &Handle,
     tree: &TreeIndex,
     scope: &Rc<Scope>,
@@ -30,8 +30,8 @@ pub fn walk_children(
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
     mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
-    retain: bool,
-) -> Result<Option<crate::dom::source_memo::SourceMemo>, crate::budget::admission::Error> {
+    mut recorder: Option<&mut super::record::Recorder<'_, '_>>,
+) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
     let mut jobs = visits(
         Survey::children(handle, tree),
@@ -42,7 +42,6 @@ pub fn walk_children(
         vcx,
         0,
     )?;
-    let mut recorder = retain.then(super::record::Recorder::default);
     let sharing = super::element_sharing::ElementSharing::default();
     let mut work = Buffer::default();
     while let Some(job) = jobs.pop() {
@@ -101,11 +100,22 @@ pub fn walk_children(
                     ),
                     NodeData::Element { .. } => {
                         let start = recorder
-                            .as_mut()
+                            .as_deref_mut()
                             .map(|r| {
                                 r.begin(&v, path, counters, output.last().expect("output").len())
                             })
                             .transpose()?;
+                        if let (Some(recorder), Some(start)) = (&mut recorder, &start)
+                            && recorder.reuse(
+                                start,
+                                path,
+                                counters,
+                                output.last_mut().expect("output"),
+                                v.vcx,
+                            )?
+                        {
+                            continue;
+                        }
                         if let Some(mut p) = enter(
                             v,
                             tree,
@@ -156,7 +166,5 @@ pub fn walk_children(
         }
     }
     *out = output.pop().expect("root output").into_vec();
-    recorder
-        .map(|r| r.finish_document(handle.key(), out))
-        .transpose()
+    Ok(())
 }

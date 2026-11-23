@@ -27,7 +27,8 @@ struct Owner {
 }
 
 #[derive(Default)]
-pub(super) struct Recorder {
+pub(in crate::dom) struct Recorder<'a, 'm> {
+    resume: Option<super::resume::Resume<'a, 'm>>,
     memo: MemoUpdate,
     active: HashMap<NodeKey, Rc<CascadeContext>>,
     owners: Vec<Owner>,
@@ -44,7 +45,30 @@ fn group(path: &[Ancestor]) -> Option<GroupInput> {
     })
 }
 
-impl Recorder {
+impl<'a, 'm> Recorder<'a, 'm> {
+    pub fn retained(
+        stage: &'a crate::dom::source_memo::MemoStage<'m>,
+        bindings: &'a mut dyn crate::dom::source_memo::ResumeBindings,
+    ) -> Self {
+        Self {
+            resume: Some(super::resume::Resume { stage, bindings }),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn reuse(
+        &mut self,
+        start: &Start,
+        path: &[Ancestor],
+        counters: &mut Counters,
+        out: &mut super::kids::Kids,
+        vcx: crate::values::ValueCx<'_>,
+    ) -> Result<bool, Error> {
+        self.resume.as_mut().map_or(Ok(false), |resume| {
+            resume.append(start.handle.key(), &start.inputs, path, counters, out, vcx)
+        })
+    }
+
     fn environment(&mut self, vcx: crate::values::ValueCx<'_>) -> Rc<Environment> {
         if self
             .environment
@@ -59,7 +83,7 @@ impl Recorder {
             .clone()
     }
 
-    pub fn begin(
+    pub(super) fn begin(
         &mut self,
         visit: &Visit<'_>,
         path: &[Ancestor],
@@ -97,7 +121,7 @@ impl Recorder {
         })
     }
 
-    pub fn entered(&mut self, pending: &Pending<'_>, start: &Start) -> Result<(), Error> {
+    pub(super) fn entered(&mut self, pending: &Pending<'_>, start: &Start) -> Result<(), Error> {
         self.active.try_reserve(1).map_err(|_| Error::Allocation)?;
         self.owners.try_reserve(1).map_err(|_| Error::Allocation)?;
         let node = pending.visit.handle().key();
@@ -127,14 +151,14 @@ impl Recorder {
         Ok(())
     }
 
-    pub fn sequence(&mut self, sequence: Option<NodeKey>) {
+    pub(super) fn sequence(&mut self, sequence: Option<NodeKey>) {
         self.owners
             .last_mut()
             .expect("entered output owner")
             .sequence = sequence;
     }
 
-    pub fn finish(
+    pub(super) fn finish(
         &mut self,
         start: Start,
         path: &[Ancestor],
@@ -184,7 +208,17 @@ impl Recorder {
 
     pub fn finish_document(self, source: NodeKey, out: &[Node]) -> Result<SourceMemo, Error> {
         let mut memo = SourceMemo::default();
-        memo.publish(
+        let (update, output) = self.finish_update(source, out)?;
+        memo.publish(update, output)?;
+        Ok(memo)
+    }
+
+    pub fn finish_update(
+        self,
+        source: NodeKey,
+        out: &[Node],
+    ) -> Result<(MemoUpdate, RootOutput), Error> {
+        Ok((
             self.memo,
             RootOutput {
                 raw: copy_nodes(out)?.into(),
@@ -194,8 +228,7 @@ impl Recorder {
                     sequence: Some(source),
                 },
             },
-        )?;
-        Ok(memo)
+        ))
     }
 }
 

@@ -16,6 +16,7 @@ mod readers;
 mod retirement;
 mod root;
 mod stage;
+mod traverse;
 mod update;
 pub use context::{CascadeContext, EntryInputs, GeneratedContext, GroupInput};
 pub use dirty::DirtyEntries;
@@ -23,6 +24,7 @@ pub use effects::CascadeEffects;
 pub use ownership::OutputOwnership;
 pub use root::RootOutput;
 pub use stage::MemoStage;
+pub use traverse::{CascadeInput, ResumeBindings};
 pub use update::MemoUpdate;
 
 /// One source element can emit zero, one or several sibling boxes.
