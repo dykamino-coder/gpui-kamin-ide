@@ -9,6 +9,9 @@ use kamin_heap::retain::Region;
 
 const WORD: usize = size_of::<usize>();
 
+#[cfg(test)]
+mod tests;
+
 fn region(name: impl Into<String>, start: usize, end: usize) -> Option<Region> {
     let start = start.next_multiple_of(WORD);
     (end > start).then(|| Region {
@@ -20,12 +23,38 @@ fn region(name: impl Into<String>, start: usize, end: usize) -> Option<Region> {
 
 #[cfg(windows)]
 pub(super) fn regions(stack_pointer: usize) -> Vec<Region> {
-    windows::regions(stack_pointer)
+    excluding(
+        windows::regions(stack_pointer),
+        super::super::probe::pointer_table_range(),
+    )
+}
+
+/// Metadata records raw addresses without keeping the allocations alive.
+#[cfg(any(windows, target_os = "linux", test))]
+fn excluding(regions: Vec<Region>, metadata: std::ops::Range<usize>) -> Vec<Region> {
+    let mut out = Vec::new();
+    for source in regions {
+        let end = source.start + source.bytes;
+        if source.start >= metadata.end || end <= metadata.start {
+            out.push(source);
+            continue;
+        }
+        out.extend(region(
+            source.name.clone(),
+            source.start,
+            metadata.start.min(end),
+        ));
+        out.extend(region(source.name, metadata.end.max(source.start), end));
+    }
+    out
 }
 
 #[cfg(target_os = "linux")]
 pub(super) fn regions(stack_pointer: usize) -> Vec<Region> {
-    linux::regions(stack_pointer)
+    excluding(
+        linux::regions(stack_pointer),
+        super::super::probe::pointer_table_range(),
+    )
 }
 
 #[cfg(not(any(windows, target_os = "linux")))]
