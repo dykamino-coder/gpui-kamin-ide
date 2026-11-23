@@ -7,6 +7,7 @@ fn link(parent: Option<Rc<CascadeContext>>, node: u64) -> Rc<CascadeContext> {
         node: NodeKey::from_packed(node),
         tag: "div".into(),
         attrs: Vec::new(),
+        selector: Default::default(),
         generated: GeneratedContext {
             counters: Default::default(),
             counter_style: Default::default(),

@@ -3,7 +3,7 @@ use super::{pending::Pending, sibling_survey::Visit};
 use crate::budget::admission::{Admission, Error};
 use crate::dom::source_memo::{
     CascadeContext, CascadeEffects, CascadeEntry, EntryInputs, GeneratedContext, GroupInput,
-    MemoUpdate, OutputOwnership, RootOutput, SourceMemo,
+    MemoUpdate, OutputOwnership, RootOutput, SelectorContext, SourceMemo,
 };
 use crate::dom::{Node, NodeKey};
 use crate::style::{
@@ -138,6 +138,7 @@ impl<'a, 'm> Recorder<'a, 'm> {
                 node,
                 tag: me.tag.clone(),
                 attrs: me.attrs.clone(),
+                selector: SelectorContext::capture(me),
                 generated: GeneratedContext {
                     counters: me.counter_style.clone(),
                     counter_style: me.counter_context,

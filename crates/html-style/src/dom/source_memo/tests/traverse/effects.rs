@@ -90,3 +90,49 @@ fn a_clean_first_link_selects_the_current_scroll_group_before_a_dirty_link() {
     );
     assert_fresh(&input, &cache);
 }
+
+#[test]
+fn changing_the_current_link_recascades_its_descendant_selector() {
+    // The style text is not rendered; the fixture has no source-text output bindings.
+    let (input, values, mut cache, _) = build(
+        "<!doctype html><style>a:is(:target-current) i{color:red}</style><nav id=g style='scroll-target-group:auto'><a id=a href='#x'></a><a id=b href='#y'><i id=c></i></a></nav><p id=x></p><p id=y></p>",
+    );
+    let a = handle(&input, "a");
+    let b = handle(&input, "b").key();
+    let c = handle(&input, "c").key();
+    let old_c = cache.raw().get(c).unwrap().clone();
+    let NodeData::Element { attrs, .. } = &a.data else {
+        panic!("link")
+    };
+    attrs
+        .borrow_mut()
+        .retain(|attr| &*attr.name.local != "href");
+    let mut bindings = Bindings::default();
+    run(
+        &input,
+        &values,
+        &mut cache,
+        &change(
+            a.key(),
+            SourceChangeKind::Attributes(Vec::new()),
+            None,
+            None,
+        ),
+        &mut bindings,
+    )
+    .unwrap();
+    assert!(cache.raw().get(b).unwrap().effects.selects_group.is_some());
+    assert!(!Rc::ptr_eq(cache.raw().get(c).unwrap(), &old_c));
+    let (Node::Element(before), Node::Element(after)) =
+        (&old_c.raw[0], &cache.raw().get(c).unwrap().raw[0])
+    else {
+        panic!("child element")
+    };
+    assert!(!crate::dom::same_cascaded_tree(
+        before,
+        after,
+        false,
+        &mut CascadedMemo::default(),
+    ));
+    assert_fresh(&input, &cache);
+}

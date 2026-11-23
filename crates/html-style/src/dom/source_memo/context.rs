@@ -1,5 +1,5 @@
 //! Shared cascade inputs detached from traversal caches and source handles.
-use super::NodeKey;
+use super::{NodeKey, SelectorContext};
 use crate::dom::shadow::Scope;
 use crate::style::cascade::sharing::Environment;
 use crate::style::computed::ContentItem;
@@ -23,6 +23,7 @@ pub struct CascadeContext {
     pub node: NodeKey,
     pub tag: String,
     pub attrs: Vec<(String, String)>,
+    pub selector: SelectorContext,
     pub generated: GeneratedContext,
 }
 
@@ -49,6 +50,7 @@ impl PartialEq for CascadeContext {
             if left.node != right.node
                 || left.tag != right.tag
                 || left.attrs != right.attrs
+                || left.selector != right.selector
                 || left.generated != right.generated
             {
                 return false;
