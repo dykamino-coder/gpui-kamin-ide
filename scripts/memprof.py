@@ -749,9 +749,8 @@ def run_command(args):
     out = memprof_peak.prepare(args)
     out.mkdir(parents=True, exist_ok=True)
     if args.retainers:
-        if args.sample:
-            raise SystemExit("--retainers names every block: run it exact, without --sample")
-        args.sample, args.owners = 0, True
+        # Sampling labels never samples the independently collected retention graph.
+        args.sample, args.owners = args.sample or 0, True
     elif args.sample is None:
         args.sample = DEFAULT_SAMPLE
     if args.owners:
@@ -845,7 +844,7 @@ def main(argv=None):
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
     run.add_argument("--sample", type=int, default=None,
                      help=f"mean sampling interval in bytes (default {DEFAULT_SAMPLE}; 0 = exact, "
-                          "--retainers is always exact)")
+                          "--retainers: exact graph, optionally sampled allocation labels)")
     run.add_argument("--max-stacks-gb", type=float, default=2,
                      help="stop the bench and its launcher when a stack file grows past this (default 2)")
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")
