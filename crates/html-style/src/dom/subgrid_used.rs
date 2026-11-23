@@ -53,7 +53,7 @@ impl Transform for UsedSubgrid {
             && (parent.is_none() || independent || linked_rows == Some(false));
         let subgrid =
             (style.reset_grid.subgrid_cols && !columns) || (style.reset_grid.subgrid_rows && !rows);
-        // Неизменный результат не отделяет общую Grid-группу каждого узла.
+        // An unchanged result must preserve the shared grid style group.
         if columns || rows || style.reset_grid.subgrid != subgrid {
             let style = element.style.cascaded_mut();
             if columns {

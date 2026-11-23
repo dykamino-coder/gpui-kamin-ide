@@ -46,12 +46,8 @@ impl Transform for GridStaticPosition {
         );
         let establishes_cb =
             crate::style::computed::box_predicates::establishes_cb(el.style.cascaded());
-        // Гибкий контейнер сюда не входит: taffy (`flexbox.rs`,
-        // `perform_absolute_layout_on_absolute_children`) сам отсчитывает
-        // статическую позицию от `content_box_inset` (css-flexbox-1 §4.1), и
-        // добавочное поле удваивало отбивку контейнера
-        // (`flex-abspos-staticpos-margin-001`: коробка на отбивку правее и
-        // ниже).
+        // Taffy's flex absolute-position layout already includes content-box
+        // insets (CSS Flexbox 1 section 4.1); adding them here doubles padding.
         if !grid {
             return Ok(());
         }
@@ -71,15 +67,13 @@ impl Transform for GridStaticPosition {
                 child.style.cascaded_mut().reset_grid.grid_col = None;
                 child.style.cascaded_mut().reset_grid.grid_row = None;
             }
-            // Элемент с заданными линиями стоит не на статической позиции, а в
-            // СВОЕЙ области сетки — поля туда добавлять нечего.
+            // Explicit placement uses its grid area rather than static position.
             if child.style.cascaded().reset_grid.grid_col.is_some()
                 || child.style.cascaded().reset_grid.grid_row.is_some()
             {
                 continue;
             }
-            // `left: auto` — это ОТСУТСТВИЕ края, а не заданный край: именно
-            // при `auto` с обеих сторон элемент стоит на статической позиции.
+            // Both absent and explicit auto insets use static positioning.
             let auto = |l: Option<Len>| matches!(l, None | Some(Len::Auto));
             let inset = child.style.cascaded().reset_positioned.inset;
             if auto(inset.left) && auto(inset.right) {
