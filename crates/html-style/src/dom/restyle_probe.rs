@@ -10,16 +10,18 @@ use super::input::Admitted;
 use super::invalidation::{Changed, Features, features};
 use super::outcome::DocumentFailure;
 use super::shadow::Scope;
-use super::tree_index::{HasMarks, TreeIndex};
+use super::tree_index::HasMarks;
 use super::walk::{self, Chains, Probed};
 use crate::style::css::Media;
-use crate::style::select::has::{HasArg, mark_has};
+use crate::style::select::has::HasArg;
 use crate::values::DocumentValues;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod prepared;
 mod rules;
+pub use prepared::PreparedCascade;
 
 /// Правила документа одной ревизии для проб его элементов.
 pub struct RestyleProbe {
@@ -167,19 +169,17 @@ impl RestyleCache {
         values: &Rc<DocumentValues>,
         targets: &[Handle],
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
-        let mut tree = TreeIndex::new(values.clone(), input.xhtml);
-        let document = &input.dom.document;
+        let mut prepared = self.prepare_cascade(probe, input, values)?;
+        let found = walk::probe(
+            &prepared.source,
+            &prepared.tree,
+            &prepared.scope,
+            targets,
+            &mut self.chains,
+            prepared.values(),
+        )?;
         if !probe.has_args.is_empty() {
-            match self.has.take() {
-                Some(has) => tree.put_has(has),
-                None => mark_has(document, &probe.has_args, &mut vec![], &mut tree)?,
-            }
-        }
-        let vcx = values.values().with_scheme(scheme(probe.media));
-        let chains = &mut self.chains;
-        let found = walk::probe(document, &tree, &probe.doc, targets, chains, vcx)?;
-        if !probe.has_args.is_empty() {
-            self.has = Some(tree.take_has());
+            self.has = Some(prepared.tree.take_has());
         }
         if self.last.len() + targets.len() > LAST {
             self.last.clear();

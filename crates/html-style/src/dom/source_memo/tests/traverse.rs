@@ -5,10 +5,10 @@ use crate::budget::admission::Error;
 use crate::dom::{
     CascadedMemo,
     source_delta::{SourceChangeKind, SourceDelta},
-    tree_index::TreeIndex,
 };
 
 mod effects;
+mod prepared;
 
 // These fixtures use one value owner and no source text. The cross-revision
 // adapter must separately provide owning values and transactional bindings.
@@ -50,32 +50,18 @@ fn run(
     delta: &SourceDelta,
     bindings: &mut Bindings,
 ) -> Result<(), Error> {
-    let source = &input.dom.document;
-    let html = source
-        .children
-        .borrow()
-        .iter()
-        .find(|n| matches!(n.data, NodeData::Element { .. }))
-        .unwrap()
-        .clone();
-    let scope = cache.raw().get(html.key()).unwrap().inputs.scope.clone();
     // The orchestrator owns staged ValueCx; this fixture resets initial root inputs.
     *values.root.borrow_mut() = DocumentValues::detached(Media::default())
         .root
         .borrow()
         .clone();
-    let tree = TreeIndex::new(values.clone(), false);
+    let probe = cache
+        .probe(input, "", Media::default(), values)
+        .unwrap()
+        .unwrap();
+    let prepared = cache.prepare_cascade(&probe, input, values).unwrap();
     let mut stage = cache.raw_mut().stage(delta);
-    let output = stage.cascade(
-        CascadeInput {
-            source,
-            tree: &tree,
-            scope: &scope,
-            vars: &Default::default(),
-            values: values.values(),
-        },
-        bindings,
-    )?;
+    let output = stage.cascade(prepared.input(), bindings)?;
     stage.commit(output)
 }
 
