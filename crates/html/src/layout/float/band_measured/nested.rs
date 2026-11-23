@@ -1,12 +1,12 @@
 //! Вложенный хост полос и его допуски: ruby, формы флоатов.
 
-use super::{band_piece_m, has_flow_float, measured_host};
+use super::{has_flow_float, measured_host};
 use crate::dom::{Element, Node};
 use crate::layout::block::margins::collapse_margins;
 use crate::layout::block::struts::zero_len;
 use crate::layout::box_kind::is_blank;
 use crate::layout::float::band_clearance::supported as band_clear_supported;
-use crate::layout::float::band_flow_host::{band_flow_block, band_flow_rest};
+use crate::layout::float::band_flow_host::band_flow_rest;
 use crate::layout::float::band_host::band_em;
 use crate::layout::float::band_nest::{band_nest_block, band_seq};
 use crate::style::computed::writing_mode::WritingMode;
@@ -101,7 +101,10 @@ pub(crate) fn band_nest_ok(
     let Some(inner_em) = band_em(&c.style.used(), em) else {
         return false;
     };
-    let Some(seq) = band_seq(
+    // `band_seq` validates each float and every non-float chunk through
+    // `band_flow_rest`, including nested blocks. Walking the returned sequence
+    // again would recursively validate each descendant twice at every depth.
+    band_seq(
         collapse_margins(
             &c.children,
             false,
@@ -113,23 +116,8 @@ pub(crate) fn band_nest_ok(
         cb,
         c.style.cascaded().inh.text_flow.preserve_newlines == Some(true),
         vcx,
-    ) else {
-        return false;
-    };
-    seq.iter().all(|n| match n {
-        Node::Text(_) => true,
-        Node::Element(k) => {
-            k.style
-                .used()
-                .reset_box_layout
-                .float
-                .is_some_and(|f| f != 0)
-                || band_piece_m(n, inner_em, wm).is_some()
-                || k.marks.anon
-                || band_flow_block(k, inner_em)
-                || band_nest_ok(k, inner_em, wm, cb, vcx)
-        }
-    })
+    )
+    .is_some()
 }
 
 /// Есть ли в поддереве руби (`<ruby>`, `<rt>`).
