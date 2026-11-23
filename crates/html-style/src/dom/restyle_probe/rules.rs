@@ -1,7 +1,7 @@
 //! The rules of a probe (`RestyleProbe`): built from the admitted source of a
 //! revision, or taken over from its build.
 
-use super::{RestyleProbe, scheme};
+use super::{AttributeReads, RestyleProbe, scheme};
 use crate::dom::input::Admitted;
 use crate::dom::outcome::DocumentFailure;
 use crate::dom::shadow::Scope;
@@ -44,7 +44,7 @@ impl RestyleProbe {
     pub(in crate::dom) fn built(
         doc: Rc<Scope>,
         has_args: Vec<HasArg>,
-        reads_attr: bool,
+        reads_attr: AttributeReads,
         (media, asked): (Media, Media),
         extra_css: &str,
     ) -> Self {
@@ -58,9 +58,20 @@ impl RestyleProbe {
         }
     }
 
-    /// Лист документа или тема читают атрибуты элементов вне селекторов.
-    pub fn reads_attr(&self) -> bool {
-        self.reads_attr
+    /// Whether the changed names affect sheets, the theme or inline attr().
+    /// Typed values can read CSS from an attribute, so their refusal stays
+    /// conservative regardless of the changed attribute name.
+    pub fn reads_attr<'a>(
+        &self,
+        names: &[String],
+        inline: impl IntoIterator<Item = &'a str>,
+    ) -> bool {
+        self.reads_attr.reads(names)
+            || inline.into_iter().any(|css| {
+                let mut reads = AttributeReads::default();
+                reads.add(css);
+                reads.reads(names)
+            })
     }
 
     /// Правила области документа (агент, тема, листы страницы).

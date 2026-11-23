@@ -19,7 +19,9 @@ use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod attributes;
 mod rules;
+pub(super) use attributes::AttributeReads;
 
 /// Правила документа одной ревизии для проб его элементов.
 pub struct RestyleProbe {
@@ -30,7 +32,7 @@ pub struct RestyleProbe {
     asked: Media,
     extra_css: Box<str>,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
-    reads_attr: bool,
+    reads_attr: AttributeReads,
 }
 
 /// Проба документа между правками его ревизии: правила и контексты входа в

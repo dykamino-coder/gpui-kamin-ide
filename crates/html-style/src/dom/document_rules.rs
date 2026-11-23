@@ -4,6 +4,7 @@
 //! стиля (`restyle_probe`): одно место, где собираются правила.
 
 use super::input::Admitted;
+use super::restyle_probe::AttributeReads;
 use super::style_sources::document_style_tags;
 use super::user_agent_css;
 use crate::budget::admission::Admission;
@@ -22,7 +23,7 @@ pub(super) struct DocumentRules {
     pub has_args: Vec<HasArg>,
     pub layers: LayerRegistry,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
-    pub reads_attr: bool,
+    pub reads_attr: AttributeReads,
 }
 
 pub(super) fn document_rules(
@@ -71,7 +72,17 @@ pub(super) fn document_rules(
         &vcx.doc.traversal,
         (&media, vcx),
     )?;
-    let reads_attr = sheets.iter().any(|css| css.contains("attr(")) || extra_css.contains("attr(");
+    let mut reads_attr = AttributeReads::default();
+    for css in sheets
+        .iter()
+        .map(AsRef::as_ref)
+        .chain([user_agent_css(), extra_css])
+    {
+        reads_attr.add(css);
+    }
+    if vcx.doc.quirks() {
+        reads_attr.add(super::ua_style::QUIRKS_CSS);
+    }
     for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)?

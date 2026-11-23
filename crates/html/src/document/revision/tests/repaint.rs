@@ -68,3 +68,5 @@ fn hover_layers_and_floats_below_the_restyled_element_rebuild() {
     let new = old.replace("<html>", "<html class=\"alt\">");
     assert_eq!(both(&old, &new), (false, false));
 }
+
+mod attributes;
