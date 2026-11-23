@@ -41,6 +41,7 @@ pub mod mathml;
 mod mathml_defaults;
 mod mathml_lengths;
 mod mathml_routing;
+mod normalization;
 #[cfg(test)]
 mod nth_child_tests;
 pub mod outcome;

@@ -7,7 +7,11 @@
 //! переносит вместе с метками ролей (`inline_display`, `row_group_kind`,
 //! `col_role`, `is_caption`).
 
-use super::{Element, Node};
+use super::{
+    Children, Element, Node,
+    normalization::{Pass, Transform},
+};
+use crate::budget::admission::{Admission, Error};
 use crate::style::computed::Display;
 
 /// `display` родителя вместе с метками ролей: то, что переносит `inherit`.
@@ -29,11 +33,31 @@ type DisplayOf = (
 /// (`empty-cells-applies-to-017`). Explicit values retain that early
 /// resolution; implicit values are recovered from HTML box metadata.
 pub(super) fn resolve_display_inherit(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
+    admission: &Admission,
+    nodes: Vec<Node>,
     parent: DisplayOf,
-) -> Result<(), crate::budget::admission::Error> {
-    crate::dom::traversal::preorder(admission, nodes, parent, |el, parent| {
+) -> Result<Vec<Node>, Error> {
+    let input = Children::from(nodes);
+    let mut pass = Pass::new(DisplayInheritance);
+    let prepared = pass.prepare(&input, parent, admission)?;
+    let output = prepared.output().clone();
+    prepared.publish();
+    drop(pass);
+    drop(input);
+    Ok(output.into_vec())
+}
+
+pub(super) struct DisplayInheritance;
+
+impl Transform for DisplayInheritance {
+    type Context = DisplayOf;
+
+    fn enter(
+        &self,
+        el: &mut Element,
+        parent: &DisplayOf,
+        _: &Admission,
+    ) -> Result<DisplayOf, Error> {
         if el.style.cascaded().reset_cascade.inherit_bits & crate::style::computed::inh::DISPLAY
             != 0
         {
@@ -45,9 +69,8 @@ pub(super) fn resolve_display_inherit(
             el.style.cascaded_mut().reset_cascade.inherit_bits &=
                 !crate::style::computed::inh::DISPLAY;
         }
-        let own = display_of(el);
-        Some(own)
-    })
+        Ok(display_of(el))
+    }
 }
 
 fn display_of(el: &Element) -> DisplayOf {

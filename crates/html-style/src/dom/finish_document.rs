@@ -16,7 +16,7 @@ pub(super) fn finish(
     vcx: ValueCx<'_>,
 ) -> Result<Vec<Node>, DocumentFailure> {
     // ПЕРВЫМ проходом: табличная починка и подъёмы ниже читают `display`.
-    resolve_display_inherit(admission, &mut out, (None, None, None, None, None))?;
+    out = resolve_display_inherit(admission, out, (None, None, None, None, None))?;
     if tree.doc.quirks() {
         super::quirks_color::resolve(admission, &mut out, vcx)?;
     }

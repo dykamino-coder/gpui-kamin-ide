@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 mod box_summary;
 mod positioned_facts;
+mod storage;
 pub use box_summary::{BoxTextFacts, BoxTreeSummary};
 pub use positioned_facts::{PositionedFacts, PositionedQuery};
 
@@ -35,6 +36,7 @@ impl ChildrenMark {
 #[derive(Debug, Default)]
 struct Snapshot {
     nodes: Vec<Node>,
+    storage: storage::Storage,
     intrinsic: super::intrinsic::IntrinsicCache,
     box_summary: std::cell::Cell<Option<BoxTreeSummary>>,
     positioned: std::cell::Cell<PositionedFacts>,
@@ -44,6 +46,7 @@ impl Clone for Snapshot {
     fn clone(&self) -> Self {
         Self {
             nodes: self.nodes.clone(),
+            storage: Default::default(),
             intrinsic: Default::default(),
             box_summary: Default::default(),
             positioned: Default::default(),
@@ -118,6 +121,7 @@ impl From<Vec<Node>> for Children {
         nodes.shrink_to_fit();
         Self(Rc::new(Snapshot {
             nodes,
+            storage: Default::default(),
             intrinsic: Default::default(),
             box_summary: Default::default(),
             positioned: Default::default(),
@@ -221,6 +225,7 @@ impl kamin_heap::HeapSize for Children {
             ops.buffer(nodes.as_ptr(), nodes.capacity())
         });
         let cache = ops.at("layout/intrinsic", |ops| snapshot.intrinsic.heap_size(ops));
-        block + buffer + cache + nodes.as_slice().heap_size(ops)
+        let storage = ops.at("dom/nodes", |ops| snapshot.storage.heap_size(ops));
+        block + buffer + cache + storage + nodes.as_slice().heap_size(ops)
     }
 }
