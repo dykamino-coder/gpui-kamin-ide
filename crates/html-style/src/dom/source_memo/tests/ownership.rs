@@ -78,18 +78,28 @@ fn retiring_a_host_removes_shadow_and_slotted_entries_and_reverse_edges() {
     );
     let host = handle(&input, "h").key();
     let root = fragment(&input, "t").key();
-    let roots = cache.raw().output().clone();
     let other = cache.raw().get(handle(&input, "q").key()).unwrap().clone();
+    let removed: Vec<_> = ["h", "s", "k", "l"]
+        .map(|id| handle(&input, id).key())
+        .into();
+    let parent = retirement::detach(&handle(&input, "h"));
+    let (_new_values, fresh, _) = recascade(&input);
+    let replacements = retirement::path_entries(fresh.raw(), &[parent.key()]);
     {
         let mut aborted = cache.raw_mut().stage(&SourceDelta::default());
-        aborted.retire(host);
+        for entry in &replacements {
+            aborted.replace(entry.clone()).unwrap();
+        }
     }
     assert!(cache.raw().readers(root).contains(&host));
     let mut stage = cache.raw_mut().stage(&SourceDelta::default());
-    stage.retire(host);
-    stage.commit(roots).unwrap();
-    for id in ["h", "s", "k", "l"] {
-        assert!(cache.raw().get(handle(&input, id).key()).is_none(), "{id}");
+    for entry in replacements {
+        stage.replace(entry).unwrap();
+    }
+    stage.commit(fresh.raw().output().clone()).unwrap();
+    retirement::assert_graph(cache.raw(), fresh.raw());
+    for key in removed {
+        assert!(cache.raw().get(key).is_none());
     }
     assert!(cache.raw().readers(root).is_empty());
     assert!(cache.raw().readers(host).is_empty());

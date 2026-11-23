@@ -38,56 +38,16 @@ fn text_dirties_its_parent_sequence_and_only_its_ancestor_path() {
 }
 
 #[test]
-fn moving_a_subtree_dirties_old_and_new_paths_and_claims_before_retirement() {
+fn moving_a_subtree_dirties_old_and_new_paths() {
     let (input, _values, mut cache, _) =
         build("<main id=m><div id=p><span id=c>text</span></div><div id=q></div></main>");
     let p = handle(&input, "p").key();
     let q = handle(&input, "q").key();
     let c = handle(&input, "c").key();
-    let roots = cache.raw().output().clone();
-    let old = cache.raw().get(c).unwrap().clone();
     let delta = change(c, SourceChangeKind::Reparent, Some(p), Some(q));
-    let admission = Admission::new(input.context().budget().clone());
-    let replacement = CascadeEntry::new(
-        c,
-        Some(q),
-        OutputOwnership {
-            parent: Some(q),
-            ..old.ownership.clone()
-        },
-        old.inputs.clone(),
-        old.raw.clone(),
-        old.exit.clone(),
-        old.selects_group,
-        &admission,
-    )
-    .unwrap();
-    let mut stage = cache.raw_mut().stage(&delta);
+    let stage = cache.raw_mut().stage(&delta);
     assert!(stage.dirty().contains(p));
     assert!(stage.dirty().contains(q));
-    stage.replace(replacement.clone()).unwrap();
-    stage.retire(p);
-    stage.commit(roots).unwrap();
-    assert!(cache.raw().get(p).is_none());
-    assert!(Rc::ptr_eq(cache.raw().get(c).unwrap(), &replacement));
-    assert_eq!(old.source_parent, Some(p));
-}
-
-#[test]
-fn abort_keeps_published_entries_and_roots() {
-    let (input, _values, mut cache, _) = build("<p id=p>x</p><p id=q>y</p>");
-    let p = handle(&input, "p").key();
-    let old = cache.raw().get(p).unwrap().clone();
-    let roots = cache.raw().roots().identity();
-    let count = cache.raw().len();
-    {
-        let mut stage = cache.raw_mut().stage(&SourceDelta::default());
-        stage.retire(p);
-        assert!(stage.get(p).is_none());
-    }
-    assert!(Rc::ptr_eq(cache.raw().get(p).unwrap(), &old));
-    assert_eq!(cache.raw().roots().identity(), roots);
-    assert_eq!(cache.raw().len(), count);
 }
 
 #[test]
@@ -142,7 +102,13 @@ fn reuse_requires_all_entry_inputs_and_no_dirty_descendants() {
     let delta = change(c, SourceChangeKind::Attributes(vec![]), Some(p), Some(p));
     let stage = cache.raw_mut().stage(&delta);
     assert!(stage.reusable(q, &inputs).is_some());
-    let mut changed = inputs;
+    let mut changed = inputs.clone();
+    changed.depth += 1;
+    assert!(stage.reusable(q, &changed).is_none());
+    changed = inputs.clone();
+    changed.viewport.0 += 100.0;
+    assert!(stage.reusable(q, &changed).is_none());
+    changed = inputs;
     changed.counters.reset("number", 7);
     assert!(stage.reusable(q, &changed).is_none());
     assert!(stage.reusable(p, &stage.get(p).unwrap().inputs).is_none());

@@ -68,6 +68,8 @@ pub struct EntryInputs {
     pub scope: Rc<Scope>,
     pub vars: Rc<VarMap>,
     pub preserve: bool,
+    pub depth: usize,
+    pub viewport: (f32, f32),
     pub scheme: Scheme,
     pub counters: Counters,
     pub group: Option<GroupInput>,
@@ -81,6 +83,8 @@ impl PartialEq for EntryInputs {
             && self.parent == other.parent
             && self.vars == other.vars
             && self.preserve == other.preserve
+            && self.depth == other.depth
+            && self.viewport == other.viewport
             && self.scheme == other.scheme
             && self.counters == other.counters
             && self.group == other.group

@@ -11,14 +11,18 @@ use std::rc::Rc;
 mod context;
 mod dirty;
 mod ownership;
+mod publication;
 mod readers;
+mod retirement;
 mod root;
 mod stage;
+mod update;
 pub use context::{CascadeContext, EntryInputs, GeneratedContext, GroupInput};
 pub use dirty::DirtyEntries;
 pub use ownership::OutputOwnership;
 pub use root::RootOutput;
 pub use stage::MemoStage;
+pub use update::MemoUpdate;
 
 /// One source element can emit zero, one or several sibling boxes.
 pub struct CascadeEntry {
@@ -72,14 +76,6 @@ pub struct SourceMemo {
 }
 
 impl SourceMemo {
-    pub(crate) fn record(&mut self, entry: Rc<CascadeEntry>) -> Result<(), Error> {
-        self.entries.try_reserve(1).map_err(|_| Error::Allocation)?;
-        self.readers
-            .record(&entry, self.entries.get(&entry.node).map(Rc::as_ref))?;
-        self.entries.insert(entry.node, entry);
-        Ok(())
-    }
-
     pub fn get(&self, node: NodeKey) -> Option<&Rc<CascadeEntry>> {
         self.entries.get(&node)
     }

@@ -7,24 +7,24 @@ use markup5ever_rcdom::{Handle, NodeData};
 
 mod contexts;
 mod ownership;
+mod retirement;
 mod stages;
 mod structure;
 
 fn build(source: &str) -> (Admitted, Rc<DocumentValues>, RestyleCache, Vec<Node>) {
     let input = Admitted::parse(source, false).unwrap();
+    let (values, cache, nodes) = recascade(&input);
+    (input, values, cache, nodes)
+}
+
+fn recascade(input: &Admitted) -> (Rc<DocumentValues>, RestyleCache, Vec<Node>) {
     let values = DocumentValues::detached(Media::default());
     values.admit_revision(input.context().budget().clone(), None);
     let mut cache = RestyleCache::default();
-    let nodes = crate::dom::convert_restyling(
-        &input,
-        "",
-        Media::default(),
-        &values,
-        None,
-        Some(&mut cache),
-    )
-    .unwrap();
-    (input, values, cache, nodes)
+    let nodes =
+        crate::dom::convert_restyling(input, "", Media::default(), &values, None, Some(&mut cache))
+            .unwrap();
+    (values, cache, nodes)
 }
 
 fn handle(input: &Admitted, id: &str) -> Handle {

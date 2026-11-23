@@ -12,42 +12,6 @@ impl Readers {
         self.0.get(&sequence).map_or(&[], Vec::as_slice)
     }
 
-    pub fn record(
-        &mut self,
-        entry: &CascadeEntry,
-        old: Option<&CascadeEntry>,
-    ) -> Result<(), Error> {
-        if let Some(sequence) = entry.ownership.sequence {
-            self.0.try_reserve(1).map_err(|_| Error::Allocation)?;
-            let readers = self.0.entry(sequence).or_default();
-            readers.try_reserve(1).map_err(|_| Error::Allocation)?;
-        }
-        if let Some(sequence) = old.and_then(|e| e.ownership.sequence) {
-            if Some(sequence) == entry.ownership.sequence {
-                self.0
-                    .get_mut(&sequence)
-                    .expect("reserved readers")
-                    .retain(|n| *n != entry.node);
-            } else {
-                self.remove(sequence, entry.node);
-            }
-        }
-        if let Some(sequence) = entry.ownership.sequence {
-            let readers = self.0.entry(sequence).or_default();
-            readers.push(entry.node);
-        }
-        Ok(())
-    }
-
-    fn remove(&mut self, sequence: NodeKey, node: NodeKey) {
-        if let Some(readers) = self.0.get_mut(&sequence) {
-            readers.retain(|owner| *owner != node);
-            if readers.is_empty() {
-                self.0.remove(&sequence);
-            }
-        }
-    }
-
     pub fn prepare(
         &mut self,
         entries: &HashMap<NodeKey, Rc<CascadeEntry>>,

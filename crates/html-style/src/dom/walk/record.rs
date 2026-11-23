@@ -2,8 +2,8 @@
 use super::{pending::Pending, sibling_survey::Visit};
 use crate::budget::admission::{Admission, Error};
 use crate::dom::source_memo::{
-    CascadeContext, CascadeEntry, EntryInputs, GeneratedContext, GroupInput, OutputOwnership,
-    RootOutput, SourceMemo,
+    CascadeContext, CascadeEntry, EntryInputs, GeneratedContext, GroupInput, MemoUpdate,
+    OutputOwnership, RootOutput, SourceMemo,
 };
 use crate::dom::{Node, NodeKey};
 use crate::style::{generated::counters::Counters, select::Ancestor};
@@ -26,7 +26,7 @@ struct Owner {
 
 #[derive(Default)]
 pub(super) struct Recorder {
-    memo: SourceMemo,
+    memo: MemoUpdate,
     active: HashMap<NodeKey, Rc<CascadeContext>>,
     owners: Vec<Owner>,
     roots: Vec<NodeKey>,
@@ -70,6 +70,8 @@ impl Recorder {
                 scope: visit.scope.clone(),
                 vars: visit.vars.clone(),
                 preserve: visit.preserve,
+                depth: visit.depth,
+                viewport: visit.vcx.viewport,
                 scheme: visit.vcx.scheme,
                 counters: counters.clone(),
                 group: group(path),
@@ -157,19 +159,23 @@ impl Recorder {
             selects_group,
             admission,
         )?;
-        self.memo.record(entry)
+        self.memo.replace(entry)
     }
 
-    pub fn finish_document(mut self, source: NodeKey, out: &[Node]) -> Result<SourceMemo, Error> {
-        self.memo.stage(&Default::default()).commit(RootOutput {
-            raw: copy_nodes(out)?.into(),
-            ownership: OutputOwnership {
-                parent: None,
-                children: self.roots,
-                sequence: Some(source),
+    pub fn finish_document(self, source: NodeKey, out: &[Node]) -> Result<SourceMemo, Error> {
+        let mut memo = SourceMemo::default();
+        memo.publish(
+            self.memo,
+            RootOutput {
+                raw: copy_nodes(out)?.into(),
+                ownership: OutputOwnership {
+                    parent: None,
+                    children: self.roots,
+                    sequence: Some(source),
+                },
             },
-        })?;
-        Ok(self.memo)
+        )?;
+        Ok(memo)
     }
 }
 
