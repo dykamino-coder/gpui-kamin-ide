@@ -15,7 +15,7 @@ pub(super) fn paint_tile(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
-    image: Arc<RenderImage>,
+    image: &mut dyn FnMut() -> Option<Arc<RenderImage>>,
     source_kind: &super::Source,
     pixelated: bool,
     vcx: ValueCx<'_>,
@@ -29,6 +29,10 @@ pub(super) fn paint_tile(
     if super::oriented_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
+    // Native gradients and vectors draw without the fallback bitmap.
+    let Some(image) = image() else {
+        return;
+    };
     let source = image.size(0);
     let sampling = sampling_mode(
         (source.width.0 as f32, source.height.0 as f32),
@@ -210,40 +214,5 @@ fn sampling_mode(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resizing_either_axis_or_transforming_retains_interpolation() {
-        let identity = [[1.0, 0.0], [0.0, 1.0]];
-        assert_eq!(
-            sampling_mode((320.0, 320.0), (320.0, 320.0), identity, true),
-            ImageSampling::Nearest
-        );
-        for target in [
-            (400.0, 320.0),
-            (320.0, 400.0),
-            (160.0, 160.0),
-            (320.25, 320.0),
-        ] {
-            assert_eq!(
-                sampling_mode((320.0, 320.0), target, identity, true),
-                ImageSampling::Linear
-            );
-        }
-        for matrix in [
-            [[2.0, 0.0], [0.0, 2.0]],
-            [[0.0, -1.0], [1.0, 0.0]],
-            [[1.0, 0.5], [0.0, 1.0]],
-        ] {
-            assert_eq!(
-                sampling_mode((320.0, 320.0), (320.0, 320.0), matrix, true),
-                ImageSampling::Linear
-            );
-        }
-        assert_eq!(
-            sampling_mode((320.0, 320.0), (320.0, 320.0), identity, false),
-            ImageSampling::Linear
-        );
-    }
-}
+#[path = "sampling_tests.rs"]
+mod tests;

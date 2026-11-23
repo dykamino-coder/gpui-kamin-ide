@@ -6,6 +6,8 @@
 
 use serde_json::Value;
 
+mod paint;
+
 pub(super) struct Capture {
     #[cfg(feature = "work-counters")]
     session: kamin_html::work::Session,

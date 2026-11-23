@@ -37,6 +37,7 @@ fn cached(
     centers: bool,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
+    crate::work::time!(_request, GradientRequestNs);
     if !src.cacheable() {
         crate::journal::cache_miss(CACHE, "uncacheable", || {
             format!("{w}x{h} source not cacheable")
@@ -85,6 +86,7 @@ fn uncached(
     centers: bool,
     vcx: ValueCx<'_>,
 ) -> Option<Arc<CpuRaster>> {
+    crate::work::time!(_raster, GradientRasterNs);
     let Some((g, repeating)) = src.gradient() else {
         return super::raster::rasterize_gradient(src, w, h, vcx);
     };
