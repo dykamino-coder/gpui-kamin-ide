@@ -9,6 +9,7 @@ use std::hash::Hash;
 /// the budget, so it stays. While observed, the keys let go are kept so a
 /// later miss names them (`evicted`).
 pub(super) fn evict<K: Eq + Hash, V>(store: &mut Store<K, V>, budget: usize, observed: bool) {
+    crate::work::time!(_evict, CacheEvictNs);
     let mut ages: Vec<(u64, usize)> = store.map.values().map(|s| (s.used, s.weight)).collect();
     ages.sort_unstable_by_key(|&(used, _)| used);
     let mut excess = store.bytes - budget;

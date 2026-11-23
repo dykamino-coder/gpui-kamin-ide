@@ -140,6 +140,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         Q: Hash + Eq + ?Sized,
     {
         let observed = crate::journal::enabled();
+        crate::work::time!(_lookup, CacheLookupNs);
         let (result, reason) = {
             let mut guard = self.lock();
             match guard.as_mut() {
@@ -176,6 +177,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
 
     /// Положить запись; при превышении бюджета вытесняются самые давние записи.
     pub fn insert(&self, key: K, value: V) {
+        crate::work::time!(_insert, CacheInsertNs);
         let weight = (self.weigh)(&value)
             .saturating_add((self.key_weight)(&key))
             .saturating_add(ENTRY_OVERHEAD + size_of::<K>());
