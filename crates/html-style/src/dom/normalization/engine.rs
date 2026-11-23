@@ -1,10 +1,11 @@
-//! Iterative enter/leave evaluation with whole-list reuse and staged output.
+//! Full and retained evaluation share one interleaved sibling cursor.
 use super::{
     Transform,
-    record::{Frame, Segment},
+    frame::{Frame, Owner},
+    record::Segment,
 };
 use crate::budget::admission::{Admission, Buffer, Error};
-use crate::dom::{Children, Node, same_tree::same_box};
+use crate::dom::{Children, Element, Node};
 use std::rc::Rc;
 
 pub(super) fn prepare<T: Transform>(
@@ -20,58 +21,109 @@ pub(super) fn prepare<T: Transform>(
     {
         return Ok(old.clone());
     }
+    let result = evaluate(transform, input.clone(), context, true, old, admission)?;
+    Ok(result.segment.expect("recorded root"))
+}
+
+pub(super) struct Evaluation<C> {
+    pub output: Children,
+    pub segment: Option<Rc<Segment<C>>>,
+}
+
+pub(super) fn evaluate<T: Transform>(
+    transform: &T,
+    input: Children,
+    context: T::Context,
+    recorded: bool,
+    old: Option<Rc<Segment<T::Context>>>,
+    admission: &Admission,
+) -> Result<Evaluation<T::Context>, Error> {
     let mut stack = Buffer::default();
     stack.push(
-        Frame::new(input.clone(), context, old, admission)?,
+        Frame::new(Owner::root(input), context, recorded, old, admission)?,
         admission,
     )?;
-    let mut completed = None;
-    loop {
-        if let Some(segment) = completed.take() {
-            let segment: Rc<Segment<T::Context>> = segment;
-            let Some(frame) = stack.last_mut() else {
-                return Ok(segment);
-            };
-            let mut element = frame.pending.take().expect("entered element");
-            element.children = segment.output.clone();
-            transform.leave(&mut element, &frame.context, admission)?;
-            let Node::Element(original) = &frame.input[frame.next - 1] else {
-                unreachable!("entered element");
-            };
-            let changed = element.children.identity() != original.children.identity()
-                || !same_box(&element, original);
-            frame.append(changed.then_some(element), admission)?;
-            frame.branches.push(segment, admission)?;
-        }
-        let frame = stack.last_mut().expect("active list");
-        if frame.next == frame.input.len() {
+    while let Some(frame) = stack.last_mut() {
+        if frame.next == frame.owner.nodes().len() {
             let mut frame = stack.pop().expect("completed list");
-            let mut output = frame.output();
-            transform.sequence(&mut output, &frame.context, admission)?;
-            completed = Some(frame.finish(output, admission)?);
+            transform.sequence(frame.owner.nodes_mut(), &frame.context, admission)?;
+            let segment = frame
+                .recording
+                .take()
+                .map(|recording| {
+                    recording.finish(frame.context, frame.owner.nodes().clone(), admission)
+                })
+                .transpose()?;
+            if let Some(element) = frame.owner.element.take() {
+                complete(
+                    transform,
+                    element,
+                    segment,
+                    stack.last_mut().expect("parent"),
+                    admission,
+                )?;
+            } else {
+                return Ok(Evaluation {
+                    output: frame.owner.into_root(),
+                    segment,
+                });
+            }
             continue;
         }
         admission.work(1)?;
-        let index = frame.next;
-        frame.next += 1;
-        let Node::Element(original) = &frame.input[index] else {
-            frame.append(None, admission)?;
+        if !matches!(frame.owner.nodes()[frame.next], Node::Element(_)) {
+            advance(transform, frame, admission)?;
             continue;
-        };
-        let mut element = original.clone();
-        let child_context = transform.enter(&mut element, &frame.context, admission)?;
-        let child_input = element.children.clone();
-        let previous = frame.previous(&child_input);
-        frame.pending = Some(element);
+        }
+        let mut element = frame.take_element();
+        let context = transform.enter(&mut element, &frame.context, admission)?;
+        let previous = frame.previous(&element.children);
         if let Some(previous) = &previous
-            && previous.matches(&child_input, &child_context)
+            && previous.matches(&element.children, &context)
         {
-            completed = Some(previous.clone());
+            element.children = previous.output.clone();
+            complete(transform, element, Some(previous.clone()), frame, admission)?;
         } else {
             stack.push(
-                Frame::new(child_input, child_context, previous, admission)?,
+                Frame::new(
+                    Owner::element(element),
+                    context,
+                    recorded,
+                    previous,
+                    admission,
+                )?,
                 admission,
             )?;
         }
     }
+    unreachable!("root always completes")
+}
+
+fn complete<T: Transform>(
+    transform: &T,
+    mut element: Element,
+    segment: Option<Rc<Segment<T::Context>>>,
+    parent: &mut Frame<T::Context>,
+    admission: &Admission,
+) -> Result<(), Error> {
+    transform.leave(&mut element, &parent.context, admission)?;
+    parent.restore(element, segment, admission)?;
+    advance(transform, parent, admission)
+}
+fn advance<T: Transform>(
+    transform: &T,
+    frame: &mut Frame<T::Context>,
+    admission: &Admission,
+) -> Result<(), Error> {
+    frame.next = transform.after_child(
+        frame.owner.nodes_mut(),
+        frame.next,
+        &frame.context,
+        admission,
+    )?;
+    assert!(
+        frame.next <= frame.owner.nodes().len(),
+        "transform cursor outside edited list"
+    );
+    Ok(())
 }

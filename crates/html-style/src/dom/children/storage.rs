@@ -1,6 +1,9 @@
 //! A pass's admitted output buffer stays charged while any frame holds it.
 use super::{Children, Snapshot};
-use crate::budget::{LiveReservation, admission::Error};
+use crate::budget::{
+    LiveReservation,
+    admission::{Admission, Error},
+};
 use std::{fmt, mem, rc::Rc};
 
 #[derive(Default)]
@@ -22,6 +25,31 @@ impl Storage {
 }
 
 impl Children {
+    /// Reserve before separating a shared list. Old snapshots and their leases
+    /// remain intact if admission or allocation fails.
+    pub(crate) fn edit(
+        &mut self,
+        admission: &Admission,
+        additional: usize,
+    ) -> Result<&mut Vec<super::Node>, Error> {
+        let wanted = self
+            .len()
+            .checked_add(additional)
+            .ok_or(Error::CapacityOverflow)?;
+        if Rc::get_mut(&mut self.0).is_some() && self.capacity() >= wanted {
+            return Ok(std::ops::DerefMut::deref_mut(self));
+        }
+        let lease = admission.storage(Self::storage_bytes(wanted)?)?;
+        admission.work(self.len())?;
+        let mut nodes = Vec::new();
+        nodes
+            .try_reserve_exact(wanted)
+            .map_err(|_| Error::Allocation)?;
+        nodes.extend_from_slice(self);
+        *self = Self::from_reserved(nodes, lease);
+        Ok(std::ops::DerefMut::deref_mut(self))
+    }
+
     pub(crate) fn storage_bytes(count: usize) -> Result<usize, Error> {
         count
             .checked_mul(mem::size_of::<super::Node>())
@@ -33,8 +61,10 @@ impl Children {
     }
 
     pub(crate) fn from_reserved(nodes: Vec<super::Node>, lease: Option<LiveReservation>) -> Self {
-        let mut children = Self::from(nodes);
-        Rc::get_mut(&mut children.0).expect("new snapshot").storage = Storage(lease.map(Box::new));
-        children
+        Self(Rc::new(Snapshot {
+            nodes,
+            _storage: Storage(lease.map(Box::new)),
+            ..Default::default()
+        }))
     }
 }

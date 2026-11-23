@@ -34,7 +34,7 @@ pub(super) fn finish(
     out = grid_table_items_keep_stretch(admission, out)?;
     subgrid_takes_parent_tracks(admission, &mut out)?;
     out = filter_ref_only_empty(admission, out)?;
-    fold_run_ins(admission, &mut out, None)?;
+    out = fold_run_ins(admission, out, None)?;
     out = orthogonal_inlines_become_flow_roots(admission, out, (false, false, false), None)?;
     float_tail::mark(admission, &mut out)?;
     if tree.doc.quirks() {

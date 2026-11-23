@@ -8,6 +8,7 @@ use crate::dom::{Children, Element};
 use std::rc::Rc;
 
 mod engine;
+mod frame;
 mod owned;
 mod record;
 #[cfg(test)]
@@ -43,6 +44,19 @@ pub trait Transform {
         _admission: &Admission,
     ) -> Result<(), Error> {
         Ok(())
+    }
+
+    /// Called after a child is complete, before entering its next sibling.
+    /// Edits may reparent that child into an unvisited sibling. The returned
+    /// cursor identifies the next child to enter in the edited list.
+    fn after_child(
+        &self,
+        _nodes: &mut Children,
+        index: usize,
+        _parent: &Self::Context,
+        _admission: &Admission,
+    ) -> Result<usize, Error> {
+        Ok(index + 1)
     }
 }
 

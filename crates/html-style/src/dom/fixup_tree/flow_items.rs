@@ -17,79 +17,45 @@ use crate::style::computed::{Computed, Display};
 /// коробка, становится её ПЕРВЫМ СТРОЧНЫМ ребёнком; во всех остальных
 /// случаях он ведёт себя как блок (это уже так — разбор дал Block).
 pub fn fold_run_ins(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut Vec<Node>,
+    admission: &Admission,
+    nodes: Vec<Node>,
     parent: Option<&Computed>,
-) -> Result<(), crate::budget::admission::Error> {
-    struct Frame {
-        nodes: Vec<Node>,
-        index: usize,
-        keep: bool,
-        descended: bool,
-        owner: Option<Element>,
-    }
-    let mut stack = crate::budget::admission::Buffer::default();
-    stack.push(
-        Frame {
-            nodes: std::mem::take(nodes),
-            index: 0,
-            keep: parent.is_some_and(|p| p.inh.text_flow.keep_spaces == Some(true)),
-            descended: false,
-            owner: None,
-        },
+) -> Result<Vec<Node>, Error> {
+    apply(
+        &RunIn,
+        nodes,
+        parent.is_some_and(|p| p.inh.text_flow.keep_spaces == Some(true)),
         admission,
-    )?;
-    while let Some(frame) = stack.last_mut() {
-        if frame.index == frame.nodes.len() {
-            let frame = stack.pop().expect("active run-in frame");
-            if let Some(mut owner) = frame.owner {
-                owner.children = frame.nodes.into();
-                let parent = stack.last_mut().expect("run-in parent");
-                parent.nodes[parent.index] = Node::Element(owner);
-            } else {
-                *nodes = frame.nodes;
-            }
-            continue;
-        }
-        if !frame.descended {
-            frame.descended = true;
-            if matches!(frame.nodes[frame.index], Node::Element(_)) {
-                let Node::Element(mut owner) = std::mem::replace(
-                    &mut frame.nodes[frame.index],
-                    Node::Text(Default::default()),
-                ) else {
-                    unreachable!()
-                };
-                let nodes = std::mem::take(&mut owner.children).into_vec();
-                let keep = owner.style.cascaded().inh.text_flow.keep_spaces == Some(true);
-                stack.push(
-                    Frame {
-                        nodes,
-                        index: 0,
-                        keep,
-                        descended: false,
-                        owner: Some(owner),
-                    },
-                    admission,
-                )?;
-                continue;
-            }
-        }
-        admission.work(1)?;
-        frame.index = fold_at(admission, &mut frame.nodes, frame.index, frame.keep)?;
-        frame.descended = false;
+    )
+}
+
+pub(crate) struct RunIn;
+
+impl Transform for RunIn {
+    type Context = bool;
+
+    fn enter(&self, el: &mut Element, _: &bool, _: &Admission) -> Result<bool, Error> {
+        Ok(el.style.cascaded().inh.text_flow.keep_spaces == Some(true))
     }
-    Ok(())
+
+    fn after_child(
+        &self,
+        nodes: &mut Children,
+        index: usize,
+        keep: &bool,
+        admission: &Admission,
+    ) -> Result<usize, Error> {
+        fold_at(admission, nodes, index, *keep)
+    }
 }
 
 fn fold_at(
     admission: &crate::budget::admission::Admission,
-    nodes: &mut Vec<Node>,
+    nodes: &mut Children,
     i: usize,
     keep: bool,
 ) -> Result<usize, crate::budget::admission::Error> {
-    // Блочная коробка В ПОТОКЕ где угодно внутри (в том числе за
-    // строчными обёртками) запрещает вбегание.
+    // Any in-flow block, including behind inline wrappers, prevents folding.
     let runs_in = match &nodes[i] {
         Node::Element(e) => {
             e.style.cascaded().reset_context.run_in == Some(true)
@@ -101,9 +67,8 @@ fn fold_at(
     if !runs_in {
         return Ok(i + 1);
     }
-    // Следующая непустая коробка: подходит только обычный блок — не
-    // run-in, не строчный. Плавающие и позиционированные соседи
-    // ПРОЗРАЧНЫ: они вне потока и вбеганию не мешают (§9.2.3).
+    // Only the next ordinary block qualifies; whitespace and out-of-flow
+    // siblings are transparent (CSS 2.1 section 9.2.3).
     let Some(j) = (i + 1..nodes.len()).find(|&j| {
             !matches!(&nodes[j], Node::Text(t) if t.is_empty() || (!keep && crate::dom::whitespace::blank_text(t))) && !matches!(&nodes[j], Node::Element(t) if crate::style::flow::has_float_or_absolute_position(t.style.cascaded()))
         }) else {
@@ -127,24 +92,27 @@ fn fold_at(
     if !target_ok {
         return Ok(i + 1);
     }
+    // Reserve both edited lists before moving the run-in. Shared snapshots
+    // remain immutable, including when either reservation rejects this stage.
+    let nodes = nodes.edit(admission, 0)?;
+    let Node::Element(target) = &mut nodes[j] else {
+        unreachable!("validated target")
+    };
+    target.children.edit(admission, 1)?;
     let Node::Element(mut run) = nodes.remove(i) else {
-        // runs_in выше истинно только для Element; до remove дерево не менялось.
-        unreachable!()
+        unreachable!("validated run-in")
     };
     run.inline = true;
     run.style.cascaded_mut().reset_box_layout.display = None;
     run.style.cascaded_mut().reset_context.run_in = None;
-    // Наследование от ИСХОДНОГО родителя (§9.2.3) НЕ запекается:
-    // `style::cascade::inherit` сливает и рендерные поля, и `run-in-inherit-001`
-    // от этого ломается. Цвет нового блока вбёгнутый перенимает
-    // неправильно — хвост не решён.
-
+    // Preserve the original inheritance behavior: baking in the old parent's
+    // style would also merge render properties and change run-in inheritance.
     let Node::Element(target) = &mut nodes[j - 1] else {
-        // target_ok проверил Element в j; remove(i), i < j, сдвинул его в j - 1.
-        unreachable!()
+        unreachable!("target shifted after removal")
     };
     target.children.insert(0, Node::Element(run));
-    // Сдвинутый узел должен сначала пройти свой спуск.
+    // The shifted sibling must enter with its newly inserted subtree.
+
     Ok(i)
 }
 

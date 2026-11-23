@@ -1,7 +1,7 @@
 //! Shared current pass records; weak input marks cannot retain obsolete raw trees.
 use crate::budget::LiveReservation;
 use crate::budget::admission::{Admission, Buffer, Error};
-use crate::dom::{Children, ChildrenMark, Element, Node};
+use crate::dom::{Children, ChildrenMark};
 use std::{collections::HashMap, mem, rc::Rc};
 
 pub(super) struct Segment<C> {
@@ -37,23 +37,17 @@ impl<C> Drop for Segment<C> {
     }
 }
 
-pub(super) struct Frame<C> {
-    pub input: Children,
-    pub context: C,
-    pub next: usize,
-    pub pending: Option<Element>,
+pub(super) struct Recording<C> {
+    input: Children,
     pub branches: Buffer<Rc<Segment<C>>>,
     old: Option<Rc<Segment<C>>>,
     lookup: HashMap<usize, usize>,
-    changed: Option<Vec<Node>>,
-    output_lease: Option<LiveReservation>,
     _lookup_lease: Option<LiveReservation>,
 }
 
-impl<C: Clone + PartialEq> Frame<C> {
+impl<C: Clone + PartialEq> Recording<C> {
     pub fn new(
         input: Children,
-        context: C,
         old: Option<Rc<Segment<C>>>,
         admission: &Admission,
     ) -> Result<Self, Error> {
@@ -72,14 +66,9 @@ impl<C: Clone + PartialEq> Frame<C> {
         }
         Ok(Self {
             input,
-            context,
-            next: 0,
-            pending: None,
             branches: Buffer::default(),
             old,
             lookup,
-            changed: None,
-            output_lease: None,
             _lookup_lease: lease,
         })
     }
@@ -90,39 +79,18 @@ impl<C: Clone + PartialEq> Frame<C> {
         branch.input.holds(input).then(|| branch.clone())
     }
 
-    pub fn append(&mut self, changed: Option<Element>, admission: &Admission) -> Result<(), Error> {
-        let index = self.next - 1;
-        if changed.is_some() && self.changed.is_none() {
-            let bytes = Children::storage_bytes(self.input.len())?;
-            self.output_lease = admission.storage(bytes)?;
-            admission.work(index)?;
-            let mut nodes = Vec::new();
-            nodes
-                .try_reserve_exact(self.input.len())
-                .map_err(|_| Error::Allocation)?;
-            nodes.extend_from_slice(&self.input[..index]);
-            self.changed = Some(nodes);
-        }
-        if let Some(nodes) = &mut self.changed {
-            nodes.push(changed.map_or_else(|| self.input[index].clone(), Node::Element));
-        }
-        Ok(())
-    }
-
-    pub fn output(&mut self) -> Children {
-        match self.changed.take() {
-            Some(nodes) => Children::from_reserved(nodes, self.output_lease.take()),
-            None => self.input.clone(),
-        }
-    }
-
-    pub fn finish(self, output: Children, admission: &Admission) -> Result<Rc<Segment<C>>, Error> {
+    pub fn finish(
+        self,
+        context: C,
+        output: Children,
+        admission: &Admission,
+    ) -> Result<Rc<Segment<C>>, Error> {
         let lease =
             admission.storage(mem::size_of::<Segment<C>>() + 2 * mem::size_of::<usize>())?;
         Ok(Rc::new(Segment {
             input: self.input.mark(),
             identity: self.input.identity(),
-            context: self.context,
+            context,
             output,
             branches: self.branches,
             _lease: lease,
