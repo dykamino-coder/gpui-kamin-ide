@@ -99,7 +99,10 @@ pub fn convert_restyling(
     // The cache that takes the rules of this build also takes its `:has()`
     // marks after the walk: the first restyle then reads them instead of
     // marking the whole document again (`RestyleCache::keep_has`).
-    let mut marked = None;
+    let mut marked = false;
+    let mut collected = keep
+        .as_ref()
+        .map(|_| super::restyle_probe::RestyleCache::default());
     if let Some(invalidation) = invalidation.as_deref_mut() {
         invalidation.prepare(&doc.rules, shadows);
     }
@@ -128,7 +131,7 @@ pub fn convert_restyling(
         if !has_args.is_empty() {
             mark_has(&dom.document, &has_args, &mut vec![], &mut tree)?;
         }
-        if let Some(keep) = keep {
+        if let Some(keep) = collected.as_mut() {
             let marks = !has_args.is_empty();
             let probe = super::restyle_probe::RestyleProbe::built(
                 doc.clone(),
@@ -138,13 +141,13 @@ pub fn convert_restyling(
                 extra_css,
             );
             *keep = super::restyle_probe::RestyleCache::with_probe(probe);
-            marked = marks.then_some(keep);
+            marked = marks;
         }
     }
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::style::generated::counters::Counters::default();
-    walk_children(
+    let raw = walk_children(
         &dom.document,
         &tree,
         &doc,
@@ -155,10 +158,15 @@ pub fn convert_restyling(
         &mut out,
         vcx,
         invalidation,
+        keep.is_some(),
     )?;
     let nodes = super::finish_document::finish(&tree, &admission, out, vcx)?;
-    if let Some(keep) = marked {
-        keep.keep_has(tree.take_has());
+    if let (Some(keep), Some(mut collected)) = (keep, collected) {
+        if marked {
+            collected.keep_has(tree.take_has());
+        }
+        collected.keep_raw(raw.expect("retained walk records raw cascade output"));
+        *keep = collected;
     }
     Ok(nodes)
 }

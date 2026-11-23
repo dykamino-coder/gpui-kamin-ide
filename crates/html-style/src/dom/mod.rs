@@ -51,6 +51,7 @@ pub use walk::{Probed, ProbedRest};
 #[cfg(test)]
 mod class_token_tests;
 pub mod source_delta;
+pub mod source_memo;
 pub mod source_walk;
 pub mod style_sources;
 pub mod text_content;

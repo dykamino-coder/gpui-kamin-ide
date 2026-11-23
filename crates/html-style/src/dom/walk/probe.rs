@@ -19,7 +19,7 @@ mod walk;
 pub use chains::Chains;
 use walk::walk;
 
-use super::engine::keeps;
+use super::descent::keeps;
 use super::enter::enter;
 use super::pending::Pending;
 use crate::budget::admission::Error;

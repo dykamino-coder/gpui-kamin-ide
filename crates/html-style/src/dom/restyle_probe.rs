@@ -38,6 +38,7 @@ pub struct RestyleProbe {
 /// значения: записи предков ссылаются на значения.
 #[derive(Default)]
 pub struct RestyleCache {
+    raw: super::source_memo::SourceMemo,
     probe: Option<Rc<RestyleProbe>>,
     chains: Chains,
     /// Признаки потомков по именам пакета (`invalidation::features`): Blink
@@ -74,6 +75,19 @@ const SETS: usize = 16;
 const LAST: usize = 4096;
 
 impl RestyleCache {
+    /// Raw cascade output belongs to this value revision, before normalization.
+    pub fn raw(&self) -> &super::source_memo::SourceMemo {
+        &self.raw
+    }
+
+    pub fn raw_mut(&mut self) -> &mut super::source_memo::SourceMemo {
+        &mut self.raw
+    }
+
+    pub(super) fn keep_raw(&mut self, raw: super::source_memo::SourceMemo) {
+        self.raw = raw;
+    }
+
     /// Кэш, чья проба — правила только что собранного документа: первая
     /// правка не разбирает листы заново. Так Blink и Stylo держат индекс
     /// правил документа (`RuleSet`, `CascadeData`) между перерасчётами, а

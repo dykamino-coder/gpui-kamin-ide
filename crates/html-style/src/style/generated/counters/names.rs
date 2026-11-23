@@ -1,7 +1,7 @@
 //! Sorted persistent counter-name index; updating one name shares all other stacks.
 use super::{Entry, Path, Sequence, remove_stale};
 use std::rc::Rc;
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq)]
 pub(super) struct Names(Sequence<(Rc<str>, Sequence<Entry>)>);
 impl Names {
     fn find(&self, name: &str) -> Result<usize, usize> {

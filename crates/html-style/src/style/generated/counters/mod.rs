@@ -13,7 +13,7 @@ const PSEUDO_MARKER: u32 = u32::MAX - 2;
 const PSEUDO_BEFORE: u32 = u32::MAX - 1;
 const PSEUDO_AFTER: u32 = u32::MAX;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Entry {
     owner: Path,
     value: i64,
@@ -22,7 +22,7 @@ struct Entry {
 
 /// Immutable snapshots share counter stacks, paths and quote scopes. Mutations
 /// detach only balanced-tree paths; they never copy the entire counter context.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq)]
 #[allow(clippy::type_complexity)]
 pub struct Counters {
     stack: names::Names,

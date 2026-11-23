@@ -4,7 +4,7 @@
 
 use crate::style::computed::Computed;
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct Context {
     rtl: bool,
     vertical: bool,

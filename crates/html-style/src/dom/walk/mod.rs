@@ -1,6 +1,7 @@
 //! Обход html5ever-дерева: каскад и сборка узлов (walk).
 
 mod ancestor;
+mod descent;
 mod engine;
 mod enter;
 mod kids;
@@ -8,6 +9,7 @@ mod leave;
 mod marker;
 mod pending;
 mod probe;
+mod record;
 pub use probe::{Chains, Probed, ProbedRest, probe};
 mod sibling_survey;
 pub use ancestor::element_attrs;

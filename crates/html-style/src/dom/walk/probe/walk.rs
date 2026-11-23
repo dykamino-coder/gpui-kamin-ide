@@ -2,7 +2,7 @@
 //! reaches (`Chains`): the build's own entries and descents, for the chains
 //! only.
 
-use super::super::engine::{descend, keeps, visits};
+use super::super::descent::{descend, keeps, visits};
 use super::super::enter::enter;
 use super::super::pending::Restore;
 use super::super::sibling_survey::{Survey, Visit};
@@ -96,7 +96,7 @@ pub(super) fn walk<'a>(
                 }
                 if on_chain {
                     let above = path.len();
-                    let (mut children, restore) = descend(&p, tree, &mut path)?;
+                    let (mut children, restore, _) = descend(&p, tree, &mut path)?;
                     // The plain descent: the element's own children under
                     // its record (not a shadow tree or a slot's assignment).
                     let plain = matches!(restore, Restore::Truncate(_)) && path.len() == above + 1;

@@ -1,11 +1,12 @@
 //! Обход DOM с операциями входа/выхода; глубина не расходует стек потока.
 use super::{
+    descent::{descend, visits},
     enter::enter,
     leave::leave,
     pending::{Pending, Restore},
     sibling_survey::{Survey, Visit},
 };
-use crate::budget::admission::{Buffer, Error};
+use crate::budget::admission::Buffer;
 use crate::dom::outcome::TraversalKind;
 use crate::dom::{Node, shadow::Scope, tree_index::TreeIndex};
 use crate::style::{css::VarMap, generated::counters::Counters, select::Ancestor};
@@ -15,115 +16,7 @@ use std::rc::Rc;
 
 enum Work<'a> {
     Visit(Visit<'a>),
-    Leave(Box<Pending<'a>>, Restore),
-}
-pub(super) fn visits<'a>(
-    survey: Rc<Survey>,
-    scope: Rc<Scope>,
-    vars: Rc<VarMap>,
-    preserve: bool,
-    depth: usize,
-    vcx: ValueCx<'a>,
-    parent_share: u64,
-) -> Result<Buffer<Visit<'a>>, Error> {
-    let mut jobs = Buffer::default();
-    let admission = crate::budget::admission::Admission::new(vcx.doc.revision_budget());
-    let mut pos = 0;
-    for index in 0..survey.nodes.len() {
-        let visit = Visit {
-            survey: survey.clone(),
-            index,
-            pos,
-            scope: scope.clone(),
-            vars: vars.clone(),
-            preserve,
-            depth,
-            vcx,
-            parent_share,
-        };
-        pos += usize::from(survey.spots[index].index != 0);
-        jobs.push(visit, &admission)?;
-    }
-    Ok(jobs)
-}
-/// Whether the children of `p` keep newlines (its `white-space`).
-pub(super) fn keeps(p: &Pending<'_>) -> bool {
-    p.style
-        .inh
-        .text_flow
-        .preserve_newlines
-        .unwrap_or(p.visit.preserve)
-}
-pub(super) fn descend<'a>(
-    p: &Pending<'a>,
-    tree: &TreeIndex,
-    path: &mut Vec<Ancestor>,
-) -> Result<(Buffer<Visit<'a>>, Restore), Error> {
-    let admission = tree.admission();
-    let restore = Restore::Truncate(path.len());
-    let keep = keeps(p);
-    if p.hidden && p.style.reset_context.col_role != Some(1) {
-        return Ok((Buffer::default(), restore));
-    }
-    if !p.hidden {
-        if let Some(shadow) = &p.shadow {
-            let old = std::mem::replace(path, vec![shadow.marker.clone()]);
-            return Ok((
-                visits(
-                    Survey::children(&shadow.root, tree),
-                    shadow.scope.clone(),
-                    p.vars.clone(),
-                    keep,
-                    p.visit.depth + 1,
-                    p.visit.vcx,
-                    0,
-                )?,
-                Restore::Replace(old),
-            ));
-        }
-        if let Some(slot) = tree
-            .slot_of(p.visit.handle())
-            .filter(|s| !s.assigned.is_empty())
-        {
-            let old = std::mem::replace(path, slot.host_path.as_ref().clone());
-            let survey = Rc::new(Survey {
-                nodes: slot.light.clone(),
-                spots: slot.light_spots.clone(),
-                all: slot.light_all.clone(),
-            });
-            let mut jobs = Buffer::default();
-            for s in &slot.assigned {
-                jobs.push(
-                    Visit {
-                        survey: survey.clone(),
-                        index: s.light_idx,
-                        pos: s.elem_pos,
-                        scope: slot.outer.clone(),
-                        vars: p.vars.clone(),
-                        preserve: keep,
-                        depth: p.visit.depth + 1,
-                        vcx: p.visit.vcx,
-                        parent_share: 0,
-                    },
-                    &admission,
-                )?;
-            }
-            return Ok((jobs, Restore::Replace(old)));
-        }
-    }
-    path.push(p.me.clone());
-    Ok((
-        visits(
-            Survey::children(p.visit.handle(), tree),
-            p.visit.scope.clone(),
-            p.vars.clone(),
-            keep,
-            p.visit.depth + 1,
-            p.visit.vcx,
-            p.share,
-        )?,
-        restore,
-    ))
+    Leave(Box<Pending<'a>>, Restore, Option<super::record::Start>),
 }
 #[allow(clippy::too_many_arguments)]
 pub fn walk_children(
@@ -137,7 +30,8 @@ pub fn walk_children(
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
     mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
-) -> Result<(), crate::budget::admission::Error> {
+    retain: bool,
+) -> Result<Option<crate::dom::source_memo::SourceMemo>, crate::budget::admission::Error> {
     let admission = tree.admission();
     let mut jobs = visits(
         Survey::children(handle, tree),
@@ -148,6 +42,7 @@ pub fn walk_children(
         vcx,
         0,
     )?;
+    let mut recorder = retain.then(super::record::Recorder::default);
     let sharing = super::element_sharing::ElementSharing::default();
     let mut work = Buffer::default();
     while let Some(job) = jobs.pop() {
@@ -159,7 +54,7 @@ pub fn walk_children(
     while let Some(next) = work.pop() {
         admission.work(1)?;
         match next {
-            Work::Leave(p, restore) => {
+            Work::Leave(p, restore, start) => {
                 restore.apply(path);
                 let children = output.pop().expect("children output").into_vec();
                 leave(
@@ -170,6 +65,15 @@ pub fn walk_children(
                     output.last_mut().expect("parent output"),
                     invalidation.as_deref_mut(),
                 )?;
+                if let (Some(recorder), Some(start)) = (&mut recorder, start) {
+                    recorder.finish(
+                        start,
+                        path,
+                        counters,
+                        output.last().expect("parent output"),
+                        &admission,
+                    )?;
+                }
             }
             Work::Visit(v) => {
                 let limit = crate::values::MAX_DEPTH;
@@ -195,6 +99,12 @@ pub fn walk_children(
                         output.last_mut().expect("output"),
                     ),
                     NodeData::Element { .. } => {
+                        let start = recorder
+                            .as_mut()
+                            .map(|r| {
+                                r.begin(&v, path, counters, output.last().expect("output").len())
+                            })
+                            .transpose()?;
                         if let Some(mut p) = enter(
                             v,
                             tree,
@@ -203,12 +113,26 @@ pub fn walk_children(
                             path,
                             output.last_mut().expect("output"),
                         ) {
-                            let (mut children, restore) = descend(&p, tree, path)?;
+                            if let (Some(recorder), Some(start)) = (&mut recorder, &start) {
+                                recorder.entered(&p, start)?;
+                            }
+                            let (mut children, restore, sequence) = descend(&p, tree, path)?;
+                            if let Some(recorder) = &mut recorder {
+                                recorder.sequence(sequence);
+                            }
                             output.push(std::mem::take(&mut p.children), &admission)?;
-                            work.push(Work::Leave(p, restore), &admission)?;
+                            work.push(Work::Leave(p, restore, start), &admission)?;
                             while let Some(job) = children.pop() {
                                 work.push(Work::Visit(job), &admission)?;
                             }
+                        } else if let (Some(recorder), Some(start)) = (&mut recorder, start) {
+                            recorder.finish(
+                                start,
+                                path,
+                                counters,
+                                output.last().expect("output"),
+                                &admission,
+                            )?;
                         }
                     }
                     _ => {
@@ -230,5 +154,7 @@ pub fn walk_children(
         }
     }
     *out = output.pop().expect("root output").into_vec();
-    Ok(())
+    recorder
+        .map(|r| r.finish_document(handle.key(), out))
+        .transpose()
 }
