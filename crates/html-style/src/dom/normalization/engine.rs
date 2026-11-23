@@ -40,7 +40,14 @@ pub(super) fn evaluate<T: Transform>(
 ) -> Result<Evaluation<T::Context>, Error> {
     let mut stack = Buffer::default();
     stack.push(
-        Frame::new(Owner::root(input), context, recorded, old, admission)?,
+        start(
+            transform,
+            Owner::root(input),
+            context,
+            recorded,
+            old,
+            admission,
+        )?,
         admission,
     )?;
     while let Some(frame) = stack.last_mut() {
@@ -71,7 +78,9 @@ pub(super) fn evaluate<T: Transform>(
             continue;
         }
         admission.work(1)?;
-        if !matches!(frame.owner.nodes()[frame.next], Node::Element(_)) {
+        if !matches!(frame.owner.nodes()[frame.next], Node::Element(_))
+            || !transform.visit_child(frame.owner.nodes(), frame.next, &frame.context)
+        {
             advance(transform, frame, admission)?;
             continue;
         }
@@ -85,7 +94,8 @@ pub(super) fn evaluate<T: Transform>(
             complete(transform, element, Some(previous.clone()), frame, admission)?;
         } else {
             stack.push(
-                Frame::new(
+                start(
+                    transform,
                     Owner::element(element),
                     context,
                     recorded,
@@ -97,6 +107,19 @@ pub(super) fn evaluate<T: Transform>(
         }
     }
     unreachable!("root always completes")
+}
+
+fn start<T: Transform>(
+    transform: &T,
+    owner: Owner,
+    context: T::Context,
+    recorded: bool,
+    old: Option<Rc<Segment<T::Context>>>,
+    admission: &Admission,
+) -> Result<Frame<T::Context>, Error> {
+    let mut frame = Frame::new(owner, context, recorded, old, admission)?;
+    transform.before_list(frame.owner.nodes_mut(), &frame.context, admission)?;
+    Ok(frame)
 }
 
 fn complete<T: Transform>(

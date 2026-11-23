@@ -6,9 +6,11 @@ use std::cell::Cell;
 mod contextual;
 mod display;
 mod identity;
+mod list_entry;
 mod ordering;
 mod owned;
 mod siblings;
+mod tails;
 mod transaction;
 mod transforms;
 

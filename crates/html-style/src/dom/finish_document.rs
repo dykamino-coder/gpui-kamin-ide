@@ -36,9 +36,9 @@ pub(super) fn finish(
     out = filter_ref_only_empty(admission, out)?;
     out = fold_run_ins(admission, out, None)?;
     out = orthogonal_inlines_become_flow_roots(admission, out, (false, false, false), None)?;
-    float_tail::mark(admission, &mut out)?;
+    out = float_tail::mark(admission, out)?;
     if tree.doc.quirks() {
-        quirks_percent_heights(admission, &mut out, None)?;
+        out = quirks_percent_heights(admission, out, None)?;
     }
     out = super::state_identity::finalize(admission, out, vcx)?;
     if let Some(failure) = tree.doc.revision_budget().failure() {

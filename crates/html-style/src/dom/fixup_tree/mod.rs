@@ -4,7 +4,9 @@
 pub(crate) mod alignment;
 pub(crate) mod flow_items;
 pub(crate) mod orthogonal_inline;
+pub(crate) mod quirks_height;
 mod ruby_boxes;
+pub(super) use quirks_height::quirks_percent_heights;
 pub mod ruby_normalize;
 pub(super) use crate::dom::fixup_tree::alignment::align_self_from_dom_parent;
 pub(super) use crate::dom::fixup_tree::alignment::grid_table_items_keep_stretch;
@@ -19,60 +21,6 @@ pub(super) use crate::dom::fixup_tree::ruby_boxes::wrap_misparented_ruby;
 use crate::budget::admission::{Admission, Error};
 use crate::dom::normalization::{Transform, apply};
 use crate::dom::*;
-use crate::style::computed::Display;
-use crate::style::values::value::Len;
-
-/// Quirks Mode §3.5 «The percentage height calculation quirk»: в режиме quirks
-/// доля высоты элемента в потоке ищет опору через предков-блоков с
-/// `height: auto` до ближайшего с заданной высотой. Сводится к точкам ЗДЕСЬ, в
-/// стиле узла: флоаты и картинки строятся из сырого стиля (`wrap_floats`,
-/// `image_with`), и пересчёт только в слитом (`style::cascade::inherit`) до них не
-/// доходил (`float-percentage-resolution-quirks-mode`,
-/// `intrinsic-percent-replaced-003`). `base` — высота содержимого опоры для
-/// детей; гибкий/сеточный/табличный предок с `auto` и абсолют цепочку рвут.
-pub(super) fn quirks_percent_heights(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-    base: Option<f32>,
-) -> Result<(), crate::budget::admission::Error> {
-    mark_quirks_fill(nodes);
-    crate::dom::traversal::preorder(admission, nodes, base, |e, &base| {
-        let st = e.style.cascaded_mut();
-        let out_of_flow = crate::style::flow::absolutely_positioned(st.reset_positioned.position);
-        let blockish = matches!(
-            st.reset_box_layout.display,
-            None | Some(Display::Block) | Some(Display::InlineBlock) | Some(Display::ListItem)
-        );
-        if let (Some(Len::Pct(k)), Some(b), false, true) = (
-            st.reset_box_layout.height.clone(),
-            base,
-            out_of_flow,
-            blockish,
-        ) {
-            st.reset_box_layout.height = Some(Len::Px(k * b));
-        }
-        // Табличные коробки квирка не дают: доля внука ячейки с заданной
-        // высотой остаётся `auto` (`percentages-grandchildren-quirks-mode-001`).
-        let tabular = matches!(
-            st.reset_box_layout.display,
-            Some(
-                Display::Table
-                    | Display::InlineTable
-                    | Display::TableCell
-                    | Display::TableRow
-                    | Display::TableRowGroup
-            )
-        );
-        let child_base = match st.reset_box_layout.height {
-            _ if tabular => None,
-            Some(Len::Px(h)) => Some(h),
-            None | Some(Len::Auto) if blockish && !out_of_flow && e.tag != "html" => base,
-            _ => None,
-        };
-        mark_quirks_fill(&mut e.children);
-        Some(child_base)
-    })
-}
 
 /// `filter: url(#id)` дешёвым слоем рисуется только у коробки БЕЗ содержимого
 /// (`paint::effects::filter::FilterLayer`): у коробки с детьми слой лёг бы поверх них.
@@ -101,33 +49,5 @@ impl Transform for EmptyFilter {
             el.style.cascaded_mut().reset_effects.filter_ref = None;
         }
         Ok(())
-    }
-}
-
-fn mark_quirks_fill(nodes: &mut [Node]) {
-    if let [Node::Element(html)] = nodes
-        && html.tag == "html"
-    {
-        html.marks.quirks_fill = html
-            .style
-            .cascaded()
-            .reset_box_layout
-            .float
-            .is_none_or(|f| f == 0);
-        if let Some(Node::Element(body)) = html
-            .children
-            .iter_mut()
-            .find(|n| matches!(n, Node::Element(e) if e.tag == "body" || e.tag == "frameset"))
-            && body.tag == "body"
-        {
-            // Float layout clears `float` on the box it puts into a row.
-            // Preserve the fill exclusion before that tree rewrite.
-            body.marks.quirks_fill = body
-                .style
-                .cascaded()
-                .reset_box_layout
-                .float
-                .is_none_or(|f| f == 0);
-        }
     }
 }

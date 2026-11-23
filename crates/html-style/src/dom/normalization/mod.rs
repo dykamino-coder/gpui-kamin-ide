@@ -19,6 +19,22 @@ use record::Segment;
 pub trait Transform {
     type Context: Clone + PartialEq;
 
+    /// Runs once on a list miss, after retaining its immutable input key.
+    fn before_list(
+        &self,
+        _nodes: &mut Children,
+        _parent: &Self::Context,
+        _admission: &Admission,
+    ) -> Result<(), Error> {
+        Ok(())
+    }
+
+    /// A skipped child remains unchanged, without walking or recording descendants.
+    /// The decision must depend only on this list and its complete context.
+    fn visit_child(&self, _nodes: &Children, _index: usize, _parent: &Self::Context) -> bool {
+        true
+    }
+
     fn enter(
         &self,
         element: &mut Element,

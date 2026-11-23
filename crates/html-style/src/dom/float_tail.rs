@@ -1,86 +1,100 @@
-//! Пометка `float_tail`: блоки, чьи флоаты уже ничего за собой не достанут.
-//! CSS 2.1 §10.6.3: автовысота обычного блока считает только потоковые
-//! коробки; его флоаты остаются в объемлющем блочном контексте, где двигают
-//! последующую очистку, укорачивают строки и растят автовысоту корня
-//! контекста (§9.5, §10.6.7). Наш хост флоатов раскладывается внутри блока,
-//! поэтому выкинуть флоаты из высоты блока можно лишь когда дальше в контексте
-//! их никто не увидит: блок и все предки до корня — последние дети своих
-//! родителей, никто не заводит контекст, у корня нет рамки, выдающей высоту.
+//! Float tails follow only the last in-flow block chain of an unbordered root.
+//! CSS 2.1 10.6.3: floats may escape auto height only when no following box in
+//! this formatting context can observe them. Orthogonal and item boxes stop it.
+use crate::budget::admission::{Admission, Error};
+use crate::dom::normalization::{Transform, apply};
+use crate::dom::{Children, Element, Node};
+use crate::style::{computed::Display, values::value::Len};
 
-use crate::dom::Node;
-use crate::style::computed::Display;
-use crate::style::values::value::Len;
-
-pub(super) fn mark(
-    admission: &crate::budget::admission::Admission,
-    nodes: &mut [Node],
-) -> Result<(), crate::budget::admission::Error> {
-    for node in nodes.iter_mut() {
-        admission.work(1)?;
-        let Node::Element(root) = node else { continue };
-        let b = root.style.cascaded().borders();
-        let bare = [b.top, b.right, b.bottom, b.left]
-            .iter()
-            .all(|w| matches!(w, None | Some(Len::Px(0.0))));
-        if bare && block_like(root) {
-            root.style.cascaded_mut().reset_context.float_tail = true;
-            let vertical = root.style.cascaded().wm().vertical();
-            descend(admission, root, vertical)?;
-        }
-    }
-    Ok(())
+pub(super) fn mark(admission: &Admission, nodes: Vec<Node>) -> Result<Vec<Node>, Error> {
+    apply(&FloatTail, nodes, TailContext::default(), admission)
 }
 
-fn descend(
-    admission: &crate::budget::admission::Admission,
-    parent: &mut crate::dom::Element,
+pub(crate) struct FloatTail;
+#[derive(Clone, PartialEq)]
+pub(crate) struct TailContext {
+    root: bool,
     vertical: bool,
-) -> Result<(), crate::budget::admission::Error> {
-    let mut parent = parent;
-    let mut vertical = vertical;
-    loop {
-        admission.work(parent.children.len())?;
-        let item_parent = matches!(
-            parent.style.cascaded().reset_box_layout.display,
-            Some(
-                Display::Flex
-                    | Display::InlineFlex
-                    | Display::Grid
-                    | Display::InlineGrid
-                    | Display::GridLanes
-            )
-        );
-        let last = parent.children.iter().rposition(|n| match n {
-            Node::Text(t) => !crate::dom::whitespace::blank_text(t),
-            Node::Element(_) => true,
-        });
-        let Some(last) = last else { return Ok(()) };
-        let Node::Element(child) = &mut parent.children[last] else {
-            return Ok(());
+    item_parent: bool,
+}
+impl Default for TailContext {
+    fn default() -> Self {
+        Self {
+            root: true,
+            vertical: false,
+            item_parent: false,
+        }
+    }
+}
+impl Transform for FloatTail {
+    type Context = TailContext;
+
+    fn visit_child(&self, nodes: &Children, index: usize, parent: &TailContext) -> bool {
+        let Node::Element(child) = &nodes[index] else {
+            return false;
         };
-        let child_vertical = child.style.cascaded().vertical_decl().unwrap_or(vertical);
-        // Writing Modes 3 §3.2: a box orthogonal to its parent establishes an
-        // independent formatting context, as do flex and grid items.
-        if item_parent
-            || child_vertical != vertical
-            || !block_like(child)
-            || crate::style::computed::formatting_context::own_context_style(child.style.cascaded())
-            || child
+        if parent.root {
+            let b = child.style.cascaded().borders();
+            return block_like(child)
+                && [b.top, b.right, b.bottom, b.left]
+                    .iter()
+                    .all(|w| matches!(w, None | Some(Len::Px(0.0))));
+        }
+        if parent.item_parent || !block_like(child) {
+            return false;
+        }
+        // Each rejected sibling stops at the next nonblank node: the total
+        // scan is linear, including long whitespace runs between elements.
+        nodes[index + 1..]
+            .iter()
+            .all(|n| matches!(n, Node::Text(t) if crate::dom::whitespace::blank_text(t)))
+            && child
+                .style
+                .cascaded()
+                .vertical_decl()
+                .unwrap_or(parent.vertical)
+                == parent.vertical
+            && !crate::style::computed::formatting_context::own_context_style(
+                child.style.cascaded(),
+            )
+            && child
                 .style
                 .cascaded()
                 .reset_box_layout
                 .float
-                .is_some_and(|f| f != 0)
-        {
-            return Ok(());
-        }
+                .is_none_or(|f| f == 0)
+    }
+
+    fn enter(
+        &self,
+        child: &mut Element,
+        parent: &TailContext,
+        _: &Admission,
+    ) -> Result<TailContext, Error> {
         child.style.cascaded_mut().reset_context.float_tail = true;
-        parent = child;
-        vertical = child_vertical;
+        let st = child.style.cascaded();
+        Ok(TailContext {
+            root: false,
+            vertical: if parent.root {
+                st.wm().vertical()
+            } else {
+                st.vertical_decl().unwrap_or(parent.vertical)
+            },
+            item_parent: matches!(
+                st.reset_box_layout.display,
+                Some(
+                    Display::Flex
+                        | Display::InlineFlex
+                        | Display::Grid
+                        | Display::InlineGrid
+                        | Display::GridLanes
+                )
+            ),
+        })
     }
 }
 
-fn block_like(e: &crate::dom::Element) -> bool {
+fn block_like(e: &Element) -> bool {
     match e.style.cascaded().reset_box_layout.display {
         Some(Display::Block | Display::ListItem) => true,
         Some(_) => false,
