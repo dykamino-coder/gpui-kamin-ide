@@ -19,8 +19,8 @@
 //! - a mutated element is a target, and the record of a target on a kept
 //!   path is replaced by the one its entry gives (`entered`): ancestor
 //!   compounds read the attributes the batch left;
-//! - a name that a rule reads in a sibling compound or in a selector argument
-//!   never changes in place (such a batch is rebuilt), and the sheets of the
+//! - a name that a rule reads in a sibling compound or in a relational/complex
+//!   selector argument never changes in place (such a batch is rebuilt), and the sheets of the
 //!   document do not change, so a census taken before a batch still answers
 //!   every question a selector asks the siblings.
 use super::super::sibling_survey::{Survey, Visit};

@@ -44,13 +44,28 @@ fn layout_values_backgrounds_and_unfollowed_selectors_rebuild() {
         "html.alt body{color:#111;margin:1px}",
         ".alt + body{color:#111}",
         "html.alt p::before{content:'x'}",
-        "html.alt li:first-child{color:#111}",
-        ":is(.alt) body{color:#111}",
+        "html.alt li:nth-child(1 of .own){color:#111}",
+        "html.alt li:not(ul li){color:#111}",
         "html.alt body{color:#111}p::after{content:attr(class)}",
     ] {
         let old = page(style, "");
         let new = old.replace("<html>", "<html class=\"alt\">");
         assert_eq!(both(&old, &new), (false, false), "{style}");
+    }
+}
+
+#[test]
+fn local_logical_and_structural_selectors_recolour_in_place() {
+    for style in [
+        "html.alt li:first-child{color:#111}",
+        ":is(.alt) body{color:#111}",
+        "html.alt p:not(.own){color:#111}",
+        "html.alt p:is(.own,:not(.own)){color:#111}",
+        "html.alt p:where(:not(.own)){color:#111}",
+    ] {
+        let old = page(style, "");
+        let new = old.replace("<html>", "<html class=\"alt\">");
+        assert_eq!(both(&old, &new), (true, true), "{style}");
     }
 }
 
