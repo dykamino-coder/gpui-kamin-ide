@@ -6,6 +6,15 @@ use crate::style::computed::BoxStyle;
 use crate::text::paragraph::Paragraph;
 use gpui::{AnyElement, IntoElement, SharedString};
 
+/// Explain a missing capture without retaining routing state in ordinary frames.
+pub(super) fn fragment_route(inherited: &BoxStyle, opts: &RenderOpts, reason: &'static str) {
+    if crate::why::enabled()
+        && let Some(target) = crate::layout::reuse::fragment_target(opts, inherited.self_node)
+    {
+        target.store.fragment_refused(target.owner, reason);
+    }
+}
+
 /// The paragraph's text: the retained flow text when it is the same, so the
 /// paragraph shares its buffer (`BoxTree::flow_text`); a copy otherwise.
 pub(super) fn own_text(text: String, shared: Option<SharedString>) -> SharedString {

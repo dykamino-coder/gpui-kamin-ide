@@ -60,6 +60,14 @@ pub(super) async fn render(
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
     merged.self_node = li.node_id;
+    if crate::why::enabled()
+        && let Some(target) = crate::layout::reuse::fragment_target(opts, li.node_id)
+    {
+        target.store.fragment_refused(
+            target.owner,
+            "list item constructed without paragraph capture",
+        );
+    }
     if matches!(
         li.style.used().reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)

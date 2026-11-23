@@ -27,6 +27,7 @@ pub(crate) fn route_pieces(
     keep: Option<crate::layout::reuse::paragraph::Sealed>,
     shared: Option<SharedString>,
 ) -> AnyElement {
+    super::finish::fragment_route(inherited, opts, "paragraph routing started");
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
     if inline::single_block(&pieces, opts.base_size())
@@ -127,6 +128,7 @@ pub(crate) fn route_pieces(
     // спуск шрифта, а короб строки растёт до 1.2em вместо `line-height`
     // (§10.8): при `font: 100px/1 Ahem` короб 120, атом на +20.
     // Во фрагментации линии ряда — его line boxes (`row_record`).
+    super::finish::fragment_route(inherited, opts, "physical inline row");
     let record = super::row_record::RowRecord::for_row(inherited, opts);
     let pieces = super::row_record::pieces(record.as_ref(), pieces);
     let text_record = record.clone();
