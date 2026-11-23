@@ -64,7 +64,7 @@ pub(super) fn regions(_stack_pointer: usize) -> Vec<Region> {
 
 #[cfg(windows)]
 mod windows {
-    use super::{region, Region};
+    use super::{Region, region};
     use std::ffi::c_void;
 
     #[link(name = "kernel32")]
@@ -164,7 +164,7 @@ mod windows {
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{region, Region};
+    use super::{Region, region};
 
     /// Parse `start-end perms offset dev inode path` from one `/proc/self/maps` line.
     fn parse(line: &str) -> Option<(usize, usize, &str, &str)> {
