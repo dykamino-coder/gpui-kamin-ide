@@ -1,248 +1,58 @@
-//! Счётчики документа: стек областей видимости.
-//!
-//! Счётчик — не одна ячейка на имя, а СТЕК (css-lists-3 §5): вложенный
-//! `counter-reset` создаёт новый счётчик того же имени внутри прежнего
-//! («self-nesting»), `counter()` читает внутренний, `counters()` — всю
-//! цепочку от внешнего к внутреннему. Область начинается на создателе и
-//! включает его потомков и последующих братьев.
-//!
-//! Модель перенесена из Blink (`counters_attachment_context.cc`): вместо
-//! честного удаления при выходе из области стек чистится ЛЕНИВО — перед
-//! каждым обращением снимаются записи, чей создатель уже не по пути.
-//! Владелец записи запоминается адресом в дереве КОРОБОК: `display:
-//! contents` своего уровня не даёт, псевдоэлементы получают собственные
-//! сегменты (они настоящие братья содержимого хозяина).
-
-use std::collections::HashMap;
+//! Counter state shared by cascade entry contexts without copying traversal prefixes.
+use std::rc::Rc;
+mod names;
+mod operations;
 mod scope;
+mod sequence;
+mod walk;
 pub use scope::Scope;
-/// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
-/// `::before` (css-lists-3 §marker-pseudo), поэтому его номер меньше.
+use sequence::Sequence;
+
+type Path = Sequence<u32>;
 const PSEUDO_MARKER: u32 = u32::MAX - 2;
-/// Сегмент пути для `::before` — больше любого настоящего номера ребёнка.
 const PSEUDO_BEFORE: u32 = u32::MAX - 1;
-/// Сегмент пути для `::after`.
 const PSEUDO_AFTER: u32 = u32::MAX;
 
-/// Один счётчик в стеке: кто его создал и текущее значение.
 #[derive(Clone, Debug)]
 struct Entry {
-    owner: Vec<u32>,
+    owner: Path,
     value: i64,
-    /// Счётчик создан как `reversed(имя)`: пункты списка считают ВНИЗ
-    /// (css-lists-3 §list-item-counter).
     reversed: bool,
 }
 
-/// Счётчики документа и адрес текущего узла в дереве коробок.
+/// Immutable snapshots share counter stacks, paths and quote scopes. Mutations
+/// detach only balanced-tree paths; they never copy the entire counter context.
 #[derive(Default, Clone)]
-// Quote overrides pair the owning DOM path with optional opening/closing pairs.
 #[allow(clippy::type_complexity)]
 pub struct Counters {
-    stack: HashMap<String, Vec<Entry>>,
-    /// Active style-containment roots; their own directives stay outside.
-    boundaries: Vec<Vec<u32>>,
-    /// Адрес текущего узла: номера коробок по пути от корня.
-    path: Vec<u32>,
-    /// Сколько коробок уже пройдено на каждом уровне.
-    next: Vec<u32>,
-    /// Глубина вложенности кавычек (css-content-3 §4.2): одна на документ,
-    /// растёт на `open-quote`, падает на `close-quote`.
+    stack: names::Names,
+    boundaries: Sequence<Path>,
+    path: Path,
+    next: Sequence<u32>,
     quote_depth: usize,
-    /// Content language at each box (by box depth); automatic quotes use the
-    /// parent language. Leaving the box pops its entry.
-    quote_languages: Vec<(usize, String)>,
-    /// Заданные `quotes` по глубине коробки-владельца. Наследование —
-    /// ближайший предок по пути: запись снимается на выходе из владельца.
-    quotes: Vec<(usize, Option<Vec<(String, String)>>)>,
-    /// Счётчики, созданные `counter-reset` на узлах текущего пути: на выходе
-    /// из узла их снимает `drop_shadowed_reset`.
-    resets: Vec<(Vec<u32>, String)>,
+    quote_languages: Sequence<(usize, Rc<str>)>,
+    quotes: Sequence<(usize, Option<Rc<Vec<(String, String)>>>)>,
+    resets: Sequence<(Path, Rc<str>)>,
 }
-
-/// Путь родителя: адрес без последнего сегмента.
-fn parent(owner: &[u32]) -> &[u32] {
-    owner.split_last().map_or(&[], |(_, rest)| rest)
+fn prefix(a: &Path, count: usize, b: &Path) -> bool {
+    b.len() >= count && a.iter().take(count).eq(b.iter().take(count))
 }
-
-/// Предок ли `a` для `b` (или он сам): строгий префикс пути.
-fn covers(a: &[u32], b: &[u32]) -> bool {
-    b.len() >= a.len() && b[..a.len()] == *a
+fn covers(a: &Path, b: &Path) -> bool {
+    prefix(a, a.len(), b)
 }
-
-/// Снять записи, чья область уже кончилась (Blink `RemoveStaleCounters`).
-///
-/// Область создателя покрывает его самого, потомков и последующих братьев —
-/// то есть всё, что лежит внутри его РОДИТЕЛЯ после него. Как только текущий
-/// узел вышел за пределы родителя создателя, запись мертва.
-fn remove_stale(st: &mut Vec<Entry>, cur: &[u32]) {
-    while let Some(top) = st.last() {
-        if covers(parent(&top.owner), cur) {
-            break;
-        }
+fn same_parent(a: &Path, b: &Path) -> bool {
+    a.len().saturating_sub(1) == b.len().saturating_sub(1)
+        && prefix(a, a.len().saturating_sub(1), b)
+}
+fn remove_stale(st: &mut Sequence<Entry>, cur: &Path) {
+    while st
+        .last()
+        .is_some_and(|top| !prefix(&top.owner, top.owner.len().saturating_sub(1), cur))
+    {
         st.pop();
     }
 }
-impl Counters {
-    /// Войти в коробку: занять следующий номер на своём уровне.
-    pub fn enter(&mut self) {
-        let level = self.path.len();
-        if self.next.len() <= level {
-            self.next.push(0);
-        }
-        let idx = self.next[level];
-        self.next[level] = idx + 1;
-        self.path.push(idx);
-        // Внутри новой коробки нумерация детей начинается заново.
-        self.next.truncate(level + 1);
-        self.next.push(0);
-    }
-    pub fn leave(&mut self) {
-        let mut i = 0;
-        while i < self.resets.len() {
-            if self.resets[i].0 == self.path {
-                let (_, name) = self.resets.remove(i);
-                // A marker reset also scopes the following item contents.
-                if self.path.last() != Some(&PSEUDO_MARKER) {
-                    self.drop_shadowed_reset(&name);
-                }
-            } else {
-                i += 1;
-            }
-        }
-        self.leave_quote_scope(self.path.len());
-        self.path.pop();
-        self.next.truncate(self.path.len() + 1);
-    }
-    /// Войти в псевдоэлемент хозяина: он брат его содержимого.
-    pub fn enter_pseudo(&mut self, before: bool) {
-        self.path
-            .push(if before { PSEUDO_BEFORE } else { PSEUDO_AFTER });
-        self.next.push(0);
-    }
-    /// Войти в `::marker`: он первый ребёнок пункта, раньше `::before`
-    /// (css-lists-3 §marker-pseudo). Своя область нужна затем, чтобы
-    /// `counter-reset` на маркере вкладывался, а не заменял счётчик пункта:
-    /// `marker-counter` ждёт от шестого пункта цепочку `12:1`.
-    pub fn enter_marker(&mut self) {
-        self.path.push(PSEUDO_MARKER);
-        self.next.push(0);
-    }
-
-    /// `counter-reset` (Blink `CreateCounter`): своя запись заменяет запись
-    /// СВОЕГО уровня (сам узел или предыдущий брат) и вкладывается внутрь
-    /// записи предка.
-    pub fn reset(&mut self, name: &str, value: i64) {
-        self.reset_flagged(name, value, false);
-    }
-
-    /// То же, но с пометкой обратного счёта.
-    pub fn reset_flagged(&mut self, name: &str, value: i64, reversed: bool) {
-        let cur = self.path.clone();
-        let st = self.stack.entry(name.to_string()).or_default();
-        remove_stale(st, &cur);
-        if let Some(top) = st.last()
-            && parent(&top.owner) == parent(&cur)
-        {
-            st.pop();
-        }
-        st.push(Entry {
-            owner: cur.clone(),
-            value,
-            reversed,
-        });
-        if !self.resets.iter().any(|(o, n)| *o == cur && n == name) {
-            self.resets.push((cur, name.to_string()));
-        }
-    }
-
-    /// Выход из узла со своим `counter-reset` (Blink
-    /// `RemoveCounterIfAncestorExists`): если под его счётчиком в стеке лежит
-    /// счётчик ПРЕДКА (или предыдущего брата предка, но не своего брата),
-    /// последующие братья наследуют именно тот — значит, свой снимается.
-    /// Иначе `<span style="counter-reset: c 98">` внутри `#test { counter-reset:
-    /// c }` продолжал бы счёт у следующих братьев (`counter-001`: `99 13 14`,
-    /// а не `99 100 101`).
-    fn drop_shadowed_reset(&mut self, name: &str) {
-        let cur = &self.path;
-        let Some(st) = self.stack.get_mut(name) else {
-            return;
-        };
-        if st.len() < 2 || st.last().is_none_or(|e| e.owner != *cur) {
-            return;
-        }
-        let prev = &st[st.len() - 2].owner;
-        if let Some(root) = self.boundaries.last()
-            && !(prev.len() > root.len() && covers(root, prev))
-        {
-            return;
-        }
-        let pp = parent(prev);
-        if covers(prev, cur) || (covers(pp, cur) && pp != parent(cur)) {
-            st.pop();
-        }
-    }
-
-    /// Считает ли внутренний счётчик этого имени вниз.
-    pub fn is_reversed(&mut self, name: &str) -> bool {
-        let Some(st) = self.stack.get_mut(name) else {
-            return false;
-        };
-        remove_stale(st, &self.path);
-        st.last().is_some_and(|e| {
-            self.boundaries
-                .last()
-                .is_none_or(|root| e.owner.len() > root.len() && covers(root, &e.owner))
-                && e.reversed
-        })
-    }
-
-    /// `counter-increment` и `counter-set` (Blink `UpdateCounterValue`):
-    /// при пустом стеке счётчик сперва создаётся со значения 0.
-    pub fn update(&mut self, name: &str, delta: i64, is_set: bool) {
-        let st = self.stack.entry(name.to_string()).or_default();
-        remove_stale(st, &self.path);
-        let local = self.boundaries.last().is_none_or(|root| {
-            st.last()
-                .is_some_and(|e| e.owner.len() > root.len() && covers(root, &e.owner))
-        });
-        match st.last_mut().filter(|_| local) {
-            Some(top) => {
-                top.value = if is_set {
-                    delta
-                } else {
-                    top.value.saturating_add(delta)
-                }
-            }
-            None => st.push(Entry {
-                owner: self.path.clone(),
-                value: delta,
-                reversed: false,
-            }),
-        }
-    }
-    /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
-    /// создаёт — пустой стек читается нулём.
-    pub fn value_of(&mut self, name: &str) -> i64 {
-        let Some(st) = self.stack.get_mut(name) else {
-            return 0;
-        };
-        remove_stale(st, &self.path);
-        st.last().map_or(0, |e| e.value)
-    }
-
-    /// `counters(имя, разделитель)`: вся цепочка от внешнего к внутреннему.
-    pub fn chain_of(&mut self, name: &str) -> Vec<i64> {
-        let Some(st) = self.stack.get_mut(name) else {
-            return vec![0];
-        };
-        remove_stale(st, &self.path);
-        if st.is_empty() {
-            return vec![0];
-        }
-        st.iter().map(|e| e.value).collect()
-    }
-}
-
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod tests;

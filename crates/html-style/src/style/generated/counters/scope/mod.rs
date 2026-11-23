@@ -8,12 +8,12 @@
 
 mod quote_language;
 
-use super::{Counters, Entry};
-use std::collections::HashMap;
+use super::{Counters, names::Names};
+use std::rc::Rc;
 
 /// Saved outer counters remain readable inside the subtree (counter() is unscoped).
 pub struct Scope {
-    stack: HashMap<String, Vec<Entry>>,
+    stack: Names,
     quote_depth: usize,
 }
 
@@ -51,7 +51,7 @@ impl Counters {
         {
             self.quote_languages.pop();
         }
-        self.quote_languages.push((depth, language.to_string()));
+        self.quote_languages.push((depth, Rc::from(language)));
     }
 
     /// Узел задал `quotes`: действует на него и его потомков.
@@ -60,7 +60,7 @@ impl Counters {
         if self.quotes.last().is_some_and(|(d, _)| *d == depth) {
             self.quotes.pop();
         }
-        self.quotes.push((depth, value));
+        self.quotes.push((depth, value.map(Rc::new)));
     }
 
     /// Выход из коробки на глубине `depth`: её `quotes` и язык кончаются
@@ -104,14 +104,19 @@ impl Counters {
                 .map(|(o, c)| if open { o.clone() } else { c.clone() })
                 .unwrap_or_default()
         };
-        match own.or(self.quotes.last().map(|(_, v)| v)) {
+        let chosen = own.map(|v| v.as_deref()).or_else(|| {
+            self.quotes
+                .last()
+                .map(|(_, v)| v.as_ref().map(|v| v.as_slice()))
+        });
+        match chosen {
             Some(Some(list)) if !list.is_empty() => pick(list),
             Some(None) => String::new(),
             None | Some(Some(_)) => {
                 let language = self
                     .quote_languages
                     .last()
-                    .map_or("", |(_, lang)| lang.as_str());
+                    .map_or("", |(_, lang)| lang.as_ref());
                 quote_language::marks(language, depth, open).to_string()
             }
         }
