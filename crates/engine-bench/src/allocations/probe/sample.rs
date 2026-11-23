@@ -20,6 +20,12 @@ const EMPTY: usize = 0;
 const GONE: usize = 1;
 static TABLE: [AtomicUsize; SLOTS] = [const { AtomicUsize::new(EMPTY) }; SLOTS];
 
+/// Non-owning probe metadata must not become a retention root.
+pub(crate) fn pointer_table_range() -> std::ops::Range<usize> {
+    let start = TABLE.as_ptr() as usize;
+    start..start + size_of_val(&TABLE)
+}
+
 thread_local! {
     static UNTIL: Cell<i64> = const { Cell::new(0) };
     static STATE: Cell<u64> = const { Cell::new(0) };
