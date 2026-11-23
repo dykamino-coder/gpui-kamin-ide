@@ -70,8 +70,7 @@ fn repeated_publication_keeps_one_current_entry_and_a_held_old_frame() {
             held.ownership.clone(),
             held.inputs.clone(),
             held.raw.clone(),
-            held.exit.clone(),
-            None,
+            held.effects.clone(),
             &admission,
         )
         .unwrap();

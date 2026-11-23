@@ -33,6 +33,10 @@ impl Environment {
         }
     }
 
+    pub(crate) fn root_matches(&self, root: &RootMetrics) -> bool {
+        self.root.same_inputs(root)
+    }
+
     pub(crate) fn matches(&self, vcx: ValueCx<'_>) -> bool {
         let media = vcx.doc.media.get();
         self.font_generation == vcx.doc.font_generation()

@@ -6,6 +6,7 @@ use crate::values::DocumentValues;
 use markup5ever_rcdom::{Handle, NodeData};
 
 mod contexts;
+mod effects;
 mod ownership;
 mod retirement;
 mod stages;
@@ -78,7 +79,7 @@ fn sibling_inputs_share_parent_but_keep_distinct_counter_states() {
         b.inputs.parent.as_ref().unwrap()
     ));
     assert!(a.inputs.counters != b.inputs.counters);
-    assert!(a.exit == b.inputs.counters);
+    assert!(a.effects.counters == b.inputs.counters);
     assert_eq!(
         a.inputs.parent.as_ref().unwrap().node,
         handle(&input, "p").key()
@@ -102,7 +103,7 @@ fn scroll_group_selection_is_a_replayable_source_effect() {
     let group = handle(&input, "g").key();
     let a = cache.raw().get(handle(&input, "a").key()).unwrap();
     let b = cache.raw().get(handle(&input, "b").key()).unwrap();
-    assert_eq!(a.selects_group, Some(group));
+    assert_eq!(a.effects.selects_group, Some(group));
     assert_eq!(
         a.inputs.group,
         Some(GroupInput {
@@ -117,7 +118,7 @@ fn scroll_group_selection_is_a_replayable_source_effect() {
             selected: true
         })
     );
-    assert_eq!(b.selects_group, None);
+    assert_eq!(b.effects.selects_group, None);
 }
 
 #[test]

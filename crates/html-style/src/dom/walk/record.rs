@@ -2,8 +2,8 @@
 use super::{pending::Pending, sibling_survey::Visit};
 use crate::budget::admission::{Admission, Error};
 use crate::dom::source_memo::{
-    CascadeContext, CascadeEntry, EntryInputs, GeneratedContext, GroupInput, MemoUpdate,
-    OutputOwnership, RootOutput, SourceMemo,
+    CascadeContext, CascadeEffects, CascadeEntry, EntryInputs, GeneratedContext, GroupInput,
+    MemoUpdate, OutputOwnership, RootOutput, SourceMemo,
 };
 use crate::dom::{Node, NodeKey};
 use crate::style::{
@@ -141,6 +141,7 @@ impl Recorder {
         counters: &Counters,
         out: &[Node],
         admission: &Admission,
+        vcx: crate::values::ValueCx<'_>,
     ) -> Result<(), Error> {
         let node = start.handle.key();
         self.active.remove(&node);
@@ -167,14 +168,15 @@ impl Recorder {
             .filter(|old| !old.selected)
             .filter(|old| group(path).is_some_and(|new| new.node == old.node && new.selected))
             .map(|old| old.node);
+        let effects =
+            CascadeEffects::capture(&start.inputs.environment, vcx, counters, selects_group);
         let entry = CascadeEntry::new(
             node,
             source_parent,
             ownership,
             start.inputs,
             copy_nodes(&out[start.first..])?.into(),
-            counters.clone(),
-            selects_group,
+            effects,
             admission,
         )?;
         self.memo.replace(entry)

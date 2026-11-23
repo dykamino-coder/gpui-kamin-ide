@@ -4,12 +4,12 @@
 //! Entries contain detached matching inputs, not source handles or value owners.
 use super::{Children, NodeKey};
 use crate::budget::admission::{Admission, Error};
-use crate::style::generated::counters::Counters;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 mod context;
 mod dirty;
+mod effects;
 mod ownership;
 mod publication;
 mod readers;
@@ -19,6 +19,7 @@ mod stage;
 mod update;
 pub use context::{CascadeContext, EntryInputs, GeneratedContext, GroupInput};
 pub use dirty::DirtyEntries;
+pub use effects::CascadeEffects;
 pub use ownership::OutputOwnership;
 pub use root::RootOutput;
 pub use stage::MemoStage;
@@ -31,26 +32,23 @@ pub struct CascadeEntry {
     pub ownership: OutputOwnership,
     pub inputs: EntryInputs,
     pub raw: Children,
-    pub exit: Counters,
-    /// Selection of an enclosing scroll-target group, replayed on the current walk.
-    pub selects_group: Option<NodeKey>,
+    pub effects: CascadeEffects,
     _lease: Option<crate::budget::LiveReservation>,
 }
 
 impl CascadeEntry {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         node: NodeKey,
         source_parent: Option<NodeKey>,
         ownership: OutputOwnership,
         inputs: EntryInputs,
         raw: Children,
-        exit: Counters,
-        selects_group: Option<NodeKey>,
+        effects: CascadeEffects,
         admission: &Admission,
     ) -> Result<Rc<Self>, Error> {
         let bytes = std::mem::size_of::<Self>()
-            .checked_add(std::mem::size_of_val(raw.as_slice()))
+            .checked_add(effects.extra_bytes())
+            .and_then(|n| n.checked_add(std::mem::size_of_val(raw.as_slice())))
             .and_then(|n| n.checked_add(std::mem::size_of_val(ownership.children.as_slice())))
             .ok_or(Error::CapacityOverflow)?;
         let lease = admission.storage(bytes)?;
@@ -60,8 +58,7 @@ impl CascadeEntry {
             ownership,
             inputs,
             raw,
-            exit,
-            selects_group,
+            effects,
             _lease: lease,
         }))
     }

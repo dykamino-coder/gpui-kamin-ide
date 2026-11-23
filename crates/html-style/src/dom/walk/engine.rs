@@ -72,6 +72,7 @@ pub fn walk_children(
                         counters,
                         output.last().expect("parent output"),
                         &admission,
+                        vcx,
                     )?;
                 }
             }
@@ -132,6 +133,7 @@ pub fn walk_children(
                                 counters,
                                 output.last().expect("output"),
                                 &admission,
+                                vcx,
                             )?;
                         }
                     }
