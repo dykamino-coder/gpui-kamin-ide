@@ -23,6 +23,7 @@ pub(super) fn paint_body(
     cx: &mut App,
 ) {
     let values = group.values.clone();
+    crate::work::time!(_group, PaintGroupNs);
     let vcx = values.vcx();
     // Слой маски-картинки, которая НЕ загрузилась (файла нет, формат не
     // читается), — «image layer of transparent black» (css-masking-1

@@ -6,6 +6,8 @@ mod capture;
 mod deferred;
 mod hit_transform;
 mod interaction;
+#[cfg(feature = "work-counters")]
+mod lazy_background;
 mod order;
 mod raster;
 mod raster_background;

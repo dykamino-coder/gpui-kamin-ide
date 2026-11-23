@@ -79,7 +79,7 @@ pub(super) fn paint(
             window,
             final_bounds,
             Corners::default(),
-            image,
+            &mut || Some(image.clone()),
             source,
             false,
             vcx,

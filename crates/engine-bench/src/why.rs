@@ -9,6 +9,7 @@
 //! reads two of them (`compare`).
 
 pub(super) mod compare;
+mod paint_work;
 mod text;
 
 use super::run::Step;
@@ -68,9 +69,10 @@ impl Watch {
         cx: &mut AsyncApp,
         window: WindowHandle<View>,
         step: Step<'_>,
-        phases: Option<&super::report::Sample>,
+        measurements: Option<(&super::report::Sample, &super::work::Sample)>,
         error: Option<String>,
     ) -> Result<()> {
+        let (phases, work) = measurements.unzip();
         let (frames, mut memory) = window.update(cx, |view, window, cx| {
             (
                 (view.doc.frame_counters(), frames(&view.doc)),
@@ -108,6 +110,7 @@ impl Watch {
             "error": error,
             "paint_path": path,
             "phases_ms": phases,
+            "paint_work": work.map(super::work::Sample::paint_profile),
             "memory": memory,
             "between": self.between,
         });
