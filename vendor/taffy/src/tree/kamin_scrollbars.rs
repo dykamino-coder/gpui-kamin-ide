@@ -95,7 +95,10 @@ where
             width: output.size.width - border.left - border.right - bar.width,
             height: output.size.height - border.top - border.bottom - bar.height,
         };
+        #[cfg(feature = "content_size")]
         let content = output.scrollable_overflow_rect;
+        #[cfg(not(feature = "content_size"))]
+        let content = Rect::ZERO;
         let open = view.width > 0.0 && view.height > 0.0;
         let need = Point { x: open && content.right > view.width + FIT, y: open && content.bottom > view.height + FIT };
         let current = Point { x: style.overflow.x == Overflow::Scroll, y: style.overflow.y == Overflow::Scroll };
@@ -106,9 +109,10 @@ where
                 need || appeared || (measure && current)
             }
         };
+        let frozen = self.kamin_frozen_scrollbars(node_id);
         let next = Point {
-            x: keep(auto.x, need.x, settling.appeared.x, current.x),
-            y: keep(auto.y, need.y, settling.appeared.y, current.y),
+            x: keep(auto.x, need.x, settling.appeared.x || frozen.x, current.x),
+            y: keep(auto.y, need.y, settling.appeared.y || frozen.y, current.y),
         };
         if next == current {
             return false;
@@ -116,6 +120,7 @@ where
         settling.appeared.x |= next.x && !current.x;
         settling.appeared.y |= next.y && !current.y;
         settling.passes += 1;
+        self.kamin_gutter_changed(node_id, next);
         let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
         let node = &mut self.taffy.nodes[node_id.into()];
         // A style shared with other nodes is copied: only this box changes its bars.
