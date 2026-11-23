@@ -9,11 +9,18 @@ python scripts/memprof.py run --exe bin/profile/engine_bench.exe --peak --out ou
   -- C:/pages/example.html --mode cold --runs 1
 ```
 
-Use one mode per run. The checkpoint is the first maximum before the first owner
-record. It contains the recorded line, frame, phase, live requested bytes, block
+For a multi-mode plan, add `--owner-walk last` (or a 1-based walk number). Without
+this explicit choice, multiple walks are rejected instead of merging unrelated
+document owners. GPU records delimit the walks. The checkpoint is the first
+maximum from process start until the selected walk's first owner record. It
+contains the filtered-stream line, frame, phase, live requested bytes, block
 count, sample interval and dropped-record count. The JSON has separate `peak`
 and `end` reports; `end` freezes the heap at the owner report, before teardown.
-The ordinary `report.json` and text output remain available.
+The ordinary `report.json` and text output use this same selected checkpoint.
+Allocations from earlier modes remain live until their recorded frees; only
+earlier owner labels are discarded. Work after the selected walk is excluded.
+The selected/total walk counts are in the checkpoint. This option also works
+with offline `peak`, but cannot select a retainer graph (captured only once).
 
 Existing saved pointer streams can be exported without running the page again:
 

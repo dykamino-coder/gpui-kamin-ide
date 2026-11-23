@@ -9,6 +9,7 @@ def register(sub, run):
     memprof_peak.add_parser(sub)
     run.add_argument("--peak", action="store_true",
                      help="also export the recorded live-heap peak; implies --owners")
+    run.add_argument("--owner-walk", help="with --peak: root walk number (1-based) or last")
 
 
 def dispatch(args, profiler):

@@ -4,6 +4,7 @@ import json
 import math
 import pathlib
 import re
+import memprof_walk
 
 
 def allocation(line):
@@ -13,8 +14,9 @@ def allocation(line):
     return parts[0], parts[1], parts[2], int(parts[3]), parts[4].strip()
 
 
-def locate(path):
-    """First maximum before the first owner record, in an unfiltered allocation stream."""
+def locate(path, owner_walk=None):
+    """First maximum before the selected root walk, in a whole allocation stream."""
+    chosen, walks = memprof_walk.resolve(path, owner_walk)
     blocks = {}
     live = peak = 0.0
     checkpoint = None
@@ -29,7 +31,7 @@ def locate(path):
         owner_line = None
         gpu_seen = False
         dropped = 0
-        for number, line in enumerate(stream, 1):
+        for number, line in enumerate(memprof_walk.select(stream, chosen), 1):
             if line.startswith("# dropped"):
                 dropped += int(line.split()[2])
             if line.startswith("o "):
@@ -59,8 +61,9 @@ def locate(path):
         raise SystemExit("no allocations found before the first owner report")
     return {**checkpoint, "sample_interval": sample, "estimated": bool(sample),
             "owner_line": owner_line, "dropped_records": dropped,
+            "owner_walk": chosen, "owner_walks": walks,
             "metric": "recorded live requested heap bytes (not process working set)",
-            "scope": "process start through the first owner walk"}
+            "scope": "process start through the selected owner walk"}
 
 
 def end_stream(stream):
@@ -110,22 +113,22 @@ def peak_stream(stream, point):
             break
 
 
-def capture(exe, stacks, profiler, depth=8, top=25, symbols=None):
-    point = locate(stacks)
+def capture(exe, stacks, profiler, depth=8, top=25, symbols=None, owner_walk=None):
+    point = locate(stacks, owner_walk)
 
     class PeakRun(profiler.Run):
         def _fold(self, handle, live, frames):
-            return super()._fold(peak_stream(handle, point), live, frames)
+            return super()._fold(peak_stream(memprof_walk.select(handle, point["owner_walk"]), point), live, frames)
 
     class EndRun(profiler.Run):
         def _fold(self, handle, live, frames):
-            return super()._fold(end_stream(handle), live, frames)
+            return super()._fold(end_stream(memprof_walk.select(handle, point["owner_walk"])), live, frames)
 
     peak = PeakRun(exe, stacks, True, symbols=symbols)
     steady = EndRun(exe, stacks, True, symbols=peak.symbols)
     peak.end = f"recorded peak frame={point['frame']} phase={point['phase']}"
     if point["owner_line"] is not None:
-        steady.end = "heap frozen at the first owner record"
+        steady.end = f"heap frozen at owner walk {point['owner_walk']}"
         steady.counter = None  # A later audit counter is not this checkpoint's counter.
     peak.dropped = steady.dropped = point["dropped_records"]
     result = {"schema": "kamin.memprof.peak.v1", "checkpoint": point,
@@ -142,11 +145,15 @@ def capture(exe, stacks, profiler, depth=8, top=25, symbols=None):
     return result, steady
 
 
-def reports(exe, stacks, profiler, depth=8, top=25, symbols=None):
-    return capture(exe, stacks, profiler, depth, top, symbols)[0]
+def reports(exe, stacks, profiler, depth=8, top=25, symbols=None, owner_walk=None):
+    return capture(exe, stacks, profiler, depth, top, symbols, owner_walk)[0]
 
 
 def prepare(args):
+    if getattr(args, "owner_walk", None) and not args.peak:
+        raise SystemExit("--owner-walk requires --peak")
+    if getattr(args, "owner_walk", None) and getattr(args, "retainers", False):
+        raise SystemExit("--owner-walk cannot select a --retainers graph (captured once)")
     if args.peak:
         if args.frames or args.at or args.start:
             raise SystemExit("--peak needs the whole run: no --frames, --at or --start")
@@ -157,7 +164,8 @@ def prepare(args):
 def fold_run(args, exe, stacks, frames, profiler, name):
     if not args.peak:
         return profiler.Run(exe, stacks, True, frames)
-    result, steady = capture(exe, stacks, profiler, args.depth, args.top)
+    result, steady = capture(exe, stacks, profiler, args.depth, args.top,
+                             owner_walk=getattr(args, "owner_walk", None))
     path = pathlib.Path(args.out) / f"{name}-peak.json"
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return steady
@@ -170,9 +178,10 @@ def add_parser(sub):
     parser.add_argument("--out", required=True, help="JSON report path")
     parser.add_argument("--depth", type=int, default=8)
     parser.add_argument("--top", type=int, default=25)
+    parser.add_argument("--owner-walk", help="root walk number (1-based) or last; required for multiple modes")
 
 
 def command(args, profiler):
-    result = reports(args.exe, args.stacks, profiler, args.depth, args.top)
+    result = reports(args.exe, args.stacks, profiler, args.depth, args.top, owner_walk=args.owner_walk)
     pathlib.Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result["checkpoint"], indent=2))
