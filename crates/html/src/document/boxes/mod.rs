@@ -8,6 +8,8 @@ mod arena;
 #[cfg(test)]
 mod box_of_tests;
 mod by_node;
+#[cfg(test)]
+mod delta_tests;
 mod epochs;
 pub(crate) use epochs::Epochs;
 #[cfg(test)]
@@ -113,14 +115,14 @@ impl BoxTree {
         nodes: &[Node],
         previous: Option<&[Node]>,
         values: &crate::values::DocumentValues,
-    ) {
+    ) -> super::delta::BoxDelta {
         let text = values.traversal.text_keys();
         let element = |id| Some(crate::dom::NodeKey::from_packed(id));
         let keys = publish::Keys {
             text: &text,
             element: &element,
         };
-        self.publish_keyed(nodes, previous, &keys);
+        self.publish_keyed(nodes, previous, &keys)
     }
 
     #[cfg(test)]

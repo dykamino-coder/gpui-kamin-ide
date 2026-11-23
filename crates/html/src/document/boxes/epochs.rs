@@ -22,18 +22,6 @@ pub(crate) struct Epochs {
     pub(crate) paint: u32,
 }
 
-/// Why a box is dirty at this publication.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Change {
-    /// New, moved or with changed own inputs: its contribution may
-    /// change even if it is set from outside (width 100px → 200px).
-    Own,
-    /// Only the children or the text changed: the contribution changes unless it is external.
-    Content,
-    /// Only paint values changed: the layout is the same.
-    Paint,
-}
-
 /// The box's contribution to its ancestor's intrinsic sizes does not depend on its content:
 /// the inline size and its min/max are lengths, so are the padding and border, or the box
 /// is out of flow. A table cell and caption, a flex/grid item, a table and an

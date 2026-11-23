@@ -1,7 +1,8 @@
 //! Reading box links and epochs for layout, and its result slot, without allocation.
 
 use super::BoxTree;
-use super::epochs::{Change, Epochs};
+use super::epochs::Epochs;
+use crate::document::delta::{BoxDelta, LayoutDamage};
 use crate::dom::BoxId;
 use crate::layout::retained::LayoutSlot;
 
@@ -108,18 +109,20 @@ impl BoxTree {
     /// Set epochs on the changed boxes and their ancestors: `child` up to the root,
     /// `intrinsic` up to the first box with an external contribution. The walk stops
     /// at an ancestor that already has this epoch: O(changed + depth).
-    pub(super) fn propagate(&mut self, clock: u32, changed: &[(BoxId, Change)]) {
-        for &(id, change) in changed {
+    pub(super) fn propagate(&mut self, clock: u32, changed: &BoxDelta) {
+        for &(id, damage) in &changed.changed {
             let Some(record) = self.arena.record_mut(id) else {
                 continue;
             };
-            if change == Change::Paint {
-                self.mark_paint(id, clock);
+            if damage.layout == LayoutDamage::None {
+                if damage.paint {
+                    self.mark_paint(id, clock);
+                }
                 continue;
             }
             record.epochs.layout = clock;
             // The contribution changes for the box itself; further up unless it is external.
-            let own = change == Change::Own;
+            let own = damage.layout == LayoutDamage::Own;
             let mut stop = !own && record.external;
             record.epochs.intrinsic = clock;
             let (mut child, mut at) = (true, record.parent);
@@ -137,7 +140,9 @@ impl BoxTree {
                 }
                 at = parent.parent;
             }
-            self.mark_paint(id, clock);
+            if damage.paint {
+                self.mark_paint(id, clock);
+            }
         }
     }
 
@@ -169,12 +174,13 @@ impl BoxTree {
     }
 
     /// Remove a box with its whole subtree; the keys of their slots no longer resolve.
-    pub(super) fn remove_subtree(&mut self, id: BoxId) {
+    pub(super) fn remove_subtree(&mut self, id: BoxId, delta: &mut BoxDelta) {
         let mut pending = vec![id];
         while let Some(id) = pending.pop() {
             let Some(record) = self.arena.remove(id) else {
                 continue;
             };
+            delta.retire(id);
             self.flows.forget(id);
             if record.source != 0 {
                 self.by_node.remove_if(record.source, id);

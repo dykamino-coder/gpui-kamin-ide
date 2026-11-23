@@ -231,11 +231,9 @@ pub(super) struct Changes {
     links: Vec<(Handle, Option<WeakHandle>, Option<WeakHandle>)>,
 }
 
-impl Changes {
-    pub(super) fn is_empty(&self) -> bool {
-        self.lists.is_empty()
-    }
+mod delta;
 
+impl Changes {
     pub(super) fn exchange(&mut self, forward: bool) {
         for (parent, list) in &mut self.lists {
             list.exchange(parent);

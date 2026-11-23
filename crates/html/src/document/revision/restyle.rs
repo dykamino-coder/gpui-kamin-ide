@@ -1,6 +1,6 @@
 //! The block records over a rebuild of the same source DOM (`layout::reuse::Store::rebase`).
 
-use super::mutation::{Batch, open};
+use super::mutation::{Batch, attribute_value, open};
 use crate::document::Document;
 use crate::dom::invalidation::Changed;
 
@@ -37,23 +37,18 @@ impl Document {
         }
         let index = self.source_index()?;
         let mut changed = Changed::default();
-        for change in &batch.elements {
+        for (change, names) in batch.attribute_deltas() {
             if !open(&change.element, &root) {
                 return None;
             }
             changed.elements.push(index.id(&change.element)?);
-            let mut seen = Vec::new();
-            for attr in change.old.iter().chain(&change.new) {
+            for name in names {
                 let (was, is) = (
-                    value(&change.old, &attr.name),
-                    value(&change.new, &attr.name),
+                    attribute_value(&change.old, name),
+                    attribute_value(&change.new, name),
                 );
-                let local = (*attr.name.local).to_ascii_lowercase();
-                if was == is || seen.contains(&local) {
-                    continue;
-                }
-                seen.push(local.clone());
-                let plain = attr.name.ns == html5ever::ns!() && attr.name.prefix.is_none();
+                let local = (*name.local).to_ascii_lowercase();
+                let plain = name.ns == html5ever::ns!() && name.prefix.is_none();
                 let data = local.starts_with("data-") && !local.starts_with("data-kamin");
                 if !plain || !(local == "class" || data) {
                     return None;
@@ -70,9 +65,4 @@ impl Document {
         }
         Some(changed)
     }
-}
-
-/// The value of the attribute `name` in `list`.
-fn value<'a>(list: &'a [html5ever::Attribute], name: &html5ever::QualName) -> Option<&'a str> {
-    list.iter().find(|a| a.name == *name).map(|a| &*a.value)
 }

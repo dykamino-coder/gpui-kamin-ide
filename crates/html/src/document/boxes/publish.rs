@@ -5,10 +5,11 @@
 //! its box subtree as it is (links, IFC, prepared text), unless it
 //! gives its text to an ancestor's IFC. The layout epochs are set on the way (`epochs`).
 
-use super::epochs::{self, Change};
+use super::epochs;
 use super::level::{Level, Prev, paired, texts_differ};
 use super::source::Source;
 use super::{BoxRecord, BoxTree, finish, inline};
+use crate::document::delta::{BoxDelta, Damage};
 use crate::dom::{BoxId, Element, Node};
 
 /// What the publication knows about the input besides the nodes themselves.
@@ -18,10 +19,15 @@ pub(super) struct Keys<'a> {
 }
 
 impl BoxTree {
-    pub(super) fn publish_keyed(&mut self, nodes: &[Node], previous: Option<&[Node]>, keys: &Keys) {
+    pub(super) fn publish_keyed(
+        &mut self,
+        nodes: &[Node],
+        previous: Option<&[Node]>,
+        keys: &Keys,
+    ) -> BoxDelta {
         self.epoch = self.epoch.wrapping_add(1);
         let clock = self.tick();
-        let mut changed: Vec<(BoxId, Change)> = Vec::new();
+        let mut changed = BoxDelta::default();
         let mut inline = inline::Collection::default();
         let mut visited = finish::Visited::default();
         let prev = match previous {
@@ -54,14 +60,14 @@ impl BoxTree {
                 if let Prev::Old(p) = prev
                     && texts_differ(p, nodes)
                 {
-                    changed.push((root, Change::Content));
+                    changed.mark(root, Damage::CONTENT);
                 }
             }
             let first_old =
                 reused.map_or(old_first, |r| self.get(r).map_or(BoxId::NONE, |r| r.first));
             self.arena.unlink_first(root);
             if reused.is_none() && old_root {
-                self.remove_subtree(old_first);
+                self.remove_subtree(old_first, &mut changed);
             }
             self.first = root;
             (root, first_old)
@@ -69,7 +75,7 @@ impl BoxTree {
             if old_root {
                 let below = self.get(old_first).map_or(BoxId::NONE, |r| r.first);
                 self.arena.unlink_first(old_first);
-                self.remove_subtree(old_first);
+                self.remove_subtree(old_first, &mut changed);
                 (BoxId::NONE, below)
             } else {
                 (BoxId::NONE, old_first)
@@ -83,9 +89,9 @@ impl BoxTree {
             let Some(node) = level.next_node() else {
                 let done = pending.pop().expect("level");
                 let parent = done.parent;
-                let reshaped = done.finish(self);
+                let reshaped = done.finish(self, &mut changed);
                 if reshaped && parent.is_some() {
-                    changed.push((parent, Change::Content));
+                    changed.mark(parent, Damage::CHILDREN);
                 }
                 inline.leave();
                 continue;
@@ -122,27 +128,27 @@ impl BoxTree {
                             crate::dom::same_box(o, e)
                         };
                         if !same {
-                            changed.push((id, Change::Paint));
+                            changed.mark(id, Damage::PAINT);
                         }
                         if o.children.identity() == e.children.identity() {
                             Prev::Clean
                         } else {
                             if texts_differ(&o.children, &e.children) {
-                                changed.push((id, Change::Content));
+                                changed.mark(id, Damage::CONTENT);
                             }
                             Prev::Old(&o.children)
                         }
                     }
                     Some(o) => {
                         inherited = false;
-                        changed.push((id, Change::Own));
+                        changed.mark(id, Damage::LAYOUT);
                         Prev::Old(&o.children)
                     }
                     None => Prev::Fresh,
                 },
             };
             if matches!(prev, Prev::Fresh) {
-                changed.push((id, Change::Own));
+                changed.mark(id, Damage::LAYOUT);
             }
             if e.node_id != 0 {
                 self.by_node.insert_first(e.node_id, id);
@@ -176,7 +182,7 @@ impl BoxTree {
         let finished = inline.seal(|id| self.get(id).and_then(|r| r.inline.as_ref()));
         for (id, content) in finished {
             if self.arena.inline(id, content) {
-                changed.push((id, Change::Content));
+                changed.mark(id, Damage::CONTENT);
             }
         }
         self.propagate(clock, &changed);
@@ -193,6 +199,7 @@ impl BoxTree {
             self.arena.fit();
             self.by_node.fit();
         }
+        changed
     }
 
     /// The slot of a source: the previous `reused` or a new one. A new box or one moved
@@ -203,13 +210,13 @@ impl BoxTree {
         parent: BoxId,
         source: u64,
         reused: Option<BoxId>,
-        changed: &mut Vec<(BoxId, Change)>,
+        changed: &mut BoxDelta,
     ) -> BoxId {
         if let Some(id) = reused
             && let Some(record) = self.arena.record_mut(id)
         {
             if record.parent != parent {
-                changed.push((id, Change::Own));
+                changed.mark(id, Damage::STRUCTURE);
             }
             record.parent = parent;
             record.source = source;
@@ -230,7 +237,7 @@ impl BoxTree {
             layout_slot: None,
         });
         let Some(id) = id else { return BoxId::NONE };
-        changed.push((id, Change::Own));
+        changed.mark(id, Damage::STRUCTURE);
         id
     }
 

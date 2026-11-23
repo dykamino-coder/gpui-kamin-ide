@@ -8,8 +8,10 @@
 
 mod attributes;
 mod children;
+mod delta;
 mod source;
 pub(super) use attributes::attribute_records;
+pub(super) use delta::value as attribute_value;
 pub use source::SourceNode;
 pub(super) use source::open;
 use source::parent;
@@ -60,6 +62,7 @@ pub(super) struct Batch {
     children: children::Changes,
     pub(super) texts: Vec<TextChange>,
     pub(super) elements: Vec<AttrChange>,
+    pub(super) delta: crate::document::delta::SourceDelta,
 }
 
 type Address = *const markup5ever_rcdom::Node;
@@ -179,15 +182,16 @@ impl Batch {
         batch.children = children.finish(context)?;
         batch.texts.retain(|t| t.old != t.new);
         batch.elements.retain(|e| e.old != e.new);
+        batch.delta = batch.source_delta();
         Ok(batch)
     }
 
     pub(super) fn changes_children(&self) -> bool {
-        !self.children.is_empty()
+        self.delta.changes_children()
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.texts.is_empty() && self.elements.is_empty() && !self.changes_children()
+        self.delta.changes.is_empty()
     }
 
     /// Записать итоговые значения в исходный DOM.

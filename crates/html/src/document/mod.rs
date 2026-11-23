@@ -21,6 +21,7 @@ mod base_url;
 #[cfg(test)]
 mod budget_tests;
 mod builder;
+pub(crate) mod delta;
 mod diagnostics;
 #[cfg(test)]
 mod diagnostics_tests;

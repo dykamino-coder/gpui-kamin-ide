@@ -4,6 +4,7 @@
 use super::BoxTree;
 use super::reuse::Reuse;
 use super::source::Source;
+use crate::document::delta::BoxDelta;
 use crate::dom::{BoxId, Element, Node};
 
 /// What the siblings of a walk level are compared with.
@@ -102,16 +103,16 @@ impl<'a> Level<'a> {
 
     /// Remove the previous children that found no source; `true` if the child list
     /// changed.
-    pub(super) fn finish(self, tree: &mut BoxTree) -> bool {
+    pub(super) fn finish(self, tree: &mut BoxTree, delta: &mut BoxDelta) -> bool {
         let mut reshaped = self.reshaped;
         let mut cursor = self.cursor;
         while let Some(next) = tree.get(cursor).map(|r| r.next) {
-            tree.remove_subtree(cursor);
+            tree.remove_subtree(cursor, delta);
             cursor = next;
             reshaped = true;
         }
         for id in self.rest.into_iter().flat_map(Reuse::into_ids) {
-            tree.remove_subtree(id);
+            tree.remove_subtree(id, delta);
             reshaped = true;
         }
         reshaped
