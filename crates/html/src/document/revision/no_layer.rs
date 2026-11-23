@@ -1,9 +1,32 @@
-//! The DevTools `why` record of a paint-only write that found no scene
-//! layer to write into: the layer's own refusal, or the record missing.
+//! Paint-only writes without a scene layer: defer proven offscreen damage,
+//! or explain the refusal through DevTools.
 
 use crate::document::Document;
 
 impl Document {
+    /// A missing paint layer does not invalidate proven offscreen geometry.
+    pub(super) fn defer_unlayered_paint(
+        &self,
+        nodes: &[crate::dom::Node],
+        paths: &[(super::patch::Path, u64)],
+    ) -> bool {
+        if !self.frame_recorded() || self.reuse.scene_layer().is_some() {
+            return false;
+        }
+        let Some(frames) = super::offscreen::without_layer(
+            &self.reuse,
+            &self.state.boxes.borrow(),
+            &self.nodes,
+            nodes,
+            paths,
+        ) else {
+            return false;
+        };
+        super::offscreen::count(&frames);
+        self.reuse.defer_frames(frames);
+        true
+    }
+
     /// Why `write_paint_values` had no layer (DevTools `why`): the layer's own
     /// refusal at the line that made it, or the record this revision lacks.
     pub(super) fn note_no_layer(&self) {

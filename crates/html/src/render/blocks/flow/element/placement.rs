@@ -129,14 +129,9 @@ pub(crate) fn place_element(
             // failure box, both hoisted).
             // Hoisted fixed boxes keep their viewport anchor in LatePlace,
             // but still join positive z-order with absolute siblings.
-            let built = if e
-                .style
-                .used()
-                .reset_positioned
-                .z_index
-                .is_some_and(|z| z > 0)
-            {
-                layered(built, &e.style.used(), inherited, layer_ok, under_tf)
+            let style = e.style.used();
+            let built = if style.reset_positioned.z_index.is_some_and(|z| z > 0) {
+                layered(built, &style, inherited, layer_ok, under_tf, &opts.cx)
             } else {
                 built
             };

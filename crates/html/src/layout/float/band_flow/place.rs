@@ -138,6 +138,7 @@ pub(super) fn place_seq(
                     x,
                     y: t,
                     geometry: p.last_geometry.clone(),
+                    overflow: p.last_overflow,
                     clamp: p.last_clamp.clone(),
                     avail,
                     b: bh,

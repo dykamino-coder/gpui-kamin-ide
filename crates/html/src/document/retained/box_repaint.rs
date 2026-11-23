@@ -91,12 +91,12 @@ impl Builder {
         if ids.is_empty() {
             return true;
         }
-        let Some(layer) = self.store.scene_layer() else {
-            return false;
-        };
         let mut moved = false;
         let mut last = None;
         for (path, id) in &ids {
+            let Some(layer) = self.store.owner_layer(*id) else {
+                return false;
+            };
             // The box at its path, without a walk of the tree.
             let Some(e) = crate::document::revision::at(&self.nodes, path, *id) else {
                 return false;

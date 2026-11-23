@@ -237,3 +237,6 @@ mod extent_settle_tests;
 mod moved_glyph_tests;
 #[cfg(test)]
 mod unlayered_tests;
+
+#[cfg(test)]
+mod lifted_tests;

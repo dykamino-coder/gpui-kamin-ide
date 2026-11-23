@@ -26,6 +26,7 @@ mod style_share;
 mod final_geometry;
 // KaminIDE patch: the descendants carrying a box's scrollable overflow (DevTools `why`).
 mod overflow_reach;
+mod overflow_contribution;
 mod subtree_bounds;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;

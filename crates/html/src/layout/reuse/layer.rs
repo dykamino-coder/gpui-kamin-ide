@@ -18,6 +18,7 @@ pub(crate) struct Kept {
     /// a gap or an unverified copy ends the run without walking any records.
     copied: Cell<Option<(u64, u64)>>,
     layer: RefCell<Option<gpui::LayerHandle>>,
+    pub(super) lifted: RefCell<Vec<gpui::LayerHandle>>,
     /// Why `layer` is empty: the last recording's refusal or the drop (DevTools `why`).
     no_layer: Cell<Option<gpui::NoLayer>>,
     repaints: RefCell<Vec<(Vec<usize>, u64)>>,
@@ -80,6 +81,7 @@ impl Store {
     ) -> Option<gpui::RetainedPaint> {
         let source = self.scene_layer();
         if fresh {
+            self.layer.lifted.borrow_mut().clear();
             // The frame painting now names its skipped blocks when it finishes.
             self.layer.unpainted.take();
             let shown = window.content_mask().bounds.scale(window.scale_factor());
@@ -125,6 +127,7 @@ impl Store {
     #[track_caller]
     pub(crate) fn drop_layer(&self) {
         self.layer.layer.replace(None);
+        self.layer.lifted.borrow_mut().clear();
         let site = std::panic::Location::caller();
         let why = gpui::NoLayer {
             reason: "dropped",

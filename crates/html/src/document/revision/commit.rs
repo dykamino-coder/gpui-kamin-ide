@@ -143,18 +143,7 @@ impl Document {
     fn write_paint_values(&self, nodes: &[Node], paths: &[(super::patch::Path, u64)]) -> bool {
         let _timer = crate::paint_path::Timer::start();
         let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
-            if self.frame_recorded()
-                && self.reuse.scene_layer().is_none()
-                && let Some(frames) = super::offscreen::without_layer(
-                    &self.reuse,
-                    &self.state.boxes.borrow(),
-                    &self.nodes,
-                    nodes,
-                    paths,
-                )
-            {
-                super::offscreen::count(&frames);
-                self.reuse.defer_frames(frames);
+            if self.defer_unlayered_paint(nodes, paths) {
                 return true;
             }
             crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
@@ -171,7 +160,15 @@ impl Document {
                         .is_some_and(|e| self.reuse.unpainted(e.node_id))
                 })
         };
-        let off = |id: u64| self.reuse.off_screen(&layer, id);
+        // A box whose runs showed no pixel of the layer's frame.
+        let off = |id: u64| {
+            self.reuse.owner_layer(id).is_some_and(|l| {
+                // Lifted draws may use a scroller-local coordinate space. Record
+                // their own paint now rather than defer it using root coordinates.
+                l.content().id() == layer.content().id() && self.reuse.off_screen(&l, id)
+            })
+        };
+        // A box the layer cannot record, wholly off the screen (`offscreen`).
         let boxes = self.state.boxes.borrow();
         let waits = |kind,
                      path: &super::patch::Path,
@@ -184,7 +181,7 @@ impl Document {
             &self.nodes,
             nodes,
             paths,
-            &layer,
+            |id| self.reuse.owner_layer(id),
             own,
             |e| crate::paint::box_tree::styled::requested_group_paint(&self.state, e),
             unseen,

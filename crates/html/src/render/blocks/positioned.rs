@@ -132,7 +132,7 @@ pub(crate) fn static_position_layer(
             .z_index
             .is_some_and(|z| z > 0)
     {
-        layered(built, &e.style.used(), inherited, layer_ok, under_tf)
+        layered(built, &e.style.used(), inherited, layer_ok, under_tf, cx)
     } else {
         built
     };
