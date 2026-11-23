@@ -35,7 +35,7 @@ pub struct MeasuredContent {
     /// Every vertical-text line offset in content order, using the selected X origin.
     pub lines_x: Option<Vec<Pixels>>,
     /// KaminIDE patch: the content's extent from the content start where it overflows
-    /// `size` (lines longer than the box), for the scrollable overflow only.
+    /// `size` (lines or floated descendants), for the scrollable overflow only.
     pub overflow: Option<Size<Pixels>>,
 }
 
@@ -64,6 +64,12 @@ impl MeasuredContent {
                 height: f32::from(o.height) * scale,
             }),
         }
+    }
+}
+
+impl From<Size<Pixels>> for MeasuredContent {
+    fn from(size: Size<Pixels>) -> Self {
+        Self::new(size)
     }
 }
 

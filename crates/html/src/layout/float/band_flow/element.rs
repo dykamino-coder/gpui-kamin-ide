@@ -152,14 +152,14 @@ impl Hooks for BandFlow {
                     gpui::Axis::Horizontal
                 };
                 if geometry.intrinsic_axis == Some(axis) {
-                    return phys(cb, 0.0);
+                    return gpui::MeasuredContent::new(phys(cb, 0.0));
                 }
                 if let Some(p) = cache.get(cb) {
                     if let Some(f) = &fragment {
                         f.publish(&p, &kids);
                     }
                     super::clamp::publish(&output, &p, vert, inline_up);
-                    return phys(cb, p.height);
+                    return p.measured(vert, inline_up);
                 }
                 let mut engine = gpui::RetainedLayout::default();
                 let retained = engine.clone();
@@ -180,9 +180,9 @@ impl Hooks for BandFlow {
                     f.publish(&p, &kids);
                 }
                 super::clamp::publish(&output, &p, vert, inline_up);
-                let h = p.height;
+                let measured = p.measured(vert, inline_up);
                 cache.insert(p);
-                phys(cb, h)
+                measured
             })
         };
         let id = window.request_measured_layout_with_box(style, measure);

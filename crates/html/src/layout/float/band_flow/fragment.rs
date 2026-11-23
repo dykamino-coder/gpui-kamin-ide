@@ -52,6 +52,7 @@ impl<'a> super::Probe<'a> {
             vert,
             fragment: fragment.cloned(),
             last_geometry: Default::default(),
+            last_overflow: Default::default(),
         }
     }
 }

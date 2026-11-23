@@ -35,6 +35,7 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
+        "Measured float overflow: independently measured hosts return scrollable extents separately from normal-flow size; child contributions use native clipping, containment and relative offsets.",
         "Scroll replay: rebase transformed primitive bounds together with the matrix so gradient-local coordinates match a fresh paint without large cancelling translations.",
         "Fixed-background replay: stationary viewport content uses an independently scrolling clip; canvas clips stay anchored. Position-dependent complex clips rebuild instead of translating.",
         "Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.",
@@ -141,6 +142,7 @@ FIXES = {
         "Tests: modal text-selection tests wait out the wall-clock modal animation as well as stepping the test clock.",
     ],
     "taffy": [
+        "Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.",
         "Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.",
         "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",
         "Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.",
