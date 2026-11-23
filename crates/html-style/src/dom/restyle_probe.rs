@@ -1,10 +1,10 @@
-//! Перерасчёт стиля нескольких элементов исходного DOM ревизии без сборки
-//! дерева коробок (`walk::probe`): те же правила, что у полной сборки
-//! (`document_rules`), те же отметки `:has()` и тот же вход в элемент.
+//! Targeted restyling of source DOM elements without rebuilding boxes.
+//! It uses the full-build document rules, :has marks and entry context.
 //!
-//! Правила собираются один раз на значения документа (`RestyleCache::probe`) и
-//! служат обоим состояниям DOM каждого пакета мутаций: до записи и после неё. Документ с тенями не пробуется: области и
-//! слоты считаются отдельным предпроходом по всему документу.
+//! Rules are gathered once per document value (RestyleCache::probe) and
+//! serve both DOM states of each mutation batch, before and after writing.
+//! Shadow documents use the full walk: scope and slot assignment require
+//! a document-wide prepass.
 
 use super::input::Admitted;
 use super::invalidation::{Changed, Features, features};
@@ -56,7 +56,7 @@ pub struct RestyleCache {
     /// The `:has()` marks of the source DOM, those of the build that gave
     /// the probe (`keep_has`) or of the first probe that needs them. A batch probed here changes no value a `:has()` argument
     /// reads: `invalidation::targets` does not follow a name inside a
-    /// selector argument, so such a batch rebuilds, and `targets` drops the
+    /// relational or complex selector argument, so such a batch rebuilds, and `targets` drops the
     /// marks for a name any `:has()` argument reads (`has_reads`); a batch
     /// that inserts or removes nodes or changes element states rebuilds; a
     /// batch that edits texts
@@ -120,7 +120,7 @@ impl RestyleCache {
         mutated: &[Handle],
     ) -> Option<Vec<Handle>> {
         // A name read inside a `:has()` argument changes its marks. Such a
-        // batch rebuilds anyway (`features` does not follow selector
+        // batch rebuilds anyway (`features` does not follow relational selector
         // arguments); the marks go first so no probe reads them stale.
         if super::invalidation::has_reads(&probe.has_args, changed) {
             self.has = None;

@@ -330,6 +330,7 @@ def report(graph_path, run, out, top=25, threshold_mb=1.0):
           f"missed {header.get('missed_blocks')}", file=out)
     named = sum(graph.size[i] for i in range(graph.blocks) if names.site[i] != "(no stack)")
     print(f"  named by the probe: {100 * named / max(total, 1):.2f}% of bytes", file=out)
+    print("  graph bytes/edges are exact; allocation labels may be sampled", file=out)
     print("retained by root (MB):", file=out)
     roots = []
     for index, (name, _start, size) in enumerate(graph.regions):
@@ -350,11 +351,10 @@ def report(graph_path, run, out, top=25, threshold_mb=1.0):
     print("largest holders (dominator chain and shortest path from a root):", file=out)
     holders = holder_paths(graph, names, tree, out, min(top, 12), threshold)
     return {"graph": str(graph_path), "header": header, "bytes": total, "blocks": graph.blocks,
+            "named_bytes": named, "unnamed_bytes": total - named, "graph_sampled": False,
             "roots": roots, "dominator_tree": tree_rows, "holders": holders,
             "groups": [{"group": g, "objects": o, "self_bytes": s, "retained_bytes": r}
                        for g, (o, s, r) in sorted(groups.items(), key=lambda item: -item[1][2])]}
-
-
 def diff(cand, base, out, top=30):
     """Retained by group, candidate against base (two saved reports)."""
     index = {}

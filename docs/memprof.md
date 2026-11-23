@@ -42,7 +42,7 @@ in the bench JSON). See also [recorded peaks and source exports](memprof-peak.md
    numbered from 1 in process order; 0 is process start). Every block allocated from process start
    (`--start`) and not freed by that moment is counted, so the result is the whole live heap, not
    only what the frame allocated. Runs are sampled by default (`--sample 16384`: much smaller files
-   and faster runs; bytes become estimates); `--sample 0` is exact, and `--retainers` always is.
+   and faster runs; bytes become estimates); `--sample 0` is exact; retention graph bytes always are.
    Wrap the bench with `--launcher "<command prefix>"`, for example a hidden-desktop launcher.
 
    Each side runs in a Job Object of its own (`scripts/memprof_guard.py`): the launcher chain and the
@@ -204,7 +204,7 @@ nobody reported, by allocation site and stack (`unreported_stacks` in the JSON):
 reporters still to write. Holders no reporter can reach, such as captures of type-erased mouse
 listeners, are inferred from the stacks of unreported blocks by the small `HELD_BY` table in
 `scripts/memprof.py` and printed apart, marked «inferred from stacks, not measured». `--owners`
-records the whole run, sampled by default; with `--sample 0` (and with `--retainers`) it is exact,
+records the whole run, sampled by default; with `--sample 0` it is exact (also the retainer default),
 several GB on wide-16000, so raise `--max-stacks-gb` for it. The file is removed once folded.
 
 Owner paths, about:memory style: `dom/nodes`, `dom/text`, `dom/attributes`, `dom/source-tree` (the
@@ -239,7 +239,7 @@ bench JSON, which is the driver's figure for the whole process. The numbers are 
 glyph rasterization targets, buffers and shaders. The walk reads existing fields on request
 (`Window::gpu_memory`); nothing is counted while rendering.
 
-## Who keeps a block alive (`--retainers`)
+## Who keeps a block alive (`--retainers`; [sampled labels](memprof-retainers-sampling.md))
 
 ```sh
 python scripts/memprof.py run --exe CAND.exe --retainers [--heapsnapshot] --out DIR \
