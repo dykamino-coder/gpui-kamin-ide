@@ -2,10 +2,11 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Deferred inline paint across scroll</title>
+<title>Deferred list item paint across scroll</title>
 <style>
 html, body { margin: 0; background: white; }
-p { margin: 0; width: 380px; font: 16px/20px sans-serif; text-align: justify; }
+ol { margin: 0; padding: 0; }
+li { margin: 0; width: 380px; font: 16px/20px sans-serif; text-align: justify; }
 aside { opacity: .5; width: 10px; height: 10px; background: blue; }
 html.alt #target { background: red; }
 .hidden { display: none; }
@@ -15,7 +16,7 @@ html.alt #target { background: red; }
 <body>
 <aside></aside>
 <div class="hidden"><span title="hidden">hidden</span></div>
-<p>
+<ol><li>
 <span id="s0">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
 <span id="s1">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
 <span id="s2">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
@@ -106,6 +107,6 @@ html.alt #target { background: red; }
 <span id="s87">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
 <span id="s88">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
 <span id="s89">lorem ipsum dolor sit amet consectetur adipiscing elit </span>
-</p>
+</li></ol>
 </body>
 </html>

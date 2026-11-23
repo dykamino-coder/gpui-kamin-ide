@@ -13,7 +13,7 @@ impl gpui::Render for Page {
     }
 }
 
-fn page(edit: &str, at: usize, css: &str) -> String {
+fn page(edit: &str, at: usize, css: &str, list: bool) -> String {
     let spans: String = (0..90)
         .map(|i| {
             let edit = if i == at { edit } else { "" };
@@ -22,11 +22,17 @@ fn page(edit: &str, at: usize, css: &str) -> String {
             )
         })
         .collect();
+    let content = if list {
+        format!("<ol><li>{spans}</li></ol>")
+    } else {
+        format!("<p>{spans}</p>")
+    };
     format!(
         "<!doctype html><html><head><style>html,body{{margin:0;background:white}}\
-         p{{margin:0;width:380px;font:16px/20px sans-serif;text-align:justify}}\
+         ol{{margin:0;padding:0}}\
+         p,li{{margin:0;width:380px;font:16px/20px sans-serif;text-align:justify}}\
          aside{{opacity:.5;width:10px;height:10px;background:blue}}\
-         [data-edit]{{background:red}}{css}</style></head><body><aside></aside><p>{spans}</p></body></html>"
+         [data-edit]{{background:red}}{css}</style></head><body><aside></aside>{content}</body></html>"
     )
 }
 
@@ -136,8 +142,17 @@ fn fresh(cx: &mut TestAppContext, html: &str, y: f32) -> Vec<String> {
 
 #[gpui::test]
 fn deferred_inline_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestAppContext) {
-    let old = page("", 20, "");
-    let new = page(" data-edit", 20, "");
+    deferred_paint(cx, false);
+}
+
+#[gpui::test]
+fn deferred_list_item_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestAppContext) {
+    deferred_paint(cx, true);
+}
+
+fn deferred_paint(cx: &mut TestAppContext, list: bool) {
+    let old = page("", 20, "", list);
+    let new = page(" data-edit", 20, "", list);
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &old);
     let before = stats(&view, vcx).0;
@@ -168,8 +183,17 @@ fn deferred_inline_paint_without_a_layer_appears_when_scrolled_to(cx: &mut TestA
 
 #[gpui::test]
 fn visible_inline_paint_without_a_layer_rebuilds(cx: &mut TestAppContext) {
-    let old = page("", 1, "");
-    let new = page(" data-edit", 1, "");
+    visible_paint(cx, false);
+}
+
+#[gpui::test]
+fn visible_list_item_paint_without_a_layer_rebuilds(cx: &mut TestAppContext) {
+    visible_paint(cx, true);
+}
+
+fn visible_paint(cx: &mut TestAppContext, list: bool) {
+    let old = page("", 1, "", list);
+    let new = page(" data-edit", 1, "", list);
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &old);
     let before = vcx.update(|_, cx| view.read(cx).document().retained.clone());

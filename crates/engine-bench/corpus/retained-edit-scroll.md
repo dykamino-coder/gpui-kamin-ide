@@ -1,6 +1,6 @@
 # Deferred inline paint acceptance
 
-The adjacent synthetic HTML combines a justified inline flow, a separate
+The adjacent synthetic HTML combines a justified inline flow in an ordered list, a separate
 composition group, an unrelated `attr(title)` dependency and a hidden subtree.
 Changing the root `alt` class paints one inline element below the viewport.
 

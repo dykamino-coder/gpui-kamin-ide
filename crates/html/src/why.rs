@@ -50,6 +50,7 @@ pub const CODES: &[&str] = &[
     "no_layer.unrecorded",
     "no_layer.frame_unrecorded",
     "offscreen.refused_without_layer",
+    "offscreen.fragment_ancestors",
     "not_own",
     "plan_text.refused",
     "scroll_extent.layout_bars",

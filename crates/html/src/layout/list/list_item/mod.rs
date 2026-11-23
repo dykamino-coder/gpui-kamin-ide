@@ -59,6 +59,8 @@ pub(super) async fn render(
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &li.style, vcx);
+    // Отдельный путь списка обходит merged_style; фрагменты строк принадлежат li.
+    merged.self_node = li.node_id;
     if matches!(
         li.style.used().reset_box_layout.display,
         None | Some(Display::Block | Display::ListItem | Display::TableCell)

@@ -61,6 +61,7 @@ fn codes_are_unique_and_cover_frame_misses_and_refusals() {
         "frame_miss.key",
         "frame_miss.scroll_deferreddraws",
         "paint_path.refused_no_layer",
+        "offscreen.fragment_ancestors",
     ] {
         assert!(is_code(code), "{code}");
     }
