@@ -152,6 +152,7 @@ pub(super) fn defer(
                 &inherited,
                 layer_ok,
                 under_tf,
+                &build_opts.cx,
             )
         } else {
             child
