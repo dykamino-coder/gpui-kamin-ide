@@ -12698,7 +12698,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde863ea382ce
+index 160587a4ad924f80c2dd01b90a8300febbc13105..6d47afd52a401c6e3552f0a4d7684135abff6972
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,40 @@
@@ -13661,19 +13661,24 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1052,3 @@
+@@ -156,6 +1052,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.polychrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.monochrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.subpixel_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.polychrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-@@ -162,0 +1056 @@
++        // KaminIDE patch: sprites of one order keep their paint order (a stable
++        // sort), as quads do. Upstream also sorted them by atlas tile id, so two
++        // overlapping glyphs of one text run blended in the order the atlas
++        // happened to number their tiles: the same text with tiles made by
++        // another font instance or in another frame differed by a code.
++        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
++        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
++        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
+@@ -162,0 +1061 @@
 +        self.finish_layers();
-@@ -190,2 +1084,97 @@
+@@ -190,2 +1089,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13773,7 +13778,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1201,5 @@
+@@ -212,2 +1206,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13781,13 +13786,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1208,4 @@
+@@ -216 +1213,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1213,12 @@
+@@ -217,0 +1218,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13800,13 +13805,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1232 @@
+@@ -224,0 +1237 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1247 @@
+@@ -238,0 +1252 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1261 @@
+@@ -251,0 +1266 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1270,72 @@
+@@ -259,0 +1275,72 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13879,20 +13884,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1368,2 @@
+@@ -285,0 +1373,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1403,4 @@
+@@ -318,0 +1408,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1552 @@
+@@ -463,0 +1557 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1585,2 @@
+@@ -495,0 +1590,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1619,6 @@
+@@ -528,5 +1624,6 @@
 -        }
 -    }
 -}
@@ -13904,7 +13909,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1636,10 @@
+@@ -543,0 +1641,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13915,25 +13920,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1654 @@
+@@ -552 +1659 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1673 @@
+@@ -571 +1678 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1683,5 @@
+@@ -580,0 +1688,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1710,5 @@
+@@ -602,0 +1715,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1762,12 @@
+@@ -649,0 +1767,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -13946,19 +13951,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1832 @@
+@@ -708 +1837 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1851 @@
+@@ -727 +1856 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1870 @@
+@@ -746 +1875 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1875 @@
+@@ -751 +1880 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1882,54 @@
+@@ -757,0 +1887,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -14013,7 +14018,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1952,23 @@
+@@ -773,0 +1957,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14037,19 +14042,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..9853cf04644ae35d39bdc6b3d56cde86
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +1997,2 @@
+@@ -795,0 +2002,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2019 @@
+@@ -815,0 +2024 @@
 +            color_mapping: None,
-@@ -835,0 +2040,6 @@
+@@ -835,0 +2045,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2160,63 @@
+@@ -949,0 +2165,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -20256,10 +20261,10 @@ index 0000000000000000000000000000000000000000..0383bd78d456d75b1844df6cc09d2ef2
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2916e7a0a452dae47c5673d9e19fdaf379439cd6
+index 0000000000000000000000000000000000000000..c2a9e36c1c0147e54bb43e36703ee0658bd25f6f
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,217 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -20451,6 +20456,31 @@ index 0000000000000000000000000000000000000000..2916e7a0a452dae47c5673d9e19fdaf3
 +    let full = record.copy_record(Point::default(), None);
 +    assert_eq!(full.paint_operations.len(), 1000);
 +    assert_eq!(full.paint_operations.capacity(), 1000);
++}
++
++#[test]
++fn finish_keeps_the_paint_order_of_equal_order_sprites() {
++    // Overlapping glyphs of one order blend in the order they were painted,
++    // whatever ids the atlas gave their tiles.
++    let sprite = |tile_id: u32, x: f32| MonochromeSprite {
++        order: 7,
++        pad: 0,
++        bounds: rect(x, 0., 10., 10.),
++        content_mask: ContentMask { bounds: rect(x, 0., 10., 10.) },
++        color: Hsla::default(),
++        tile: AtlasTile {
++            texture_id: AtlasTextureId { index: 0, kind: AtlasTextureKind::Monochrome },
++            tile_id: TileId(tile_id),
++            padding: 0,
++            bounds: Bounds::default(),
++        },
++        transformation: TransformationMatrix::unit(),
++    };
++    let mut scene = Scene::default();
++    scene.monochrome_sprites = vec![sprite(9, 0.), sprite(3, 4.), sprite(5, 8.)];
++    scene.finish();
++    let painted: Vec<u32> = scene.monochrome_sprites.iter().map(|s| s.tile.tile_id.0).collect();
++    assert_eq!(painted, [9, 3, 5]);
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks.rs b/vendor/gpui/src/scene/scroll_marks.rs
 new file mode 100644
