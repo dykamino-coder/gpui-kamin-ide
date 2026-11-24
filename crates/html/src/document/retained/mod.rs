@@ -234,6 +234,8 @@ mod extent_settle_tests;
 mod moved_glyph_tests;
 
 #[cfg(test)]
+mod deferred_group_tests;
+#[cfg(test)]
 mod lifted_tests;
 #[cfg(test)]
 mod outline_scroll_tests;
