@@ -4002,9 +4002,11 @@ impl Window {
             (self.viewport_size.width.0 * self.scale_factor).ceil().max(0.0) as u32,
             (self.viewport_size.height.0 * self.scale_factor).ceil().max(0.0) as u32,
         );
+        // KaminIDE patch: a scroll step may be the last frame moved (`damage::shift`).
+        let moved = scroll_nodes::scroll_step(&self.rendered_frame.scroll_nodes, &self.next_frame.scroll_nodes, self.scale_factor);
         self.next_frame
             .scene
-            .note_frame_damage(&self.rendered_frame.scene, self.frame_serial + 1, device);
+            .note_frame_damage_moved(&self.rendered_frame.scene, self.frame_serial + 1, device, moved);
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();

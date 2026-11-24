@@ -279,6 +279,8 @@ impl Window {
         let frame = &mut self.next_frame;
         for (node, planned) in frame.scroll_nodes[start.scroll_nodes_index..].iter_mut().zip(&plan.nodes[slots]) {
             node.offset = planned.offset;
+            // KaminIDE patch: the children landed moved by the plan (`scroll_step`).
+            node.children_offset += planned.shift;
             node.clip = planned.clip;
             node.chain = planned.chain;
             node.interest = planned.interest;

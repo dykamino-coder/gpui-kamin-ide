@@ -40,6 +40,7 @@ pub(crate) struct FontInfo {
 }
 
 mod scene_capture;
+mod canvas;
 mod frame_capture;
 mod gpu_wait;
 mod group_region;
@@ -433,8 +434,13 @@ struct DirectXResources {
     swap_chain: Option<IDXGISwapChain1>,
     /// KaminIDE patch (#76): см. FrameLatencyGate.
     frame_gate: Option<FrameLatencyGate>,
+    /// KaminIDE patch: the frame's canvas (`canvas`): with a swap chain a
+    /// texture of its own, offscreen the target itself.
     render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
+    /// KaminIDE patch: the swap chain's back buffer, which receives the
+    /// canvas's changes before each present (`canvas`).
+    back_buffer: Option<ID3D11Texture2D>,
 
     // Path intermediate textures (with MSAA)
     path_intermediate_texture: ID3D11Texture2D,
@@ -707,11 +713,13 @@ impl DirectXRenderer {
         // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
         // ввода ~1.5с на слабой машине.
         // KaminIDE patch: an offscreen target is complete once drawn.
-        let Some(swap_chain) = &self.resources.as_ref().expect("resources missing").swap_chain
+        let Some(swap_chain) = self.resources.as_ref().expect("resources missing").swap_chain.clone()
         else {
             self.unpresented = false;
             return Ok(());
         };
+        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
+        self.copy_to_back_buffer()?;
         // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
         // or the compositor is behind, a plain Present blocked the UI thread
         // for about 1 s per frame and webview pulls waited behind it. A frame
@@ -721,8 +729,9 @@ impl DirectXRenderer {
         present_gate::count_present_call(started.elapsed());
         let shown = present_gate::frame_shown(result)?;
         if result == windows::Win32::Foundation::DXGI_STATUS_OCCLUDED {
-            // KaminIDE patch: whether the chain took a buffer is unknown.
-            self.forget_frames();
+            // KaminIDE patch: whether the chain took a buffer is unknown; the
+            // canvas still holds the frame.
+            self.forget_buffers();
         }
         if shown {
             // KaminIDE patch (retained.rs): the next frame draws into the next buffer.
@@ -817,7 +826,7 @@ impl DirectXRenderer {
         // A frame the target and the screen already show is neither drawn nor
         // presented, and takes nothing from the latency gate.
         let plan = self.plan_frame(scene, background_appearance);
-        self.count_plan(&plan);
+        self.count_plan(&plan, scene.frame_shift_miss());
         let keep = matches!(plan, retained::Plan::Keep);
         if keep {
             // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.
@@ -849,12 +858,16 @@ impl DirectXRenderer {
             self.drop_frame();
             return Ok(());
         }
-        let drawn = match plan {
+        let drawn = match &plan {
             retained::Plan::Keep => Ok(()),
             retained::Plan::Full => self.render(scene, background_appearance, None),
             retained::Plan::Within(region) => {
-                self.render(scene, background_appearance, Some(region))
+                self.render(scene, background_appearance, Some(slice::from_ref(region)))
             }
+            // KaminIDE patch (canvas.rs): the last frame moved, then the rest.
+            retained::Plan::Shift { delta, copy, redraw } => self
+                .move_canvas(*delta, *copy)
+                .and_then(|()| self.render(scene, background_appearance, Some(redraw))),
         };
         if let Err(e) = drawn {
             self.forget_frames();
@@ -862,11 +875,7 @@ impl DirectXRenderer {
         }
         // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
         if damage_audit::enabled() && !keep {
-            let within = match plan {
-                retained::Plan::Within(region) => Some(region),
-                _ => None,
-            };
-            if let Err(e) = self.audit_frame(scene, background_appearance, within) {
+            if let Err(e) = self.audit_frame(scene, background_appearance, &plan) {
                 log::warn!("damage audit failed: {e}");
             }
         }
@@ -886,13 +895,14 @@ impl DirectXRenderer {
     /// instead), so the two cannot drift.
     ///
     /// KaminIDE patch: with `within`, the target keeps the last frame and only
-    /// that rectangle is cleared and drawn (scissor, `retained.rs`); groups
-    /// whose composite cannot reach it are not drawn.
+    /// those rectangles are cleared and drawn (scissor, `retained.rs`), one
+    /// after another from the instances uploaded once; groups whose composite
+    /// cannot reach their bounds are not drawn.
     fn render(
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
-        within: Option<Region>,
+        within: Option<&[Region]>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
@@ -908,7 +918,11 @@ impl DirectXRenderer {
         self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
-        let needed = within.map(|r| scene.groups_needed([r.x, r.y, r.width, r.height]));
+        let bounds = within.and_then(|rects| rects.iter().copied().reduce(|a, b| a.union(b)));
+        let needed = within.map(|_| match bounds {
+            Some(r) => scene.groups_needed([r.x, r.y, r.width, r.height]),
+            None => vec![false; scene.groups.len()],
+        });
         log::debug!(
             target: "gpui::frame",
             "plan within {within:?} groups {} needed {:?}",
@@ -931,28 +945,38 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&self.res().render_target_view)), None);
         }
-        // KaminIDE patch: the scissor goes on only now: the group passes and
-        // their blurs write other targets in their own coordinates.
-        let restore = match within {
-            Some(region) => {
-                let state = self.begin_scissor(region)?;
-                let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-                self.clear_frame(clear)?;
-                Some(state)
-            }
-            None => None,
-        };
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
-        self.blur.frame_within = within;
-        let drawn = self.draw_scene(scene);
-        self.blur.frame_within = None;
+        let drawn = match within {
+            None => self.draw_scene(scene),
+            Some(rects) => self.draw_scene_within(scene, rects, clear_color),
+        };
         self.timing_main = false;
-        if let Some(state) = restore {
-            unsafe { ctx.RSSetState(&state) };
-        }
         self.gpu_timer.end(&ctx);
         drawn
+    }
+
+    /// KaminIDE patch: draw `scene` within each of `rects` (cleared first). The
+    /// scissor goes on only now: the group passes and their blurs write other
+    /// targets in their own coordinates. Instances are uploaded for the first
+    /// rectangle; the others draw from the same buffers.
+    fn draw_scene_within(&mut self, scene: &Scene, rects: &[Region], clear_color: [f32; 4]) -> Result<()> {
+        let ctx = self.dev().device_context.clone();
+        let mut uploaded = false;
+        for &region in rects {
+            let state = self.begin_scissor(region)?;
+            let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
+            let drawn = self.clear_frame(clear).and_then(|()| {
+                self.backdrop_pending = self.backdrop.is_some();
+                self.blur.frame_within = Some(region);
+                self.draw_scene_at(scene, uploaded.then_some([0; 6]))
+            });
+            self.blur.frame_within = None;
+            unsafe { ctx.RSSetState(&state) };
+            drawn?;
+            uploaded = true;
+        }
+        Ok(())
     }
 
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.
@@ -1555,6 +1579,8 @@ impl DirectXRenderer {
         let resources = self.resources.as_mut().context("resources missing")?;
         resources.render_target.take();
         resources.render_target_view.take();
+        // KaminIDE patch: ResizeBuffers needs every reference to the buffers released.
+        resources.back_buffer.take();
         recreate(resources, devices)?;
 
         unsafe {
@@ -2381,7 +2407,7 @@ impl DirectXResources {
         };
 
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2396,6 +2422,7 @@ impl DirectXResources {
             frame_gate,
             render_target: Some(render_target),
             render_target_view,
+            back_buffer,
             path_intermediate_texture,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
@@ -2408,7 +2435,7 @@ impl DirectXResources {
     /// buffer: same format, size and single sample, no frame latency gate.
     pub fn new_offscreen(devices: &DirectXRendererDevices, width: u32, height: u32) -> Result<Self> {
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2422,6 +2449,7 @@ impl DirectXResources {
             frame_gate: None,
             render_target: Some(render_target),
             render_target_view,
+            back_buffer,
             path_intermediate_texture,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
@@ -2443,7 +2471,7 @@ impl DirectXResources {
         height: u32,
     ) -> Result<()> {
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2453,6 +2481,7 @@ impl DirectXResources {
         ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
+        self.back_buffer = back_buffer;
         self.path_intermediate_texture = path_intermediate_texture;
         self.path_intermediate_msaa_texture = path_intermediate_msaa_texture;
         self.path_intermediate_msaa_view = path_intermediate_msaa_view;
@@ -2972,7 +3001,7 @@ fn create_resources(
     width: u32,
     height: u32,
 ) -> Result<(
-    ID3D11Texture2D,
+    (ID3D11Texture2D, Option<ID3D11Texture2D>),
     Option<ID3D11RenderTargetView>,
     ID3D11Texture2D,
     Option<ID3D11ShaderResourceView>,
@@ -2980,10 +3009,14 @@ fn create_resources(
     Option<ID3D11RenderTargetView>,
     D3D11_VIEWPORT,
 )> {
-    let (render_target, render_target_view) = match swap_chain {
-        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
-        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
+    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
+    // into the back buffer before present (`canvas`).
+    let (render_target, render_target_view) = create_offscreen_target_and_its_view(&devices.device, width, height)?;
+    let back_buffer = match swap_chain {
+        Some(swap_chain) => Some(unsafe { swap_chain.GetBuffer::<ID3D11Texture2D>(0) }?),
+        None => None,
     };
+    let render_target = (render_target, back_buffer);
     let (path_intermediate_texture, path_intermediate_srv) =
         create_path_intermediate_texture(&devices.device, width, height)?;
     let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
@@ -3005,17 +3038,6 @@ fn create_resources(
         path_intermediate_msaa_view,
         viewport,
     ))
-}
-
-#[inline]
-fn create_render_target_and_its_view(
-    swap_chain: &IDXGISwapChain1,
-    device: &ID3D11Device,
-) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
-    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
-    let mut render_target_view = None;
-    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
-    Ok((render_target, render_target_view))
 }
 
 /// KaminIDE patch: the offscreen counterpart of a swap chain back buffer

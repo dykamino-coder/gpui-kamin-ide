@@ -2,6 +2,7 @@
 //! in the `[gpu]` line (`plan keep=… full=… within=… full_by=…`).
 
 use super::super::DirectXRenderer;
+use super::super::canvas::Drawn;
 use super::Plan;
 use gpui::SceneDamage;
 
@@ -59,14 +60,39 @@ impl FullBy {
 impl DirectXRenderer {
     /// Count the plan in the `[gpu]` line: kept, whole (and why) or the area
     /// of the rectangle drawn.
-    pub(in crate::directx_renderer) fn count_plan(&self, plan: &Plan) {
+    pub(in crate::directx_renderer) fn count_plan(&mut self, plan: &Plan, shift_miss: Option<&'static str>) {
         use gpui::batch_cost::FramePlan;
         let window = self.width as f64 * self.height as f64;
-        let counted = match plan {
-            Plan::Keep => FramePlan::Keep,
-            Plan::Full => FramePlan::Full(self.retained.full_by.name()),
-            Plan::Within(r) => FramePlan::Within(r.width as f64 * r.height as f64),
+        let area = |r: &super::Region| r.width as u64 * r.height as u64;
+        let (w, h) = (self.width, self.height);
+        let (counted, drawn) = match plan {
+            Plan::Keep => (FramePlan::Keep, Drawn { plan: "keep", ..Default::default() }),
+            Plan::Full => {
+                let reason = self.retained.full_by.name();
+                (FramePlan::Full(reason), Drawn { plan: "full", full_by: Some(reason), rects: vec![[0, 0, w, h]], ..Default::default() })
+            }
+            Plan::Within(r) => (
+                FramePlan::Within(area(r) as f64),
+                Drawn { plan: "within", rects: vec![[r.x, r.y, r.width, r.height]], ..Default::default() },
+            ),
+            Plan::Shift { delta, copy, redraw } => {
+                let px: u64 = redraw.iter().map(area).sum();
+                let rects = redraw.iter().map(|r| [r.x, r.y, r.width, r.height]).collect();
+                // A frame compared in place (`FrameShift::in_place`) only redraws.
+                let drawn = match *delta {
+                    (0, 0) => Drawn { plan: "within", rects, ..Default::default() },
+                    delta => Drawn {
+                        plan: "shift",
+                        delta: Some(delta),
+                        moved_px: copy[2] as u64 * copy[3] as u64,
+                        rects,
+                        ..Default::default()
+                    },
+                };
+                (FramePlan::Within(px as f64), drawn)
+            }
         };
+        self.retained.drawn = super::super::canvas::Drawn { shift_miss, ..drawn };
         self.gpu_timer.instrumentation.batches.plan(counted, window);
     }
 }

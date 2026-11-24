@@ -62,7 +62,9 @@ impl Watch {
     }
 
     /// The entry of the sample that just ended (or failed with `error`),
-    /// written out with the others.
+    /// written out with the others; `raster`: what its captured frame
+    /// rasterized and the capture's wait for the GPU.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn end(
         self,
         args: &super::args::Args,
@@ -70,6 +72,7 @@ impl Watch {
         window: WindowHandle<View>,
         step: Step<'_>,
         measurements: Option<(&super::report::Sample, &super::work::Sample)>,
+        raster: Option<gpui::frame_capture::RasterReport>,
         error: Option<String>,
     ) -> Result<()> {
         let (phases, work) = measurements.unzip();
@@ -111,6 +114,11 @@ impl Watch {
             "paint_path": path,
             "phases_ms": phases,
             "paint_work": work.map(super::work::Sample::paint_profile),
+            "raster": raster.map(|r| json!({
+                "plan": r.plan, "full_by": r.full_by, "shift_miss": r.shift_miss, "delta": r.delta, "moved_px": r.moved_px,
+                "rects_count": r.rects.len(), "raster_px": r.raster_px, "rects": r.rects,
+                "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3,
+            })),
             "memory": memory,
             "between": self.between,
         });

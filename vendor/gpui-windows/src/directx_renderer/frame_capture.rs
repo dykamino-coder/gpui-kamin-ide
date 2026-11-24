@@ -11,7 +11,23 @@ impl DirectXRenderer {
         let staging = self.capture_staging()?;
         // KaminIDE patch: the frame is complete when the GPU has executed it;
         // the copy below is the capture's own cost, reported apart (`copied`).
+        let waited = std::time::Instant::now();
         self.wait_gpu_idle()?;
+        let gpu_wait = waited.elapsed();
+        let drawn = &self.retained.drawn;
+        let report = gpui::frame_capture::RasterReport {
+            plan: drawn.plan.to_string(),
+            full_by: drawn.full_by.map(str::to_string),
+            shift_miss: drawn.shift_miss.map(str::to_string),
+            delta: drawn.delta,
+            moved_px: drawn.moved_px,
+            raster_px: drawn.rects.iter().map(|r| r[2] as u64 * r[3] as u64).sum(),
+            rects: drawn.rects.clone(),
+            gpu_wait,
+        };
+        if let Some(sink) = &mut self.capture {
+            sink.raster(report);
+        }
         let devices = self.dev();
         let render_target = self
             .res()
@@ -69,4 +85,22 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// The capture staging texture for the current size, created once per size.
+    pub(super) fn capture_staging(&mut self) -> Result<ID3D11Texture2D> {
+        let (w, h) = (self.width, self.height);
+        if let Some((sw, sh, texture)) = &self.retained.staging
+            && (*sw, *sh) == (w, h)
+        {
+            return Ok(texture.clone());
+        }
+        let mut desc = offscreen_target_desc(w, h);
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+        let mut staging: Option<ID3D11Texture2D> = None;
+        unsafe { self.dev().device.CreateTexture2D(&desc, None, Some(&mut staging))? };
+        let staging = staging.context("staging texture")?;
+        self.retained.staging = Some((w, h, staging.clone()));
+        Ok(staging)
+    }
 }

@@ -72,6 +72,11 @@ to derive the additive layout phase. Its resolution is one microsecond per
 increment. These diagnostics **do overlap**
 (`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
 Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
+With `--why`, every captured frame also reports its raster plan (`keep`, `full` and
+why, `within`, or `shift`: the kept canvas moved by a scroll step, with the moved
+area), the rectangles rasterized and their pixels, and the capture's wait for the
+GPU (`gpu_wait`) on a line of its own: that wait is part of `raster_gpu_readback`,
+it is the GPU's time, not CPU work of the frame. A production present never waits.
 No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
 
 The root adapter forwards the same element layout ID and introduces no layout

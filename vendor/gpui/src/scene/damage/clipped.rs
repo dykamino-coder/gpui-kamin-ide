@@ -53,7 +53,7 @@ pub(super) fn same_visible(a: &Quad, b: &Quad) -> bool {
 }
 
 /// Сплошная заливка без рамки, скругления и преобразования.
-fn plain(q: &Quad) -> bool {
+pub(super) fn plain(q: &Quad) -> bool {
     let zero = |v: ScaledPixels| v.0 == 0.0;
     let w = q.border_widths;
     let r = q.corner_radii;

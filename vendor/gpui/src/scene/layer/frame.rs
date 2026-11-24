@@ -16,6 +16,14 @@ pub(crate) struct LayerSlot {
     pub(crate) order: DrawOrder,
     pub(crate) cell: Weak<LayerCell>,
     pub(crate) held: Option<Rc<SceneLayer>>,
+    /// Id and version of the content the frame drew: after its present the
+    /// next frame finds that content again only by them (`damage::shift`).
+    pub(crate) drawn: (u64, u64),
+}
+
+/// Id and version of a layer's content.
+fn drawn(content: &SceneLayer) -> (u64, u64) {
+    (content.id, content.version)
 }
 
 /// The command of a layer in a frame scene: the host's layer, its bounds in
@@ -49,7 +57,8 @@ impl Scene {
         self.book.fresh += 1;
         let cell = Rc::downgrade(&layer.0);
         self.paint_operations.push(PaintOperation::Layer(LayerOp { cell: cell.clone(), bounds, order }));
-        self.book.layers.push(LayerSlot { order, cell, held: Some(layer.content()) });
+        let held = layer.content();
+        self.book.layers.push(LayerSlot { order, cell, drawn: drawn(&held), held: Some(held) });
     }
 
     /// Add the slot of a replayed layer command (its order already set);
@@ -62,7 +71,7 @@ impl Scene {
         if let Some(rect) = cell.damage.take() {
             self.book.layer_damage = Some(self.book.layer_damage.map_or(rect, |d| d.union(&rect)));
         }
-        self.book.layers.push(LayerSlot { order: op.order, cell: op.cell.clone(), held: Some(held) });
+        self.book.layers.push(LayerSlot { order: op.order, cell: op.cell.clone(), drawn: drawn(&held), held: Some(held) });
         true
     }
 
@@ -90,6 +99,30 @@ impl Scene {
         for slot in &mut self.book.layers {
             slot.held = None;
         }
+        // The sources served this frame's damage (`damage::shift`), noted
+        // before its draw: no later write copies them.
+        self.book.layer_sources.clear();
+    }
+
+    /// Keep `source`, the content a layer recorded now replays from, until
+    /// this frame is presented: it is what the last frame drew of that layer,
+    /// and the comparison of a scroll step reads it (`damage::shift`).
+    pub(crate) fn keep_layer_source(&mut self, source: &Rc<SceneLayer>) {
+        if !self.book.layer_sources.iter().any(|s| Rc::ptr_eq(s, source)) {
+            self.book.layer_sources.push(source.clone());
+        }
+    }
+
+    /// The content `slot` of `previous` drew, while it is known: still held,
+    /// or a source this scene kept or a layer it draws, of the same id and version.
+    pub(crate) fn drawn_layer<'a>(&'a self, previous: &'a Scene, slot: usize) -> Option<&'a SceneLayer> {
+        let slot = previous.book.layers.get(slot)?;
+        if let Some(held) = slot.held.as_deref() {
+            return Some(held);
+        }
+        // A layer this frame did not record again holds that same content.
+        let current = self.book.layers.iter().filter_map(|s| s.held.as_deref());
+        self.book.layer_sources.iter().map(|s| &**s).chain(current).find(|s| drawn(s) == slot.drawn)
     }
 
     /// Hold the layers' current content again to present this scene once more.

@@ -82,4 +82,31 @@ pub trait FrameCaptureSink {
     /// Вызывается перед `completed` того же кадра; backend без разделения
     /// её не сообщает.
     fn copied(&mut self, _copy: Duration) {}
+
+    /// KaminIDE patch: what the captured frame rasterized and how long the
+    /// capture waited for the GPU to finish it; before `completed` of the
+    /// same frame. A backend without the split does not report it.
+    fn raster(&mut self, _report: RasterReport) {}
+}
+
+/// KaminIDE patch: the raster of one captured frame (DevTools `why`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RasterReport {
+    /// `keep` (nothing drawn), `full`, `within` (one rectangle) or `shift`
+    /// (the last frame moved, then the rectangles).
+    pub plan: String,
+    /// Why a whole frame was drawn.
+    pub full_by: Option<String>,
+    /// Why a frame offered a scroll step was not drawn as a move.
+    pub shift_miss: Option<String>,
+    /// Device pixels the kept frame moved by (`shift`).
+    pub delta: Option<(i32, i32)>,
+    /// Device pixels the move copied.
+    pub moved_px: u64,
+    /// Rectangles rasterized (x, y, width, height, device px).
+    pub rects: Vec<[u32; 4]>,
+    /// Pixels those rectangles cover.
+    pub raster_px: u64,
+    /// The capture's wait for the GPU to execute the frame (not CPU work).
+    pub gpu_wait: Duration,
 }

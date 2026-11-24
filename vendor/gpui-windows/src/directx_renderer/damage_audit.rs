@@ -29,12 +29,12 @@ pub(super) fn enabled() -> bool {
 }
 
 impl DirectXRenderer {
-    /// Сверить только что нарисованный по `within` кадр с целой перерисовкой.
+    /// Сверить только что нарисованный по плану `within` кадр с целой перерисовкой.
     pub(super) fn audit_frame(
         &mut self,
         scene: &Scene,
         background: WindowBackgroundAppearance,
-        within: Option<Region>,
+        within: &retained::Plan,
     ) -> Result<()> {
         let planned = self.read_target()?;
         let (kept, drawn) = (
