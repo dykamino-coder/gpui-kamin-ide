@@ -11,7 +11,12 @@ impl DirectXRenderer {
         let staging = self.capture_staging()?;
         // KaminIDE patch: the frame is complete when the GPU has executed it;
         // the copy below is the capture's own cost, reported apart (`copied`).
+        // The wait is reported apart too (`waited`): on a hardware adapter it
+        // is GPU execution the window path never waits for (`present` is
+        // DO_NOT_WAIT), on WARP it is the frame's CPU raster.
+        let wait_started = std::time::Instant::now();
         self.wait_gpu_idle()?;
+        let waited = wait_started.elapsed();
         let devices = self.dev();
         let render_target = self
             .res()
@@ -63,6 +68,7 @@ impl DirectXRenderer {
             grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
         });
         if let Some(sink) = &mut self.capture {
+            sink.waited(waited);
             sink.copied(copy_started.elapsed());
             sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra, context }, started.elapsed());
         }

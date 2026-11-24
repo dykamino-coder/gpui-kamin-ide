@@ -20,7 +20,8 @@ RULE = 'html.alt body{color:#111}'
 EDITS = {'C': ('html.alt [data-deep]{background:#eee}', 'class'), 'D': ('[data-edit]{background:#eee}', 'attr'),
          'Cvis': (None, 'class'), 'Dvis': (None, 'attr')}
 BOUNDS = ('ours: one engine_bench process per phase on an offscreen GPU texture (software raster on soft classes); '
-          'frame = from the frame request to pixels read back, minus the bench capture copy; cold = cold document in a '
+          'frame = from the frame request to pixels read back, minus the bench capture (copy) and, on a hardware GPU, '
+          'minus the capture wait for GPU completion (shown apart); cold = cold document in a '
           'warm process; memory = working set of the one process')
 BOUNDS_PLAN = ('ours: one engine_bench process per page and class runs every phase (as one browser visit): cold = '
                'document-cold samples, then each warm phase on its own input after its load, adaptive frame series: at '
@@ -29,11 +30,12 @@ BOUNDS_PLAN = ('ours: one engine_bench process per page and class runs every pha
                'painting is measured with a note; peak memory = the process over the whole visit; steady memory = '
                'median working set over a 2 s idle window after the cold phase; scroll fresh-document check on the first '
                'and the last step; frame = from the frame request to pixels read back, '
-               'minus the bench capture copy; CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop')
+               'minus the bench capture (copy) and, on a hardware GPU, the capture wait for GPU completion (shown apart: '
+               'gpu_wait_ms; on WARP it is the CPU raster and stays); CPU = cycle time of all threads of the process over the frame window minus the stand capture window (copy, wake after readback), as browsers: whole tree over the frame loop')
 # 2: CPU = all threads over the frame window minus the capture window; 3: one process per page (cold in the plan),
 # quiet windows converge instead of refusing, steady memory = window median, scroll fresh check first + last step;
-# 4: adaptive series (stable_mad)
-DEF = 'ours-4'
+# 4: adaptive series (stable_mad); 5: frame minus the capture's GPU wait on a hardware GPU (gpu_wait_ms apart)
+DEF = 'ours-5'
 STABLE_MAD = 0.03  # the series stop rule, the same as the browsers' repeat visits (adapters.Policy.stable)
 
 
@@ -164,8 +166,9 @@ class Ours:
                                   else 'crashed: ' + e[:160]); continue
                 r['wall_s'] = round((rep.get('wall_ms') or 0) / 1000, 2)
                 m = M.OURS_MODE.get(ph, 'edit')
-                fr = M.ours_frame(rep, m)
-                r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
+                fr = M.ours_frame(rep, m, M.ours_hardware_gpu(j))
+                r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'],
+                         gpu_wait_ms=fr['gpu_wait'])
                 r['cpu_ms'] = M.ours_cpu_cycles(rep, m, j.get('cpu_calibration'))
                 if ph in ('Cvis', 'Dvis'):
                     bad = M.ours_vis_check(rep)
@@ -211,7 +214,9 @@ class Ours:
                         rec['memory'] = {'empty': why}
                     continue
                 if part == 'time':
-                    fr = M.ours_frame(j, 'cold'); r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
+                    fr = M.ours_frame(j, 'cold', M.ours_hardware_gpu(j))
+                    r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'],
+                             gpu_wait_ms=fr['gpu_wait'])
                     est = fr['req']; pk, sd = M.ours_memory(j)
                     rec['memory'] = {'peak_bytes': pk, 'steady_bytes': sd, 'empty': None if pk else 'no memory in the report'}
                 else:
@@ -231,8 +236,9 @@ class Ours:
                 r['empty'] = why; continue
             m = M.OURS_MODE.get(ph, 'edit')
             if part == 'time':
-                fr = M.ours_frame(j, m)
-                r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'])
+                fr = M.ours_frame(j, m, M.ours_hardware_gpu(j))
+                r.update(time_ms=fr['req'], time_req_ms=fr['req'], time_raf_ms=fr['raf'], repeats=fr['samples'],
+                         gpu_wait_ms=fr['gpu_wait'])
                 if ph in ('Cvis', 'Dvis'):
                     bad = M.ours_vis_check(j)
                     if bad:
