@@ -87,6 +87,11 @@ pub trait FrameCaptureSink {
     /// capture waited for the GPU to finish it; before `completed` of the
     /// same frame. A backend without the split does not report it.
     fn raster(&mut self, _report: RasterReport) {}
+
+    /// The readback's wait until the GPU has executed the frame (fence). On a
+    /// software adapter this is the frame's CPU raster. Called before
+    /// `completed` of the same frame; a backend without the split omits it.
+    fn waited(&mut self, _wait: Duration) {}
 }
 
 /// KaminIDE patch: the raster of one captured frame (DevTools `why`).

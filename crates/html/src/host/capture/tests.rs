@@ -92,6 +92,18 @@ fn consuming_latest_transfers_pixels_without_changing_first_or_completion() {
 }
 
 #[test]
+fn the_gpu_wait_and_the_copy_are_kept_apart_per_window() {
+    let (a, mut sink_a) = CaptureSession::open();
+    let (b, _sink_b) = CaptureSession::open();
+    sink_a.waited(Duration::from_micros(5));
+    sink_a.copied(Duration::from_micros(2));
+    sink_a.waited(Duration::from_micros(1));
+    assert_eq!(a.gpu_wait_time(), Duration::from_micros(6));
+    assert_eq!(a.copy_time(), Duration::from_micros(2));
+    assert_eq!(b.gpu_wait_time(), Duration::ZERO);
+}
+
+#[test]
 fn an_armed_first_frame_shares_the_readback_buffer_with_latest() {
     let (session, mut sink) = CaptureSession::open();
     session.arm_first();

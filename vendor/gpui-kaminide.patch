@@ -11432,10 +11432,10 @@ index 0a449a20a3cf4c0d676c6d03053baff1d8de6e8a..764376a79a3dbd6d920c0b806322a642
 +                self.interactivity.base_style_mut().overflow.x = Some(Overflow::Scroll);
 diff --git a/vendor/gpui/src/frame_capture.rs b/vendor/gpui/src/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..53d9e765fb9de9a3f4639a926368b75178fdc005
+index 0000000000000000000000000000000000000000..a97fd394e146e622a3b6904906fc11c8641584cb
 --- /dev/null
 +++ b/vendor/gpui/src/frame_capture.rs
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,117 @@
 +//! KaminIDE patch: оконный получатель завершённого BGRA readback.
 +//!
 +//! Backend владеет единственным sink. Подписки, sequence и выбор кадра
@@ -11525,6 +11525,11 @@ index 0000000000000000000000000000000000000000..53d9e765fb9de9a3f4639a926368b751
 +    /// capture waited for the GPU to finish it; before `completed` of the
 +    /// same frame. A backend without the split does not report it.
 +    fn raster(&mut self, _report: RasterReport) {}
++
++    /// The readback's wait until the GPU has executed the frame (fence). On a
++    /// software adapter this is the frame's CPU raster. Called before
++    /// `completed` of the same frame; a backend without the split omits it.
++    fn waited(&mut self, _wait: Duration) {}
 +}
 +
 +/// KaminIDE patch: the raster of one captured frame (DevTools `why`).

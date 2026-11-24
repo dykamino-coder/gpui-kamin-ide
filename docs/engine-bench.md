@@ -65,13 +65,26 @@ need not sum to the total's median or p90.
 | `first_frame_total` | Budget total, not an additional phase: from host loading (cold) or unchanged-frame request (warm), through completed first GPU readback and return to the async task. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
 
 `modes.<mode>.diagnostic_scopes` retains inclusive `document_build_total`,
-`cpu_draw_total`, `gpu_readback` and `taffy_inclusive`, with raw samples and
+`cpu_draw_total`, `gpu_readback` (with `raster_submit`, `gpu_wait`, `capture` and
+`capture_copy`) and `taffy_inclusive`, with raw samples and
 statistics. The existing `TAFFY_US` counter includes nested layout calls and may
 count the same wall interval more than once; it is diagnostic only, never used
 to derive the additive layout phase. Its resolution is one microsecond per
 increment. These diagnostics **do overlap**
 (`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
 Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
+
+`raster_gpu_readback` is split exactly (checked, the sample fails otherwise) into three
+diagnostics: `raster_submit` (`window.present` minus the capture: CPU encoding,
+flush and the platform present, which is `DXGI_PRESENT_DO_NOT_WAIT` and never waits
+for the GPU), `gpu_wait` (the capture's wait until the GPU has executed the frame:
+a fence or an event query) and `capture` (the rest of the capture: staging texture,
+copy, `Map` and the row copy; `capture_copy` is its copy part). On a hardware adapter
+`gpu_wait` is GPU execution the window path does not wait for; on WARP (`--gpu
+software`) it is the frame's CPU raster on WARP's threads. The comparison tool
+(`tools/engine-compare`) subtracts `capture` always and `gpu_wait` on a hardware
+adapter only, and reports `gpu_wait` apart.
+
 With `--why`, every captured frame also reports its raster plan (`keep`, `full` and
 why, `within`, or `shift`: the kept canvas moved by a scroll step, with the moved
 area), the rectangles rasterized and their pixels, and the capture's wait for the

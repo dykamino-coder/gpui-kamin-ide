@@ -38,6 +38,7 @@ struct State {
     copy_us: u64,
     /// What the last captured frame rasterized and its GPU wait (`--why`).
     raster: Option<RasterReport>,
+    wait_us: u64,
     latest: Option<Frame>,
     first: Option<Frame>,
     armed: bool,
@@ -72,6 +73,12 @@ impl CaptureSession {
     /// The raster of the last captured frame, when the backend reports it.
     pub fn raster_report(&self) -> Option<RasterReport> {
         self.0.borrow().raster.clone()
+    }
+
+    /// The part of `readback_time` before the frame is complete: the wait for
+    /// the GPU to execute it (on a software adapter, its CPU raster).
+    pub fn gpu_wait_time(&self) -> Duration {
+        Duration::from_micros(self.0.borrow().wait_us)
     }
 
     pub fn latest(&self) -> Option<Frame> {
@@ -149,6 +156,10 @@ impl FrameCaptureSink for Endpoint {
 
     fn raster(&mut self, report: RasterReport) {
         self.0.borrow_mut().raster = Some(report);
+    }
+
+    fn waited(&mut self, wait: Duration) {
+        self.0.borrow_mut().wait_us += wait.as_micros() as u64;
     }
 }
 
