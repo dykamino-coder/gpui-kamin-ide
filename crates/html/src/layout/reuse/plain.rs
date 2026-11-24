@@ -6,41 +6,6 @@
 use crate::dom::{Element, Node};
 use crate::style::computed::Position;
 
-/// Теги обычного потока, чья коробка — только блок или строка текста.
-const TAGS: &[&str] = &[
-    "div",
-    "p",
-    "span",
-    "b",
-    "i",
-    "em",
-    "strong",
-    "u",
-    "s",
-    "small",
-    "code",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "section",
-    "article",
-    "header",
-    "footer",
-    "main",
-    "nav",
-    "aside",
-    "blockquote",
-];
-
-/// Таблица раскладывается внутри своей коробки (CSS 2.1 §17.4): её ячейки —
-/// обычный поток, а сетка — только геометрия.
-const TABLE: &[&str] = &[
-    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
-];
-
 /// A skip record may use another counter origin only when none of its
 /// paint keys or anchors escape the subtree. Both recorders use this result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,11 +42,23 @@ fn inert(e: &Element) -> bool {
         && style.reset_effects.blend.is_none_or(|b| b == 0)
 }
 
-/// Элемент — коробка обычного потока или таблицы без наведения, анимации,
-/// псевдоэлементов первой строки и буквы и маркера.
+/// Коробку элемента строят только его вычисленный стиль и поддерево
+/// (css-display-3 §2), а состояние, которое она показывает, живёт в DOM и
+/// стиле, чьи изменения публикуют эпоху коробки. Поэтому не годятся:
+/// замещаемый элемент (css-display-3 §2.4: содержимое — внешний ресурс или
+/// вложенный документ, их загрузка эпохи не публикует) и элемент управления
+/// с родной отрисовкой (HTML §15.5); формула MathML и ruby со своими
+/// алгоритмами раскладки (ruby-аннотация выступает за свою коробку,
+/// css-ruby-1 §4.4); наведение и анимация (состояние указателя и часов),
+/// псевдоэлементы первой строки и буквы (их берут из строк предка) и маркер
+/// пункта списка (номер приходит от соседей). Тег сам по себе не решает:
+/// `<a>`, `<li>` без маркера или `<dd>` — такие же коробки потока, как `<div>`,
+/// а таблица раскладывается внутри своей коробки (CSS 2.1 §17.4).
 pub(super) fn flow_kind(e: &Element) -> bool {
-    let tag = e.tag.as_str();
-    (TAGS.contains(&tag) || TABLE.contains(&tag))
+    let math = &e.style.used().reset_svg_math;
+    !embedded(e)
+        && !(math.mathml && math.math_layout.is_some())
+        && crate::text::ruby::ruby_role(e).is_none()
         && e.hover.is_none()
         && e.anim.is_none()
         && e.first_letter.is_none()
@@ -169,9 +146,29 @@ fn layout_reads_outside_nothing(e: &Element, vcx: crate::values::ValueCx<'_>) ->
         )
 }
 
-/// A table element (`far::replayable` admits none).
+/// Содержимое элемента приходит не из его поддерева: замещаемый элемент или
+/// элемент управления (`<br>` — лишь принудительный разрыв строки, css-text-3 §5.1).
+fn embedded(e: &Element) -> bool {
+    let tag = e.tag.as_str();
+    (crate::layout::box_kind::replaced_inline(tag) && tag != "br")
+        || crate::paint::controls::native(tag)
+}
+
+/// A table box or a box of a table's internal display, laid out by the
+/// table (`far::replayable` admits none).
 pub(super) fn table(e: &Element) -> bool {
-    TABLE.contains(&e.tag.as_str())
+    use crate::style::computed::Display;
+    e.tag == "table"
+        || matches!(
+            e.style.used().reset_box_layout.display,
+            Some(
+                Display::Table
+                    | Display::InlineTable
+                    | Display::TableRowGroup
+                    | Display::TableRow
+                    | Display::TableCell
+            )
+        )
 }
 
 /// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без

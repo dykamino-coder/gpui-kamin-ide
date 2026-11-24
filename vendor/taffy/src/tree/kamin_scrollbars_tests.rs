@@ -211,3 +211,101 @@ fn lines_longer_than_their_box_bring_the_horizontal_bar() {
 
 #[path = "kamin_scrollbars_dependency_tests.rs"]
 mod dependency_tests;
+
+/// The bars layout settles on depend on the content only, not on the bars the
+/// box was built with: a box whose content fits the scrollport exactly in one
+/// axis keeps no bar there whatever the guess (CSS Overflow 3 §3, `auto`).
+#[test]
+fn bars_settle_to_the_same_fixed_point_from_every_guess() {
+    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
+        let mut tree: TaffyTree<()> = TaffyTree::new();
+        let cover = tree
+            .new_leaf(Style {
+                position: Position::Absolute,
+                inset: Rect { left: length(0.0), right: length(0.0), top: length(0.0), bottom: length(0.0) },
+                ..Default::default()
+            })
+            .unwrap();
+        let tall = tree
+            .new_leaf(Style {
+                display: Display::Flex,
+                margin: Rect { left: zero(), right: zero(), top: length(20.2), bottom: zero() },
+                size: Size { width: length(129.3), height: length(1584.8) },
+                ..Default::default()
+            })
+            .unwrap();
+        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
+        let root = tree
+            .new_with_children(
+                Style {
+                    display: Display::Block,
+                    size: Size { width: length(176.286_71), height: length(32.0) },
+                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
+                    scrollbar_width: BAR,
+                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
+                    ..Default::default()
+                },
+                &[cover, tall],
+            )
+            .unwrap();
+        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+        assert_eq!(
+            tree.style(root).unwrap().overflow,
+            Point { x: Overflow::Hidden, y: Overflow::Scroll },
+            "guess {guess:?}"
+        );
+    }
+}
+/// A shrink-to-fit box widens by the vertical bar that appears in its layout
+/// (CSS 2.1 §10.3.7, the gutter in its intrinsic inline size): the horizontal
+/// bar is decided at the width it settles on, not at the narrower width it had
+/// before its parent took the new gutter, and the bars do not depend on the
+/// guess they were built with (Blink `PaintLayerScrollableArea::UpdateAfterLayout`
+/// sets `SetIntrinsicLogicalWidthsDirty` and decides again at the new size).
+#[test]
+fn a_shrink_to_fit_box_decides_its_other_bar_at_the_width_its_gutter_gives_it() {
+    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
+        let mut tree: TaffyTree<()> = TaffyTree::new();
+        let content = tree
+            .new_leaf(Style {
+                display: Display::Block,
+                size: Size { width: length(161.286_71), height: length(1621.0) },
+                ..Default::default()
+            })
+            .unwrap();
+        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
+        let scroller = tree
+            .new_with_children(
+                Style {
+                    display: Display::Block,
+                    position: Position::Absolute,
+                    size: Size { width: auto(), height: length(32.0) },
+                    max_size: Size { width: length(200.0), height: length(390.0) },
+                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
+                    scrollbar_width: BAR,
+                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
+                    ..Default::default()
+                },
+                &[content],
+            )
+            .unwrap();
+        let root = tree
+            .new_with_children(
+                Style {
+                    display: Display::Flex,
+                    size: Size { width: length(800.0), height: length(600.0) },
+                    ..Default::default()
+                },
+                &[scroller],
+            )
+            .unwrap();
+        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+        assert_eq!(
+            tree.style(scroller).unwrap().overflow,
+            Point { x: Overflow::Hidden, y: Overflow::Scroll },
+            "guess {guess:?}"
+        );
+        // The tree rounds its layout to whole pixels.
+        assert_eq!(tree.layout(scroller).unwrap().size.width, (161.286_71 + BAR).round(), "guess {guess:?}");
+    }
+}

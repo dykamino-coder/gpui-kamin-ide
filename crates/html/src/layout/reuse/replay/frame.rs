@@ -71,7 +71,7 @@ impl super::super::FlowReuse {
             } else {
                 reads.remove(&node);
             }
-            if let Some(record) = pending.finish(source, Some(screen)) {
+            if let Some(record) = pending.finish(source, Some(screen), self.mask.get()) {
                 replays.insert(node, Rc::new(record));
             }
         }

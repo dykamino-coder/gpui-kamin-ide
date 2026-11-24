@@ -109,7 +109,7 @@ where
                 need || appeared || (measure && current)
             }
         };
-        let frozen = self.kamin_frozen_scrollbars(node_id);
+        let frozen = self.kamin_frozen_scrollbars(node_id, output.size);
         let next = Point {
             x: keep(auto.x, need.x, settling.appeared.x || frozen.x, current.x),
             y: keep(auto.y, need.y, settling.appeared.y || frozen.y, current.y),
@@ -120,7 +120,7 @@ where
         settling.appeared.x |= next.x && !current.x;
         settling.appeared.y |= next.y && !current.y;
         settling.passes += 1;
-        self.kamin_gutter_changed(node_id, next);
+        self.kamin_gutter_changed(node_id, next, output.size);
         let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
         let node = &mut self.taffy.nodes[node_id.into()];
         // A style shared with other nodes is copied: only this box changes its bars.

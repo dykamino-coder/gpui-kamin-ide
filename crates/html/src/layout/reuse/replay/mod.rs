@@ -178,10 +178,18 @@ impl PendingReplay {
     /// Готовая запись блока `source`, если его prepaint и краска переносимы
     /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
     /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
+    ///
+    /// The next frame checks a replay against the content mask of its root
+    /// (`ReplaySlot::refusal`, before any clip of the replayed block's
+    /// ancestors is known): a block drawn under another clip is not recorded,
+    /// as its replay could only be refused and the frame built twice. Its clip
+    /// is checked where the replay is prepainted once replay can apply a new
+    /// clip (Blink compares the property tree state of a cached subsequence).
     pub(super) fn finish(
         &self,
         source: Source,
         screen: Option<Bounds<ScaledPixels>>,
+        frame_mask: Option<Bounds<Pixels>>,
     ) -> Option<ReplayRecord> {
         let (list, at) = &self.sink;
         let (bounds, tainted) = list.with(*at, |sink| (sink.bounds(), sink.tainted()))?;
@@ -200,6 +208,9 @@ impl PendingReplay {
             return None;
         }
         let mask = captured.mask?;
+        if frame_mask.is_some_and(|frame| frame != mask.bounds) {
+            return None;
+        }
         // A command clipped where it was recorded cannot be restored by a
         // moved copy: only a record whose ink lies inside its mask moves.
         let clip = mask.bounds.scale(scale);
