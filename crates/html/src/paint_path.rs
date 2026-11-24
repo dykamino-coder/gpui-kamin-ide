@@ -71,6 +71,9 @@ pub static ARRIVED_INLINE: AtomicU64 = AtomicU64::new(0);
 pub static ARRIVED_DECORATION: AtomicU64 = AtomicU64::new(0);
 /// Nanoseconds spent deciding and writing the paint-only path.
 pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
+/// Elements a restyle of a batch probed (`revision::repaint`): the style
+/// work of an edit is proportional to them.
+pub static RESTYLED_ELEMENTS: AtomicU64 = AtomicU64::new(0);
 
 #[track_caller]
 pub(crate) fn note_plan(counter: &AtomicU64) {
@@ -126,7 +129,7 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 28;
+const PATH: usize = 29;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
@@ -166,6 +169,7 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &ARRIVED_INLINE,
         &ARRIVED_DECORATION,
         &WRITE_NS,
+        &RESTYLED_ELEMENTS,
     ]
 }
 
@@ -200,6 +204,7 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "arrived_inline",
     "arrived_decoration",
     "write_ns",
+    "restyled_elements",
     "not_own_root_canvas",
     "not_own_hover",
     "not_own_inline",

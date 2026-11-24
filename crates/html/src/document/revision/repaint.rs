@@ -176,8 +176,8 @@ impl Document {
             return refuse(&why::REFUSED_RESTYLE_ATTR);
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let targets = cache.targets(&probe, changed, &mutated);
-        let mut targets = why::why(targets, &why::REFUSED_RESTYLE_PROBE)?;
+        let mut targets = cache.targets(&probe, changed, &mutated);
+        crate::paint_path::add(&crate::paint_path::RESTYLED_ELEMENTS, targets.len() as u64);
         // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
         // values into the cascades of their children's boxes: the probe
         // folds them the same way.

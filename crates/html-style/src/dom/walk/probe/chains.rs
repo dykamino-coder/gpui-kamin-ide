@@ -19,10 +19,10 @@
 //! - a mutated element is a target, and the record of a target on a kept
 //!   path is replaced by the one its entry gives (`entered`): ancestor
 //!   compounds read the attributes the batch left;
-//! - a name that a rule reads in a sibling compound or in a relational/complex
-//!   selector argument never changes in place (such a batch is rebuilt), and the sheets of the
-//!   document do not change, so a census taken before a batch still answers
-//!   every question a selector asks the siblings.
+//! - the census of the children of a parent counts their names, so each probe
+//!   of a batch drops the contexts of the mutated elements' parents
+//!   (`forget_parents`); the sheets of the document do not change, so every
+//!   other census still answers every question a selector asks the siblings.
 use super::super::sibling_survey::{Survey, Visit};
 use crate::dom::shadow::Scope;
 use crate::dom::tree_index::TreeIndex;
@@ -53,6 +53,23 @@ struct Context {
 impl Chains {
     fn find(&self, parent: &Handle) -> Option<&Context> {
         self.0.iter().find(|c| Rc::ptr_eq(&c.parent, parent))
+    }
+
+    /// Drop the contexts at and below the parents of `mutated`: the census
+    /// of a parent counts its children's names (`+`, `~`, `:nth-child(of S)`),
+    /// and the ancestor records below it carry what it answered.
+    pub fn forget_parents(&mut self, mutated: &[Handle]) {
+        let parents: Vec<Handle> = mutated.iter().filter_map(parent).collect();
+        self.0.retain(|c| {
+            let mut at = Some(c.parent.clone());
+            while let Some(node) = at {
+                if parents.iter().any(|p| Rc::ptr_eq(p, &node)) {
+                    return false;
+                }
+                at = parent(&node);
+            }
+            true
+        });
     }
 
     /// The children of `parent` have a context.
@@ -153,4 +170,12 @@ impl Chains {
             }
         }
     }
+}
+
+/// The parent node of `node`.
+fn parent(node: &Handle) -> Option<Handle> {
+    let weak = node.parent.take();
+    let parent = weak.as_ref().and_then(|w| w.upgrade());
+    node.parent.set(weak);
+    parent
 }

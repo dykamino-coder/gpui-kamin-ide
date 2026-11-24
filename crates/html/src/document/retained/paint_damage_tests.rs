@@ -116,7 +116,8 @@ fn a_restyle_compares_the_records_at_the_rebuild_and_drops_their_frame_tree(
     let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
     let marks: Vec<_> = store.recorded().iter().map(|e| e.children.mark()).collect();
     assert!(marks.len() > 400, "settled blocks were recorded");
-    let html = page("paint", "row");
+    // A text edit beside the restyle rebuilds the document (`revision::plan`).
+    let html = page("paint", "edited");
     cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
     // The records compared at the rebuild hold no block of a frame tree.
     assert!(store.recorded().is_empty(), "a record kept its frame block");
