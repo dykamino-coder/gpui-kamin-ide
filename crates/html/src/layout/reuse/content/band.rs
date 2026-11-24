@@ -74,15 +74,29 @@ impl FlowReuse {
         nodes: &[Node],
         inherited: &BoxStyle,
         opts: &RenderOpts,
-    ) -> Option<(BandBoxes, BandKey)> {
+    ) -> Option<(BandBoxes, BandKey, u64)> {
         if opts.cx.contracts.document_root != Some(self.doc) {
             crate::why::note("band_slot.none", || "another document".into());
             return None;
         }
-        let Some(owner) = owner(&opts.cx.doc().boxes.borrow(), node_id, nodes) else {
-            crate::why::note("band_slot.none", || "no box answers for the host".into());
-            return None;
+        let frame = self.store.epoch();
+        let (owner, seen) = {
+            let mut boxes = opts.cx.doc().boxes.try_borrow_mut().ok()?;
+            let Some(owner) = owner(&boxes, node_id, nodes) else {
+                crate::why::note("band_slot.none", || "no box answers for the host".into());
+                return None;
+            };
+            let seen = boxes
+                .slot_mut(owner.slot)
+                .map(|s| *s.band_seen.get_or_insert(frame));
+            (owner, seen)
         };
+        // The first frame of a host records nothing: a record pays off only
+        // in a later frame, and a page drawn once must not pay for it.
+        if seen.is_none_or(|seen| seen >= frame) {
+            crate::why::note("band_slot.none", || "first frame of the host".into());
+            return None;
+        }
         let env = KeyEnv::of(&self.store.inputs, inherited, opts, opts, false);
         let vcx = opts.cx.vcx();
         let key = BandKey {
@@ -92,7 +106,7 @@ impl FlowReuse {
             viewport: vcx.viewport,
             images: vcx.doc.images.borrow().snapshot().revision(),
         };
-        Some((owner, key))
+        Some((owner, key, frame))
     }
 
     /// Kept results may be read: this build is no rebuild without reuse.

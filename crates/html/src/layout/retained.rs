@@ -19,4 +19,8 @@ pub(crate) struct LayoutSlot {
     pub(crate) band: Option<Box<crate::layout::float::Retained>>,
     /// The probes of the box as a float band child (`band_flow::kid_slot`).
     pub(crate) probe: Option<Box<crate::layout::float::Retained>>,
+    /// The document frame (`Store::epoch`) that first built a band host of
+    /// the box: a host keeps results from its second frame on, so a page
+    /// shown once pays nothing for them (`FlowReuse::band_key`).
+    pub(crate) band_seen: Option<u64>,
 }

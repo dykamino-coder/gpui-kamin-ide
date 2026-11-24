@@ -12,6 +12,7 @@
 //! prepared element; the host's holder builds the child once at its place.
 
 use super::kid::{Kid, Kind};
+use super::slot::Stamped;
 use super::{HostSlot, Probe, Shapes};
 use crate::layout::fragment::flow::FlowGeometry;
 use crate::text::clamp::MeasuredClamp;
@@ -75,18 +76,18 @@ pub(super) struct ProbeOutput {
 /// The kept probes of a child box (`LayoutSlot::probe`).
 #[derive(Default)]
 pub(crate) struct KidProbes {
-    entries: Vec<(ProbeInput, ProbeOutput)>,
+    entries: Vec<(ProbeInput, Stamped<ProbeOutput>)>,
     next: usize,
-    pub(super) intrinsic: Option<(f32, f32)>,
+    pub(super) intrinsic: Option<Stamped<(f32, f32)>>,
 }
 
 impl KidProbes {
-    fn find(&self, input: &ProbeInput) -> Option<ProbeOutput> {
+    fn find(&self, input: &ProbeInput) -> Option<&Stamped<ProbeOutput>> {
         let found = self.entries.iter().find(|(i, _)| i.same(input));
-        found.map(|(_, o)| o.clone())
+        found.map(|(_, o)| o)
     }
 
-    fn keep(&mut self, input: ProbeInput, output: ProbeOutput) {
+    fn keep(&mut self, input: ProbeInput, output: Stamped<ProbeOutput>) {
         if self.entries.iter().any(|(i, _)| i.same(&input)) {
             return;
         }
@@ -102,23 +103,25 @@ impl KidProbes {
 impl HostSlot {
     /// The kept answer of the probe `input` of the child with node `node`.
     pub(super) fn probe(&self, node: u64, input: &ProbeInput) -> Option<ProbeOutput> {
-        let out = self.kid(node, |kept| kept.find(input))?;
+        let out = self.kid(node, |kept| self.earlier(kept.find(input)?))?;
         crate::work::add!(LayoutCacheHits, 1);
         Some(out)
     }
 
     /// Keep the answer of a probe of this frame.
     pub(super) fn keep_probe(&self, node: u64, input: ProbeInput, output: ProbeOutput) {
+        let output = self.stamp(output);
         self.write_kid(node, |kept| kept.keep(input, output));
     }
 
     /// The child's kept min/max-content pair.
     pub(super) fn kid_intrinsic(&self, node: u64) -> Option<(f32, f32)> {
-        self.kid(node, |kept| kept.intrinsic)
+        self.kid(node, |kept| self.earlier(kept.intrinsic.as_ref()?))
     }
 
     /// Keep the child's min/max-content pair of this frame.
     pub(super) fn keep_kid_intrinsic(&self, node: u64, sizes: (f32, f32)) {
+        let sizes = self.stamp(sizes);
         self.write_kid(node, |kept| kept.intrinsic = Some(sizes));
     }
 }

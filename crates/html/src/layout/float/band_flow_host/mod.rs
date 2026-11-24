@@ -196,16 +196,13 @@ pub(crate) async fn band_flow_host(
         crate::why::note("band_slot.none", || "no reuse store".into());
     }
     let slot = reuse.and_then(|reuse| {
-        let Some((owner, key)) = reuse.band_key(e.node_id, &e.children, inherited, opts) else {
-            crate::why::note("band_slot.none", || "no box or other document".into());
-            return None;
-        };
+        let (owner, key, frame) = reuse.band_key(e.node_id, &e.children, inherited, opts)?;
         let boxes = &opts.cx.doc().boxes;
         Some(crate::layout::float::HostSlot::new(
             boxes,
             owner,
             key,
-            reuse.allows_kept(),
+            (reuse.allows_kept(), frame),
         ))
     });
     let flow =

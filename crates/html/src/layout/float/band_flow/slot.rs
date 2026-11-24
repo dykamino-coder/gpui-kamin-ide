@@ -26,8 +26,8 @@ pub(crate) struct Retained {
     key: Rc<BandKey>,
     /// `BoxTree::clock` of the publication the plans were made at.
     at: u32,
-    intrinsic: Option<(f32, f32)>,
-    plans: [Option<Rc<Plan>>; PLANS],
+    intrinsic: Option<Stamped<(f32, f32)>>,
+    plans: [Option<Stamped<Rc<Plan>>>; PLANS],
     next: usize,
     /// The probes of a child box (`kid_slot`), on its record in `LayoutSlot::probe`.
     probes: super::kid_slot::KidProbes,
@@ -42,6 +42,16 @@ impl std::fmt::Debug for Retained {
     }
 }
 
+/// A kept value and the document frame (`Store::epoch`) that made it. A
+/// frame reads only values of earlier frames: within its own frame the
+/// value's prepared elements are still in the frame's caches, and a read
+/// would build them again at prepaint.
+#[derive(Clone)]
+pub(super) struct Stamped<T> {
+    pub(super) value: T,
+    pub(super) frame: u64,
+}
+
 /// Where a host reads and writes its kept result.
 pub(crate) struct HostSlot {
     boxes: Weak<RefCell<BoxTree>>,
@@ -49,6 +59,8 @@ pub(crate) struct HostSlot {
     key: Rc<BandKey>,
     /// This build may read kept results (`FlowReuse::allows_kept`).
     read: bool,
+    /// The document frame of this build (`Store::epoch`).
+    pub(super) frame: u64,
 }
 
 impl HostSlot {
@@ -56,13 +68,14 @@ impl HostSlot {
         boxes: &Rc<RefCell<BoxTree>>,
         owner: BandBoxes,
         key: BandKey,
-        read: bool,
+        (read, frame): (bool, u64),
     ) -> Self {
         Self {
             boxes: Rc::downgrade(boxes),
             owner,
             key: Rc::new(key),
             read,
+            frame,
         }
     }
 
@@ -119,7 +132,10 @@ impl HostSlot {
 
     /// The plan kept at width `cb`.
     pub(super) fn plan(&self, cb: f32) -> Option<Rc<Plan>> {
-        let plan = self.valid(|kept| kept.plans.iter().flatten().find(|p| p.width == cb).cloned());
+        let plan = self.valid(|kept| {
+            let found = kept.plans.iter().flatten().find(|p| p.value.width == cb)?;
+            self.earlier(found)
+        });
         if plan.is_some() {
             crate::work::add!(LayoutCacheHits, 1);
         }
@@ -128,7 +144,20 @@ impl HostSlot {
 
     /// The kept min/max-content pair.
     pub(super) fn intrinsic(&self) -> Option<(f32, f32)> {
-        self.valid(|kept| kept.intrinsic)
+        self.valid(|kept| self.earlier(kept.intrinsic.as_ref()?))
+    }
+
+    /// The value of `kept`, if an earlier frame made it.
+    pub(super) fn earlier<T: Clone>(&self, kept: &Stamped<T>) -> Option<T> {
+        (kept.frame < self.frame).then(|| kept.value.clone())
+    }
+
+    /// `value` stamped with this build's frame.
+    pub(super) fn stamp<T>(&self, value: T) -> Stamped<T> {
+        Stamped {
+            value,
+            frame: self.frame,
+        }
     }
 
     /// `f` over the record of this frame's input, made anew when the kept
@@ -188,17 +217,22 @@ impl HostSlot {
     /// Keep `plan` (made in this frame) by its numbers.
     pub(super) fn keep_plan(&self, plan: &Plan) {
         self.write(|kept| {
-            if kept.plans.iter().flatten().any(|p| p.width == plan.width) {
+            if kept
+                .plans
+                .iter()
+                .flatten()
+                .any(|p| p.value.width == plan.width)
+            {
                 return;
             }
-            kept.plans[kept.next] = Some(Rc::new(numbers(plan)));
+            kept.plans[kept.next] = Some(self.stamp(Rc::new(numbers(plan))));
             kept.next = (kept.next + 1) % PLANS;
         });
     }
 
     /// Keep the min/max-content pair of this frame.
     pub(super) fn keep_intrinsic(&self, sizes: (f32, f32)) {
-        self.write(|kept| kept.intrinsic = Some(sizes));
+        self.write(|kept| kept.intrinsic = Some(self.stamp(sizes)));
     }
 }
 
