@@ -14588,7 +14588,7 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..72e63a8c63c6229b2153c3b6e49fe925a889ce69
+index 0000000000000000000000000000000000000000..81c5cb52afa39766db407236974b6a251db13238
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
 @@ -0,0 +1,885 @@
@@ -15127,7 +15127,7 @@ index 0000000000000000000000000000000000000000..72e63a8c63c6229b2153c3b6e49fe925
 +            None => None,
 +            Some(Err(why)) => Some(why),
 +            Some(_) if !comparable => Some("not_compared"),
-+            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
++            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
 +                Err(why) => Some(why),
 +                Ok(shift) => {
 +                    let damaged = match index.damage {
@@ -15758,10 +15758,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d06713ac0
+index 0000000000000000000000000000000000000000..193cb27fc13269389c5c83eb19d5613c449e2682
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,252 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15874,6 +15874,14 @@ index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d
 +            }
 +        });
 +        out
++    }
++
++    /// `plan_shift` with its CPU time in `stats.us`.
++    pub(super) fn timed_plan_shift(&self, previous: &Scene, size: (u32, u32), d: (i32, i32), stats: &mut ShiftStats) -> Result<FrameShift, &'static str> {
++        let started = std::time::Instant::now();
++        let plan = self.plan_shift(previous, size, d, stats);
++        stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
++        plan
 +    }
 +
 +    /// The frame drawn as `previous` moved by `d` device pixels, with what
@@ -16008,17 +16016,17 @@ index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/compare.rs b/vendor/gpui/src/scene/damage/shift/compare.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91de4e023d9
+index 0000000000000000000000000000000000000000..3009bd9406a9d028b9e6fadd83f1efc7aa883ca3
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/compare.rs
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,207 @@
 +//! KaminIDE patch: a primitive of the new frame against one of the last frame
 +//! moved by `d` (`plan_shift`), both cut by the moved window `W`.
 +//!
-+//! A mask clips at pixel centres, so within a cell only the mask's part in
-+//! the cell decides pixels: a pair whose masks differ (the clip of a scroller
-+//! moved against its stationary clip) is compared again with both masks cut
-+//! by the cell, and differs only in the cells where the clips really part.
++//! A mask clips at pixel centres and neither primitive writes outside its
++//! area, so a pair is compared once with both masks cut by the union of the
++//! two areas: the clip of a scroller moved against its stationary clip does
++//! not part them unless the clip edge crosses the primitive itself.
 +
 +use super::super::{Area, KIND_SHIFT, clipped, same_path};
 +use super::Item;
@@ -16032,7 +16040,7 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +    pub(super) d: (f32, f32),
 +    pub(super) w: Area,
 +    pub(super) exact: FxHashMap<(u32, u32), bool>,
-+    /// The cell part masks are cut by too, while a pair is compared within it.
++    /// The area masks are cut by too, while a pair is compared within it.
 +    pub(super) cell: Option<Area>,
 +}
 +
@@ -16108,18 +16116,15 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +        let exact = match self.exact.get(&(x.0, y.0)) {
 +            Some(&known) => known,
 +            None => {
++                let (a, b) = (x.1.area, y.1.area);
++                self.cell = Some([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]);
 +                let known = self.exact_pair(x.1, y.1);
++                self.cell = None;
 +                self.exact.insert((x.0, y.0), known);
 +                known
 +            }
 +        };
-+        if exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p)) {
-+            return true;
-+        }
-+        self.cell = Some(p.map(|v| v as f32));
-+        let within = self.exact_pair(x.1, y.1);
-+        self.cell = None;
-+        within
++        exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p))
 +    }
 +
 +    /// Two plain fills of one paint, each covering `p` (a stationary page
@@ -16673,10 +16678,10 @@ index 0000000000000000000000000000000000000000..fe731ab27fcc53bc3a54f4e7cee92d73
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/stats.rs b/vendor/gpui/src/scene/damage/shift/stats.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a32f78d5c
+index 0000000000000000000000000000000000000000..350619b14b82ab167d471e478892965d53c1a62d
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/stats.rs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,60 @@
 +//! KaminIDE patch: what a frame comparison found different, by primitive kind
 +//! (DevTools `why`): the counters that name why a scroll step or an edit was
 +//! drawn whole instead of guessing it from the page.
@@ -16703,6 +16708,8 @@ index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a
 +    pub differs: [u32; SHIFT_KINDS],
 +    /// The first differing pair: new kind, old kind, the union of their areas.
 +    pub first: Option<(u8, u8, [f32; 4])>,
++    /// CPU time of the comparison, microseconds.
++    pub us: u32,
 +}
 +
 +fn kind(item: &Item) -> u8 {
@@ -16723,7 +16730,7 @@ index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a
 +impl std::fmt::Display for ShiftStats {
 +    /// `cells 120 count 3 differ quad 40 poly 2 first quad/quad [x0,y0,x1,y1]`.
 +    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-+        write!(f, "cells {} count {}", self.cells, self.count_cells)?;
++        write!(f, "cells {} count {} us {}", self.cells, self.count_cells, self.us)?;
 +        let shown = self.differs.iter().zip(SHIFT_KIND_NAMES).filter(|(n, _)| **n > 0);
 +        for (i, (n, name)) in shown.enumerate() {
 +            write!(f, "{}{name} {n}", if i == 0 { " differ " } else { " " })?;
