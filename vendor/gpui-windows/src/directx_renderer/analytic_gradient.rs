@@ -3,23 +3,39 @@
 //! Analytic quads have a pixel program of their own (as WebRender separates
 //! `brush_solid` from `brush_linear_gradient`): the plain quad program carries
 //! neither the stop loop nor the t5/t6 buffers, so pages without gradients pay
-//! nothing for them. Both programs read the same quad instance buffer.
+//! nothing for them, not even its creation: the driver compiles the program
+//! when the first analytic quad is drawn. Both programs read the same quad
+//! instance buffer.
 
 use super::*;
 
-/// The analytic-gradient pixel program over the quad instance buffer.
+/// The analytic-gradient pixel program over the quad instance buffer. Its
+/// identity is known up front; the device object is created on first use and
+/// dropped with the pipelines when the device is lost.
 pub(super) struct GradientProgram {
-    pub(super) fragment: ID3D11PixelShader,
+    fragment: std::cell::OnceCell<ID3D11PixelShader>,
     pub(super) executable: String,
 }
 
 impl GradientProgram {
-    pub(super) fn new(device: &ID3D11Device) -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
         Ok(Self {
             executable: super::shader_identity::executable(raw.as_bytes())?,
-            fragment: create_fragment_shader(device, raw.as_bytes())?,
+            fragment: std::cell::OnceCell::new(),
         })
+    }
+
+    pub(super) fn fragment(&self, device: &ID3D11Device) -> Result<&ID3D11PixelShader> {
+        if self.fragment.get().is_none() {
+            let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
+            let _ = self.fragment.set(create_fragment_shader(device, raw.as_bytes())?);
+        }
+        Ok(self.fragment.get().expect("set above"))
+    }
+
+    pub(super) fn is_created(&self) -> bool {
+        self.fragment.get().is_some()
     }
 }
 

@@ -7218,7 +7218,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..923998ee1ddd9168eec4353c5f8d2c42655a539f
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..ced09bb8e3f057acbfd5d80e6b26c8e403f1ee5e
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -8594,7 +8594,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..923998ee1ddd9168eec4353c5f8d2c42
 +                    params,
 +                    first as u32,
 +                    len as u32,
-+                    &self.pipelines.quad_gradient.fragment,
++                    self.pipelines.quad_gradient.fragment(&devices.device)?,
 +                )?;
 +            } else {
 +                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
@@ -9088,7 +9088,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..923998ee1ddd9168eec4353c5f8d2c42
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
 @@ -957,0 +2481 @@
-+        let quad_gradient = analytic_gradient::GradientProgram::new(device)?;
++        let quad_gradient = analytic_gradient::GradientProgram::new()?;
 @@ -999,0 +2524,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
@@ -9520,32 +9520,48 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..923998ee1ddd9168eec4353c5f8d2c42
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a07f9a3ceca72a786bdf3b6bfea7a885e73724f5
+index 0000000000000000000000000000000000000000..edab36c3742ea464516540010862cb9466b3b9aa
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,166 @@
 +//! Arbitrary stop buffers follow quad instances, including retained layer instances.
 +//! WARP executes the same analytic shader directly in the destination surface.
 +//! Analytic quads have a pixel program of their own (as WebRender separates
 +//! `brush_solid` from `brush_linear_gradient`): the plain quad program carries
 +//! neither the stop loop nor the t5/t6 buffers, so pages without gradients pay
-+//! nothing for them. Both programs read the same quad instance buffer.
++//! nothing for them, not even its creation: the driver compiles the program
++//! when the first analytic quad is drawn. Both programs read the same quad
++//! instance buffer.
 +
 +use super::*;
 +
-+/// The analytic-gradient pixel program over the quad instance buffer.
++/// The analytic-gradient pixel program over the quad instance buffer. Its
++/// identity is known up front; the device object is created on first use and
++/// dropped with the pipelines when the device is lost.
 +pub(super) struct GradientProgram {
-+    pub(super) fragment: ID3D11PixelShader,
++    fragment: std::cell::OnceCell<ID3D11PixelShader>,
 +    pub(super) executable: String,
 +}
 +
 +impl GradientProgram {
-+    pub(super) fn new(device: &ID3D11Device) -> Result<Self> {
++    pub(super) fn new() -> Result<Self> {
 +        let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
 +        Ok(Self {
 +            executable: super::shader_identity::executable(raw.as_bytes())?,
-+            fragment: create_fragment_shader(device, raw.as_bytes())?,
++            fragment: std::cell::OnceCell::new(),
 +        })
++    }
++
++    pub(super) fn fragment(&self, device: &ID3D11Device) -> Result<&ID3D11PixelShader> {
++        if self.fragment.get().is_none() {
++            let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
++            let _ = self.fragment.set(create_fragment_shader(device, raw.as_bytes())?);
++        }
++        Ok(self.fragment.get().expect("set above"))
++    }
++
++    pub(super) fn is_created(&self) -> bool {
++        self.fragment.get().is_some()
 +    }
 +}
 +
@@ -13636,10 +13652,10 @@ index 0000000000000000000000000000000000000000..dbdd135742f1b6e1550d3c2eecc2093c
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a3bcf0918c2fb8a10bde475a2035e77ba3a6c32d
+index 0000000000000000000000000000000000000000..876c5122f48207dee9389bb512736cb5011ab397
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/analytic_gradient.rs
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,236 @@
 +//! Analytic geometry and stops draw directly in the target without a bitmap tile.
 +use super::*;
 +use gpui::{
@@ -13844,6 +13860,39 @@ index 0000000000000000000000000000000000000000..a3bcf0918c2fb8a10bde475a2035e77b
 +        }
 +    }
 +}
++
++fn plain(s: &mut Scene, x: f32, w: f32, color: u32) {
++    let bounds = rect(x, 0., w, 16.);
++    s.insert_primitive(Primitive::Quad(Quad {
++        bounds,
++        content_mask: ContentMask { bounds },
++        background: Background::from(gpui::rgba(color)),
++        ..Default::default()
++    }));
++}
++
++#[test]
++fn gradient_runs_keep_paint_order_and_compile_their_program_on_first_use() {
++    let d = device();
++    let mut r = offscreen(&d, 32, 16);
++    let mut s = Scene::default();
++    plain(&mut s, 0., 32., 0x00ff00ff);
++    s.finish();
++    assert_eq!(read(&mut r, &s).get_pixel(4, 8).0, [0, 255, 0, 255]);
++    assert!(!r.pipelines.quad_gradient.is_created(), "no analytic quad was drawn");
++    // plain, analytic, plain: the second plain quad must stay above the gradient.
++    let mut s = Scene::default();
++    plain(&mut s, 0., 32., 0x00ff00ff);
++    paint(&mut s, [1., 0., 32., 0.], false, false, vec![[1., 0., 0., 1., 0.], [1., 0., 0., 1., 1.]]);
++    plain(&mut s, 8., 8., 0x0000ffff);
++    s.finish();
++    let pixels = read(&mut r, &s);
++    assert_eq!(pixels.get_pixel(2, 8).0, [255, 0, 0, 255]);
++    assert_eq!(pixels.get_pixel(12, 8).0, [0, 0, 255, 255]);
++    assert_eq!(pixels.get_pixel(20, 8).0, [255, 0, 0, 255]);
++    assert!(r.pipelines.quad_gradient.is_created());
++}
+\ No newline at end of file
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..4603206bafcd29441088dade26b45392f15d2e82

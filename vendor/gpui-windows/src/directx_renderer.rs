@@ -1662,7 +1662,7 @@ impl DirectXRenderer {
                     params,
                     first as u32,
                     len as u32,
-                    &self.pipelines.quad_gradient.fragment,
+                    self.pipelines.quad_gradient.fragment(&devices.device)?,
                 )?;
             } else {
                 pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
@@ -2478,7 +2478,7 @@ impl DirectXRenderPipelines {
             64,
             create_blend_state(device)?,
         )?;
-        let quad_gradient = analytic_gradient::GradientProgram::new(device)?;
+        let quad_gradient = analytic_gradient::GradientProgram::new()?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
             "path_rasterization_pipeline",

@@ -202,3 +202,35 @@ fn translated_hard_stops_keep_the_same_pixels_on_an_iso_line() {
         }
     }
 }
+
+fn plain(s: &mut Scene, x: f32, w: f32, color: u32) {
+    let bounds = rect(x, 0., w, 16.);
+    s.insert_primitive(Primitive::Quad(Quad {
+        bounds,
+        content_mask: ContentMask { bounds },
+        background: Background::from(gpui::rgba(color)),
+        ..Default::default()
+    }));
+}
+
+#[test]
+fn gradient_runs_keep_paint_order_and_compile_their_program_on_first_use() {
+    let d = device();
+    let mut r = offscreen(&d, 32, 16);
+    let mut s = Scene::default();
+    plain(&mut s, 0., 32., 0x00ff00ff);
+    s.finish();
+    assert_eq!(read(&mut r, &s).get_pixel(4, 8).0, [0, 255, 0, 255]);
+    assert!(!r.pipelines.quad_gradient.is_created(), "no analytic quad was drawn");
+    // plain, analytic, plain: the second plain quad must stay above the gradient.
+    let mut s = Scene::default();
+    plain(&mut s, 0., 32., 0x00ff00ff);
+    paint(&mut s, [1., 0., 32., 0.], false, false, vec![[1., 0., 0., 1., 0.], [1., 0., 0., 1., 1.]]);
+    plain(&mut s, 8., 8., 0x0000ffff);
+    s.finish();
+    let pixels = read(&mut r, &s);
+    assert_eq!(pixels.get_pixel(2, 8).0, [255, 0, 0, 255]);
+    assert_eq!(pixels.get_pixel(12, 8).0, [0, 0, 255, 255]);
+    assert_eq!(pixels.get_pixel(20, 8).0, [255, 0, 0, 255]);
+    assert!(r.pipelines.quad_gradient.is_created());
+}
