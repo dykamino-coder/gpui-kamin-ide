@@ -51,6 +51,7 @@ pub(super) fn levels(rects: &[Region]) -> Vec<u32> {
 pub(super) struct LayerInstances {
     shadows: Vec<Shadow>,
     quads: Vec<Quad>,
+    gradients: gpui::GradientData,
     underlines: Vec<Underline>,
     mono: Vec<MonochromeSprite>,
     subpixel: Vec<SubpixelSprite>,
@@ -61,6 +62,8 @@ impl LayerInstances {
     fn clear(&mut self) {
         self.shadows.clear();
         self.quads.clear();
+        self.gradients.descriptors.clear();
+        self.gradients.stops.clear();
         self.underlines.clear();
         self.mono.clear();
         self.subpixel.clear();
@@ -148,7 +151,9 @@ impl DirectXRenderer {
                 all.poly.len(),
             ]);
             all.shadows.extend_from_slice(&s.shadows);
+            let first_quad = all.quads.len();
             all.quads.extend_from_slice(&s.quads);
+            all.gradients.append(s, &mut all.quads[first_quad..]);
             all.underlines.extend_from_slice(&s.underlines);
             all.mono.extend_from_slice(&s.monochrome_sprites);
             all.subpixel.extend_from_slice(&s.subpixel_sprites);
@@ -168,6 +173,7 @@ impl DirectXRenderer {
             p.shadow_pipeline.update_buffer(&device, &dc, &all.shadows)?;
         }
         if !all.quads.is_empty() {
+            p.quad_pipeline.upload_gradients(&device, &dc, &all.gradients)?;
             p.quad_pipeline.update_buffer(&device, &dc, &all.quads)?;
         }
         if !all.underlines.is_empty() {

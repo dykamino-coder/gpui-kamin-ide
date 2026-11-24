@@ -19,7 +19,15 @@ fn native_gradient_does_not_allocate_a_discarded_bitmap() {
 }
 
 #[test]
-fn radial_and_conic_backgrounds_still_acquire_a_bitmap() {
-    assert!(paint("radial-gradient(ellipse, #2367a9, #d94f32)") > 0);
+fn conic_background_still_acquires_a_bitmap() {
     assert!(paint("conic-gradient(from 17deg, #486bad, #c73a51, #486bad)") > 0);
+}
+
+#[test]
+fn radial_background_uses_the_native_path_where_supported() {
+    let rasters = paint("radial-gradient(ellipse, #2367a9, #d94f32)");
+    #[cfg(windows)]
+    assert_eq!(rasters, 0);
+    #[cfg(not(windows))]
+    assert!(rasters > 0);
 }

@@ -375,7 +375,9 @@ impl Compare<'_> {
         }
         match a >> KIND_SHIFT {
             0 => eq!(shadows),
-            1 => eq!(quads) || clipped::same_visible(&sa.quads[i], &sb.quads[j]),
+            1 => if sa.quads[i].is_analytic_gradient() || sb.quads[j].is_analytic_gradient() {
+                sa.same_gradient_quad(&sa.quads[i], sb, &sb.quads[j])
+            } else { eq!(quads) || clipped::same_visible(&sa.quads[i], &sb.quads[j]) },
             2 => same_path(&sa.paths[i], &sb.paths[j]),
             3 => eq!(underlines),
             4 => eq!(monochrome_sprites),

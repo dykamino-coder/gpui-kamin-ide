@@ -61,7 +61,7 @@ impl Plan {
 pub(crate) fn plain_kind(p: &Primitive) -> Option<u8> {
     match p {
         Primitive::Shadow(_) => Some(0),
-        Primitive::Quad(_) => Some(1),
+        Primitive::Quad(_) | Primitive::Gradient(_) => Some(1),
         Primitive::Underline(_) => Some(2),
         _ => None,
     }

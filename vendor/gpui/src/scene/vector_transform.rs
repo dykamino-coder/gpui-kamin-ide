@@ -82,6 +82,11 @@ fn surface(p: &mut PaintSurface, t: VectorTransform, m: TransformationMatrix) {
 
 fn primitive(p: &mut Primitive, t: VectorTransform, m: TransformationMatrix) {
     match p {
+        Primitive::Gradient(g) => {
+            let p = &mut g.quad;
+            p.transformation = m.compose(p.transformation);
+            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
+        }
         Primitive::Quad(p) => {
             p.transformation = m.compose(p.transformation);
             p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);

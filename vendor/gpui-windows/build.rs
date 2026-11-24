@@ -31,6 +31,8 @@ mod shader_compilation {
         // Define all modules
         let modules = [
             "quad",
+            // KaminIDE patch: analytic-gradient quads, a program of their own
+            "quad_gradient",
             "shadow",
             "path_rasterization",
             "path_sprite",
