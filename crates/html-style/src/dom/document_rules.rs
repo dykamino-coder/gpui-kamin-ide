@@ -22,7 +22,7 @@ pub(super) struct DocumentRules {
     pub has_args: Vec<HasArg>,
     pub layers: LayerRegistry,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
-    pub reads_attr: bool,
+    pub reads_attr: super::attr_reads::AttrReads,
 }
 
 pub(super) fn document_rules(
@@ -71,7 +71,10 @@ pub(super) fn document_rules(
         &vcx.doc.traversal,
         (&media, vcx),
     )?;
-    let reads_attr = sheets.iter().any(|css| css.contains("attr(")) || extra_css.contains("attr(");
+    let mut reads_attr = super::attr_reads::AttrReads::default();
+    for css in sheets.iter().map(|css| &**css).chain([extra_css]) {
+        reads_attr.scan(css);
+    }
     for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, &mut layers, vcx)?
