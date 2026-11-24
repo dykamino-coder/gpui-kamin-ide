@@ -172,7 +172,6 @@ impl Scene {
             d: (d.0 as f32, d.1 as f32),
             w: wa,
             exact: FxHashMap::default(),
-            cell: None,
         };
         let mut damage = rects::Damage::new(w, h);
         damage.uncovered(copy);
