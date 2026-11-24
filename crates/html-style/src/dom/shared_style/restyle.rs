@@ -48,17 +48,29 @@ impl SharedStyle {
         *cascaded = cascaded.with_paint_of(new);
     }
 
-    /// Replace the whole cascaded stage by `new`, for a restyle whose new
-    /// values layout reads too; the computed stage materializes again under
-    /// the same parent, and the box is laid out again by its next frame.
-    pub fn set_cascaded(&mut self, new: &Computed) {
-        let cascaded = self.cascaded_mut();
-        // The identity of the box and its facts stay the box's own.
-        let (decor_box, block_tag, plain_block_box) =
-            (cascaded.decor_box, cascaded.block_tag, cascaded.plain_block_box);
-        *cascaded = new.clone();
-        cascaded.decor_box = decor_box;
-        cascaded.block_tag = block_tag;
-        cascaded.plain_block_box = plain_block_box;
+    /// Write the groups in which a restyle changed the cascade (`old` to
+    /// `new`) into this stage, for a restyle whose new values layout reads
+    /// too; `false`, with nothing written, unless this stage holds `old` in
+    /// each of them. Other groups (and the box's identity fields) stay the
+    /// box's own. The computed stage materializes again under the same parent.
+    pub fn set_cascaded_changes(&mut self, old: &Computed, new: &Computed) -> bool {
+        macro_rules! changed {
+            ($($group:ident),+) => {{
+                if $(old.$group != new.$group && self.cascaded.$group != old.$group)||+ {
+                    return false;
+                }
+                let cascaded = self.cascaded_mut();
+                $(if old.$group != new.$group {
+                    cascaded.$group = new.$group.clone();
+                })+
+                true
+            }};
+        }
+        changed!(
+            reset_text_box, reset_cascade, reset_box_layout, reset_flex, reset_border,
+            reset_grid, reset_context, reset_generated, reset_svg_math, reset_positioned,
+            reset_effects, reset_background, reset_mask, reset_shapes, reset_fragmentation,
+            reset_transforms, inh
+        )
     }
 }

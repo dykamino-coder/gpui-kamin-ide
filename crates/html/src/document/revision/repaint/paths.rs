@@ -42,13 +42,13 @@ pub(super) fn style_paths(
                 continue;
             }
             if r.layout {
-                // The box holds the cascade the probe started from: its new
-                // stage is the probe's result (`SharedStyle::set_cascaded`).
-                let differ = differing_groups(e.style.cascaded(), &r.old);
+                // The box holds the probe's old values in every group the
+                // restyle changes (`SharedStyle::set_cascaded_changes`).
+                let differ = unheld_changes(e.style.cascaded(), &r.old, &r.new);
                 let takes = takes(e, r);
                 if !differ.is_empty() || !takes {
                     crate::why::note("plan_paths.layout", || {
-                        format!("box {id} <{}>: cascade differs in {differ:?}, takes {takes}", e.tag)
+                        format!("box {id} <{}>: changed groups it does not hold {differ:?}, takes {takes}", e.tag)
                     });
                     return None;
                 }
@@ -133,17 +133,17 @@ pub(super) fn painted_borders(style: &crate::style::computed::Computed) -> bool 
     )
 }
 
-/// The style groups in which two cascaded stages differ; the box identity
-/// fields (`decor_box`, `block_tag`, `plain_block_box`) are facts of the box,
-/// not values of its cascade.
-fn differing_groups(
-    a: &crate::style::computed::Computed,
-    b: &crate::style::computed::Computed,
+/// The groups a restyle changes (`old` to `new`) in which the box's cascaded
+/// stage `boxed` does not hold the old value.
+fn unheld_changes(
+    boxed: &crate::style::computed::Computed,
+    old: &crate::style::computed::Computed,
+    new: &crate::style::computed::Computed,
 ) -> Vec<&'static str> {
     let mut out = Vec::new();
     macro_rules! groups {
         ($($group:ident),+) => {
-            $(if a.$group != b.$group {
+            $(if old.$group != new.$group && boxed.$group != old.$group {
                 out.push(stringify!($group));
             })+
         };

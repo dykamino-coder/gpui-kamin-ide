@@ -181,7 +181,11 @@ impl Document {
         }
         for (path, id) in &style_paths {
             match (apply(&mut nodes, path), restyles.get(id)) {
-                (Some(Node::Element(e)), Some(r)) if r.layout => e.style.set_cascaded(&r.new),
+                (Some(Node::Element(e)), Some(r)) if r.layout => {
+                    if !e.style.set_cascaded_changes(&r.old, &r.new) {
+                        return refuse(&why::REFUSED_PLAN_PATHS);
+                    }
+                }
                 (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
                 _ => return refuse(&why::REFUSED_PLAN_PATHS),
             }
