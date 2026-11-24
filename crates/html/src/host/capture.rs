@@ -68,8 +68,8 @@ impl CaptureSession {
         Duration::from_micros(self.0.borrow().copy_us)
     }
 
-    /// Часть `readback_time` до готовности кадра: ожидание исполнения кадра
-    /// на GPU (на программном адаптере — его растр на CPU).
+    /// The part of `readback_time` before the frame is complete: the wait for
+    /// the GPU to execute it (on a software adapter, its CPU raster).
     pub fn gpu_wait_time(&self) -> Duration {
         Duration::from_micros(self.0.borrow().wait_us)
     }

@@ -83,9 +83,8 @@ pub trait FrameCaptureSink {
     /// её не сообщает.
     fn copied(&mut self, _copy: Duration) {}
 
-    /// Часть readback до готовности кадра: ожидание, пока GPU исполнит
-    /// команды кадра (fence). На программном адаптере это и есть растр кадра
-    /// на CPU. Вызывается перед `completed` того же кадра; backend без
-    /// разделения её не сообщает.
+    /// The readback's wait until the GPU has executed the frame (fence). On a
+    /// software adapter this is the frame's CPU raster. Called before
+    /// `completed` of the same frame; a backend without the split omits it.
     fn waited(&mut self, _wait: Duration) {}
 }

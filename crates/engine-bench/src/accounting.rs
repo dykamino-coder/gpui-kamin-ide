@@ -52,8 +52,8 @@ pub(super) struct Input {
     /// Часть readback после готовности кадра на GPU (копия в память): цена
     /// стенда, которой нет у браузеров; доска вычитает её из кадра с растром.
     pub(super) copy: Duration,
-    /// Часть readback до готовности кадра: ожидание fence. На аппаратном GPU
-    /// окно его не ждёт (present без ожидания); на WARP это CPU-растр кадра.
+    /// The readback's wait for the GPU to execute the frame (fence). The window
+    /// path never waits for it on a hardware GPU; on WARP it is the CPU raster.
     pub(super) gpu_wait: Duration,
     pub(super) total: Duration,
     pub(super) readback_to_resume: Duration,
