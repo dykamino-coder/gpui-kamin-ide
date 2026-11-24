@@ -29,10 +29,10 @@ impl ReplaySlot {
         self.record.source.id()
     }
 
-    /// Повтор этого кадра точен (`None`): узлы заняты, ни одна мера не
-    /// понадобилась, блок лёг на записанное место того же размера в том же
-    /// окружении, а диапазоны записаны в только что показанном кадре; иначе —
-    /// код отказа для журнала `why`.
+    /// This frame's replay is exact (`None`): its nodes are claimed, no measure
+    /// was needed, the block lies where it was recorded at the same size in the
+    /// same environment, and its ranges were recorded in the frame just shown;
+    /// otherwise the refusal code for the `why` journal.
     pub(in crate::layout::reuse) fn refusal(&self, window: &mut Window) -> Option<&'static str> {
         let Some(id) = self.layout.get() else {
             return Some("unclaimed");

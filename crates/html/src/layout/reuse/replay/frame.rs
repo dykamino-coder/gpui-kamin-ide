@@ -79,3 +79,14 @@ impl super::super::FlowReuse {
         self.store.replays.replace(replays);
     }
 }
+
+/// Why the root flow refused its stand-ins: `placed` of the `stand_ins`
+/// refused on screen, the rest of the `refused` were far blocks no longer far.
+pub(in crate::layout::reuse) fn note_flow_refused(placed: usize, refused: usize, stand_ins: usize) {
+    crate::why::note("layout_retry.flow_refused", || {
+        let far = refused - placed;
+        format!(
+            "{placed} of {stand_ins} stand-ins on screen without a replay, {far} far blocks no longer far"
+        )
+    });
+}

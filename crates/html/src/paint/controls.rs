@@ -39,13 +39,7 @@ fn native_color(style: &Computed, role: SystemColor) -> gpui::Hsla {
     system_color(role, style.reset_cascade.dark_color_scheme).to_hsla()
 }
 
-/// Элемент формы, который `element` рисует родной отрисовкой (HTML §15.5),
-/// а не коробками своего поддерева.
-pub(crate) fn native(tag: &str) -> bool {
-    matches!(tag, "input" | "textarea" | "select" | "progress" | "meter")
-}
-
-/// Отрисовать элемент формы. `None` — тег не относится к формам (`native`).
+/// Отрисовать элемент формы. `None` — тег не относится к формам.
 pub fn element(
     e: &Element,
     style: &BoxStyle,

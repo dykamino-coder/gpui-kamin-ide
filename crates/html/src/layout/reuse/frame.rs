@@ -99,13 +99,8 @@ impl FlowReuse {
         refused.extend(self.validate_far(window, root));
         let ok = refused.is_empty();
         if !ok {
-            crate::why::note("layout_retry.flow_refused", || {
-                let far = refused.len() - placed;
-                format!(
-                    "{placed} of {} stand-ins on screen without a replay, {far} far blocks no longer far",
-                    self.placeholders.borrow().len()
-                )
-            });
+            let stand_ins = self.placeholders.borrow().len();
+            super::replay::note_flow_refused(placed, refused.len(), stand_ins);
         }
         // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
         // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).

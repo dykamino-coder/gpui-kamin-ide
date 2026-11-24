@@ -42,17 +42,16 @@ fn inert(e: &Element) -> bool {
         && style.reset_effects.blend.is_none_or(|b| b == 0)
 }
 
-/// Коробку элемента строят только его вычисленный стиль и поддерево
-/// (css-display-3 §2), а состояние, которое она показывает, живёт в DOM и
-/// стиле, чьи изменения публикуют эпоху коробки. Поэтому не годятся:
-/// замещаемый элемент (css-display-3 §2.4: содержимое — внешний ресурс или
-/// вложенный документ, их загрузка эпохи не публикует) и элемент управления
-/// с родной отрисовкой (HTML §15.5); формула MathML и ruby со своими
-/// алгоритмами раскладки (ruby-аннотация выступает за свою коробку,
-/// css-ruby-1 §4.4); наведение и анимация (состояние указателя и часов),
-/// псевдоэлементы первой строки и буквы (их берут из строк предка) и маркер
-/// пункта списка (номер приходит от соседей). Тег сам по себе не решает:
-/// `<a>`, `<li>` без маркера или `<dd>` — такие же коробки потока, как `<div>`.
+/// The element's box is made by its computed style and its subtree alone
+/// (css-display-3 §2), and the state it shows lives in the DOM and style,
+/// whose changes publish the box's epoch. So these do not qualify: a replaced
+/// element (css-display-3 §2.4: its content is an outside resource or a nested
+/// document, whose loading publishes no epoch) and a natively drawn control
+/// (HTML §15.5); MathML and ruby with their own layout (a ruby annotation may
+/// overhang its box, css-ruby-1 §4.4); hover and animations (pointer and clock
+/// state); first-line and first-letter (taken from an ancestor's lines); a
+/// list item's marker (its number comes from siblings). The tag alone decides
+/// nothing: `<a>`, `<li>` without a marker or `<dd>` are flow boxes like `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
     !embedded(e)
         && !math_layout(e)
@@ -144,12 +143,12 @@ fn layout_reads_outside_nothing(e: &Element, vcx: crate::values::ValueCx<'_>) ->
         )
 }
 
-/// Содержимое элемента приходит не из его поддерева: замещаемый элемент или
-/// элемент управления (`<br>` — лишь принудительный разрыв строки, css-text-3 §5.1).
+/// The element's content does not come from its subtree: a replaced element or
+/// a native control (`<br>` is only a forced line break, css-text-3 §5.1).
 fn embedded(e: &Element) -> bool {
     let tag = e.tag.as_str();
     (crate::layout::box_kind::replaced_inline(tag) && tag != "br")
-        || crate::paint::controls::native(tag)
+        || crate::layout::box_kind::native_control(tag)
 }
 
 /// A MathML element laid out by the math layout (`layout::mathml`).

@@ -18,6 +18,7 @@ mod frame;
 mod slot;
 
 pub(super) use element::{Replay, ReplayRecorder};
+pub(super) use frame::note_flow_refused;
 pub(super) use slot::ReplaySlot;
 
 use super::{Counters, FlowKey, Source};
