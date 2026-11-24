@@ -1,7 +1,11 @@
 """Metric definitions, shared by every adapter. Pure functions over raw engine output (unit-tested).
 
 Frame time of a phase, ms (median over samples):
-  ours     req = first_frame_total minus the bench's own capture copy (not raster; browsers do not pay it).
+  ours     req = first_frame_total minus the bench's own capture (staging + copy + Map; browsers do not pay it) and, on a
+           hardware GPU only, minus the capture's wait for the GPU to execute the frame (the window path never waits:
+           Present DO_NOT_WAIT; Chromium's numbers are CPU spans too). On WARP / software that wait is the frame's CPU
+           raster and stays in the number. The wait is reported apart (gpu_wait_ms) on every class.
+           Numbers of gpu classes from reports before this split (boards up to 2026-11-24) included the wait.
   browser  per visit min(req, raf):
            req = edit in a task -> rAF -> message after the rendering update (probe ``frameReq``),
            raf = edit inside rAF -> message after the rendering update (probe ``frame``);
@@ -64,11 +68,32 @@ def bench_json(text):
     return json.loads(text[i:]) if i >= 0 else None
 
 
-def ours_frame(j, mode):
-    """req/raf of one engine_bench mode, ms."""
+def ours_hardware_gpu(j):
+    """True when an engine_bench report ran on a hardware GPU adapter (not WARP / software)."""
+    return (j or {}).get('gpu', {}).get('is_software_emulated') is False
+
+
+def stand_ms(d, hardware):
+    """The stand's own part of one sample's raster_gpu_readback, ms (diagnostic_scopes sample ``d``).
+
+    capture (staging + copy + Map after the frame is complete) always: browsers read no pixels back. gpu_wait (the
+    capture's fence wait for the GPU to execute the frame) only on a hardware adapter: the window path never waits for
+    it (Present DO_NOT_WAIT), and Chromium's RasterTask / Display::DrawAndSwap are CPU spans that do not wait for GPU
+    completion either. On WARP the wait is the frame's CPU raster (Chromium's software RasterTask holds it): it stays.
+    Older reports without the split: capture_copy only."""
+    d = d or {}
+    if d.get('capture') is None:
+        return d.get('capture_copy') or 0
+    return d['capture'] + ((d.get('gpu_wait') or 0) if hardware else 0)
+
+
+def ours_frame(j, mode, hardware=False):
+    """req/raf of one engine_bench mode, ms, and the median GPU wait (shown apart, see ``stand_ms``)."""
     m = j['modes'][mode]; s = m['samples_ms']
     tot = [x['first_frame_total'] for x in s]; oth = [x['pipeline_other'] for x in s]
-    cc = [(d or {}).get('capture_copy') or 0 for d in ((m.get('diagnostic_scopes') or {}).get('samples_ms') or [None] * len(s))]
+    ds = (m.get('diagnostic_scopes') or {}).get('samples_ms') or [None] * len(s)
+    gw = med([(d or {}).get('gpu_wait') for d in ds])
+    cc = [stand_ms(d, hardware) for d in ds]
     if len(cc) == len(s):
         tot = [a - c for a, c in zip(tot, cc)]
     host = [x.get('host_resources') or 0 for x in s]
@@ -76,7 +101,7 @@ def ours_frame(j, mode):
         raf = [a - b - h for a, b, h in zip(tot, oth, host)]
     else:
         raf = [a - b for a, b in zip(tot, oth)]
-    return {'req': med(tot), 'raf': med(raf), 'samples': tot}
+    return {'req': med(tot), 'raf': med(raf), 'samples': tot, 'gpu_wait': gw}
 
 
 def ours_cpu(j, mode):
@@ -96,7 +121,8 @@ def ours_cpu_cycles(rep, mode, calibration):
     d = (m.get('diagnostic_scopes') or {}).get('samples_ms') or []
     # minus the stand's capture window (copy to memory + wake after readback, the capture's own clock; one thread,
     # so its duration bounds its CPU): browsers have no such step
-    v = [max(0.0, x['process_cpu_mcycles'] * 1e6 / k - (x.get('capture_copy') or 0) - (x.get('readback_to_resume') or 0))
+    # (the GPU wait sleeps on a fence: no CPU of its own; on WARP the raster threads' cycles are the frame's raster)
+    v = [max(0.0, x['process_cpu_mcycles'] * 1e6 / k - stand_ms(x, False) - (x.get('readback_to_resume') or 0))
          for x in d if x and x.get('process_cpu_mcycles') is not None] if k else []
     return med(v)
 
