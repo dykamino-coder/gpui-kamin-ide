@@ -77,6 +77,22 @@ fn a_top_box_under_an_unwrapped_body_is_recoloured_in_place() {
 }
 
 #[test]
+fn restyled_elements_without_a_box_are_left_and_the_rest_recolours_in_place() {
+    // `.x` matches inside a `display: none` subtree and a hidden `template`:
+    // neither generates a box before or after the edit.
+    let style = "html.alt body{color:#111}html.alt .x{color:red}.h{display:none}";
+    let body = "<div class=h><p class=x>h</p></div><template><p class=x>t</p></template>";
+    let old = page(style, body);
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (true, true));
+    // An element that gains its box rebuilds.
+    let style = "html.alt body{color:#111}html.alt .h{display:block}.h{display:none}";
+    let old = page(style, "<div class=h>h</div>");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (false, false));
+}
+
+#[test]
 fn hover_layers_below_the_restyled_element_are_recoloured_in_place() {
     // A hover layer is a cascaded stage: it follows the new inherited colour.
     let style = "html.alt body{color:#111}a:hover{color:red}";

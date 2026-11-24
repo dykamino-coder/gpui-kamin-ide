@@ -204,7 +204,15 @@ impl Document {
         let mut out = HashMap::new();
         let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
         for (i, (((target, id), old), new)) in entries {
-            let (old, new) = why::why(old.zip(new), &why::REFUSED_RESTYLE_PROBE)?;
+            // A target the cascade walk does not enter before or after (in a
+            // `display: none` subtree, a dropped tag) generates no box either
+            // time (css-display-3 §2.5): its new style paints nothing. One
+            // that gains or loses its box changes layout.
+            let (old, new) = match (old, new) {
+                (Some(old), Some(new)) => (old, new),
+                (None, None) => continue,
+                _ => return refuse(&why::REFUSED_RESTYLE_LAYOUT),
+            };
             if old.rest != new.rest {
                 return refuse(&why::REFUSED_RESTYLE_REST);
             }
