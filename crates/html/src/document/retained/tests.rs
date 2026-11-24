@@ -163,20 +163,24 @@ fn updated_markup_rebuilds(cx: &mut TestAppContext) {
     );
 }
 
+/// A positioned box with a `z-index` paints in a deferred draw, its blended
+/// child in a composition group of that draw: the frame replays with the
+/// group copied (`gpui::Window::reuse_deferred_paint`) and draws the groups
+/// and labels of the built frame.
 #[gpui::test]
-fn a_group_painted_by_a_deferred_draw_is_never_replayed(cx: &mut TestAppContext) {
+fn a_group_painted_by_a_deferred_draw_replays_with_the_frame(cx: &mut TestAppContext) {
     let page = "<div style='position:relative;z-index:1;width:60px;height:60px;background:lime'>\
         <div style='mix-blend-mode:multiply;width:30px;height:30px;background:red'></div></div>";
     let (view, cx) = open(cx, page);
-    for _ in 0..4 {
-        frame(cx);
-    }
+    frame(cx);
+    let built = cx.update(|window, _| window.painted_groups());
+    assert!(!built.0.is_empty(), "the blended child made no group");
     let (builds, replays) = frames(&view, cx);
-    assert_eq!(replays, 0, "a deferred composition group was replayed");
-    assert!(
-        builds >= 4,
-        "frames with a deferred group were not rebuilt: {builds}"
-    );
+    for _ in 0..3 {
+        frame(cx);
+        assert_eq!(cx.update(|window, _| window.painted_groups()), built);
+    }
+    assert_eq!(frames(&view, cx), (builds, replays + 3));
 }
 
 /// A rebuilt frame can reuse line splits from the previous frame.
