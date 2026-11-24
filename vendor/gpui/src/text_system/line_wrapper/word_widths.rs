@@ -9,13 +9,20 @@
 //! длинной статье это было десятой частью всей холодной загрузки.
 //!
 //! Ключ — знаки куска; шрифт и кегль — у владельца (`LineWrapper` пула на
-//! шрифт и кегль). Память живёт один кадр текста (как кадр `LineLayoutCache`):
-//! первый замер следующего кадра начинает с пустой, поэтому холодная загрузка
-//! документа ничего не берёт у прошлых документов, а пул обёрток не держит
-//! ширин между кадрами. Поколение шрифтов тоже сбрасывает память: добавленный
-//! шрифт может сменить подстановку глифов. Внутри кадра память ограничена
-//! двумя поколениями по `GENERATION_WORDS` записей; частые слова переходят в
-//! текущее.
+//! шрифт и кегль). Ширина слова не зависит от раскладки, поэтому память
+//! переживает кадр: кадр текста берёт ширины, которые прочёл прошлый кадр
+//! (как `LineLayoutCache` держит строки прошлого кадра), и правка или новая
+//! ширина окна не набирают слова заново. Слово, не прочитанное кадром, уходит
+//! в следующем: память — рабочее множество последнего кадра, без таймера и без
+//! роста со временем; кадр, пропущенный обёрткой, очищает её. Blink делает то
+//! же своим `FrameShapeCache` (вытеснение по кадрам, на шрифт), Gecko — словарём
+//! слов шрифта `gfxFont` с вытеснением по таймеру `gfxFontCache`; здесь
+//! вытеснение детерминировано кадрами, а ключ поиска — сам срез текста, без
+//! выделения (выделяется только новое слово). Поколение шрифтов сбрасывает
+//! память: добавленный шрифт может сменить подстановку глифов. Внутри кадра
+//! память ограничена двумя поколениями по `GENERATION_WORDS` записей; частые
+//! слова переходят в текущее. Куски длиннее `LONGEST_WORD` байт (адреса,
+//! длинные числа) меряются без памяти: они редко повторяются и дороги по месту.
 
 use crate::Pixels;
 use collections::HashMap;
@@ -23,7 +30,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Записей в одном поколении. Частые слова текста (служебные, повторы терминов)
 /// укладываются в него; редкие уходят со сменой поколения.
-const GENERATION_WORDS: usize = 1024;
+const GENERATION_WORDS: usize = 8192;
+
+/// Длиннейший кусок в памяти, байт.
+const LONGEST_WORD: usize = 64;
 
 /// Номер кадра текста: `LineLayoutCache::finish_frame` любого окна его меняет.
 static TEXT_FRAME: AtomicUsize = AtomicUsize::new(0);
@@ -55,11 +65,20 @@ impl WordWidths {
         word: &str,
         measure: impl FnOnce() -> Pixels,
     ) -> Pixels {
+        if word.len() > LONGEST_WORD {
+            return measure();
+        }
         let stamp = (font_generation, frame);
         if self.stamp != stamp {
-            // Новые таблицы, а не `clear`: прошлый кадр не оставляет ёмкости.
-            self.current = HashMap::default();
-            self.previous = HashMap::default();
+            let next = font_generation == self.stamp.0 && frame == self.stamp.1.wrapping_add(1);
+            // Прочитанное прошлым кадром остаётся; более старое уходит. Новые
+            // таблицы, а не `clear`: старое поколение не оставляет ёмкости.
+            self.previous = if next {
+                std::mem::take(&mut self.current)
+            } else {
+                self.current = HashMap::default();
+                HashMap::default()
+            };
             self.stamp = stamp;
         }
         if let Some(width) = self.current.get(word) {
@@ -102,11 +121,39 @@ mod tests {
         }
         // Новый шрифт в системе: прежние ширины не годятся.
         assert_eq!(width(&mut widths, 1, 0), px(13.5));
-        // Следующий кадр меряет заново и не держит прошлых записей.
+        // Следующий кадр берёт ширину, прочитанную прошлым.
         assert_eq!(width(&mut widths, 1, 1), px(13.5));
+        assert_eq!(width(&mut widths, 1, 2), px(13.5));
         assert_eq!(widths.len(), 1);
+        // Кадр, пропущенный обёрткой, очищает её память.
+        assert_eq!(width(&mut widths, 1, 4), px(13.5));
         drop(width);
         assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn a_word_unread_by_a_frame_leaves_in_the_next() {
+        let mut widths = WordWidths::default();
+        let mut measured = Vec::new();
+        let mut read = |widths: &mut WordWidths, frame, word: &'static str| {
+            widths.width(0, frame, word, || {
+                measured.push(word);
+                px(1.)
+            });
+        };
+        read(&mut widths, 0, "kept");
+        read(&mut widths, 0, "dropped");
+        read(&mut widths, 1, "kept");
+        assert_eq!(widths.len(), 2, "the last frame's words are still there");
+        read(&mut widths, 2, "kept");
+        assert_eq!(widths.len(), 1);
+        read(&mut widths, 2, "dropped");
+        let long = "x".repeat(LONGEST_WORD + 1);
+        widths.width(0, 2, &long, || px(3.));
+        widths.width(0, 2, &long, || px(3.));
+        assert_eq!(widths.len(), 2, "a long piece is not kept");
+        drop(read);
+        assert_eq!(measured, ["kept", "dropped", "dropped"]);
     }
 
     #[test]
