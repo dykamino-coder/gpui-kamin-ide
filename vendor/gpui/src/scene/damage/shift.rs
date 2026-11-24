@@ -211,6 +211,25 @@ fn bin(items: &[Item], cols: u32, rows: u32) -> (Vec<u32>, Vec<u32>) {
 }
 
 impl Scene {
+    /// The primitives that may write device pixel (`x`, `y`), in paint order:
+    /// kind, index and area (the renderer's damage audit names them).
+    #[doc(hidden)]
+    pub fn primitives_at(&self, x: f32, y: f32) -> Vec<String> {
+        let mut out = Vec::new();
+        let mask = (1 << KIND_SHIFT) - 1;
+        walk(self, &|slot| self.layer(slot), &mut |s, entry| {
+            if let Some(a) = entry_area(s, entry)
+                && a[0] <= x + 1.0
+                && a[1] <= y + 1.0
+                && a[2] >= x
+                && a[3] >= y
+            {
+                out.push(format!("k{}#{} {a:?}", entry >> KIND_SHIFT, entry & mask));
+            }
+        });
+        out
+    }
+
     /// The frame drawn as `previous` moved by `d` device pixels, with what
     /// then needs a raster; `Err` names why not: the comparison cannot run,
     /// or the redraw would cover about the whole window anyway.

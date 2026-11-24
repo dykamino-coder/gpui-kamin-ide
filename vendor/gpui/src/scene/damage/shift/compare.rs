@@ -34,7 +34,7 @@ fn place(b: &mut Bounds<ScaledPixels>, m: &mut TransformationMatrix, d: (f32, f3
 }
 
 /// A fill whose pixels follow its bounds: the shader reads the position
-/// relative to them (solid, gradients), not to the window.
+/// relative to them (solid, gradients, their dither), not to the window.
 fn movable(q: &Quad) -> bool {
     matches!(
         q.background.tag,

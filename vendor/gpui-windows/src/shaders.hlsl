@@ -574,8 +574,13 @@ float4 gradient_color(Background background,
              3.0, 11.0,  1.0,  9.0,
             15.0,  7.0, 13.0,  5.0
         };
-        uint bx = (uint)position.x & 3u;
-        uint by = (uint)position.y & 3u;
+        // KaminIDE patch: the pattern is anchored at the quad's whole-pixel
+        // origin, not the window: the gradient moved by whole pixels (a
+        // scroll step drawn as the kept frame moved) keeps its noise, as a
+        // tile rastered in content space keeps it in Chromium.
+        int2 cell = int2(floor(position - floor(bounds.origin)));
+        uint bx = (uint)cell.x & 3u;
+        uint by = (uint)cell.y & 3u;
         float noise = (bayer[by * 4u + bx] + 0.5) / 16.0 - 0.5;
         color.rgb += noise / 255.0;
     }
@@ -1361,6 +1366,7 @@ struct MonochromeSpriteVertexOutput {
     float4 position: SV_Position;
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
+    nointerpolation uint sprite_id: SPRITE_ID;
     float4 clip_distance: SV_ClipDistance;
 };
 
@@ -1368,10 +1374,39 @@ struct MonochromeSpriteFragmentInput {
     float4 position: SV_Position;
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
+    nointerpolation uint sprite_id: SPRITE_ID;
     float4 clip_distance: SV_ClipDistance;
 };
 
 StructuredBuffer<MonochromeSprite> mono_sprites: register(t1);
+
+// KaminIDE patch: a glyph's coverage at frame pixel `position`, read in the
+// tile's own texel coordinates (as `polychrome_sprite_fragment` reads an
+// image). An interpolated atlas UV carries the rounding of the pixel's place
+// in the window, so the same glyph moved by whole pixels (a scroll step drawn
+// as the kept frame moved, `canvas.rs`) sampled other filter weights than a
+// fresh raster at the new place (WARP, ±1 code). The tile-local position
+// depends on the sprite's bounds and the pixel centre alone, both exact under
+// a whole-pixel move.
+float4 sprite_texel(float2 position, MonochromeSprite sprite) {
+    float2 local_position = untransform(position, sprite.transformation);
+    int2 tile_origin = int2(sprite.tile.bounds.origin);
+    int2 tile_last = int2(sprite.tile.bounds.size) - 1;
+    float2 p = (local_position - sprite.bounds.origin)
+        / sprite.bounds.size * float2(sprite.tile.bounds.size) - 0.5;
+    float2 base = floor(p);
+    float2 f = p - base;
+    int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
+    float4 sample = t_sprite.Load(int3(tile_origin + t0, 0));
+    if (any(f != 0.0)) {
+        int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
+        float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
+        float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
+        float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
+        sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
+    }
+    return sample;
+}
 
 MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
@@ -1387,13 +1422,14 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     output.position = device_position;
     output.tile_position = tile_position;
     output.color = color;
+    output.sprite_id = sprite_id;
     output.clip_distance = clip_distance;
     return output;
 }
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     input.position.xy += global_origin;
-    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
+    float sample = sprite_texel(input.position.xy, mono_sprites[input.sprite_id]).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
     return float4(input.color.rgb, input.color.a * alpha_corrected);
 }
@@ -1404,7 +1440,7 @@ MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID,
 
 SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentInput input) {
     input.position.xy += global_origin;
-    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
+    float3 sample = sprite_texel(input.position.xy, mono_sprites[input.sprite_id]).rgb;
     if (is_bgr) {
         sample = sample.bgr;
     }

@@ -15740,10 +15740,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..465b89a5e693871a631fd9f1546c817265cb2e04
+index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a6223aa7637
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,318 @@
+@@ -0,0 +1,337 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15957,6 +15957,25 @@ index 0000000000000000000000000000000000000000..465b89a5e693871a631fd9f1546c8172
 +}
 +
 +impl Scene {
++    /// The primitives that may write device pixel (`x`, `y`), in paint order:
++    /// kind, index and area (the renderer's damage audit names them).
++    #[doc(hidden)]
++    pub fn primitives_at(&self, x: f32, y: f32) -> Vec<String> {
++        let mut out = Vec::new();
++        let mask = (1 << KIND_SHIFT) - 1;
++        walk(self, &|slot| self.layer(slot), &mut |s, entry| {
++            if let Some(a) = entry_area(s, entry)
++                && a[0] <= x + 1.0
++                && a[1] <= y + 1.0
++                && a[2] >= x
++                && a[3] >= y
++            {
++                out.push(format!("k{}#{} {a:?}", entry >> KIND_SHIFT, entry & mask));
++            }
++        });
++        out
++    }
++
 +    /// The frame drawn as `previous` moved by `d` device pixels, with what
 +    /// then needs a raster; `Err` names why not: the comparison cannot run,
 +    /// or the redraw would cover about the whole window anyway.
@@ -16064,7 +16083,7 @@ index 0000000000000000000000000000000000000000..465b89a5e693871a631fd9f1546c8172
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/compare.rs b/vendor/gpui/src/scene/damage/shift/compare.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..91e2584539d637e8beda26f8e919a589e89737b3
+index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d492a126e46
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/compare.rs
 @@ -0,0 +1,190 @@
@@ -16104,7 +16123,7 @@ index 0000000000000000000000000000000000000000..91e2584539d637e8beda26f8e919a589
 +}
 +
 +/// A fill whose pixels follow its bounds: the shader reads the position
-+/// relative to them (solid, gradients), not to the window.
++/// relative to them (solid, gradients, their dither), not to the window.
 +fn movable(q: &Quad) -> bool {
 +    matches!(
 +        q.background.tag,

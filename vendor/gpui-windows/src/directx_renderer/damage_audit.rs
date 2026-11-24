@@ -49,6 +49,7 @@ impl DirectXRenderer {
         let w = self.width as usize;
         let mut count = 0usize;
         let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+        let mut first = None;
         for (i, (a, b)) in planned
             .chunks_exact(4)
             .zip(whole.chunks_exact(4))
@@ -57,6 +58,7 @@ impl DirectXRenderer {
             if a[..3] != b[..3] {
                 count += 1;
                 let (x, y) = (i % w, i / w);
+                first.get_or_insert((x, y, [a[0], a[1], a[2]], [b[0], b[1], b[2]]));
                 (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
             }
         }
@@ -67,6 +69,12 @@ impl DirectXRenderer {
                 "damage audit: frame {id} (base {base}) plan {within:?}, groups kept {kept} drawn {drawn}: \
                  {count} px differ from the whole frame in x {x0}..={x1} y {y0}..={y1}"
             );
+            if let Some((x, y, planned, whole)) = first {
+                log::error!(
+                    "damage audit: first at ({x}, {y}) planned bgr {planned:?} whole {whole:?}; primitives there {:?}",
+                    scene.primitives_at(x as f32, y as f32)
+                );
+            }
         }
         Ok(())
     }
