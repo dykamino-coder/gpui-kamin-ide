@@ -68,6 +68,12 @@ fn find_attr_call(bytes: &[u8]) -> Option<usize> {
 /// `[ <ident>? '|' ]? <ident>`; `None` — имя не литерал.
 fn attr_name(args: &str) -> Option<String> {
     let rest = args.trim_start();
+    // Строка вместо имени (`attr("href")`, так пишут страницы) — не
+    // `<attr-name>`; если подстановка её всё же примет, то как это имя.
+    if let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) {
+        let (name, after) = ident(&rest[1..]);
+        return (!name.is_empty() && after.starts_with(quote)).then(|| name.to_ascii_lowercase());
+    }
     let (first, rest) = ident(rest);
     let rest_trim = rest.trim_start();
     // Префикс пространства имён (`attr(xlink|href)`, `attr(*|title)`, `attr(|x)`).
@@ -116,9 +122,10 @@ mod tests {
         let r = reads(
             "a::after{content:\" (\" ATTR(Href) \")\"} \
              abbr::before{content:attr( title string, \"?\")} \
-             q{--n: attr(data-n type(<number>))}",
+             q{--n: attr(data-n type(<number>))} \
+             a.x::after{content:attr(\"HREF\")} b::after{content:attr('lang')}",
         );
-        assert_eq!(r.names, ["href", "title", "data-n"]);
+        assert_eq!(r.names, ["href", "title", "data-n", "lang"]);
         assert!(!r.any);
         assert!(r.reads_any_of(["data-n"].into_iter()));
         assert!(!r.reads_any_of(["class", "style"].into_iter()));
