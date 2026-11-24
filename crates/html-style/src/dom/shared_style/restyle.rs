@@ -47,4 +47,11 @@ impl SharedStyle {
         let cascaded = self.cascaded_mut();
         *cascaded = cascaded.with_paint_of(new);
     }
+
+    /// Replace the whole cascaded stage by `new`, for a restyle whose new
+    /// values layout reads too; the computed stage materializes again under
+    /// the same parent, and the box is laid out again by its next frame.
+    pub fn set_cascaded(&mut self, new: &Computed) {
+        *self.cascaded_mut() = new.clone();
+    }
 }

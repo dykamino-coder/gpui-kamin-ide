@@ -41,7 +41,12 @@ pub(super) fn style_paths(
             if e.tag != r.tag {
                 continue;
             }
-            if !(e.style.cascaded().same_paint_groups(&r.old) && takes(e, r)) {
+            let same = if r.layout {
+                *e.style.cascaded() == *r.old
+            } else {
+                e.style.cascaded().same_paint_groups(&r.old)
+            };
+            if !(same && takes(e, r)) {
                 return None;
             }
             paths.push((path, id));

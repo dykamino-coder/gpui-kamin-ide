@@ -42,11 +42,53 @@ struct Restyle {
     tag: String,
     old: Box<Computed>,
     new: Box<Computed>,
+    /// Layout reads new values too (`relayout_only`): the whole cascaded
+    /// stage is replaced, and the next frame lays the boxes out again.
+    layout: bool,
+}
+
+/// The two styles differ only in values layout reads from boxes it already
+/// has: sizes, margins, padding, borders, flex and grid parameters, fonts and
+/// text flow, besides paint values. What decides which boxes the tree has,
+/// how they form contexts, layers or scrollers (display, overflow, position,
+/// floats, generated content, effects, transforms, writing mode, `order`)
+/// is the same, so the box tree and its facts stay valid.
+fn relayout_only(old: &Computed, new: &Computed) -> bool {
+    let (a, b) = (&*old.reset_box_layout, &*new.reset_box_layout);
+    let boxes = a.display == b.display
+        && a.overflow_x == b.overflow_x
+        && a.overflow_y == b.overflow_y
+        && a.scroll == b.scroll
+        && a.container_type == b.container_type
+        && a.custom_scrollbar == b.custom_scrollbar
+        && a.resize == b.resize
+        && a.snap == b.snap;
+    boxes
+        && old.reset_flex.order == new.reset_flex.order
+        && old.decor_box == new.decor_box
+        && old.block_tag == new.block_tag
+        && old.plain_block_box == new.plain_block_box
+        && old.reset_cascade == new.reset_cascade
+        && old.reset_context == new.reset_context
+        && old.reset_generated == new.reset_generated
+        && old.reset_svg_math == new.reset_svg_math
+        && old.reset_positioned == new.reset_positioned
+        && old.reset_effects == new.reset_effects
+        && old.reset_mask == new.reset_mask
+        && old.reset_shapes == new.reset_shapes
+        && old.reset_fragmentation == new.reset_fragmentation
+        && old.reset_transforms == new.reset_transforms
+        && old.inh.table_list == new.inh.table_list
+        && old.inh.text_ink == new.inh.text_ink
+        && old.inh.writing == new.inh.writing
 }
 
 impl Restyle {
     /// Меняются наследуемые значения: их получает всё поддерево.
     fn inherited(&self) -> bool {
+        if self.layout {
+            return self.old.inh != self.new.inh;
+        }
         self.old.inh.ui != self.new.inh.ui
     }
 
@@ -139,13 +181,15 @@ impl Document {
         }
         for (path, id) in &style_paths {
             match (apply(&mut nodes, path), restyles.get(id)) {
+                (Some(Node::Element(e)), Some(r)) if r.layout => e.style.set_cascaded(&r.new),
                 (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
                 _ => return refuse(&why::REFUSED_PLAN_PATHS),
             }
         }
+        let layout = restyles.values().any(|r| r.layout);
         let mut restyled: Vec<u64> = restyles.into_keys().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(edited(nodes), restyled, style_paths))
+        Some(Plan::Restyled(edited(nodes), restyled, style_paths, layout))
     }
 
     /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;
@@ -224,15 +268,21 @@ impl Document {
                 ),
                 None => (old.style, new.style),
             };
-            // The frame may only repaint: layout reads the same values.
+            // The frame only repaints when layout reads the same values;
+            // otherwise the boxes keep their tree and are laid out again
+            // (`relayout_only`), as Blink's StyleDifference asks for layout
+            // without a reattach.
             let borders = painted_borders(&old) && painted_borders(&new);
-            if !(old.same_layout(&new) || borders && old.same_layout_but_border_colors(&new)) {
+            let layout =
+                !(old.same_layout(&new) || borders && old.same_layout_but_border_colors(&new));
+            if layout && !relayout_only(&old, &new) {
                 return refuse(&why::REFUSED_RESTYLE_LAYOUT);
             }
             let restyle = Restyle {
                 tag: super::adopt::tag_of(target),
                 old,
                 new,
+                layout,
             };
             // The canvas takes its background from the root element or from
             // `body` (css-backgrounds-3 §2.11.2): document preparation

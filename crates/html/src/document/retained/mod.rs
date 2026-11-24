@@ -239,4 +239,6 @@ mod moved_glyph_tests;
 #[cfg(test)]
 mod lifted_tests;
 #[cfg(test)]
+mod relayout_restyle_tests;
+#[cfg(test)]
 mod outline_scroll_tests;

@@ -41,7 +41,9 @@ pub(super) enum Plan {
     /// compared as at a rebuild (`layout::reuse::Store::restyle`). The paths
     /// to every box of those elements, in tree order, address them in both
     /// trees: the restyle does not change the tree's shape.
-    Restyled(Edited, Vec<u64>, Vec<(super::patch::Path, u64)>),
+    /// `true` last: layout reads new values too, and the next frame lays the
+    /// restyled boxes out again (no layer write).
+    Restyled(Edited, Vec<u64>, Vec<(super::patch::Path, u64)>, bool),
 }
 
 impl Document {
@@ -74,7 +76,7 @@ impl Document {
             }
             // Only values the scene layer takes changed: they are written
             // into it, and the recorded frame (`Slot`) replays with them.
-            Plan::Restyled(edited, restyled, paths)
+            Plan::Restyled(edited, restyled, paths, false)
                 if self.write_paint_values(&edited.nodes, &paths) =>
             {
                 self.reuse.restyle(&self.nodes, &edited.nodes, &restyled);
@@ -96,7 +98,7 @@ impl Document {
                     timings,
                 );
             }
-            Plan::Restyled(edited, restyled, _) => {
+            Plan::Restyled(edited, restyled, ..) => {
                 *self = self.adopted(
                     edited.nodes,
                     Some(&restyled),
