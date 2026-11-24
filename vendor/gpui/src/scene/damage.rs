@@ -23,7 +23,7 @@ mod clipped;
 mod group_match;
 pub(crate) mod shift;
 mod trace;
-pub use shift::{FrameShift, SHIFT_RECTS};
+pub use shift::{FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, ShiftStats};
 
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
@@ -107,6 +107,8 @@ pub(crate) struct DamageIndex {
     pub(crate) shift: Option<FrameShift>,
     /// Why a frame offered a scroll step was not drawn as a move (DevTools `why`).
     pub(crate) shift_miss: Option<&'static str>,
+    /// What the comparison of this frame with the last found (DevTools `why`).
+    pub(crate) shift_stats: Option<ShiftStats>,
 }
 
 const KIND_SHIFT: u32 = 29;
@@ -289,6 +291,7 @@ impl DamageIndex {
         self.base = 0;
         self.shift = None;
         self.shift_miss = None;
+        self.shift_stats = None;
     }
 
     /// Разложить примитивы кадровой сцены по клеткам кадра `size`.
@@ -530,7 +533,7 @@ impl Scene {
             None => None,
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
-            Some(Ok(d)) => match self.plan_shift(previous, size, d) {
+            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
                 Err(why) => Some(why),
                 Ok(shift) => {
                     let damaged = match index.damage {
@@ -685,6 +688,12 @@ impl Scene {
     #[doc(hidden)]
     pub fn frame_shift_miss(&self) -> Option<&'static str> {
         self.book.index.shift_miss
+    }
+
+    /// KaminIDE patch: what the comparison with the last frame found, when it ran.
+    #[doc(hidden)]
+    pub fn frame_shift_stats(&self) -> Option<ShiftStats> {
+        self.book.index.shift_stats
     }
 
     /// KaminIDE patch: группы, чья картинка нужна кадру, рисуемому только в

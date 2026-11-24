@@ -22,6 +22,7 @@ impl DirectXRenderer {
             plan: drawn.plan.to_string(),
             full_by: drawn.full_by.map(str::to_string),
             shift_miss: drawn.shift_miss.map(str::to_string),
+            shift_compare: drawn.shift_stats.map(|s| s.to_string()),
             delta: drawn.delta,
             moved_px: drawn.moved_px,
             raster_px: drawn.rects.iter().map(|r| r[2] as u64 * r[3] as u64).sum(),

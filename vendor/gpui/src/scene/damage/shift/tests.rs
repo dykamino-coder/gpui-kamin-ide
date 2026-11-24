@@ -130,3 +130,24 @@ fn a_move_that_explains_nothing_is_not_planned() {
     let (none, damage) = step(page(0.0, false), page(0.0, false), (0, 0));
     assert_eq!((none, damage), (None, SceneDamage::Unchanged));
 }
+
+/// Boxes scrolling inside a scroller whose clip ends above a stationary bar
+/// band (`y` 200..256), as a horizontal scroll bar leaves it.
+fn clipped_page(top: f32) -> Scene {
+    let mut quads = vec![quad(0.0, 200.0, W as f32, 56.0, green(), 0.0)];
+    for k in 0..12 {
+        let mut q = quad(8.0, top + 40.0 * k as f32, 240.0, 20.0, red(), 0.0);
+        q.content_mask.bounds.size.height = ScaledPixels(200.0);
+        q.corner_radii.top_left = ScaledPixels(4.0);
+        quads.push(q);
+    }
+    scene(&quads)
+}
+
+#[test]
+fn a_scroller_clip_that_parts_from_its_moved_copy_damages_only_its_edge() {
+    let (shift, _) = step(clipped_page(0.0), clipped_page(-20.0), (0, -20));
+    let shift = shift.expect("the step is a move");
+    // The cells along the clip's edge and the band below it, not the boxes above.
+    assert!(shift.redraw.iter().all(|r| r[1] >= 128), "{shift:?}");
+}

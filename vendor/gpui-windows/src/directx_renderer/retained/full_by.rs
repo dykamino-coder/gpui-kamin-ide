@@ -60,7 +60,7 @@ impl FullBy {
 impl DirectXRenderer {
     /// Count the plan in the `[gpu]` line: kept, whole (and why) or the area
     /// of the rectangle drawn.
-    pub(in crate::directx_renderer) fn count_plan(&mut self, plan: &Plan, shift_miss: Option<&'static str>) {
+    pub(in crate::directx_renderer) fn count_plan(&mut self, plan: &Plan, shift_miss: Option<&'static str>, shift_stats: Option<gpui::ShiftStats>) {
         use gpui::batch_cost::FramePlan;
         let window = self.width as f64 * self.height as f64;
         let area = |r: &super::Region| r.width as u64 * r.height as u64;
@@ -92,7 +92,7 @@ impl DirectXRenderer {
                 (FramePlan::Within(px as f64), drawn)
             }
         };
-        self.retained.drawn = super::super::canvas::Drawn { shift_miss, ..drawn };
+        self.retained.drawn = super::super::canvas::Drawn { shift_miss, shift_stats, ..drawn };
         self.gpu_timer.instrumentation.batches.plan(counted, window);
     }
 }

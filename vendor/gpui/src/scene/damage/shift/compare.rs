@@ -1,5 +1,10 @@
 //! KaminIDE patch: a primitive of the new frame against one of the last frame
 //! moved by `d` (`plan_shift`), both cut by the moved window `W`.
+//!
+//! A mask clips at pixel centres, so within a cell only the mask's part in
+//! the cell decides pixels: a pair whose masks differ (the clip of a scroller
+//! moved against its stationary clip) is compared again with both masks cut
+//! by the cell, and differs only in the cells where the clips really part.
 
 use super::super::{Area, KIND_SHIFT, clipped, same_path};
 use super::Item;
@@ -13,6 +18,8 @@ pub(super) struct Moved {
     pub(super) d: (f32, f32),
     pub(super) w: Area,
     pub(super) exact: FxHashMap<(u32, u32), bool>,
+    /// The cell part masks are cut by too, while a pair is compared within it.
+    pub(super) cell: Option<Area>,
 }
 
 fn at(b: Bounds<ScaledPixels>, d: (f32, f32)) -> Bounds<ScaledPixels> {
@@ -58,7 +65,10 @@ fn covers(b: Bounds<ScaledPixels>, p: [u32; 4]) -> bool {
 
 impl Moved {
     fn window(&self) -> Bounds<ScaledPixels> {
-        let w = self.w;
+        let w = match self.cell {
+            Some(c) => [self.w[0].max(c[0]), self.w[1].max(c[1]), self.w[2].min(c[2]), self.w[3].min(c[3])],
+            None => self.w,
+        };
         Bounds {
             origin: point(ScaledPixels(w[0]), ScaledPixels(w[1])),
             size: size(ScaledPixels(w[2] - w[0]), ScaledPixels(w[3] - w[1])),
@@ -67,6 +77,10 @@ impl Moved {
 
     fn cut(&self, m: &mut ContentMask<ScaledPixels>) {
         m.bounds = m.bounds.intersect(&self.window());
+        // Masks that let no pixel through are equal whatever their place.
+        if m.bounds.size.width.0 <= 0.0 || m.bounds.size.height.0 <= 0.0 {
+            m.bounds = Bounds::default();
+        }
     }
 
     fn shift(&self, m: &mut ContentMask<ScaledPixels>) {
@@ -85,7 +99,13 @@ impl Moved {
                 known
             }
         };
-        exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p))
+        if exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p)) {
+            return true;
+        }
+        self.cell = Some(p.map(|v| v as f32));
+        let within = self.exact_pair(x.1, y.1);
+        self.cell = None;
+        within
     }
 
     /// Two plain fills of one paint, each covering `p` (a stationary page

@@ -826,7 +826,7 @@ impl DirectXRenderer {
         // A frame the target and the screen already show is neither drawn nor
         // presented, and takes nothing from the latency gate.
         let plan = self.plan_frame(scene, background_appearance);
-        self.count_plan(&plan, scene.frame_shift_miss());
+        self.count_plan(&plan, scene.frame_shift_miss(), scene.frame_shift_stats());
         let keep = matches!(plan, retained::Plan::Keep);
         if keep {
             // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.

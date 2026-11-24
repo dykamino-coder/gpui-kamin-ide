@@ -103,6 +103,9 @@ impl Watch {
             .map(|(i, name)| ((*name).into(), json!(after[i].wrapping_sub(self.path[i]))))
             .collect();
         let mut entry = kamin_html::why::to_json(&kamin_html::why::take());
+        // Primitives and painted area by batch kind since the last sample (`[gpu]`,
+        // with GPU time per kind under KAMIN_DIAG_GPU_TIMING=1).
+        let gpu_batches = cx.update(|cx| cx.instrumentation().batches.take_line());
         let index = FRAMES.with(|f| f.borrow().len()) + 1;
         let fields = json!({
             "frame": index,
@@ -115,10 +118,11 @@ impl Watch {
             "phases_ms": phases,
             "paint_work": work.map(super::work::Sample::paint_profile),
             "raster": raster.map(|r| json!({
-                "plan": r.plan, "full_by": r.full_by, "shift_miss": r.shift_miss, "delta": r.delta, "moved_px": r.moved_px,
+                "plan": r.plan, "full_by": r.full_by, "shift_miss": r.shift_miss, "shift_compare": r.shift_compare, "delta": r.delta, "moved_px": r.moved_px,
                 "rects_count": r.rects.len(), "raster_px": r.raster_px, "rects": r.rects,
                 "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3,
             })),
+            "gpu_batches": gpu_batches,
             "memory": memory,
             "between": self.between,
         });

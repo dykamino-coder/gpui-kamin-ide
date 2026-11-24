@@ -21,6 +21,8 @@ pub(super) struct Drawn {
     pub(super) full_by: Option<&'static str>,
     /// Why a scroll step was not drawn as a move (`Scene::frame_shift_miss`).
     pub(super) shift_miss: Option<&'static str>,
+    /// What the comparison with the last frame found (`Scene::frame_shift_stats`).
+    pub(super) shift_stats: Option<gpui::ShiftStats>,
     pub(super) delta: Option<(i32, i32)>,
     pub(super) moved_px: u64,
     pub(super) rects: Vec<[u32; 4]>,

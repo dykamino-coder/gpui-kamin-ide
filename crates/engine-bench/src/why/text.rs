@@ -61,6 +61,9 @@ fn raster(s: &mut String, r: &Value) {
         r["raster_px"],
         rects.join(" | ")
     );
+    if let Some(c) = r["shift_compare"].as_str() {
+        let _ = writeln!(s, "  compared {c}");
+    }
     let _ = writeln!(
         s,
         "  gpu_wait {:.3} ms",
@@ -131,6 +134,9 @@ pub(super) fn render(out: &Value) -> String {
             let _ = writeln!(s, "  phase  {}", phases.join(" "));
         }
         raster(&mut s, &f["raster"]);
+        if let Some(line) = f["gpu_batches"].as_str() {
+            let _ = writeln!(s, "  {line}");
+        }
         for (name, c) in f["caches"].as_object().into_iter().flatten() {
             let misses: Vec<String> = c["misses"]
                 .as_object()

@@ -104,6 +104,10 @@ pub struct RasterReport {
     pub full_by: Option<String>,
     /// Why a frame offered a scroll step was not drawn as a move.
     pub shift_miss: Option<String>,
+    /// What the comparison with the last frame found, when it ran: cells,
+    /// differing pairs by kind, the first pair (`ShiftStats`).
+    #[serde(default)]
+    pub shift_compare: Option<String>,
     /// Device pixels the kept frame moved by (`shift`).
     pub delta: Option<(i32, i32)>,
     /// Device pixels the move copied.

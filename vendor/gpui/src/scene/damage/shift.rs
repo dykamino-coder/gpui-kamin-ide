@@ -33,8 +33,10 @@ mod items;
 #[cfg(test)]
 mod layer_tests;
 mod rects;
+mod stats;
 #[cfg(test)]
 mod tests;
+pub use stats::{SHIFT_KIND_NAMES, SHIFT_KINDS, ShiftStats};
 
 /// Most rectangles a moved frame rasters after the copy.
 pub const SHIFT_RECTS: usize = 4;
@@ -113,11 +115,13 @@ impl Scene {
     /// The frame drawn as `previous` moved by `d` device pixels, with what
     /// then needs a raster; `Err` names why not: the comparison cannot run,
     /// or the redraw would cover about the whole window anyway.
+    /// `stats` counts what the comparison found different.
     pub(super) fn plan_shift(
         &self,
         previous: &Scene,
         size: (u32, u32),
         d: (i32, i32),
+        stats: &mut ShiftStats,
     ) -> Result<FrameShift, &'static str> {
         let (w, h) = size;
         // `d == (0, 0)` compares the frame with the last one in place: the
@@ -160,6 +164,7 @@ impl Scene {
             d: (d.0 as f32, d.1 as f32),
             w: wa,
             exact: FxHashMap::default(),
+            cell: None,
         };
         let mut damage = rects::Damage::new(w, h);
         damage.uncovered(copy);
@@ -182,11 +187,13 @@ impl Scene {
             if p[0] >= p[2] || p[1] >= p[3] {
                 continue;
             }
+            stats.cells += 1;
             let (a, b) = (
                 &ea[sa[t] as usize..sa[t + 1] as usize],
                 &eb[sb[t] as usize..sb[t + 1] as usize],
             );
             if a.len() != b.len() {
+                stats.count_cells += 1;
                 damage.add(p);
                 if whole(&damage) {
                     return Err("redraw_whole");
@@ -206,6 +213,7 @@ impl Scene {
                         x.1.area[2].max(y.1.area[2]),
                         x.1.area[3].max(y.1.area[3]),
                     ];
+                    stats.differ(&x.1, &y.1, u);
                     let q = [
                         (u[0].floor().max(p[0] as f32)) as u32,
                         (u[1].floor().max(p[1] as f32)) as u32,
