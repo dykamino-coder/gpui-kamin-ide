@@ -1,6 +1,6 @@
 //! The line fragments of a painted paragraph's inline boxes, kept with its
 //! container box (`layout::retained::fragments`): every line, culled lines
-//! too, names the band owners with a run on it.
+//! too, names the band owners with a run on it and widens the lines' extent.
 
 use super::cull::Cull;
 use crate::text::paragraph::*;
@@ -19,10 +19,8 @@ impl Paragraph {
         let (Some(target), Some(cull)) = (self.fragments.as_ref(), cull) else {
             return;
         };
-        // Text of no inline box has no fragment: its container keeps no slot.
-        if self.runs.iter().all(|r| r.background_owner == 0) {
-            return;
-        }
+        // Text of no band owner has no fragment, but its lines bound the
+        // ink of a culled inline box that gains a band (`lines_ink`).
         let (extent, bleed) = cull.reach();
         target.write(extent, bleed, window.scale_factor(), |out| {
             let (runs, mut r, mut at) = (&self.runs, 0, 0);

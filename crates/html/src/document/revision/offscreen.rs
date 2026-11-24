@@ -15,7 +15,9 @@
 //! - an inline box: its line fragments as the layer's frame painted them
 //!   (`layout::retained::fragments`), in the slot of its container box and
 //!   only while that slot's frame is the layer's; a box nested in a band
-//!   owner takes its owner's fragments;
+//!   owner takes its owner's fragments, a box no band owner holds (a culled
+//!   inline box gaining a band without padding or border) its container's
+//!   lines;
 //! - a box with decorations: its run in the layer, the box with its ink;
 //! - both grown by the reach of the shadows and outline of either style; a
 //!   filter, a border image or a border shape reaches farther than this
@@ -55,40 +57,86 @@ pub(super) fn waits(
 ) -> Option<(Bounds<ScaledPixels>, Wait)> {
     // The old line bleed or decorated run belongs to the recorded frame.
     // Only the requested paint needs to be bounded here.
-    let outset = outset(&BoxStyle::shared(b.style.used()))?;
-    let area = match kind {
-        Wait::Inline => inline_area(store, boxes, old, path, a, outset)?,
-        Wait::Decoration => layer.decoration_area(
-            u32::try_from(a.node_id).ok()?,
-            gpui::px(outset),
-            store.shown_scale(),
-        )?,
+    let Some(outset) = outset(&BoxStyle::shared(b.style.used())) else {
+        crate::why::note("offscreen.unknown_area", || format!("box {}: unbounded ink", a.node_id));
+        return None;
     };
-    store.misses_shown(area).then_some((area, kind))
+    let area = match kind {
+        Wait::Inline => inline_area(store, boxes, (old, path), a, b, outset),
+        Wait::Decoration => u32::try_from(a.node_id)
+            .ok()
+            .and_then(|owner| layer.decoration_area(owner, gpui::px(outset), store.shown_scale())),
+    };
+    let Some(area) = area else {
+        crate::why::note("offscreen.unknown_area", || {
+            let missing = match kind {
+                Wait::Inline => unknown_fragments(store, boxes, a),
+                Wait::Decoration => "no decorated run in the layer".into(),
+            };
+            format!("box {} <{}>: no {kind:?} area: {missing}", a.node_id, b.tag)
+        });
+        return None;
+    };
+    if !store.misses_shown(area) {
+        crate::why::note("offscreen.on_screen", || {
+            format!("box {} <{}>: {kind:?} area {area:?} meets the shown area", a.node_id, b.tag)
+        });
+        return None;
+    }
+    Some((area, kind))
 }
 
-/// The fragments of inline box `a` grown by `outset`, device pixels.
+/// The fragments of inline box `a` (restyled to `b`) grown by `outset`,
+/// device pixels. A box whose text no band owner holds (a culled inline box
+/// and its culled ancestors) lies in its container's lines: their area bounds
+/// its new band when the band adds no padding or border beyond the lines.
 fn inline_area(
     store: &Store,
     boxes: &crate::document::boxes::BoxTree,
-    old: &[Node],
-    path: &Path,
+    (old, path): (&[Node], &Path),
     a: &Element,
+    b: &Element,
     outset: f32,
 ) -> Option<Bounds<ScaledPixels>> {
-    fragments_of(store, boxes, old, path, a, |f, owner| f.ink(owner, outset))?
+    let culled = || !super::layer_band::padded(b) && !super::layer_band::bordered(b);
+    fragments_of(store, boxes, old, path, a, |f, owner| match owner {
+        Some(owner) => f.ink(owner, outset),
+        None if culled() => f.lines_ink(outset),
+        None => None,
+    })?
+}
+
+/// Why `fragments_of` knows no fragments of inline box `a` (DevTools `why`).
+fn unknown_fragments(store: &Store, boxes: &crate::document::boxes::BoxTree, a: &Element) -> String {
+    let Some(id) = boxes.box_of(a.node_id) else {
+        return "no box".into();
+    };
+    let container = boxes
+        .ancestors(id)
+        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()));
+    let Some(container) = container else {
+        return "no inline container".into();
+    };
+    match boxes.slot(container).map(|s| s.inline.as_deref()) {
+        None => format!("the container has no layout slot: {}", boxes.describe_chain(id, 6)),
+        Some(None) => "the container's paragraphs wrote no fragments".into(),
+        Some(Some(f)) if !store.fragments_hold(f.stamp()) => {
+            format!("fragments of frame {} do not describe the layer", f.stamp())
+        }
+        Some(Some(_)) => "no band owner and no lines hold the box".into(),
+    }
 }
 
 /// `f` of the fragments of inline box `a` (or of the nearest band owner
-/// holding it) in the slot of its container and their owner, while they
-/// describe the layer.
+/// holding it, `None` when no band owner does) in the slot of its container
+/// and their owner, while they describe the layer.
 fn fragments_of<R>(
     store: &Store,
     boxes: &crate::document::boxes::BoxTree,
     old: &[Node],
     path: &[usize],
     a: &Element,
-    f: impl FnOnce(&crate::layout::retained::InlineFragments, u32) -> R,
+    f: impl FnOnce(&crate::layout::retained::InlineFragments, Option<u32>) -> R,
 ) -> Option<R> {
     use crate::document::boxes::inline::ItemKind;
     let id = boxes.box_of(a.node_id)?;
@@ -101,7 +149,7 @@ fn fragments_of<R>(
     }
     let own = u32::try_from(a.node_id).ok()?;
     if fragments.has(own) {
-        return Some(f(fragments, own));
+        return Some(f(fragments, Some(own)));
     }
     // A nested inline can inherit another run's owner. Only an opening item
     // in this recorded flow is covered by its enclosing inline fragments.
@@ -120,7 +168,7 @@ fn fragments_of<R>(
             (boxes.box_of(e.node_id)? != container).then_some(e.node_id)
         })
         .filter_map(|node| u32::try_from(node).ok())
-        .find(|owner| fragments.has(*owner))?;
+        .find(|owner| fragments.has(*owner));
     Some(f(fragments, owner))
 }
 
@@ -136,7 +184,8 @@ impl crate::document::Document {
         let e = element_at(&self.nodes, path)?;
         let boxes = self.state.boxes.borrow();
         fragments_of(&self.reuse, &boxes, &self.nodes, path, e, |f, owner| {
-            f.rects(owner).collect()
+            owner.map(|owner| f.rects(owner).collect())
         })
+        .flatten()
     }
 }

@@ -246,8 +246,7 @@ impl SceneLayer {
         &self.scene
     }
 
-    /// Whether the layer kept composition groups: a frame draws it by a
-    /// copy of its commands, not by one command (`Window::redraw_scene_layer`).
+    /// Whether the layer kept composition groups (`SceneLayer::copied`).
     pub fn has_groups(&self) -> bool {
         !self.scene.groups.is_empty()
     }

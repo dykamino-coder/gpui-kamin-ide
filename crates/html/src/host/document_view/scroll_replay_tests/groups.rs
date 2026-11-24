@@ -152,3 +152,35 @@ fn wheel_steps_after_an_edit_inside_a_group_match_fresh(cx: &mut TestAppContext)
         assert_eq!(groups(vcx), reference, "{name} still: groups");
     }
 }
+
+/// Wheel steps first (the frame scrolls its copy of the document's framed
+/// layer and the layer is left, `Store::leave_framed_layer`), then a colour
+/// edit inside a row: the frame draws what a fresh tree at that offset draws.
+#[gpui::test]
+fn an_edit_after_wheel_steps_matches_fresh(cx: &mut TestAppContext) {
+    let style = format!("{STYLE}<style>[data-edit]{{background:#e45}}</style>");
+    let html = rows(&style);
+    let edited = html.replace(
+        "<div class=r>row 13</div>",
+        "<div class=r data-edit>row 13</div>",
+    );
+    assert_ne!(html, edited, "the fixture has row 13");
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for dy in [-120., -120.] {
+        wheel_by(vcx, dy);
+        frame(vcx);
+    }
+    vcx.update(|_, cx| {
+        view.update(cx, |view, cx| {
+            view.document.update(&edited, "").unwrap();
+            cx.notify();
+        })
+    });
+    frame(vcx);
+    let offset = root(&view, vcx).offset();
+    let (quads, reference) = fresh_with(cx, &edited, offset, |c| (painted(c), groups(c)));
+    assert_same("edited", &painted(vcx), &quads);
+    assert_eq!(groups(vcx), reference, "edited: groups");
+}

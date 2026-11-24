@@ -37,6 +37,10 @@ pub(super) struct Cull {
     right: Pixels,
 }
 
+/// How far emphasis marks and decorations may reach beyond a line's band,
+/// window pixels, for the fragments of a paragraph whose lines are not culled.
+const DECORATION_REACH: f32 = 64.;
+
 impl Cull {
     /// Culling for this paint, or `None` when every line is painted.
     pub(super) fn new(
@@ -51,17 +55,45 @@ impl Cull {
         let admission = window
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
-        if admission
-            || !window.retained_root_environment()
-            || p.fragment.is_some()
-            || p.ruby_layers.is_some()
-            || !p.emph_spans.is_empty()
-            || p.decor_on()
-        {
+        if admission || !window.retained_root_environment() || p.fragment.is_some() || p.ruby_layers.is_some() {
             return None;
         }
+        if !p.emph_spans.is_empty() || p.decor_on() {
+            return None;
+        }
+        Self::placed(p, segs, pads, bounds, window, 0.)
+    }
+
+    /// The lines' placement in window space for their fragments
+    /// (`write_fragments`) when no line is culled for emphasis marks or
+    /// decorations: their ink reaches `DECORATION_REACH` farther, which
+    /// bounds an underline's offset and a mark above the line.
+    pub(super) fn fragments_only(
+        p: &Paragraph,
+        segs: &[Seg],
+        pads: &[(f32, f32)],
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+    ) -> Option<Self> {
+        let admission = window
+            .render_context::<crate::layout::fragment::line_admission::Lines>()
+            .is_some();
+        if admission || !window.retained_root_environment() || p.fragment.is_some() || p.ruby_layers.is_some() {
+            return None;
+        }
+        Self::placed(p, segs, pads, bounds, window, DECORATION_REACH)
+    }
+
+    fn placed(
+        p: &Paragraph,
+        segs: &[Seg],
+        pads: &[(f32, f32)],
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        reach: f32,
+    ) -> Option<Self> {
         let mask = window.content_mask().bounds;
-        let bleed = bleed(p, segs, pads, window);
+        let bleed = bleed(p, segs, pads, window) + px(reach);
         let widest = p
             .lines
             .iter()

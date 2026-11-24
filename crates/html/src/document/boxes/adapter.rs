@@ -14,6 +14,17 @@ impl BoxTree {
             .then(|| text.clone())
     }
 
+    /// The box whose inline content `nodes` are: the box of the flow they
+    /// published; for a slice the box tree did not publish (a render copy),
+    /// the parent box of their elements (`owner_of`); else the box
+    /// of `container`, the element whose content they are. Its layout slot
+    /// keeps the paragraph's line fragments (`layout::retained::fragments`).
+    pub(crate) fn flow_box(&self, nodes: &[Node], container: u64) -> Option<crate::dom::BoxId> {
+        self.flow_of(nodes)
+            .or_else(|| self.owner_of(nodes))
+            .or_else(|| self.box_of(container))
+    }
+
     /// The retained text of the flow of `nodes`, normalized when it was
     /// prepared: a paragraph whose text equals it takes it as its own
     /// (`InlineContent::shared_text`) instead of a copy. A slice the box tree

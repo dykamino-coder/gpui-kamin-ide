@@ -142,7 +142,9 @@ pub(super) fn write_paint_values(
                     if let Some(frame) = waits(Wait::Inline, path, a, b) {
                         frames.push(frame);
                     } else {
-                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                        crate::paint_path::refuse_with(&crate::paint_path::REFUSED_BY_LAYER, || {
+                            format!("band of <{}> {owner} has no run in the layer", b.tag)
+                        });
                         return None;
                     }
                 }
@@ -188,8 +190,10 @@ pub(super) fn write_paint_values(
     }
     // A box the layer cannot record again builds the frame as before;
     // nothing is written then.
-    if !records.iter().all(|r| held(r.1)) {
-        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+    if let Some((_, id)) = records.iter().find(|r| !held(r.1)) {
+        crate::paint_path::refuse_with(&crate::paint_path::REFUSED_BY_LAYER, || {
+            format!("box {id} has no run the layer can record again")
+        });
         return None;
     }
     let values = writes.apply(paths, &mut records)?;

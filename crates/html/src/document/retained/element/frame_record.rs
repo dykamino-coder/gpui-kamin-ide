@@ -127,7 +127,8 @@ impl Retained {
                         );
                     }
                     (Some(plan), None) => {
-                        record.paint = window.replay_retained_paint_scrolled(&record.paint, &plan)
+                        record.paint = window.replay_retained_paint_scrolled(&record.paint, &plan);
+                        self.builder.store.leave_framed_layer();
                     }
                     (None, _) => {
                         record.replay_paint(window, &self.builder.store, self.same_prepaint)

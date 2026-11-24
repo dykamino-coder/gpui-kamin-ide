@@ -57,9 +57,9 @@ impl Store {
             .is_some_and(|(first, last)| last == frame && recorded >= first && recorded < frame)
     }
 
-    /// The paint of the frame being drawn did not stay at its recorded
-    /// indices (`gpui::RecordedLayer::Spliced`): no record made in it
-    /// replays, as when the chain of frames breaks (`draw`).
+    /// The layer no longer holds the commands at the ranges recorded in it
+    /// (box runs moved, a refused repaint, a frame that moved its copy): no
+    /// record made in it replays, as when the chain of frames breaks (`draw`).
     pub(crate) fn void_frame_records(&self) {
         self.forget_replays();
         self.epoch.set(self.epoch.get() + 1);
@@ -98,14 +98,14 @@ impl Store {
                 window.paint_scene_layer(&layer);
                 (Some(layer), None)
             }
-            gpui::RecordedLayer::Spliced(why) => {
-                self.void_frame_records();
-                (None, Some(why))
-            }
             gpui::RecordedLayer::Painted(why) => (None, Some(why)),
         };
         self.layer.no_layer.set(why);
-        let inner = inner.filter(|_| layer.is_some());
+        // A layer the frame copies as its own paint (`gpui::SceneLayer::framed`)
+        // takes writes and box runs, but its record is the frame's: the frame
+        // replays and scrolls the copy (`leave_framed_layer`).
+        let framed = layer.as_ref().is_some_and(|l| l.content().framed());
+        let inner = inner.filter(|_| layer.is_some() && !framed);
         self.layer.layer.replace(layer);
         inner
     }
@@ -123,6 +123,16 @@ impl Store {
         (outer, inner)
     }
 
+    /// A frame moved the copy of a framed layer (a scrolled replay of the
+    /// frame): the layer no longer shows what the frame does, so the records
+    /// in it are void and the next frame paints a new one.
+    pub(crate) fn leave_framed_layer(&self) {
+        if self.scene_layer().is_some_and(|l| l.content().framed()) {
+            self.void_frame_records();
+            self.drop_layer();
+        }
+    }
+
     /// Drop the layer: the next frame paints a new one.
     #[track_caller]
     pub(crate) fn drop_layer(&self) {
@@ -132,8 +142,6 @@ impl Store {
         let why = gpui::NoLayer {
             reason: "dropped",
             site,
-            groups: 0,
-            backdrops: 0,
         };
         self.layer.no_layer.set(Some(why));
         self.layer.deferred.start(None, self.epoch.get(), 1.);

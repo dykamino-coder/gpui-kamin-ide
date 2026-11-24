@@ -104,3 +104,23 @@ fn a_live_document_still_receives_fragments_after_a_borrow_conflict() {
         size(px(100.), px(20.))
     );
 }
+
+#[test]
+fn the_lines_ink_bounds_every_line_culled_text_too() {
+    let mut f = InlineFragments::default();
+    assert!(f.lines_ink(0.).is_none());
+    f.begin(1, (10., 110.), 2., 1.);
+    // A paragraph of culled text only: no fragment, its lines all the same.
+    f.push(0, 40., 60.);
+    f.push(0, 60., 80.);
+    assert!(!f.has(0));
+    // Another paragraph of the same frame adds its lines.
+    f.begin(1, (0., 50.), 1., 1.);
+    f.push(7, 0., 20.);
+    let ink = f.lines_ink(1.).unwrap();
+    assert_eq!(ink.origin, point(ScaledPixels(-3.), ScaledPixels(-3.)));
+    assert_eq!(ink.size, size(ScaledPixels(116.), ScaledPixels(86.)));
+    // A new frame starts the lines again.
+    f.begin(2, (0., 50.), 0., 1.);
+    assert!(f.lines_ink(0.).is_none());
+}
