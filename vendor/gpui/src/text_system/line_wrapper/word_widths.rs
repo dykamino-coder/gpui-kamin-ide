@@ -7,38 +7,60 @@
 //! же шрифтом даёт ту же ширину. Без памяти каждый замер min-content заново
 //! набирал каждое слово (DirectWrite: свой текстовый макет на слово), и на
 //! длинной статье это было десятой частью всей холодной загрузки.
+//!
 //! Ключ — знаки куска; шрифт и кегль — у владельца (`LineWrapper` пула на
-//! шрифт и кегль), поколение шрифтов сбрасывает память: добавленный шрифт
-//! может сменить подстановку глифов.
-//! Память ограничена двумя поколениями по `GENERATION_WORDS` записей (как
-//! `LineLayoutCache`: текущее и прошлое), частые слова переходят в текущее.
+//! шрифт и кегль). Память живёт один кадр текста (как кадр `LineLayoutCache`):
+//! первый замер следующего кадра начинает с пустой, поэтому холодная загрузка
+//! документа ничего не берёт у прошлых документов, а пул обёрток не держит
+//! ширин между кадрами. Поколение шрифтов тоже сбрасывает память: добавленный
+//! шрифт может сменить подстановку глифов. Внутри кадра память ограничена
+//! двумя поколениями по `GENERATION_WORDS` записей; частые слова переходят в
+//! текущее.
 
 use crate::Pixels;
 use collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Записей в одном поколении. Частые слова текста (служебные, повторы терминов)
 /// укладываются в него; редкие уходят со сменой поколения.
 const GENERATION_WORDS: usize = 1024;
 
+/// Номер кадра текста: `LineLayoutCache::finish_frame` любого окна его меняет.
+static TEXT_FRAME: AtomicUsize = AtomicUsize::new(0);
+
+/// Конец кадра текста: память ширин всех обёрток становится негодной.
+pub(crate) fn finish_frame() {
+    TEXT_FRAME.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Текущий кадр текста.
+pub(crate) fn text_frame() -> usize {
+    TEXT_FRAME.load(Ordering::Relaxed)
+}
+
 #[derive(Default)]
 pub(crate) struct WordWidths {
-    font_generation: usize,
+    /// (поколение шрифтов, кадр текста), под которыми записаны ширины.
+    stamp: (usize, usize),
     current: HashMap<Box<str>, Pixels>,
     previous: HashMap<Box<str>, Pixels>,
 }
 
 impl WordWidths {
-    /// Ширина куска `word` из памяти или из `measure` (набор платформы).
+    /// Ширина куска `word` в кадре `frame` из памяти или из `measure` (набор платформы).
     pub(crate) fn width(
         &mut self,
         font_generation: usize,
+        frame: usize,
         word: &str,
         measure: impl FnOnce() -> Pixels,
     ) -> Pixels {
-        if self.font_generation != font_generation {
-            self.current.clear();
-            self.previous.clear();
-            self.font_generation = font_generation;
+        let stamp = (font_generation, frame);
+        if self.stamp != stamp {
+            // Новые таблицы, а не `clear`: прошлый кадр не оставляет ёмкости.
+            self.current = HashMap::default();
+            self.previous = HashMap::default();
+            self.stamp = stamp;
         }
         if let Some(width) = self.current.get(word) {
             return *width;
@@ -66,23 +88,25 @@ mod tests {
     use crate::px;
 
     #[test]
-    fn a_repeated_word_is_measured_once_per_font_generation() {
+    fn a_repeated_word_is_measured_once_per_frame_and_font_generation() {
         let mut widths = WordWidths::default();
         let mut calls = 0;
-        for _ in 0..3 {
-            let w = widths.width(0, "word", || {
+        let mut width = |widths: &mut WordWidths, generation, frame| {
+            widths.width(generation, frame, "word", || {
                 calls += 1;
-                px(12.5)
-            });
-            assert_eq!(w, px(12.5));
+                px(12.5 + generation as f32)
+            })
+        };
+        for _ in 0..3 {
+            assert_eq!(width(&mut widths, 0, 0), px(12.5));
         }
-        assert_eq!(calls, 1);
         // Новый шрифт в системе: прежние ширины не годятся.
-        let w = widths.width(1, "word", || {
-            calls += 1;
-            px(13.)
-        });
-        assert_eq!((w, calls), (px(13.), 2));
+        assert_eq!(width(&mut widths, 1, 0), px(13.5));
+        // Следующий кадр меряет заново и не держит прошлых записей.
+        assert_eq!(width(&mut widths, 1, 1), px(13.5));
+        assert_eq!(widths.len(), 1);
+        drop(width);
+        assert_eq!(calls, 3);
     }
 
     #[test]
@@ -90,12 +114,12 @@ mod tests {
         let mut widths = WordWidths::default();
         let mut measured = 0;
         for i in 0..(GENERATION_WORDS * 5) {
-            widths.width(0, &format!("w{i}"), || {
+            widths.width(0, 0, &format!("w{i}"), || {
                 measured += 1;
                 px(1.)
             });
             // Частое слово между редкими не набирается заново.
-            widths.width(0, "the", || {
+            widths.width(0, 0, "the", || {
                 measured += 1;
                 px(2.)
             });
