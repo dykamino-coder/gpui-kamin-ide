@@ -1,10 +1,10 @@
 //! KaminIDE patch: a primitive of the new frame against one of the last frame
 //! moved by `d` (`plan_shift`), both cut by the moved window `W`.
 //!
-//! A mask clips at pixel centres, so within a cell only the mask's part in
-//! the cell decides pixels: a pair whose masks differ (the clip of a scroller
-//! moved against its stationary clip) is compared again with both masks cut
-//! by the cell, and differs only in the cells where the clips really part.
+//! A mask clips at pixel centres and neither primitive writes outside its
+//! area, so a pair is compared once with both masks cut by the union of the
+//! two areas: the clip of a scroller moved against its stationary clip does
+//! not part them unless the clip edge crosses the primitive itself.
 
 use super::super::{Area, KIND_SHIFT, clipped, same_path};
 use super::Item;
@@ -18,7 +18,7 @@ pub(super) struct Moved {
     pub(super) d: (f32, f32),
     pub(super) w: Area,
     pub(super) exact: FxHashMap<(u32, u32), bool>,
-    /// The cell part masks are cut by too, while a pair is compared within it.
+    /// The area masks are cut by too, while a pair is compared within it.
     pub(super) cell: Option<Area>,
 }
 
@@ -94,18 +94,15 @@ impl Moved {
         let exact = match self.exact.get(&(x.0, y.0)) {
             Some(&known) => known,
             None => {
+                let (a, b) = (x.1.area, y.1.area);
+                self.cell = Some([a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]);
                 let known = self.exact_pair(x.1, y.1);
+                self.cell = None;
                 self.exact.insert((x.0, y.0), known);
                 known
             }
         };
-        if exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p)) {
-            return true;
-        }
-        self.cell = Some(p.map(|v| v as f32));
-        let within = self.exact_pair(x.1, y.1);
-        self.cell = None;
-        within
+        exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p))
     }
 
     /// Two plain fills of one paint, each covering `p` (a stationary page

@@ -112,6 +112,14 @@ impl Scene {
         out
     }
 
+    /// `plan_shift` with its CPU time in `stats.us`.
+    pub(super) fn timed_plan_shift(&self, previous: &Scene, size: (u32, u32), d: (i32, i32), stats: &mut ShiftStats) -> Result<FrameShift, &'static str> {
+        let started = std::time::Instant::now();
+        let plan = self.plan_shift(previous, size, d, stats);
+        stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
+        plan
+    }
+
     /// The frame drawn as `previous` moved by `d` device pixels, with what
     /// then needs a raster; `Err` names why not: the comparison cannot run,
     /// or the redraw would cover about the whole window anyway.
