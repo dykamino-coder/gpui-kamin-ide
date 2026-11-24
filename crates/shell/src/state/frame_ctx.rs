@@ -102,16 +102,22 @@ impl RootView {
             if active_sid != self.ed.editor_tabs_session {
                 if let Some(old) = self.ed.editor_tabs_session.take() {
                     let tabs = std::mem::take(&mut self.ed.editor_tabs);
+                    // Удалённую сессию уже не активировать: её табы и URL
+                    // освобождаются здесь, а не копятся в стэше до выхода.
+                    let keep =
+                        crate::state::session_stash::session_alive(&old, self.sessions.as_ref());
                     // Веб-страница уходит в стэш вместе с табами
-                    if let Some(inp) = &self.browser_input {
+                    if keep && let Some(inp) = &self.browser_input {
                         let url = inp.read(cx).value().to_string();
                         if !url.is_empty() {
                             self.browser_url_stash.insert(old.clone(), url);
                         }
                     }
-                    self.ed
-                        .editor_tabs_stash
-                        .insert(old, (tabs, self.ed.editor_active));
+                    if keep {
+                        self.ed
+                            .editor_tabs_stash
+                            .insert(old, (tabs, self.ed.editor_active));
+                    }
                     self.ed.editor_active = 0;
                 }
                 // Подъём набора новой сессии; бут-табы (old=None, непустые)

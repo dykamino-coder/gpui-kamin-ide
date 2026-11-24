@@ -97,7 +97,10 @@ impl RootView {
                         // Хост шлёт снапшот на каждый чих; одинаковый —
                         // не повод пересобирать сайдбар.
                         if self.sessions.as_ref() != Some(&snap) {
-                            self.sessions = Some(snap)
+                            self.sessions = Some(snap);
+                            // Удалённая неактивная сессия: её стэш больше
+                            // некому поднять (state/session_stash.rs).
+                            self.prune_session_stash();
                         }
                         if sync_boot_layout {
                             self.persist_active_session_layout();
