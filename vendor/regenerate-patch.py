@@ -96,7 +96,7 @@ FIXES = {
         "Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.",
     ],
     "gpui-windows": [
-        "Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile.",
+        "Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.",
         "Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.",
         "Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.",
         "Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.",

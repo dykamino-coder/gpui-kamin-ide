@@ -482,11 +482,10 @@ float4 gradient_color(Background background,
                       float4 solid_color, float4 color0, float4 color1) {
     float4 color;
 
+    // KaminIDE patch: tag 5 (analytic) never reaches this function; those quads
+    // are drawn by `quad_gradient_fragment`, the only program that references
+    // the stop loop and its t5/t6 buffers.
     switch (background.tag) {
-        case 5:
-            color = analytic_gradient(background.stop_count, position, bounds);
-            color.a *= background.solid.a;
-            break;
         case 0:
             color = solid_color;
             break;
@@ -722,13 +721,8 @@ float2 untransform(float2 position, TransformationMatrix t) {
     return mul(p, inv);
 }
 
-float4 quad_fragment(QuadFragmentInput input): SV_Target {
-    input.position.xy += global_origin;
-    Quad quad = quads[input.quad_id];
-    // KaminIDE patch: дальше работаем в координатах самого квада.
-    float2 local_position = untransform(input.position.xy, quad.transformation);
-    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
-    input.background_solid, input.background_color0, input.background_color1);
+float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
+                          float4 input_border_color) {
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.top_right == 0.0 &&
@@ -851,7 +845,7 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
     float4 color = background_color;
     if (border_sdf < antialias_threshold) {
-        float4 border_color = input.border_color;
+        float4 border_color = input_border_color;
         // Dashed border logic when border_style == 1
         // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
         if (quad.border_style == 1 || quad.border_style == 2) {
@@ -2058,4 +2052,28 @@ float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
         dst = round(saturate(o) * 255.0) / 255.0;
     }
     return dst;
+}
+
+// KaminIDE patch: two programs over one quad instance buffer. Plain quads never
+// carry the analytic stop loop or the t5/t6 gradient buffers; the renderer
+// draws runs of analytic-gradient quads with quad_gradient_fragment only.
+float4 quad_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    // KaminIDE patch: from here on, work in the quad's own coordinates.
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
+    input.background_solid, input.background_color0, input.background_color1);
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
+}
+QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    return quad_vertex(vertex_id, instance_id);
+}
+float4 quad_gradient_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
+    background_color.a *= quad.background.solid.a;
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
 }

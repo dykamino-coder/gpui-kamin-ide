@@ -1,6 +1,6 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile.
+# 1. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.
 # 2. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
 # 3. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
 # 4. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
@@ -4927,10 +4927,13 @@ index 52a60ac53fb7aaa1662e92f83fb830b154e5cdf7..8ef3e5b95b367e09dc3a45729de76a5e
 +[target.'cfg(target_os = "windows")'.dependencies.sha2]
 +version = "0.10.9"
 diff --git a/vendor/gpui-windows/build.rs b/vendor/gpui-windows/build.rs
-index 1db95715e26daf9ab0ca5097183a763cf3aa8340..80fd40163cd9aafe50206edcfb9ee5d5094e2acb
+index 1db95715e26daf9ab0ca5097183a763cf3aa8340..1b1df44eb6b3d4f9179366a8ec0d799e7860d13c
 --- a/vendor/gpui-windows/build.rs
 +++ b/vendor/gpui-windows/build.rs
-@@ -40,0 +41,6 @@
+@@ -33,0 +34,2 @@
++            // KaminIDE patch: analytic-gradient quads, a program of their own
++            "quad_gradient",
+@@ -40,0 +43,6 @@
 +            // KaminIDE patch: backdrop blur (тосты)
 +            "blur",
 +            // KaminIDE patch: frame clear drawn with blending off (Intel)
@@ -7215,7 +7218,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b55d8e36c
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..923998ee1ddd9168eec4353c5f8d2c42655a539f
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7593,28 +7596,30 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +    swap_chain: Option<IDXGISwapChain1>,
 +    /// KaminIDE patch (#76): см. FrameLatencyGate.
 +    frame_gate: Option<FrameLatencyGate>,
-@@ -94,0 +458,6 @@
+@@ -88,0 +452 @@
++    quad_gradient: analytic_gradient::GradientProgram,
+@@ -94,0 +459,6 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
 +    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 +    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +    group_tiles_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +470,2 @@
+@@ -100,0 +471,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +493 @@
+@@ -121,0 +494 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +506 @@
+@@ -133,0 +507 @@
 +            ..
-@@ -142,0 +516 @@
+@@ -142,0 +517 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +528,4 @@
+@@ -153,0 +529,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -159 +537,17 @@
+@@ -159 +538,17 @@
 -        if disable_direct_composition {
 +        Self::build(hwnd, directx_devices, disable_direct_composition, false)
 +    }
@@ -7633,7 +7638,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        offscreen: bool,
 +    ) -> Result<Self> {
 +        if disable_direct_composition && !offscreen {
-@@ -167,2 +561,6 @@
+@@ -167,2 +562,6 @@
 -        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 -            .context("Creating DirectX resources")?;
 +        let resources = if offscreen {
@@ -7642,13 +7647,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 +        }
 +        .context("Creating DirectX resources")?;
-@@ -180 +578 @@
+@@ -180 +579 @@
 -                .set_swap_chain(&resources.swap_chain)
 +                .set_swap_chain(resources.swap_chain()?)
-@@ -192,0 +591,2 @@
+@@ -192,0 +592,2 @@
 +            disable_direct_composition,
 +            offscreen,
-@@ -193,0 +594,11 @@
+@@ -193,0 +595,11 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -7660,12 +7665,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            blend_premultiplied: None,
 +            blend_replace: None,
 +            group_tiles: group_tiles::enabled(),
-@@ -195,0 +607 @@
+@@ -195,0 +608 @@
 +            backdrop: None,
-@@ -196,0 +609,2 @@
+@@ -196,0 +610,2 @@
 +            unpresented: false,
 +            retained: Default::default(),
-@@ -197,0 +612,39 @@
+@@ -197,0 +613,39 @@
 +    }
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
@@ -7705,18 +7710,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +
 +    pub fn unregister_external_texture(&self, id: AtlasTextureId) {
 +        self.atlas.unregister_external(id);
-@@ -204 +657,2 @@
+@@ -204 +658,2 @@
 -    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
 +    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
 +        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +674,2 @@
+@@ -220 +675,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -222,0 +678,2 @@
+@@ -222,0 +679,2 @@
 +        // KaminIDE patch: the clear is a draw, issued once the target, the
 +        // viewport and the frame parameters are bound (quad_clear).
-@@ -224,7 +680,0 @@
+@@ -224,7 +681,0 @@
 -            device_context.ClearRenderTargetView(
 -                resources
 -                    .render_target_view
@@ -7724,7 +7729,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 -                    .context("missing render target view")?,
 -                clear_color,
 -            );
-@@ -241 +691,6 @@
+@@ -241 +692,6 @@
 -        Ok(())
 +        // KaminIDE patch: a frame drawn within a rectangle clears it later,
 +        // under the scissor (`render`).
@@ -7732,7 +7737,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            return Ok(());
 +        }
 +        self.clear_frame(clear_color)
-@@ -246,6 +701,12 @@
+@@ -246,6 +702,12 @@
 -        let result = unsafe {
 -            self.resources
 -                .as_ref()
@@ -7751,7 +7756,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        else {
 +            self.unpresented = false;
 +            return Ok(());
-@@ -253 +714,43 @@
+@@ -253 +715,43 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
 +        // or the compositor is behind, a plain Present blocked the UI thread
@@ -7796,10 +7801,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +    /// must present even if the scene is unchanged.
 +    pub(crate) fn needs_presentation(&self) -> bool {
 +        self.unpresented
-@@ -256,0 +760,2 @@
+@@ -256,0 +761,2 @@
 +        // KaminIDE patch: layer buffers die with the device.
 +        self.layer_cache.clear();
-@@ -263,65 +768,33 @@
+@@ -263,65 +769,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7898,7 +7903,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -340 +813,65 @@
+@@ -340 +814,65 @@
 -        self.render(scene, background_appearance)?;
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (retained.rs): unite this frame's damage into every
@@ -7965,21 +7970,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -348,0 +886,4 @@
+@@ -348,0 +887,4 @@
 +    ///
 +    /// KaminIDE patch: with `within`, the target keeps the last frame and only
 +    /// that rectangle is cleared and drawn (scissor, `retained.rs`); groups
 +    /// whose composite cannot reach it are not drawn.
-@@ -352,0 +894 @@
+@@ -352,0 +895 @@
 +        within: Option<Region>,
-@@ -354 +896,5 @@
+@@ -354 +897,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
 +        self.backdrop_pending = self.backdrop.is_some();
 +        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +903,74 @@
+@@ -357,2 +904,74 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -8056,33 +8061,35 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +984,6 @@
+@@ -365,0 +985,6 @@
 +            // KaminIDE patch: a layer draws its own batches from its buffers.
 +            if let PrimitiveBatch::Layer(index) = batch {
 +                self.draw_layer(scene, index)?;
 +                continue;
 +            }
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -370,2 +994,2 @@
+@@ -370,2 +995,4 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
-+                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
-@@ -377 +1001 @@
++                PrimitiveBatch::Quads(range) => {
++                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
++                }
+@@ -377 +1004 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +1003 @@
+@@ -379 +1006 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +1006 @@
+@@ -382 +1009 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +1009 @@
+@@ -385 +1012 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -387,0 +1012 @@
+@@ -387,0 +1015 @@
 +                PrimitiveBatch::Layer(_) => Ok(()),
-@@ -402,0 +1028,404 @@
+@@ -402,0 +1031,404 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8487,19 +8494,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1440,0 @@
+@@ -412 +1443,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1453,4 @@
+@@ -425 +1456,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1519,2 @@
+@@ -488 +1522,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1526,24 @@
+@@ -494 +1529,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8525,7 +8532,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_frames();
-@@ -500,19 +1555 @@
+@@ -500,19 +1558 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8546,39 +8553,76 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 -
 -        resources.recreate_resources(devices, width, height)?;
 +        recreate(resources, devices)?;
-@@ -539,0 +1577,2 @@
+@@ -539,0 +1580,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,0 +1639,7 @@
+@@ -599,4 +1641,9 @@
+-    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
+-        if len == 0 {
+-            return Ok(());
+-        }
++    /// `quads` are the batch's instances, uploaded at `start` of the quad buffer.
++    fn draw_quads(&mut self, quads: &[Quad], start: usize) -> Result<()> {
 +        // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
 +        // групп очищаются прозрачным — там первый квад рисуется как есть.
 +        let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
 +        if self.group_target.is_none() {
 +            self.backdrop_pending = false;
 +        }
-+        let (start, len) = if skip { (1, len.saturating_sub(1)) } else { (start, len) };
-@@ -621,0 +1668,6 @@
++        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
+@@ -604,9 +1651,21 @@
+-        self.pipelines.quad_pipeline.draw_range(
+-            &devices.device_context,
+-            self.globals
+-                .batch_params_buffer
+-                .as_ref()
+-                .context("batch params buffer missing")?,
+-            start as u32,
+-            len as u32,
+-        )
++        let params = self
++            .globals
++            .batch_params_buffer
++            .as_ref()
++            .context("batch params buffer missing")?;
++        let pipeline = &self.pipelines.quad_pipeline;
++        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
++            if analytic {
++                pipeline.bind_gradients(&devices.device_context);
++                pipeline.draw_range_with_program(
++                    &devices.device_context,
++                    params,
++                    first as u32,
++                    len as u32,
++                    &self.pipelines.quad_gradient.fragment,
++                )?;
++            } else {
++                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
++            }
++        }
++        Ok(())
+@@ -621,0 +1681,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1696,2 @@
+@@ -643,0 +1709,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1726,4 @@
+@@ -672 +1739,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1873,4 @@
+@@ -815,0 +1886,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1881,40 @@
+@@ -819,0 +1894,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8619,7 +8663,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1924,365 @@
+@@ -822,0 +1937,365 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -8985,10 +9029,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        };
 +        Some((quad, place.page))
 +    }
-@@ -840 +2306 @@
+@@ -840 +2319 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2357,12 @@
+@@ -890,0 +2370,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9001,14 +9045,14 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -900 +2378 @@
+@@ -900 +2391 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2382,2 @@
+@@ -904 +2395,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -912,0 +2392,31 @@
+@@ -912,0 +2405,31 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9040,10 +9084,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -930 +2440 @@
+@@ -930 +2453 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -999,0 +2510,22 @@
+@@ -957,0 +2481 @@
++        let quad_gradient = analytic_gradient::GradientProgram::new(device)?;
+@@ -999,0 +2524,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9066,25 +9112,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2534 @@
+@@ -1001,0 +2548 @@
 +            group_tiles_pipeline,
-@@ -1009,0 +2543,2 @@
+@@ -1003,0 +2551 @@
++            quad_gradient,
+@@ -1009,0 +2558,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2554,4 @@
+@@ -1018,0 +2569,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2563 @@
+@@ -1023,0 +2578 @@
 +            comp_root,
-@@ -1030 +2570,2 @@
+@@ -1030 +2585,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2605 @@
+@@ -1063,0 +2620 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2618,16 @@
+@@ -1076 +2633,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9102,11 +9150,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2647,3 @@
+@@ -1089,0 +2662,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2659,0 @@
+@@ -1100,30 +2674,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9137,9 +9185,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 -        })
 -    }
 -
-@@ -1169,0 +2700 @@
-+        self.bind_gradients(device_context);
-@@ -1190,0 +2722,46 @@
+@@ -1190,0 +2736,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9185,36 +9231,54 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-+        self.bind_gradients(device_context);
-@@ -1197 +2774 @@
+@@ -1197 +2787 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1221,0 +2799 @@
-+        self.bind_gradients(device_context);
-@@ -1250,0 +2829 @@
-+        self.bind_gradients(device_context);
-@@ -1275,0 +2855,2 @@
+@@ -1214,0 +2805,19 @@
++    ) -> Result<()> {
++        self.draw_range_with_program(
++            device_context,
++            batch_params_buffer,
++            first_instance,
++            instance_count,
++            &self.fragment,
++        )
++    }
++
++    /// KaminIDE patch: the instance range drawn by another pixel program over
++    /// the same instance buffer (analytic-gradient quads).
++    fn draw_range_with_program(
++        &self,
++        device_context: &ID3D11DeviceContext,
++        batch_params_buffer: &ID3D11Buffer,
++        first_instance: u32,
++        instance_count: u32,
++        fragment: &ID3D11PixelShader,
+@@ -1227 +2836 @@
+-            &self.fragment,
++            fragment,
+@@ -1275,0 +2885,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2900,2 @@
+@@ -1319 +2930,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2929,2 @@
+@@ -1347 +2959,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +2941 @@
+@@ -1358 +2971 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1370,2 +2953,4 @@
+@@ -1370,2 +2983,4 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    let (render_target, render_target_view) = match swap_chain {
 +        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
 +        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
 +    };
-@@ -1400,0 +2986,36 @@
+@@ -1400,0 +3016,36 @@
 +    let mut render_target_view = None;
 +    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
 +    Ok((render_target, render_target_view))
@@ -9251,7 +9315,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3114,33 @@
+@@ -1492,0 +3144,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9285,7 +9349,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +    }
 +}
 +
-@@ -1701,7 +3355 @@
+@@ -1701,7 +3385 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9294,14 +9358,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1719,0 +3368,6 @@
+@@ -1711,0 +3390,2 @@
++        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
++        QuadGradient,
+@@ -1719,0 +3400,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1796,0 +3451,12 @@
+@@ -1763,0 +3450,4 @@
++                },
++                ShaderModule::QuadGradient => match target {
++                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
++                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
+@@ -1796,0 +3487,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9314,9 +9386,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3468 @@
+@@ -1801,0 +3504 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3470 @@
+@@ -1803,64 +3506 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9382,11 +9454,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1883,0 +3488,3 @@
+@@ -1875,0 +3516 @@
++                ShaderModule::QuadGradient => "quad_gradient",
+@@ -1883,0 +3525,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3661,40 @@
+@@ -2054,17 +3698,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9446,14 +9520,48 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..06f3c7eb4190935d445127bd00f9780b
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..10a0d04038dc80a8891b35a151f795f15a1ab7d1
+index 0000000000000000000000000000000000000000..a07f9a3ceca72a786bdf3b6bfea7a885e73724f5
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,150 @@
 +//! Arbitrary stop buffers follow quad instances, including retained layer instances.
 +//! WARP executes the same analytic shader directly in the destination surface.
++//! Analytic quads have a pixel program of their own (as WebRender separates
++//! `brush_solid` from `brush_linear_gradient`): the plain quad program carries
++//! neither the stop loop nor the t5/t6 buffers, so pages without gradients pay
++//! nothing for them. Both programs read the same quad instance buffer.
 +
 +use super::*;
++
++/// The analytic-gradient pixel program over the quad instance buffer.
++pub(super) struct GradientProgram {
++    pub(super) fragment: ID3D11PixelShader,
++    pub(super) executable: String,
++}
++
++impl GradientProgram {
++    pub(super) fn new(device: &ID3D11Device) -> Result<Self> {
++        let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
++        Ok(Self {
++            executable: super::shader_identity::executable(raw.as_bytes())?,
++            fragment: create_fragment_shader(device, raw.as_bytes())?,
++        })
++    }
++}
++
++/// Splits `quads` (instances `first..`) into maximal runs of one program and
++/// yields `(analytic, first_instance, count)` in paint order. Runs keep the
++/// primitive order exactly, so splitting never reorders overlapping quads.
++pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, usize, usize)> + '_ {
++    let mut at = 0;
++    std::iter::from_fn(move || {
++        let analytic = quads.get(at)?.is_analytic_gradient();
++        let len = quads[at..].iter().take_while(|q| q.is_analytic_gradient() == analytic).count();
++        let run = (analytic, first + at, len);
++        at += len;
++        Some(run)
++    })
++}
 +
 +pub(super) struct GradientBuffers {
 +    descriptors: Buffer,
@@ -10088,10 +10196,10 @@ index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc11
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8392c324b7bb11f4a648265275440d224601ec20
+index 0000000000000000000000000000000000000000..cfdd342d993937cef6ebc47030d4e2307ac7514d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,72 @@
 +//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 +
 +use super::*;
@@ -10147,6 +10255,7 @@ index 0000000000000000000000000000000000000000..8392c324b7bb11f4a648265275440d22
 +            &self.pipelines.blur_pipeline.shader_executables,
 +            &self.pipelines.clear_pipeline.shader_executables,
 +        ].into_iter().flatten().cloned().collect();
++        shader_executables.push(self.pipelines.quad_gradient.executable.clone());
 +        shader_executables.sort();
 +        shader_executables.dedup();
 +        let context = Some(gpui::frame_capture::FrameContext {
@@ -15601,7 +15710,7 @@ index 0000000000000000000000000000000000000000..c3854feacc6d9499b7d38dbc985fdee7
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/shader_identity.rs b/vendor/gpui-windows/src/directx_renderer/shader_identity.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..94ca4d573b7f0bd4b13ab93325ef7b51c48026b9
+index 0000000000000000000000000000000000000000..bfa57ba04ea4c7fa6c81c394cf72c77cada04d8d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/shader_identity.rs
 @@ -0,0 +1,62 @@
@@ -15610,7 +15719,7 @@ index 0000000000000000000000000000000000000000..94ca4d573b7f0bd4b13ab93325ef7b51
 +use super::*;
 +use sha2::{Digest, Sha256};
 +
-+fn executable(bytes: &[u8]) -> Result<String> {
++pub(super) fn executable(bytes: &[u8]) -> Result<String> {
 +    anyhow::ensure!(bytes.starts_with(b"DXBC") && bytes.len() >= 32, "Invalid DXBC container");
 +    let word = |offset: usize| -> Result<usize> {
 +        Ok(u32::from_le_bytes(bytes.get(offset..offset + 4).context("Truncated DXBC word")?.try_into()?) as usize)
@@ -15669,19 +15778,59 @@ index 0000000000000000000000000000000000000000..94ca4d573b7f0bd4b13ab93325ef7b51
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/shader_tests.rs b/vendor/gpui-windows/src/directx_renderer/shader_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..466ea5cb2db3187171b6661caada356c5ea83f7d
+index 0000000000000000000000000000000000000000..66bc45bc252fa7697544ece13b45f9048affab6a
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/shader_tests.rs
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,79 @@
 +//! Компиляция всех debug-шейдеров без пути к исходному worktree в байткоде.
 +
 +use super::shader_resources::{RawShaderBytes, ShaderModule, ShaderTarget};
++
++/// Only the analytic-gradient program binds the stop buffers: the plain quad
++/// and path programs must not carry the stop loop or its t5/t6 views.
++#[test]
++fn only_the_gradient_program_binds_the_stop_buffers() {
++    use windows::Win32::Graphics::Direct3D::Fxc::D3DReflect;
++    use windows::Win32::Graphics::Direct3D::{D3D_SIT_CBUFFER, D3D_SIT_SAMPLER};
++    use windows::Win32::Graphics::Direct3D11::{
++        D3D11_SHADER_DESC, D3D11_SHADER_INPUT_BIND_DESC, ID3D11ShaderReflection,
++    };
++    use windows::core::Interface;
++    let bind_points = |module| {
++        let shader = RawShaderBytes::new(module, ShaderTarget::Fragment).unwrap();
++        let bytes = shader.as_bytes();
++        let mut raw = std::ptr::null_mut();
++        unsafe {
++            D3DReflect(bytes.as_ptr().cast(), bytes.len(), &ID3D11ShaderReflection::IID, &mut raw)
++                .unwrap();
++            let reflection = ID3D11ShaderReflection::from_raw(raw);
++            let mut desc = D3D11_SHADER_DESC::default();
++            reflection.GetDesc(&mut desc).unwrap();
++            // Shader resource views (t registers) only, not b/s registers.
++            (0..desc.BoundResources)
++                .filter_map(|index| {
++                    let mut bind = D3D11_SHADER_INPUT_BIND_DESC::default();
++                    reflection.GetResourceBindingDesc(index, &mut bind).unwrap();
++                    (bind.Type != D3D_SIT_CBUFFER && bind.Type != D3D_SIT_SAMPLER)
++                        .then_some(bind.BindPoint)
++                })
++                .collect::<Vec<_>>()
++        }
++    };
++    let gradient = bind_points(ShaderModule::QuadGradient);
++    assert!(gradient.contains(&5) && gradient.contains(&6), "{gradient:?}");
++    for module in [ShaderModule::Quad, ShaderModule::PathSprite] {
++        let points = bind_points(module);
++        assert!(!points.contains(&5) && !points.contains(&6), "{module:?}: {points:?}");
++    }
++}
 +
 +#[test]
 +fn debug_shader_bytecode_is_independent_of_the_source_directory() {
 +    let directory = env!("CARGO_MANIFEST_DIR");
 +    let modules = [
 +        ShaderModule::Quad,
++        ShaderModule::QuadGradient,
 +        ShaderModule::Shadow,
 +        ShaderModule::Underline,
 +        ShaderModule::PathRasterization,
@@ -17068,7 +17217,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d89cbf88b4
+index ba89c6873354fb7449b8294878e080a68c3dd29b..ecc93d26b0d1e932f5e616a07e0ff7ccff269495
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -17231,12 +17380,11 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +        }
 +    }
 +    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
-@@ -349,0 +486,4 @@
-+        case 5:
-+            color = analytic_gradient(background.stop_count, position, bounds);
-+            color.a *= background.solid.a;
-+            break;
-@@ -359,8 +499,5 @@
+@@ -348,0 +485,3 @@
++    // KaminIDE patch: tag 5 (analytic) never reaches this function; those quads
++    // are drawn by `quad_gradient_fragment`, the only program that references
++    // the stop loop and its t5/t6 buffers.
+@@ -359,8 +498,5 @@
 -            // Expand the short side to be the same as the long side
 -            if (bounds.size.x > bounds.size.y) {
 -                direction.y *= bounds.size.y / bounds.size.x;
@@ -17250,7 +17398,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +            // невадратной коробке заваливала угол: у наклонного градиента
 +            // полосы шли круче браузерных. Длина линии — проекция коробки на
 +            // направление, доля точки считается от её середины.
-@@ -369,39 +506,23 @@
+@@ -369,39 +505,23 @@
 -            float2 center_to_point = position - center;
 -            float t = dot(center_to_point, direction) / length(direction);
 -            // Check the direct to determine the use x or y
@@ -17313,7 +17461,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +            float t = length(d);
 +
 +            color = gradient_mix(background, t, color0, color1);
-@@ -440,0 +562,22 @@
+@@ -440,0 +561,22 @@
 +    // KaminIDE patch: сглаживание ступенек градиента.
 +    //
 +    // Плавный переход между близкими цветами ложится в 8 бит с видимыми
@@ -17336,21 +17484,25 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +        color.rgb += noise / 255.0;
 +    }
 +
-@@ -509,0 +653,4 @@
+@@ -509,0 +652,4 @@
 +    // KaminIDE patch: преобразование квада. Поле обязано идти последним и
 +    // совпадать с `Quad` в scene.rs — раскладка структуры не проверяется
 +    // сборкой, расхождение видно только мусором на экране.
 +    TransformationMatrix transformation;
-@@ -537 +684,3 @@
+@@ -537 +683,3 @@
 -    float4 device_position = to_device_position(unit_vertex, quad.bounds);
 +    // KaminIDE patch: вершина проходит через матрицу — так же, как у спрайтов.
 +    float4 device_position =
 +        to_device_position_transformed(unit_vertex, quad.bounds, quad.transformation);
-@@ -545 +694,2 @@
+@@ -545 +693,2 @@
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, quad.bounds, quad.content_mask, quad.transformation);
-@@ -558,0 +709,16 @@
+@@ -559,4 +708,18 @@
+-float4 quad_fragment(QuadFragmentInput input): SV_Target {
+-    Quad quad = quads[input.quad_id];
+-    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
+-    input.background_solid, input.background_color0, input.background_color1);
 +// KaminIDE patch: обратное преобразование точки в систему координат квада.
 +//
 +// Форма квада (скругления, рамки, градиент) считается по его собственным
@@ -17367,17 +17519,12 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +    return mul(p, inv);
 +}
 +
-@@ -559,0 +726 @@
-+    input.position.xy += global_origin;
-@@ -561 +728,3 @@
--    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
-+    // KaminIDE patch: дальше работаем в координатах самого квада.
-+    float2 local_position = untransform(input.position.xy, quad.transformation);
-+    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
-@@ -580 +749 @@
++float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
++                          float4 input_border_color) {
+@@ -580 +743 @@
 -    float2 the_point = input.position.xy - quad.bounds.origin;
 +    float2 the_point = local_position - quad.bounds.origin;
-@@ -619 +788,17 @@
+@@ -619 +782,17 @@
 -    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
 +    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
 +    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
@@ -17396,21 +17543,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +    float2 inner_max = half_size - reduced_edges.zw;
 +    float2 straight_border_inner_corner_to_point =
 +        max(inner_min - center_to_point, center_to_point - inner_max);
-@@ -671 +856,2 @@
+@@ -669 +848 @@
+-        float4 border_color = input.border_color;
++        float4 border_color = input_border_color;
+@@ -671 +850,2 @@
 -        if (quad.border_style == 1) {
 +        // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
 +        if (quad.border_style == 1 || quad.border_style == 2) {
-@@ -685 +871,3 @@
+@@ -685 +865,3 @@
 -            const float dash_length_per_width = 2.0;
 +            // KaminIDE patch: у точечной рамки штрих равен зазору — так её и
 +            // рисует браузер; у штриховой штрих вдвое длиннее.
 +            const float dash_length_per_width = (quad.border_style == 2) ? 1.0 : 2.0;
-@@ -862,0 +1051,2 @@
+@@ -862,0 +1045,2 @@
 +    // KaminIDE patch: прежние наши `inset` + `box_bounds` слиты в поля
 +    // upstream; раскладка обязана совпадать с `struct Shadow` в scene.rs.
-@@ -913,0 +1104 @@
+@@ -913,0 +1098 @@
 +    input.position.xy += global_origin;
-@@ -952,0 +1144,12 @@
+@@ -952,0 +1138,12 @@
 +    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
 +    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
 +    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
@@ -17423,22 +17573,22 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +                             shadow.element_corner_radii);
 +        alpha *= saturate(own + 0.5);
 +    }
-@@ -966,0 +1170,2 @@
+@@ -966,0 +1164,2 @@
 +    Bounds color_bounds;
 +    TransformationMatrix color_transform;
-@@ -1002 +1207 @@
+@@ -1002 +1201 @@
 -    Bounds bounds = sprite.bounds;
 +    Bounds bounds = sprite.color_bounds;
-@@ -1017 +1222,3 @@
+@@ -1017 +1216,3 @@
 -    float4 color = gradient_color(background, input.position.xy, bounds,
 +    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
 +        + sprite.color_transform.translation;
 +    float4 color = gradient_color(background, color_position, bounds,
-@@ -1055,0 +1263 @@
+@@ -1055,0 +1257 @@
 +    input.position.xy += global_origin;
-@@ -1107,0 +1316 @@
+@@ -1107,0 +1310 @@
 +    input.position.xy += global_origin;
-@@ -1116,3 +1325,10 @@
+@@ -1116,3 +1319,10 @@
 -        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
 -        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
 -        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
@@ -17452,17 +17602,17 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +        float2 st = (local / height) - float2(0., 0.5);
 +        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
 +        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
-@@ -1123 +1339 @@
+@@ -1123 +1333 @@
 -        float distance_in_pixels = distance * underline.bounds.size.y;
 +        float distance_in_pixels = distance * height;
-@@ -1184,0 +1401 @@
+@@ -1184,0 +1395 @@
 +    input.position.xy += global_origin;
-@@ -1194,0 +1412 @@
+@@ -1194,0 +1406 @@
 +    input.position.xy += global_origin;
-@@ -1221,0 +1440,2 @@
+@@ -1221,0 +1434,2 @@
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1463,6 @@
+@@ -1243,3 +1457,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -17472,9 +17622,9 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1256,0 +1480 @@
+@@ -1256,0 +1474 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1482,36 @@
+@@ -1258,2 +1476,36 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -17513,7 +17663,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +        }
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1527,535 @@
+@@ -1268,0 +1521,559 @@
 +
 +/*
 +**
@@ -18049,6 +18199,31 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..793548066b081aba674695a7f5a7d0d8
 +    }
 +    return dst;
 +}
++
++// KaminIDE patch: two programs over one quad instance buffer. Plain quads never
++// carry the analytic stop loop or the t5/t6 gradient buffers; the renderer
++// draws runs of analytic-gradient quads with quad_gradient_fragment only.
++float4 quad_fragment(QuadFragmentInput input): SV_Target {
++    input.position.xy += global_origin;
++    Quad quad = quads[input.quad_id];
++    // KaminIDE patch: from here on, work in the quad's own coordinates.
++    float2 local_position = untransform(input.position.xy, quad.transformation);
++    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
++    input.background_solid, input.background_color0, input.background_color1);
++    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
++}
++QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
++    return quad_vertex(vertex_id, instance_id);
++}
++float4 quad_gradient_fragment(QuadFragmentInput input): SV_Target {
++    input.position.xy += global_origin;
++    Quad quad = quads[input.quad_id];
++    float2 local_position = untransform(input.position.xy, quad.transformation);
++    float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
++    background_color.a *= quad.background.solid.a;
++    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
++}
+\ No newline at end of file
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
 index 8a5327d1a88477e1b0fed913046d34cd29754174..3d5d4f53ca8c548b48210cec519a2660246891ef
 --- a/vendor/gpui-windows/src/window.rs

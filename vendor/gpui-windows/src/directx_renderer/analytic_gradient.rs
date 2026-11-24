@@ -1,7 +1,41 @@
 //! Arbitrary stop buffers follow quad instances, including retained layer instances.
 //! WARP executes the same analytic shader directly in the destination surface.
+//! Analytic quads have a pixel program of their own (as WebRender separates
+//! `brush_solid` from `brush_linear_gradient`): the plain quad program carries
+//! neither the stop loop nor the t5/t6 buffers, so pages without gradients pay
+//! nothing for them. Both programs read the same quad instance buffer.
 
 use super::*;
+
+/// The analytic-gradient pixel program over the quad instance buffer.
+pub(super) struct GradientProgram {
+    pub(super) fragment: ID3D11PixelShader,
+    pub(super) executable: String,
+}
+
+impl GradientProgram {
+    pub(super) fn new(device: &ID3D11Device) -> Result<Self> {
+        let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
+        Ok(Self {
+            executable: super::shader_identity::executable(raw.as_bytes())?,
+            fragment: create_fragment_shader(device, raw.as_bytes())?,
+        })
+    }
+}
+
+/// Splits `quads` (instances `first..`) into maximal runs of one program and
+/// yields `(analytic, first_instance, count)` in paint order. Runs keep the
+/// primitive order exactly, so splitting never reorders overlapping quads.
+pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, usize, usize)> + '_ {
+    let mut at = 0;
+    std::iter::from_fn(move || {
+        let analytic = quads.get(at)?.is_analytic_gradient();
+        let len = quads[at..].iter().take_while(|q| q.is_analytic_gradient() == analytic).count();
+        let run = (analytic, first + at, len);
+        at += len;
+        Some(run)
+    })
+}
 
 pub(super) struct GradientBuffers {
     descriptors: Buffer,
