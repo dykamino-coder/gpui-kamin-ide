@@ -29,7 +29,7 @@ pub(super) fn enabled() -> bool {
 }
 
 impl DirectXRenderer {
-    /// Сверить только что нарисованный по плану `within` кадр с целой перерисовкой.
+    /// Compare the frame just drawn by plan `within` with a whole redraw.
     pub(super) fn audit_frame(
         &mut self,
         scene: &Scene,

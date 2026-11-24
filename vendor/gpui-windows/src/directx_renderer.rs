@@ -719,13 +719,13 @@ impl DirectXRenderer {
             return Ok(());
         };
         // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
-        self.copy_to_back_buffer()?;
+        let copied = self.copy_to_back_buffer()?;
         // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
         // or the compositor is behind, a plain Present blocked the UI thread
         // for about 1 s per frame and webview pulls waited behind it. A frame
         // that cannot be queued now is dropped, and the next paint presents.
         let started = std::time::Instant::now();
-        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
+        let result = present_gate::present_dirty(&swap_chain, copied, (self.width, self.height));
         present_gate::count_present_call(started.elapsed());
         let shown = present_gate::frame_shown(result)?;
         if result == windows::Win32::Foundation::DXGI_STATUS_OCCLUDED {

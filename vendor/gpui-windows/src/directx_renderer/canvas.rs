@@ -112,13 +112,16 @@ impl DirectXRenderer {
         Ok(())
     }
 
-    /// Copy what back buffer `slot` lacks from the canvas into it.
-    pub(super) fn copy_to_back_buffer(&mut self) -> Result<()> {
+    /// Copy what back buffer `slot` lacks from the canvas into it; the
+    /// rectangle copied (x0, y0, x1, y1), the whole target when unknown, or
+    /// `None` when it lacks nothing. Every pixel outside it is the frame the
+    /// buffer showed, so it bounds what this present changes (dirty rects).
+    pub(super) fn copy_to_back_buffer(&mut self) -> Result<Option<[u32; 4]>> {
         let Some(back) = self.res().back_buffer.clone() else {
-            return Ok(());
+            return Ok(None);
         };
         let Some(slot) = self.buffer_slot() else {
-            return Ok(());
+            return Ok(None);
         };
         let canvas = self
             .res()
@@ -129,7 +132,7 @@ impl DirectXRenderer {
         let (w, h) = (self.width, self.height);
         let rect = match std::mem::replace(&mut self.retained.pending[slot], SceneDamage::Unchanged)
         {
-            SceneDamage::Unchanged => return Ok(()),
+            SceneDamage::Unchanged => return Ok(None),
             SceneDamage::Unknown => [0, 0, w, h],
             SceneDamage::Rect {
                 x,
@@ -139,7 +142,7 @@ impl DirectXRenderer {
             } => [x.min(w), y.min(h), (x + width).min(w), (y + height).min(h)],
         };
         if rect[0] >= rect[2] || rect[1] >= rect[3] {
-            return Ok(());
+            return Ok(None);
         }
         if rect == [0, 0, w, h] {
             unsafe { ctx.CopyResource(&back, &canvas) };
@@ -156,6 +159,6 @@ impl DirectXRenderer {
                 ctx.CopySubresourceRegion(&back, 0, rect[0], rect[1], 0, &canvas, 0, Some(&b))
             };
         }
-        Ok(())
+        Ok(Some(rect))
     }
 }

@@ -7219,7 +7219,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..9bce99075784a1e96b53f17c327b172d9e698b7b
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a9af5cdcd6d55bd92a0e2a429af47a42c04605b4
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7767,13 +7767,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..9bce99075784a1e96b53f17c327b172d
 @@ -253 +721,46 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
-+        self.copy_to_back_buffer()?;
++        let copied = self.copy_to_back_buffer()?;
 +        // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
 +        // or the compositor is behind, a plain Present blocked the UI thread
 +        // for about 1 s per frame and webview pulls waited behind it. A frame
 +        // that cannot be queued now is dropped, and the next paint presents.
 +        let started = std::time::Instant::now();
-+        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
++        let result = present_gate::present_dirty(&swap_chain, copied, (self.width, self.height));
 +        present_gate::count_present_call(started.elapsed());
 +        let shown = present_gate::frame_shown(result)?;
 +        if result == windows::Win32::Foundation::DXGI_STATUS_OCCLUDED {
@@ -10147,10 +10147,10 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/canvas.rs b/vendor/gpui-windows/src/directx_renderer/canvas.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..400d800fefa68ee15be1f7fe6c7af15f6a26df6e
+index 0000000000000000000000000000000000000000..66785f9bd69b6be9bf042926fc0a8fcee7ce9441
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/canvas.rs
-@@ -0,0 +1,161 @@
+@@ -0,0 +1,164 @@
 +//! KaminIDE patch: the frame is drawn into a kept canvas texture, and the
 +//! swap chain's back buffer receives a copy of what changed.
 +//!
@@ -10265,13 +10265,16 @@ index 0000000000000000000000000000000000000000..400d800fefa68ee15be1f7fe6c7af15f
 +        Ok(())
 +    }
 +
-+    /// Copy what back buffer `slot` lacks from the canvas into it.
-+    pub(super) fn copy_to_back_buffer(&mut self) -> Result<()> {
++    /// Copy what back buffer `slot` lacks from the canvas into it; the
++    /// rectangle copied (x0, y0, x1, y1), the whole target when unknown, or
++    /// `None` when it lacks nothing. Every pixel outside it is the frame the
++    /// buffer showed, so it bounds what this present changes (dirty rects).
++    pub(super) fn copy_to_back_buffer(&mut self) -> Result<Option<[u32; 4]>> {
 +        let Some(back) = self.res().back_buffer.clone() else {
-+            return Ok(());
++            return Ok(None);
 +        };
 +        let Some(slot) = self.buffer_slot() else {
-+            return Ok(());
++            return Ok(None);
 +        };
 +        let canvas = self
 +            .res()
@@ -10282,7 +10285,7 @@ index 0000000000000000000000000000000000000000..400d800fefa68ee15be1f7fe6c7af15f
 +        let (w, h) = (self.width, self.height);
 +        let rect = match std::mem::replace(&mut self.retained.pending[slot], SceneDamage::Unchanged)
 +        {
-+            SceneDamage::Unchanged => return Ok(()),
++            SceneDamage::Unchanged => return Ok(None),
 +            SceneDamage::Unknown => [0, 0, w, h],
 +            SceneDamage::Rect {
 +                x,
@@ -10292,7 +10295,7 @@ index 0000000000000000000000000000000000000000..400d800fefa68ee15be1f7fe6c7af15f
 +            } => [x.min(w), y.min(h), (x + width).min(w), (y + height).min(h)],
 +        };
 +        if rect[0] >= rect[2] || rect[1] >= rect[3] {
-+            return Ok(());
++            return Ok(None);
 +        }
 +        if rect == [0, 0, w, h] {
 +            unsafe { ctx.CopyResource(&back, &canvas) };
@@ -10309,12 +10312,12 @@ index 0000000000000000000000000000000000000000..400d800fefa68ee15be1f7fe6c7af15f
 +                ctx.CopySubresourceRegion(&back, 0, rect[0], rect[1], 0, &canvas, 0, Some(&b))
 +            };
 +        }
-+        Ok(())
++        Ok(Some(rect))
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/damage_audit.rs b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b044614f00bd33914f6ede6c03a0c2959462b888
+index 0000000000000000000000000000000000000000..078f347f1316a85344f14325a48ef6b4afa9c5d9
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 @@ -0,0 +1,112 @@
@@ -10349,7 +10352,7 @@ index 0000000000000000000000000000000000000000..b044614f00bd33914f6ede6c03a0c295
 +}
 +
 +impl DirectXRenderer {
-+    /// Сверить только что нарисованный по плану `within` кадр с целой перерисовкой.
++    /// Compare the frame just drawn by plan `within` with a whole redraw.
 +    pub(super) fn audit_frame(
 +        &mut self,
 +        scene: &Scene,
@@ -13373,10 +13376,10 @@ index 0000000000000000000000000000000000000000..a92541d7829fdac44dd862f3fa2a5f37
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/present_gate.rs b/vendor/gpui-windows/src/directx_renderer/present_gate.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..65a87aeb1795c855b07fc62d8873de05d65216f3
+index 0000000000000000000000000000000000000000..4ee46e9e406f8db89d10d2ec8d3098415b79d0b8
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/present_gate.rs
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,144 @@
 +//! KaminIDE patch (BR-31A): presenting without blocking the UI thread.
 +//!
 +//! The frame-latency gate (#76) keeps one frame in the compositor queue and
@@ -13392,7 +13395,10 @@ index 0000000000000000000000000000000000000000..65a87aeb1795c855b07fc62d8873de05
 +
 +use anyhow::{Context, Result};
 +use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
-+use windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING;
++use windows::Win32::Foundation::RECT;
++use windows::Win32::Graphics::Dxgi::{
++    DXGI_ERROR_WAS_STILL_DRAWING, DXGI_PRESENT_DO_NOT_WAIT, DXGI_PRESENT_PARAMETERS, IDXGISwapChain1,
++};
 +use windows::Win32::System::Threading::WaitForSingleObject;
 +use windows::core::HRESULT;
 +
@@ -13490,6 +13496,35 @@ index 0000000000000000000000000000000000000000..65a87aeb1795c855b07fc62d8873de05
 +        assert!(g.try_take());
 +    }
 +}
++
++/// Present without waiting, telling the compositor only what changed:
++/// `copied` (x0, y0, x1, y1) bounds every pixel of this buffer that differs
++/// from the frame presented last (`copy_to_back_buffer`), so it is the dirty
++/// rectangle of `Present1` and DWM composes only that part. The whole target,
++/// or nothing known, presents the whole buffer.
++pub(super) fn present_dirty(
++    swap_chain: &IDXGISwapChain1,
++    copied: Option<[u32; 4]>,
++    (w, h): (u32, u32),
++) -> HRESULT {
++    let mut dirty = copied
++        .filter(|r| *r != [0, 0, w, h])
++        .map(|r| RECT {
++            left: r[0] as i32,
++            top: r[1] as i32,
++            right: r[2] as i32,
++            bottom: r[3] as i32,
++        });
++    let params = DXGI_PRESENT_PARAMETERS {
++        DirtyRectsCount: dirty.is_some() as u32,
++        pDirtyRects: dirty.as_mut().map_or(std::ptr::null_mut(), |r| r as *mut RECT),
++        pScrollRect: std::ptr::null_mut(),
++        pScrollOffset: std::ptr::null_mut(),
++    };
++    // SAFETY: `params` and the rectangle it points to outlive the call.
++    unsafe { swap_chain.Present1(0, DXGI_PRESENT_DO_NOT_WAIT, &params) }
++}
+\ No newline at end of file
 diff --git a/vendor/gpui-windows/src/directx_renderer/quad_clear.rs b/vendor/gpui-windows/src/directx_renderer/quad_clear.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..f4e892eb7deb669e5a2b55edc00fba207fd66caf

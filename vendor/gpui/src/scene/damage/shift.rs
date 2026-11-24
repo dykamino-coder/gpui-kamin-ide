@@ -23,11 +23,15 @@
 //! the frame's own (text over its real backdrop), so the result equals a
 //! whole redraw bit for bit.
 
-use super::{Area, DAMAGE_TILE, FULL, KIND_SHIFT, entry_area, paint_order};
-use crate::scene::{Scene, SceneLayer};
+use super::{Area, DAMAGE_TILE, KIND_SHIFT, entry_area};
+use crate::scene::Scene;
 use collections::FxHashMap;
+use items::{Item, bin, each_primitive, items, unchanged_layers};
 
 mod compare;
+mod items;
+#[cfg(test)]
+mod layer_tests;
 mod rects;
 #[cfg(test)]
 mod tests;
@@ -76,52 +80,6 @@ impl FrameShift {
     }
 }
 
-/// One primitive in paint order: its scene, entry (`KIND_SHIFT` encoding)
-/// and the area it may write, cut by `W`.
-#[derive(Clone, Copy)]
-pub(super) struct Item<'a> {
-    pub(super) scene: &'a Scene,
-    pub(super) entry: u32,
-    pub(super) area: Area,
-}
-
-/// Every primitive of `scene` in raster order, the content of its layers
-/// (`layer(slot)`) at the layer's place; `false` when a layer's content is
-/// unknown or holds layers itself.
-fn walk<'a>(
-    scene: &'a Scene,
-    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
-    each: &mut dyn FnMut(&'a Scene, u32),
-) -> bool {
-    let slots = &scene.book.layer_order;
-    if slots.is_empty() {
-        paint_order(scene, |e| each(scene, e));
-        return true;
-    }
-    // Layers are drawn as one batch at their order, after the primitives of
-    // the same order (`PrimitiveKind::Layer` is the last kind).
-    let mut own = Vec::new();
-    paint_order(scene, |e| own.push(e));
-    let order_of = |e: u32| super::entry_order(scene, e);
-    let mut at = 0;
-    for &slot in slots {
-        let key = scene.book.layers[slot as usize].order;
-        while at < own.len() && order_of(own[at]) <= key {
-            each(scene, own[at]);
-            at += 1;
-        }
-        let Some(content) = layer(slot as usize) else {
-            return false;
-        };
-        if !content.scene.book.layers.is_empty() {
-            return false;
-        }
-        paint_order(&content.scene, |e| each(&content.scene, e));
-    }
-    own[at..].iter().for_each(|&e| each(scene, e));
-    true
-}
-
 /// `W`: the part of a `w`×`h` window that the frame moved by `d` covers.
 fn moved_window(w: u32, h: u32, d: (i32, i32)) -> Option<[u32; 4]> {
     let span = |n: u32, d: i32| {
@@ -132,84 +90,6 @@ fn moved_window(w: u32, h: u32, d: (i32, i32)) -> Option<[u32; 4]> {
     Some([x, y, width, height])
 }
 
-/// The items of `scene` (moved by `d`) that write inside `w`; `Err` when a
-/// primitive reads the frame (a backdrop) or a layer's content is unknown.
-fn items<'a>(
-    scene: &'a Scene,
-    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
-    d: (f32, f32),
-    w: Area,
-) -> Result<Vec<Item<'a>>, &'static str> {
-    let mut out = Vec::new();
-    let mut backdrop = !scene.hoisted_backdrops.is_empty();
-    let complete = walk(scene, layer, &mut |s, entry| {
-        let Some(a) = entry_area(s, entry) else {
-            backdrop = true;
-            return;
-        };
-        let a = if a.iter().any(|v| v.is_nan()) {
-            FULL
-        } else {
-            a
-        };
-        let a = [
-            (a[0] + d.0).max(w[0]),
-            (a[1] + d.1).max(w[1]),
-            (a[2] + d.0).min(w[2]),
-            (a[3] + d.1).min(w[3]),
-        ];
-        if a[0] < a[2] && a[1] < a[3] {
-            out.push(Item {
-                scene: s,
-                entry,
-                area: a,
-            });
-        }
-    });
-    match (complete, backdrop) {
-        (false, _) => Err("layer_unknown"),
-        (_, true) => Err("backdrop"),
-        _ => Ok(out),
-    }
-}
-
-/// Cells of a `cols`×`rows` grid with the items that may write in each (CSR).
-fn bin(items: &[Item], cols: u32, rows: u32) -> (Vec<u32>, Vec<u32>) {
-    let tile = DAMAGE_TILE as f32;
-    let span = |a: &Area| {
-        let c0 = (a[0] / tile).floor().clamp(0.0, (cols - 1) as f32) as u32;
-        let r0 = (a[1] / tile).floor().clamp(0.0, (rows - 1) as f32) as u32;
-        let c1 = ((a[2] / tile).ceil().clamp(1.0, cols as f32) as u32).max(c0 + 1);
-        let r1 = ((a[3] / tile).ceil().clamp(1.0, rows as f32) as u32).max(r0 + 1);
-        (c0, r0, c1, r1)
-    };
-    let mut starts = vec![0u32; (cols * rows) as usize + 1];
-    for item in items {
-        let (c0, r0, c1, r1) = span(&item.area);
-        for r in r0..r1 {
-            for c in c0..c1 {
-                starts[(r * cols + c) as usize + 1] += 1;
-            }
-        }
-    }
-    for t in 0..(cols * rows) as usize {
-        starts[t + 1] += starts[t];
-    }
-    let mut fill = starts.clone();
-    let mut entries = vec![0u32; starts[(cols * rows) as usize] as usize];
-    for (k, item) in items.iter().enumerate() {
-        let (c0, r0, c1, r1) = span(&item.area);
-        for r in r0..r1 {
-            for c in c0..c1 {
-                let t = (r * cols + c) as usize;
-                entries[fill[t] as usize] = k as u32;
-                fill[t] += 1;
-            }
-        }
-    }
-    (starts, entries)
-}
-
 impl Scene {
     /// The primitives that may write device pixel (`x`, `y`), in paint order:
     /// kind, index and area (the renderer's damage audit names them).
@@ -217,7 +97,7 @@ impl Scene {
     pub fn primitives_at(&self, x: f32, y: f32) -> Vec<String> {
         let mut out = Vec::new();
         let mask = (1 << KIND_SHIFT) - 1;
-        walk(self, &|slot| self.layer(slot), &mut |s, entry| {
+        each_primitive(self, &|slot| self.layer(slot), &mut |s, entry| {
             if let Some(a) = entry_area(s, entry)
                 && a[0] <= x + 1.0
                 && a[1] <= y + 1.0
@@ -252,10 +132,17 @@ impl Scene {
             (copy[0] + copy[2]) as f32,
             (copy[1] + copy[3]) as f32,
         ];
-        let new = items(self, &|slot| self.layer(slot), (0.0, 0.0), wa)?;
+        // In place, layers the engine recorded again unchanged are equal as a whole.
+        let unchanged = if d == (0, 0) {
+            unchanged_layers(self, previous)
+        } else {
+            Vec::new()
+        };
+        let new = items(self, &|slot| self.layer(slot), &unchanged, (0.0, 0.0), wa)?;
         let old = items(
             previous,
             &|slot| self.drawn_layer(previous, slot),
+            &unchanged,
             (d.0 as f32, d.1 as f32),
             wa,
         )
@@ -275,6 +162,9 @@ impl Scene {
             exact: FxHashMap::default(),
         };
         let mut damage = rects::Damage::new(w, h);
+        damage.uncovered(copy);
+        // The redraw only grows from here: stop once it is about the whole window.
+        let whole = |damage: &rects::Damage| damage.area() * 20 >= w as u64 * h as u64 * 17;
         for t in 0..(cols * rows) as usize {
             let (c, r) = (t as u32 % cols, t as u32 / cols);
             let cell = [
@@ -298,11 +188,18 @@ impl Scene {
             );
             if a.len() != b.len() {
                 damage.add(p);
+                if whole(&damage) {
+                    return Err("redraw_whole");
+                }
                 continue;
             }
             for (&x, &y) in a.iter().zip(b) {
                 let (x, y) = ((x, new[x as usize]), (y, old[y as usize]));
-                if x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p) {
+                let differs = match x.1.same_marker(&y.1) {
+                    Some(same) => !same,
+                    None => x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p),
+                };
+                if differs {
                     let u = [
                         x.1.area[0].min(y.1.area[0]),
                         x.1.area[1].min(y.1.area[1]),
@@ -317,11 +214,13 @@ impl Scene {
                     ];
                     if q[0] < q[2] && q[1] < q[3] {
                         damage.add(q);
+                        if whole(&damage) {
+                            return Err("redraw_whole");
+                        }
                     }
                 }
             }
         }
-        damage.uncovered(copy);
         let redraw = damage.finish(SHIFT_RECTS);
         let shift = FrameShift {
             delta: d,

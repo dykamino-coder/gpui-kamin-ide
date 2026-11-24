@@ -15,6 +15,9 @@ pub(super) struct Damage {
     rows: Vec<Option<[u32; 4]>>,
     /// Whole bands outside the moved window.
     bands: Vec<[u32; 4]>,
+    /// Area of the row unions and the bands: they are disjoint, and every
+    /// rectangle set inish returns covers them, so this bounds its area below.
+    total: u64,
 }
 
 fn area(r: &[u32; 4]) -> u64 {
@@ -37,13 +40,17 @@ impl Damage {
             h,
             rows: vec![None; h.div_ceil(DAMAGE_TILE) as usize],
             bands: Vec::new(),
+            total: 0,
         }
     }
 
     /// A damaged rectangle inside one row of cells.
     pub(super) fn add(&mut self, r: [u32; 4]) {
         let row = &mut self.rows[(r[1] / DAMAGE_TILE) as usize];
-        *row = Some(row.map_or(r, |u| union(&u, &r)));
+        let before = row.as_ref().map_or(0, area);
+        let after = row.map_or(r, |u| union(&u, &r));
+        *row = Some(after);
+        self.total += area(&after) - before;
     }
 
     /// Everything outside `copy` (x, y, w, h): the moved pixels do not reach it.
@@ -57,9 +64,15 @@ impl Damage {
             [x1, y0, w, y1],
         ] {
             if band[0] < band[2] && band[1] < band[3] {
+                self.total += area(&band);
                 self.bands.push(band);
             }
         }
+    }
+
+    /// Pixels damaged so far, counted once (see `total`).
+    pub(super) fn area(&self) -> u64 {
+        self.total
     }
 
     /// At most `limit` rectangles (x, y, w, h) covering the damage.

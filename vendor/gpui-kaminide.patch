@@ -15740,10 +15740,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a6223aa7637
+index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d5abee270
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,236 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15769,11 +15769,15 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +//! the frame's own (text over its real backdrop), so the result equals a
 +//! whole redraw bit for bit.
 +
-+use super::{Area, DAMAGE_TILE, FULL, KIND_SHIFT, entry_area, paint_order};
-+use crate::scene::{Scene, SceneLayer};
++use super::{Area, DAMAGE_TILE, KIND_SHIFT, entry_area};
++use crate::scene::Scene;
 +use collections::FxHashMap;
++use items::{Item, bin, each_primitive, items, unchanged_layers};
 +
 +mod compare;
++mod items;
++#[cfg(test)]
++mod layer_tests;
 +mod rects;
 +#[cfg(test)]
 +mod tests;
@@ -15822,52 +15826,6 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +    }
 +}
 +
-+/// One primitive in paint order: its scene, entry (`KIND_SHIFT` encoding)
-+/// and the area it may write, cut by `W`.
-+#[derive(Clone, Copy)]
-+pub(super) struct Item<'a> {
-+    pub(super) scene: &'a Scene,
-+    pub(super) entry: u32,
-+    pub(super) area: Area,
-+}
-+
-+/// Every primitive of `scene` in raster order, the content of its layers
-+/// (`layer(slot)`) at the layer's place; `false` when a layer's content is
-+/// unknown or holds layers itself.
-+fn walk<'a>(
-+    scene: &'a Scene,
-+    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
-+    each: &mut dyn FnMut(&'a Scene, u32),
-+) -> bool {
-+    let slots = &scene.book.layer_order;
-+    if slots.is_empty() {
-+        paint_order(scene, |e| each(scene, e));
-+        return true;
-+    }
-+    // Layers are drawn as one batch at their order, after the primitives of
-+    // the same order (`PrimitiveKind::Layer` is the last kind).
-+    let mut own = Vec::new();
-+    paint_order(scene, |e| own.push(e));
-+    let order_of = |e: u32| super::entry_order(scene, e);
-+    let mut at = 0;
-+    for &slot in slots {
-+        let key = scene.book.layers[slot as usize].order;
-+        while at < own.len() && order_of(own[at]) <= key {
-+            each(scene, own[at]);
-+            at += 1;
-+        }
-+        let Some(content) = layer(slot as usize) else {
-+            return false;
-+        };
-+        if !content.scene.book.layers.is_empty() {
-+            return false;
-+        }
-+        paint_order(&content.scene, |e| each(&content.scene, e));
-+    }
-+    own[at..].iter().for_each(|&e| each(scene, e));
-+    true
-+}
-+
 +/// `W`: the part of a `w`×`h` window that the frame moved by `d` covers.
 +fn moved_window(w: u32, h: u32, d: (i32, i32)) -> Option<[u32; 4]> {
 +    let span = |n: u32, d: i32| {
@@ -15878,84 +15836,6 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +    Some([x, y, width, height])
 +}
 +
-+/// The items of `scene` (moved by `d`) that write inside `w`; `Err` when a
-+/// primitive reads the frame (a backdrop) or a layer's content is unknown.
-+fn items<'a>(
-+    scene: &'a Scene,
-+    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
-+    d: (f32, f32),
-+    w: Area,
-+) -> Result<Vec<Item<'a>>, &'static str> {
-+    let mut out = Vec::new();
-+    let mut backdrop = !scene.hoisted_backdrops.is_empty();
-+    let complete = walk(scene, layer, &mut |s, entry| {
-+        let Some(a) = entry_area(s, entry) else {
-+            backdrop = true;
-+            return;
-+        };
-+        let a = if a.iter().any(|v| v.is_nan()) {
-+            FULL
-+        } else {
-+            a
-+        };
-+        let a = [
-+            (a[0] + d.0).max(w[0]),
-+            (a[1] + d.1).max(w[1]),
-+            (a[2] + d.0).min(w[2]),
-+            (a[3] + d.1).min(w[3]),
-+        ];
-+        if a[0] < a[2] && a[1] < a[3] {
-+            out.push(Item {
-+                scene: s,
-+                entry,
-+                area: a,
-+            });
-+        }
-+    });
-+    match (complete, backdrop) {
-+        (false, _) => Err("layer_unknown"),
-+        (_, true) => Err("backdrop"),
-+        _ => Ok(out),
-+    }
-+}
-+
-+/// Cells of a `cols`×`rows` grid with the items that may write in each (CSR).
-+fn bin(items: &[Item], cols: u32, rows: u32) -> (Vec<u32>, Vec<u32>) {
-+    let tile = DAMAGE_TILE as f32;
-+    let span = |a: &Area| {
-+        let c0 = (a[0] / tile).floor().clamp(0.0, (cols - 1) as f32) as u32;
-+        let r0 = (a[1] / tile).floor().clamp(0.0, (rows - 1) as f32) as u32;
-+        let c1 = ((a[2] / tile).ceil().clamp(1.0, cols as f32) as u32).max(c0 + 1);
-+        let r1 = ((a[3] / tile).ceil().clamp(1.0, rows as f32) as u32).max(r0 + 1);
-+        (c0, r0, c1, r1)
-+    };
-+    let mut starts = vec![0u32; (cols * rows) as usize + 1];
-+    for item in items {
-+        let (c0, r0, c1, r1) = span(&item.area);
-+        for r in r0..r1 {
-+            for c in c0..c1 {
-+                starts[(r * cols + c) as usize + 1] += 1;
-+            }
-+        }
-+    }
-+    for t in 0..(cols * rows) as usize {
-+        starts[t + 1] += starts[t];
-+    }
-+    let mut fill = starts.clone();
-+    let mut entries = vec![0u32; starts[(cols * rows) as usize] as usize];
-+    for (k, item) in items.iter().enumerate() {
-+        let (c0, r0, c1, r1) = span(&item.area);
-+        for r in r0..r1 {
-+            for c in c0..c1 {
-+                let t = (r * cols + c) as usize;
-+                entries[fill[t] as usize] = k as u32;
-+                fill[t] += 1;
-+            }
-+        }
-+    }
-+    (starts, entries)
-+}
-+
 +impl Scene {
 +    /// The primitives that may write device pixel (`x`, `y`), in paint order:
 +    /// kind, index and area (the renderer's damage audit names them).
@@ -15963,7 +15843,7 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +    pub fn primitives_at(&self, x: f32, y: f32) -> Vec<String> {
 +        let mut out = Vec::new();
 +        let mask = (1 << KIND_SHIFT) - 1;
-+        walk(self, &|slot| self.layer(slot), &mut |s, entry| {
++        each_primitive(self, &|slot| self.layer(slot), &mut |s, entry| {
 +            if let Some(a) = entry_area(s, entry)
 +                && a[0] <= x + 1.0
 +                && a[1] <= y + 1.0
@@ -15998,10 +15878,17 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +            (copy[0] + copy[2]) as f32,
 +            (copy[1] + copy[3]) as f32,
 +        ];
-+        let new = items(self, &|slot| self.layer(slot), (0.0, 0.0), wa)?;
++        // In place, layers the engine recorded again unchanged are equal as a whole.
++        let unchanged = if d == (0, 0) {
++            unchanged_layers(self, previous)
++        } else {
++            Vec::new()
++        };
++        let new = items(self, &|slot| self.layer(slot), &unchanged, (0.0, 0.0), wa)?;
 +        let old = items(
 +            previous,
 +            &|slot| self.drawn_layer(previous, slot),
++            &unchanged,
 +            (d.0 as f32, d.1 as f32),
 +            wa,
 +        )
@@ -16021,6 +15908,9 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +            exact: FxHashMap::default(),
 +        };
 +        let mut damage = rects::Damage::new(w, h);
++        damage.uncovered(copy);
++        // The redraw only grows from here: stop once it is about the whole window.
++        let whole = |damage: &rects::Damage| damage.area() * 20 >= w as u64 * h as u64 * 17;
 +        for t in 0..(cols * rows) as usize {
 +            let (c, r) = (t as u32 % cols, t as u32 / cols);
 +            let cell = [
@@ -16044,11 +15934,18 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +            );
 +            if a.len() != b.len() {
 +                damage.add(p);
++                if whole(&damage) {
++                    return Err("redraw_whole");
++                }
 +                continue;
 +            }
 +            for (&x, &y) in a.iter().zip(b) {
 +                let (x, y) = ((x, new[x as usize]), (y, old[y as usize]));
-+                if x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p) {
++                let differs = match x.1.same_marker(&y.1) {
++                    Some(same) => !same,
++                    None => x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p),
++                };
++                if differs {
 +                    let u = [
 +                        x.1.area[0].min(y.1.area[0]),
 +                        x.1.area[1].min(y.1.area[1]),
@@ -16063,11 +15960,13 @@ index 0000000000000000000000000000000000000000..14bce4cd5bd9ce039bf8c385a6733a62
 +                    ];
 +                    if q[0] < q[2] && q[1] < q[3] {
 +                        damage.add(q);
++                        if whole(&damage) {
++                            return Err("redraw_whole");
++                        }
 +                    }
 +                }
 +            }
 +        }
-+        damage.uncovered(copy);
 +        let redraw = damage.finish(SHIFT_RECTS);
 +        let shift = FrameShift {
 +            delta: d,
@@ -16277,12 +16176,324 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +        }
 +    }
 +}
+diff --git a/vendor/gpui/src/scene/damage/shift/items.rs b/vendor/gpui/src/scene/damage/shift/items.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c77fd054500386c6fb4b0f044c9f36274f87eb5
+--- /dev/null
++++ b/vendor/gpui/src/scene/damage/shift/items.rs
+@@ -0,0 +1,203 @@
++//! KaminIDE patch: the primitives a frame comparison reads, in paint order,
++//! binned by damage cell.
++//!
++//! A layer whose content the frame records again unchanged (the same id and
++//! version at the same place in the layer order of both frames) is the
++//! engine telling the comparison that it paints the same: it is not expanded
++//! into its primitives but stands as one marker item over the whole window
++//! in both frames. Markers keep the paint order of what lies around them,
++//! and two markers are equal only at the same place. A frame that records
++//! its document layer anew without a change then costs the comparison of its
++//! own primitives only, not of the document.
++
++use super::super::{Area, DAMAGE_TILE, FULL, entry_area, paint_order};
++use crate::scene::{Scene, SceneLayer};
++
++/// One primitive in paint order: its scene, entry (`KIND_SHIFT` encoding)
++/// and the area it may write, cut by `W`; or, with `marker` above 0, the
++/// unchanged layer at place `marker - 1` of the layer order.
++#[derive(Clone, Copy)]
++pub(super) struct Item<'a> {
++    pub(super) scene: &'a Scene,
++    pub(super) entry: u32,
++    pub(super) area: Area,
++    pub(super) marker: u32,
++}
++
++impl Item<'_> {
++    /// Whether `self` (new frame) and `other` (last frame) are known equal or
++    /// known different by their markers; `None` when both are primitives.
++    pub(super) fn same_marker(&self, other: &Item) -> Option<bool> {
++        (self.marker != 0 || other.marker != 0).then_some(self.marker == other.marker)
++    }
++}
++
++/// Places in the layer order where `scene` and `previous` draw the same
++/// unchanged layer content (`drawn`), when both order the same number of layers.
++pub(super) fn unchanged_layers(scene: &Scene, previous: &Scene) -> Vec<bool> {
++    let (a, b) = (&scene.book.layer_order, &previous.book.layer_order);
++    if a.len() != b.len() {
++        return Vec::new();
++    }
++    a.iter()
++        .zip(b)
++        .map(|(&x, &y)| {
++            let (sx, sy) = (&scene.book.layers[x as usize], &previous.book.layers[y as usize]);
++            sx.drawn == sy.drawn
++                && scene
++                    .layer(x as usize)
++                    .is_some_and(|c| c.scene.book.layers.is_empty())
++        })
++        .collect()
++}
++
++/// What `walk` meets in raster order.
++enum Met<'a> {
++    Primitive(&'a Scene, u32),
++    /// The unchanged layer at this place of the layer order.
++    Unchanged(usize),
++}
++
++/// Every primitive of `scene` in raster order, the content of its layers
++/// (`layer(slot)`) at the layer's place, except the places `unchanged` marks;
++/// `false` when a layer's content is unknown or holds layers itself.
++fn walk<'a>(
++    scene: &'a Scene,
++    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
++    unchanged: &[bool],
++    each: &mut dyn FnMut(Met<'a>),
++) -> bool {
++    let slots = &scene.book.layer_order;
++    if slots.is_empty() {
++        paint_order(scene, |e| each(Met::Primitive(scene, e)));
++        return true;
++    }
++    // Layers are drawn as one batch at their order, after the primitives of
++    // the same order (`PrimitiveKind::Layer` is the last kind).
++    let mut own = Vec::new();
++    paint_order(scene, |e| own.push(e));
++    let order_of = |e: u32| super::super::entry_order(scene, e);
++    let mut at = 0;
++    for (place, &slot) in slots.iter().enumerate() {
++        let key = scene.book.layers[slot as usize].order;
++        while at < own.len() && order_of(own[at]) <= key {
++            each(Met::Primitive(scene, own[at]));
++            at += 1;
++        }
++        if unchanged.get(place).copied().unwrap_or(false) {
++            each(Met::Unchanged(place));
++            continue;
++        }
++        let Some(content) = layer(slot as usize) else {
++            return false;
++        };
++        if !content.scene.book.layers.is_empty() {
++            return false;
++        }
++        paint_order(&content.scene, |e| each(Met::Primitive(&content.scene, e)));
++    }
++    own[at..].iter().for_each(|&e| each(Met::Primitive(scene, e)));
++    true
++}
++
++/// Every primitive of `scene` in raster order, layers expanded.
++pub(super) fn each_primitive<'a>(
++    scene: &'a Scene,
++    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
++    each: &mut dyn FnMut(&'a Scene, u32),
++) -> bool {
++    walk(scene, layer, &[], &mut |met| {
++        if let Met::Primitive(s, e) = met {
++            each(s, e);
++        }
++    })
++}
++
++/// The items of `scene` (moved by `d`) that write inside `w`, the places
++/// `unchanged` marks as markers; `Err` when a primitive reads the frame (a
++/// backdrop) or a layer's content is unknown.
++pub(super) fn items<'a>(
++    scene: &'a Scene,
++    layer: &dyn Fn(usize) -> Option<&'a SceneLayer>,
++    unchanged: &[bool],
++    d: (f32, f32),
++    w: Area,
++) -> Result<Vec<Item<'a>>, &'static str> {
++    let mut out = Vec::new();
++    let mut backdrop = !scene.hoisted_backdrops.is_empty();
++    let complete = walk(scene, layer, unchanged, &mut |met| {
++        let (s, entry) = match met {
++            Met::Primitive(s, entry) => (s, entry),
++            Met::Unchanged(place) => {
++                let marker = place as u32 + 1;
++                out.push(Item { scene, entry: 0, area: w, marker });
++                return;
++            }
++        };
++        let Some(a) = entry_area(s, entry) else {
++            backdrop = true;
++            return;
++        };
++        let a = if a.iter().any(|v| v.is_nan()) {
++            FULL
++        } else {
++            a
++        };
++        let a = [
++            (a[0] + d.0).max(w[0]),
++            (a[1] + d.1).max(w[1]),
++            (a[2] + d.0).min(w[2]),
++            (a[3] + d.1).min(w[3]),
++        ];
++        if a[0] < a[2] && a[1] < a[3] {
++            out.push(Item {
++                scene: s,
++                entry,
++                area: a,
++                marker: 0,
++            });
++        }
++    });
++    match (complete, backdrop) {
++        (false, _) => Err("layer_unknown"),
++        (_, true) => Err("backdrop"),
++        _ => Ok(out),
++    }
++}
++/// Cells of a `cols`×`rows` grid with the items that may write in each (CSR).
++pub(super) fn bin(items: &[Item], cols: u32, rows: u32) -> (Vec<u32>, Vec<u32>) {
++    let tile = DAMAGE_TILE as f32;
++    let span = |a: &Area| {
++        let c0 = (a[0] / tile).floor().clamp(0.0, (cols - 1) as f32) as u32;
++        let r0 = (a[1] / tile).floor().clamp(0.0, (rows - 1) as f32) as u32;
++        let c1 = ((a[2] / tile).ceil().clamp(1.0, cols as f32) as u32).max(c0 + 1);
++        let r1 = ((a[3] / tile).ceil().clamp(1.0, rows as f32) as u32).max(r0 + 1);
++        (c0, r0, c1, r1)
++    };
++    let mut starts = vec![0u32; (cols * rows) as usize + 1];
++    for item in items {
++        let (c0, r0, c1, r1) = span(&item.area);
++        for r in r0..r1 {
++            for c in c0..c1 {
++                starts[(r * cols + c) as usize + 1] += 1;
++            }
++        }
++    }
++    for t in 0..(cols * rows) as usize {
++        starts[t + 1] += starts[t];
++    }
++    let mut fill = starts.clone();
++    let mut entries = vec![0u32; starts[(cols * rows) as usize] as usize];
++    for (k, item) in items.iter().enumerate() {
++        let (c0, r0, c1, r1) = span(&item.area);
++        for r in r0..r1 {
++            for c in c0..c1 {
++                let t = (r * cols + c) as usize;
++                entries[fill[t] as usize] = k as u32;
++                fill[t] += 1;
++            }
++        }
++    }
++    (starts, entries)
++}
++
+diff --git a/vendor/gpui/src/scene/damage/shift/layer_tests.rs b/vendor/gpui/src/scene/damage/shift/layer_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..37544b31a5b79c790618492b4d16e2721f59edcc
+--- /dev/null
++++ b/vendor/gpui/src/scene/damage/shift/layer_tests.rs
+@@ -0,0 +1,96 @@
++//! KaminIDE patch: in-place comparison of frames that record retained layers
++//! again (`items::unchanged_layers`) and its early stop.
++
++use super::items::unchanged_layers;
++use crate::scene::layer::{LayerHandle, SceneLayer};
++use crate::scene::{Scene, SceneDamage};
++use crate::{Background, ContentMask, Hsla, Quad, ScaledPixels, blue, bounds, point, red, size};
++
++const W: u32 = 256;
++const H: u32 = 256;
++
++fn quad(x: f32, y: f32, w: f32, h: f32, color: Hsla) -> Quad {
++    let b = bounds(
++        point(ScaledPixels(x), ScaledPixels(y)),
++        size(ScaledPixels(w), ScaledPixels(h)),
++    );
++    Quad {
++        bounds: b,
++        content_mask: ContentMask {
++            bounds: bounds(
++                point(ScaledPixels(0.0), ScaledPixels(0.0)),
++                size(ScaledPixels(W as f32), ScaledPixels(H as f32)),
++            ),
++        },
++        background: Background::from(color),
++        ..Default::default()
++    }
++}
++
++/// A document layer of `n` boxes, the `odd` box of it blue.
++fn document(n: usize, odd: Option<usize>) -> LayerHandle {
++    let mut content = Scene::default();
++    for k in 0..n {
++        let color = if Some(k) == odd { blue() } else { red() };
++        content.insert_primitive(quad(10.0, 20.0 * k as f32, 100.0, 10.0, color));
++    }
++    LayerHandle::new(SceneLayer::finish(content, Vec::new(), Vec::new()))
++}
++
++/// A frame: a background, the layer recorded anew, a box over it.
++fn frame(layer: &LayerHandle, top: Hsla) -> Scene {
++    let mut s = Scene::default();
++    s.insert_primitive(quad(0.0, 0.0, W as f32, H as f32, Hsla::white()));
++    s.insert_layer(layer, bounds(point(ScaledPixels(0.0), ScaledPixels(0.0)), size(ScaledPixels(W as f32), ScaledPixels(H as f32))));
++    s.insert_primitive(quad(200.0, 200.0, 20.0, 20.0, top));
++    s.finish();
++    s
++}
++
++fn in_place(old: &mut Scene, new: &mut Scene) -> SceneDamage {
++    old.note_frame_damage(&Scene::default(), 1, (W, H));
++    new.note_frame_damage_moved(old, 2, (W, H), Some(Ok((0, 0))));
++    new.frame_damage().0
++}
++
++#[test]
++fn a_layer_recorded_again_unchanged_is_equal_without_reading_its_primitives() {
++    let layer = document(12, None);
++    let (mut old, mut new) = (frame(&layer, red()), frame(&layer, red()));
++    assert_eq!(unchanged_layers(&new, &old), [true]);
++    assert_eq!(in_place(&mut old, &mut new), SceneDamage::Unchanged);
++}
++
++#[test]
++fn an_own_change_beside_an_unchanged_layer_damages_only_itself() {
++    let layer = document(12, None);
++    let (mut old, mut new) = (frame(&layer, red()), frame(&layer, blue()));
++    match in_place(&mut old, &mut new) {
++        SceneDamage::Rect { width, height, .. } => {
++            assert!(width <= 64 && height <= 64, "{width}x{height}")
++        }
++        other => panic!("{other:?}"),
++    }
++}
++
++#[test]
++fn a_changed_layer_is_compared_primitive_by_primitive() {
++    let (a, b) = (document(12, None), document(12, Some(3)));
++    let (mut old, mut new) = (frame(&a, red()), frame(&b, red()));
++    assert_eq!(unchanged_layers(&new, &old), [false]);
++    match in_place(&mut old, &mut new) {
++        SceneDamage::Rect { y, height, .. } => assert!(y <= 60 && y + height >= 70 && height <= 64),
++        other => panic!("{other:?}"),
++    }
++}
++
++#[test]
++fn a_redraw_of_about_the_whole_window_stops_the_comparison() {
++    let layer = document(12, None);
++    let mut old = frame(&layer, red());
++    let mut new = frame(&layer, red());
++    // The background under everything changes: every cell differs.
++    new.quads[0].background = Background::from(blue());
++    old.note_frame_damage(&Scene::default(), 1, (W, H));
++    assert_eq!(new.plan_shift(&old, (W, H), (0, 0)), Err("redraw_whole"));
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift/rects.rs b/vendor/gpui/src/scene/damage/shift/rects.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fcdae75d9b6c28ea48abfe684afd6fb987f1864c
+index 0000000000000000000000000000000000000000..fe731ab27fcc53bc3a54f4e7cee92d73a116a624
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/rects.rs
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,131 @@
 +//! KaminIDE patch: the damage of a moved frame as a few rectangles sized by
 +//! what changed (`plan_shift`).
 +//!
@@ -16300,6 +16511,11 @@ index 0000000000000000000000000000000000000000..fcdae75d9b6c28ea48abfe684afd6fb9
 +    rows: Vec<Option<[u32; 4]>>,
 +    /// Whole bands outside the moved window.
 +    bands: Vec<[u32; 4]>,
++    /// Area of the row unions and the bands: they are disjoint, and every
++    /// rectangle set 
+\ No newline at end of file
++inish returns covers them, so this bounds its area below.
++    total: u64,
 +}
 +
 +fn area(r: &[u32; 4]) -> u64 {
@@ -16322,13 +16538,17 @@ index 0000000000000000000000000000000000000000..fcdae75d9b6c28ea48abfe684afd6fb9
 +            h,
 +            rows: vec![None; h.div_ceil(DAMAGE_TILE) as usize],
 +            bands: Vec::new(),
++            total: 0,
 +        }
 +    }
 +
 +    /// A damaged rectangle inside one row of cells.
 +    pub(super) fn add(&mut self, r: [u32; 4]) {
 +        let row = &mut self.rows[(r[1] / DAMAGE_TILE) as usize];
-+        *row = Some(row.map_or(r, |u| union(&u, &r)));
++        let before = row.as_ref().map_or(0, area);
++        let after = row.map_or(r, |u| union(&u, &r));
++        *row = Some(after);
++        self.total += area(&after) - before;
 +    }
 +
 +    /// Everything outside `copy` (x, y, w, h): the moved pixels do not reach it.
@@ -16342,9 +16562,15 @@ index 0000000000000000000000000000000000000000..fcdae75d9b6c28ea48abfe684afd6fb9
 +            [x1, y0, w, y1],
 +        ] {
 +            if band[0] < band[2] && band[1] < band[3] {
++                self.total += area(&band);
 +                self.bands.push(band);
 +            }
 +        }
++    }
++
++    /// Pixels damaged so far, counted once (see `total`).
++    pub(super) fn area(&self) -> u64 {
++        self.total
 +    }
 +
 +    /// At most `limit` rectangles (x, y, w, h) covering the damage.
