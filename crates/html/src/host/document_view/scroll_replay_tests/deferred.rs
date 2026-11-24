@@ -69,3 +69,53 @@ fn wheel_steps_replay_deferred_draws_with_their_scroll_node(cx: &mut TestAppCont
         assert_eq!(hit_areas(vcx), areas, "{name}: hit areas");
     }
 }
+
+/// A positioned box with a `z-index` paints in a deferred draw, its blended
+/// child in a composition group of that draw: a wheel step replays the frame
+/// with the group moved and copied (`gpui::Window::reuse_deferred_paint`),
+/// drawing what a fresh tree at the new offset draws.
+#[gpui::test]
+fn a_deferred_composition_group_replays_scrolled(cx: &mut TestAppContext) {
+    let lifted = "<div style='position:relative;z-index:1;width:60px;height:60px;background:lime'>\
+        <div style='mix-blend-mode:multiply;width:30px;height:30px;background:red'></div></div>";
+    let html = rows(lifted);
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    frame(vcx);
+    let labels = |c: &mut VisualTestContext| c.update(|window, _| window.painted_groups().0);
+    for (i, dy) in [-20., -20., 20.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        let (b0, r0) = frames(&view, vcx);
+        wheel_by(vcx, dy);
+        frame(vcx);
+        let (b1, r1) = frames(&view, vcx);
+        let offset = root(&view, vcx).offset();
+        assert_same(&name, &painted(vcx), &fresh_quads(cx, &html, offset));
+        assert_eq!(labels(vcx), fresh_with(cx, &html, offset, labels), "{name}");
+        assert_eq!((b1 - b0, r1 - r0), (0, 2), "{name}");
+    }
+}
+
+/// A hidden scroller registers its node but paints nothing as it: a root
+/// step moves it with the root and replays, as a fresh tree draws.
+#[gpui::test]
+fn a_hidden_scroller_keeps_root_steps_replayed(cx: &mut TestAppContext) {
+    let hidden = "<div style='visibility:hidden;overflow:auto;width:80px;height:30px'>\
+        <div style='height:200px;background:red'></div></div>";
+    let html = rows(hidden);
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    frame(vcx);
+    for (i, dy) in [-20., -20., 20.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        let (b0, r0) = frames(&view, vcx);
+        wheel_by(vcx, dy);
+        frame(vcx);
+        let (b1, r1) = frames(&view, vcx);
+        let offset = root(&view, vcx).offset();
+        assert_same(&name, &painted(vcx), &fresh_quads(cx, &html, offset));
+        assert_eq!((b1 - b0, r1 - r0), (0, 2), "{name}");
+    }
+}

@@ -140,13 +140,26 @@ impl Window {
     }
 
     /// Paint of a deferred draw without its element: a copy of its rendered
-    /// commands, moved by the plan of the scrolled replay that copied it.
-    pub(super) fn reuse_deferred_paint(&mut self, scroll: &mut DeferredScroll, range: Range<PaintIndex>) {
-        let Some((plan, _)) = scroll.plan.take() else {
-            return self.reuse_paint(range);
-        };
-        self.reuse_paint_state(&range);
-        self.replay_scenes_scrolled(range.start.scene_index..range.end.scene_index, &plan);
+    /// commands, moved by the plan of the scrolled replay that copied it,
+    /// with the composition `groups` it made in the rendered frame copied
+    /// and its labels renumbered, as a record's (`replay_groups`).
+    pub(super) fn reuse_deferred_paint(&mut self, scroll: &mut DeferredScroll, range: Range<PaintIndex>, groups: Range<usize>) {
+        let scenes = range.start.scene_index..range.end.scene_index;
+        match scroll.plan.take() {
+            None => {
+                self.replay_groups(groups, None);
+                self.reuse_paint(range);
+            }
+            Some((plan, _)) => {
+                self.reuse_paint_state(&range);
+                let scale = self.scale_factor();
+                let node = |id: ScrollNodeId| plan.scaled(id, scale);
+                let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), groups.clone());
+                self.replay_groups(groups, Some((&labels, &node)));
+                self.replay_scenes_scrolled(scenes, &plan);
+            }
+        }
+        self.next_frame.scene.relabel = 0;
     }
 
     /// What a deferred draw of a record adds to the record for a scrolled
