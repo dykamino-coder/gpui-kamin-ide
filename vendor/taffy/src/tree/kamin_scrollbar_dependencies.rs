@@ -19,6 +19,7 @@ const FROZEN_Y: u8 = 4;
 /// size each one's bars appeared at.
 #[derive(Default)]
 pub(crate) struct ScrollbarTouched {
+    /// Every node whose scrollbar state this transaction set, cleared when the view drops.
     nodes: Vec<NodeId>,
     /// Only boxes whose bars changed; looked up by the box's own settling only.
     frozen_at: Vec<(NodeId, Size<f32>)>,

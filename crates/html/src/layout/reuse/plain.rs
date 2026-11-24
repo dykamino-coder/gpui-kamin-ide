@@ -52,12 +52,10 @@ fn inert(e: &Element) -> bool {
 /// css-ruby-1 §4.4); наведение и анимация (состояние указателя и часов),
 /// псевдоэлементы первой строки и буквы (их берут из строк предка) и маркер
 /// пункта списка (номер приходит от соседей). Тег сам по себе не решает:
-/// `<a>`, `<li>` без маркера или `<dd>` — такие же коробки потока, как `<div>`,
-/// а таблица раскладывается внутри своей коробки (CSS 2.1 §17.4).
+/// `<a>`, `<li>` без маркера или `<dd>` — такие же коробки потока, как `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
-    let math = &e.style.used().reset_svg_math;
     !embedded(e)
-        && !(math.mathml && math.math_layout.is_some())
+        && !math_layout(e)
         && crate::text::ruby::ruby_role(e).is_none()
         && e.hover.is_none()
         && e.anim.is_none()
@@ -152,6 +150,12 @@ fn embedded(e: &Element) -> bool {
     let tag = e.tag.as_str();
     (crate::layout::box_kind::replaced_inline(tag) && tag != "br")
         || crate::paint::controls::native(tag)
+}
+
+/// A MathML element laid out by the math layout (`layout::mathml`).
+fn math_layout(e: &Element) -> bool {
+    let math = &e.style.used().reset_svg_math;
+    math.mathml && math.math_layout.is_some()
 }
 
 /// A table box or a box of a table's internal display, laid out by the
