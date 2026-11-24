@@ -77,9 +77,15 @@ fn a_top_box_under_an_unwrapped_body_is_recoloured_in_place() {
 }
 
 #[test]
-fn hover_layers_and_floats_below_the_restyled_element_rebuild() {
+fn hover_layers_below_the_restyled_element_are_recoloured_in_place() {
+    // A hover layer is a cascaded stage: it follows the new inherited colour.
     let style = "html.alt body{color:#111}a:hover{color:red}";
     let old = page(style, "<a href=#x>l</a>");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (true, true));
+    // A first-letter layer below it is still rebuilt.
+    let style = "html.alt body{color:#111}p::first-letter{color:red}";
+    let old = page(style, "");
     let new = old.replace("<html>", "<html class=\"alt\">");
     assert_eq!(both(&old, &new), (false, false));
 }

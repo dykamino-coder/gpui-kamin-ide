@@ -102,3 +102,20 @@ fn a_clean_revision_still_answers_the_next_records_and_markup() {
     assert_eq!(tree(&doc), tree(&fresh));
     assert_eq!(state(&doc), state(&fresh));
 }
+
+#[test]
+fn attr_in_the_sheet_rebuilds_only_the_edits_of_the_names_it_reads() {
+    // `attr()` reads the attribute it names, of the element its rule applies to.
+    let page = PAGE.replace(".on{", "p::after{content:attr(title)}.on{");
+    let classed = page.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(kept(&page, "html", "class", "alt", &classed), Some(true));
+    let boxed = page.replace("<p>a", "<p data-k=\"1\">a");
+    assert_eq!(kept(&page, "p", "data-k", "1", &boxed), Some(false));
+    // The name the sheet reads changes the generated content: a fresh cascade.
+    let titled = page.replace("<p>a", "<p title=\"t\">a");
+    assert_eq!(kept(&page, "p", "title", "t", &titled), None);
+    // A name the sheet does not spell (`attr(var(--n))`) may be any attribute.
+    let any = PAGE.replace(".on{", "p{--n:class}p::after{content:attr(var(--n))}.on{");
+    let classed = any.replace("<p>a", "<p class=\"zz\">a");
+    assert_eq!(kept(&any, "p", "class", "zz", &classed), None);
+}
