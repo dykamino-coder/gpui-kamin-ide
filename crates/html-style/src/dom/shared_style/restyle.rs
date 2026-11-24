@@ -52,6 +52,13 @@ impl SharedStyle {
     /// values layout reads too; the computed stage materializes again under
     /// the same parent, and the box is laid out again by its next frame.
     pub fn set_cascaded(&mut self, new: &Computed) {
-        *self.cascaded_mut() = new.clone();
+        let cascaded = self.cascaded_mut();
+        // The identity of the box and its facts stay the box's own.
+        let (decor_box, block_tag, plain_block_box) =
+            (cascaded.decor_box, cascaded.block_tag, cascaded.plain_block_box);
+        *cascaded = new.clone();
+        cascaded.decor_box = decor_box;
+        cascaded.block_tag = block_tag;
+        cascaded.plain_block_box = plain_block_box;
     }
 }

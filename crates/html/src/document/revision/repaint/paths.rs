@@ -41,12 +41,18 @@ pub(super) fn style_paths(
             if e.tag != r.tag {
                 continue;
             }
-            let same = if r.layout {
-                *e.style.cascaded() == *r.old
-            } else {
-                e.style.cascaded().same_paint_groups(&r.old)
-            };
-            if !(same && takes(e, r)) {
+            if r.layout {
+                // The box holds the cascade the probe started from: its new
+                // stage is the probe's result (`SharedStyle::set_cascaded`).
+                let differ = differing_groups(e.style.cascaded(), &r.old);
+                let takes = takes(e, r);
+                if !differ.is_empty() || !takes {
+                    crate::why::note("plan_paths.layout", || {
+                        format!("box {id} <{}>: cascade differs in {differ:?}, takes {takes}", e.tag)
+                    });
+                    return None;
+                }
+            } else if !(e.style.cascaded().same_paint_groups(&r.old) && takes(e, r)) {
                 return None;
             }
             paths.push((path, id));
@@ -125,4 +131,27 @@ pub(super) fn painted_borders(style: &crate::style::computed::Computed) -> bool 
                 | Display::InlineGrid
         )
     )
+}
+
+/// The style groups in which two cascaded stages differ; the box identity
+/// fields (`decor_box`, `block_tag`, `plain_block_box`) are facts of the box,
+/// not values of its cascade.
+fn differing_groups(
+    a: &crate::style::computed::Computed,
+    b: &crate::style::computed::Computed,
+) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    macro_rules! groups {
+        ($($group:ident),+) => {
+            $(if a.$group != b.$group {
+                out.push(stringify!($group));
+            })+
+        };
+    }
+    groups!(
+        reset_text_box, reset_cascade, reset_box_layout, reset_flex, reset_border, reset_grid,
+        reset_context, reset_generated, reset_svg_math, reset_positioned, reset_effects,
+        reset_background, reset_mask, reset_shapes, reset_fragmentation, reset_transforms, inh
+    );
+    out
 }

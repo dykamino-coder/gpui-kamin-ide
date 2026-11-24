@@ -52,6 +52,7 @@ pub const CODES: &[&str] = &[
     "no_layer.unrecorded",
     "no_layer.frame_unrecorded",
     "not_own",
+    "plan_paths.layout",
     "plan_text.refused",
     "scroll_extent.layout_bars",
     "scroll_extent.relayout",
