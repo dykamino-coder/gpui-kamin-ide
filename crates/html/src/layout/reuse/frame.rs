@@ -94,9 +94,19 @@ impl FlowReuse {
                 refused.insert(record.source.id());
             }
         }
+        let placed = refused.len();
         // Far blocks laid out at their new place must still be far (`far`).
         refused.extend(self.validate_far(window, root));
         let ok = refused.is_empty();
+        if !ok {
+            crate::why::note("layout_retry.flow_refused", || {
+                let far = refused.len() - placed;
+                format!(
+                    "{placed} of {} stand-ins on screen without a replay, {far} far blocks no longer far",
+                    self.placeholders.borrow().len()
+                )
+            });
+        }
         // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
         // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).
         let mut banned = self.store.banned.take();

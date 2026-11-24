@@ -29,12 +29,13 @@ impl ReplaySlot {
         self.record.source.id()
     }
 
-    /// Повтор этого кадра точен: узлы заняты, ни одна мера не понадобилась,
-    /// блок лёг на записанное место того же размера в том же окружении, а
-    /// диапазоны записаны в только что показанном кадре.
-    pub(in crate::layout::reuse) fn valid(&self, window: &mut Window) -> bool {
+    /// Повтор этого кадра точен (`None`): узлы заняты, ни одна мера не
+    /// понадобилась, блок лёг на записанное место того же размера в том же
+    /// окружении, а диапазоны записаны в только что показанном кадре; иначе —
+    /// код отказа для журнала `why`.
+    pub(in crate::layout::reuse) fn refusal(&self, window: &mut Window) -> Option<&'static str> {
         let Some(id) = self.layout.get() else {
-            return false;
+            return Some("unclaimed");
         };
         let fresh = !window.layout_stale() && plain_environment(window);
         let (origin, size) = (
@@ -55,24 +56,35 @@ impl ReplaySlot {
             // draw otherwise (`Window::retained_remeasured`).
             let remeasured = content && window.retained_remeasured(&r.layout);
             let moved = r.origin != origin;
-            let fits = !remeasured
-                && r.serial + 1 == serial
-                && r.lines.complete()
-                && r.scale == scale
-                && r.mask == mask
-                && r.size == size
-                && (!moved
-                    || moves
+            let refusal = match () {
+                _ if remeasured => Some("remeasured"),
+                _ if r.serial + 1 != serial => Some("serial"),
+                _ if !r.lines.complete() => Some("lines"),
+                _ if r.scale != scale => Some("scale"),
+                _ if r.mask != mask => Some("mask"),
+                _ if r.size != size => Some("size"),
+                _ if moved
+                    && !(moves
                         && r.movable
-                        && raster_phase_matches(scaled(r.origin, scale), scaled(origin, scale)));
-            (fits, origin - r.origin)
+                        && raster_phase_matches(
+                            scaled(r.origin, scale),
+                            scaled(origin, scale),
+                        )) =>
+                {
+                    Some("moved")
+                }
+                _ => None,
+            };
+            (refusal, origin - r.origin)
         });
         match placed {
-            Some((true, offset)) if fresh => {
+            Some((None, offset)) if fresh => {
                 self.offset.set(offset);
-                true
+                None
             }
-            _ => false,
+            Some((None, _)) => Some("stale"),
+            Some((refusal, _)) => refusal,
+            None => Some("ranges"),
         }
     }
 }
