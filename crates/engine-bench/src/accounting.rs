@@ -16,6 +16,7 @@ pub(super) struct Counters {
     pub(super) frames: u32,
     pub(super) readback: Duration,
     pub(super) copy: Duration,
+    pub(super) gpu_wait: Duration,
 }
 
 impl Counters {
@@ -27,6 +28,7 @@ impl Counters {
             frames: frame_perf::FRAMES.load(Relaxed),
             readback: capture.readback_time(),
             copy: capture.copy_time(),
+            gpu_wait: capture.gpu_wait_time(),
         }
     }
     pub(super) fn delta(current: u32, previous: u32) -> Duration {
@@ -50,6 +52,9 @@ pub(super) struct Input {
     /// Часть readback после готовности кадра на GPU (копия в память): цена
     /// стенда, которой нет у браузеров; доска вычитает её из кадра с растром.
     pub(super) copy: Duration,
+    /// The readback's wait for the GPU to execute the frame (fence). The window
+    /// path never waits for it on a hardware GPU; on WARP it is the CPU raster.
+    pub(super) gpu_wait: Duration,
     pub(super) total: Duration,
     pub(super) readback_to_resume: Duration,
 }
@@ -71,7 +76,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         _ => return Err("document timing and parse/style availability disagree"),
     };
     intervals.insert("document_other", document_other);
-    let diagnostics = Sample::from([
+    let mut diagnostics = Sample::from([
         ("observer_setup", Some(ms(phases.observer_setup))),
         ("request_to_render", phases.request_to_render.map(ms)),
         ("document_build_total", input.document.map(ms)),
@@ -92,8 +97,13 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
     ] {
         intervals.insert(name, Some(*scope));
     }
-    subtract(input.present, input.readback)?;
-    subtract(input.readback, input.copy)?;
+    // raster_gpu_readback = raster_submit + gpu_wait + capture, exactly.
+    let submit = subtract(input.present, input.readback)?;
+    let capture = subtract(input.readback, input.gpu_wait)?;
+    subtract(capture, input.copy)?;
+    diagnostics.insert("raster_submit", Some(ms(submit)));
+    diagnostics.insert("gpu_wait", Some(ms(input.gpu_wait)));
+    diagnostics.insert("capture", Some(ms(capture)));
     intervals.insert(
         "layout",
         Some(
@@ -133,6 +143,7 @@ mod tests {
             present: us(10),
             readback: us(4),
             copy: us(3),
+            gpu_wait: us(1),
             total: us(60),
             readback_to_resume: us(1),
         }
@@ -156,6 +167,21 @@ mod tests {
         assert_eq!(result.diagnostics["taffy_inclusive"], Some(0.100));
         assert_eq!(result.diagnostics["gpu_readback"], Some(0.004));
         assert_eq!(result.diagnostics["capture_copy"], Some(0.003));
+        assert_eq!(result.diagnostics["raster_submit"], Some(0.006));
+        assert_eq!(result.diagnostics["gpu_wait"], Some(0.001));
+        assert_eq!(result.diagnostics["capture"], Some(0.003));
+    }
+
+    #[test]
+    fn a_gpu_wait_longer_than_the_readback_is_an_error() {
+        let mut phases = Phases::default();
+        phases.layout = Some(us(6));
+        let mut wait = input();
+        wait.gpu_wait = us(2);
+        assert!(
+            partition(wait, &phases).is_err(),
+            "wait + copy exceed the readback"
+        );
     }
 
     #[test]
