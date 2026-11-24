@@ -7,6 +7,7 @@ use crate::{FontId, FontRun, Pixels, SharedString, TextRun, TextSystem, px};
 use collections::HashMap;
 use std::{borrow::Cow, iter, sync::Arc, sync::atomic::Ordering};
 use word_widths::WordWidths;
+pub(crate) use word_widths::finish_frame as finish_word_widths_frame;
 
 /// Determines whether to truncate text from the start or end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,7 +87,8 @@ impl LineWrapper {
             // Повтор куска берёт ширину прежнего набора (`word_widths`).
             let generation = this.text_system.font_generation.load(Ordering::Acquire);
             let (platform, font_size) = (&this.text_system.platform_text_system, this.font_size);
-            let width = this.word_widths.width(generation, &text[from..to], || {
+            let frame = word_widths::text_frame();
+            let width = this.word_widths.width(generation, frame, &text[from..to], || {
                 platform
                     .layout_line(&text[from..to], font_size, &[run])
                     .width
