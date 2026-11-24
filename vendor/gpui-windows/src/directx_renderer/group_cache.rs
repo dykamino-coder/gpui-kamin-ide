@@ -6,13 +6,23 @@
 //! or reordered node shifts the indices of later groups but not their images.
 //! The other groups get free space on the shelves of the last full layout
 //! (`group_atlas::Shelves`); when they do not fit, the atlas is packed again
-//! and nothing is kept for that frame. Chromium caches an unchanged render
+//! and nothing is kept for that frame. A group that moved with a scroll step
+//! by whole pixels (`Scene::group_match`) keeps its image when its region
+//! moved by the same step: the image is the same pixels at a new place.
+//! Chromium caches an unchanged render
 //! surface per node (`RenderSurfaceImpl::ShouldCacheRenderSurface`) and
 //! WebRender keeps render-task results by key; here the key is the group's
 //! whole content, compared exactly. The cache costs no memory: it is the
 //! atlas the frame needs anyway, and a dead group's rectangle is free space.
 
 use super::*;
+
+/// `r` moved by `d` device pixels, when it stays at non-negative coordinates.
+fn moved(r: Region, d: (i32, i32)) -> Option<Region> {
+    let x = u32::try_from(r.x as i64 + d.0 as i64).ok()?;
+    let y = u32::try_from(r.y as i64 + d.1 as i64).ok()?;
+    Some(Region { x, y, ..r })
+}
 
 #[derive(Default)]
 pub(super) struct GroupCache {
@@ -64,8 +74,8 @@ impl DirectXRenderer {
         // Only a group without a match, or with another region, gets new space.
         let mut held = false;
         for (g, region) in regions.iter().enumerate() {
-            let old = if same { Some(g) } else { scene.group_base(g) };
-            let Some(o) = old.filter(|&o| c.regions.get(o) == Some(region)) else {
+            let old = if same { Some((g, (0, 0))) } else { scene.group_match(g) };
+            let Some((o, _)) = old.filter(|&(o, d)| c.regions.get(o).and_then(|r| moved(*r, d)) == Some(*region)) else {
                 continue;
             };
             let Some(&place) = c.places.get(o) else {
@@ -103,11 +113,14 @@ impl DirectXRenderer {
         }
         let mut carried = (Vec::new(), Vec::new(), Vec::new());
         for g in 0..scene.groups.len() {
-            let Some(o) = scene.group_base(g).filter(|&o| o < c.places.len().min(c.regions.len())) else {
+            let Some((o, d)) = scene.group_match(g).filter(|&(o, _)| o < c.places.len().min(c.regions.len())) else {
+                return;
+            };
+            let Some(region) = moved(c.regions[o], d) else {
                 return;
             };
             carried.0.push(c.places[o]);
-            carried.1.push(c.regions[o]);
+            carried.1.push(region);
             carried.2.push(c.valid.get(o).copied().unwrap_or(false));
         }
         (c.places, c.regions, c.valid) = carried;

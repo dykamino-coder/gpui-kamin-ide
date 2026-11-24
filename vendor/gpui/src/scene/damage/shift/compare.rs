@@ -14,15 +14,21 @@ use crate::{Bounds, ContentMask, Point, ScaledPixels, TransformationMatrix, poin
 use collections::FxHashMap;
 
 /// The comparison of one plan: the move, `W` and the exact results by item pair.
-pub(super) struct Moved {
+pub(super) struct Moved<'g> {
     pub(super) d: (f32, f32),
     pub(super) w: Area,
     pub(super) exact: FxHashMap<(u32, u32), bool>,
     /// The cell part masks are cut by too, while a pair is compared within it.
     pub(super) cell: Option<Area>,
+    /// Groups of the new frame matched under this move: the old group plus
+    /// one (0: none), by group (`groups::match_moved`).
+    pub(super) groups: &'g [u32],
+    /// The scenes whose group composites' labels `groups` numbers (new, old):
+    /// the frames, or two group scenes (their labels number the frames' groups).
+    pub(super) labels: Option<(&'g Scene, &'g Scene)>,
 }
 
-fn at(b: Bounds<ScaledPixels>, d: (f32, f32)) -> Bounds<ScaledPixels> {
+pub(super) fn at(b: Bounds<ScaledPixels>, d: (f32, f32)) -> Bounds<ScaledPixels> {
     Bounds {
         origin: b.origin + point(ScaledPixels(d.0), ScaledPixels(d.1)),
         size: b.size,
@@ -63,7 +69,7 @@ fn covers(b: Bounds<ScaledPixels>, p: [u32; 4]) -> bool {
         && o.y.0 + s.height.0 >= p[3] as f32
 }
 
-impl Moved {
+impl Moved<'_> {
     fn window(&self) -> Bounds<ScaledPixels> {
         let w = match self.cell {
             Some(c) => [self.w[0].max(c[0]), self.w[1].max(c[1]), self.w[2].min(c[2]), self.w[3].min(c[3])],
@@ -131,7 +137,7 @@ impl Moved {
         same == a
     }
 
-    fn exact_pair(&self, x: Item, y: Item) -> bool {
+    pub(super) fn exact_pair(&self, x: Item, y: Item) -> bool {
         let mask = (1 << KIND_SHIFT) - 1;
         let (i, j) = ((x.entry & mask) as usize, (y.entry & mask) as usize);
         let (sa, sb): (&Scene, &Scene) = (x.scene, y.scene);
@@ -203,8 +209,18 @@ impl Moved {
             4 => sprite!(monochrome_sprites),
             5 => sprite!(subpixel_sprites),
             6 => sprite!(polychrome_sprites),
-            // A group's image or a backdrop: its own scene would have to move.
-            _ => false,
+            // A group's composite: the same image when its group was matched
+            // under this move. A backdrop sample reads the frame: never.
+            _ => {
+                let Some((ln, lo)) = self.labels else { return false };
+                if !std::ptr::eq(sa, ln) || !std::ptr::eq(sb, lo) {
+                    return false;
+                }
+                let (a, b) = (&sa.surfaces[i], &sb.surfaces[j]);
+                a.group > 0
+                    && self.groups.get(a.group as usize - 1) == Some(&b.group)
+                    && super::groups::same_surface_moved(a, b, d, |m| self.cut(m), |m| self.shift(m))
+            }
         }
     }
 }

@@ -8,6 +8,8 @@ use super::*;
 
 // KaminIDE patch: the cache across kept frames and partial frames.
 mod kept;
+// KaminIDE patch: groups that scroll with the page keep their images.
+mod moved;
 
 /// One group per cell of a 4×3 grid: a quad of `colors[i]` at opacity 0.8.
 fn groups(cells: &[(usize, Hsla)]) -> Scene {

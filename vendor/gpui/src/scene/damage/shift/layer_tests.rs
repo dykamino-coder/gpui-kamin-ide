@@ -92,5 +92,5 @@ fn a_redraw_of_about_the_whole_window_stops_the_comparison() {
     // The background under everything changes: every cell differs.
     new.quads[0].background = Background::from(blue());
     old.note_frame_damage(&Scene::default(), 1, (W, H));
-    assert_eq!(new.plan_shift(&old, (W, H), (0, 0), &mut Default::default()), Err("redraw_whole"));
+    assert_eq!(new.plan_shift(&old, (W, H), (0, 0), &mut Default::default(), &[]), Err("redraw_whole"));
 }

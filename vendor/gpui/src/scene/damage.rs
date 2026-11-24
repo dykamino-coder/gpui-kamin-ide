@@ -109,6 +109,10 @@ pub(crate) struct DamageIndex {
     pub(crate) shift_miss: Option<&'static str>,
     /// What the comparison of this frame with the last found (DevTools `why`).
     pub(crate) shift_stats: Option<ShiftStats>,
+    /// KaminIDE patch: groups matched under the scroll step `group_step`
+    /// (`shift::groups`), by group of this frame.
+    group_moved: Vec<bool>,
+    group_step: (i32, i32),
 }
 
 const KIND_SHIFT: u32 = 29;
@@ -292,6 +296,8 @@ impl DamageIndex {
         self.shift = None;
         self.shift_miss = None;
         self.shift_stats = None;
+        self.group_moved.clear();
+        self.group_step = (0, 0);
     }
 
     /// Разложить примитивы кадровой сцены по клеткам кадра `size`.
@@ -529,11 +535,34 @@ impl Scene {
             None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
             moved => moved,
         };
+        // A group of the last frame that paints the same image hands this one
+        // its buffer (the renderer's group cache); matched by content, not index.
+        index.group_base.clear();
+        if index.base != 0 {
+            let mut cmp = Compare {
+                new: self,
+                old: previous,
+                groups: FxHashMap::default(),
+            };
+            group_match::match_groups(&mut cmp, &mut index.group_base);
+        }
+        // KaminIDE patch: a group that moved with a scroll step paints its
+        // image moved (`shift::groups`); the comparison reads these matches.
+        index.group_step = match moved {
+            Some(Ok(d)) if comparable && d != (0, 0) => d,
+            _ => (0, 0),
+        };
+        let groups = if index.group_step != (0, 0) {
+            shift::groups::match_moved(self, previous, index.group_step, size, &mut index.group_base, &mut index.group_moved)
+        } else {
+            index.group_moved.clear();
+            index.group_base.clone()
+        };
         index.shift_miss = match moved {
             None => None,
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
-            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
+            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default()), &groups) {
                 Err(why) => Some(why),
                 Ok(shift) => {
                     let damaged = match index.damage {
@@ -556,22 +585,21 @@ impl Scene {
             },
         };
         trace::log_damage(self, &index, previous);
-        // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
-        // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
-        index.group_base.clear();
-        if index.base != 0 {
-            let mut cmp = Compare {
-                new: self,
-                old: previous,
-                groups: FxHashMap::default(),
-            };
-            group_match::match_groups(&mut cmp, &mut index.group_base);
-        }
         self.book.index = index;
     }
 
-    /// KaminIDE patch: группа кадра `frame_damage().1` (с которым сравнивали
-    /// этот), что рисует ту же картинку, что группа `g` этого кадра.
+    /// KaminIDE patch: the group of `frame_damage().1` that paints the image
+    /// of group `g` of this frame, and how far that image moved in device px:
+    /// (0, 0) in place, or the scroll step (`shift::groups`).
+    #[doc(hidden)]
+    pub fn group_match(&self, g: usize) -> Option<(usize, (i32, i32))> {
+        let index = &self.book.index;
+        let step = if index.group_moved.get(g).copied().unwrap_or(false) { index.group_step } else { (0, 0) };
+        self.group_base(g).map(|o| (o, step))
+    }
+
+    /// KaminIDE patch: the group of `frame_damage().1` that paints the image of
+    /// group `g` of this frame, in place or moved (`group_match`).
     #[doc(hidden)]
     pub fn group_base(&self, g: usize) -> Option<usize> {
         match self.book.index.group_base.get(g).copied().unwrap_or(0) {

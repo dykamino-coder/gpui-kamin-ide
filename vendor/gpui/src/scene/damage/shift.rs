@@ -29,6 +29,7 @@ use collections::FxHashMap;
 use items::{Item, bin, each_primitive, items, unchanged_layers};
 
 mod compare;
+pub(super) mod groups;
 mod items;
 #[cfg(test)]
 mod layer_tests;
@@ -115,13 +116,15 @@ impl Scene {
     /// The frame drawn as `previous` moved by `d` device pixels, with what
     /// then needs a raster; `Err` names why not: the comparison cannot run,
     /// or the redraw would cover about the whole window anyway.
-    /// `stats` counts what the comparison found different.
+    /// `stats` counts what the comparison found different; `groups`: this
+    /// frame's groups matched under `d` (old group plus one, 0: none).
     pub(super) fn plan_shift(
         &self,
         previous: &Scene,
         size: (u32, u32),
         d: (i32, i32),
         stats: &mut ShiftStats,
+        groups: &[u32],
     ) -> Result<FrameShift, &'static str> {
         let (w, h) = size;
         // `d == (0, 0)` compares the frame with the last one in place: the
@@ -165,6 +168,8 @@ impl Scene {
             w: wa,
             exact: FxHashMap::default(),
             cell: None,
+            groups,
+            labels: Some((self, previous)),
         };
         let mut damage = rects::Damage::new(w, h);
         damage.uncovered(copy);
