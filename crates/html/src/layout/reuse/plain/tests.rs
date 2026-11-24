@@ -28,6 +28,45 @@ fn text_blocks_are_plain_and_replaced_or_positioned_descendants_are_not() {
 }
 
 #[test]
+fn the_box_and_its_state_decide_plainness_not_the_tag() {
+    let values = crate::values::DocumentValues::detached(Default::default());
+    let plain = |e: &Element| skip_origin(e, values.values()).is_some();
+    let text = || Node::Text(Text::from_source("a".into(), None));
+    // Flow boxes of any element type: links, citations, definitions, breaks.
+    for tag in ["a", "cite", "sup", "var", "dd", "dt", "li", "custom-box"] {
+        assert!(
+            plain(&el("div", vec![Node::Element(el(tag, vec![text()]))])),
+            "{tag}"
+        );
+    }
+    assert!(plain(&el(
+        "p",
+        vec![text(), Node::Element(el("br", vec![])), text()]
+    )));
+    // Content from outside the subtree: resources, documents, native controls.
+    for tag in [
+        "img", "video", "iframe", "object", "input", "select", "textarea", "meter",
+    ] {
+        assert!(
+            !plain(&el("div", vec![Node::Element(el(tag, vec![]))])),
+            "{tag}"
+        );
+    }
+    // State the box epoch does not publish: a marker's number, hover.
+    let mut item = el("li", vec![text()]);
+    item.list_item = Some(1);
+    assert!(!plain(&el("ul", vec![Node::Element(item)])));
+    let mut hovered = el("a", vec![text()]);
+    hovered.hover = Some(hovered.style.clone());
+    assert!(!plain(&el("p", vec![Node::Element(hovered)])));
+    let mut math = el("math", vec![]);
+    let used = math.style.used_mut();
+    used.reset_svg_math.mathml = true;
+    used.reset_svg_math.math_layout = Some(crate::style::computed::Display::Block);
+    assert!(!plain(&el("p", vec![Node::Element(math)])));
+}
+
+#[test]
 fn anchors_pin_the_skip_records_of_their_ancestors() {
     let values = crate::values::DocumentValues::detached(Default::default());
     let classify = |e: &Element| skip_origin(e, values.values());

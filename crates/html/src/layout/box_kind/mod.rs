@@ -134,6 +134,11 @@ pub(crate) fn replaced_inline(tag: &str) -> bool {
     )
 }
 
+/// A form control drawn natively (`paint::controls::element`, HTML §15.5)
+/// rather than by the boxes of its subtree.
+pub(crate) fn native_control(tag: &str) -> bool {
+    matches!(tag, "input" | "textarea" | "select" | "progress" | "meter")
+}
 /// Строчного УРОВНЯ, но В ПОТОКЕ: `inline-block` и родня. Рождает строчную
 /// коробку, в отличие от плавающего и абсолютного, которых в потоке нет.
 /// Разбор держит `display: inline` как `InlineBlock` с пометкой
