@@ -1049,9 +1049,14 @@ impl Scene {
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
-        self.monochrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.subpixel_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.polychrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        // KaminIDE patch: sprites of one order keep their paint order (a stable
+        // sort), as quads do. Upstream also sorted them by atlas tile id, so two
+        // overlapping glyphs of one text run blended in the order the atlas
+        // happened to number their tiles: the same text with tiles made by
+        // another font instance or in another frame differed by a code.
+        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
+        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
+        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
         self.surfaces.sort_by_key(|surface| surface.order);
         self.finish_layers();
     }

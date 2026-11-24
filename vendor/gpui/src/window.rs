@@ -1068,6 +1068,9 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: the composition groups its paint made in the frame's
+    // list; a reused draw copies them (`scroll_deferred::reuse_deferred_paint`).
+    pub(crate) groups: Range<usize>,
     // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
     isolated: Option<IsolatedDraw>,
     // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
@@ -4456,6 +4459,7 @@ impl Window {
                 .set_active_node(deferred_draw.parent_node);
 
             let paint_start = self.paint_index();
+            let groups_start = self.next_frame.scene.groups.len();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
                 // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
@@ -4472,10 +4476,11 @@ impl Window {
                 self.leave_deferred_paint(entered);
             } else {
                 let range = deferred_draw.paint_range.clone();
-                self.reuse_deferred_paint(&mut deferred_draw.scroll, range);
+                self.reuse_deferred_paint(&mut deferred_draw.scroll, range, deferred_draw.groups.clone());
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
+            deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
         }
         self.next_frame.deferred_draws = deferred_draws;
         self.element_id_stack.clear();
@@ -4565,6 +4570,7 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    groups: deferred_draw.groups.clone(),
                     isolated: deferred_draw.isolated.clone(),
                     scroll: owners.copy(&deferred_draw.scroll),
                     site: deferred_draw.site,
@@ -5396,6 +5402,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            groups: 0..0,
             isolated: None,
             scroll,
             site,

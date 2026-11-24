@@ -119,9 +119,6 @@ use std::rc::Rc;
 pub(super) struct Slot {
     /// Опции хоста последнего записанного устоявшегося кадра.
     recorded: std::cell::RefCell<std::rc::Weak<record::Inputs>>,
-    /// Отложенные отрисовки дерева рисовали группу композиции после записи
-    /// его кадра: такое дерево больше не повторяется.
-    unreplayable: Cell<bool>,
     /// Сборки и повторы кадра — наблюдение для тестов и стенда.
     builds: Cell<u64>,
     replays: Cell<u64>,
@@ -236,6 +233,8 @@ mod extent_settle_tests;
 #[cfg(test)]
 mod moved_glyph_tests;
 
+#[cfg(test)]
+mod deferred_group_tests;
 #[cfg(test)]
 mod lifted_tests;
 #[cfg(test)]

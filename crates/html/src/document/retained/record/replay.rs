@@ -33,7 +33,12 @@ impl Record {
         }
         // The frame's record carries its composition groups (gpui::Window::replay_groups).
         if !window.retained_replayable_with_groups(&self.prepaint, &self.paint) {
-            slot.unreplayable.set(true);
+            if crate::why::enabled()
+                && let Some(detail) =
+                    window.explain_replayable_with_groups(&self.prepaint, &self.paint)
+            {
+                crate::why::note(FrameMiss::Paint.code(), || detail);
+            }
             slot.recorded.take();
             return Err(FrameMiss::Paint.noted());
         }

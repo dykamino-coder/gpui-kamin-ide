@@ -163,22 +163,6 @@ fn updated_markup_rebuilds(cx: &mut TestAppContext) {
     );
 }
 
-#[gpui::test]
-fn a_group_painted_by_a_deferred_draw_is_never_replayed(cx: &mut TestAppContext) {
-    let page = "<div style='position:relative;z-index:1;width:60px;height:60px;background:lime'>\
-        <div style='mix-blend-mode:multiply;width:30px;height:30px;background:red'></div></div>";
-    let (view, cx) = open(cx, page);
-    for _ in 0..4 {
-        frame(cx);
-    }
-    let (builds, replays) = frames(&view, cx);
-    assert_eq!(replays, 0, "a deferred composition group was replayed");
-    assert!(
-        builds >= 4,
-        "frames with a deferred group were not rebuilt: {builds}"
-    );
-}
-
 /// A rebuilt frame can reuse line splits from the previous frame.
 #[gpui::test]
 fn a_rebuilt_frame_reuses_the_previous_frames_line_splits(cx: &mut TestAppContext) {
