@@ -159,7 +159,6 @@ impl Retained {
                     !self.builder.state.values.frame_ready(),
                     FrameMiss::NotReady,
                 ),
-                (self.slot.unreplayable.get(), FrameMiss::Unreplayable),
             ];
             let refusal = refusal
                 .into_iter()

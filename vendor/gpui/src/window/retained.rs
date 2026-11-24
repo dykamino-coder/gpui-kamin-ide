@@ -190,30 +190,12 @@ impl Window {
     }
 
     /// Whether a record made in the rendered frame can be replayed into this
-    /// one. Deferred draws paint after the whole tree, outside the subtree's
-    /// paint range, and nested deferred draws are appended after their owner;
-    /// when the subtree registered any, every deferred draw from its first one
-    /// on must be free of composition groups.
-    pub fn retained_replayable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
-        use crate::scene::{PaintOperation, Primitive};
-        let frame = &self.rendered_frame;
-        // A range recorded inside a scene layer is in its scene (`reuse_paint`).
-        let source = self.replay_source();
-        let scene = source.as_deref().map_or(&frame.scene, |layer| layer.scene());
-        let prepaint = prepaint.range();
-        let first = prepaint.start.deferred_draws_index;
-        let groups = |draw: &DeferredDraw| {
-            let range = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
-            scene.paint_operations[range].iter().any(|operation| {
-                matches!(
-                    operation,
-                    PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0
-                )
-            })
-        };
+    /// one. The deferred draws it registered paint after the whole tree and
+    /// copy the composition groups they made (`reuse_deferred_paint`), so
+    /// only the record's own commands decide; the prepaint is kept for the
+    /// hosts' call shape.
+    pub fn retained_replayable(&self, _prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
         paint.replayable()
-            && (first == prepaint.end.deferred_draws_index
-                || !frame.deferred_draws[first..].iter().any(groups))
     }
 
     /// Run the paint of a subtree and return its range in this frame.
@@ -236,7 +218,7 @@ impl Window {
     /// The caller guarantees the record comes from the rendered frame.
     pub fn replay_retained_paint(&mut self, record: &RetainedPaint) -> RetainedPaint {
         debug_assert!(record.replayable, "non-replayable paint record");
-        let (start, groups) = (self.paint_index(), self.replay_groups(record, None));
+        let (start, groups) = (self.paint_index(), self.replay_groups(record.groups(), None));
         self.reuse_paint(record.range());
         self.next_frame.scene.relabel = 0;
         self.allow_replayed(record);

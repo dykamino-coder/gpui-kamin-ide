@@ -59,17 +59,32 @@ impl Window {
             && self.retained_replayable(prepaint, &ungrouped)
     }
 
-    /// Copy the groups `record` made in the rendered frame to the end of this
-    /// frame's list, scrolled by `scrolled` (the plan's node shifts and clips
-    /// in scene pixels, with each group's label node), and renumber the
-    /// labels the replay copies next (`Scene::relabel`, reset by the caller).
-    /// Returns the range the copies take.
+    /// Why `retained_replayable_with_groups` refuses, for the `why` journal:
+    /// the first condition that fails, or `None` when it would replay.
+    pub fn explain_replayable_with_groups(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> Option<String> {
+        let groups = paint.groups();
+        if !groups.is_empty() && self.replay_source().is_some() {
+            return Some(format!("groups {groups:?} recorded while replaying a scene layer"));
+        }
+        let made = self.rendered_frame.scene.groups.len();
+        if groups.end > made {
+            return Some(format!("groups {groups:?} past the rendered frame's {made}"));
+        }
+        let mut ungrouped = paint.clone();
+        ungrouped.groups = (0, 0);
+        (!self.retained_replayable(prepaint, &ungrouped)).then(|| "commands are not replayable".into())
+    }
+
+    /// Copy the `groups` of the rendered frame's list (made by a record or by
+    /// a deferred draw) to the end of this frame's list, scrolled by
+    /// `scrolled` (the plan's node shifts and clips in scene pixels, with each
+    /// group's label node), and renumber the labels the replay copies next
+    /// (`Scene::relabel`, reset by the caller). Returns the range the copies take.
     pub(super) fn replay_groups(
         &mut self,
-        record: &RetainedPaint,
+        groups: Range<usize>,
         scrolled: Option<(&[Option<ScrollNodeId>], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
     ) -> Range<usize> {
-        let groups = record.groups();
         let base = self.next_frame.scene.groups.len();
         let prev = &self.rendered_frame.scene;
         if groups.is_empty() || prev.groups.len() < groups.end {
