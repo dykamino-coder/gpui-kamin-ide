@@ -115,7 +115,7 @@ fn attr_in_the_sheet_rebuilds_only_the_edits_of_the_names_it_reads() {
     let titled = page.replace("<p>a", "<p title=\"t\">a");
     assert_eq!(kept(&page, "p", "title", "t", &titled), None);
     // A name the sheet does not spell (`attr(var(--n))`) may be any attribute.
-    let any = PAGE.replace(".on{", "p{--n:title}p::after{content:attr(var(--n))}.on{");
-    let classed = any.replace("<html>", "<html class=\"alt\">");
-    assert_eq!(kept(&any, "html", "class", "alt", &classed), None);
+    let any = PAGE.replace(".on{", "p{--n:class}p::after{content:attr(var(--n))}.on{");
+    let classed = any.replace("<p>a", "<p class=\"zz\">a");
+    assert_eq!(kept(&any, "p", "class", "zz", &classed), None);
 }
