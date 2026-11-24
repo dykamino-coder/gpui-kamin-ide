@@ -11432,10 +11432,10 @@ index 0a449a20a3cf4c0d676c6d03053baff1d8de6e8a..764376a79a3dbd6d920c0b806322a642
 +                self.interactivity.base_style_mut().overflow.x = Some(Overflow::Scroll);
 diff --git a/vendor/gpui/src/frame_capture.rs b/vendor/gpui/src/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a97fd394e146e622a3b6904906fc11c8641584cb
+index 0000000000000000000000000000000000000000..ccb6b56a6851ba50653d4de0ccae3d0e4adcd799
 --- /dev/null
 +++ b/vendor/gpui/src/frame_capture.rs
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,121 @@
 +//! KaminIDE patch: оконный получатель завершённого BGRA readback.
 +//!
 +//! Backend владеет единственным sink. Подписки, sequence и выбор кадра
@@ -11542,6 +11542,10 @@ index 0000000000000000000000000000000000000000..a97fd394e146e622a3b6904906fc11c8
 +    pub full_by: Option<String>,
 +    /// Why a frame offered a scroll step was not drawn as a move.
 +    pub shift_miss: Option<String>,
++    /// What the comparison with the last frame found, when it ran: cells,
++    /// differing pairs by kind, the first pair (`ShiftStats`).
++    #[serde(default)]
++    pub shift_compare: Option<String>,
 +    /// Device pixels the kept frame moved by (`shift`).
 +    pub delta: Option<(i32, i32)>,
 +    /// Device pixels the move copied.
@@ -12718,7 +12722,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..7704e8bf6d62149fb129fdb344e24faf041f818d
+index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca6e5a9af6
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,40 @@
@@ -12732,7 +12736,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..7704e8bf6d62149fb129fdb344e24faf
 +pub(crate) mod image_resources;
 +mod record; mod group_replay;
 +#[doc(hidden)]
-+pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_RECTS, SceneDamage};
++pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats};
 +mod vector_transform;
 +pub(crate) mod affine_transform;
 +pub(crate) mod segments;
@@ -14584,10 +14588,10 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd41180455c67c
+index 0000000000000000000000000000000000000000..72e63a8c63c6229b2153c3b6e49fe925a889ce69
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
-@@ -0,0 +1,876 @@
+@@ -0,0 +1,885 @@
 +//! KaminIDE patch: повреждение кадра — где новая сцена рисует иначе, чем та,
 +//! что окно рисовало прошлым кадром.
 +//!
@@ -14613,7 +14617,7 @@ index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd4118
 +mod group_match;
 +pub(crate) mod shift;
 +mod trace;
-+pub use shift::{FrameShift, SHIFT_RECTS};
++pub use shift::{FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, ShiftStats};
 +
 +/// Сторона клетки повреждения, device px.
 +pub const DAMAGE_TILE: u32 = 64;
@@ -14697,6 +14701,8 @@ index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd4118
 +    pub(crate) shift: Option<FrameShift>,
 +    /// Why a frame offered a scroll step was not drawn as a move (DevTools `why`).
 +    pub(crate) shift_miss: Option<&'static str>,
++    /// What the comparison of this frame with the last found (DevTools `why`).
++    pub(crate) shift_stats: Option<ShiftStats>,
 +}
 +
 +const KIND_SHIFT: u32 = 29;
@@ -14879,6 +14885,7 @@ index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd4118
 +        self.base = 0;
 +        self.shift = None;
 +        self.shift_miss = None;
++        self.shift_stats = None;
 +    }
 +
 +    /// Разложить примитивы кадровой сцены по клеткам кадра `size`.
@@ -15120,7 +15127,7 @@ index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd4118
 +            None => None,
 +            Some(Err(why)) => Some(why),
 +            Some(_) if !comparable => Some("not_compared"),
-+            Some(Ok(d)) => match self.plan_shift(previous, size, d) {
++            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
 +                Err(why) => Some(why),
 +                Ok(shift) => {
 +                    let damaged = match index.damage {
@@ -15275,6 +15282,12 @@ index 0000000000000000000000000000000000000000..fa601824c85f254bde2a8e3e9dfd4118
 +    #[doc(hidden)]
 +    pub fn frame_shift_miss(&self) -> Option<&'static str> {
 +        self.book.index.shift_miss
++    }
++
++    /// KaminIDE patch: what the comparison with the last frame found, when it ran.
++    #[doc(hidden)]
++    pub fn frame_shift_stats(&self) -> Option<ShiftStats> {
++        self.book.index.shift_stats
 +    }
 +
 +    /// KaminIDE patch: группы, чья картинка нужна кадру, рисуемому только в
@@ -15745,10 +15758,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d5abee270
+index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d06713ac0
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,244 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15784,8 +15797,10 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +#[cfg(test)]
 +mod layer_tests;
 +mod rects;
++mod stats;
 +#[cfg(test)]
 +mod tests;
++pub use stats::{SHIFT_KIND_NAMES, SHIFT_KINDS, ShiftStats};
 +
 +/// Most rectangles a moved frame rasters after the copy.
 +pub const SHIFT_RECTS: usize = 4;
@@ -15864,11 +15879,13 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +    /// The frame drawn as `previous` moved by `d` device pixels, with what
 +    /// then needs a raster; `Err` names why not: the comparison cannot run,
 +    /// or the redraw would cover about the whole window anyway.
++    /// `stats` counts what the comparison found different.
 +    pub(super) fn plan_shift(
 +        &self,
 +        previous: &Scene,
 +        size: (u32, u32),
 +        d: (i32, i32),
++        stats: &mut ShiftStats,
 +    ) -> Result<FrameShift, &'static str> {
 +        let (w, h) = size;
 +        // `d == (0, 0)` compares the frame with the last one in place: the
@@ -15911,6 +15928,7 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +            d: (d.0 as f32, d.1 as f32),
 +            w: wa,
 +            exact: FxHashMap::default(),
++            cell: None,
 +        };
 +        let mut damage = rects::Damage::new(w, h);
 +        damage.uncovered(copy);
@@ -15933,11 +15951,13 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +            if p[0] >= p[2] || p[1] >= p[3] {
 +                continue;
 +            }
++            stats.cells += 1;
 +            let (a, b) = (
 +                &ea[sa[t] as usize..sa[t + 1] as usize],
 +                &eb[sb[t] as usize..sb[t + 1] as usize],
 +            );
 +            if a.len() != b.len() {
++                stats.count_cells += 1;
 +                damage.add(p);
 +                if whole(&damage) {
 +                    return Err("redraw_whole");
@@ -15957,6 +15977,7 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +                        x.1.area[2].max(y.1.area[2]),
 +                        x.1.area[3].max(y.1.area[3]),
 +                    ];
++                    stats.differ(&x.1, &y.1, u);
 +                    let q = [
 +                        (u[0].floor().max(p[0] as f32)) as u32,
 +                        (u[1].floor().max(p[1] as f32)) as u32,
@@ -15987,12 +16008,17 @@ index 0000000000000000000000000000000000000000..84aaf44f211194a076cc9e47fd3e324d
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/compare.rs b/vendor/gpui/src/scene/damage/shift/compare.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d492a126e46
+index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91de4e023d9
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/compare.rs
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,210 @@
 +//! KaminIDE patch: a primitive of the new frame against one of the last frame
 +//! moved by `d` (`plan_shift`), both cut by the moved window `W`.
++//!
++//! A mask clips at pixel centres, so within a cell only the mask's part in
++//! the cell decides pixels: a pair whose masks differ (the clip of a scroller
++//! moved against its stationary clip) is compared again with both masks cut
++//! by the cell, and differs only in the cells where the clips really part.
 +
 +use super::super::{Area, KIND_SHIFT, clipped, same_path};
 +use super::Item;
@@ -16006,6 +16032,8 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +    pub(super) d: (f32, f32),
 +    pub(super) w: Area,
 +    pub(super) exact: FxHashMap<(u32, u32), bool>,
++    /// The cell part masks are cut by too, while a pair is compared within it.
++    pub(super) cell: Option<Area>,
 +}
 +
 +fn at(b: Bounds<ScaledPixels>, d: (f32, f32)) -> Bounds<ScaledPixels> {
@@ -16051,7 +16079,10 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +
 +impl Moved {
 +    fn window(&self) -> Bounds<ScaledPixels> {
-+        let w = self.w;
++        let w = match self.cell {
++            Some(c) => [self.w[0].max(c[0]), self.w[1].max(c[1]), self.w[2].min(c[2]), self.w[3].min(c[3])],
++            None => self.w,
++        };
 +        Bounds {
 +            origin: point(ScaledPixels(w[0]), ScaledPixels(w[1])),
 +            size: size(ScaledPixels(w[2] - w[0]), ScaledPixels(w[3] - w[1])),
@@ -16060,6 +16091,10 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +
 +    fn cut(&self, m: &mut ContentMask<ScaledPixels>) {
 +        m.bounds = m.bounds.intersect(&self.window());
++        // Masks that let no pixel through are equal whatever their place.
++        if m.bounds.size.width.0 <= 0.0 || m.bounds.size.height.0 <= 0.0 {
++            m.bounds = Bounds::default();
++        }
 +    }
 +
 +    fn shift(&self, m: &mut ContentMask<ScaledPixels>) {
@@ -16078,7 +16113,13 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +                known
 +            }
 +        };
-+        exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p))
++        if exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p)) {
++            return true;
++        }
++        self.cell = Some(p.map(|v| v as f32));
++        let within = self.exact_pair(x.1, y.1);
++        self.cell = None;
++        within
 +    }
 +
 +    /// Two plain fills of one paint, each covering `p` (a stationary page
@@ -16391,7 +16432,7 @@ index 0000000000000000000000000000000000000000..1d6a1eb887f6c614e80c7278a1737b3b
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/layer_tests.rs b/vendor/gpui/src/scene/damage/shift/layer_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..37544b31a5b79c790618492b4d16e2721f59edcc
+index 0000000000000000000000000000000000000000..79f45ef82aa9ab89dc55b05b4bfc9ec628b7faab
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/layer_tests.rs
 @@ -0,0 +1,96 @@
@@ -16489,7 +16530,7 @@ index 0000000000000000000000000000000000000000..37544b31a5b79c790618492b4d16e272
 +    // The background under everything changes: every cell differs.
 +    new.quads[0].background = Background::from(blue());
 +    old.note_frame_damage(&Scene::default(), 1, (W, H));
-+    assert_eq!(new.plan_shift(&old, (W, H), (0, 0)), Err("redraw_whole"));
++    assert_eq!(new.plan_shift(&old, (W, H), (0, 0), &mut Default::default()), Err("redraw_whole"));
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift/rects.rs b/vendor/gpui/src/scene/damage/shift/rects.rs
@@ -16630,12 +16671,76 @@ index 0000000000000000000000000000000000000000..fe731ab27fcc53bc3a54f4e7cee92d73
 +            .collect()
 +    }
 +}
+diff --git a/vendor/gpui/src/scene/damage/shift/stats.rs b/vendor/gpui/src/scene/damage/shift/stats.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a32f78d5c
+--- /dev/null
++++ b/vendor/gpui/src/scene/damage/shift/stats.rs
+@@ -0,0 +1,58 @@
++//! KaminIDE patch: what a frame comparison found different, by primitive kind
++//! (DevTools `why`): the counters that name why a scroll step or an edit was
++//! drawn whole instead of guessing it from the page.
++
++use super::super::KIND_SHIFT;
++use super::items::Item;
++
++/// Kinds counted apart: the eight primitive kinds and the unchanged-layer marker.
++pub const SHIFT_KINDS: usize = 9;
++
++/// Kind names in `ShiftStats::differs` order.
++pub const SHIFT_KIND_NAMES: [&str; SHIFT_KINDS] = [
++    "shadow", "quad", "path", "underline", "mono", "subpixel", "poly", "surface", "layer",
++];
++
++/// What one comparison found; it stops early, so counts are at least these.
++#[derive(Clone, Copy, Debug, Default, PartialEq)]
++pub struct ShiftStats {
++    /// Cells compared (inside the copied window part).
++    pub cells: u32,
++    /// Cells whose new and old item counts differ (damaged without comparing).
++    pub count_cells: u32,
++    /// Differing pairs by the new item's kind (`SHIFT_KIND_NAMES`).
++    pub differs: [u32; SHIFT_KINDS],
++    /// The first differing pair: new kind, old kind, the union of their areas.
++    pub first: Option<(u8, u8, [f32; 4])>,
++}
++
++fn kind(item: &Item) -> u8 {
++    if item.marker != 0 {
++        8
++    } else {
++        (item.entry >> KIND_SHIFT) as u8
++    }
++}
++
++impl ShiftStats {
++    pub(super) fn differ(&mut self, x: &Item, y: &Item, area: [f32; 4]) {
++        self.differs[kind(x) as usize] += 1;
++        self.first.get_or_insert((kind(x), kind(y), area));
++    }
++}
++
++impl std::fmt::Display for ShiftStats {
++    /// `cells 120 count 3 differ quad 40 poly 2 first quad/quad [x0,y0,x1,y1]`.
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        write!(f, "cells {} count {}", self.cells, self.count_cells)?;
++        let shown = self.differs.iter().zip(SHIFT_KIND_NAMES).filter(|(n, _)| **n > 0);
++        for (i, (n, name)) in shown.enumerate() {
++            write!(f, "{}{name} {n}", if i == 0 { " differ " } else { " " })?;
++        }
++        if let Some((a, b, r)) = self.first {
++            let (a, b) = (SHIFT_KIND_NAMES[a as usize], SHIFT_KIND_NAMES[b as usize]);
++            write!(f, " first {a}/{b} [{:.0},{:.0},{:.0},{:.0}]", r[0], r[1], r[2], r[3])?;
++        }
++        Ok(())
++    }
++}
 diff --git a/vendor/gpui/src/scene/damage/shift/tests.rs b/vendor/gpui/src/scene/damage/shift/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..894efd09b9a9b110fa648c773746331fe3cf53f7
+index 0000000000000000000000000000000000000000..01bd536423d42e2e22305b34fb78b3789b95f9d4
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/tests.rs
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,153 @@
 +use crate::scene::{FrameShift, Scene, SceneDamage};
 +use crate::{
 +    Background, ContentMask, Hsla, Quad, ScaledPixels, blue, bounds, green, point, red, size,
@@ -16768,6 +16873,28 @@ index 0000000000000000000000000000000000000000..894efd09b9a9b110fa648c773746331f
 +    let (none, damage) = step(page(0.0, false), page(0.0, false), (0, 0));
 +    assert_eq!((none, damage), (None, SceneDamage::Unchanged));
 +}
++
++/// Boxes scrolling inside a scroller whose clip ends above a stationary bar
++/// band (`y` 200..256), as a horizontal scroll bar leaves it.
++fn clipped_page(top: f32) -> Scene {
++    let mut quads = vec![quad(0.0, 200.0, W as f32, 56.0, green(), 0.0)];
++    for k in 0..12 {
++        let mut q = quad(8.0, top + 40.0 * k as f32, 240.0, 20.0, red(), 0.0);
++        q.content_mask.bounds.size.height = ScaledPixels(200.0);
++        q.corner_radii.top_left = ScaledPixels(4.0);
++        quads.push(q);
++    }
++    scene(&quads)
++}
++
++#[test]
++fn a_scroller_clip_that_parts_from_its_moved_copy_damages_only_its_edge() {
++    let (shift, _) = step(clipped_page(0.0), clipped_page(-20.0), (0, -20));
++    let shift = shift.expect("the step is a move");
++    // The cells along the clip's edge and the band below it, not the boxes above.
++    assert!(shift.redraw.iter().all(|r| r[1] >= 128), "{shift:?}");
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/trace.rs b/vendor/gpui/src/scene/damage/trace.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..ba4a997ad94474a16ba9dcec4e9d84886b50ab83

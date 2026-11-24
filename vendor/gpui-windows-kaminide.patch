@@ -7219,7 +7219,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a9af5cdcd6d55bd92a0e2a429af47a42c04605b4
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..87916454f1ebe3dba1d662759fdd9157f2dba901
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7922,7 +7922,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a9af5cdcd6d55bd92a0e2a429af47a42
 +        // A frame the target and the screen already show is neither drawn nor
 +        // presented, and takes nothing from the latency gate.
 +        let plan = self.plan_frame(scene, background_appearance);
-+        self.count_plan(&plan, scene.frame_shift_miss());
++        self.count_plan(&plan, scene.frame_shift_miss(), scene.frame_shift_stats());
 +        let keep = matches!(plan, retained::Plan::Keep);
 +        if keep {
 +            // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.
@@ -10147,10 +10147,10 @@ index 0000000000000000000000000000000000000000..6d21abaab80a8f220bd3bba5c283da0d
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/canvas.rs b/vendor/gpui-windows/src/directx_renderer/canvas.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..66785f9bd69b6be9bf042926fc0a8fcee7ce9441
+index 0000000000000000000000000000000000000000..b1a9a86f489c0bb0164c60fe790999591189bfa8
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/canvas.rs
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,166 @@
 +//! KaminIDE patch: the frame is drawn into a kept canvas texture, and the
 +//! swap chain's back buffer receives a copy of what changed.
 +//!
@@ -10174,6 +10174,8 @@ index 0000000000000000000000000000000000000000..66785f9bd69b6be9bf042926fc0a8fce
 +    pub(super) full_by: Option<&'static str>,
 +    /// Why a scroll step was not drawn as a move (`Scene::frame_shift_miss`).
 +    pub(super) shift_miss: Option<&'static str>,
++    /// What the comparison with the last frame found (`Scene::frame_shift_stats`).
++    pub(super) shift_stats: Option<gpui::ShiftStats>,
 +    pub(super) delta: Option<(i32, i32)>,
 +    pub(super) moved_px: u64,
 +    pub(super) rects: Vec<[u32; 4]>,
@@ -10435,10 +10437,10 @@ index 0000000000000000000000000000000000000000..078f347f1316a85344f14325a48ef6b4
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..dec960ec7958df573163fe279572f192780ca983
+index 0000000000000000000000000000000000000000..5ff0b653eee68f4001fef1a9a506bb3bd36cbfea
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,111 @@
 +//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 +
 +use super::*;
@@ -10463,6 +10465,7 @@ index 0000000000000000000000000000000000000000..dec960ec7958df573163fe279572f192
 +            plan: drawn.plan.to_string(),
 +            full_by: drawn.full_by.map(str::to_string),
 +            shift_miss: drawn.shift_miss.map(str::to_string),
++            shift_compare: drawn.shift_stats.map(|s| s.to_string()),
 +            delta: drawn.delta,
 +            moved_px: drawn.moved_px,
 +            raster_px: drawn.rects.iter().map(|r| r[2] as u64 * r[3] as u64).sum(),
@@ -15908,7 +15911,7 @@ index 0000000000000000000000000000000000000000..62a89a469cd9d0b88cb2ef52b3e60dfa
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs b/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..dcdc74c56c4a104ddb79c5baa4d251ded5e95ede
+index 0000000000000000000000000000000000000000..e5fd452f05762f6863104f6791ecf5f41de2bcf9
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/retained/full_by.rs
 @@ -0,0 +1,114 @@
@@ -15974,7 +15977,7 @@ index 0000000000000000000000000000000000000000..dcdc74c56c4a104ddb79c5baa4d251de
 +impl DirectXRenderer {
 +    /// Count the plan in the `[gpu]` line: kept, whole (and why) or the area
 +    /// of the rectangle drawn.
-+    pub(in crate::directx_renderer) fn count_plan(&mut self, plan: &Plan, shift_miss: Option<&'static str>) {
++    pub(in crate::directx_renderer) fn count_plan(&mut self, plan: &Plan, shift_miss: Option<&'static str>, shift_stats: Option<gpui::ShiftStats>) {
 +        use gpui::batch_cost::FramePlan;
 +        let window = self.width as f64 * self.height as f64;
 +        let area = |r: &super::Region| r.width as u64 * r.height as u64;
@@ -16006,7 +16009,7 @@ index 0000000000000000000000000000000000000000..dcdc74c56c4a104ddb79c5baa4d251de
 +                (FramePlan::Within(px as f64), drawn)
 +            }
 +        };
-+        self.retained.drawn = super::super::canvas::Drawn { shift_miss, ..drawn };
++        self.retained.drawn = super::super::canvas::Drawn { shift_miss, shift_stats, ..drawn };
 +        self.gpu_timer.instrumentation.batches.plan(counted, window);
 +    }
 +}
