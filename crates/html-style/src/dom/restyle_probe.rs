@@ -30,7 +30,7 @@ pub struct RestyleProbe {
     asked: Media,
     extra_css: Box<str>,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
-    reads_attr: bool,
+    reads_attr: crate::dom::attr_reads::AttrReads,
 }
 
 /// Проба документа между правками его ревизии: правила и контексты входа в

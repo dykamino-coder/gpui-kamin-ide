@@ -162,14 +162,20 @@ impl Document {
         let media = self.state.media();
         let probe = cache.probe(input, theme_css, media, values).ok().flatten();
         let probe = why::why(probe, &why::REFUSED_RESTYLE_PROBE)?;
-        // `attr()` reads attributes outside selectors (a `::before` of a
-        // mutated element): such a document is rebuilt.
+        // `attr()` reads attributes outside selectors, by name, of the element
+        // its declaration applies to (a `::before` of a mutated element, which
+        // this probe does not restyle). Only a batch that changes a name some
+        // `attr()` of the sheets or of a mutated element's own `style=""` reads
+        // is rebuilt (`AttrReads`); any other name substitutes nothing new.
+        let mut reads = probe.reads_attr().clone();
         let own = batch
             .elements
             .iter()
             .flat_map(|c| c.old.iter().chain(&c.new));
-        let mut own = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
-        if probe.reads_attr() || own.any(|css| css.contains("attr(")) {
+        for css in own.filter(|a| &*a.name.local == "style") {
+            reads.scan(&css.value);
+        }
+        if reads.reads_any_of(changed.attrs.iter().map(String::as_str)) {
             return refuse(&why::REFUSED_RESTYLE_ATTR);
         }
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();

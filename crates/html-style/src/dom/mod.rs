@@ -24,6 +24,7 @@ pub use same_tree::{
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
 pub mod class_tokens;
+pub mod attr_reads;
 pub mod invalidation;
 pub mod traversal;
 pub use children::{
