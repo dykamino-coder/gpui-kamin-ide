@@ -17,7 +17,7 @@ mod element;
 mod frame;
 mod slot;
 
-pub(super) use element::{Replay, ReplayRecorder};
+pub(super) use element::{Replay, ReplayRecorder, plain_environment};
 pub(super) use frame::note_flow_refused;
 pub(super) use slot::ReplaySlot;
 
@@ -26,7 +26,7 @@ use crate::dom::Element;
 use crate::hooks::LineCapture;
 use gpui::{
     Bounds, ContentMask, InkSinkList, LayoutId, Pixels, Point, RetainedPaint, RetainedPrepaint,
-    RetainedSubtree, ScaledPixels, Size, Window, point, px,
+    RetainedSubtree, ScaledPixels, Size,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -126,6 +126,9 @@ pub(super) struct Captured {
     pub(super) prepaint: Option<PlacedPrepaint>,
     pub(super) paint: Option<RetainedPaint>,
     pub(super) mask: Option<ContentMask<Pixels>>,
+    /// The overflow clips of the block's ancestors its layout gives
+    /// (`Window::layout_content_mask`).
+    pub(super) clip: Option<Bounds<Pixels>>,
     pub(super) lines: Option<Rc<LineCapture>>,
 }
 
@@ -170,6 +173,7 @@ impl PendingReplay {
                 prepaint: None,
                 paint: None,
                 mask: None,
+                clip: None,
                 lines: None,
             }))),
             sink: (ink.clone(), ink.open()),
@@ -180,12 +184,13 @@ impl PendingReplay {
     /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
     /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
     ///
-    /// The next frame checks a replay against the content mask of its root
-    /// (`ReplaySlot::refusal`, before any clip of the replayed block's
-    /// ancestors is known): a block drawn under another clip is not recorded,
-    /// as its replay could only be refused and the frame built twice. Its clip
-    /// is checked where the replay is prepainted once replay can apply a new
-    /// clip (Blink compares the property tree state of a cached subsequence).
+    /// The next frame checks a replay's mask before prepaint by its layout
+    /// (`ReplaySlot::refusal`): the frame's root mask cut by the overflow
+    /// clips of the block's ancestors (`Window::layout_content_mask`). A block
+    /// drawn under a clip its layout does not give (an element's own clip) is
+    /// not recorded, as its replay could not be checked and might only be
+    /// refused with the frame built twice (Blink compares the property tree
+    /// state of a cached subsequence).
     pub(super) fn finish(
         &self,
         source: Source,
@@ -208,8 +213,8 @@ impl PendingReplay {
         if screen.is_some_and(|screen| super::recorder::far(Some(ink), Point::default(), screen)) {
             return None;
         }
-        let mask = captured.mask?;
-        if frame_mask.is_some_and(|frame| frame != mask.bounds) {
+        let (mask, clip) = (captured.mask?, captured.clip?);
+        if frame_mask.is_some_and(|frame| frame.intersect(&clip) != mask.bounds) {
             return None;
         }
         // A command clipped where it was recorded cannot be restored by a
@@ -240,9 +245,4 @@ impl PendingReplay {
             })),
         })
     }
-}
-
-/// Окружение, в котором краска переносима как есть: корень окна без сдвига.
-fn plain_environment(window: &Window) -> bool {
-    window.retained_root_environment() && window.element_offset() == point(px(0.0), px(0.0))
 }

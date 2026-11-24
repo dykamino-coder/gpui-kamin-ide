@@ -39,6 +39,9 @@ pub const CODES: &[&str] = &[
     "not_admitted",
     "uncacheable",
     // Causes beyond `frame_miss.*` and `paint_path.refused_*` (`codes` below).
+    "band_kid.miss",
+    "band_slot.miss",
+    "band_slot.none",
     "frame_unpublished",
     "layout_retry.container_size",
     "layout_retry.flow_refused",

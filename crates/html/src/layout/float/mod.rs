@@ -10,6 +10,7 @@ use crate::style::values::value::{Len, px_strict};
 
 pub(super) mod band_clearance;
 mod band_flow;
+pub(crate) use band_flow::{HostSlot, Retained};
 pub mod band_flow_host;
 pub mod band_host;
 pub mod band_measured;

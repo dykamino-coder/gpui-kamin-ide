@@ -1,6 +1,7 @@
 //! Пробы размеров детей полос: высота при ширине, внутренние ширины (min/max-content).
 
 use super::kid::{Kid, Kind};
+use super::kid_slot::ProbeInput;
 use super::tap::Tap;
 use super::{Build, Probe, Shapes, frame};
 use crate::hooks::IntoHooked;
@@ -16,6 +17,11 @@ pub(super) fn probe(
     shapes: Option<Shapes>,
     p: &mut Probe,
 ) -> (f32, f32) {
+    // A clean child answers from its box (`kid_slot`), without a build.
+    let input = ProbeInput::of(kid, cb, avail, shapes.clone(), p);
+    if let Some(size) = p.kept_probe(kid, input.as_ref()) {
+        return size;
+    }
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let Some(watched) = &kid.watched {
         watched.reset();
@@ -36,6 +42,7 @@ pub(super) fn probe(
     if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
         fragment.probes = old;
     }
+    p.keep_kid_probe(kid, input, size);
     size
 }
 
@@ -146,6 +153,11 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
     if let Some(size) = kid.intrinsic.get() {
         return size;
     }
+    let kept = p.kept.clone();
+    if let Some(size) = kept.as_ref().and_then(|s| s.kid_intrinsic(kid.node_id)) {
+        kid.intrinsic.set(Some(size));
+        return size;
+    }
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
         flow.rewind();
@@ -153,6 +165,9 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
     }
     let size = intrinsic_of(&kid.build, p);
     kid.intrinsic.set(Some(size));
+    if let Some(slot) = kept {
+        slot.keep_kid_intrinsic(kid.node_id, size);
+    }
     if let (Some(fragment), Some(old)) = (&mut p.fragment, old) {
         fragment.probes = old;
     }

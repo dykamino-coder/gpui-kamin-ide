@@ -25,7 +25,11 @@ impl BandFlow {
             unr.width
         });
         let origin = window.layout_origin_unrounded(*state);
-        let cached = self.plan.get(cb);
+        let kept = || {
+            let plan = self.host_slot()?.plan(cb)?;
+            Some(self.plan.insert_kept(plan))
+        };
+        let cached = self.plan.get(cb).or_else(kept);
         let p = match cached {
             Some(p) => p,
             None => {
@@ -45,6 +49,9 @@ impl BandFlow {
                     p.engine = Some(retained);
                     plan(&kids, cb, contain_floats, &mut p)
                 });
+                if let Some(slot) = self.host_slot() {
+                    slot.keep_plan(&plan);
+                }
                 self.plan.insert(plan)
             }
         };

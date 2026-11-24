@@ -16,6 +16,7 @@
 //! LayoutNG takes the cached `LayoutResult` of a clean box, and Blink
 //! `PaintController` the paint subsequence of a clean subtree.
 
+pub(crate) mod band;
 pub(super) mod inert;
 mod key;
 pub(crate) mod shared;

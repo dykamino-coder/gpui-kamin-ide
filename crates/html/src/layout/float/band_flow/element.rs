@@ -26,6 +26,8 @@ pub struct BandFlow {
     pub(super) clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
     pub(super) fragment: Option<super::fragment::FragmentFlow>,
     pub(super) positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+    /// The host's result kept between frames (`slot`).
+    pub(super) slot: Option<Rc<super::HostSlot>>,
 }
 
 impl BandFlow {
@@ -44,6 +46,7 @@ impl BandFlow {
             fragment: None,
             clamp: None,
             positioning: None,
+            slot: None,
         }
     }
 
@@ -80,6 +83,7 @@ impl Hooks for BandFlow {
         // (§10.3.3). Float/inline-block/abspos и flex/grid/table оставляют
         // размер неизвестным до своего алгоритма; их fit-content сохраняется.
         let (vert, contain_floats) = (self.vert, self.contain_floats);
+        let slot = self.host_slot();
         let measure = move |known: gpui::Size<Option<Pixels>>,
                             available: gpui::Size<AvailableSpace>,
                             geometry: gpui::MeasuredBox,
@@ -123,7 +127,8 @@ impl Hooks for BandFlow {
                         // keys its cache by `initial_block_size`
                         // (`layout_box.h`) because its algorithms may receive
                         // a definite one; these probes cannot.
-                        let (min, max) = intrinsic.get().unwrap_or_else(|| {
+                        let kept = || slot.as_ref().and_then(|s| s.intrinsic());
+                        let (min, max) = intrinsic.get().or_else(kept).unwrap_or_else(|| {
                             window.with_nested_layout(|window| {
                                 let p = &mut Probe::new(
                                     window,
@@ -136,6 +141,9 @@ impl Hooks for BandFlow {
                                 );
                                 let sizes = intrinsic_sizes(&kids, p);
                                 intrinsic.set(Some(sizes));
+                                if let Some(slot) = &slot {
+                                    slot.keep_intrinsic(sizes);
+                                }
                                 sizes
                             })
                         });
@@ -154,7 +162,11 @@ impl Hooks for BandFlow {
                 if geometry.intrinsic_axis == Some(axis) {
                     return gpui::MeasuredContent::new(phys(cb, 0.0));
                 }
-                if let Some(p) = cache.get(cb) {
+                let kept = || {
+                    let plan = slot.as_ref()?.plan(cb)?;
+                    Some(cache.insert_kept(plan))
+                };
+                if let Some(p) = cache.get(cb).or_else(kept) {
                     if let Some(f) = &fragment {
                         f.publish(&p, &kids);
                     }
@@ -181,6 +193,9 @@ impl Hooks for BandFlow {
                 }
                 super::clamp::publish(&output, &p, vert, inline_up);
                 let measured = p.measured(vert, inline_up);
+                if let Some(slot) = &slot {
+                    slot.keep_plan(&p);
+                }
                 cache.insert(p);
                 measured
             })

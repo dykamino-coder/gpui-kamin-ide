@@ -12,6 +12,15 @@ pub(crate) struct Counters {
 }
 
 impl Counters {
+    /// No key and no anchor taken.
+    #[cfg(test)]
+    pub(crate) fn zero() -> Self {
+        Self {
+            keys: 0,
+            anchors: 0,
+        }
+    }
+
     pub(crate) fn read(cx: &LayoutCx) -> Self {
         Self {
             keys: cx.deferred.keys.get(),

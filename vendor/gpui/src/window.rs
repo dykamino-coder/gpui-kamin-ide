@@ -116,6 +116,7 @@ mod isolated;
 use isolated::{IsolatedDraw, RootRanges};
 mod retained_layout_inputs;
 pub use retained_layout_inputs::RetainedLayoutInputs;
+mod layout_mask;
 mod retained_layout;
 mod update_rendering;
 pub use update_rendering::ElementPlace;

@@ -14,4 +14,13 @@ pub(crate) struct LayoutSlot {
     /// contains, as the last frame that painted them placed them
     /// (`fragments`); `None` until a paragraph of the box is painted.
     pub(crate) inline: Option<Box<InlineFragments>>,
+    /// The plans of a float band host by width (`band_flow::HostSlot`);
+    /// `None` until a band host of the box is laid out.
+    pub(crate) band: Option<Box<crate::layout::float::Retained>>,
+    /// The probes of the box as a float band child (`band_flow::kid_slot`).
+    pub(crate) probe: Option<Box<crate::layout::float::Retained>>,
+    /// The document frame (`Store::epoch`) that first built a band host of
+    /// the box: a host keeps results from its second frame on, so a page
+    /// shown once pays nothing for them (`FlowReuse::band_key`).
+    pub(crate) band_seen: Option<u64>,
 }
