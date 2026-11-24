@@ -31,7 +31,7 @@ impl AttrReads {
             let args = at + found;
             match attr_name(&css[args..]) {
                 Some(name) => {
-                    if !self.names.iter().any(|n| *n == name) {
+                    if !self.names.contains(&name) {
                         self.names.push(name);
                     }
                 }
