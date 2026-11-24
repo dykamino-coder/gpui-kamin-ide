@@ -186,6 +186,10 @@ def check(args):
 REPO = Path(__file__).resolve().parents[1]
 
 if __name__ == "__main__":
+    # Findings quote source lines (any script); a console code page such as
+    # cp1252 on Windows CI must not turn the report into a UnicodeEncodeError.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("base", nargs="?", default="origin/main", help="diff base revision")
     parser.add_argument("--head", default="HEAD", help="committed candidate revision")
