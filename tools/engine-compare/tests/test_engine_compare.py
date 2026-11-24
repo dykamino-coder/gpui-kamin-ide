@@ -88,6 +88,17 @@ class Metrics(unittest.TestCase):
         r = M.ours_frame(j, 'cold')
         self.assertEqual((r['req'], r['raf']), (9.5, 6.5))
 
+    def test_the_gpu_wait_leaves_the_frame_only_on_a_hardware_gpu(self):
+        d = {'capture_copy': 0.5, 'capture': 0.75, 'gpu_wait': 3.0, 'raster_submit': 1.0}
+        j = {'modes': {'scroll': {'samples_ms': [{'first_frame_total': 10, 'pipeline_other': 1}] * 3,
+                                  'diagnostic_scopes': {'samples_ms': [d] * 3}}}}
+        hw = M.ours_frame(j, 'scroll', True); sw = M.ours_frame(j, 'scroll', False)
+        self.assertEqual((hw['req'], hw['gpu_wait']), (6.25, 3.0))  # WARP: the wait is the CPU raster, it stays
+        self.assertEqual((sw['req'], sw['gpu_wait']), (9.25, 3.0))
+        self.assertTrue(M.ours_hardware_gpu({'gpu': {'is_software_emulated': False}}))
+        self.assertFalse(M.ours_hardware_gpu({'gpu': {'is_software_emulated': True}}))
+        self.assertFalse(M.ours_hardware_gpu({}))
+
     def test_ours_cpu_counts_phases_except_pipeline_other(self):
         s = {'phases': {'layout': {'process_cpu_100ns': 20000}, 'pipeline_other': {'process_cpu_100ns': 90000}}}
         self.assertEqual(M.ours_cpu({'modes': {'edit': {'process_resources': {'samples': [s, s]}}}}, 'edit'), 2.0)

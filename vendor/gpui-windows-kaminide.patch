@@ -10212,10 +10212,10 @@ index 0000000000000000000000000000000000000000..c49be4fa651ee122c07e5e3ba446dc11
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/frame_capture.rs b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cfdd342d993937cef6ebc47030d4e2307ac7514d
+index 0000000000000000000000000000000000000000..310a4f6ca14c0c7cb84d4e1087e55ce12154e8e8
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/frame_capture.rs
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,78 @@
 +//! KaminIDE patch: readback владеет неизменяемым контекстом своего устройства.
 +
 +use super::*;
@@ -10229,7 +10229,12 @@ index 0000000000000000000000000000000000000000..cfdd342d993937cef6ebc47030d4e230
 +        let staging = self.capture_staging()?;
 +        // KaminIDE patch: the frame is complete when the GPU has executed it;
 +        // the copy below is the capture's own cost, reported apart (`copied`).
++        // The wait is reported apart too (`waited`): on a hardware adapter it
++        // is GPU execution the window path never waits for (`present` is
++        // DO_NOT_WAIT), on WARP it is the frame's CPU raster.
++        let wait_started = std::time::Instant::now();
 +        self.wait_gpu_idle()?;
++        let waited = wait_started.elapsed();
 +        let devices = self.dev();
 +        let render_target = self
 +            .res()
@@ -10281,6 +10286,7 @@ index 0000000000000000000000000000000000000000..cfdd342d993937cef6ebc47030d4e230
 +            grayscale_enhanced_contrast: self.font_info.grayscale_enhanced_contrast,
 +        });
 +        if let Some(sink) = &mut self.capture {
++            sink.waited(waited);
 +            sink.copied(copy_started.elapsed());
 +            sink.completed(gpui::frame_capture::CapturedFrame { width: w, height: h, bgra, context }, started.elapsed());
 +        }

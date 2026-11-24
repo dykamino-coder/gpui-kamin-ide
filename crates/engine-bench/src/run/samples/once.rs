@@ -156,6 +156,7 @@ pub(super) async fn sample_once(
                 present: Duration::ZERO,
                 readback: Duration::ZERO,
                 copy: Duration::ZERO,
+                gpu_wait: Duration::ZERO,
                 total,
                 readback_to_resume: Duration::ZERO,
             },
@@ -210,6 +211,10 @@ pub(super) async fn sample_once(
                 .copy
                 .checked_sub(before.copy)
                 .ok_or("capture copy counter regressed")?,
+            gpu_wait: after
+                .gpu_wait
+                .checked_sub(before.gpu_wait)
+                .ok_or("GPU wait counter regressed")?,
             total,
             // Browser frame completion is posted after rendering. Record the task
             // wake after readback separately from the measured frame.
