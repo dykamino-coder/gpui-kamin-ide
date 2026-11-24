@@ -190,3 +190,28 @@ fn placed_replay_reserves_only_what_it_keeps() {
     assert_eq!(full.paint_operations.len(), 1000);
     assert_eq!(full.paint_operations.capacity(), 1000);
 }
+
+#[test]
+fn finish_keeps_the_paint_order_of_equal_order_sprites() {
+    // Overlapping glyphs of one order blend in the order they were painted,
+    // whatever ids the atlas gave their tiles.
+    let sprite = |tile_id: u32, x: f32| MonochromeSprite {
+        order: 7,
+        pad: 0,
+        bounds: rect(x, 0., 10., 10.),
+        content_mask: ContentMask { bounds: rect(x, 0., 10., 10.) },
+        color: Hsla::default(),
+        tile: AtlasTile {
+            texture_id: AtlasTextureId { index: 0, kind: AtlasTextureKind::Monochrome },
+            tile_id: TileId(tile_id),
+            padding: 0,
+            bounds: Bounds::default(),
+        },
+        transformation: TransformationMatrix::unit(),
+    };
+    let mut scene = Scene::default();
+    scene.monochrome_sprites = vec![sprite(9, 0.), sprite(3, 4.), sprite(5, 8.)];
+    scene.finish();
+    let painted: Vec<u32> = scene.monochrome_sprites.iter().map(|s| s.tile.tile_id.0).collect();
+    assert_eq!(painted, [9, 3, 5]);
+}
