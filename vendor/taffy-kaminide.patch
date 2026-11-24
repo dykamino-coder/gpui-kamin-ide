@@ -23870,14 +23870,15 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..49fc5d4ef7cbf9bbf9e125f6c2520ebeb5936ebf
+index 0000000000000000000000000000000000000000..4179e27541f58c281bd0cfbabab91c7757866076
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,138 @@
 +//! Gutter changes invalidate intrinsic sizes before an ancestor commits its result.
-+//! As Blink's BlockNode retry, freeze appeared bars for the whole layout transaction.
++//! As Blink's BlockNode retry, freeze appeared bars for the rest of the layout transaction
++//! while the box keeps the size they appeared at.
 +use super::*;
-+use crate::geometry::Point;
++use crate::geometry::{Point, Size};
 +
 +/// An active ancestor must repeat its layout with the settled descendant gutter.
 +const DIRTY: u8 = 1;
@@ -23885,20 +23886,39 @@ index 0000000000000000000000000000000000000000..49fc5d4ef7cbf9bbf9e125f6c2520ebe
 +pub(super) const SIZE_DIRTY: u8 = 16;
 +/// The view owns this node in its transaction cleanup list.
 +const TOUCHED: u8 = 8;
-+/// A horizontal bar appeared and stays until this layout transaction ends.
++/// A horizontal bar appeared and stays while the box keeps the width it appeared at.
 +const FROZEN_X: u8 = 2;
-+/// A vertical bar appeared and stays until this layout transaction ends.
++/// A vertical bar appeared and stays while the box keeps the height it appeared at.
 +const FROZEN_Y: u8 = 4;
++
++/// The nodes a layout transaction changed the scrollbar state of, and the border-box
++/// size each one's bars appeared at.
++#[derive(Default)]
++pub(crate) struct ScrollbarTouched {
++    /// Every node whose scrollbar state this transaction set, cleared when the view drops.
++    nodes: Vec<NodeId>,
++    /// Only boxes whose bars changed; looked up by the box's own settling only.
++    frozen_at: Vec<(NodeId, Size<f32>)>,
++}
 +
 +impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
 +where
 +    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +{
 +    /// Only the ancestor chain loses intrinsic measurements; unrelated subtrees stay cached.
-+    pub(super) fn kamin_gutter_changed(&mut self, node_id: NodeId, bars: Point<bool>) {
++    pub(super) fn kamin_gutter_changed(&mut self, node_id: NodeId, bars: Point<bool>, at: Size<f32>) {
 +        self.touch_scrollbar_state(node_id);
-+        self.taffy.nodes[node_id.into()].scrollbar_state |=
-+            SIZE_DIRTY | if bars.x { FROZEN_X } else { 0 } | if bars.y { FROZEN_Y } else { 0 };
++        let frozen = &mut self.scrollbar_touched.frozen_at;
++        match frozen.iter_mut().find(|(id, _)| *id == node_id) {
++            Some((_, size)) => *size = at,
++            None => frozen.push((node_id, at)),
++        }
++        // A bar taken back is no longer frozen: it was not needed at this size.
++        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
++        *state = (*state & !(FROZEN_X | FROZEN_Y))
++            | SIZE_DIRTY
++            | if bars.x { FROZEN_X } else { 0 }
++            | if bars.y { FROZEN_Y } else { 0 };
 +        let mut parent = self.taffy.parents[node_id.into()];
 +        while let Some(id) = parent {
 +            if self.taffy.nodes[id.into()].scrollbar_state & (DIRTY | SIZE_DIRTY)
@@ -23919,17 +23939,28 @@ index 0000000000000000000000000000000000000000..49fc5d4ef7cbf9bbf9e125f6c2520ebe
 +    /// Register a changed node once so dropping the view clears transient state.
 +    fn touch_scrollbar_state(&mut self, node_id: NodeId) {
 +        if self.taffy.nodes[node_id.into()].scrollbar_state == 0 {
-+            self.scrollbar_touched.push(node_id);
++            self.scrollbar_touched.nodes.push(node_id);
 +            self.taffy.nodes[node_id.into()].scrollbar_state = TOUCHED;
 +        }
 +    }
 +
-+    /// Bars that appeared in any local retry of this transaction.
-+    pub(super) fn kamin_frozen_scrollbars(&self, node_id: NodeId) -> Point<bool> {
++    /// Bars that appeared in any local retry of this transaction and still hold at the
++    /// box's `size`. A horizontal bar answers horizontal overflow, so it holds while the
++    /// width it was decided at does; a vertical bar while the height does. A box whose
++    /// inline size follows its own gutter (shrink-to-fit, CSS 2.1 §10.3.5 and §10.3.7)
++    /// is laid out once more at the width its parent gives it with the new bar: the other
++    /// bar is decided again there, as Blink decides it after `SetIntrinsicLogicalWidthsDirty`
++    /// (`PaintLayerScrollableArea::UpdateAfterLayout`), so the bars do not depend on the
++    /// guess the box was built with.
++    pub(super) fn kamin_frozen_scrollbars(&self, node_id: NodeId, size: Size<f32>) -> Point<bool> {
 +        let flags = self.taffy.nodes[node_id.into()].scrollbar_state;
++        if flags & (FROZEN_X | FROZEN_Y) == 0 {
++            return Point { x: false, y: false };
++        }
++        let at = self.scrollbar_touched.frozen_at.iter().find(|(id, _)| *id == node_id).map(|(_, at)| *at);
 +        Point {
-+            x: flags & FROZEN_X != 0,
-+            y: flags & FROZEN_Y != 0,
++            x: flags & FROZEN_X != 0 && at.is_some_and(|at| at.width == size.width),
++            y: flags & FROZEN_Y != 0 && at.is_some_and(|at| at.height == size.height),
 +        }
 +    }
 +
@@ -23976,14 +24007,14 @@ index 0000000000000000000000000000000000000000..49fc5d4ef7cbf9bbf9e125f6c2520ebe
 +    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 +{
 +    fn drop(&mut self) {
-+        for id in &self.scrollbar_touched {
++        for id in &self.scrollbar_touched.nodes {
 +            self.taffy.nodes[(*id).into()].scrollbar_state = 0;
 +        }
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbars.rs b/vendor/taffy/src/tree/kamin_scrollbars.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ffc5ed0e14714ded7de58e5545e75ce38bb7e11
+index 0000000000000000000000000000000000000000..ad575b293b5f6ad9ddb2c9337c877d10006eaebe
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbars.rs
 @@ -0,0 +1,136 @@
@@ -24098,7 +24129,7 @@ index 0000000000000000000000000000000000000000..5ffc5ed0e14714ded7de58e5545e75ce
 +                need || appeared || (measure && current)
 +            }
 +        };
-+        let frozen = self.kamin_frozen_scrollbars(node_id);
++        let frozen = self.kamin_frozen_scrollbars(node_id, output.size);
 +        let next = Point {
 +            x: keep(auto.x, need.x, settling.appeared.x || frozen.x, current.x),
 +            y: keep(auto.y, need.y, settling.appeared.y || frozen.y, current.y),
@@ -24109,7 +24140,7 @@ index 0000000000000000000000000000000000000000..5ffc5ed0e14714ded7de58e5545e75ce
 +        settling.appeared.x |= next.x && !current.x;
 +        settling.appeared.y |= next.y && !current.y;
 +        settling.passes += 1;
-+        self.kamin_gutter_changed(node_id, next);
++        self.kamin_gutter_changed(node_id, next, output.size);
 +        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
 +        let node = &mut self.taffy.nodes[node_id.into()];
 +        // A style shared with other nodes is copied: only this box changes its bars.
@@ -24387,10 +24418,10 @@ index 0000000000000000000000000000000000000000..ee1fddc37d2b6557e423d920875f0036
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbars_tests.rs b/vendor/taffy/src/tree/kamin_scrollbars_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..73e86df9f3190d11a074d4e244db410b46ba40c6
+index 0000000000000000000000000000000000000000..3e355ae36c90c8a54cb2453ee27d194c3d8be61f
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbars_tests.rs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,311 @@
 +//! KaminIDE patch: tests of the bars layout decides (`kamin_scrollbars`).
 +use crate::geometry::Point;
 +use crate::prelude::*;
@@ -24604,6 +24635,105 @@ index 0000000000000000000000000000000000000000..73e86df9f3190d11a074d4e244db410b
 +
 +#[path = "kamin_scrollbars_dependency_tests.rs"]
 +mod dependency_tests;
++
++/// The bars layout settles on depend on the content only, not on the bars the
++/// box was built with: a box whose content fits the scrollport exactly in one
++/// axis keeps no bar there whatever the guess (CSS Overflow 3 §3, `auto`).
++#[test]
++fn bars_settle_to_the_same_fixed_point_from_every_guess() {
++    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        let cover = tree
++            .new_leaf(Style {
++                position: Position::Absolute,
++                inset: Rect { left: length(0.0), right: length(0.0), top: length(0.0), bottom: length(0.0) },
++                ..Default::default()
++            })
++            .unwrap();
++        let tall = tree
++            .new_leaf(Style {
++                display: Display::Flex,
++                margin: Rect { left: zero(), right: zero(), top: length(20.2), bottom: zero() },
++                size: Size { width: length(129.3), height: length(1584.8) },
++                ..Default::default()
++            })
++            .unwrap();
++        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
++        let root = tree
++            .new_with_children(
++                Style {
++                    display: Display::Block,
++                    size: Size { width: length(176.286_71), height: length(32.0) },
++                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
++                    scrollbar_width: BAR,
++                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
++                    ..Default::default()
++                },
++                &[cover, tall],
++            )
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(
++            tree.style(root).unwrap().overflow,
++            Point { x: Overflow::Hidden, y: Overflow::Scroll },
++            "guess {guess:?}"
++        );
++    }
++}
++/// A shrink-to-fit box widens by the vertical bar that appears in its layout
++/// (CSS 2.1 §10.3.7, the gutter in its intrinsic inline size): the horizontal
++/// bar is decided at the width it settles on, not at the narrower width it had
++/// before its parent took the new gutter, and the bars do not depend on the
++/// guess they were built with (Blink `PaintLayerScrollableArea::UpdateAfterLayout`
++/// sets `SetIntrinsicLogicalWidthsDirty` and decides again at the new size).
++#[test]
++fn a_shrink_to_fit_box_decides_its_other_bar_at_the_width_its_gutter_gives_it() {
++    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        let content = tree
++            .new_leaf(Style {
++                display: Display::Block,
++                size: Size { width: length(161.286_71), height: length(1621.0) },
++                ..Default::default()
++            })
++            .unwrap();
++        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
++        let scroller = tree
++            .new_with_children(
++                Style {
++                    display: Display::Block,
++                    position: Position::Absolute,
++                    size: Size { width: auto(), height: length(32.0) },
++                    max_size: Size { width: length(200.0), height: length(390.0) },
++                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
++                    scrollbar_width: BAR,
++                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
++                    ..Default::default()
++                },
++                &[content],
++            )
++            .unwrap();
++        let root = tree
++            .new_with_children(
++                Style {
++                    display: Display::Flex,
++                    size: Size { width: length(800.0), height: length(600.0) },
++                    ..Default::default()
++                },
++                &[scroller],
++            )
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(
++            tree.style(scroller).unwrap().overflow,
++            Point { x: Overflow::Hidden, y: Overflow::Scroll },
++            "guess {guess:?}"
++        );
++        // The tree rounds its layout to whole pixels.
++        assert_eq!(tree.layout(scroller).unwrap().size.width, (161.286_71 + BAR).round(), "guess {guess:?}");
++    }
++}
+\ No newline at end of file
 diff --git a/vendor/taffy/src/tree/lanes_absolute_flow_tests.rs b/vendor/taffy/src/tree/lanes_absolute_flow_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..2ebc62fc93efd6bd41eeff98cd287f90eb5d0a49
@@ -27405,7 +27535,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3e4e7390dba74a41f7c57f34420f33dff5b01813
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..b5583745e07e05577fbe9ed466b6937976e58035
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,22 @@
@@ -27791,7 +27921,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3e4e7390dba74a41f7c57f34420f33df
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
 @@ -277,0 +629,20 @@
 +    /// Nodes touched by gutter settling; reset when this layout/query view ends.
-+    pub(crate) scrollbar_touched: Vec<NodeId>,
++    pub(crate) scrollbar_touched: kamin_scrollbar_dependencies::ScrollbarTouched,
 +    /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
 +    /// one computation, so the memos are dropped with it.
 +    #[cfg(feature = "grid")]
@@ -28343,7 +28473,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3e4e7390dba74a41f7c57f34420f33df
 +        self.kamin_root_gutter = None;
 +        let mut taffy_view = TaffyView {
 +            taffy: self,
-+            scrollbar_touched: Vec::new(),
++            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function,
@@ -28362,7 +28492,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3e4e7390dba74a41f7c57f34420f33df
 +    {
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
-+        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Vec::new(), #[cfg(feature = "grid")] grid_memos: Default::default() };
++        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Default::default(), #[cfg(feature = "grid")] grid_memos: Default::default() };
 +        view.compute_child_layout(node_id, LayoutInput {
 +            run_mode: crate::RunMode::ComputeSize,
 +            sizing_mode: crate::SizingMode::InherentSize,
@@ -28380,7 +28510,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..3e4e7390dba74a41f7c57f34420f33df
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 @@ -1003 +1804,6 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
-+            scrollbar_touched: Vec::new(),
++            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function: |inputs, _, _, style| {

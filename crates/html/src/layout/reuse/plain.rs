@@ -6,41 +6,6 @@
 use crate::dom::{Element, Node};
 use crate::style::computed::Position;
 
-/// Теги обычного потока, чья коробка — только блок или строка текста.
-const TAGS: &[&str] = &[
-    "div",
-    "p",
-    "span",
-    "b",
-    "i",
-    "em",
-    "strong",
-    "u",
-    "s",
-    "small",
-    "code",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "section",
-    "article",
-    "header",
-    "footer",
-    "main",
-    "nav",
-    "aside",
-    "blockquote",
-];
-
-/// Таблица раскладывается внутри своей коробки (CSS 2.1 §17.4): её ячейки —
-/// обычный поток, а сетка — только геометрия.
-const TABLE: &[&str] = &[
-    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
-];
-
 /// A skip record may use another counter origin only when none of its
 /// paint keys or anchors escape the subtree. Both recorders use this result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -77,11 +42,20 @@ fn inert(e: &Element) -> bool {
         && style.reset_effects.blend.is_none_or(|b| b == 0)
 }
 
-/// Элемент — коробка обычного потока или таблицы без наведения, анимации,
-/// псевдоэлементов первой строки и буквы и маркера.
+/// The element's box is made by its computed style and its subtree alone
+/// (css-display-3 §2), and the state it shows lives in the DOM and style,
+/// whose changes publish the box's epoch. So these do not qualify: a replaced
+/// element (css-display-3 §2.4: its content is an outside resource or a nested
+/// document, whose loading publishes no epoch) and a natively drawn control
+/// (HTML §15.5); MathML and ruby with their own layout (a ruby annotation may
+/// overhang its box, css-ruby-1 §4.4); hover and animations (pointer and clock
+/// state); first-line and first-letter (taken from an ancestor's lines); a
+/// list item's marker (its number comes from siblings). The tag alone decides
+/// nothing: `<a>`, `<li>` without a marker or `<dd>` are flow boxes like `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
-    let tag = e.tag.as_str();
-    (TAGS.contains(&tag) || TABLE.contains(&tag))
+    !embedded(e)
+        && !math_layout(e)
+        && crate::text::ruby::ruby_role(e).is_none()
         && e.hover.is_none()
         && e.anim.is_none()
         && e.first_letter.is_none()
@@ -169,9 +143,35 @@ fn layout_reads_outside_nothing(e: &Element, vcx: crate::values::ValueCx<'_>) ->
         )
 }
 
-/// A table element (`far::replayable` admits none).
+/// The element's content does not come from its subtree: a replaced element or
+/// a native control (`<br>` is only a forced line break, css-text-3 §5.1).
+fn embedded(e: &Element) -> bool {
+    let tag = e.tag.as_str();
+    (crate::layout::box_kind::replaced_inline(tag) && tag != "br")
+        || crate::layout::box_kind::native_control(tag)
+}
+
+/// A MathML element laid out by the math layout (`layout::mathml`).
+fn math_layout(e: &Element) -> bool {
+    let math = &e.style.used().reset_svg_math;
+    math.mathml && math.math_layout.is_some()
+}
+
+/// A table box or a box of a table's internal display, laid out by the
+/// table (`far::replayable` admits none).
 pub(super) fn table(e: &Element) -> bool {
-    TABLE.contains(&e.tag.as_str())
+    use crate::style::computed::Display;
+    e.tag == "table"
+        || matches!(
+            e.style.used().reset_box_layout.display,
+            Some(
+                Display::Table
+                    | Display::InlineTable
+                    | Display::TableRowGroup
+                    | Display::TableRow
+                    | Display::TableCell
+            )
+        )
 }
 
 /// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без

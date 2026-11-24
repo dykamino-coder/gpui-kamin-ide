@@ -227,7 +227,7 @@ impl FlowReuse {
 
     /// The content records of this frame: replayed and finished.
     pub(super) fn finish_contents(&self) {
-        let mut next = self.next_contents.take();
+        let (mut next, mask) = (self.next_contents.take(), self.mask.get());
         for pending in self.pending_contents.take() {
             let PendingContent {
                 owner,
@@ -237,7 +237,7 @@ impl FlowReuse {
             } = pending;
             let finished: Option<Box<[_]>> = items
                 .iter()
-                .map(|item| item.finish(Source::bare(key(owner)), None).map(Rc::new))
+                .map(|i| i.finish(Source::bare(key(owner)), None, mask).map(Rc::new))
                 .collect();
             if let Some(items) = finished {
                 record.items = items;

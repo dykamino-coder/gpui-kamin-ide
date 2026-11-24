@@ -41,6 +41,8 @@ pub const CODES: &[&str] = &[
     // Causes beyond `frame_miss.*` and `paint_path.refused_*` (`codes` below).
     "frame_unpublished",
     "layout_retry.container_size",
+    "layout_retry.flow_refused",
+    "layout_retry.replay_refused",
     "no_layer.spliced",
     "no_layer.painted_environment",
     "no_layer.painted_ink",

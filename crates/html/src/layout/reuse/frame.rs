@@ -94,9 +94,14 @@ impl FlowReuse {
                 refused.insert(record.source.id());
             }
         }
+        let placed = refused.len();
         // Far blocks laid out at their new place must still be far (`far`).
         refused.extend(self.validate_far(window, root));
         let ok = refused.is_empty();
+        if !ok {
+            let stand_ins = self.placeholders.borrow().len();
+            super::replay::note_flow_refused(placed, refused.len(), stand_ins);
+        }
         // Отказанный блок сдвинулся: как и при отказе повтора с поддеревом,
         // он не повторяется на экране, пока ключ потока тот же (`Store::banned`).
         let mut banned = self.store.banned.take();
