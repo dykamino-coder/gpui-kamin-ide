@@ -715,6 +715,37 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_I
 // Форма квада (скругления, рамки, градиент) считается по его собственным
 // границам. Пока матрица единичная, точка экрана и точка квада совпадают; с
 // поворотом — нет, и без обратного хода скругления «съезжали» бы с фигуры.
+// KaminIDE patch: the bilinear texel of a sprite at `local_position` (its own
+// coordinates), read in its tile's texel coordinates, never in normalized
+// atlas UVs. The sampler resolves an atlas coordinate with a fixed sub-texel
+// precision, so the same pixel of a sprite got other filter weights wherever
+// the atlas put the tile (a frame after an edit, whose tiles sit elsewhere,
+// differed from a fresh one by a code). Texels are fetched by integer address
+// inside the tile, clamped to its edge (clamp-to-edge of the sprite, no
+// neighbour of the shared atlas), and the weights come from the tile-local
+// position alone.
+float4 tile_texel(float2 local_position, Bounds bounds, AtlasTile tile) {
+    int2 tile_origin = int2(tile.bounds.origin);
+    int2 tile_last = int2(tile.bounds.size) - 1;
+    float2 source_position = (local_position - bounds.origin) / bounds.size * float2(tile.bounds.size);
+    float2 p = source_position - 0.5;
+    float2 base = floor(p);
+    float2 f = p - base;
+    int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
+    float4 sample = t_sprite.Load(int3(tile_origin + t0, 0));
+    // A pixel centre on a texel centre (a sprite drawn 1:1 on the device
+    // grid, the common case) has zero weights: the one texel is the bilinear
+    // result exactly, so only other pixels read four.
+    if (any(f != 0.0)) {
+        int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
+        float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
+        float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
+        float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
+        sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
+    }
+    return sample;
+}
+
 float2 untransform(float2 position, TransformationMatrix t) {
     float2x2 m = t.rotation_scale;
     float det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
@@ -1363,50 +1394,20 @@ struct MonochromeSprite {
 };
 
 struct MonochromeSpriteVertexOutput {
+    nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
-    nointerpolation uint sprite_id: SPRITE_ID;
     float4 clip_distance: SV_ClipDistance;
 };
 
 struct MonochromeSpriteFragmentInput {
+    nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
-    nointerpolation uint sprite_id: SPRITE_ID;
     float4 clip_distance: SV_ClipDistance;
 };
 
 StructuredBuffer<MonochromeSprite> mono_sprites: register(t1);
-
-// KaminIDE patch: a glyph's coverage at frame pixel `position`, read in the
-// tile's own texel coordinates (as `polychrome_sprite_fragment` reads an
-// image). An interpolated atlas UV carries the rounding of the pixel's place
-// in the window, so the same glyph moved by whole pixels (a scroll step drawn
-// as the kept frame moved, `canvas.rs`) sampled other filter weights than a
-// fresh raster at the new place (WARP, ±1 code). The tile-local position
-// depends on the sprite's bounds and the pixel centre alone, both exact under
-// a whole-pixel move.
-float4 sprite_texel(float2 position, MonochromeSprite sprite) {
-    float2 local_position = untransform(position, sprite.transformation);
-    int2 tile_origin = int2(sprite.tile.bounds.origin);
-    int2 tile_last = int2(sprite.tile.bounds.size) - 1;
-    float2 p = (local_position - sprite.bounds.origin)
-        / sprite.bounds.size * float2(sprite.tile.bounds.size) - 0.5;
-    float2 base = floor(p);
-    float2 f = p - base;
-    int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
-    float4 sample = t_sprite.Load(int3(tile_origin + t0, 0));
-    if (any(f != 0.0)) {
-        int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
-        float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
-        float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
-        float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
-        sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
-    }
-    return sample;
-}
 
 MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
@@ -1415,21 +1416,29 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     float4 device_position =
         to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
     float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
     float4 color = hsla_to_rgba(sprite.color);
 
     MonochromeSpriteVertexOutput output;
-    output.position = device_position;
-    output.tile_position = tile_position;
-    output.color = color;
     output.sprite_id = sprite_id;
+    output.position = device_position;
+    output.color = color;
     output.clip_distance = clip_distance;
     return output;
 }
 
+// KaminIDE patch: a glyph is read in its tile's own texels (`tile_texel`),
+// as an image is: normalized atlas coordinates gave a glyph other filter
+// weights wherever the atlas put its tile, so the same glyph in two tiles
+// (a fresh document's font instance, a replayed frame) differed by a code.
+float4 sprite_texel(MonochromeSpriteFragmentInput input) {
+    MonochromeSprite sprite = mono_sprites[input.sprite_id];
+    float2 local_position = untransform(input.position.xy, sprite.transformation);
+    return tile_texel(local_position, sprite.bounds, sprite.tile);
+}
+
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     input.position.xy += global_origin;
-    float sample = sprite_texel(input.position.xy, mono_sprites[input.sprite_id]).r;
+    float sample = sprite_texel(input).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
     return float4(input.color.rgb, input.color.a * alpha_corrected);
 }
@@ -1440,7 +1449,7 @@ MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID,
 
 SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentInput input) {
     input.position.xy += global_origin;
-    float3 sample = sprite_texel(input.position.xy, mono_sprites[input.sprite_id]).rgb;
+    float3 sample = sprite_texel(input).rgb;
     if (is_bgr) {
         sample = sample.bgr;
     }
@@ -1511,38 +1520,16 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
-    // KaminIDE patch: the image is read in its own texel coordinates, never in
-    // normalized atlas UVs. The sampler resolves an atlas coordinate with a
-    // fixed sub-texel precision, so the same pixel of a rotated or scaled
-    // image got other filter weights wherever the atlas put the tile (a frame
-    // after an edit, whose tiles sit elsewhere, differed from a fresh one by a
-    // code). Texels are fetched by integer address inside the tile, clamped to
-    // its edge (clamp-to-edge of the image, no neighbour of the shared atlas),
-    // and the bilinear weights come from the tile-local position alone.
-    int2 tile_origin = int2(sprite.tile.bounds.origin);
-    int2 tile_last = int2(sprite.tile.bounds.size) - 1;
-    float2 source_position = (local_position - sprite.bounds.origin)
-        / sprite.bounds.size * float2(sprite.tile.bounds.size);
+    // KaminIDE patch: the image is read in its tile's own texels (`tile_texel`).
     float4 sample;
     if ((sprite.pad & 1u) != 0u) {
+        int2 tile_last = int2(sprite.tile.bounds.size) - 1;
+        float2 source_position = (local_position - sprite.bounds.origin)
+            / sprite.bounds.size * float2(sprite.tile.bounds.size);
         int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0), tile_last);
-        sample = t_sprite.Load(int3(tile_origin + source_texel, 0));
+        sample = t_sprite.Load(int3(int2(sprite.tile.bounds.origin) + source_texel, 0));
     } else {
-        float2 p = source_position - 0.5;
-        float2 base = floor(p);
-        float2 f = p - base;
-        int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
-        sample = t_sprite.Load(int3(tile_origin + t0, 0));
-        // A pixel centre on a texel centre (an image drawn 1:1 on the device
-        // grid, the common case) has zero weights: the one texel is the
-        // bilinear result exactly, so only other pixels read four.
-        if (any(f != 0.0)) {
-            int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
-            float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
-            float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
-            float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
-            sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
-        }
+        sample = tile_texel(local_position, sprite.bounds, sprite.tile);
     }
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 

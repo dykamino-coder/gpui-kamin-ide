@@ -47,6 +47,12 @@ impl ScrollReplay {
     pub(super) fn node(&self, id: ScrollNodeId) -> &PlannedNode {
         &self.nodes[self.by_id[&id]]
     }
+
+    /// A planned node's shift and clip in scene pixels (`Scene::replay_scrolled`).
+    pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
+        let node = self.node(id);
+        (node.shift.scale(scale), node.clip.scale(scale))
+    }
 }
 
 fn moved(bounds: Bounds<Pixels>, shift: Point<Pixels>) -> Bounds<Pixels> {
@@ -139,9 +145,11 @@ impl Window {
                     .iter()
                     .find_map(|node| {
                         let why = match () {
-                            _ if node.paint.is_none() => "no paint",
+                            _ if node.paint.is_none() && (node.anchored || node.source.offset() != node.offset) => {
+                                "no paint, and it moves apart from its parent"
+                            }
                             _ if node.torn => "torn",
-                            _ if node.painted_in != Some(space) => "painted in another scene",
+                            _ if node.paint.is_some() && node.painted_in != Some(space) => "painted in another scene",
                             _ => return None,
                         };
                         Some(format!("scroll node {:?}: {why}", node.id))
@@ -206,7 +214,8 @@ impl Window {
             }
             for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
                 // Every paint range of the node in its part's scene, deferred ones too.
-                if node.paint.is_none() || node.painted_in != Some(scene.scroll.space) || node.torn {
+                let painted = node.paint.is_some();
+                if (painted && node.painted_in != Some(scene.scroll.space)) || node.torn {
                     return Err(at(ScrollRefusal::Node));
                 }
                 if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
@@ -222,6 +231,12 @@ impl Window {
                     None => node.clip,
                 };
                 let shift = node.source.replay_shift(parent_shift, node.offset, new);
+                // A node whose children painted nothing as it (hidden, or painted
+                // under the node open around them) is replayed only moving with its
+                // parent: whatever it shows then moves as its parent's commands.
+                if !painted && shift != parent_shift {
+                    return Err(at(ScrollRefusal::Node));
+                }
                 let interest = moved(node.interest, shift);
                 if !inside(clip, interest) {
                     return Err(at(ScrollRefusal::Interest));
@@ -242,6 +257,19 @@ impl Window {
             let labels = source.group_label_nodes(scenes.clone(), groups.clone());
             if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                 return Err(at(ScrollRefusal::Groups));
+            }
+        }
+        // So do those of its deferred draws, in the frame's scene
+        // (`reuse_deferred_paint`).
+        let frame = &self.rendered_frame;
+        for draw in plan.draws.keys().map(|&index| &frame.deferred_draws[index]) {
+            let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
+            let groups = draw.groups.clone();
+            if !groups.is_empty() {
+                let labels = frame.scene.group_label_nodes(painted, groups.clone());
+                if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
+                    return Err(at(ScrollRefusal::Groups));
+                }
             }
         }
         for (part, (indices, span, scene)) in parts.iter().enumerate() {
@@ -304,13 +332,10 @@ impl Window {
         self.reuse_paint_state(&range);
         let scenes = range.start.scene_index..range.end.scene_index;
         let scale = self.scale_factor();
-        let node = |id: ScrollNodeId| {
-            let node = plan.node(id);
-            (node.shift.scale(scale), node.clip.scale(scale))
-        };
+        let node = |id: ScrollNodeId| plan.scaled(id, scale);
         // Groups come from the rendered frame (`plan_scrolled_replay` refuses a layer's).
         let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), record.groups());
-        let groups = self.replay_groups(record, Some((&labels, &node)));
+        let groups = self.replay_groups(record.groups(), Some((&labels, &node)));
         self.replay_scenes_scrolled(scenes, plan);
         self.next_frame.scene.relabel = 0;
         self.allow_replayed(record);
@@ -343,10 +368,7 @@ impl Window {
         edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
         edges.sort_unstable();
         edges.dedup();
-        let node = |id: ScrollNodeId| {
-            let node = plan.node(id);
-            (node.shift.scale(scale), node.clip.scale(scale))
-        };
+        let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
         self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
