@@ -195,6 +195,7 @@ fn placed_replay_reserves_only_what_it_keeps() {
 fn finish_keeps_the_paint_order_of_equal_order_sprites() {
     // Overlapping glyphs of one order blend in the order they were painted,
     // whatever ids the atlas gave their tiles.
+    use crate::{AtlasTextureKind, TileId};
     let sprite = |tile_id: u32, x: f32| MonochromeSprite {
         order: 7,
         pad: 0,

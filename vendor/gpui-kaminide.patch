@@ -20253,10 +20253,10 @@ index 0000000000000000000000000000000000000000..0383bd78d456d75b1844df6cc09d2ef2
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c2a9e36c1c0147e54bb43e36703ee0658bd25f6f
+index 0000000000000000000000000000000000000000..e67d42c178d4027fb19de96ac427cbc2d8948e2c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,218 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -20454,6 +20454,7 @@ index 0000000000000000000000000000000000000000..c2a9e36c1c0147e54bb43e36703ee065
 +fn finish_keeps_the_paint_order_of_equal_order_sprites() {
 +    // Overlapping glyphs of one order blend in the order they were painted,
 +    // whatever ids the atlas gave their tiles.
++    use crate::{AtlasTextureKind, TileId};
 +    let sprite = |tile_id: u32, x: f32| MonochromeSprite {
 +        order: 7,
 +        pad: 0,
