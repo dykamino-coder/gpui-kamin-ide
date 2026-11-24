@@ -4,18 +4,33 @@ use gpui::{Bounds, ScaledPixels, Window};
 use std::rc::Rc;
 
 impl super::super::FlowReuse {
-    /// The check of the frame's replays (`ReplaySlot::valid`); failed blocks (all of them,
+    /// The check of the frame's replays (`ReplaySlot::refusal`); failed blocks (all of them,
     /// if layout needed a measure) are banned while the flow key is the same.
     pub(in crate::layout::reuse) fn validate_replays(&self, window: &mut Window) -> bool {
         let slots = self.replay_slots.take();
-        let failed: Vec<u64> = slots
+        let refusals: Vec<(u64, bool, &'static str)> = slots
             .iter()
-            .filter(|slot| !slot.valid(window))
-            .map(|slot| slot.node())
+            .filter_map(|slot| {
+                let content = slot.record.key.is_none();
+                slot.refusal(window).map(|why| (slot.node(), content, why))
+            })
             .collect();
+        let failed: Vec<u64> = refusals.iter().map(|(node, ..)| *node).collect();
         if !failed.is_empty() {
             // A stale layout does not say which block needed a measurement.
             let all = window.layout_stale();
+            crate::why::note("layout_retry.replay_refused", || {
+                let contents = refusals.iter().filter(|(_, c, _)| *c).count();
+                let mut reasons: Vec<&str> = refusals.iter().map(|(.., why)| *why).collect();
+                reasons.sort_unstable();
+                reasons.dedup();
+                format!(
+                    "{} of {} replays refused ({contents} contents), layout stale {all}: {}",
+                    failed.len(),
+                    slots.len(),
+                    reasons.join(",")
+                )
+            });
             let mut banned = self.store.banned.take();
             banned.extend(
                 slots
