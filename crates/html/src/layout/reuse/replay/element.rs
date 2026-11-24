@@ -1,9 +1,9 @@
 //! Элементы повтора: обёртка записи вокруг собранного блока и заместитель,
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
-use super::{PendingReplay, ReplaySlot, plain_environment};
+use super::{PendingReplay, ReplaySlot};
 use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred_moved};
-use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
+use gpui::{AnyElement, App, Bounds, ContentMask, LayoutId, Pixels, Window, point, px};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
 /// краски этого кадра.
@@ -56,9 +56,13 @@ impl Wrap for ReplayRecorder {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
             let mask = window.content_mask();
+            // The clips the layout knows above the block (`finish` tests
+            // them against the actual mask).
+            let clip = window.layout_content_mask(id, unbounded()).bounds;
             self.pending.capture(|c| {
                 c.prepaint = Some((range, origin, size));
                 c.mask = Some(mask);
+                c.clip = Some(clip);
             });
         }
     }
@@ -177,4 +181,17 @@ impl Hooks for Replay {
                 .ranges(|r| window.keep_retained_measures(&r.layout, false));
         }
     }
+}
+
+/// A mask that clips nothing: the base of `Window::layout_content_mask`.
+fn unbounded() -> ContentMask<Pixels> {
+    let far = px(1.0e9);
+    ContentMask {
+        bounds: Bounds::from_corners(point(-far, -far), point(far, far)),
+    }
+}
+
+/// Окружение, в котором краска переносима как есть: корень окна без сдвига.
+pub(in crate::layout::reuse) fn plain_environment(window: &Window) -> bool {
+    window.retained_root_environment() && window.element_offset() == point(px(0.0), px(0.0))
 }

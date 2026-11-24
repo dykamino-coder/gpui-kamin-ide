@@ -13,6 +13,7 @@ impl Probe<'_> {
             fragment,
             clamp,
             positioning,
+            kept,
             last_geometry,
             last_clamp,
             last_overflow,
@@ -30,6 +31,7 @@ impl Probe<'_> {
                     super::fragment::ProbeScopes {
                         clamp: clamp.clone(),
                         positioning: positioning.clone(),
+                        kept: kept.clone(),
                     },
                     *build,
                 );
@@ -114,6 +116,7 @@ mod tests {
                     super::super::fragment::ProbeScopes {
                         clamp: None,
                         positioning: None,
+                        kept: None,
                     },
                     layout.contracts.build,
                 );

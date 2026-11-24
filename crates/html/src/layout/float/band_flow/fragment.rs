@@ -17,6 +17,8 @@ impl super::BandFlow {
 pub(super) struct ProbeScopes {
     pub(super) clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
     pub(super) positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+    /// The host's kept results, whose child records answer probes (`kid_slot`).
+    pub(super) kept: Option<Rc<super::HostSlot>>,
 }
 
 impl super::BandFlow {
@@ -24,6 +26,7 @@ impl super::BandFlow {
         ProbeScopes {
             clamp: self.clamp.clone(),
             positioning: self.positioning.clone(),
+            kept: self.host_slot(),
         }
     }
 }
@@ -38,7 +41,11 @@ impl<'a> super::Probe<'a> {
         scopes: ProbeScopes,
         build: crate::layout::build_contracts::ChildBuild,
     ) -> Self {
-        let ProbeScopes { clamp, positioning } = scopes;
+        let ProbeScopes {
+            clamp,
+            positioning,
+            kept,
+        } = scopes;
         Self {
             engine: None,
             last_prepared: Default::default(),
@@ -46,6 +53,7 @@ impl<'a> super::Probe<'a> {
             build,
             clamp,
             positioning,
+            kept,
             last_clamp: Default::default(),
             window,
             cx,

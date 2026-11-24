@@ -42,10 +42,12 @@ impl ReplaySlot {
             window.layout_origin_unrounded(id),
             window.layout_size_unrounded(id),
         );
+        // The mask its layout gives it under the frame's root mask (`finish`).
+        let root = window.content_mask();
         let (serial, scale, mask) = (
             window.frame_serial(),
             window.scale_factor(),
-            window.content_mask(),
+            window.layout_content_mask(id, root),
         );
         // A box's content (`content`, no flow key) or an inert root-flow
         // block may lie elsewhere: its movable output replays moved.

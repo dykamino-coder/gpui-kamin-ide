@@ -4,6 +4,7 @@ use super::*;
 use crate::hooks::{IntoHooked, Wrap};
 use gpui::{AvailableSpace, Bounds, ParentElement, Pixels, Styled, point, size};
 
+mod kept;
 mod lifetime;
 mod overflow;
 mod painting;

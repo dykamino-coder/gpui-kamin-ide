@@ -190,8 +190,27 @@ pub(crate) async fn band_flow_host(
         e.marks.adjoining_start,
         host.wm,
     );
+    // The host's plans live on its box between frames (`band_flow::slot`).
+    let reuse = opts.cx.contracts.reuse.as_ref();
+    if reuse.is_none() {
+        crate::why::note("band_slot.none", || "no reuse store".into());
+    }
+    let slot = reuse.and_then(|reuse| {
+        let Some((owner, key)) = reuse.band_key(e.node_id, &e.children, inherited, opts) else {
+            crate::why::note("band_slot.none", || "no box or other document".into());
+            return None;
+        };
+        let boxes = &opts.cx.doc().boxes;
+        Some(crate::layout::float::HostSlot::new(
+            boxes,
+            owner,
+            key,
+            reuse.allows_kept(),
+        ))
+    });
     let flow =
-        crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height, &opts.cx);
+        crate::layout::float::band_flow::BandFlow::new(kids, !e.marks.inflow_height, &opts.cx)
+            .kept(slot);
     let flow = flow.clamp_measure(
         opts.cx.clamp_measure(),
         opts.cx

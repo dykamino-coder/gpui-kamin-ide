@@ -136,6 +136,12 @@ impl Document {
         DocumentBuilder::new(html, theme_css)
     }
 
+    /// The published tree and its box tree, for layout tests.
+    #[cfg(test)]
+    pub(crate) fn boxes_for_tests(&self) -> (&[Node], &Rc<std::cell::RefCell<boxes::BoxTree>>) {
+        (&self.nodes, &self.state.boxes)
+    }
+
     /// Платформенная конфигурация для нового документа того же хоста.
     pub fn font_context(&self) -> crate::text::metrics::FontContext {
         self.state.text.metrics.font_context()

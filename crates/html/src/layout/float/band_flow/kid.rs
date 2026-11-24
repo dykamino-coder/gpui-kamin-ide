@@ -12,7 +12,7 @@ use crate::layout::float::shapes::FloatShape;
 pub type ShapeOf = std::rc::Rc<dyn Fn(f32, f32, [f32; 4], f32) -> FloatShape>;
 
 /// Чем ребёнок хоста участвует в полосах.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
     /// Флоат: сторона `-1`/`1` и `clear` из стиля; `shrink` — ширина
     /// `auto`, то есть shrink-to-fit §10.3.5.

@@ -30,9 +30,16 @@ impl Plans {
         if let Some(cached) = self.get(plan.width) {
             return cached;
         }
+        self.insert_kept(Rc::new(plan))
+    }
+
+    /// Insert a plan kept from an earlier frame (`slot`), or made now.
+    pub(super) fn insert_kept(&self, plan: Rc<Plan>) -> Rc<Plan> {
+        if let Some(cached) = self.get(plan.width) {
+            return cached;
+        }
         // FIFO ограничивает удержание больших подготовленных деревьев независимо
         // от числа запросов ширины. Вытесненный план живёт у текущего потребителя.
-        let plan = Rc::new(plan);
         let next = self.next.get();
         self.slots[next].set(Some(plan.clone()));
         self.next.set((next + 1) % CAPACITY);

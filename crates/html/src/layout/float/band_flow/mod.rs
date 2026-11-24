@@ -38,8 +38,11 @@ pub use element::BandFlow;
 mod tap;
 use tap::Tap;
 mod cache;
+mod kid_slot;
 mod prepared;
 mod probe;
+mod slot;
+pub(crate) use slot::{HostSlot, Retained};
 mod temporary;
 #[cfg(test)]
 mod tests;
@@ -120,6 +123,7 @@ pub(super) struct Probe<'a> {
     clamp: Option<(u64, crate::text::clamp::ClampMeasure)>,
     last_clamp: crate::text::clamp::MeasuredClamp,
     positioning: Option<Rc<crate::layout::positioned::containing_block::Positioning>>,
+    kept: Option<Rc<HostSlot>>,
     last_geometry: crate::layout::fragment::flow::FlowGeometry,
     last_overflow: gpui::Bounds<gpui::Pixels>,
 }

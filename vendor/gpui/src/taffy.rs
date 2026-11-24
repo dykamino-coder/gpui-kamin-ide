@@ -19,6 +19,7 @@ mod measured_box;
 mod exact_leaf;
 pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
+mod overflow_clip;
 // KaminIDE patch: the frame tree survives frames (`retained`).
 mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
