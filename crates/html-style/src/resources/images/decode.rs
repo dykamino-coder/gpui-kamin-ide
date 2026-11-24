@@ -77,6 +77,38 @@ pub(super) fn decode_pixels(
     options: &DecodeOptions,
     retention: Retention,
 ) -> Result<CpuRaster, ImageError> {
+    let Pixels {
+        width,
+        height,
+        format,
+        colour_space,
+        pixels,
+    } = decode_vec(bytes, options)?;
+    Ok(CpuRaster {
+        width,
+        height,
+        stride: width as usize * 4,
+        format,
+        alpha: AlphaMode::Straight,
+        colour_space,
+        bytes: pixels.into(),
+        retention,
+    })
+}
+
+/// Decoded straight-alpha pixels in the buffer the codec filled: four bytes a pixel,
+/// rows without padding.
+pub(super) struct Pixels {
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) format: PixelFormat,
+    pub(super) colour_space: ColourSpace,
+    pub(super) pixels: Vec<u8>,
+}
+
+/// The pixels as an owned buffer: a one-off consumer (the texture upload) takes them
+/// without the copy into a shared raster.
+pub(super) fn decode_vec(bytes: &[u8], options: &DecodeOptions) -> Result<Pixels, ImageError> {
     let (mut decoder, declared, tag) = header(bytes, options)?;
     // Как `ImageReader::decode`: стандартный бюджет выделений кодека, а стороны не больше
     // заявленных и допущенных.
@@ -113,15 +145,12 @@ pub(super) fn decode_pixels(
     } else {
         PixelFormat::Rgba8
     };
-    Ok(CpuRaster {
+    Ok(Pixels {
         width,
         height,
-        stride: width as usize * 4,
         format,
-        alpha: AlphaMode::Straight,
         colour_space,
-        bytes: pixels.into(),
-        retention,
+        pixels,
     })
 }
 

@@ -175,6 +175,29 @@ fn shared_render_image_retains_physical_pixel_grant_until_drop() {
 }
 
 #[test]
+fn a_file_texture_image_lives_exactly_as_long_as_the_file() {
+    use crate::budget::{DocumentBudget, DocumentLimits, ResourceGovernor};
+    use crate::resources::images::cache::DecodedImageCache;
+    let doc = DocumentBudget::new(DocumentLimits::default(), ResourceGovernor::default()).unwrap();
+    let options = DecodeOptions {
+        colour: ColourPolicy::CssBgra,
+        ..Default::default()
+    };
+    let (decoded, _admission) =
+        DecodedImageCache::new(0).decode(fixtures::solid_png([1, 2, 3, 255]).into(), options, &doc);
+    let (DecodedImage::Raster(RasterImage::Encoded(encoded)), _) = decoded.unwrap() else {
+        panic!("a file is decoded on demand")
+    };
+    let image = super::upload_encoded(&encoded).unwrap();
+    assert!(Arc::ptr_eq(&image, &super::upload_encoded(&encoded).unwrap()));
+    assert_eq!(image.upload_bytes(0).unwrap().as_ref(), [3, 2, 1, 255]);
+    let image = Arc::downgrade(&image);
+    // A closed document's file takes its texture image (and so its atlas tile) along.
+    drop(encoded);
+    assert!(image.upgrade().is_none());
+}
+
+#[test]
 fn repeated_downloads_reuse_the_same_resampled_variant() {
     use crate::resources::images::{pixels::bgra, resample::resample};
     let cpu = bgra(2, 1, vec![0, 128, 0, 255, 255, 0, 0, 0]).unwrap();

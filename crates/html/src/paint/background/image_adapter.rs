@@ -6,7 +6,7 @@ use crate::resources::images::{
     pixels,
     types::{AlphaMode, CpuRaster, EncodedRaster, PixelFormat, RasterImage},
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 type Image = Option<Arc<gpui::RenderImage>>;
 type UploadedPixels = (u32, u32, Arc<[u8]>);
 
@@ -24,49 +24,26 @@ static PIXELS: BoundedCache<UploadedPixels, Image> =
         .for_paint();
 
 /// An image file for a texture: GPUI gets its size at once, and the pixels are decoded
-/// by the atlas upload (of a painted image only) and not kept after it.
-struct Lazy(Arc<EncodedRaster>);
+/// by the atlas upload (of a painted image only) and not kept after it. The file is held
+/// weakly: the image is the file's own upload (`EncodedRaster::upload`).
+struct Lazy(Weak<EncodedRaster>);
 
 impl gpui::LazyBgra for Lazy {
     fn bgra(&self) -> Option<Vec<u8>> {
-        let cpu = self.0.pixels_once()?;
-        Some(if dense(&cpu) {
-            cpu.bytes.to_vec()
-        } else {
-            pixels::straight_bgra(&cpu)
-        })
+        self.0.upgrade()?.bgra_once()
     }
 }
 
-/// Keyed by the raster's address: equal bytes are already merged by the decode cache.
-#[derive(Clone)]
-struct EncodedKey(Arc<EncodedRaster>);
-
-impl PartialEq for EncodedKey {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Eq for EncodedKey {}
-
-impl std::hash::Hash for EncodedKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        Arc::as_ptr(&self.0).hash(state);
-    }
-}
-
-// One GPUI image per file: its id keys the atlas texture across frames. The weight is
-// the file bytes the key holds; an entry holds no pixels.
-static ENCODED: BoundedCache<EncodedKey, Image> = BoundedCache::new(16 * MIB, |_| 0)
-    .with_key_weight(|key: &EncodedKey| key.0.encoded_len())
-    .for_paint();
-
+/// One GPUI image per file: its id keys the atlas texture across frames, and it lives
+/// exactly as long as the file's raster (held by the documents and the decode cache),
+/// never longer: a process cache of it weighed by file bytes once pinned textures of
+/// closed documents (ishadeed: +22 textures per document).
 pub(crate) fn upload_encoded(encoded: &Arc<EncodedRaster>) -> Image {
-    ENCODED.get_or_insert_with(EncodedKey(encoded.clone()), || {
-        let lazy = Arc::new(Lazy(encoded.clone()));
+    let image = encoded.upload(|| {
+        let lazy = Arc::new(Lazy(Arc::downgrade(encoded)));
         gpui::RenderImage::from_lazy_bgra(encoded.width, encoded.height, lazy).map(Arc::new)
-    })
+    })?;
+    (*image).clone()
 }
 
 /// The raster of an image for a texture: a file lazily, ready pixels as they are.
@@ -105,7 +82,7 @@ pub(crate) fn download(image: &gpui::RenderImage) -> Option<Arc<CpuRaster>> {
         return Some(cpu);
     }
     if let Some(lazy) = image.shared_bgra_owner::<Lazy>() {
-        return lazy.0.pixels();
+        return lazy.0.upgrade()?.pixels();
     }
     DOWNLOADS.get_or_insert_with(image.id, || {
         let size = image.size(0);

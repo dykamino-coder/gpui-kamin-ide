@@ -11,9 +11,11 @@ use crate::cache::{BoundedCache, MIB};
 use std::sync::Arc;
 
 /// Бюджет 128 МиБ: самый крупный результат (4096 x 4096 точек, 64 МиБ) помещается.
+/// A variant goes once nobody else holds its source (pixels of a closed document).
 static CACHE: BoundedCache<(RasterIdentity, u32, u32), Option<Arc<CpuRaster>>> =
     BoundedCache::new(128 * MIB, optional_bytes)
-        .with_key_weight(|key: &(RasterIdentity, u32, u32)| key.0.0.bytes.len());
+        .with_key_weight(|key: &(RasterIdentity, u32, u32)| key.0.0.bytes.len())
+        .dies_with(|key| Arc::strong_count(&key.0.0) > 1);
 
 pub fn resample(image: &Arc<CpuRaster>, w: u32, h: u32) -> Option<Arc<CpuRaster>> {
     let (iw, ih) = (image.width as usize, image.height as usize);

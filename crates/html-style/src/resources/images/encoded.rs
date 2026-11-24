@@ -11,11 +11,12 @@
 //! of recent decodes so that the paint of neighbouring frames does not decode again.
 
 use super::admission::Retention;
-use super::decode::decode_pixels;
-use super::types::{CpuRaster, DecodeOptions};
+use super::decode::{decode_pixels, decode_vec};
+use super::types::{AlphaMode, CpuRaster, DecodeOptions, PixelFormat};
 use crate::cache::{BoundedCache, MIB};
+use std::any::Any;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 /// The file bytes of a raster with its header facts; pixels: [`EncodedRaster::pixels`].
 pub struct EncodedRaster {
@@ -26,6 +27,10 @@ pub struct EncodedRaster {
     retention: Retention,
     /// The pixels, while at least one consumer holds them.
     live: Mutex<Weak<CpuRaster>>,
+    /// What the painter made of this file for the GPU (its texture image): it lives as
+    /// long as the raster, so the upload dies with the documents and caches holding the
+    /// file, and no process cache keeps a texture of a file nobody holds.
+    upload: OnceLock<Arc<dyn Any + Send + Sync>>,
 }
 
 impl std::fmt::Debug for EncodedRaster {
@@ -58,8 +63,10 @@ impl Hash for Recent {
 
 /// Recently decoded pixels of the process: a budget for a few large images, not for all
 /// images of a document.
+/// An entry goes once nobody else holds its file (a closed document's raster).
 static RECENT: BoundedCache<Recent, Option<Arc<CpuRaster>>> =
-    BoundedCache::new(16 * MIB, super::pixels::optional_bytes);
+    BoundedCache::new(16 * MIB, super::pixels::optional_bytes)
+        .dies_with(|key| Arc::strong_count(&key.0) > 1);
 
 impl EncodedRaster {
     pub(super) fn new(
@@ -75,7 +82,18 @@ impl EncodedRaster {
             options,
             retention,
             live: Mutex::new(Weak::new()),
+            upload: OnceLock::new(),
         }
+    }
+
+    /// The consumer's value derived from this raster, made once by `make` (the paint's
+    /// texture image; `T` is opaque here). The value must hold the raster only weakly,
+    /// or the two would keep each other alive.
+    pub fn upload<T: Any + Send + Sync>(&self, make: impl FnOnce() -> T) -> Option<Arc<T>> {
+        let value = self
+            .upload
+            .get_or_init(|| Arc::new(make()) as Arc<dyn Any + Send + Sync>);
+        value.clone().downcast().ok()
     }
 
     /// The physical pixel quota admitted at load.
@@ -103,6 +121,31 @@ impl EncodedRaster {
     /// upload, a solid colour check) after which no CPU copy is needed.
     pub fn pixels_once(&self) -> Option<Arc<CpuRaster>> {
         self.held().or_else(|| self.decode_now())
+    }
+
+    /// Dense straight BGRA pixels for one texture upload, in a buffer of their own: a
+    /// held raster is copied, a decode hands over the codec's buffer as it is (no shared
+    /// raster in between, so an upload holds one image of pixels, not three).
+    pub fn bgra_once(&self) -> Option<Vec<u8>> {
+        if let Some(held) = self.held() {
+            let dense = held.format == PixelFormat::Bgra8
+                && held.alpha == AlphaMode::Straight
+                && held.stride == held.width as usize * 4;
+            return Some(match dense {
+                true => held.bytes.to_vec(),
+                false => super::pixels::straight_bgra(&held),
+            });
+        }
+        crate::work::add!(ImageDecodes, 1);
+        let decoded = decode_vec(&self.bytes, &self.options).ok()?;
+        if (decoded.width, decoded.height) != (self.width, self.height) {
+            return None;
+        }
+        let mut pixels = decoded.pixels;
+        if decoded.format == PixelFormat::Rgba8 {
+            pixels.chunks_exact_mut(4).for_each(|p| p.swap(0, 2));
+        }
+        Some(pixels)
     }
 
     fn held(&self) -> Option<Arc<CpuRaster>> {

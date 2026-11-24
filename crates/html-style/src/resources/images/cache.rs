@@ -43,8 +43,12 @@ struct Entry {
 
 fn weigh(entry: &Entry) -> usize {
     let decoded = entry.decoded.as_ref().map_or(0, |(image, _)| match image {
-        // The raster shares the file bytes counted in `encoded`.
-        DecodedImage::Raster(RasterImage::Encoded(_)) => 0,
+        // The raster shares the file bytes counted in `encoded`, but once painted it
+        // keeps its texture (`EncodedRaster::upload`): four bytes a pixel, so the entry
+        // of a closed document cannot pin more GPU memory than the budget.
+        DecodedImage::Raster(RasterImage::Encoded(e)) => {
+            (e.width as usize).saturating_mul(e.height as usize).saturating_mul(4)
+        }
         image => image.held_bytes(),
     });
     entry.encoded + decoded
@@ -59,7 +63,11 @@ impl DecodedImageCache {
     /// Кэш с потолком `budget` байт.
     pub fn new(budget: usize) -> Self {
         Self {
-            entries: BoundedCache::new(budget, weigh),
+            // No other governor can hit an entry: once its documents are closed it
+            // only pins their files, pixels and textures.
+            entries: BoundedCache::new(budget, weigh).dies_with(|key| {
+                key.key.governor.used(crate::budget::BudgetKind::Documents) > 0
+            }),
         }
     }
 
@@ -182,6 +190,40 @@ mod tests {
             assert_eq!(meta.applied_orientation, tag.filter(|_| transforms));
             assert_eq!(raw.size(), (3, 2));
             assert_eq!(turned.size(), if transforms { (2, 3) } else { (3, 2) });
+        }
+    }
+
+    #[test]
+    fn a_closed_documents_files_leave_with_it() {
+        use crate::budget::{DocumentBudget, DocumentLimits, ResourceGovernor};
+        let cache = DecodedImageCache::new(MIB);
+        let options = DecodeOptions::default();
+        let open = |governor: &ResourceGovernor| {
+            DocumentBudget::new(DocumentLimits::default(), governor.clone()).unwrap()
+        };
+        let (closed, kept) = (ResourceGovernor::default(), ResourceGovernor::default());
+        let doc = open(&closed);
+        let (decoded, admission) = cache.decode(fixtures::png(3, 2).into(), options, &doc);
+        assert_eq!(cache.len(), 1);
+        drop((decoded, admission, doc));
+        let doc = open(&kept);
+        let _second = cache.decode(fixtures::png(2, 3).into(), options, &doc);
+        // The first governor has no document left: its entry went with the insert.
+        assert_eq!(cache.len(), 1);
+        let _again = cache.decode(fixtures::png(2, 3).into(), options, &doc);
+        assert_eq!(cache.len(), 1);
+    }
+
+    #[test]
+    fn a_file_weighs_the_pixels_its_texture_would_pin() {
+        // 64 x 64 pixels are 16 KiB as a texture, though the file is a few hundred bytes.
+        let bytes: Arc<[u8]> = fixtures::png(64, 64).into();
+        assert!(bytes.len() < 4096);
+        let budget = crate::budget::RevisionBudget::standalone();
+        for (cache, kept) in [(4096, 0), (64 * 64 * 4 + 4096, 1)] {
+            let cache = DecodedImageCache::new(cache);
+            let _ = cache.decode(bytes.clone(), DecodeOptions::default(), budget.document());
+            assert_eq!(cache.len(), kept);
         }
     }
 }

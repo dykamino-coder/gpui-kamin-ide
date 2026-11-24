@@ -35,6 +35,7 @@ struct Store<K, V> {
     map: HashMap<K, Slot<V>>,
     bytes: usize,
     clock: u64,
+    seen: u64,
     /// While the DevTools `why` journal records: hashes of keys the cache
     /// let go and why (`evicted`, `not_admitted`), so a later miss names it.
     gone: HashMap<u64, &'static str>,
@@ -42,8 +43,10 @@ struct Store<K, V> {
 
 mod evict;
 mod keys;
+mod owners;
 mod why;
 use evict::evict;
+pub use owners::owner_gone;
 pub use keys::{FloatKey, Hinted, hint};
 use why::{HELD, remember, same};
 pub use why::{NAMES, held};
@@ -59,6 +62,7 @@ pub struct BoundedCache<K, V> {
     budget: usize,
     weigh: fn(&V) -> usize,
     key_weight: fn(&K) -> usize,
+    alive: fn(&K) -> bool,
     store: Mutex<Option<Store<K, V>>>,
 }
 
@@ -73,6 +77,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
             budget,
             weigh,
             key_weight: |_| 0,
+            alive: |_| true,
             store: Mutex::new(None),
         }
     }
@@ -92,6 +97,12 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
     /// Учитывать выделенную память ключа (разметка, удерживаемые CPU-точки).
     pub const fn with_key_weight(mut self, weigh: fn(&K) -> usize) -> Self {
         self.key_weight = weigh;
+        self
+    }
+
+    /// An entry lives no longer than the owner its key names (`owners`).
+    pub const fn dies_with(mut self, alive: fn(&K) -> bool) -> Self {
+        self.alive = alive;
         self
     }
 
@@ -187,8 +198,10 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
             map: HashMap::new(),
             bytes: 0,
             clock: 0,
+            seen: 0,
             gone: HashMap::new(),
         });
+        owners::sweep(store, self.alive, self.slot);
         // Keys let go are kept only while observed: the first insert after
         // the last reader leaves frees them.
         if !observed && !store.gone.is_empty() {

@@ -53,6 +53,14 @@ struct DocumentOwner {
     _document_slot: Reservation,
 }
 
+impl Drop for DocumentOwner {
+    /// The document's governor may have no document left: caches whose entries die
+    /// with it look again at their next use (`cache::owner_gone`).
+    fn drop(&mut self) {
+        crate::cache::owner_gone();
+    }
+}
+
 /// Clone/view использует тот же ledger и тот же process slot.
 #[derive(Clone)]
 pub struct DocumentBudget {
