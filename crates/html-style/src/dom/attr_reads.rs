@@ -1,29 +1,29 @@
-//! Атрибуты, которые таблицы читают вне селекторов (`attr()`, css-values-5 §7.7).
+//! Attributes the sheets read outside selectors (`attr()`, css-values-5 §7.7).
 //!
-//! `attr()` подставляет атрибут ТОГО элемента, к которому применилось
-//! объявление (у псевдоэлемента — его исходного элемента), и только по имени.
-//! Поэтому зависимость стиля от атрибута вне селекторов — это множество имён:
-//! правка атрибута с другим именем не меняет ни одной подстановки, и
-//! прицельный рестайл ей не отказывает. Прежде любое `attr(` в листе (даже в
-//! комментарии) отправляло каждую правку документа в полную пересборку.
+//! `attr()` substitutes an attribute of THE element its declaration applies
+//! to (for a pseudo-element, of its originating element), and only by name.
+//! So the dependency of a style on attributes outside selectors is a set of
+//! names: an edit of an attribute with another name changes no substitution,
+//! and the targeted restyle need not refuse it. Before, any `attr(` in a sheet
+//! (even in a comment) sent every edit of the document to a full rebuild.
 //!
-//! Имена берутся из текста листов, а не из разобранных правил: так в счёт
-//! входят и `@keyframes`, `@property`, и объявления, которых разбор не принял.
-//! Лишнее имя (из комментария или строки) только сужает прицельный путь, но
-//! не делает его неверным. Имя, которое из текста не вычитать (`attr(var(--n))`,
-//! экранирование), означает «любой атрибут».
+//! The names come from the text of the sheets, not from parsed rules, so
+//! `@keyframes`, `@property` and declarations the parser rejected count too.
+//! An extra name (from a comment or a string) only narrows the targeted path;
+//! it never makes it wrong. A name the text does not spell
+//! (`attr(var(--n))`, an escape) means "any attribute".
 
-/// Имена атрибутов, которые читает `attr()` листов документа.
+/// The names of the attributes the `attr()` calls of the document sheets read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AttrReads {
-    /// Какое-то `attr()` называет атрибут не литералом: читается любой.
+    /// Some `attr()` names its attribute by no literal: any is read.
     any: bool,
-    /// Локальные имена, ASCII строчными (HTML §2.3 сравнивает имена без регистра).
+    /// Local names, ASCII lowercase (HTML §2.3 compares names case-insensitively).
     names: Vec<String>,
 }
 
 impl AttrReads {
-    /// Добавить имена всех `attr()` текста `css`.
+    /// Add the names of every `attr()` of the text `css`.
     pub fn scan(&mut self, css: &str) {
         let bytes = css.as_bytes();
         let mut at = 0;
@@ -41,12 +41,19 @@ impl AttrReads {
         }
     }
 
-    /// Ни одно `attr()` не читает атрибутов.
+    /// These names with those the `style` attributes `styles` read.
+    pub fn with_styles<'a>(&self, styles: impl Iterator<Item = &'a str>) -> Self {
+        let mut out = self.clone();
+        styles.for_each(|css| out.scan(css));
+        out
+    }
+
+    /// No `attr()` reads an attribute.
     pub fn is_empty(&self) -> bool {
         !self.any && self.names.is_empty()
     }
 
-    /// Читает ли какое-то `attr()` атрибут из `changed` (имена ASCII строчными).
+    /// Whether some `attr()` reads an attribute of `changed` (ASCII lowercase names).
     pub fn reads_any_of<'a>(&self, mut changed: impl Iterator<Item = &'a str>) -> bool {
         if self.is_empty() {
             return false;
@@ -55,8 +62,8 @@ impl AttrReads {
     }
 }
 
-/// Смещение первого знака после `attr(` (имя функции без регистра,
-/// css-syntax-3 §4.3.4) или `None`.
+/// The offset of the first character after `attr(` (the function name is
+/// case-insensitive, css-syntax-3 §4.3.4), or `None`.
 fn find_attr_call(bytes: &[u8]) -> Option<usize> {
     bytes
         .windows(5)
@@ -64,43 +71,43 @@ fn find_attr_call(bytes: &[u8]) -> Option<usize> {
         .map(|i| i + 5)
 }
 
-/// Локальное имя `<attr-name>` в начале аргументов `attr()`:
-/// `[ <ident>? '|' ]? <ident>`; `None` — имя не литерал.
+/// The local name of the `<attr-name>` at the start of the arguments of
+/// `attr()`: `[ <ident>? '|' ]? <ident>`; `None` when it is not a literal.
 fn attr_name(args: &str) -> Option<String> {
     let rest = args.trim_start();
-    // Строка вместо имени (`attr("href")`, так пишут страницы) — не
-    // `<attr-name>`; если подстановка её всё же примет, то как это имя.
+    // A string in place of the name (`attr("href")`, as pages write it) is
+    // not an `<attr-name>`; if a substitution still takes it, it is that name.
     if let Some(quote) = rest.chars().next().filter(|c| matches!(c, '"' | '\'')) {
         let (name, after) = ident(&rest[1..]);
         return (!name.is_empty() && after.starts_with(quote)).then(|| name.to_ascii_lowercase());
     }
     let (first, rest) = ident(rest);
     let rest_trim = rest.trim_start();
-    // Префикс пространства имён (`attr(xlink|href)`, `attr(*|title)`, `attr(|x)`).
+    // A namespace prefix (`attr(xlink|href)`, `attr(*|title)`, `attr(|x)`).
     if let Some(after) = rest_trim.strip_prefix('|') {
         let (local, _) = ident(after);
         return (!local.is_empty()).then(|| local.to_ascii_lowercase());
     }
     if first.is_empty() {
-        // `attr(*|x)`: универсальный префикс.
+        // `attr(*|x)`: the universal prefix.
         let after = rest.strip_prefix('*')?.trim_start().strip_prefix('|')?;
         let (local, _) = ident(after);
         return (!local.is_empty()).then(|| local.to_ascii_lowercase());
     }
-    // Экранирование в имени не разбираем: любой атрибут.
+    // An escape in the name is not parsed: any attribute.
     if rest.starts_with('\\') {
         return None;
     }
     Some(first.to_ascii_lowercase())
 }
 
-/// Ведущий идентификатор (без экранирований) и остаток.
+/// The leading identifier (without escapes) and the rest.
 fn ident(s: &str) -> (&str, &str) {
     let end = s
         .char_indices()
         .find(|&(_, c)| !(c.is_ascii_alphanumeric() || c == '-' || c == '_' || !c.is_ascii()))
         .map_or(s.len(), |(i, _)| i);
-    // Функция (`var(`) — не имя.
+    // A function (`var(`) is not a name.
     if s[end..].starts_with('(') {
         return ("", s);
     }
