@@ -200,4 +200,3 @@ pub(super) fn bin(items: &[Item], cols: u32, rows: u32) -> (Vec<u32>, Vec<u32>) 
     }
     (starts, entries)
 }
-

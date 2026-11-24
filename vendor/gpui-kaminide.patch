@@ -16183,10 +16183,10 @@ index 0000000000000000000000000000000000000000..1d567c324d748e01e7275c740f257d49
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/items.rs b/vendor/gpui/src/scene/damage/shift/items.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5c77fd054500386c6fb4b0f044c9f36274f87eb5
+index 0000000000000000000000000000000000000000..1d6a1eb887f6c614e80c7278a1737b3b650bbc9f
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/items.rs
-@@ -0,0 +1,203 @@
+@@ -0,0 +1,202 @@
 +//! KaminIDE patch: the primitives a frame comparison reads, in paint order,
 +//! binned by damage cell.
 +//!
@@ -16389,7 +16389,6 @@ index 0000000000000000000000000000000000000000..5c77fd054500386c6fb4b0f044c9f362
 +    }
 +    (starts, entries)
 +}
-+
 diff --git a/vendor/gpui/src/scene/damage/shift/layer_tests.rs b/vendor/gpui/src/scene/damage/shift/layer_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..37544b31a5b79c790618492b4d16e2721f59edcc
