@@ -627,7 +627,7 @@ where
     /// The context provided for passing to measure functions if layout is run over this struct
     pub(crate) measure_function: MeasureFunction,
     /// Nodes touched by gutter settling; reset when this layout/query view ends.
-    pub(crate) scrollbar_touched: Vec<NodeId>,
+    pub(crate) scrollbar_touched: kamin_scrollbar_dependencies::ScrollbarTouched,
     /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
     /// one computation, so the memos are dropped with it.
     #[cfg(feature = "grid")]
@@ -1745,7 +1745,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.kamin_root_gutter = None;
         let mut taffy_view = TaffyView {
             taffy: self,
-            scrollbar_touched: Vec::new(),
+            scrollbar_touched: Default::default(),
             #[cfg(feature = "grid")]
             grid_memos: Default::default(),
             measure_function,
@@ -1770,7 +1770,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     {
         #[cfg(feature = "std")]
         let _calc = self.calc_scope();
-        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Vec::new(), #[cfg(feature = "grid")] grid_memos: Default::default() };
+        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Default::default(), #[cfg(feature = "grid")] grid_memos: Default::default() };
         view.compute_child_layout(node_id, LayoutInput {
             run_mode: crate::RunMode::ComputeSize,
             sizing_mode: crate::SizingMode::InherentSize,
@@ -1801,7 +1801,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     pub(crate) fn as_layout_tree(&mut self) -> impl LayoutPartialTree + CacheTree + '_ {
         TaffyView {
             taffy: self,
-            scrollbar_touched: Vec::new(),
+            scrollbar_touched: Default::default(),
             #[cfg(feature = "grid")]
             grid_memos: Default::default(),
             measure_function: |inputs, _, _, style| {

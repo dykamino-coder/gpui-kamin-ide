@@ -1,7 +1,8 @@
 //! Gutter changes invalidate intrinsic sizes before an ancestor commits its result.
-//! As Blink's BlockNode retry, freeze appeared bars for the whole layout transaction.
+//! As Blink's BlockNode retry, freeze appeared bars for the rest of the layout transaction
+//! while the box keeps the size they appeared at.
 use super::*;
-use crate::geometry::Point;
+use crate::geometry::{Point, Size};
 
 /// An active ancestor must repeat its layout with the settled descendant gutter.
 const DIRTY: u8 = 1;
@@ -9,20 +10,38 @@ const DIRTY: u8 = 1;
 pub(super) const SIZE_DIRTY: u8 = 16;
 /// The view owns this node in its transaction cleanup list.
 const TOUCHED: u8 = 8;
-/// A horizontal bar appeared and stays until this layout transaction ends.
+/// A horizontal bar appeared and stays while the box keeps the width it appeared at.
 const FROZEN_X: u8 = 2;
-/// A vertical bar appeared and stays until this layout transaction ends.
+/// A vertical bar appeared and stays while the box keeps the height it appeared at.
 const FROZEN_Y: u8 = 4;
+
+/// The nodes a layout transaction changed the scrollbar state of, and the border-box
+/// size each one's bars appeared at.
+#[derive(Default)]
+pub(crate) struct ScrollbarTouched {
+    nodes: Vec<NodeId>,
+    /// Only boxes whose bars changed; looked up by the box's own settling only.
+    frozen_at: Vec<(NodeId, Size<f32>)>,
+}
 
 impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
 where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     /// Only the ancestor chain loses intrinsic measurements; unrelated subtrees stay cached.
-    pub(super) fn kamin_gutter_changed(&mut self, node_id: NodeId, bars: Point<bool>) {
+    pub(super) fn kamin_gutter_changed(&mut self, node_id: NodeId, bars: Point<bool>, at: Size<f32>) {
         self.touch_scrollbar_state(node_id);
-        self.taffy.nodes[node_id.into()].scrollbar_state |=
-            SIZE_DIRTY | if bars.x { FROZEN_X } else { 0 } | if bars.y { FROZEN_Y } else { 0 };
+        let frozen = &mut self.scrollbar_touched.frozen_at;
+        match frozen.iter_mut().find(|(id, _)| *id == node_id) {
+            Some((_, size)) => *size = at,
+            None => frozen.push((node_id, at)),
+        }
+        // A bar taken back is no longer frozen: it was not needed at this size.
+        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
+        *state = (*state & !(FROZEN_X | FROZEN_Y))
+            | SIZE_DIRTY
+            | if bars.x { FROZEN_X } else { 0 }
+            | if bars.y { FROZEN_Y } else { 0 };
         let mut parent = self.taffy.parents[node_id.into()];
         while let Some(id) = parent {
             if self.taffy.nodes[id.into()].scrollbar_state & (DIRTY | SIZE_DIRTY)
@@ -43,17 +62,28 @@ where
     /// Register a changed node once so dropping the view clears transient state.
     fn touch_scrollbar_state(&mut self, node_id: NodeId) {
         if self.taffy.nodes[node_id.into()].scrollbar_state == 0 {
-            self.scrollbar_touched.push(node_id);
+            self.scrollbar_touched.nodes.push(node_id);
             self.taffy.nodes[node_id.into()].scrollbar_state = TOUCHED;
         }
     }
 
-    /// Bars that appeared in any local retry of this transaction.
-    pub(super) fn kamin_frozen_scrollbars(&self, node_id: NodeId) -> Point<bool> {
+    /// Bars that appeared in any local retry of this transaction and still hold at the
+    /// box's `size`. A horizontal bar answers horizontal overflow, so it holds while the
+    /// width it was decided at does; a vertical bar while the height does. A box whose
+    /// inline size follows its own gutter (shrink-to-fit, CSS 2.1 §10.3.5 and §10.3.7)
+    /// is laid out once more at the width its parent gives it with the new bar: the other
+    /// bar is decided again there, as Blink decides it after `SetIntrinsicLogicalWidthsDirty`
+    /// (`PaintLayerScrollableArea::UpdateAfterLayout`), so the bars do not depend on the
+    /// guess the box was built with.
+    pub(super) fn kamin_frozen_scrollbars(&self, node_id: NodeId, size: Size<f32>) -> Point<bool> {
         let flags = self.taffy.nodes[node_id.into()].scrollbar_state;
+        if flags & (FROZEN_X | FROZEN_Y) == 0 {
+            return Point { x: false, y: false };
+        }
+        let at = self.scrollbar_touched.frozen_at.iter().find(|(id, _)| *id == node_id).map(|(_, at)| *at);
         Point {
-            x: flags & FROZEN_X != 0,
-            y: flags & FROZEN_Y != 0,
+            x: flags & FROZEN_X != 0 && at.is_some_and(|at| at.width == size.width),
+            y: flags & FROZEN_Y != 0 && at.is_some_and(|at| at.height == size.height),
         }
     }
 
@@ -100,7 +130,7 @@ where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     fn drop(&mut self) {
-        for id in &self.scrollbar_touched {
+        for id in &self.scrollbar_touched.nodes {
             self.taffy.nodes[(*id).into()].scrollbar_state = 0;
         }
     }
