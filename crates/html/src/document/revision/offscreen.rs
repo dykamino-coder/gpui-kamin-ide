@@ -58,7 +58,9 @@ pub(super) fn waits(
     // The old line bleed or decorated run belongs to the recorded frame.
     // Only the requested paint needs to be bounded here.
     let Some(outset) = outset(&BoxStyle::shared(b.style.used())) else {
-        crate::why::note("offscreen.unknown_area", || format!("box {}: unbounded ink", a.node_id));
+        crate::why::note("offscreen.unknown_area", || {
+            format!("box {}: unbounded ink", a.node_id)
+        });
         return None;
     };
     let area = match kind {
@@ -79,7 +81,10 @@ pub(super) fn waits(
     };
     if !store.misses_shown(area) {
         crate::why::note("offscreen.on_screen", || {
-            format!("box {} <{}>: {kind:?} area {area:?} meets the shown area", a.node_id, b.tag)
+            format!(
+                "box {} <{}>: {kind:?} area {area:?} meets the shown area",
+                a.node_id, b.tag
+            )
         });
         return None;
     }
@@ -107,7 +112,11 @@ fn inline_area(
 }
 
 /// Why `fragments_of` knows no fragments of inline box `a` (DevTools `why`).
-fn unknown_fragments(store: &Store, boxes: &crate::document::boxes::BoxTree, a: &Element) -> String {
+fn unknown_fragments(
+    store: &Store,
+    boxes: &crate::document::boxes::BoxTree,
+    a: &Element,
+) -> String {
     let Some(id) = boxes.box_of(a.node_id) else {
         return "no box".into();
     };
@@ -118,7 +127,10 @@ fn unknown_fragments(store: &Store, boxes: &crate::document::boxes::BoxTree, a: 
         return "no inline container".into();
     };
     match boxes.slot(container).map(|s| s.inline.as_deref()) {
-        None => format!("the container has no layout slot: {}", boxes.describe_chain(id, 6)),
+        None => format!(
+            "the container has no layout slot: {}",
+            boxes.describe_chain(id, 6)
+        ),
         Some(None) => "the container's paragraphs wrote no fragments".into(),
         Some(Some(f)) if !store.fragments_hold(f.stamp()) => {
             format!("fragments of frame {} do not describe the layer", f.stamp())

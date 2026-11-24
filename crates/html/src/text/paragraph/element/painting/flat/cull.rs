@@ -55,7 +55,11 @@ impl Cull {
         let admission = window
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
-        if admission || !window.retained_root_environment() || p.fragment.is_some() || p.ruby_layers.is_some() {
+        if admission
+            || !window.retained_root_environment()
+            || p.fragment.is_some()
+            || p.ruby_layers.is_some()
+        {
             return None;
         }
         if !p.emph_spans.is_empty() || p.decor_on() {
@@ -78,7 +82,11 @@ impl Cull {
         let admission = window
             .render_context::<crate::layout::fragment::line_admission::Lines>()
             .is_some();
-        if admission || !window.retained_root_environment() || p.fragment.is_some() || p.ruby_layers.is_some() {
+        if admission
+            || !window.retained_root_environment()
+            || p.fragment.is_some()
+            || p.ruby_layers.is_some()
+        {
             return None;
         }
         Self::placed(p, segs, pads, bounds, window, DECORATION_REACH)

@@ -19,9 +19,7 @@ impl Document {
                     "dropped" => "no_layer.dropped",
                     _ => "no_layer.painted_other",
                 };
-                crate::why::note_at(code, why.site, || {
-                    format!("no scene layer: {}", why.reason)
-                });
+                crate::why::note_at(code, why.site, || format!("no scene layer: {}", why.reason));
             }
             (false, None) => crate::why::note("no_layer.unrecorded", || {
                 "no frame painted into a scene layer yet".into()

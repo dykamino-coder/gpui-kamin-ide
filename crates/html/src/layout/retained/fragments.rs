@@ -77,7 +77,10 @@ impl InlineFragments {
     /// Owner `owner` (0: the text of no band owner) has a run on the line of
     /// band `top..bottom`.
     pub(crate) fn push(&mut self, owner: u32, top: f32, bottom: f32) {
-        self.lines = Some(self.lines.map_or((top, bottom), |(t, b)| (t.min(top), b.max(bottom))));
+        self.lines = Some(
+            self.lines
+                .map_or((top, bottom), |(t, b)| (t.min(top), b.max(bottom))),
+        );
         let f = Fragment { owner, top, bottom };
         if owner != 0 && self.items.last() != Some(&f) {
             self.items.push(f);
@@ -126,7 +129,10 @@ impl InlineFragments {
         let grow = self.bleed + outset;
         let rect = Bounds {
             origin: point(px(self.left - grow), px(top - grow)),
-            size: size(px(self.right - self.left + 2. * grow), px(bottom - top + 2. * grow)),
+            size: size(
+                px(self.right - self.left + 2. * grow),
+                px(bottom - top + 2. * grow),
+            ),
         };
         Some(rect.scale(self.scale))
     }

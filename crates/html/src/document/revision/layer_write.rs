@@ -142,9 +142,10 @@ pub(super) fn write_paint_values(
                     if let Some(frame) = waits(Wait::Inline, path, a, b) {
                         frames.push(frame);
                     } else {
-                        crate::paint_path::refuse_with(&crate::paint_path::REFUSED_BY_LAYER, || {
-                            format!("band of <{}> {owner} has no run in the layer", b.tag)
-                        });
+                        crate::paint_path::refuse_with(
+                            &crate::paint_path::REFUSED_BY_LAYER,
+                            || format!("band of <{}> {owner} has no run in the layer", b.tag),
+                        );
                         return None;
                     }
                 }

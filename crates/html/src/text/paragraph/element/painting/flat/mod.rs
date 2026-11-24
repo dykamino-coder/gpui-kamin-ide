@@ -227,7 +227,10 @@ impl Paragraph {
         }
         window.replace_glyph_offset(outer_nudge);
         // A paragraph painted whole still places its lines for the fragments.
-        let placed = cull.is_none().then(|| cull::Cull::fragments_only(self, &segs, &pads, bounds, window)).flatten();
+        let placed = cull
+            .is_none()
+            .then(|| cull::Cull::fragments_only(self, &segs, &pads, bounds, window))
+            .flatten();
         self.write_fragments(cull.as_ref().or(placed.as_ref()), &bands, window);
         self.paint_atoms(&bands, window, cx);
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
