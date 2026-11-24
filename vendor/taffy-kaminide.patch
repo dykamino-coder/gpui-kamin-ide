@@ -23870,10 +23870,10 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cf62cd9a0e621ee192d591d14ac36af5f2e68bc0
+index 0000000000000000000000000000000000000000..4179e27541f58c281bd0cfbabab91c7757866076
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,138 @@
 +//! Gutter changes invalidate intrinsic sizes before an ancestor commits its result.
 +//! As Blink's BlockNode retry, freeze appeared bars for the rest of the layout transaction
 +//! while the box keeps the size they appeared at.
@@ -23895,6 +23895,7 @@ index 0000000000000000000000000000000000000000..cf62cd9a0e621ee192d591d14ac36af5
 +/// size each one's bars appeared at.
 +#[derive(Default)]
 +pub(crate) struct ScrollbarTouched {
++    /// Every node whose scrollbar state this transaction set, cleared when the view drops.
 +    nodes: Vec<NodeId>,
 +    /// Only boxes whose bars changed; looked up by the box's own settling only.
 +    frozen_at: Vec<(NodeId, Size<f32>)>,
