@@ -84,7 +84,8 @@ fn tags(targets: &[Handle]) -> Vec<String> {
 #[test]
 fn cross_element_arguments_follow_their_combinators_instead_of_refusing() {
     // The class changes on `section`; `aside` is its next sibling.
-    let (_, section, _, _) = nodes();
+    // The root keeps the tree (and the parents of section) alive.
+    let (_root, section, _, _) = nodes();
     let cases = [
         // An argument with a descendant combinator: descendants with the subject.
         ("p:not(.alt p)", vec!["section", "p"]),
@@ -115,9 +116,10 @@ fn cross_element_arguments_follow_their_combinators_instead_of_refusing() {
 
 #[test]
 fn a_name_in_an_argument_not_parsed_here_restyles_the_whole_document() {
-    let (html, section, _, _) = nodes();
+    // Every `p` of the document, also the one outside the mutated `section`.
+    let (_root, section, _, outside) = nodes();
     let rules = crate::style::css::parse_stylesheet("p:host(.alt){color:red}").unwrap();
     let found = targets(&rules, &changed(), std::slice::from_ref(&section));
-    assert!(found.len() > 4, "{:?}", tags(&found));
-    assert!(found.iter().any(|h| Rc::ptr_eq(h, &html)));
+    assert_eq!(tags(&found), ["section", "p", "p"]);
+    assert!(found.iter().any(|h| Rc::ptr_eq(h, &outside)));
 }

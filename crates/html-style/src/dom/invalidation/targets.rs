@@ -199,10 +199,19 @@ fn pseudo(sel: &Selector, raw: &str, changed: &Changed) -> Vec<Vec<Move>> {
             })
             .collect()
     };
+    // A name the argument's text holds where no parsed selector reads it
+    // (a part this parser dropped) may be read anywhere.
+    let traced = |paths: Vec<Vec<Move>>| {
+        if paths.is_empty() && text() {
+            vec![vec![Move::Document]]
+        } else {
+            paths
+        }
+    };
     match arg.kind {
-        PseudoKind::Not | PseudoKind::Is => inner(None),
-        PseudoKind::NthOf(_) => inner(Some(Move::Siblings)),
-        PseudoKind::Has(_) => inner(Some(Move::HasAnchors)),
+        PseudoKind::Not | PseudoKind::Is => traced(inner(None)),
+        PseudoKind::NthOf(_) => traced(inner(Some(Move::Siblings))),
+        PseudoKind::Has(_) => traced(inner(Some(Move::HasAnchors))),
         // `:checked` reads the attributes its state derives from (`form_state`).
         PseudoKind::Checked => {
             if among(&crate::dom::form_state::READS) {
