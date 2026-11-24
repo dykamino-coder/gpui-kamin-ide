@@ -140,7 +140,11 @@ mod tests {
 
     #[test]
     fn a_name_that_is_not_a_literal_reads_every_attribute() {
-        for css in ["x{content:attr(var(--n))}", "x{content:attr(\\63 lass)}", "x{content:attr()}"] {
+        for css in [
+            "x{content:attr(var(--n))}",
+            "x{content:attr(\\63 lass)}",
+            "x{content:attr()}",
+        ] {
             let r = reads(css);
             assert!(r.any, "{css}");
             assert!(r.reads_any_of(["class"].into_iter()), "{css}");
