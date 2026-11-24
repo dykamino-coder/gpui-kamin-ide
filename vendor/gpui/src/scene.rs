@@ -1,6 +1,8 @@
 // todo("windows"): remove
 #![cfg_attr(windows, allow(dead_code))]
 
+mod analytic_gradient;
+pub use analytic_gradient::{AnalyticGradient, GradientQuad, GradientDescriptor, GradientStop, GradientData};
 mod layer;
 pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counters};
 pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
@@ -220,6 +222,8 @@ pub struct Scene {
 #[derive(Default)]
 pub(crate) struct SceneBook {
     pub(crate) images: image_resources::ImageResources,
+    pub(crate) gradients: collections::HashMap<std::sync::Arc<AnalyticGradient>, u32>,
+    pub(crate) gradient_values: Vec<std::sync::Arc<AnalyticGradient>>,
     /// Клетки кадра и повреждение против прошлого кадра (`damage`).
     pub(crate) index: damage::DamageIndex,
     /// The box whose own paint is being recorded into a layer.
@@ -438,6 +442,8 @@ impl Scene {
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
+        self.book.gradients.clear();
+        self.book.gradient_values.clear();
         self.underlines.clear();
         self.monochrome_sprites.clear();
         self.subpixel_sprites.clear();
@@ -528,6 +534,11 @@ impl Scene {
                 shadow.order = order;
                 self.shadows.push(*shadow);
             }
+            Primitive::Gradient(p) => {
+                p.quad.order = order;
+                self.register_gradient(p);
+                self.quads.push(p.quad);
+            }
             Primitive::Quad(quad) => {
                 quad.order = order;
                 self.quads.push(*quad);
@@ -561,7 +572,7 @@ impl Scene {
         if let Some(&plane) = self.depth.plane_stack.last() {
             let (kind, index) = match &primitive {
                 Primitive::Shadow(_) => (0, self.shadows.len() - 1),
-                Primitive::Quad(_) => (1, self.quads.len() - 1),
+                Primitive::Quad(_) | Primitive::Gradient(_) => (1, self.quads.len() - 1),
                 Primitive::Path(_) => (2, self.paths.len() - 1),
                 Primitive::Underline(_) => (3, self.underlines.len() - 1),
                 Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
@@ -944,6 +955,10 @@ impl Scene {
         match primitive {
             Primitive::Shadow(shadow) => self.shadows.push(*shadow),
             Primitive::Quad(quad) => self.quads.push(*quad),
+            Primitive::Gradient(p) => {
+                self.register_gradient(p);
+                self.quads.push(p.quad);
+            }
             Primitive::Path(path) => {
                 path.id = PathId(self.paths.len());
                 self.paths.push(path.clone());
@@ -1116,6 +1131,7 @@ pub(crate) fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
         // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
         // `transform-origin`, `transform-table-*`).
         match primitive {
+            Primitive::Gradient(p) => placed_by(p.quad.bounds, &p.quad.transformation),
             Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
                 placed_by(q.bounds, &q.transformation)
             }
@@ -1213,6 +1229,7 @@ pub(crate) enum PaintOperation {
 pub enum Primitive {
     Shadow(Shadow),
     Quad(Quad),
+    Gradient(GradientQuad),
     Path(Path<ScaledPixels>),
     Underline(Underline),
     MonochromeSprite(MonochromeSprite),
@@ -1227,6 +1244,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(shadow) => &shadow.bounds,
             Primitive::Quad(quad) => &quad.bounds,
+            Primitive::Gradient(p) => &p.quad.bounds,
             Primitive::Path(path) => &path.bounds,
             Primitive::Underline(underline) => &underline.bounds,
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
@@ -1240,6 +1258,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
             Primitive::Quad(quad) => &quad.content_mask,
+            Primitive::Gradient(p) => &p.quad.content_mask,
             Primitive::Path(path) => &path.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
@@ -1254,6 +1273,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(p) => p.order,
             Primitive::Quad(p) => p.order,
+            Primitive::Gradient(p) => p.quad.order,
             Primitive::Path(p) => p.order,
             Primitive::Underline(p) => p.order,
             Primitive::MonochromeSprite(p) => p.order,
@@ -1268,6 +1288,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(p) => &mut p.content_mask,
             Primitive::Quad(p) => &mut p.content_mask,
+            Primitive::Gradient(p) => &mut p.quad.content_mask,
             Primitive::Path(p) => &mut p.content_mask,
             Primitive::Underline(p) => &mut p.content_mask,
             Primitive::MonochromeSprite(p) => &mut p.content_mask,
@@ -1281,6 +1302,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(p) => &mut p.order,
             Primitive::Quad(p) => &mut p.order,
+            Primitive::Gradient(p) => &mut p.quad.order,
             Primitive::Path(p) => &mut p.order,
             Primitive::Underline(p) => &mut p.order,
             Primitive::MonochromeSprite(p) => &mut p.order,
@@ -2146,6 +2168,7 @@ pub(crate) fn draw_sequence(scene: &Scene, out: &mut Vec<(String, Bounds<ScaledP
         let text = match &p {
             Primitive::Shadow(x) => format!("{x:?}"),
             Primitive::Quad(x) => format!("{x:?}"),
+            Primitive::Gradient(x) => format!("{x:?}"),
             Primitive::Path(x) => format!("{x:?}"),
             Primitive::Underline(x) => format!("{x:?}"),
             Primitive::MonochromeSprite(x) => format!("{x:?}"),
@@ -2167,7 +2190,14 @@ pub(crate) fn draw_sequence(scene: &Scene, out: &mut Vec<(String, Bounds<ScaledP
     for batch in scene.batches() {
         match batch {
             PrimitiveBatch::Shadows(r) => scene.shadows[r].iter().for_each(|p| push(out, "shadow", (*p).into())),
-            PrimitiveBatch::Quads(r) => scene.quads[r].iter().for_each(|p| push(out, "quad", (*p).into())),
+            PrimitiveBatch::Quads(r) => scene.quads[r].iter().for_each(|p| {
+                if p.is_analytic_gradient() {
+                    let mut quad = *p;
+                    let gradient = scene.gradient(quad.background.stop_count).unwrap().clone();
+                    quad.background.stop_count = 0;
+                    push(out, "gradient", Primitive::Gradient(GradientQuad { quad, gradient }));
+                } else { push(out, "quad", (*p).into()); }
+            }),
             PrimitiveBatch::Paths(r) => scene.paths[r].iter().for_each(|p| push(out, "path", p.clone().into())),
             PrimitiveBatch::Underlines(r) => scene.underlines[r].iter().for_each(|p| push(out, "underline", p.clone().into())),
             PrimitiveBatch::MonochromeSprites { range, .. } => {

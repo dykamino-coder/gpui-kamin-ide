@@ -449,6 +449,7 @@ struct DirectXResources {
 struct DirectXRenderPipelines {
     shadow_pipeline: PipelineState<Shadow>,
     quad_pipeline: PipelineState<Quad>,
+    quad_gradient: analytic_gradient::GradientProgram,
     path_rasterization_pipeline: PipelineState<PathRasterizationSprite>,
     path_sprite_pipeline: PipelineState<PathSprite>,
     underline_pipeline: PipelineState<Underline>,
@@ -992,7 +993,9 @@ impl DirectXRenderer {
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
             match batch {
                 PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
+                PrimitiveBatch::Quads(range) => {
+                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
+                }
                 PrimitiveBatch::Paths(range) => {
                     let paths = &scene.paths[range];
                     self.draw_paths_to_intermediate(paths)?;
@@ -1574,6 +1577,8 @@ impl DirectXRenderer {
             )?;
         }
 
+        self.pipelines.quad_pipeline.upload_gradients(
+            &devices.device, &devices.device_context, &scene.gradient_data())?;
         if !scene.quads.is_empty() {
             self.pipelines.quad_pipeline.update_buffer(
                 &devices.device,
@@ -1633,27 +1638,37 @@ impl DirectXRenderer {
         )
     }
 
-    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
+    /// `quads` are the batch's instances, uploaded at `start` of the quad buffer.
+    fn draw_quads(&mut self, quads: &[Quad], start: usize) -> Result<()> {
         // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
         // групп очищаются прозрачным — там первый квад рисуется как есть.
         let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
         if self.group_target.is_none() {
             self.backdrop_pending = false;
         }
-        let (start, len) = if skip { (1, len.saturating_sub(1)) } else { (start, len) };
-        if len == 0 {
-            return Ok(());
-        }
+        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
         let devices = self.devices.as_ref().context("devices missing")?;
-        self.pipelines.quad_pipeline.draw_range(
-            &devices.device_context,
-            self.globals
-                .batch_params_buffer
-                .as_ref()
-                .context("batch params buffer missing")?,
-            start as u32,
-            len as u32,
-        )
+        let params = self
+            .globals
+            .batch_params_buffer
+            .as_ref()
+            .context("batch params buffer missing")?;
+        let pipeline = &self.pipelines.quad_pipeline;
+        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
+            if analytic {
+                pipeline.bind_gradients(&devices.device_context);
+                pipeline.draw_range_with_program(
+                    &devices.device_context,
+                    params,
+                    first as u32,
+                    len as u32,
+                    self.pipelines.quad_gradient.fragment(&devices.device)?,
+                )?;
+            } else {
+                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
+            }
+        }
+        Ok(())
     }
 
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
@@ -2463,6 +2478,7 @@ impl DirectXRenderPipelines {
             64,
             create_blend_state(device)?,
         )?;
+        let quad_gradient = analytic_gradient::GradientProgram::new()?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
             "path_rasterization_pipeline",
@@ -2532,6 +2548,7 @@ impl DirectXRenderPipelines {
             group_tiles_pipeline,
             shadow_pipeline,
             quad_pipeline,
+            quad_gradient,
             path_rasterization_pipeline,
             path_sprite_pipeline,
             underline_pipeline,
@@ -2642,6 +2659,7 @@ const _: () = assert!(std::mem::size_of::<BatchParams>() == 16);
 
 struct PipelineState<T> {
     label: &'static str,
+    gradients: Option<analytic_gradient::GradientBuffers>,
     // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
     shader_executables: [String; 2],
     vertex: ID3D11VertexShader,
@@ -2785,6 +2803,25 @@ impl<T> PipelineState<T> {
         first_instance: u32,
         instance_count: u32,
     ) -> Result<()> {
+        self.draw_range_with_program(
+            device_context,
+            batch_params_buffer,
+            first_instance,
+            instance_count,
+            &self.fragment,
+        )
+    }
+
+    /// KaminIDE patch: the instance range drawn by another pixel program over
+    /// the same instance buffer (analytic-gradient quads).
+    fn draw_range_with_program(
+        &self,
+        device_context: &ID3D11DeviceContext,
+        batch_params_buffer: &ID3D11Buffer,
+        first_instance: u32,
+        instance_count: u32,
+        fragment: &ID3D11PixelShader,
+    ) -> Result<()> {
         anyhow::ensure!(
             first_instance as usize + instance_count as usize <= self.buffer_size,
             "DirectX instance range exceeds the {} buffer",
@@ -2796,7 +2833,7 @@ impl<T> PipelineState<T> {
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             &self.vertex,
-            &self.fragment,
+            fragment,
             &self.blend_state,
         );
         unsafe {
@@ -3350,6 +3387,8 @@ pub(crate) mod shader_resources {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
         Quad,
+        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
+        QuadGradient,
         Shadow,
         Underline,
         PathRasterization,
@@ -3408,6 +3447,10 @@ pub(crate) mod shader_resources {
                 ShaderModule::Quad => match target {
                     ShaderTarget::Vertex => QUAD_VERTEX_BYTES,
                     ShaderTarget::Fragment => QUAD_FRAGMENT_BYTES,
+                },
+                ShaderModule::QuadGradient => match target {
+                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
+                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
                 },
                 ShaderModule::Shadow => match target {
                     ShaderTarget::Vertex => SHADOW_VERTEX_BYTES,
@@ -3470,6 +3513,7 @@ pub(crate) mod shader_resources {
         pub fn as_str(self) -> &'static str {
             match self {
                 ShaderModule::Quad => "quad",
+                ShaderModule::QuadGradient => "quad_gradient",
                 ShaderModule::Shadow => "shadow",
                 ShaderModule::Underline => "underline",
                 ShaderModule::PathRasterization => "path_rasterization",
@@ -3653,6 +3697,7 @@ mod amd {
 
 
 mod backdrop;
+mod analytic_gradient;
 mod layer_cache;
 mod recovery;
 mod batch_cost;

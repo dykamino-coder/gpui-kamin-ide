@@ -52,6 +52,11 @@ pub(in crate::scene) fn primitive(
     clip: Option<Bounds<ScaledPixels>>,
 ) {
     match primitive {
+        Primitive::Gradient(g) => {
+            let p = &mut g.quad;
+            shifted_geometry(&mut p.bounds, &mut p.transformation, offset);
+            mask(&mut p.content_mask, offset, clip);
+        }
         Primitive::Quad(p) => {
             shifted_geometry(&mut p.bounds, &mut p.transformation, offset);
             mask(&mut p.content_mask, offset, clip);

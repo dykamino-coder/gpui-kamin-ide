@@ -133,7 +133,8 @@ impl Scene {
     /// nested groups are shared handles.
     pub(crate) fn copy_finished(&self) -> Scene {
         Scene {
-            book: Box::new(super::super::SceneBook { images: self.book.images.clone(), ..Default::default() }),
+            book: Box::new(super::super::SceneBook { images: self.book.images.clone(), gradients: self.book.gradients.clone(),
+                gradient_values: self.book.gradient_values.clone(), ..Default::default() }),
             paint_operations: self.paint_operations.clone(),
             primitive_bounds: self.primitive_bounds.clone(),
             shadows: self.shadows.clone(),

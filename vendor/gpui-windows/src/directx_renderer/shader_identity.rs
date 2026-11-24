@@ -3,7 +3,7 @@
 use super::*;
 use sha2::{Digest, Sha256};
 
-fn executable(bytes: &[u8]) -> Result<String> {
+pub(super) fn executable(bytes: &[u8]) -> Result<String> {
     anyhow::ensure!(bytes.starts_with(b"DXBC") && bytes.len() >= 32, "Invalid DXBC container");
     let word = |offset: usize| -> Result<usize> {
         Ok(u32::from_le_bytes(bytes.get(offset..offset + 4).context("Truncated DXBC word")?.try_into()?) as usize)
@@ -47,6 +47,7 @@ impl<T> PipelineState<T> {
 
         Ok(PipelineState {
             label,
+            gradients: None,
             shader_executables,
             vertex,
             fragment,

@@ -53,6 +53,7 @@ impl DirectXRenderer {
             &self.pipelines.blur_pipeline.shader_executables,
             &self.pipelines.clear_pipeline.shader_executables,
         ].into_iter().flatten().cloned().collect();
+        shader_executables.push(self.pipelines.quad_gradient.executable.clone());
         shader_executables.sort();
         shader_executables.dedup();
         let context = Some(gpui::frame_capture::FrameContext {

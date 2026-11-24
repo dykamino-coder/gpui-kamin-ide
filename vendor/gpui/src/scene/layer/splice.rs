@@ -116,6 +116,11 @@ impl SceneLayer {
             }
         }
         let s = &mut self.scene;
+        for operation in &mut fresh {
+            if let PaintOperation::Primitive(Primitive::Gradient(g)) = operation {
+                s.register_gradient(g);
+            }
+        }
         let runs = (old.as_slice(), fresh.as_slice());
         let shadow = |p: &Primitive| match p {
             Primitive::Shadow(x) => Some(*x),
@@ -123,6 +128,7 @@ impl SceneLayer {
         };
         let quad = |p: &Primitive| match p {
             Primitive::Quad(x) => Some(*x),
+            Primitive::Gradient(x) => Some(x.quad),
             _ => None,
         };
         let underline = |p: &Primitive| match p {
@@ -145,6 +151,7 @@ impl SceneLayer {
             })
         }));
         self.bindings.sort_by_key(|x| (x.owner, x.value, x.quad));
+        self.scene.compact_gradients();
         // Boxes are kept in paint order: the later ones' commands follow.
         let shift = |index: u32| (index as i64 + op_shift) as u32;
         // Runs in the layer's groups index their group's scene.

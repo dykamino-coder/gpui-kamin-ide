@@ -413,12 +413,78 @@ float2x2 rotate2d(float angle) {
     return float2x2(c, -s, s, c);
 }
 
+
+// KaminIDE patch: analytic gradients avoid intermediate BGRA tiles.
+struct GradientDescriptor {
+    float4 geometry;
+    float2 css_size;
+    uint radial;
+    uint repeating;
+    uint first;
+    uint count;
+    uint2 pad;
+};
+struct GradientStop {
+    float4 color;
+    float offset;
+    uint3 pad;
+};
+StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
+StructuredBuffer<GradientStop> analytic_stops : register(t6);
+
+float4 analytic_gradient(uint index, float2 position, Bounds bounds) {
+    GradientDescriptor g = analytic_gradients[index];
+    // Preserve exact local pixel centers at unit scale, including clipped tiles.
+    // Dividing the point before multiplying the size perturbs hard-stop boundaries.
+    precise float2 p = position - bounds.origin;
+    if (any(g.css_size != bounds.size)) {
+        p *= g.css_size / bounds.size;
+    }
+    precise float t;
+    if (g.radial != 0) {
+        t = (g.geometry.z <= 0.0 || g.geometry.w <= 0.0)
+            ? asfloat(0x7f800000) : length((p - g.geometry.xy) / g.geometry.zw);
+    } else {
+        precise float2 centered = p - g.css_size * 0.5;
+        precise float2 projected = centered * g.geometry.xy;
+        t = (projected.x + projected.y) / max(g.geometry.z, 1.192092896e-7) + 0.5;
+    }
+    GradientStop a = analytic_stops[g.first];
+    GradientStop last = analytic_stops[g.first + g.count - 1];
+    if (g.repeating != 0) {
+        float period = last.offset - a.offset;
+        if (period > 0.0) {
+            float v = t - a.offset;
+            t = a.offset + (v - floor(v / period) * period);
+        } else { return floor(saturate(last.color) * 255.0 + 0.5) / 255.0; }
+    }
+    precise float4 color = last.color;
+    if (t <= a.offset) { color = a.color; }
+    else {
+        [loop] for (uint i = 1; i < g.count; ++i) {
+            GradientStop b = analytic_stops[g.first + i];
+            if (t >= a.offset && t <= b.offset) {
+                precise float k = b.offset > a.offset ? (t - a.offset) / (b.offset - a.offset) : 1.0;
+                precise float alpha = a.color.a + (b.color.a - a.color.a) * k;
+                precise float kc = alpha > 0.0 ? k * b.color.a / alpha : k;
+                color = float4(a.color.rgb + (b.color.rgb - a.color.rgb) * kc, alpha);
+                break;
+            }
+            a = b;
+        }
+    }
+    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
+}
+
 float4 gradient_color(Background background,
                       float2 position,
                       Bounds bounds,
                       float4 solid_color, float4 color0, float4 color1) {
     float4 color;
 
+    // KaminIDE patch: tag 5 (analytic) never reaches this function; those quads
+    // are drawn by `quad_gradient_fragment`, the only program that references
+    // the stop loop and its t5/t6 buffers.
     switch (background.tag) {
         case 0:
             color = solid_color;
@@ -655,13 +721,8 @@ float2 untransform(float2 position, TransformationMatrix t) {
     return mul(p, inv);
 }
 
-float4 quad_fragment(QuadFragmentInput input): SV_Target {
-    input.position.xy += global_origin;
-    Quad quad = quads[input.quad_id];
-    // KaminIDE patch: дальше работаем в координатах самого квада.
-    float2 local_position = untransform(input.position.xy, quad.transformation);
-    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
-    input.background_solid, input.background_color0, input.background_color1);
+float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
+                          float4 input_border_color) {
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.top_right == 0.0 &&
@@ -784,7 +845,7 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
     float4 color = background_color;
     if (border_sdf < antialias_threshold) {
-        float4 border_color = input.border_color;
+        float4 border_color = input_border_color;
         // Dashed border logic when border_style == 1
         // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
         if (quad.border_style == 1 || quad.border_style == 2) {
@@ -1991,4 +2052,28 @@ float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
         dst = round(saturate(o) * 255.0) / 255.0;
     }
     return dst;
+}
+
+// KaminIDE patch: two programs over one quad instance buffer. Plain quads never
+// carry the analytic stop loop or the t5/t6 gradient buffers; the renderer
+// draws runs of analytic-gradient quads with quad_gradient_fragment only.
+float4 quad_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    // KaminIDE patch: from here on, work in the quad's own coordinates.
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
+    input.background_solid, input.background_color0, input.background_color1);
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
+}
+QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    return quad_vertex(vertex_id, instance_id);
+}
+float4 quad_gradient_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
+    background_color.a *= quad.background.solid.a;
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
 }

@@ -1,9 +1,6 @@
-//! Покраска одной плитки фона: выбор пути (однотонный SVG, аналитический градиент шейдером,
-//! SVG в конечной ориентации, растр) и режима выборки — без интерполяции для немасштабированного
-//! растра, `pixelated` ближайшей точкой, иначе линейно с совместной привязкой обоих краёв
-//! (CSS Backgrounds 3 §3.8; Blink `background_image_geometry.cc:756`) и пересэмплированием в
-//! премультиплицированной альфе. Градиенты с расширенными стопами, радиальные, повторяющиеся и
-//! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
+//! Background tile sampling and analytic gradient dispatch. sRGB radial, repeating and
+//! arbitrary-stop gradients draw directly; unsupported color spaces retain bitmap sampling.
+//! Destination edges follow the device grid (CSS Backgrounds 3 section 3.8).
 
 use crate::resources::css_images::Source as CpuSource;
 use crate::resources::css_images::{gradient_geometry::Geometry, gradient_raster::resolved_stops};
@@ -145,6 +142,11 @@ pub(crate) fn paint_gradient(
         // absolute stop/center lengths accompany them (Blink background
         // geometry). Only the destination bitmap follows the device grid.
         let bounds = snapped_clip(bounds, window);
+        #[cfg(windows)]
+        if super::sampling_analytic::paint(window, bounds, corners, &gradient, repeating, css, vcx)
+        {
+            return true;
+        }
         let (w, h) = (
             (f32::from(bounds.size.width) * scale)
                 .round()

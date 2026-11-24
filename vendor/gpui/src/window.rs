@@ -65,6 +65,7 @@ use uuid::Uuid;
 
 pub(crate) mod a11y;
 mod prompts;
+mod analytic_gradient;
 mod image_sampling;
 mod image_resources;
 mod natural_image;

@@ -750,6 +750,8 @@ pub(crate) enum BackgroundTag {
     /// KaminIDE patch: радиальный градиент от центра к краям. Номер обязан
     /// совпадать с веткой `case 4` в шейдере (3 занял upstream Checkerboard).
     RadialGradient = 4,
+    /// Scene-owned immutable gradient stop payload.
+    AnalyticGradient = 5,
 }
 
 /// A color space for color interpolation.
@@ -803,6 +805,7 @@ pub struct Background {
 impl std::fmt::Debug for Background {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.tag {
+            BackgroundTag::AnalyticGradient => write!(f, "AnalyticGradient({})", self.stop_count),
             BackgroundTag::Solid => write!(f, "Solid({:?})", self.solid),
             BackgroundTag::LinearGradient => write!(
                 f,
@@ -1000,7 +1003,7 @@ impl Background {
     /// Returns whether the background color is transparent.
     pub fn is_transparent(&self) -> bool {
         match self.tag {
-            BackgroundTag::Solid => self.solid.is_transparent(),
+            BackgroundTag::AnalyticGradient | BackgroundTag::Solid => self.solid.is_transparent(),
             // KaminIDE patch: у радиального цвета лежат там же, где у линейного.
             BackgroundTag::LinearGradient | BackgroundTag::RadialGradient => {
                 self.colors.iter().all(|c| c.color.is_transparent())

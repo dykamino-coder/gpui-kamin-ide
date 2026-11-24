@@ -36,6 +36,8 @@ pub(crate) mod alpha_sampling;
 mod flat_vector;
 mod oriented_vector;
 mod sampling;
+#[cfg(windows)]
+mod sampling_analytic;
 pub(crate) use sampling::paint_gradient;
 mod mask_composite;
 mod mask_luminance;

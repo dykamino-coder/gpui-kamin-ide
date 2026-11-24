@@ -1075,7 +1075,7 @@ impl Style {
         if background_color.is_some_and(|color| !color.is_transparent()) {
             let mut border_color = match background_color {
                 Some(color) => match color.tag {
-                    BackgroundTag::Solid
+                    BackgroundTag::AnalyticGradient | BackgroundTag::Solid
                     | BackgroundTag::PatternSlash
                     | BackgroundTag::Checkerboard => color.solid,
                     // KaminIDE patch: радиальный хранит цвета там же, где

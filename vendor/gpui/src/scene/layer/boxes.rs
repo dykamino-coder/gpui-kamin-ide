@@ -188,7 +188,7 @@ impl Scene {
                     // Sprites sort by tile within an order: not in paint order.
                     plain &= matches!(
                         p,
-                        Primitive::Shadow(_) | Primitive::Quad(_) | Primitive::Underline(_)
+                        Primitive::Shadow(_) | Primitive::Quad(_) | Primitive::Gradient(_) | Primitive::Underline(_)
                     );
                     ink = union(ink, ink_of(p));
                 }

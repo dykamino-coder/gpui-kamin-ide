@@ -18,19 +18,21 @@ struct Instances {
     buffer: ID3D11Buffer,
     view: Option<ID3D11ShaderResourceView>,
     size: usize,
+    gradients: Option<super::analytic_gradient::GradientBuffers>,
 }
 
 impl Instances {
     fn new<T>(device: &ID3D11Device) -> Result<Self> {
         let buffer = create_buffer(device, std::mem::size_of::<T>(), 1)?;
         let view = create_buffer_view(device, &buffer)?;
-        Ok(Self { buffer, view, size: 1 })
+        Ok(Self { buffer, view, size: 1, gradients: None })
     }
 
     fn swap<T>(&mut self, pipeline: &mut PipelineState<T>) {
         std::mem::swap(&mut self.buffer, &mut pipeline.buffer);
         std::mem::swap(&mut self.view, &mut pipeline.view);
         std::mem::swap(&mut self.size, &mut pipeline.buffer_size);
+        std::mem::swap(&mut self.gradients, &mut pipeline.gradients);
     }
 }
 
@@ -50,6 +52,14 @@ pub(super) struct LayerCache {
 }
 
 impl LayerCache {
+    pub(super) fn gradient_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
+        for layer in self.layers.values() {
+            for set in &layer.sets {
+                if let Some(gradients) = &set.gradients { gradients.gpu_memory(sink); }
+            }
+        }
+    }
+
     /// A new frame: buffers of layers the last one did not draw are dropped.
     pub(super) fn begin_frame(&mut self) {
         let last = self.frame;
