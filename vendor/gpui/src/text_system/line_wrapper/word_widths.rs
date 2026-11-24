@@ -1,63 +1,69 @@
-//! KaminIDE patch: ширины неразрывных кусков текста для `min_content_width`.
+//! KaminIDE patch: widths of unbreakable text pieces for `min_content_width`.
 //!
-//! Минимальная ширина текста — самый широкий кусок между точками разрыва, и
-//! каждый кусок меряется набором платформы (`layout_line`): так же, как его
-//! потом кладёт перенос. Набор куска зависит только от шрифта, кегля и самих
-//! знаков (один прогон, лигатуры рвутся), поэтому повтор того же слова под тем
-//! же шрифтом даёт ту же ширину. Без памяти каждый замер min-content заново
-//! набирал каждое слово (DirectWrite: свой текстовый макет на слово), и на
-//! длинной статье это было десятой частью всей холодной загрузки.
+//! The min-content width of a text is its widest piece between break
+//! opportunities, and each piece is measured by the platform shaper
+//! (`layout_line`), as wrapping later places it. A piece's shaping depends
+//! only on the font, the size and its characters (one run, ligatures break),
+//! so the same word under the same font has the same width. Without a memory
+//! every min-content query shaped every word again (DirectWrite builds a text
+//! layout per word), a tenth of a long article's cold load.
 //!
-//! Ключ — знаки куска; шрифт и кегль — у владельца (`LineWrapper` пула на
-//! шрифт и кегль). Ширина слова не зависит от раскладки, поэтому память
-//! переживает кадр: кадр текста берёт ширины, которые прочёл прошлый кадр
-//! (как `LineLayoutCache` держит строки прошлого кадра), и правка или новая
-//! ширина окна не набирают слова заново. Слово, не прочитанное кадром, уходит
-//! в следующем: память — рабочее множество последнего кадра, без таймера и без
-//! роста со временем; кадр, пропущенный обёрткой, очищает её. Blink делает то
-//! же своим `FrameShapeCache` (вытеснение по кадрам, на шрифт), Gecko — словарём
-//! слов шрифта `gfxFont` с вытеснением по таймеру `gfxFontCache`; здесь
-//! вытеснение детерминировано кадрами, а ключ поиска — сам срез текста, без
-//! выделения (выделяется только новое слово). Поколение шрифтов сбрасывает
-//! память: добавленный шрифт может сменить подстановку глифов. Внутри кадра
-//! память ограничена двумя поколениями по `GENERATION_WORDS` записей; частые
-//! слова переходят в текущее. Куски длиннее `LONGEST_WORD` байт (адреса,
-//! длинные числа) меряются без памяти: они редко повторяются и дороги по месту.
+//! The key is the piece's text; font and size belong to the owner (the
+//! `LineWrapper` of a pool per font and size). A word's width does not depend
+//! on layout, so the memory outlives a frame: a text frame takes the widths
+//! the previous frame read (as `LineLayoutCache` keeps the previous frame's
+//! lines), and an edit or a new window width shapes no word again. A word no
+//! frame read leaves in the next one: the memory is the last frame's working
+//! set, with no timer and no growth over time; a frame the wrapper skipped
+//! clears it. A frame that reads no width costs nothing here: the text frame
+//! is a counter, and a wrapper turns its generations over only at its next
+//! read (`WordWidths::width`). Blink keeps shaped words in its
+//! `FrameShapeCache` (evicted by frames, per font), Gecko in the word cache of
+//! `gfxFont`, evicted by the `gfxFontCache` timer; here eviction is
+//! deterministic by frames, and the lookup key is the text slice itself, with
+//! no allocation (only a new word allocates). The font generation resets the
+//! memory: an added font may change glyph fallback. Within a frame the memory
+//! is bounded by two generations of `GENERATION_WORDS` entries; frequent
+//! words move into the current one. Pieces longer than `LONGEST_WORD` bytes
+//! (addresses, long numbers) are measured without memory: they rarely repeat
+//! and are costly to keep.
 
 use crate::Pixels;
 use collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// Записей в одном поколении. Частые слова текста (служебные, повторы терминов)
-/// укладываются в него; редкие уходят со сменой поколения.
+/// Entries in one generation. A text's frequent words (function words,
+/// repeated terms) fit in it; rare ones leave when the generation turns over.
 const GENERATION_WORDS: usize = 8192;
 
-/// Длиннейший кусок в памяти, байт.
+/// The longest piece kept, in bytes.
 const LONGEST_WORD: usize = 64;
 
-/// Номер кадра текста: `LineLayoutCache::finish_frame` любого окна его меняет.
+/// The text frame number: `LineLayoutCache::finish_frame` of any window advances it.
 static TEXT_FRAME: AtomicUsize = AtomicUsize::new(0);
 
-/// Конец кадра текста: память ширин всех обёрток становится негодной.
+/// End of a text frame: the width memory of every wrapper turns over at its
+/// next read. One counter step, whatever the wrappers hold.
 pub(crate) fn finish_frame() {
     TEXT_FRAME.fetch_add(1, Ordering::Relaxed);
 }
 
-/// Текущий кадр текста.
+/// The current text frame.
 pub(crate) fn text_frame() -> usize {
     TEXT_FRAME.load(Ordering::Relaxed)
 }
 
 #[derive(Default)]
 pub(crate) struct WordWidths {
-    /// (поколение шрифтов, кадр текста), под которыми записаны ширины.
+    /// (font generation, text frame) the widths were recorded under.
     stamp: (usize, usize),
     current: HashMap<Box<str>, Pixels>,
     previous: HashMap<Box<str>, Pixels>,
 }
 
 impl WordWidths {
-    /// Ширина куска `word` в кадре `frame` из памяти или из `measure` (набор платформы).
+    /// The width of piece `word` in frame `frame`, from memory or from
+    /// `measure` (the platform shaper).
     pub(crate) fn width(
         &mut self,
         font_generation: usize,
@@ -71,8 +77,8 @@ impl WordWidths {
         let stamp = (font_generation, frame);
         if self.stamp != stamp {
             let next = font_generation == self.stamp.0 && frame == self.stamp.1.wrapping_add(1);
-            // Прочитанное прошлым кадром остаётся; более старое уходит. Новые
-            // таблицы, а не `clear`: старое поколение не оставляет ёмкости.
+            // What the last frame read stays; anything older leaves. New
+            // tables rather than `clear`: an old generation keeps no capacity.
             self.previous = if next {
                 std::mem::take(&mut self.current)
             } else {
@@ -119,13 +125,13 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(width(&mut widths, 0, 0), px(12.5));
         }
-        // Новый шрифт в системе: прежние ширины не годятся.
+        // A new font in the system: the old widths do not hold.
         assert_eq!(width(&mut widths, 1, 0), px(13.5));
-        // Следующий кадр берёт ширину, прочитанную прошлым.
+        // The next frame takes the width the last one read.
         assert_eq!(width(&mut widths, 1, 1), px(13.5));
         assert_eq!(width(&mut widths, 1, 2), px(13.5));
         assert_eq!(widths.len(), 1);
-        // Кадр, пропущенный обёрткой, очищает её память.
+        // A frame the wrapper skipped clears its memory.
         assert_eq!(width(&mut widths, 1, 4), px(13.5));
         drop(width);
         assert_eq!(calls, 3);
@@ -157,6 +163,24 @@ mod tests {
     }
 
     #[test]
+    fn frames_that_read_no_width_leave_the_memory_untouched() {
+        let mut widths = WordWidths::default();
+        for i in 0..100 {
+            widths.width(0, 0, &format!("w{i}"), || px(1.));
+        }
+        // Frames without layout only advance the counter: the tables stay
+        // as they are until a read, and the turn-over then drops them.
+        let before = text_frame();
+        for _ in 0..1000 {
+            finish_frame();
+        }
+        assert!(text_frame() >= before + 1000);
+        assert_eq!(widths.len(), 100);
+        widths.width(0, 1000, "w0", || px(1.));
+        assert_eq!(widths.len(), 1);
+    }
+
+    #[test]
     fn memory_is_bounded_by_two_generations_and_keeps_frequent_words() {
         let mut widths = WordWidths::default();
         let mut measured = 0;
@@ -165,7 +189,7 @@ mod tests {
                 measured += 1;
                 px(1.)
             });
-            // Частое слово между редкими не набирается заново.
+            // A frequent word between rare ones is not shaped again.
             widths.width(0, 0, "the", || {
                 measured += 1;
                 px(2.)

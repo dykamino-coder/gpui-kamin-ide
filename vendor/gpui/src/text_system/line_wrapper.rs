@@ -39,7 +39,7 @@ pub struct LineWrapper {
     pub(crate) font_size: Pixels,
     cached_ascii_char_widths: [Option<Pixels>; 128],
     cached_other_char_widths: HashMap<char, Pixels>,
-    /// KaminIDE patch: ширины кусков `min_content_width` (см. `word_widths`).
+    /// KaminIDE patch: piece widths of `min_content_width` (`word_widths`).
     word_widths: WordWidths,
 }
 
@@ -84,7 +84,7 @@ impl LineWrapper {
                 font_id: this.font_id,
                 font_size: this.font_size,
             };
-            // Повтор куска берёт ширину прежнего набора (`word_widths`).
+            // A repeated piece takes the width of its earlier shaping (`word_widths`).
             let generation = this.text_system.font_generation.load(Ordering::Acquire);
             let (platform, font_size) = (&this.text_system.platform_text_system, this.font_size);
             let frame = word_widths::text_frame();
