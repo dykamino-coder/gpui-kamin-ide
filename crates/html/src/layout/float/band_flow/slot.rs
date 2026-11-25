@@ -119,12 +119,11 @@ impl HostSlot {
             return None;
         };
         let stale = match () {
-            _ if epoch > kept.at || kept.at > boxes.clock() => Some("subtree changed"),
-            _ if !kept.key.same(&self.key) => Some("outside input"),
-            _ => None,
+            _ if epoch > kept.at || kept.at > boxes.clock() => Some(("subtree changed", "")),
+            _ => kept.key.differs(&self.key).map(|what| ("outside input: ", what)),
         };
-        if let Some(why) = stale {
-            crate::why::note(code(kid), || why.into());
+        if let Some((why, what)) = stale {
+            crate::why::note(code(kid), || format!("{why}{what}"));
             return None;
         }
         f(kept)

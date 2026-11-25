@@ -72,17 +72,27 @@ impl KeyEnv {
     }
 
     pub(super) fn same(&self, other: &Self) -> bool {
+        self.differs(other) == "none"
+    }
+
+    /// The first input that differs from `other`'s (`"none"`: equal), for
+    /// the `why` journal.
+    pub(super) fn differs(&self, other: &Self) -> &'static str {
         let (a, b) = (&self.inherited, &other.inherited);
-        (Rc::ptr_eq(a, b) || a.same_box_values(b))
-            && self.avail_h == other.avail_h
-            && self.cell_bfc == other.cell_bfc
-            && self.outer_cell_bfc == other.outer_cell_bfc
-            && self.fresh == other.fresh
-            && (Rc::ptr_eq(&self.root, &other.root) || **self.root == **other.root)
-            && self.viewport_height == other.viewport_height
-            && (Rc::ptr_eq(&self.text, &other.text) || *self.text == *other.text)
-            && self.normal_line_height == other.normal_line_height
-            && self.fonts == other.fonts
+        match () {
+            _ if !(Rc::ptr_eq(a, b) || a.same_box_values(b)) => "inherited",
+            _ if self.avail_h != other.avail_h => "avail_h",
+            _ if (self.cell_bfc, self.outer_cell_bfc) != (other.cell_bfc, other.outer_cell_bfc) => {
+                "cell_bfc"
+            }
+            _ if self.fresh != other.fresh => "fresh",
+            _ if !(Rc::ptr_eq(&self.root, &other.root) || **self.root == **other.root) => "root",
+            _ if self.viewport_height != other.viewport_height => "viewport_height",
+            _ if !(Rc::ptr_eq(&self.text, &other.text) || *self.text == *other.text) => "text",
+            _ if self.normal_line_height != other.normal_line_height => "line_height",
+            _ if self.fonts != other.fonts => "fonts",
+            _ => "none",
+        }
     }
 }
 

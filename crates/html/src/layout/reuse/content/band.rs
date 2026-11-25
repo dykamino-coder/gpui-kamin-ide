@@ -31,11 +31,21 @@ pub(crate) struct BandKey {
 impl BandKey {
     /// The same outside input.
     pub(crate) fn same(&self, other: &Self) -> bool {
-        (Rc::ptr_eq(&self.env, &other.env) || self.env.same(&other.env))
-            && self.ids == other.ids
-            && self.start == other.start
-            && self.viewport == other.viewport
-            && self.images == other.images
+        self.differs(other).is_none()
+    }
+
+    /// The first outside input that differs from `other`'s, for the `why` journal.
+    pub(crate) fn differs(&self, other: &Self) -> Option<&'static str> {
+        match () {
+            _ if !(Rc::ptr_eq(&self.env, &other.env) || self.env.same(&other.env)) => {
+                Some(self.env.differs(&other.env))
+            }
+            _ if self.ids != other.ids => Some("ids"),
+            _ if self.start != other.start => Some("counters"),
+            _ if self.viewport != other.viewport => Some("viewport"),
+            _ if self.images != other.images => Some("images"),
+            _ => None,
+        }
     }
 }
 
