@@ -22,6 +22,7 @@ mod boxes;
 mod frame;
 mod group_content;
 mod group_runs;
+pub(crate) mod no_run;
 mod order;
 mod order_line;
 mod placed;
@@ -187,12 +188,24 @@ impl SceneLayer {
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
         // Kept while the scene was painted: no second pass over the commands.
-        let bounds = scene.book.primitive_ink;
+        let ink = scene.book.primitive_ink;
         #[cfg(debug_assertions)]
         assert!(
-            bounds == ink_of_commands(&scene.paint_operations),
+            ink == ink_of_commands(&scene.paint_operations),
             "the scene's kept ink differs from its commands"
         );
+        // A layer whose boxes paint nothing yet (empty boxes, bands without a
+        // fill) has the places of their runs: a frame keeps it in its order,
+        // and a box's first paint there (`Window::rerecord_layer_box`) is
+        // taken. A layer with ink keeps its ink: wider bounds would widen
+        // what the frame orders and rasters for it.
+        let bounds = ink.or_else(|| {
+            boxes
+                .iter()
+                .filter(|b| b.group.is_none() && !b.area.is_empty())
+                .map(|b| b.area)
+                .reduce(|a, b| a.union(&b))
+        });
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
         let by_owner = std::cell::OnceCell::new();
@@ -246,8 +259,7 @@ impl SceneLayer {
         &self.scene
     }
 
-    /// Whether the layer kept composition groups: a frame draws it by a
-    /// copy of its commands, not by one command (`Window::redraw_scene_layer`).
+    /// Whether the layer kept composition groups (`SceneLayer::copied`).
     pub fn has_groups(&self) -> bool {
         !self.scene.groups.is_empty()
     }

@@ -12,7 +12,7 @@ use gpui::{
     Entity, Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
 };
 
-fn wheel_by(cx: &mut VisualTestContext, dy: f32) {
+pub(super) fn wheel_by(cx: &mut VisualTestContext, dy: f32) {
     cx.simulate_event(ScrollWheelEvent {
         position: point(px(200.), px(20.)),
         delta: ScrollDelta::Pixels(point(px(0.), px(dy))),
@@ -62,7 +62,7 @@ fn assert_same(step: &str, after: &[Painted], fresh: &[Painted]) {
 
 /// One step: `input` moves the root, one frame paints it. Returns the
 /// builds and replays the step cost, after checking it against a fresh frame.
-fn step(
+pub(super) fn step(
     cx: &mut TestAppContext,
     html: &str,
     name: &str,

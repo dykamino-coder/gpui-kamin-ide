@@ -32,6 +32,7 @@ pub(crate) fn native_paragraph(
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
     keep: Option<crate::layout::reuse::paragraph::Sealed>,
+    flow: Option<crate::dom::BoxId>,
 ) -> AnyElement {
     let native_request = native_request.filter(|_| native);
     let inherited = native_request.map_or(inherited, |request| request.style);
@@ -124,10 +125,7 @@ pub(crate) fn native_paragraph(
         .spacers(inline::spacers(&pieces))
         .spacer_edges(inline::spacer_edges(&pieces))
         .box_extents(inline::box_extents(&pieces))
-        .fragments_to(crate::layout::reuse::fragment_target(
-            opts,
-            inherited.self_node,
-        ))
+        .fragments_to(crate::layout::reuse::fragment_target(opts, flow))
         .flow_shapes(
             inherited
                 .reset_shapes

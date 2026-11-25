@@ -45,6 +45,9 @@ pub(crate) struct InlineFragments {
     bleed: f32,
     scale: f32,
     items: Vec<Fragment>,
+    /// The bands of all the lines painted, culled inline boxes' too
+    /// (`lines_ink`): top of the first, bottom of the last, window pixels.
+    lines: Option<(f32, f32)>,
 }
 
 impl InlineFragments {
@@ -52,7 +55,7 @@ impl InlineFragments {
     /// frame replaces the last one's, another paragraph of the same frame
     /// adds to them (its lines widen the extent).
     pub(crate) fn begin(&mut self, stamp: u64, (left, right): (f32, f32), bleed: f32, scale: f32) {
-        if self.stamp != stamp || self.items.is_empty() {
+        if self.stamp != stamp || (self.items.is_empty() && self.lines.is_none()) {
             self.items.clear();
             *self = Self {
                 stamp,
@@ -61,6 +64,7 @@ impl InlineFragments {
                 bleed,
                 scale,
                 items: std::mem::take(&mut self.items),
+                lines: None,
             };
             return;
         }
@@ -70,8 +74,13 @@ impl InlineFragments {
         self.scale = self.scale.max(scale);
     }
 
-    /// Owner `owner` has a run on the line of band `top..bottom`.
+    /// Owner `owner` (0: the text of no band owner) has a run on the line of
+    /// band `top..bottom`.
     pub(crate) fn push(&mut self, owner: u32, top: f32, bottom: f32) {
+        self.lines = Some(
+            self.lines
+                .map_or((top, bottom), |(t, b)| (t.min(top), b.max(bottom))),
+        );
         let f = Fragment { owner, top, bottom };
         if owner != 0 && self.items.last() != Some(&f) {
             self.items.push(f);
@@ -109,6 +118,23 @@ impl InlineFragments {
             })
             .reduce(|a, b| a.union(&b))
             .map(|b| b.scale(self.scale))
+    }
+
+    /// The device-pixel area the ink of any box in these lines can reach:
+    /// all their bands across the lines' extent, grown by the bleed and
+    /// `outset`. It bounds a box whose text has no fragment of its own (a
+    /// culled inline box, `fragments_of`); `None` without a line.
+    pub(crate) fn lines_ink(&self, outset: f32) -> Option<Bounds<ScaledPixels>> {
+        let (top, bottom) = self.lines?;
+        let grow = self.bleed + outset;
+        let rect = Bounds {
+            origin: point(px(self.left - grow), px(top - grow)),
+            size: size(
+                px(self.right - self.left + 2. * grow),
+                px(bottom - top + 2. * grow),
+            ),
+        };
+        Some(rect.scale(self.scale))
     }
 }
 
