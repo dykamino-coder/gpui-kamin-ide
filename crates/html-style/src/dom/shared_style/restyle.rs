@@ -13,11 +13,16 @@ impl SharedStyle {
     /// style does not follow a new inherited value of an ancestor by
     /// rematerialization.
     pub fn holds_inherited_copies(&self) -> bool {
-        self.used.is_some()
-            || self
-                .box_facts
-                .as_ref()
-                .is_some_and(|f| f.moved_from.is_some() || f.try_source.is_some())
+        self.used.is_some() || self.holds_copies_but_used()
+    }
+
+    /// `holds_inherited_copies` but for layout's used copy, which an edit of
+    /// the cascaded stage drops (`cascaded_mut`) and the next layout makes
+    /// again.
+    pub fn holds_copies_but_used(&self) -> bool {
+        self.box_facts
+            .as_ref()
+            .is_some_and(|f| f.moved_from.is_some() || f.try_source.is_some())
             || self
                 .decoration
                 .as_ref()
@@ -29,6 +34,18 @@ impl SharedStyle {
     /// of such a value it follows the parent only by rematerialization.
     pub fn inherits_reset(&self) -> bool {
         crate::style::cascade::materialize::inherits_reset(&self.cascaded)
+    }
+
+    /// Whether the explicit `inherit` of a reset property in this style reads
+    /// a value that differs between the parent styles `old` and `new`
+    /// (`inherits_reset` narrowed to the values the change gives the parent).
+    pub fn inherits_reset_of(
+        &self,
+        old: &Computed,
+        new: &Computed,
+        vcx: crate::values::ValueCx<'_>,
+    ) -> bool {
+        crate::style::cascade::materialize::reads_reset_of(&self.cascaded, old, new, vcx)
     }
 
     /// Whether document preparation resolved decoration inputs of this box
@@ -46,5 +63,17 @@ impl SharedStyle {
     pub fn set_cascaded_paint(&mut self, new: &Computed) {
         let cascaded = self.cascaded_mut();
         *cascaded = cascaded.with_paint_of(new);
+    }
+
+    /// Replace the groups of the cascaded stage that a layout restyle
+    /// changes from `old` to `new` (`Computed::with_layout_of`); `false`,
+    /// with nothing written, when the box's stage holds another value of
+    /// such a group than `old`.
+    pub fn set_cascaded_layout(&mut self, old: &Computed, new: &Computed) -> bool {
+        let Some(next) = self.cascaded().with_layout_of(old, new) else {
+            return false;
+        };
+        *self.cascaded_mut() = next;
+        true
     }
 }

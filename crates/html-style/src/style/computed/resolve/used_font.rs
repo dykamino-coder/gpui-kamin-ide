@@ -34,8 +34,10 @@ impl Computed {
     /// `from-font` публикуется числом; потомок наследует пропорцию предка.
     /// Без сырой метрики вычисляется none: https://drafts.csswg.org/css-fonts-5/#font-size-adjust-prop
     pub fn compute_font_adjust(&mut self, family: &str, vcx: ValueCx<'_>) {
-        if let Some((metric, want)) = self.inh.font.font_size_adjust
-            && want.is_nan()
+        if let Some((shifted, _)) = self.inh.font.font_size_adjust
+            && let Some(metric) = shifted
+                .checked_sub(crate::style::computed::SIZE_ADJUST_FROM_FONT)
+                .filter(|m| *m < 5)
         {
             let descriptor = self.font_descriptor_scale(family, vcx);
             self.inh.font.font_size_adjust = Some(
@@ -166,5 +168,7 @@ impl Computed {
     }
 }
 
+#[cfg(test)]
+mod from_font_tests;
 #[cfg(test)]
 mod tests;

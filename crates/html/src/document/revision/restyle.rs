@@ -24,8 +24,8 @@ impl Document {
     /// of this document's source DOM under the same theme to find the
     /// elements they restyle (`dom::invalidation`); `None`: the batch changes
     /// texts or attributes that the engine reads outside selectors and
-    /// `attr()` (only `class` and `data-*` are not), or an element it cannot
-    /// address.
+    /// `attr()` (only `class` and `data-*` are not); an element without a box
+    /// is numbered `UNADDRESSED`.
     pub(super) fn invalidation(&self, batch: &Batch, theme_css: &str) -> Option<Changed> {
         let values = &self.state.values;
         let root = values.source_dom()?;
@@ -41,7 +41,12 @@ impl Document {
             if !open(&change.element, &root) {
                 return None;
             }
-            changed.elements.push(index.id(&change.element)?);
+            // An element the build did not enter (under `display: none`, a
+            // dropped tag) has no box (css-display-3 §2.5): it is still a
+            // mutated element of the restyle, numbered `UNADDRESSED`, whose
+            // probe decides whether it gains one.
+            let id = index.id(&change.element);
+            changed.elements.push(id.unwrap_or(UNADDRESSED));
             let mut seen = Vec::new();
             for attr in change.old.iter().chain(&change.new) {
                 let (was, is) = (
@@ -71,6 +76,10 @@ impl Document {
         Some(changed)
     }
 }
+
+/// The number of a mutated element without a box: box numbers start at one
+/// (`SourceIndex`), and the box index keeps no box of number zero (`Boxes`).
+const UNADDRESSED: u64 = 0;
 
 /// The value of the attribute `name` in `list`.
 fn value<'a>(list: &'a [html5ever::Attribute], name: &html5ever::QualName) -> Option<&'a str> {
