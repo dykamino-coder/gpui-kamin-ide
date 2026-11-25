@@ -15,7 +15,7 @@ impl super::Features {
     /// children answers (Blink builds sibling invalidation sets only for
     /// such features, `rule_invalidation_data.cc`).
     pub fn reads_siblings(&self) -> bool {
-        self.0.iter().flat_map(|(path, _)| path).any(|step| {
+        self.0.iter().flat_map(|(_, path, _)| path).any(|step| {
             matches!(
                 step,
                 Move::NextSibling

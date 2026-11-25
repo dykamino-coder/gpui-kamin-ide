@@ -57,8 +57,7 @@ fn local_logical_arguments_restyle_only_the_mutated_subject() {
 #[test]
 fn cached_logical_ancestor_features_follow_each_mutated_root() {
     let (html, section, inside, outside) = nodes();
-    let rules =
-        crate::style::css::parse_stylesheet("figure:not([class]) p{background:red}").unwrap();
+    let rules = crate::style::css::parse_stylesheet(":not([class]) p{background:red}").unwrap();
     let features = features(&rules, &changed());
     let all = features.targets(std::slice::from_ref(&html));
     assert_eq!(all.len(), 3);
@@ -155,11 +154,49 @@ fn escaped_names_in_arguments_are_read_by_their_decoded_names() {
     // changed one follows it, whether its selectors parse here or not.
     let (_root, section, _, _) = nodes();
     let cases = [
-        (r":where(.space-y-0\.5>:not(:last-child)){margin:0}", vec!["section"]),
+        (
+            r":where(.space-y-0\.5>:not(:last-child)){margin:0}",
+            vec!["section"],
+        ),
         (r":is(.\*\:flex>*){display:flex}", vec!["section"]),
         (r"p:not(.\61 lt p){color:red}", vec!["section", "p"]),
         (r"p:host(.\61lt){color:red}", vec!["section", "p", "p"]),
         (r"p:host(.x\:y){color:red}", vec!["section"]),
+    ];
+    for (css, want) in cases {
+        let rules = crate::style::css::parse_stylesheet(css).unwrap();
+        let found = targets(&rules, &changed(), std::slice::from_ref(&section));
+        let mut got = tags(&found);
+        got.sort();
+        let mut want: Vec<String> = want.into_iter().map(String::from).collect();
+        want.sort();
+        assert_eq!(got, want, "{css}");
+    }
+}
+#[test]
+fn a_compound_the_mutated_element_cannot_match_reaches_nothing() {
+    // The class changes on `section`: a compound whose type, other classes or
+    // `:is()` alternatives `section` lacks matches it neither before nor
+    // after, so its rule restyles nothing past the mutated element.
+    let (_root, section, _, _) = nodes();
+    let cases = [
+        (
+            ":is(ol,ul):where(:not([class])) p{margin:0}",
+            vec!["section"],
+        ),
+        ("blockquote:not([class])>*+*{margin:0}", vec!["section"]),
+        ("figure:not([class]) p{margin:0}", vec!["section"]),
+        ("pre.alt code{margin:0}", vec!["section"]),
+        ("section.alt.other p{margin:0}", vec!["section"]),
+        ("section#x.alt p{margin:0}", vec!["section"]),
+        // The compound `section` can match: its rules still follow.
+        (
+            ":is(ol,section):where(:not([class])) p{margin:0}",
+            vec!["section", "p"],
+        ),
+        ("section.alt p{margin:0}", vec!["section", "p"]),
+        (":not(pre).alt p{margin:0}", vec!["section", "p"]),
+        ("figure:has(~ .alt) p{margin:0}", vec!["section", "p", "p"]),
     ];
     for (css, want) in cases {
         let rules = crate::style::css::parse_stylesheet(css).unwrap();
