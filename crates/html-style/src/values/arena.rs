@@ -33,7 +33,7 @@ pub struct Arena<T> {
     doc: RefCell<Vec<T>>,
     frame: RefCell<Vec<T>>,
     /// Records of the document region by the hash of their value (`store_once`).
-    once: RefCell<std::collections::HashMap<u64, Vec<u32>>>,
+    once: std::cell::Cell<std::collections::HashMap<u64, Vec<u32>>>,
 }
 
 impl<T> Default for Arena<T> {
@@ -41,7 +41,7 @@ impl<T> Default for Arena<T> {
         Arena {
             doc: RefCell::new(Vec::new()),
             frame: RefCell::new(Vec::new()),
-            once: RefCell::default(),
+            once: Default::default(),
         }
     }
 }
@@ -103,23 +103,30 @@ pub fn store_once<T: PartialEq>(
         return store(vcx, pick, value);
     }
     let arena = pick(doc);
-    let owner = doc.owner.get();
-    let mut once = arena.once.borrow_mut();
+    let mut once = arena.once.take();
     let slots = once.entry(hash).or_default();
-    let mut list = arena.doc.borrow_mut();
-    if let Some(&slot) = slots
-        .iter()
-        .find(|&&s| list.get(s as usize) == Some(&value))
-    {
-        return ArenaKey { owner, slot };
-    }
-    let Ok(slot) = u32::try_from(list.len()) else {
-        debug_assert!(false, "the document arena is full");
-        return ArenaKey::INVALID;
+    let kept = {
+        let list = arena.doc.borrow();
+        slots
+            .iter()
+            .copied()
+            .find(|&s| list.get(s as usize) == Some(&value))
     };
-    list.push(value);
-    slots.push(slot);
-    ArenaKey { owner, slot }
+    let key = match kept {
+        Some(slot) => ArenaKey {
+            owner: doc.owner.get(),
+            slot,
+        },
+        None => {
+            let key = store(vcx, pick, value);
+            if key != ArenaKey::INVALID {
+                slots.push(key.slot);
+            }
+            key
+        }
+    };
+    arena.once.set(once);
+    key
 }
 /// Прочитать запись по ручке в документе контекста; `None` — ручка чужая
 /// или устарела (сброшенный кадр): это ошибка связи, и отладочная сборка её
