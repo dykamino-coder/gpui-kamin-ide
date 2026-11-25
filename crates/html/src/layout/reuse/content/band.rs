@@ -99,7 +99,7 @@ impl FlowReuse {
         let frame = self.store.epoch();
         let (owner, seen, shape) = {
             let mut boxes = opts.cx.doc().boxes.try_borrow_mut().ok()?;
-            let (owner, shape) = match owner(&boxes, node_id, nodes) {
+            let (owner, shape) = match owner(&boxes, node_id, nodes, inherited.cb_node) {
                 Ok(owner) => owner,
                 Err(why) => {
                     crate::why::note("band_slot.none", || {
@@ -149,7 +149,12 @@ pub(crate) struct BandBoxes {
     pub(crate) epoch: BoxId,
 }
 
-fn owner(boxes: &BoxTree, node_id: u64, nodes: &[Node]) -> Result<(BandBoxes, u64), &'static str> {
+fn owner(
+    boxes: &BoxTree,
+    node_id: u64,
+    nodes: &[Node],
+    cb_node: u64,
+) -> Result<(BandBoxes, u64), &'static str> {
     if let Some(own) = boxes.box_of(node_id) {
         let own = BandBoxes {
             slot: own,
@@ -163,7 +168,14 @@ fn owner(boxes: &BoxTree, node_id: u64, nodes: &[Node]) -> Result<(BandBoxes, u6
     let mut boxed = Vec::new();
     let mut shape = std::hash::DefaultHasher::new();
     boxed_elements(boxes, nodes, &mut boxed, &mut shape);
-    let first = boxed.first().and_then(|n| boxes.box_of(*n)).ok_or("no boxed element")?;
+    let shape = std::hash::Hasher::finish(&shape);
+    // Only inline content (a run around a float): the containing block holds
+    // it. Hosts of one block share its record; the walk tells them apart.
+    if boxed.is_empty() {
+        let cb = boxes.box_of(cb_node).ok_or("no boxed element")?;
+        return Ok((BandBoxes { slot: cb, epoch: cb }, shape));
+    }
+    let first = boxes.box_of(boxed[0]).ok_or("no box")?;
     let mut epoch = None;
     for node in &boxed {
         let parent = boxes.box_of(*node).and_then(|b| boxes.get(b)).ok_or("no box")?.parent;
@@ -172,7 +184,7 @@ fn owner(boxes: &BoxTree, node_id: u64, nodes: &[Node]) -> Result<(BandBoxes, u6
         }
     }
     let epoch = epoch.filter(|id| boxes.get(*id).is_some()).ok_or("no parent box")?;
-    Ok((BandBoxes { slot: first, epoch }, std::hash::Hasher::finish(&shape)))
+    Ok((BandBoxes { slot: first, epoch }, shape))
 }
 
 /// The boxed elements of `nodes`, through elements without a box, in order;
@@ -187,9 +199,12 @@ fn boxed_elements(
     use std::hash::Hash;
     nodes.len().hash(shape);
     for node in nodes {
-        let Node::Element(e) = node else {
-            0u8.hash(shape);
-            continue;
+        let e = match node {
+            Node::Text(text) => {
+                (text.first_source(), text.as_str()).hash(shape);
+                continue;
+            }
+            Node::Element(e) => e,
         };
         if boxes.box_of(e.node_id).is_some() {
             e.node_id.hash(shape);
