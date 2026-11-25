@@ -574,8 +574,13 @@ float4 gradient_color(Background background,
              3.0, 11.0,  1.0,  9.0,
             15.0,  7.0, 13.0,  5.0
         };
-        uint bx = (uint)position.x & 3u;
-        uint by = (uint)position.y & 3u;
+        // KaminIDE patch: the pattern is anchored at the quad's whole-pixel
+        // origin, not the window: the gradient moved by whole pixels (a
+        // scroll step drawn as the kept frame moved) keeps its noise, as a
+        // tile rastered in content space keeps it in Chromium.
+        int2 cell = int2(floor(position - floor(bounds.origin)));
+        uint bx = (uint)cell.x & 3u;
+        uint by = (uint)cell.y & 3u;
         float noise = (bayer[by * 4u + bx] + 0.5) / 16.0 - 0.5;
         color.rgb += noise / 255.0;
     }

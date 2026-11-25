@@ -43,11 +43,18 @@ impl DirectXRenderer {
             sink(path, bytes, bytes);
         };
         if let Some(resources) = &self.resources {
+            // The frame's canvas (`canvas`), and the back buffer it is copied to.
             if let Some(target) = &resources.render_target {
                 whole("gpu/target/frame", target);
             }
+            if let Some(back) = &resources.back_buffer {
+                whole("gpu/target/back-buffer", back);
+            }
             whole("gpu/target/path", &resources.path_intermediate_texture);
             whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
+        }
+        if let Some((_, _, scratch)) = &self.retained.scratch {
+            whole("gpu/target/shift-scratch", scratch);
         }
         let blur = &self.blur;
         let single = [

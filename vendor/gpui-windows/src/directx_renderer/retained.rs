@@ -1,13 +1,14 @@
-//! KaminIDE patch: the render target keeps the last frame; a new frame is
-//! drawn only where its scene paints otherwise (`Scene::frame_damage`).
+//! KaminIDE patch: the canvas keeps the last frame; a new frame is drawn
+//! only where its scene paints otherwise (`Scene::frame_damage`), or as the
+//! last frame moved and redrawn within a few rectangles (`Scene::frame_shift`).
 //!
-//! Every target buffer (one offscreen texture, or each back buffer of the
-//! flip-model swap chain) carries the damage accumulated since it was last
-//! drawn: a frame unites its own damage into every buffer and redraws the
-//! current buffer only within that buffer's union, scissored. Outside it the
-//! buffer already holds the pixels this frame paints. Chromium keeps the same
-//! per-buffer union for partial swap (`DirectRenderer::DrawFrame`, buffer
-//! age); WebRender keeps it per tile (`dirty_rect` of each picture tile).
+//! The canvas (`canvas`) carries the damage accumulated since it was last
+//! drawn, and every back buffer of the flip-model swap chain the damage
+//! since it last received the canvas: a frame unites its own damage into
+//! all of them, redraws the canvas only within its union, scissored, and
+//! present copies the current buffer's union from the canvas. Chromium keeps
+//! the same per-buffer union for partial swap (`DirectRenderer::DrawFrame`,
+//! buffer age); WebRender keeps it per tile (`dirty_rect` of each picture tile).
 //!
 //! Anything the scene does not describe forces a full frame: another size,
 //! background or opaque backdrop colour, an atlas change that may alter the
@@ -34,10 +35,16 @@ pub(super) struct Retained {
     /// Frame number (`Scene::frame_damage`) and target inputs of the last
     /// scene whose damage was united into `pending`.
     last: Option<(u64, Target)>,
-    /// Damage since each buffer was last drawn, by back buffer index.
-    pending: [SceneDamage; BUFFER_COUNT],
+    /// Damage since the canvas was last drawn.
+    pub(super) canvas: SceneDamage,
+    /// Damage since each back buffer last received the canvas, by index.
+    pub(super) pending: [SceneDamage; BUFFER_COUNT],
     /// Staging texture of frame capture, kept while the size is the same.
-    staging: Option<(u32, u32, ID3D11Texture2D)>,
+    pub(super) staging: Option<(u32, u32, ID3D11Texture2D)>,
+    /// Scratch texture of a canvas move (`canvas`), kept while the size is the same.
+    pub(super) scratch: Option<(u32, u32, ID3D11Texture2D)>,
+    /// What the last drawn frame rasterized (`RasterReport`).
+    pub(super) drawn: super::canvas::Drawn,
     /// How frame capture waits for the GPU (`gpu_wait`), kept with the device.
     pub(super) gpu_wait: super::gpu_wait::GpuWait,
     /// The frame rasterizer state with the scissor test on.
@@ -56,6 +63,7 @@ pub(super) struct Retained {
 }
 
 /// How the current frame reaches the target.
+#[derive(Debug)]
 pub(super) enum Plan {
     /// The target and, when shown, the screen already hold this frame.
     Keep,
@@ -63,6 +71,9 @@ pub(super) enum Plan {
     Full,
     /// Draw within the rectangle only.
     Within(Region),
+    /// Move the canvas by `delta` (its pixels land at `copy`, x, y, w, h),
+    /// then draw within the rectangles.
+    Shift { delta: (i32, i32), copy: [u32; 4], redraw: Vec<Region> },
 }
 
 /// `GPUI_DAMAGE_REDRAW=0` draws every frame whole (comparison runs, fallback).
@@ -79,9 +90,9 @@ fn force_full() -> bool {
 }
 
 impl DirectXRenderer {
-    /// Buffer this frame draws into: the flip-sequential chain hands them out in turn
+    /// Buffer this frame presents: the flip-sequential chain hands them out in turn
     /// per present (D3D11 `GetCurrentBackBufferIndex` did not follow; stand audit).
-    fn buffer_slot(&self) -> Option<usize> {
+    pub(super) fn buffer_slot(&self) -> Option<usize> {
         let chain = self.res().swap_chain.is_some();
         Some(if chain { self.retained.presents % BUFFER_COUNT } else { 0 })
     }
@@ -116,39 +127,38 @@ impl DirectXRenderer {
         self.retained.full_by = FullBy::of(external, retarget, damage, frame);
         let frame = frame.union(external);
         self.retained.last = Some((id, target));
+        // The canvas held exactly the compared frame: a move of it is this one.
+        let held_base = self.retained.canvas == SceneDamage::Unchanged && self.retained.chain == Some((false, base));
+        self.retained.canvas = self.retained.canvas.union(frame);
         for pending in &mut self.retained.pending {
             *pending = pending.union(frame);
         }
-        let Some(slot) = self.buffer_slot().filter(|_| enabled()) else {
+        if self.buffer_slot().is_none() || !enabled() {
             self.retained.full_by = FullBy::Disabled;
             self.forget_frames();
             return Plan::Full;
-        };
+        }
         if force_full() {
             self.retained.full_by = FullBy::Disabled;
             return Plan::Full;
         }
-        // The screen shows this frame already; capture of a swap chain reads
-        // the back buffer, which may hold an older one.
-        let capture_reads_back = self.capture.is_some() && self.res().swap_chain.is_some();
-        if frame == SceneDamage::Unchanged && !self.unpresented && !capture_reads_back {
+        // The canvas holds this frame; the screen too unless the last present was dropped.
+        if frame == SceneDamage::Unchanged && !self.unpresented {
             return Plan::Keep;
         }
-        match self.retained.pending[slot] {
+        if held_base
+            && external == SceneDamage::Unchanged
+            && let Some(shift) = scene.frame_shift()
+        {
+            let (w, h) = (self.width, self.height);
+            let redraw = shift.redraw.iter().map(|&r| Region::of(r, w, h)).collect();
+            return Plan::Shift { delta: shift.delta, copy: shift.copy, redraw };
+        }
+        match self.retained.canvas {
             SceneDamage::Unchanged => Plan::Keep,
             SceneDamage::Unknown => Plan::Full,
-            SceneDamage::Rect {
-                x,
-                y,
-                width,
-                height,
-            } => {
-                let region = Region {
-                    x,
-                    y,
-                    width: width.min(self.width.saturating_sub(x)).max(1),
-                    height: height.min(self.height.saturating_sub(y)).max(1),
-                };
+            SceneDamage::Rect { x, y, width, height } => {
+                let region = Region::of([x, y, width, height], self.width, self.height);
                 if region == Region::full(self.width, self.height) {
                     self.retained.full_by = FullBy::Region;
                     Plan::Full
@@ -159,15 +169,13 @@ impl DirectXRenderer {
         }
     }
 
-    /// The current buffer now holds the frame.
+    /// The canvas now holds the frame.
     pub(super) fn frame_drawn(&mut self, plan: &Plan) {
         if std::mem::take(&mut self.retained.failed) {
             // An incomplete frame is not a base for the next one.
             self.forget_frames();
-        } else if !matches!(plan, Plan::Keep)
-            && let Some(slot) = self.buffer_slot()
-        {
-            self.retained.pending[slot] = SceneDamage::Unchanged;
+        } else if !matches!(plan, Plan::Keep) {
+            self.retained.canvas = SceneDamage::Unchanged;
         }
     }
 
@@ -176,6 +184,12 @@ impl DirectXRenderer {
         self.retained.last = None;
         self.retained.chain = None;
         self.retained.groups.valid.clear();
+        self.retained.canvas = SceneDamage::Unknown;
+        self.forget_buffers();
+    }
+
+    /// The back buffers hold no known frame (an occluded present); the canvas still does.
+    pub(super) fn forget_buffers(&mut self) {
         self.retained.pending = [SceneDamage::Unknown; BUFFER_COUNT];
     }
 
@@ -183,6 +197,7 @@ impl DirectXRenderer {
     pub(super) fn reset_retained(&mut self) {
         self.forget_frames();
         self.retained.staging = None;
+        self.retained.scratch = None;
         self.retained.gpu_wait = Default::default();
         self.retained.scissor = None;
         self.retained.groups.scrub = Default::default();
@@ -212,39 +227,5 @@ impl DirectXRenderer {
             dc.RSSetScissorRects(Some(&[rect]));
         }
         Ok(original)
-    }
-
-    /// The capture staging texture for the current size, created once per size.
-    pub(super) fn capture_staging(&mut self) -> Result<ID3D11Texture2D> {
-        let (w, h) = (self.width, self.height);
-        if let Some((sw, sh, texture)) = &self.retained.staging
-            && (*sw, *sh) == (w, h)
-        {
-            return Ok(texture.clone());
-        }
-        let desc = D3D11_TEXTURE2D_DESC {
-            Width: w,
-            Height: h,
-            MipLevels: 1,
-            ArraySize: 1,
-            Format: RENDER_TARGET_FORMAT,
-            SampleDesc: DXGI_SAMPLE_DESC {
-                Count: 1,
-                Quality: 0,
-            },
-            Usage: D3D11_USAGE_STAGING,
-            BindFlags: 0,
-            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
-            MiscFlags: 0,
-        };
-        let mut staging: Option<ID3D11Texture2D> = None;
-        unsafe {
-            self.dev()
-                .device
-                .CreateTexture2D(&desc, None, Some(&mut staging))?
-        };
-        let staging = staging.context("staging texture")?;
-        self.retained.staging = Some((w, h, staging.clone()));
-        Ok(staging)
     }
 }
