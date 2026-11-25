@@ -43,7 +43,10 @@ pub struct Probed {
 /// The entry's outputs beside the element's own style.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProbedRest {
-    pub vars: Rc<VarMap>,
+    /// The element's custom properties as a fingerprint (`vars_print`): a
+    /// kept probe compares them without holding every target's map, which
+    /// a page declaring custom properties on every element makes large.
+    pub vars: (usize, u64),
     pub hover: Option<Box<Computed>>,
     pub first_letter: Option<Box<Computed>>,
     pub first_line: Option<Box<Computed>>,
@@ -60,7 +63,7 @@ impl Probed {
         Self {
             style: p.style.clone(),
             rest: ProbedRest {
-                vars: p.vars.clone(),
+                vars: vars_print(&p.vars),
                 hover: p.hover.clone(),
                 first_letter: p.first_letter.clone(),
                 first_line: p.first_line.clone(),
@@ -72,6 +75,18 @@ impl Probed {
             },
         }
     }
+}
+
+/// The number of custom properties of `vars` and an order-independent sum of
+/// the hashes of its entries.
+fn vars_print(vars: &VarMap) -> (usize, u64) {
+    use std::hash::{Hash, Hasher};
+    let sum = vars.iter().fold(0u64, |sum, entry| {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        entry.hash(&mut h);
+        sum.wrapping_add(h.finish())
+    });
+    (vars.len(), sum)
 }
 
 /// The state of one probe: its targets and what the entries share.
