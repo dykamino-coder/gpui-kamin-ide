@@ -25,6 +25,21 @@ pub(crate) mod shift;
 mod trace;
 pub use shift::{FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, ShiftStats};
 
+/// KaminIDE patch: the CPU time a frame comparison (`plan_shift`) may take,
+/// in microseconds, set by the renderer: 0 never compares (a hardware raster
+/// of the window costs less than reading its primitives), `u32::MAX` (the
+/// default) has no limit.
+static SHIFT_BUDGET_US: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
+
+/// KaminIDE patch: set the frame comparison budget (`SHIFT_BUDGET_US`).
+pub fn set_shift_budget_us(us: u32) {
+    SHIFT_BUDGET_US.store(us, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn shift_budget_us() -> u32 {
+    SHIFT_BUDGET_US.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
 
@@ -533,6 +548,7 @@ impl Scene {
             None => None,
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
+            Some(_) if shift_budget_us() == 0 => Some("hardware_raster"),
             Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
                 Err(why) => Some(why),
                 Ok(shift) => {

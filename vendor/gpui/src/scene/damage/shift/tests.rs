@@ -151,3 +151,19 @@ fn a_scroller_clip_that_parts_from_its_moved_copy_damages_only_its_edge() {
     // The cells along the clip's edge and the band below it, not the boxes above.
     assert!(shift.redraw.iter().all(|r| r[1] >= 128), "{shift:?}");
 }
+
+#[test]
+fn a_comparison_past_its_deadline_gives_up_and_the_same_one_in_time_plans() {
+    let mut old = page(0.0, false);
+    old.note_frame_damage(&Scene::default(), 1, (W, H));
+    let mut new = page(-20.0, false);
+    new.note_frame_damage(&old, 2, (W, H));
+    let mut stats = Default::default();
+    let now = std::time::Instant::now();
+    let late = new.plan_shift_within(&old, (W, H), (0, -20), &mut stats, Some(now));
+    assert_eq!(late.err(), Some("over_budget"));
+    let later = now + std::time::Duration::from_secs(60);
+    let in_time =
+        new.plan_shift_within(&old, (W, H), (0, -20), &mut Default::default(), Some(later));
+    assert_eq!(in_time.expect("a move").redraw, vec![[0, H - 20, W, 20]]);
+}

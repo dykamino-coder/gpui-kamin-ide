@@ -12722,7 +12722,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..eed7429016682d0cdbd641171946fa3756f60f6a
+index 160587a4ad924f80c2dd01b90a8300febbc13105..49171da4151605059740f2958f38667d8eea5dd0
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,40 @@
@@ -12736,7 +12736,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..eed7429016682d0cdbd641171946fa37
 +pub(crate) mod image_resources;
 +mod record; mod group_replay;
 +#[doc(hidden)]
-+pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats};
++pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 +mod vector_transform;
 +pub(crate) mod affine_transform;
 +pub(crate) mod segments;
@@ -14593,10 +14593,10 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..81c5cb52afa39766db407236974b6a251db13238
+index 0000000000000000000000000000000000000000..df5320833c7c12a326ef19d894ec8012bc979861
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
-@@ -0,0 +1,885 @@
+@@ -0,0 +1,901 @@
 +//! KaminIDE patch: повреждение кадра — где новая сцена рисует иначе, чем та,
 +//! что окно рисовало прошлым кадром.
 +//!
@@ -14623,6 +14623,21 @@ index 0000000000000000000000000000000000000000..81c5cb52afa39766db407236974b6a25
 +pub(crate) mod shift;
 +mod trace;
 +pub use shift::{FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, ShiftStats};
++
++/// KaminIDE patch: the CPU time a frame comparison (`plan_shift`) may take,
++/// in microseconds, set by the renderer: 0 never compares (a hardware raster
++/// of the window costs less than reading its primitives), `u32::MAX` (the
++/// default) has no limit.
++static SHIFT_BUDGET_US: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
++
++/// KaminIDE patch: set the frame comparison budget (`SHIFT_BUDGET_US`).
++pub fn set_shift_budget_us(us: u32) {
++    SHIFT_BUDGET_US.store(us, std::sync::atomic::Ordering::Relaxed);
++}
++
++fn shift_budget_us() -> u32 {
++    SHIFT_BUDGET_US.load(std::sync::atomic::Ordering::Relaxed)
++}
 +
 +/// Сторона клетки повреждения, device px.
 +pub const DAMAGE_TILE: u32 = 64;
@@ -15132,6 +15147,7 @@ index 0000000000000000000000000000000000000000..81c5cb52afa39766db407236974b6a25
 +            None => None,
 +            Some(Err(why)) => Some(why),
 +            Some(_) if !comparable => Some("not_compared"),
++            Some(_) if shift_budget_us() == 0 => Some("hardware_raster"),
 +            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
 +                Err(why) => Some(why),
 +                Ok(shift) => {
@@ -15763,10 +15779,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3be7e486a
+index 0000000000000000000000000000000000000000..ece2cb3b5255b2c3acf67c398aa487243bbfbb86
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,283 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15881,10 +15897,20 @@ index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3
 +        out
 +    }
 +
-+    /// `plan_shift` with its CPU time in `stats.us`.
-+    pub(super) fn timed_plan_shift(&self, previous: &Scene, size: (u32, u32), d: (i32, i32), stats: &mut ShiftStats) -> Result<FrameShift, &'static str> {
++    /// `plan_shift` within the comparison budget (`shift_budget_us`), with its
++    /// CPU time in `stats.us`.
++    pub(super) fn timed_plan_shift(
++        &self,
++        previous: &Scene,
++        size: (u32, u32),
++        d: (i32, i32),
++        stats: &mut ShiftStats,
++    ) -> Result<FrameShift, &'static str> {
 +        let started = std::time::Instant::now();
-+        let plan = self.plan_shift(previous, size, d, stats);
++        let budget = super::shift_budget_us();
++        let deadline =
++            (budget != u32::MAX).then(|| started + std::time::Duration::from_micros(budget as u64));
++        let plan = self.plan_shift_within(previous, size, d, stats, deadline);
 +        stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
 +        plan
 +    }
@@ -15900,6 +15926,20 @@ index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3
 +        d: (i32, i32),
 +        stats: &mut ShiftStats,
 +    ) -> Result<FrameShift, &'static str> {
++        self.plan_shift_within(previous, size, d, stats, None)
++    }
++
++    /// `plan_shift` that gives up (`over_budget`) once `deadline` passes: the
++    /// comparison then costs more than the raster it could save.
++    fn plan_shift_within(
++        &self,
++        previous: &Scene,
++        size: (u32, u32),
++        d: (i32, i32),
++        stats: &mut ShiftStats,
++        deadline: Option<std::time::Instant>,
++    ) -> Result<FrameShift, &'static str> {
++        let late = || deadline.is_some_and(|t| std::time::Instant::now() >= t);
 +        let (w, h) = size;
 +        // `d == (0, 0)` compares the frame with the last one in place: the
 +        // frame damage when the retained layers' bookkeeping cannot tell it.
@@ -15937,6 +15977,9 @@ index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3
 +        let (cols, rows) = (w.div_ceil(DAMAGE_TILE), h.div_ceil(DAMAGE_TILE));
 +        let (sa, ea) = bin(&new, cols, rows);
 +        let (sb, eb) = bin(&old, cols, rows);
++        if late() {
++            return Err("over_budget");
++        }
 +        let mut cmp = compare::Moved {
 +            d: (d.0 as f32, d.1 as f32),
 +            w: wa,
@@ -15964,6 +16007,9 @@ index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3
 +                continue;
 +            }
 +            stats.cells += 1;
++            if late() {
++                return Err("over_budget");
++            }
 +            let (a, b) = (
 +                &ea[sa[t] as usize..sa[t + 1] as usize],
 +                &eb[sb[t] as usize..sb[t + 1] as usize],
@@ -15980,7 +16026,9 @@ index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3
 +                let (x, y) = ((x, new[x as usize]), (y, old[y as usize]));
 +                let differs = match x.1.same_marker(&y.1) {
 +                    Some(same) => !same,
-+                    None => x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p),
++                    None => {
++                        x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p)
++                    }
 +                };
 +                if differs {
 +                    let u = [
@@ -16824,10 +16872,10 @@ index 0000000000000000000000000000000000000000..350619b14b82ab167d471e478892965d
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/tests.rs b/vendor/gpui/src/scene/damage/shift/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..01bd536423d42e2e22305b34fb78b3789b95f9d4
+index 0000000000000000000000000000000000000000..c85cb9969ddbdf345de7c775aa5399ab8d0d421c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/tests.rs
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,169 @@
 +use crate::scene::{FrameShift, Scene, SceneDamage};
 +use crate::{
 +    Background, ContentMask, Hsla, Quad, ScaledPixels, blue, bounds, green, point, red, size,
@@ -16981,7 +17029,22 @@ index 0000000000000000000000000000000000000000..01bd536423d42e2e22305b34fb78b378
 +    // The cells along the clip's edge and the band below it, not the boxes above.
 +    assert!(shift.redraw.iter().all(|r| r[1] >= 128), "{shift:?}");
 +}
-\ No newline at end of file
++
++#[test]
++fn a_comparison_past_its_deadline_gives_up_and_the_same_one_in_time_plans() {
++    let mut old = page(0.0, false);
++    old.note_frame_damage(&Scene::default(), 1, (W, H));
++    let mut new = page(-20.0, false);
++    new.note_frame_damage(&old, 2, (W, H));
++    let mut stats = Default::default();
++    let now = std::time::Instant::now();
++    let late = new.plan_shift_within(&old, (W, H), (0, -20), &mut stats, Some(now));
++    assert_eq!(late.err(), Some("over_budget"));
++    let later = now + std::time::Duration::from_secs(60);
++    let in_time =
++        new.plan_shift_within(&old, (W, H), (0, -20), &mut Default::default(), Some(later));
++    assert_eq!(in_time.expect("a move").redraw, vec![[0, H - 20, W, 20]]);
++}
 diff --git a/vendor/gpui/src/scene/damage/trace.rs b/vendor/gpui/src/scene/damage/trace.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..ba4a997ad94474a16ba9dcec4e9d84886b50ab83
