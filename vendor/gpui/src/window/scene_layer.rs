@@ -86,6 +86,9 @@ impl Window {
         let mut scene = Scene::default();
         let (mut bindings, mut boxes) = (Vec::new(), Vec::new());
         if let Some(last) = &source {
+            // KaminIDE patch: what the last frame drew of this content, for
+            // the comparison of a scroll step (`scene::damage::shift`).
+            self.next_frame.scene.keep_layer_source(last);
             scene.reserve_like(&last.scene);
             let (bound, runs) = last.recorded_sizes();
             bindings.reserve_exact(bound);

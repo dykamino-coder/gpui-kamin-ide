@@ -13,7 +13,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use windows::Win32::Foundation::{CloseHandle, HANDLE, WAIT_OBJECT_0};
-use windows::Win32::Graphics::Dxgi::DXGI_ERROR_WAS_STILL_DRAWING;
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Dxgi::{
+    DXGI_ERROR_WAS_STILL_DRAWING, DXGI_PRESENT_DO_NOT_WAIT, DXGI_PRESENT_PARAMETERS, IDXGISwapChain1,
+};
 use windows::Win32::System::Threading::WaitForSingleObject;
 use windows::core::HRESULT;
 
@@ -110,4 +113,32 @@ mod tests {
         unsafe { ReleaseSemaphore(g.handle, 1, None) }.unwrap();
         assert!(g.try_take());
     }
+}
+
+/// Present without waiting, telling the compositor only what changed:
+/// `copied` (x0, y0, x1, y1) bounds every pixel of this buffer that differs
+/// from the frame presented last (`copy_to_back_buffer`), so it is the dirty
+/// rectangle of `Present1` and DWM composes only that part. The whole target,
+/// or nothing known, presents the whole buffer.
+pub(super) fn present_dirty(
+    swap_chain: &IDXGISwapChain1,
+    copied: Option<[u32; 4]>,
+    (w, h): (u32, u32),
+) -> HRESULT {
+    let mut dirty = copied
+        .filter(|r| *r != [0, 0, w, h])
+        .map(|r| RECT {
+            left: r[0] as i32,
+            top: r[1] as i32,
+            right: r[2] as i32,
+            bottom: r[3] as i32,
+        });
+    let params = DXGI_PRESENT_PARAMETERS {
+        DirtyRectsCount: dirty.is_some() as u32,
+        pDirtyRects: dirty.as_mut().map_or(std::ptr::null_mut(), |r| r as *mut RECT),
+        pScrollRect: std::ptr::null_mut(),
+        pScrollOffset: std::ptr::null_mut(),
+    };
+    // SAFETY: `params` and the rectangle it points to outlive the call.
+    unsafe { swap_chain.Present1(0, DXGI_PRESENT_DO_NOT_WAIT, &params) }
 }

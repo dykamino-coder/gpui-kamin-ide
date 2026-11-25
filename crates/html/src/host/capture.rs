@@ -5,7 +5,7 @@ mod completion;
 mod tests;
 
 pub use completion::{CaptureClosed, Completion};
-use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
+use gpui::frame_capture::{CapturedFrame, FrameCaptureSink, RasterReport};
 use std::{
     cell::RefCell,
     rc::Rc,
@@ -36,6 +36,8 @@ struct State {
     seq: u64,
     readback_us: u64,
     copy_us: u64,
+    /// What the last captured frame rasterized and its GPU wait (`--why`).
+    raster: Option<RasterReport>,
     wait_us: u64,
     latest: Option<Frame>,
     first: Option<Frame>,
@@ -66,6 +68,11 @@ impl CaptureSession {
     /// Часть `readback_time` после готовности кадра на GPU: копия цели в память.
     pub fn copy_time(&self) -> Duration {
         Duration::from_micros(self.0.borrow().copy_us)
+    }
+
+    /// The raster of the last captured frame, when the backend reports it.
+    pub fn raster_report(&self) -> Option<RasterReport> {
+        self.0.borrow().raster.clone()
     }
 
     /// The part of `readback_time` before the frame is complete: the wait for
@@ -145,6 +152,10 @@ impl FrameCaptureSink for Endpoint {
 
     fn copied(&mut self, copy: Duration) {
         self.0.borrow_mut().copy_us += copy.as_micros() as u64;
+    }
+
+    fn raster(&mut self, report: RasterReport) {
+        self.0.borrow_mut().raster = Some(report);
     }
 
     fn waited(&mut self, wait: Duration) {
