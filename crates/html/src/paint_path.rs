@@ -203,7 +203,6 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "has_marked",
     "rebox_units",
     "not_own_root_canvas",
-    "not_own_hover",
     "not_own_inline",
     "not_own_hidden",
     "not_own_clone",

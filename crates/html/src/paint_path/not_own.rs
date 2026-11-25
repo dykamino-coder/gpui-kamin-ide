@@ -8,9 +8,8 @@ use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// The reasons, in the order of their counters; a reason not listed counts
 /// as the last.
-pub const REASONS: [&str; 14] = [
+pub const REASONS: [&str; 13] = [
     "root_canvas",
-    "hover",
     "inline",
     "hidden",
     "clone",

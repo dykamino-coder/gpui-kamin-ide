@@ -22,6 +22,7 @@ impl Window {
         painter: RunPainter,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        let hover = self.run_hover.take();
         if owner == 0 || self.layer_recording.is_none() {
             return self.with_paint_owner(owner, f);
         }
@@ -35,6 +36,7 @@ impl Window {
             fill: None,
             layer: None,
             painter,
+            hover,
         };
         let area = self.box_area(&env);
         if !self.next_frame.scene.open_box(owner, area, env) {
@@ -131,11 +133,13 @@ impl Window {
         };
         let mut moved = false;
         for at in runs {
-            let (area, env, placed) = {
+            let (area, mut env, placed) = {
                 let content = layer.0.content.borrow();
                 let b = &content.boxes[at];
                 (b.area, b.env, b.placed)
             };
+            // The run now records the hover the box shows now.
+            env.hover = env.hover.map(|(id, _)| (id, self.hover_shown(id, cx)));
             // A run in a stacking layer keeps the layer's order
             // (`SceneLayer::plan_layer_run`): only band pieces are there.
             let (scene, bindings) = self.paint_box_run(owner, area, env, cx, &mut paint);
@@ -154,6 +158,11 @@ impl Window {
                 Rc::make_mut(&mut *current).replace_box(at, scene, bindings, plan)
             };
             moved |= shifted;
+            // The run shows the hover it was painted with now.
+            if current.boxes[at].env.hover != env.hover {
+                Rc::make_mut(&mut *current).boxes[at].env.hover = env.hover;
+            }
+            drop(current);
             if let Some(rect) = damage {
                 let old = layer.0.damage.get();
                 layer
@@ -165,6 +174,44 @@ impl Window {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         Some(moved)
+    }
+
+    /// Whether a box shows its hover style over hitbox `id`, as its paint
+    /// decides it (`Interactivity::compute_style`).
+    pub(crate) fn hover_shown(&self, id: crate::HitboxId, cx: &App) -> bool {
+        !cx.has_active_drag() && !self.last_input_was_touch() && id.is_hovered(self)
+    }
+
+    /// Whether box `owner`, recorded in `layer` with a hover style, shows it
+    /// now: `None` when no run of the box was painted with one. A host that
+    /// records the box again paints the style this names
+    /// (`rerecord_layer_box`); a run whose answer differs from the one it was
+    /// painted with shows another hover than the screen (`hover_changed`).
+    pub fn layer_box_hover(&self, layer: &LayerHandle, owner: u32, cx: &App) -> Option<bool> {
+        let content = layer.0.content.borrow();
+        let id = content.runs_of(owner).find_map(|at| content.boxes[at].env.hover)?.0;
+        Some(self.hover_shown(id, cx))
+    }
+
+    /// The boxes of `layer` whose runs show another hover than they would
+    /// paint now, in paint order, each once: the pointer entered or left them
+    /// since (`Interactivity` notifies on that transition). A host records
+    /// them again before the frame replays the layer (`rerecord_layer_box`),
+    /// as Blink restyles the element whose hover state changed
+    /// (`Element::SetHovered`) and repaints only its display items.
+    pub fn layer_hover_changes(&self, layer: &LayerHandle, cx: &App) -> Vec<u32> {
+        let content = layer.0.content.borrow();
+        let mut owners: Vec<u32> = Vec::new();
+        for &at in content.hover_runs() {
+            let run = &content.boxes[at as usize];
+            if let Some((id, shown)) = run.env.hover
+                && self.hover_shown(id, cx) != shown
+                && owners.last() != Some(&run.owner)
+            {
+                owners.push(run.owner);
+            }
+        }
+        owners
     }
 
     /// Paint one run of box `owner` into a scratch scene, in `env`.
