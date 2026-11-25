@@ -20,6 +20,10 @@ use collections::FxHashMap;
 #[cfg(test)]
 mod tests;
 
+/// `match_moved` counts: groups, matched in place, not movable, no group of
+/// the same key, a key match whose image differs, matched moved.
+pub const GROUP_COUNTS: usize = 6;
+
 /// Values a group shares with its match moved by `d` (`group_match::key`
 /// with the place moved).
 fn key(g: &PaintGroup, d: (f32, f32)) -> [u32; 13] {
@@ -61,6 +65,7 @@ pub(in crate::scene::damage) fn match_moved(
     size: (u32, u32),
     base: &mut [u32],
     moved: &mut Vec<bool>,
+    counts: &mut [u32; GROUP_COUNTS],
 ) -> Vec<u32> {
     moved.clear();
     moved.resize(new.groups.len(), false);
@@ -81,11 +86,18 @@ pub(in crate::scene::damage) fn match_moved(
     }
     // Nested groups come first (`Scene::groups`): an enclosing group's
     // composites of them are judged by their matches made already.
+    counts[0] += new.groups.len() as u32;
     for (g, group) in new.groups.iter().enumerate() {
-        if base[g] != 0 || !movable(group) {
+        if base[g] != 0 {
+            counts[1] += 1;
+            continue;
+        }
+        if !movable(group) {
+            counts[2] += 1;
             continue;
         }
         let Some(bucket) = buckets.get(&key(group, (0.0, 0.0))) else {
+            counts[3] += 1;
             continue;
         };
         let found = bucket.iter().copied().find(|&o| {
@@ -96,6 +108,9 @@ pub(in crate::scene::damage) fn match_moved(
             map[g] = o + 1;
             base[g] = o + 1;
             moved[g] = true;
+            counts[5] += 1;
+        } else {
+            counts[4] += 1;
         }
     }
     map
@@ -174,30 +189,35 @@ fn same_scene_moved(a: &Scene, b: &Scene, d: (f32, f32), w: Area, map: &[u32]) -
 }
 
 /// Composite `a` puts its image where `b`'s moved by `d` lands (`cut` and
-/// `shift` are the comparison's mask cuts of the new and the moved old mask).
+/// `shift` are the comparison's mask cuts of the new and the moved old mask):
+/// equal, equal but for the masks (a moved clip), or different.
 pub(super) fn same_surface_moved(
     a: &PaintSurface,
     b: &PaintSurface,
     d: (f32, f32),
     cut: impl Fn(&mut ContentMask<ScaledPixels>),
     shift: impl Fn(&mut ContentMask<ScaledPixels>),
-) -> bool {
+) -> Pair {
     #[cfg(target_os = "macos")]
     {
         let _ = (a, b, d, cut, shift);
-        false
+        Pair::Differ
     }
     #[cfg(not(target_os = "macos"))]
     {
         let (mut ma, mut mb) = (a.content_mask.clone(), b.content_mask.clone());
         cut(&mut ma);
         shift(&mut mb);
-        a.bounds == at(b.bounds, d)
-            && ma == mb
+        let same = a.bounds == at(b.bounds, d)
             && a.corner_radii == b.corner_radii
             && a.blur_radius.to_bits() == b.blur_radius.to_bits()
             && a.opacity.to_bits() == b.opacity.to_bits()
             && bits(a.color_matrix) == bits(b.color_matrix)
-            && a.fragment == b.fragment
+            && a.fragment == b.fragment;
+        match (same, ma == mb) {
+            (false, _) => Pair::Differ,
+            (true, true) => Pair::Same,
+            (true, false) => Pair::Masks(ma.bounds, mb.bounds),
+        }
     }
 }

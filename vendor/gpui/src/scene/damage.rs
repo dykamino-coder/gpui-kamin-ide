@@ -552,8 +552,9 @@ impl Scene {
             Some(Ok(d)) if comparable && d != (0, 0) => d,
             _ => (0, 0),
         };
+        let mut group_counts = [0; shift::groups::GROUP_COUNTS];
         let groups = if index.group_step != (0, 0) {
-            shift::groups::match_moved(self, previous, index.group_step, size, &mut index.group_base, &mut index.group_moved)
+            shift::groups::match_moved(self, previous, index.group_step, size, &mut index.group_base, &mut index.group_moved, &mut group_counts)
         } else {
             index.group_moved.clear();
             index.group_base.clone()
@@ -562,7 +563,7 @@ impl Scene {
             None => None,
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
-            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default()), &groups) {
+            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats { groups: group_counts, ..ShiftStats::default() }), &groups) {
                 Err(why) => Some(why),
                 Ok(shift) => {
                     let damaged = match index.damage {

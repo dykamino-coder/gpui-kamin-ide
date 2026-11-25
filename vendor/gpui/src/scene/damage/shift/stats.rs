@@ -10,7 +10,15 @@ pub const SHIFT_KINDS: usize = 9;
 
 /// Kind names in `ShiftStats::differs` order.
 pub const SHIFT_KIND_NAMES: [&str; SHIFT_KINDS] = [
-    "shadow", "quad", "path", "underline", "mono", "subpixel", "poly", "surface", "layer",
+    "shadow",
+    "quad",
+    "path",
+    "underline",
+    "mono",
+    "subpixel",
+    "poly",
+    "surface",
+    "layer",
 ];
 
 /// What one comparison found; it stops early, so counts are at least these.
@@ -26,6 +34,8 @@ pub struct ShiftStats {
     pub first: Option<(u8, u8, [f32; 4])>,
     /// CPU time of the comparison, microseconds.
     pub us: u32,
+    /// Groups of a scroll step (`groups::GROUP_COUNTS`), all 0 in place.
+    pub groups: [u32; super::groups::GROUP_COUNTS],
 }
 
 fn kind(item: &Item) -> u8 {
@@ -46,14 +56,33 @@ impl ShiftStats {
 impl std::fmt::Display for ShiftStats {
     /// `cells 120 count 3 differ quad 40 poly 2 first quad/quad [x0,y0,x1,y1]`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "cells {} count {} us {}", self.cells, self.count_cells, self.us)?;
-        let shown = self.differs.iter().zip(SHIFT_KIND_NAMES).filter(|(n, _)| **n > 0);
+        write!(
+            f,
+            "cells {} count {} us {}",
+            self.cells, self.count_cells, self.us
+        )?;
+        let shown = self
+            .differs
+            .iter()
+            .zip(SHIFT_KIND_NAMES)
+            .filter(|(n, _)| **n > 0);
         for (i, (n, name)) in shown.enumerate() {
             write!(f, "{}{name} {n}", if i == 0 { " differ " } else { " " })?;
         }
+        if self.groups[0] > 0 {
+            let [n, base, fixed, nokey, differ, moved] = self.groups;
+            write!(
+                f,
+                " groups {n} in_place {base} unmovable {fixed} nokey {nokey} differ {differ} moved {moved}"
+            )?;
+        }
         if let Some((a, b, r)) = self.first {
             let (a, b) = (SHIFT_KIND_NAMES[a as usize], SHIFT_KIND_NAMES[b as usize]);
-            write!(f, " first {a}/{b} [{:.0},{:.0},{:.0},{:.0}]", r[0], r[1], r[2], r[3])?;
+            write!(
+                f,
+                " first {a}/{b} [{:.0},{:.0},{:.0},{:.0}]",
+                r[0], r[1], r[2], r[3]
+            )?;
         }
         Ok(())
     }

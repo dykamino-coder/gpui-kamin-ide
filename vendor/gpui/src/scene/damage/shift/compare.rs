@@ -292,17 +292,10 @@ impl Moved<'_> {
                     return Pair::Differ;
                 }
                 let (a, b) = (&sa.surfaces[i], &sb.surfaces[j]);
-                verdict(
-                    a.group > 0
-                        && self.groups.get(a.group as usize - 1) == Some(&b.group)
-                        && super::groups::same_surface_moved(
-                            a,
-                            b,
-                            d,
-                            |m| self.cut(m),
-                            |m| self.shift(m),
-                        ),
-                )
+                if a.group == 0 || self.groups.get(a.group as usize - 1) != Some(&b.group) {
+                    return Pair::Differ;
+                }
+                super::groups::same_surface_moved(a, b, d, |m| self.cut(m), |m| self.shift(m))
             }
         }
     }
