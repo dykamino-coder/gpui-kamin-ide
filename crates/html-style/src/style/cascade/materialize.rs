@@ -9,8 +9,8 @@
 //! каскада передаёт потомкам отдельные computed values, не правки коробки.
 //! Размер query container — отдельный вход от адаптера финальной геометрии.
 //! Его изменение инвалидирует материализацию и запускает стиль/layout до paint.
-//! Раскладка публикует его, только если значения документа могут его
-//! прочесть (`values::container_reads`).
+//! Layout publishes it only to a document whose values can read it
+//! (`values::container_reads`).
 
 use crate::dom::{Node, SharedStyle};
 use crate::style::ComputedHandle;
