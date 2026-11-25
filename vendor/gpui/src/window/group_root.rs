@@ -46,10 +46,15 @@ impl Window {
             Some(placed) => crate::scene::place_run(scene, bindings, placed)?.0,
             None => scene,
         };
+        let shown = env.hover.map(|(id, _)| (id, self.hover_shown(id, cx)));
         let damage = {
             let mut current = layer.0.content.borrow_mut();
             // The layer is held by no frame (a grouped layer is copied into frames).
-            Rc::make_mut(&mut *current).replace_group_content(at, scene)?
+            let current = Rc::make_mut(&mut *current);
+            let damage = current.replace_group_content(at, scene)?;
+            // The run shows the hover it was painted with now.
+            current.boxes[at].env.hover = shown;
+            damage
         };
         if let Some(rect) = damage {
             let old = layer.0.damage.get();

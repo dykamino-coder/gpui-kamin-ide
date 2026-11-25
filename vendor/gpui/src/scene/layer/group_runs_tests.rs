@@ -25,6 +25,7 @@ fn env() -> super::BoxEnv {
         fill: None,
         layer: None,
         painter: crate::scene::RunPainter::Box(crate::scene::BoxContents::Own),
+        hover: None,
     }
 }
 
