@@ -420,3 +420,43 @@ fn scrolled_replay_cost(cx: &mut TestAppContext) {
         })
         .unwrap();
 }
+
+/// An anchor whose children never painted moves apart from its scroller in
+/// a step. Past the scroller's clip it shows nothing there either: the step
+/// replays. Inside the clip it would show what was never recorded: a build.
+#[crate::test]
+fn an_unpainted_anchor_replays_only_while_its_clip_is_empty(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.scroll_interest_margin = px(100.);
+            let tall = rect(0., 0., 100., 100.);
+            for (mask, replays) in [(rect(0., 300., 50., 30.), true), (rect(0., 50., 50., 30.), false)] {
+                let (outer, token) = (ScrollHandle::new(), Rc::new(()));
+                outer.set_max_offset(point(px(0.), px(1000.)));
+                let anchor = ScrollNodeId::of_token(&token);
+                let counter: Rc<dyn Fn() -> Point<Pixels>> = {
+                    let outer = outer.clone();
+                    Rc::new(move || -outer.offset())
+                };
+                window.invalidator.set_phase(DrawPhase::Prepaint);
+                let (_, prepaint) = window.record_retained_prepaint(|window| {
+                    window.with_scroll_node_prepaint(&outer, tall, |window| {
+                        window.with_content_mask(Some(ContentMask { bounds: mask }), |window| {
+                            window.with_scroll_anchor_prepaint(anchor, counter.clone(), |_| {});
+                        });
+                    });
+                });
+                window.invalidator.set_phase(DrawPhase::Paint);
+                let (_, paint) = window.record_retained_paint(|window| {
+                    window.with_scroll_node_paint(ScrollNodeId::of(&outer), |window| quad(window, 10.));
+                });
+                next_frame(window);
+                outer.set_offset(point(px(0.), px(-20.)));
+                let planned = window.plan_scrolled_replay(&prepaint, &paint, None).is_some();
+                assert_eq!(planned, replays, "anchor under {mask:?}");
+                window.next_frame.clear();
+            }
+        })
+        .unwrap();
+}

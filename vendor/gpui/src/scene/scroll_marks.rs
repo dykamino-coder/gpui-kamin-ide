@@ -66,9 +66,25 @@ pub(crate) struct ScrollBook {
     /// where it lands (`Window::with_copies_marked`); a node opened inside
     /// the record marks its commands as usual.
     pub(crate) record_base: Option<usize>,
+    /// The nodes opened inside the paint record copied now, with their real
+    /// clip chains (set by `Window::with_copies_marked`): a copy of a
+    /// command the record marked under one of them is marked under it, as
+    /// the record painted it, instead of under the node where it lands.
+    pub(crate) inner: Vec<(ScrollNodeId, Bounds<ScaledPixels>)>,
+    /// While `inner` is set: where each command of the copied record landed
+    /// (an index in this scene, the next one for a dropped command), and the
+    /// end, so the record's nodes take frame ranges (`replay_shifted`).
+    pub(crate) landed: Vec<u32>,
 }
 
 impl ScrollBook {
+    /// The node and chain a copy of a command the record marked `mark` is
+    /// marked under: its own node when the record opened it, else the node
+    /// open where the record lands.
+    pub(super) fn copy_node(&self, mark: Option<&ScrollMark>) -> Option<(ScrollNodeId, Bounds<ScaledPixels>)> {
+        mark.and_then(|mark| self.inner.iter().find(|(id, _)| *id == mark.node).copied()).or(self.open)
+    }
+
     pub(crate) fn clear(&mut self) {
         self.marks.clear();
         self.open = None;
@@ -123,12 +139,17 @@ impl Scene {
         Some(ordered)
     }
 
-    /// `replay_shifted` of a copy under the open node: mark a primitive (its
+    /// `replay_shifted` of a copy under `node` (the open node, or the record's
+    /// own node of the command, `ScrollBook::copy_node`): mark a primitive (its
     /// mask now is its own: the order came from it) and draw it with own ∩
     /// chain, or turn it dormant (`true`, raised by `raise`: the caller keeps
     /// it as it is); mark a layer.
-    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder) -> bool {
-        let Some((node, chain)) = self.scroll.open else { return false };
+    pub(super) fn mark_copied(
+        &mut self,
+        operation: &mut PaintOperation,
+        raise: DrawOrder,
+        (node, chain): (ScrollNodeId, Bounds<ScaledPixels>),
+    ) -> bool {
         let op = self.paint_operations.len() as u32;
         match operation {
             PaintOperation::Primitive(primitive) => {
@@ -214,15 +235,18 @@ impl Scene {
     /// and stays unmarked: a scrolled replay of the frame then builds.
     /// `None` when there is nothing to give back: no mark under `node`, or a
     /// reservoir, whose run the grafted tree does not index.
-    pub(crate) fn unscrolled_under(&self, node: ScrollNodeId) -> Option<Vec<PaintOperation>> {
-        if !self.scroll.marks.iter().any(|mark| mark.node == node)
+    /// The nodes the record opened inside itself and lands now
+    /// (`ScrollBook::inner`) give their commands back the same way.
+    pub(crate) fn unscrolled_under(&self, node: Option<ScrollNodeId>, inner: &[(ScrollNodeId, Bounds<ScaledPixels>)]) -> Option<Vec<PaintOperation>> {
+        let under = |id: ScrollNodeId| node == Some(id) || inner.iter().any(|(own, _)| *own == id);
+        if !self.scroll.marks.iter().any(|mark| under(mark.node))
             || self.paint_operations.iter().any(|op| matches!(op, PaintOperation::Reservoir(_)))
         {
             return None;
         }
         let mut marks = self.scroll.marks.iter().peekable();
         let out = self.paint_operations.iter().enumerate().map(|(at, operation)| {
-            let mark = marks.next_if(|mark| mark.op as usize == at).filter(|mark| mark.node == node);
+            let mark = marks.next_if(|mark| mark.op as usize == at).filter(|mark| under(mark.node));
             match (operation, mark) {
                 (PaintOperation::Primitive(_) | PaintOperation::Dormant(_), Some(mark)) => {
                     let Piece::Primitive(mut primitive) = Item::of(operation, mark).piece else { unreachable!() };

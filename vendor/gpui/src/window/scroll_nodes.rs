@@ -123,6 +123,9 @@ pub(crate) struct PaintPairing {
     pub(crate) depths: Vec<usize>,
     /// Open paint nodes and the content mask depth under each.
     pub(crate) open: Vec<(u32, usize)>,
+    /// Paint records whose nodes landed in this frame, and those nodes
+    /// (`Frame::land_record_nodes`).
+    pub(crate) records: Vec<(SceneSpace, Vec<u32>)>,
 }
 
 impl PaintPairing {
@@ -131,6 +134,7 @@ impl PaintPairing {
         self.landing.clear();
         self.depths.clear();
         self.open.clear();
+        self.records.clear();
     }
 }
 

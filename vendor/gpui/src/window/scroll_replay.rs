@@ -286,7 +286,9 @@ impl Window {
                 // A node whose children painted nothing as it (hidden, or painted
                 // under the node open around them) is replayed only moving with its
                 // parent: whatever it shows then moves as its parent's commands.
-                if !painted && shift != parent_shift {
+                // Moving apart, it shows nothing while its clip stays empty (an
+                // anchor past the viewport edge, whose children were never painted).
+                if !painted && shift != parent_shift && !clip.is_empty() {
                     return Err(at(ScrollRefusal::Node));
                 }
                 let interest = moved(node.interest, shift);
