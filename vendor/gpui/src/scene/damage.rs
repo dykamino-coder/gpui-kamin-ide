@@ -21,7 +21,9 @@ use collections::FxHashMap;
 
 mod clipped;
 mod group_match;
+pub(crate) mod shift;
 mod trace;
+pub use shift::{FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, ShiftStats};
 
 /// Сторона клетки повреждения, device px.
 pub const DAMAGE_TILE: u32 = 64;
@@ -100,6 +102,13 @@ pub(crate) struct DamageIndex {
     group_base: Vec<u32>,
     pub(crate) id: u64,
     pub(crate) base: u64,
+    /// KaminIDE patch: this frame as the last one moved (`shift`), when the
+    /// move leaves less to raster than the damage.
+    pub(crate) shift: Option<FrameShift>,
+    /// Why a frame offered a scroll step was not drawn as a move (DevTools `why`).
+    pub(crate) shift_miss: Option<&'static str>,
+    /// What the comparison of this frame with the last found (DevTools `why`).
+    pub(crate) shift_stats: Option<ShiftStats>,
 }
 
 const KIND_SHIFT: u32 = 29;
@@ -145,6 +154,21 @@ fn paint_order(scene: &Scene, mut each: impl FnMut(u32)) {
         };
         each(((kind as u32) << KIND_SHIFT) | next[kind] as u32);
         next[kind] += 1;
+    }
+}
+
+/// KaminIDE patch: `order` of the primitive `entry` (`KIND_SHIFT` encoding).
+fn entry_order(scene: &Scene, entry: u32) -> u32 {
+    let i = (entry & ((1 << KIND_SHIFT) - 1)) as usize;
+    match entry >> KIND_SHIFT {
+        0 => scene.shadows[i].order,
+        1 => scene.quads[i].order,
+        2 => scene.paths[i].order,
+        3 => scene.underlines[i].order,
+        4 => scene.monochrome_sprites[i].order,
+        5 => scene.subpixel_sprites[i].order,
+        6 => scene.polychrome_sprites[i].order,
+        _ => scene.surfaces[i].order,
     }
 }
 
@@ -265,6 +289,9 @@ impl DamageIndex {
         self.group_base.clear();
         self.id = 0;
         self.base = 0;
+        self.shift = None;
+        self.shift_miss = None;
+        self.shift_stats = None;
     }
 
     /// Разложить примитивы кадровой сцены по клеткам кадра `size`.
@@ -481,11 +508,53 @@ impl Scene {
     /// `pub` + `doc(hidden)`: тесты рендерера (`gpui_windows`) строят цепочку кадров.
     #[doc(hidden)]
     pub fn note_frame_damage(&mut self, previous: &Scene, id: u64, size: (u32, u32)) {
+        self.note_frame_damage_moved(previous, id, size, None);
+    }
+
+    /// KaminIDE patch: `note_frame_damage` of a frame whose scroll nodes moved
+    /// the most by `moved` device pixels since `previous`: when the damage is
+    /// larger than what the last frame moved by it leaves to raster, the frame
+    /// is that move (`frame_shift`) and its damage the moved bounds.
+    #[doc(hidden)]
+    pub fn note_frame_damage_moved(&mut self, previous: &Scene, id: u64, size: (u32, u32), moved: Option<Result<(i32, i32), &'static str>>) {
         let mut index = std::mem::take(&mut self.book.index);
         index.build(self, size);
         index.id = id;
         index.base = previous.book.index.id;
         index.damage = self.damage_against(&index, previous);
+        let comparable = previous.book.index.size == Some(size) && index.base != 0;
+        // A frame whose scroll nodes stayed but whose damage is unknown (a
+        // retained layer recorded anew) is compared with the last in place.
+        let moved = match moved {
+            None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
+            moved => moved,
+        };
+        index.shift_miss = match moved {
+            None => None,
+            Some(Err(why)) => Some(why),
+            Some(_) if !comparable => Some("not_compared"),
+            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
+                Err(why) => Some(why),
+                Ok(shift) => {
+                    let damaged = match index.damage {
+                        SceneDamage::Unchanged => 0,
+                        SceneDamage::Rect { width, height, .. } => width as u64 * height as u64,
+                        SceneDamage::Unknown => u64::MAX,
+                    };
+                    if shift.in_place() && shift.redraw.is_empty() {
+                        index.damage = SceneDamage::Unchanged;
+                        None
+                    } else if shift.redraw_area() < damaged {
+                        let [x, y, width, height] = shift.bounds();
+                        index.damage = SceneDamage::Rect { x, y, width, height };
+                        index.shift = Some(shift);
+                        None
+                    } else {
+                        Some("damage_smaller")
+                    }
+                }
+            },
+        };
         trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
         // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
@@ -604,6 +673,27 @@ impl Scene {
             self.book.index.id,
             self.book.index.size.unwrap_or_default(),
         )
+    }
+
+    /// KaminIDE patch: this frame as the frame `frame_damage().1` moved and
+    /// then redrawn within rectangles (`shift`), when it was planned so.
+    #[doc(hidden)]
+    pub fn frame_shift(&self) -> Option<&FrameShift> {
+        self.book.index.shift.as_ref()
+    }
+
+    /// KaminIDE patch: why a frame offered a scroll step is not a move
+    /// (`no_step`, `backdrop`, `layer_unknown`, `last_layer_unknown`,
+    /// `redraw_whole`, `damage_smaller`, `not_compared`), for DevTools `why`.
+    #[doc(hidden)]
+    pub fn frame_shift_miss(&self) -> Option<&'static str> {
+        self.book.index.shift_miss
+    }
+
+    /// KaminIDE patch: what the comparison with the last frame found, when it ran.
+    #[doc(hidden)]
+    pub fn frame_shift_stats(&self) -> Option<ShiftStats> {
+        self.book.index.shift_stats
     }
 
     /// KaminIDE patch: группы, чья картинка нужна кадру, рисуемому только в

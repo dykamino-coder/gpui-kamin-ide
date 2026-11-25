@@ -547,6 +547,35 @@ pub(crate) fn segments(
     out
 }
 
+/// KaminIDE patch: how far, in whole device pixels, the children of the
+/// largest painted scroll node moved from the rendered frame to this one: the
+/// move a renderer may apply to its kept frame (`Scene::note_frame_damage_moved`).
+/// A fractional move cannot copy pixels and is not offered (`Err`).
+pub(crate) fn scroll_step(old: &[ScrollNodeRecord], new: &[ScrollNodeRecord], scale: f32) -> Option<Result<(i32, i32), &'static str>> {
+    let mut before: FxHashMap<ScrollNodeId, Point<Pixels>> = FxHashMap::default();
+    for node in old.iter().filter(|n| n.paint.is_some()) {
+        before.entry(node.id).or_insert(node.children_offset);
+    }
+    let mut best: Option<(f32, Result<(i32, i32), &'static str>)> = None;
+    for node in new.iter().filter(|n| n.paint.is_some()) {
+        let Some(was) = before.get(&node.id) else { continue };
+        let d = ((node.children_offset.x.0 - was.x.0) * scale, (node.children_offset.y.0 - was.y.0) * scale);
+        let whole = (d.0.round(), d.1.round());
+        if d == (0.0, 0.0) {
+            continue;
+        }
+        let step = match (d.0 - whole.0).abs() > 1e-3 || (d.1 - whole.1).abs() > 1e-3 {
+            true => Err("fractional_step"),
+            false => Ok((whole.0 as i32, whole.1 as i32)),
+        };
+        let area = node.clip.size.width.0 * node.clip.size.height.0;
+        if best.is_none_or(|(a, _)| area > a) {
+            best = Some((area, step));
+        }
+    }
+    best.map(|(_, d)| d)
+}
+
 /// KaminIDE patch (DevTools `why`): a paint pairing with an anchor's id or
 /// one that found no node: the node found, the cursor and, on a miss, what
 /// the nodes of that id are (paired, pending), so a reader tells a paint

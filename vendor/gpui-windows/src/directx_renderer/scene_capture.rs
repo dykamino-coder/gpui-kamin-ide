@@ -26,6 +26,7 @@ impl DirectXRenderer {
             frame_gate: None,
             render_target: Some(texture),
             render_target_view: view,
+            back_buffer: None,
             path_intermediate_texture: path,
             path_intermediate_srv: path_srv,
             path_intermediate_msaa_texture: msaa,

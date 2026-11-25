@@ -10,7 +10,7 @@ mod damage;
 pub(crate) mod image_resources;
 mod record; mod group_replay;
 #[doc(hidden)]
-pub use damage::{DAMAGE_TILE, SceneDamage};
+pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats};
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
@@ -232,6 +232,9 @@ pub(crate) struct SceneBook {
     /// and their indices by order for batching.
     pub(crate) layers: Vec<LayerSlot>,
     pub(crate) layer_order: Vec<u32>,
+    /// The sources of the layers recorded into this frame, kept from their
+    /// recording to its present (`Scene::keep_layer_source`).
+    pub(crate) layer_sources: Vec<std::rc::Rc<SceneLayer>>,
     /// Primitives and layers painted into this scene rather than replayed
     /// from another, and the rectangles written into the replayed layers
     /// since they were last drawn: with no fresh paint, the frame differs
@@ -451,6 +454,7 @@ impl Scene {
         self.surfaces.clear();
         self.book.layers.clear();
         self.book.layer_order.clear();
+        self.book.layer_sources.clear();
         self.book.fresh = 0;
         self.book.layer_damage = None;
         self.book.damage = None;

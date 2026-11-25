@@ -6,8 +6,7 @@ use super::{
     BUFFER_COUNT, BlurScratch, DirectXAtlas, DirectXDevices, DirectXGlobalElements,
     DirectXRenderPipelines, DirectXRenderer, DirectXRendererDevices, DirectXResources, FontInfo,
     RENDER_TARGET_FORMAT, create_blur_texture, create_path_intermediate_msaa_texture_and_view,
-    create_path_intermediate_texture, create_render_target_and_its_view,
-    try_to_recover_from_device_lost,
+    create_path_intermediate_texture, try_to_recover_from_device_lost,
 };
 use gpui::{DevicePixels, ImageId, Scene, Size, WindowBackgroundAppearance};
 use std::sync::Arc;
@@ -140,8 +139,11 @@ fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
             if stage == 1 {
                 anyhow::bail!("injected target failure");
             }
-            let _target =
-                create_render_target_and_its_view(resources.swap_chain()?, &devices.device)?;
+            let _back_buffer = unsafe {
+                resources
+                    .swap_chain()?
+                    .GetBuffer::<windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>(0)
+            }?;
             if stage == 2 {
                 anyhow::bail!("injected intermediate failure");
             }
