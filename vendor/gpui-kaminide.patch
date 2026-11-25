@@ -17687,10 +17687,10 @@ index 0000000000000000000000000000000000000000..7983be154ef29ae4e963a9d3ccfa9935
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..367adadea89efc636c558c86df8f05eb5baa3c88
+index 0000000000000000000000000000000000000000..8281d85e6f933abc049c2579d91614c7afd0fb98
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,295 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -17887,15 +17887,18 @@ index 0000000000000000000000000000000000000000..367adadea89efc636c558c86df8f05eb
 +            ink == ink_of_commands(&scene.paint_operations),
 +            "the scene's kept ink differs from its commands"
 +        );
-+        // A run covers its box's placed area, painted or not: the layer is
-+        // ordered and drawn over it, so a box that paints nothing now (an
-+        // empty box, a band without a fill) can paint there later
-+        // (`Window::rerecord_layer_box`) as a paint from scratch would place
-+        // it, and a layer of such boxes alone still has its place in a frame.
-+        let bounds = boxes
-+            .iter()
-+            .filter(|b| b.group.is_none() && !b.area.is_empty())
-+            .fold(ink, |acc, b| Some(acc.map_or(b.area, |a| a.union(&b.area))));
++        // A layer whose boxes paint nothing yet (empty boxes, bands without a
++        // fill) has the places of their runs: a frame keeps it in its order,
++        // and a box's first paint there (`Window::rerecord_layer_box`) is
++        // taken. A layer with ink keeps its ink: wider bounds would widen
++        // what the frame orders and rasters for it.
++        let bounds = ink.or_else(|| {
++            boxes
++                .iter()
++                .filter(|b| b.group.is_none() && !b.area.is_empty())
++                .map(|b| b.area)
++                .reduce(|a, b| a.union(&b))
++        });
 +        static NEXT: AtomicU64 = AtomicU64::new(1);
 +        layer_counters::RECORDS.fetch_add(1, Relaxed);
 +        let by_owner = std::cell::OnceCell::new();

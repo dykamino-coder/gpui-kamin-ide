@@ -157,10 +157,9 @@ impl Document {
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
             self.reuse.skipped_any()
-                && (1..=path.len()).any(|k| {
-                    super::patch::element_at(&self.nodes, &path[..k])
-                        .is_some_and(|e| self.reuse.unpainted(e.node_id))
-                })
+                && super::patch::chain(&self.nodes, path)
+                    .iter()
+                    .any(|e| self.reuse.unpainted(e.node_id))
         };
         // A box whose runs showed no pixel of the layer's frame.
         let off = |id: u64| {

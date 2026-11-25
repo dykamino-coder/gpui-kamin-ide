@@ -17,7 +17,7 @@
 //! colour as a value all the same; a group root records its group (`grouped`).
 
 use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
-use super::patch::{Path, element_at};
+use super::patch::Path;
 use crate::dom::{Element, Node};
 use crate::layout::reuse::Wait;
 use crate::paint::box_tree::styled::{Own, Refusal};
@@ -68,7 +68,9 @@ pub(super) fn write_paint_values(
         let (a, b) = (at(old, path, *id)?, at(new, path, *id)?);
         // A box in an `svg` subtree: an `svg` element on its path.
         let in_svg = || {
-            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
+            super::patch::chain(old, path)
+                .iter()
+                .any(|e| e.tag == "svg")
         };
         let damage = classify(a, b, in_svg);
         if damage == PaintDamage::Rebuild {

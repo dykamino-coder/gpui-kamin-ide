@@ -23,7 +23,7 @@
 //!   filter, a border image or a border shape reaches farther than this
 //!   knows, and is never deferred.
 
-use super::patch::{Path, element_at};
+use super::patch::{Path, chain};
 use crate::dom::{Element, Node};
 use crate::layout::reuse::{Store, Wait};
 use crate::paint::decorations::outset;
@@ -74,10 +74,8 @@ pub(super) fn waits(
             let missing = match kind {
                 Wait::Inline => unknown_fragments(store, boxes, a, || {
                     // The nearest block on the path: the container's element.
-                    let block = (1..path.len())
-                        .rev()
-                        .filter_map(|n| element_at(old, &path[..n]))
-                        .find(|e| !e.inline);
+                    let parents = &path[..path.len().saturating_sub(1)];
+                    let block = chain(old, parents).into_iter().rev().find(|e| !e.inline);
                     match block.and_then(|e| Some((e, u32::try_from(e.node_id).ok()?))) {
                         Some((e, owner)) => format!(
                             "block <{}> {owner}: runs {:?}, area {:?}, no run {:?}",
@@ -191,6 +189,8 @@ fn fragments_of<R>(
     if fragments.has(own) {
         return Some(f(fragments, Some(own)));
     }
+    // The box's ancestors, outermost first (one descent along the path).
+    let up = chain(old, &path[..path.len().saturating_sub(1)]);
     // A nested inline can inherit another run's owner. Only an opening item
     // in this recorded flow is covered by its enclosing inline fragments; a
     // container whose flow the box tree did not publish (a paragraph of a
@@ -205,21 +205,19 @@ fn fragments_of<R>(
             }
         }
         None => {
-            let inline = (1..path.len()).rev().map_while(|n| {
-                let e = element_at(old, &path[..n])?;
-                (boxes.box_of(e.node_id)? != container).then_some(e.inline)
-            });
+            let inline = up
+                .iter()
+                .rev()
+                .map_while(|e| (boxes.box_of(e.node_id)? != container).then_some(e.inline));
             if !inline.into_iter().all(|inline| inline) {
                 return None;
             }
         }
     }
-    let owner = (1..path.len())
+    let owner = up
+        .iter()
         .rev()
-        .map_while(|n| {
-            let e = element_at(old, &path[..n])?;
-            (boxes.box_of(e.node_id)? != container).then_some(e.node_id)
-        })
+        .map_while(|e| (boxes.box_of(e.node_id)? != container).then_some(e.node_id))
         .filter_map(|node| u32::try_from(node).ok())
         .find(|owner| fragments.has(*owner));
     Some(f(fragments, owner))
@@ -234,7 +232,7 @@ impl crate::document::Document {
     /// the document first, as a script's layout flush does.
     #[cfg_attr(not(test), allow(dead_code, reason = "read by the script binding"))]
     pub(crate) fn inline_rects(&self, path: &[usize]) -> Option<Vec<gpui::Bounds<gpui::Pixels>>> {
-        let e = element_at(&self.nodes, path)?;
+        let e = super::patch::element_at(&self.nodes, path)?;
         let boxes = self.state.boxes.borrow();
         fragments_of(&self.reuse, &boxes, &self.nodes, path, e, |f, owner| {
             owner.map(|owner| f.rects(owner).collect())

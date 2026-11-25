@@ -9,8 +9,8 @@ use crate::dom::Node;
 
 /// Whether an ancestor of the box at `path` in `nodes` skips its contents.
 pub(super) fn skipped(nodes: &[Node], path: &[usize]) -> bool {
-    (1..path.len()).any(|k| {
-        super::super::patch::element_at(nodes, &path[..k])
-            .is_some_and(|e| e.style.used().reset_context.skip_content == Some(true))
-    })
+    let parents = &path[..path.len().saturating_sub(1)];
+    super::super::patch::chain(nodes, parents)
+        .iter()
+        .any(|e| e.style.used().reset_context.skip_content == Some(true))
 }

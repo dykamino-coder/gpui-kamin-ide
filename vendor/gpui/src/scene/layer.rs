@@ -194,15 +194,18 @@ impl SceneLayer {
             ink == ink_of_commands(&scene.paint_operations),
             "the scene's kept ink differs from its commands"
         );
-        // A run covers its box's placed area, painted or not: the layer is
-        // ordered and drawn over it, so a box that paints nothing now (an
-        // empty box, a band without a fill) can paint there later
-        // (`Window::rerecord_layer_box`) as a paint from scratch would place
-        // it, and a layer of such boxes alone still has its place in a frame.
-        let bounds = boxes
-            .iter()
-            .filter(|b| b.group.is_none() && !b.area.is_empty())
-            .fold(ink, |acc, b| Some(acc.map_or(b.area, |a| a.union(&b.area))));
+        // A layer whose boxes paint nothing yet (empty boxes, bands without a
+        // fill) has the places of their runs: a frame keeps it in its order,
+        // and a box's first paint there (`Window::rerecord_layer_box`) is
+        // taken. A layer with ink keeps its ink: wider bounds would widen
+        // what the frame orders and rasters for it.
+        let bounds = ink.or_else(|| {
+            boxes
+                .iter()
+                .filter(|b| b.group.is_none() && !b.area.is_empty())
+                .map(|b| b.area)
+                .reduce(|a, b| a.union(&b))
+        });
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
         let by_owner = std::cell::OnceCell::new();
