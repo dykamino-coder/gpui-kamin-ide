@@ -85,10 +85,13 @@ impl Window {
         paint_scope::Identity::capture(self).check_pass(self)?;
         let mut scene = scene;
         scene.end_record_runs();
-        if !self.replay_placed_carrying(&scene, scaled, Some(clip)) {
-            // A record with groups: their runs follow the copy (`placed_groups`).
-            self.place_record_copy(&scene, scaled, clip);
-        }
+        // A copy under a scroll node is marked under it (`with_copies_marked`).
+        self.with_copies_marked(|window| {
+            if !window.replay_placed_carrying(&scene, scaled, Some(clip)) {
+                // A record with groups: their runs follow the copy (`placed_groups`).
+                window.place_record_copy(&scene, scaled, clip);
+            }
+        });
         Ok(invocation)
     }
 
@@ -114,7 +117,12 @@ impl Window {
                 window.mask_scale = None;
                 window.element_opacity = 1.0;
             }
-            window.with_isolated_scene(paint)
+            window.with_isolated_scene(|window| {
+                // Its copy is marked where it lands (`ScrollBook::record_base`).
+                let base = window.next_frame.scroll_paint.open.len();
+                window.next_frame.scene.scroll.record_base = Some(base);
+                paint(window)
+            })
         }).0
     }
 }
