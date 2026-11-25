@@ -12,6 +12,8 @@ mod record; mod group_replay;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
+mod projected;
+pub use projected::homography_image;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
 pub(crate) mod scroll_marks;

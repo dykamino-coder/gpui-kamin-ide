@@ -216,16 +216,22 @@ impl DirectXRenderer {
             desc.ScissorEnable = true.into();
             unsafe { device.CreateRasterizerState(&desc, Some(&mut self.retained.scissor))? };
         }
+        self.set_scissor(region);
+        Ok(original)
+    }
+
+    /// The scissor test on `region` (after `begin_scissor` created its state).
+    pub(super) fn set_scissor(&self, region: Region) {
         let rect = windows::Win32::Foundation::RECT {
             left: region.x as i32,
             top: region.y as i32,
             right: (region.x + region.width) as i32,
             bottom: (region.y + region.height) as i32,
         };
+        let dc = &self.dev().device_context;
         unsafe {
             dc.RSSetState(self.retained.scissor.as_ref());
             dc.RSSetScissorRects(Some(&[rect]));
         }
-        Ok(original)
     }
 }

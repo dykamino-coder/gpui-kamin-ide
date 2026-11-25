@@ -553,7 +553,7 @@ impl DirectXRenderer {
 
     /// KaminIDE patch: on a hardware adapter, the CPU time a frame
     /// comparison may take: a whole frame costs a few milliseconds of
-    /// encoding and GPU time there, a strip a fraction of it.
+    /// encoding and GPU time there, the rectangles it leaves a fraction.
     const HARDWARE_SHIFT_BUDGET_US: u32 = 1500;
 
     /// KaminIDE patch: the same device, pipelines and render target format
@@ -576,11 +576,10 @@ impl DirectXRenderer {
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
         // KaminIDE patch: a frame comparison pays only when it costs less
-        // than the raster it saves. Redraw rectangles draw only the
-        // instances that reach them (`cull`), so a moved step costs a copy
-        // and a strip on either adapter; the budget is what the whole raster
-        // it replaces costs on the CPU: WARP rasters there, a hardware
-        // adapter only encodes.
+        // than the raster it saves. Redraw rectangles draw only the instances
+        // that reach them (`cull`), so a moved step costs a copy and a strip
+        // on either adapter; the budget is what the whole raster it replaces
+        // costs on the CPU: WARP rasters there, a hardware adapter encodes.
         let software = unsafe { devices.adapter.GetDesc1() }
             .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
         gpui::set_shift_budget_us(if software {
@@ -981,29 +980,6 @@ impl DirectXRenderer {
         drawn
     }
 
-    /// KaminIDE patch: draw `scene` within each of `rects` (cleared first). The
-    /// scissor goes on only now: the group passes and their blurs write other
-    /// targets in their own coordinates. Instances are uploaded for the first
-    /// rectangle; the others draw from the same buffers.
-    fn draw_scene_within(&mut self, scene: &Scene, rects: &[Region], clear_color: [f32; 4]) -> Result<()> {
-        let ctx = self.dev().device_context.clone();
-        let mut uploaded = false;
-        for &region in rects {
-            let state = self.begin_scissor(region)?;
-            let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-            let drawn = self.clear_frame(clear).and_then(|()| {
-                self.backdrop_pending = self.backdrop.is_some();
-                self.blur.frame_within = Some(region);
-                self.draw_scene_at(scene, uploaded.then_some([0; 6]))
-            });
-            self.blur.frame_within = None;
-            unsafe { ctx.RSSetState(&state) };
-            drawn?;
-            uploaded = true;
-        }
-        Ok(())
-    }
-
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.
     ///
     /// Буферы инстансов upstream заливает один раз на сцену, а пачки рисуют
@@ -1024,9 +1000,6 @@ impl DirectXRenderer {
             self.upload_scene_buffers(scene)?;
         }
         let b = base.unwrap_or_default();
-        // KaminIDE patch: within a redraw rectangle of the frame, a batch
-        // draws only the instances that can reach it (`cull`).
-        let rect = self.blur.frame_within.filter(|_| self.group_target.is_none());
 
         let annotation = self
             .devices
@@ -1044,60 +1017,24 @@ impl DirectXRenderer {
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
             match batch {
-                PrimitiveBatch::Shadows(range) => {
-                    let items = &scene.shadows[range.clone()];
-                    let runs = cull::runs(items, rect, |s| {
-                        cull::extent(s.bounds, &s.content_mask, None, 3.0 * s.blur_radius.0.max(0.0) + 2.0)
-                    });
-                    runs.into_iter()
-                        .try_for_each(|r| self.draw_shadows(b[0] + range.start + r.start, r.len()))
-                }
+                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
                 PrimitiveBatch::Quads(range) => {
-                    let items = &scene.quads[range.clone()];
-                    let runs = cull::runs(items, rect, |q| {
-                        cull::extent(q.bounds, &q.content_mask, Some(&q.transformation), 2.0)
-                    });
-                    runs.into_iter().try_for_each(|r| {
-                        self.draw_quads(&scene.quads[range.start + r.start..range.start + r.end], b[1] + range.start + r.start)
-                    })
+                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
                 }
                 PrimitiveBatch::Paths(range) => {
                     let paths = &scene.paths[range];
                     self.draw_paths_to_intermediate(paths)?;
                     self.draw_paths_from_intermediate(paths)
                 }
-                PrimitiveBatch::Underlines(range) => {
-                    let items = &scene.underlines[range.clone()];
-                    let runs = cull::runs(items, rect, |u| cull::extent(u.bounds, &u.content_mask, None, 2.0));
-                    runs.into_iter()
-                        .try_for_each(|r| self.draw_underlines(b[2] + range.start + r.start, r.len()))
-                }
+                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
                 PrimitiveBatch::MonochromeSprites { texture_id, range } => {
-                    let items = &scene.monochrome_sprites[range.clone()];
-                    let runs = cull::runs(items, rect, |s| {
-                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
-                    });
-                    runs.into_iter().try_for_each(|r| {
-                        self.draw_monochrome_sprites(texture_id, b[3] + range.start + r.start, r.len())
-                    })
+                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
                 }
                 PrimitiveBatch::SubpixelSprites { texture_id, range } => {
-                    let items = &scene.subpixel_sprites[range.clone()];
-                    let runs = cull::runs(items, rect, |s| {
-                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
-                    });
-                    runs.into_iter().try_for_each(|r| {
-                        self.draw_subpixel_sprites(texture_id, b[4] + range.start + r.start, r.len())
-                    })
+                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, range } => {
-                    let items = &scene.polychrome_sprites[range.clone()];
-                    let runs = cull::runs(items, rect, |s| {
-                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
-                    });
-                    runs.into_iter().try_for_each(|r| {
-                        self.draw_polychrome_sprites(texture_id, b[5] + range.start + r.start, r.len())
-                    })
+                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
                 PrimitiveBatch::Layer(_) => Ok(()),
@@ -2352,7 +2289,7 @@ impl DirectXRenderer {
         }
         let mask_clip = self.blur.group_clip.get(g).copied().unwrap_or([0.0; 4]);
         let (vw, vh) = (self.width as f32, self.height as f32);
-        let quad = BlurQuad {
+        let mut quad = BlurQuad {
             bounds: [
                 s.bounds.origin.x.0,
                 s.bounds.origin.y.0,
@@ -2387,6 +2324,7 @@ impl DirectXRenderer {
             source_rect: self.blur.group_regions[slot].floats(),
             backdrop_rect: [0.0; 4],
         };
+        group_region::narrow_composite(&mut quad, vw, vh);
         Some((quad, place.page))
     }
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {

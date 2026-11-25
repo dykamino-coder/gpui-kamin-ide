@@ -1,20 +1,34 @@
-//! KaminIDE patch: the instances of a batch that can write inside a redraw
-//! rectangle (`draw_scene_within`).
+//! KaminIDE patch: the instances of a frame that write inside its redraw
+//! rectangles (`Plan::Within`, `Plan::Shift`), gathered for one pass.
 //!
-//! The scissor already keeps every pixel outside the rectangle, but each
-//! rectangle is a pass over every batch. A batch is drawn from its first to
-//! its last instance whose extent meets the rectangle, and not at all when
-//! none does; the instances skipped cannot reach the rectangle and write none
-//! of its pixels, so the strip is the same. The range is never split: on WARP
-//! a draw call costs more than the instances it would leave out.
+//! A pass per rectangle over every batch costs a draw call per batch and
+//! rectangle; on WARP a draw call costs more than the instances it draws
+//! (25.11: splitting batches into runs made a css2 scroll step 26 ms against
+//! 19.5). So the rectangles are made disjoint and every instance that can
+//! reach one is copied once per rectangle it reaches, with its content mask
+//! cut to that rectangle: one upload, one draw per run of batches of one kind
+//! that reach any rectangle, and the masks keep every pixel outside the
+//! rectangles as the scissor did. A batch that reaches none is left out, so
+//! the batches of one kind around it join into one draw. WebRender batches
+//! the primitives of its dirty tiles the same way (`batch.rs`, per-target
+//! instance lists over the dirty rect), Chromium raster records only the
+//! display items of the invalidated rect (`DisplayItemList::Raster` with an
+//! `rtree` query).
+//!
+//! The cut mask is exact: an edge the rectangle does not move keeps its
+//! value (the shader computes `origin + size` to the same float), and an
+//! edge it moves lies on a whole pixel, half a pixel from every pixel centre.
 
 use super::group_region::Region;
 use gpui::{Bounds, ContentMask, ScaledPixels, TransformationMatrix};
-use std::ops::Range;
+
+mod pass;
+#[cfg(test)]
+mod tests;
 
 /// The device pixels an instance can write: its bounds grown by `margin`
 /// (antialiasing, a shadow's blur), within its mask; `None` when a
-/// transformation moves it elsewhere (always drawn).
+/// transformation moves it elsewhere (it reaches every rectangle).
 pub(super) fn extent(
     bounds: Bounds<ScaledPixels>,
     mask: &ContentMask<ScaledPixels>,
@@ -34,65 +48,119 @@ pub(super) fn extent(
     ])
 }
 
-/// The range of `items` from the first to the last whose extent meets `rect`
-/// (none: empty); without a rectangle, all of them.
-pub(super) fn runs<T>(
-    items: &[T],
-    rect: Option<Region>,
-    extent: impl Fn(&T) -> Option<[f32; 4]>,
-) -> Vec<Range<usize>> {
-    let Some(r) = rect else {
-        return vec![0..items.len()];
-    };
-    let (x0, y0) = (r.x as f32, r.y as f32);
-    let (x1, y1) = (x0 + r.width as f32, y0 + r.height as f32);
-    let meets = |item: &T| match extent(item) {
-        None => true,
-        Some(e) => e[0] < x1 && e[2] > x0 && e[1] < y1 && e[3] > y0,
-    };
-    let Some(first) = items.iter().position(&meets) else {
-        return Vec::new();
-    };
-    let last = items.iter().rposition(&meets).unwrap_or(first);
-    vec![first..last + 1]
+/// Whether an instance of extent `e` can write inside `r` (x0, y0, x1, y1).
+pub(super) fn meets(e: Option<[f32; 4]>, r: &[f32; 4]) -> bool {
+    e.is_none_or(|e| e[0] < r[2] && e[2] > r[0] && e[1] < r[3] && e[3] > r[1])
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpui::{point, size};
-
-    fn b(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
-        Bounds {
-            origin: point(ScaledPixels(x), ScaledPixels(y)),
-            size: size(ScaledPixels(w), ScaledPixels(h)),
+/// `mask` cut to `r` (x0, y0, x1, y1); `false` when nothing is left.
+pub(super) fn cut(mask: &mut ContentMask<ScaledPixels>, r: &[f32; 4]) -> bool {
+    let (o, s) = (&mut mask.bounds.origin, &mut mask.bounds.size);
+    for (origin, size, lo, hi) in [
+        (&mut o.x, &mut s.width, r[0], r[2]),
+        (&mut o.y, &mut s.height, r[1], r[3]),
+    ] {
+        let end = origin.0 + size.0;
+        let (start, stop) = (origin.0.max(lo), end.min(hi));
+        if start >= stop {
+            return false;
+        }
+        // An edge kept keeps its float: `origin + size` gives `end` again.
+        if start != origin.0 || stop != end {
+            *size = ScaledPixels(stop - start);
+            *origin = ScaledPixels(start);
         }
     }
+    true
+}
 
-    #[test]
-    fn a_batch_draws_from_its_first_to_its_last_instance_in_the_rectangle() {
-        let mask = ContentMask { bounds: b(0.0, 0.0, 800.0, 600.0) };
-        let boxes: Vec<_> = (0..10).map(|k| b(0.0, 60.0 * k as f32, 100.0, 20.0)).collect();
-        let strip = Region { x: 0, y: 480, width: 800, height: 120 };
-        let got = runs(&boxes, Some(strip), |q| extent(*q, &mask, None, 1.0));
-        assert_eq!(got, vec![8..10]);
-        let apart = Region { x: 0, y: 0, width: 800, height: 600 };
-        let mut few = boxes.clone();
-        few.swap(1, 9);
-        let top = Region { x: 0, y: 0, width: 800, height: 30 };
-        assert_eq!(runs(&few, Some(top), |q| extent(*q, &mask, None, 1.0)), vec![0..1]);
-        assert_eq!(runs(&boxes, Some(apart), |q| extent(*q, &mask, None, 1.0)), vec![0..10]);
-        let below = Region { x: 0, y: 700, width: 800, height: 10 };
-        assert!(runs(&boxes, Some(below), |q| extent(*q, &mask, None, 1.0)).is_empty());
-        assert_eq!(runs(&boxes, None, |q| extent(*q, &mask, None, 1.0)), vec![0..10]);
+/// `rects` made pairwise disjoint: each one minus those before it, as up to
+/// four bands. They cover the same pixels.
+pub(super) fn disjoint(rects: &[Region]) -> Vec<[f32; 4]> {
+    let mut out: Vec<[u32; 4]> = Vec::new();
+    for r in rects {
+        let mut parts = vec![[r.x, r.y, r.x + r.width, r.y + r.height]];
+        for o in &out {
+            parts = parts.into_iter().flat_map(|p| minus(p, *o)).collect();
+        }
+        out.extend(parts);
     }
+    out.into_iter().map(|r| r.map(|v| v as f32)).collect()
+}
 
-    #[test]
-    fn a_mask_and_a_transformation_decide_the_extent() {
-        let clipped = ContentMask { bounds: b(0.0, 0.0, 800.0, 100.0) };
-        assert_eq!(extent(b(0.0, 50.0, 10.0, 500.0), &clipped, None, 1.0).map(|e| e[3]), Some(100.0));
-        let mut turned = TransformationMatrix::unit();
-        turned.translation[1] = 500.0;
-        assert_eq!(extent(b(0.0, 0.0, 10.0, 10.0), &clipped, Some(&turned), 1.0), None);
+/// `a` minus `b` (x0, y0, x1, y1): the bands of `a` above, below, left and
+/// right of `b`.
+fn minus(a: [u32; 4], b: [u32; 4]) -> Vec<[u32; 4]> {
+    if a[0] >= b[2] || b[0] >= a[2] || a[1] >= b[3] || b[1] >= a[3] {
+        return vec![a];
+    }
+    let (y0, y1) = (a[1].max(b[1]), a[3].min(b[3]));
+    [
+        [a[0], a[1], a[2], y0],
+        [a[0], y1, a[2], a[3]],
+        [a[0], y0, a[0].max(b[0]), y1],
+        [a[2].min(b[2]), y0, a[2], y1],
+    ]
+    .into_iter()
+    .filter(|p| p[0] < p[2] && p[1] < p[3])
+    .collect()
+}
+
+/// Appends to `out` a copy of every instance of `items` per rectangle of
+/// `rects` it reaches, its mask cut to the rectangle, in the order of
+/// `items` (rectangles are disjoint, so every pixel still sees the batch's
+/// order); returns how many and the pixels they cover.
+pub(super) fn gather<T: Copy>(
+    out: &mut Vec<T>,
+    items: &[T],
+    rects: &[[f32; 4]],
+    extent: impl Fn(&T) -> Option<[f32; 4]>,
+    mask: impl Fn(&mut T) -> &mut ContentMask<ScaledPixels>,
+) -> (usize, f64) {
+    let (start, mut area) = (out.len(), 0.0);
+    for item in items {
+        let e = extent(item);
+        for r in rects.iter().filter(|r| meets(e, r)) {
+            let mut copy = *item;
+            if cut(mask(&mut copy), r) {
+                if let Some(e) = e {
+                    area += ((e[2].min(r[2]) - e[0].max(r[0])) * (e[3].min(r[3]) - e[1].max(r[1])))
+                        .max(0.0) as f64;
+                }
+                out.push(copy);
+            }
+        }
+    }
+    (out.len() - start, area)
+}
+
+/// The rectangles of a pass as their bounding region (the scissor).
+pub(super) fn bounds(rects: &[[f32; 4]]) -> Option<Region> {
+    let first = *rects.first()?;
+    let u = rects.iter().fold(first, |a, r| {
+        [
+            a[0].min(r[0]),
+            a[1].min(r[1]),
+            a[2].max(r[2]),
+            a[3].max(r[3]),
+        ]
+    });
+    let [x0, y0, x1, y1] = u.map(|v| v as u32);
+    Some(Region {
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
+    })
+}
+
+/// A rectangle of a pass as a region (for the batches drawn per rectangle).
+pub(super) fn region(r: &[f32; 4]) -> Region {
+    let [x0, y0, x1, y1] = r.map(|v| v as u32);
+    Region {
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
     }
 }
