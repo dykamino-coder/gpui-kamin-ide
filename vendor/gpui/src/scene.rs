@@ -666,8 +666,11 @@ impl Scene {
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
         let source = ReplaySource::Graft(graft, false);
-        if !self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |_| true) {
-            for operation in &scene.paint_operations {
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        if !self.replay_shifted(operations, source, &scene.book.images, |_| true) {
+            for operation in operations {
                 self.replay_image_operation(operation.clone(), &scene.book.images);
             }
         }
@@ -731,7 +734,10 @@ impl Scene {
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
         let source = ReplaySource::Graft(graft, false);
-        self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |operation| match operation {
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        self.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
@@ -995,7 +1001,12 @@ impl Scene {
         if clip.is_none() {
             scene.paint_operations.reserve_exact(self.paint_operations.len());
         }
-        for operation in &self.paint_operations {
+        // KaminIDE patch: the copy keeps the scroll marks of what it keeps,
+        // moved and clipped as the commands are, so a copy placed under the
+        // node gives them back (`unscrolled_under`).
+        let mut marks = self.scroll.marks.iter().peekable();
+        for (at, operation) in self.paint_operations.iter().enumerate() {
+            let mark = marks.next_if(|mark| mark.op as usize == at);
             let mut operation = operation.clone();
             place(&mut operation);
             if let PaintOperation::Primitive(primitive) = &mut operation {
@@ -1006,6 +1017,23 @@ impl Scene {
                 scene.add_primitive_ink(clipped);
                 scene.copy_image(primitive, &self.book.images);
                 scene.push_ordered(primitive);
+            }
+            if let Some(mark) = mark {
+                let moved = |bounds| {
+                    let bounds = record::geometry::bounds(bounds, offset);
+                    clip.map_or(bounds, |clip| bounds.intersect(&clip))
+                };
+                // A dormant command was not placed: its mark carries the shift.
+                let dormant = matches!(operation, PaintOperation::Dormant(_));
+                let shift = if dormant { mark.moved + offset } else { mark.moved };
+                let op = scene.paint_operations.len() as u32;
+                scene.scroll.marks.push(scroll_marks::ScrollMark {
+                    op,
+                    own: moved(mark.own),
+                    placed: record::geometry::bounds(mark.placed, offset),
+                    moved: shift,
+                    ..*mark
+                });
             }
             scene.paint_operations.push(operation);
         }

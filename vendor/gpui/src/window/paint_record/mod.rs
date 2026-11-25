@@ -4,6 +4,8 @@ use super::*;
 mod invocation;
 mod plan;
 mod validation;
+#[cfg(test)]
+mod scroll_tests;
 pub(super) mod segments;
 pub use plan::{PaintGroupDescriptor, PaintPlan, PaintScopeDescriptor};
 pub use segments::{PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentClips, PaintSegmentSlice};

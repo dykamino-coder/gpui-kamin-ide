@@ -59,6 +59,13 @@ pub(crate) struct ScrollBook {
     /// kept (a bottom layer or depth context): its node cannot be replayed
     /// moved (`Window::taint_open_scroll_node`).
     pub(crate) lost: bool,
+    /// Of a paint record's scene: how many paint nodes were open when it
+    /// began recording. A record lands later, maybe at another offset, under
+    /// whatever node is open there, so what it paints under those outer
+    /// nodes keeps its own mask, unmarked and never dormant, and is marked
+    /// where it lands (`Window::with_copies_marked`); a node opened inside
+    /// the record marks its commands as usual.
+    pub(crate) record_base: Option<usize>,
 }
 
 impl ScrollBook {
@@ -197,6 +204,35 @@ impl Scene {
             at += 1;
         }
         out
+    }
+
+    /// The commands of this finished scene (a paint record) for a copy under
+    /// the open node `node`: a primitive it marked under `node` with its own
+    /// mask, dormant or not, so the copy is marked where it lands
+    /// (`mark_copied`), as `unscrolled` gives a moved copy its commands. A
+    /// primitive of another node keeps the mask its node clipped it with,
+    /// and stays unmarked: a scrolled replay of the frame then builds.
+    /// `None` when there is nothing to give back: no mark under `node`, or a
+    /// reservoir, whose run the grafted tree does not index.
+    pub(crate) fn unscrolled_under(&self, node: ScrollNodeId) -> Option<Vec<PaintOperation>> {
+        if !self.scroll.marks.iter().any(|mark| mark.node == node)
+            || self.paint_operations.iter().any(|op| matches!(op, PaintOperation::Reservoir(_)))
+        {
+            return None;
+        }
+        let mut marks = self.scroll.marks.iter().peekable();
+        let out = self.paint_operations.iter().enumerate().map(|(at, operation)| {
+            let mark = marks.next_if(|mark| mark.op as usize == at).filter(|mark| mark.node == node);
+            match (operation, mark) {
+                (PaintOperation::Primitive(_) | PaintOperation::Dormant(_), Some(mark)) => {
+                    let Piece::Primitive(mut primitive) = Item::of(operation, mark).piece else { unreachable!() };
+                    primitive.content_mask_mut().bounds = mark.own;
+                    PaintOperation::Primitive(primitive)
+                }
+                _ => operation.clone(),
+            }
+        });
+        Some(out.collect())
     }
 
     /// Whether no layer or depth context is open (a scrolled replay copies
