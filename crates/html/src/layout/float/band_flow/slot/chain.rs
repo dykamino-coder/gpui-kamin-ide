@@ -111,7 +111,7 @@ mod tests {
         }
         assert_eq!(len(&head), 2, "a key written again reuses its record");
         assert!(find(&head, &BandKey::for_tests(1.0)).unwrap().key.same(&BandKey::for_tests(1.0)));
-        for width in 3..10 {
+        for width in 3..(HOSTS + 4) {
             let key = BandKey::for_tests(width as f32);
             entry(&mut head, &key, 1, 1, || record(width as f32, 1));
         }
