@@ -84,6 +84,31 @@ impl Window {
         self.next_frame.with_scene_node(scale, |scene| scene.insert_primitive(primitive));
     }
 
+    /// Run `f`, which copies a finished scene (a paint record) into the
+    /// frame's scene, with the open paint node as the node the copies land
+    /// under (`Scene::mark_copied`), as `with_scene_node` does for one
+    /// primitive: a record placed under a scroll node moves with it in a
+    /// scrolled replay instead of refusing it as unmarked paint.
+    pub(crate) fn with_copies_marked<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let scale = self.scale_factor();
+        let frame = &mut self.next_frame;
+        let open = frame.scroll_paint.open.last().map(|&(index, _)| index);
+        let node = open.map(|index| {
+            let node = &frame.scroll_nodes[index as usize];
+            (node.id, node.clip.scale(scale))
+        });
+        frame.scene.scroll.open = node;
+        let result = f(self);
+        let frame = &mut self.next_frame;
+        frame.scene.scroll.open = None;
+        if std::mem::take(&mut frame.scene.scroll.lost) {
+            if let Some(index) = open {
+                frame.scroll_nodes[index as usize].torn = true;
+            }
+        }
+        result
+    }
+
     /// The mask a hitbox inserted now is hit-tested with, and its mark when
     /// it lies under a prepaint node: own mask ∩ the node's clip.
     pub(crate) fn scroll_hitbox_mask(
