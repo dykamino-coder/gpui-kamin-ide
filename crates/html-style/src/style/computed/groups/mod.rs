@@ -39,7 +39,7 @@ pub use reset_transforms::ResetTransforms;
 mod inherited_ui;
 pub use inherited_ui::InheritedUi;
 mod inherited_font;
-pub use inherited_font::InheritedFont;
+pub use inherited_font::{InheritedFont, SIZE_ADJUST_FROM_FONT};
 mod inherited_text_flow;
 pub use inherited_text_flow::InheritedTextFlow;
 mod inherited_table_list;

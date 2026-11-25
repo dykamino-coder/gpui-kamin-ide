@@ -106,10 +106,10 @@ fn a_later_edit_matches_through_the_attributes_an_earlier_one_left() {
     assert_eq!(run(&states(&[1, 3, 4, 1, 3, 4])), 6);
     // A list class reaches the items below it and leaves the item beside.
     assert_eq!(run(&states(&[13, 16, 13, 16, 13])), 5);
-    // A name read in a sibling compound is rebuilt (`data-a`), so the census
-    // kept from before answers for it when the neighbour is edited in place.
-    assert_eq!(run(&states(&[14, 15, 14, 15])), 2);
-    assert_eq!(run(&states(&[10, 6, 10, 10, 6])), 3);
+    // A name read in a sibling compound (`data-a`) restyles the next sibling
+    // in place; the census of their parent is taken again.
+    assert_eq!(run(&states(&[14, 15, 14, 15])), 4);
+    assert_eq!(run(&states(&[10, 6, 10, 10, 6])), 5);
 }
 
 #[test]

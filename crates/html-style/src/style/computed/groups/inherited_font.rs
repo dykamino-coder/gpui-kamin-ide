@@ -1,5 +1,10 @@
 //! CSS-операнды группы font; значение за общим COW-указателем.
 use crate::style::values::value::Len;
+
+/// The metric shift of a cascaded `font-size-adjust: <metric> from-font`
+/// (`InheritedFont::font_size_adjust`): metrics 0–4 become 8–12.
+pub const SIZE_ADJUST_FROM_FONT: u8 = 8;
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InheritedFont {
     pub font_size: Option<Len>,
@@ -24,9 +29,12 @@ pub struct InheritedFont {
     /// Это НЕ возможность OpenType: узкое начертание — отдельный шрифт
     /// семейства, и выбирается он при подборе.
     pub font_stretch: Option<f32>,
-    /// `font-size-adjust` (css-fonts-5): метрика (0 ex-height, 1 cap-height,
-    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` — `none`) и желаемая
-    /// доля кегля (`NaN` — каскадный `from-font`, вычисляется числом). Наследуется.
+    /// `font-size-adjust` (css-fonts-5): the metric (0 ex-height, 1 cap-height,
+    /// 2 ch-width, 3 ic-width, 4 ic-height; `u8::MAX` is `none`) and the wanted
+    /// share of the font size. A cascaded `from-font` is the metric shifted by
+    /// `SIZE_ADJUST_FROM_FONT` with share 0; the computed-value stage resolves
+    /// it to a number. The value equals itself (no `NaN`), otherwise two equal
+    /// styles would differ in every comparison. Inherited.
     pub font_size_adjust: Option<(u8, f32)>,
     /// Действующий зум («effective zoom», §599): произведение по цепочке
     /// предков вместе со своим. `None` ≡ 1 — выведенный `Default`

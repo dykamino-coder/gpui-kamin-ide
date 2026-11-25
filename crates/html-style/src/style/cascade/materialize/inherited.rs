@@ -34,6 +34,26 @@ pub(crate) fn inherits_reset(own: &Computed) -> bool {
         || own.reset_background.background_blend == Some(crate::style::computed::BlendMode::Inherit)
 }
 
+/// Whether the explicit `inherit` of a reset property in `own` reads a value
+/// that differs between the parents `old` and `new` (css-cascade-5 §7.3.1):
+/// the computed stages of `own` under the two differ in a non-inherited
+/// value. Checked by the values read, not by the presence of an `inherit`:
+/// `text-decoration: inherit` does not read a new background of the parent.
+pub(crate) fn reads_reset_of(
+    own: &Computed,
+    old: &Computed,
+    new: &Computed,
+    vcx: crate::values::ValueCx<'_>,
+) -> bool {
+    if !inherits_reset(own) {
+        return false;
+    }
+    let after = crate::style::cascade::compute::build(new, own, vcx);
+    let mut before: Computed = (*crate::style::cascade::compute::build(old, own, vcx)).clone();
+    before.inh = after.inh.clone();
+    before != *after
+}
+
 /// Совпадают ли у `a` и `b` все поля, которые `compute::compute` берёт у родителя.
 pub(super) fn inherited_eq(a: &Computed, b: &Computed) -> bool {
     a.inh == b.inh

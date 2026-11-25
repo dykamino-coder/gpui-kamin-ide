@@ -13,12 +13,13 @@ use super::shadow::Scope;
 use super::tree_index::{HasMarks, TreeIndex};
 use super::walk::{self, Chains, Probed};
 use crate::style::css::Media;
-use crate::style::select::has::{HasArg, mark_has};
+use crate::style::select::has::HasArg;
 use crate::values::DocumentValues;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod relational;
 mod rules;
 
 /// Правила документа одной ревизии для проб его элементов.
@@ -43,7 +44,16 @@ pub struct RestyleCache {
     /// Признаки потомков по именам пакета (`invalidation::features`): Blink
     /// держит такой набор на каждое имя листа, здесь он строится при первой
     /// правке имени.
-    sets: Vec<(Changed, Option<Rc<Features>>)>,
+    sets: Vec<(Changed, Rc<Features>)>,
+    /// The `:has()` arguments (by place in the probe's) that read a name
+    /// the batch probed now changes: their marks are made again for each
+    /// probe (`relational`).
+    remark: Vec<usize>,
+    /// Whole-document markings since `take_remarks`.
+    remarks: u64,
+    /// The mutated elements of the batch probed now whose parents' census a
+    /// rule reads (`targets`, `Features::reads_siblings`).
+    mutated: Vec<Handle>,
     /// The last probe of each element probed since the rules were built, by
     /// address (the handle keeps the address taken): the style an element
     /// has now. Blink keeps it on the element (`Element::GetComputedStyle`,
@@ -54,13 +64,12 @@ pub struct RestyleCache {
     /// goes with the cache when a batch rebuilds the document.
     last: HashMap<usize, (Handle, Option<Probed>)>,
     /// The `:has()` marks of the source DOM, those of the build that gave
-    /// the probe (`keep_has`) or of the first probe that needs them. A batch probed here changes no value a `:has()` argument
-    /// reads: `invalidation::targets` does not follow a name inside a
-    /// relational or complex selector argument, so such a batch rebuilds, and `targets` drops the
-    /// marks for a name any `:has()` argument reads (`has_reads`); a batch
-    /// that inserts or removes nodes or changes element states rebuilds; a
-    /// batch that edits texts
-    /// drops them (`forget_has`). Blink likewise re-marks only for the
+    /// the probe (`keep_has`) or of the first probe that needs them. A batch
+    /// that changes a name any `:has()` argument reads (`has_reads`) marks
+    /// them again for each of its probes (`remark`), and `invalidation::targets`
+    /// takes the anchors such a name may reach; a batch that inserts or
+    /// removes nodes or changes element states rebuilds; a batch that edits
+    /// texts drops them (`forget_has`). Blink likewise re-marks only for the
     /// features of `:has()` arguments (`StyleEngine::InvalidateAncestorsOrSiblingsAffectedByHas`,
     /// `style_engine.cc:1676`);
     /// here the marks of the build hold until such a feature changes.
@@ -111,26 +120,27 @@ impl RestyleCache {
         Ok(self.probe.clone())
     }
 
-    /// Элементы `mutated` и те под ними, чей стиль может изменить пакет имён
-    /// `changed` (`invalidation::targets`); `None` — любой элемент.
+    /// The elements `mutated` and those whose style the batch of names
+    /// `changed` may change (`invalidation::targets`): always a set, up to
+    /// the whole document.
     pub fn targets(
         &mut self,
         probe: &RestyleProbe,
         changed: &Changed,
         mutated: &[Handle],
-    ) -> Option<Vec<Handle>> {
-        // A name read inside a `:has()` argument changes its marks. Such a
-        // batch rebuilds anyway (`features` does not follow relational selector
-        // arguments); the marks go first so no probe reads them stale.
-        if super::invalidation::has_reads(&probe.has_args, changed) {
-            self.has = None;
-        }
+    ) -> Vec<Handle> {
+        // A name read inside a `:has()` argument changes its marks: each
+        // probe of this batch (before and after it) marks them again.
+        let reads = |a: &HasArg| super::invalidation::has_reads(std::slice::from_ref(a), changed);
+        self.remark = (0..probe.has_args.len())
+            .filter(|&i| reads(&probe.has_args[i]))
+            .collect();
         let same =
             |(c, _): &&(Changed, _)| c.classes == changed.classes && c.attrs == changed.attrs;
         let features = match self.sets.iter().find(same) {
             Some((_, features)) => features.clone(),
             None => {
-                let features = features(probe.rules(), changed).map(Rc::new);
+                let features = Rc::new(features(probe.rules(), changed));
                 if self.sets.len() == SETS {
                     self.sets.clear();
                 }
@@ -142,7 +152,15 @@ impl RestyleCache {
                 features
             }
         };
-        features?.targets(mutated)
+        // A parent's census of its children (`Chains`) answers sibling
+        // compounds only: a batch no rule reads beside its elements keeps
+        // every context, and each probe enters its targets alone instead of
+        // cascading their ancestor chains again.
+        self.mutated = match features.reads_siblings() {
+            true => mutated.to_vec(),
+            false => Vec::new(),
+        };
+        features.targets(mutated)
     }
 
     /// Вход в каждый элемент `targets` при текущем состоянии исходного DOM.
@@ -155,11 +173,9 @@ impl RestyleCache {
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
         let mut tree = TreeIndex::new(values.clone(), input.xhtml);
         let document = &input.dom.document;
+        self.chains.forget_parents(&self.mutated);
         if !probe.has_args.is_empty() {
-            match self.has.take() {
-                Some(has) => tree.put_has(has),
-                None => mark_has(document, &probe.has_args, &mut vec![], &mut tree)?,
-            }
+            self.marks(document, &probe.has_args, &mut tree)?;
         }
         let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;
@@ -194,9 +210,9 @@ impl RestyleCache {
 
     /// The entries of `targets` at the current state of the source DOM, as
     /// `styles` gives them: the kept probes if every target has one, else a
-    /// probe of them all. A list item probes again: the entries of one probe
-    /// count list items in the order of its targets (`walk::probe`), so its
-    /// number compares only between probes of the same targets.
+    /// probe of them all. The list item number of an entry counts only the
+    /// entries of its probe (`walk::probe`): a restyle compares whether the
+    /// element is a list item, not the number.
     pub fn kept_styles(
         &mut self,
         probe: &RestyleProbe,
@@ -204,10 +220,10 @@ impl RestyleCache {
         values: &Rc<DocumentValues>,
         targets: &[Handle],
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
-        let kept = |t: &Handle| match self.last.get(&(Rc::as_ptr(t) as usize)) {
-            Some((_, Some(p))) if p.rest.list_item.is_some() => None,
-            Some((_, p)) => Some(p.clone()),
-            None => None,
+        let kept = |t: &Handle| {
+            self.last
+                .get(&(Rc::as_ptr(t) as usize))
+                .map(|(_, p)| p.clone())
         };
         match targets.iter().map(kept).collect::<Option<Vec<_>>>() {
             Some(kept) => Ok(kept),

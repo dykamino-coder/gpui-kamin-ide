@@ -21,14 +21,8 @@ const CODES: [Option<&str>; super::PATH] = {
     codes[9] = Some("paint_path.refused_shape");
     codes[10] = Some("paint_path.refused_rebuilt");
     codes[11] = Some("paint_path.refused_plan_state");
-    codes[12] = Some("paint_path.refused_plan_element");
-    codes[13] = Some("paint_path.refused_plan_text");
-    codes[14] = Some("paint_path.refused_restyle_probe");
-    codes[15] = Some("paint_path.refused_restyle_attr");
-    codes[16] = Some("paint_path.refused_restyle_rest");
-    codes[17] = Some("paint_path.refused_restyle_layout");
-    codes[18] = Some("paint_path.refused_restyle_root");
-    codes[19] = Some("paint_path.refused_plan_paths");
+    codes[12] = Some("paint_path.refused_plan_text");
+    codes[13] = Some("paint_path.refused_damage");
     codes
 };
 
