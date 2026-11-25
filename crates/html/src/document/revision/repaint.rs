@@ -151,8 +151,9 @@ impl Document {
         if restyles.is_empty() && attrs_to_write.is_empty() {
             return Some(Plan::Clean(None));
         }
-        let Some(style_paths) = style_paths(&self.nodes, boxes, &restyles) else {
-            return roots::fall_back_rebox("a box keeps copies of its paint values");
+        let style_paths = match style_paths(&self.nodes, boxes, restyles) {
+            Ok(paths) => paths,
+            Err(why) => return roots::fall_back_rebox(why),
         };
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, &attrs_to_write, &attrs) {

@@ -32,12 +32,12 @@ pub(super) fn style_paths(
     nodes: &[Node],
     boxes: &Boxes,
     restyles: &HashMap<u64, Restyle>,
-) -> Option<Vec<(Path, u64)>> {
+) -> Result<Vec<(Path, u64)>, &'static str> {
     let mut paths = Vec::new();
     for (&id, r) in restyles {
         let before = paths.len();
         for path in boxes.paths(id) {
-            let e = at(nodes, &path)?;
+            let e = at(nodes, &path).ok_or("a box path")?;
             if e.tag != r.tag {
                 continue;
             }
@@ -46,16 +46,17 @@ pub(super) fn style_paths(
                 crate::style::computed::Damage::Paint => cascaded.same_paint_groups(&r.old),
                 _ => cascaded.with_layout_of(&r.old, &r.new).is_some(),
             };
-            if !(fits && takes(e, r)) {
-                return None;
+            if !fits {
+                return Err("a box holds other values of the changed groups");
             }
+            takes(e, r)?;
             paths.push((path, id));
         }
         if paths.len() == before {
-            return None;
+            return Err("an element without a box of its tag");
         }
     }
-    Some(paths)
+    Ok(paths)
 }
 
 /// The box `e` and its subtree take the restyle `r` of its element in place.
@@ -67,7 +68,7 @@ pub(super) fn style_paths(
 /// or such copies; under a new background alone only a style that inherits
 /// reset values explicitly reads it (css-cascade-5 §7.3.1), and no such style
 /// is a layer or keeps copies.
-fn takes(e: &Element, r: &Restyle) -> bool {
+fn takes(e: &Element, r: &Restyle) -> Result<(), &'static str> {
     let (inherited, background, borders) = (r.inherited(), r.background(), r.borders());
     // A layout restyle drops the box's own used copy (`cascaded_mut`): the
     // next layout makes it again from the new values.
@@ -76,37 +77,63 @@ fn takes(e: &Element, r: &Restyle) -> bool {
         true => b.style.holds_copies_but_used(),
         false => b.style.holds_inherited_copies(),
     };
-    if e.anim.is_some() || own(e) {
-        return false;
+    if e.anim.is_some() {
+        return Err("a box runs animation frames");
+    }
+    if own(e) {
+        return Err(match e.style.holds_copies_but_used() {
+            true => "a box keeps copies of its computed values",
+            false => "a box keeps layout's used copy",
+        });
     }
     if (background || borders) && e.style.holds_decoration() {
-        return false;
+        return Err("a box keeps decoration inputs");
     }
     // The sides of an inline box and the collapsed borders of a table are
     // layout results with their colours.
     if borders && (e.inline || TABLE_PARTS.contains(&e.tag.as_str())) {
-        return false;
+        return Err("an inline box or a table part with new border colours");
     }
-    elements(
+    let why = std::cell::Cell::new("");
+    let follows = elements(
         std::slice::from_ref(&Node::Element(e.clone())),
         |b, path| {
-            let copies = b.anim.is_some()
-                || if path.len() == 1 {
-                    own(b)
-                } else {
-                    b.style.holds_inherited_copies()
-                };
-            if inherited {
+            let copies = if b.anim.is_some() {
+                Some("a descendant runs animation frames")
+            } else if path.len() == 1 {
+                own(b).then_some("a box keeps copies of its computed values")
+            } else if b.style.holds_copies_but_used() {
+                Some("a descendant keeps copies of its computed values")
+            } else {
+                b.style
+                    .holds_inherited_copies()
+                    .then_some("a descendant keeps layout's used copy")
+            };
+            let fails = if inherited {
                 // A hover layer is a cascaded stage (the element's declarations
                 // with its `:hover` rules over them, `walk::pseudo_styles`): it
                 // keeps no inherited value and follows a new one like the box does.
-                !copies && [&b.first_letter, &b.first_line].iter().all(|l| l.is_none())
+                copies.or_else(|| {
+                    [&b.first_letter, &b.first_line]
+                        .iter()
+                        .any(|l| l.is_some())
+                        .then_some("a descendant has a first-letter/-line layer")
+                })
+            } else if copies.is_some() && b.style.inherits_reset() {
+                copies
             } else {
-                !(copies && b.style.inherits_reset())
-                    && layers(b).flatten().all(|l| !l.inherits_reset())
+                layers(b)
+                    .flatten()
+                    .any(|l| l.inherits_reset())
+                    .then_some("a layer of a descendant inherits a reset value")
+            };
+            if let Some(reason) = fails {
+                why.set(reason);
             }
+            fails.is_none()
         },
-    )
+    );
+    follows.then_some(()).ok_or(why.get())
 }
 
 /// The tags of the HTML table parts (HTML §15.3.8 gives them table displays).
