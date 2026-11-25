@@ -82,9 +82,22 @@ pub(crate) fn len_to_gpui(l: Len, vcx: ValueCx<'_>) -> gpui::DefiniteLength {
 /// начертание шрифта. Отступы и размеры в наведении менять нельзя — это
 /// сдвинуло бы раскладку под курсором.
 pub fn apply_hover(d: Div, hover: &Computed, own: &BoxStyle) -> Div {
-    let background = own.background_paint.paints();
-    let h = hover.clone();
+    use gpui::Refineable;
+    let refinement = hover_refinement(hover, own);
     d.hover(move |mut s| {
+        s.refine(&refinement);
+        s
+    })
+}
+
+/// What the hover layer `hover` of a box styled `own` changes in its paint
+/// (`apply_hover`): a box recorded again while it shows its hover paints its
+/// style refined by this (`document::retained::box_repaint`).
+pub(crate) fn hover_refinement(hover: &Computed, own: &BoxStyle) -> gpui::StyleRefinement {
+    let background = own.background_paint.paints();
+    let h = hover;
+    let mut s = gpui::StyleRefinement::default();
+    {
         if background && let Some(bg) = h.reset_background.background {
             s.background = Some(gpui::Fill::Color(bg.to_hsla().into()));
         }
@@ -106,8 +119,8 @@ pub fn apply_hover(d: Div, hover: &Computed, own: &BoxStyle) -> Div {
         if h.inh.font.italic == Some(true) {
             s.text.font_style = Some(gpui::FontStyle::Italic);
         }
-        s
-    })
+    }
+    s
 }
 
 /// Заливка градиентом: радиальный — своим тегом (патч GPUI), линейный —

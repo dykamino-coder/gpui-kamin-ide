@@ -33,7 +33,9 @@ fn refused(result: Result<BuildReport, ApplyError>, kind: BudgetKind) {
     );
 }
 
-fn repeated(edited: &str) {
+/// Twenty revisions between `PAGE` and `edited`; `document` — each builds
+/// the document (otherwise each rebuilds the boxes of one element in place).
+fn repeated(edited: &str, document: bool) {
     let limits = limits();
     let governor = ResourceGovernor::default();
     let mut doc = Document::builder(PAGE, "")
@@ -48,7 +50,11 @@ fn repeated(edited: &str) {
         let values = doc.state.values.clone();
         let result = doc.apply(&records, "");
         assert!(result.is_ok(), "revision {index}: {result:?}");
-        assert!(!Rc::ptr_eq(&values, &doc.state.values), "full rebuild");
+        assert_eq!(
+            !Rc::ptr_eq(&values, &doc.state.values),
+            document,
+            "full rebuild"
+        );
         assert!(Rc::ptr_eq(&dom, &doc.source_dom()), "same source DOM");
         let fresh = Document::builder(html, "")
             .limits(limits.clone())
@@ -58,26 +64,32 @@ fn repeated(edited: &str) {
         assert_eq!(tree(&doc), tree(&fresh));
         assert_eq!(state(&doc), state(&fresh));
     }
-    assert_eq!(
-        doc.revision_budget().used(BudgetKind::CssDeclarations),
-        css_cost()
-    );
+    // A build admits the sheets again in its own budget; a revision in place
+    // keeps the admitted sheets and admits none.
+    let used = doc.revision_budget().used(BudgetKind::CssDeclarations);
+    assert_eq!(used, if document { css_cost() } else { 0 });
 }
 
 #[test]
 fn repeated_class_rebuilds_use_the_candidate_css_budget() {
-    repeated(&PAGE.replace("<p dir=auto>", "<p dir=auto class=on>"));
+    repeated(
+        &PAGE.replace("<p dir=auto>", "<p dir=auto class=on>"),
+        false,
+    );
 }
 
 #[test]
 fn repeated_text_rebuilds_use_the_candidate_css_budget() {
     // dir=auto читает исходный текст при каскаде, поэтому это полная сборка.
-    repeated(&PAGE.replace(">a<", ">b<"));
+    repeated(&PAGE.replace(">a<", ">b<"), true);
 }
 
 #[test]
 fn repeated_attribute_rebuilds_use_the_candidate_css_budget() {
-    repeated(&PAGE.replace("<p dir=auto>", "<p dir=auto data-n=1>"));
+    repeated(
+        &PAGE.replace("<p dir=auto>", "<p dir=auto data-n=1>"),
+        false,
+    );
 }
 
 #[test]

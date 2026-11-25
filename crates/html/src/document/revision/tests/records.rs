@@ -105,12 +105,15 @@ type Records = fn(&Document) -> Vec<Mutation>;
 
 #[test]
 fn records_the_cascade_can_see_rebuild_the_same_dom() {
-    let cases: [(Records, String); 4] = [
-        // Класс, упомянутый листом документа.
-        (
-            |d| vec![attr(&text_parent(d, "d"), "class", Some("on"))],
-            PAGE.replace("<p>d", "<p class=\"on\">d"),
-        ),
+    // A class the document's sheet mentions, whose rule changes a layout
+    // value: the boxes of its element are rebuilt in place (`repaint::rebox`).
+    let class: Records = |d| vec![attr(&text_parent(d, "d"), "class", Some("on"))];
+    assert!(applied(
+        PAGE,
+        class,
+        &PAGE.replace("<p>d", "<p class=\"on\">d")
+    ));
+    let cases: [(Records, String); 3] = [
         // Атрибут, который каскад читает сам.
         (
             |d| vec![attr(&find_x(d), "id", Some("y"))],

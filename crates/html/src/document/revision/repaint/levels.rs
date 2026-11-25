@@ -24,7 +24,6 @@ use std::rc::Rc;
 pub(super) struct Deeper {
     /// The source element; the document node for a document-wide damage.
     pub(super) handle: Handle,
-    pub(super) damage: Damage,
     pub(super) why: &'static str,
 }
 
@@ -38,19 +37,15 @@ pub(super) struct Levels {
 }
 
 impl Levels {
-    fn deeper(&mut self, handle: &Handle, damage: Damage, why: &'static str) {
+    fn deeper(&mut self, handle: &Handle, why: &'static str) {
         let handle = handle.clone();
-        self.deeper.push(Deeper {
-            handle,
-            damage,
-            why,
-        });
+        self.deeper.push(Deeper { handle, why });
     }
 
     /// The whole document restyles: its rules or its cascades did not resolve.
     pub(super) fn document(document: &Handle, why: &'static str) -> Self {
         let mut levels = Self::default();
-        levels.deeper(document, Damage::Rebox, why);
+        levels.deeper(document, why);
         levels
     }
 }
@@ -83,24 +78,32 @@ impl Document {
         let styles = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
         let reads = probe.reads_attr().with_styles(styles);
         let reads = reads.reads_any_of(changed.attrs.iter().map(String::as_str));
+        let mut levels = Levels::default();
         if reads {
             // `attr()` in generated content (`::before`, `::after`, markers):
-            // the pseudo-element boxes of a mutated element the build entered,
-            // which this probe does not restyle, take the new value only by a
-            // rebuild of them (`attr`), and box damage rebuilds the
-            // document at the one fallback point (`roots::fall_back`). Its
-            // entry before the batch decides that: the batch cascades no
-            // other target, so a batch that falls back cascades only once,
-            // in the build.
-            let Ok(entered) = cache.kept_styles(&probe, input, values, &mutated) else {
+            // the pseudo-element boxes of a mutated element, which the probe
+            // does not restyle, are built with its own box and no children
+            // (`walk::shallow`) before and after the batch; boxes that differ
+            // take the new value by a rebuild of its boxes (`attr`, `rebox`).
+            // Its own style and every other target are probed as any.
+            let traversal = &values.traversal;
+            traversal.begin_rebuild();
+            let old = cache.shallows(&probe, input, values, &mutated, &mutated);
+            batch.write();
+            let new = cache.shallows(&probe, input, values, &mutated, &mutated);
+            batch.undo();
+            traversal.abandon_rebuild();
+            let (Ok(old), Ok(new)) = (old, new) else {
                 return Levels::document(document, "budget");
             };
-            if let Some((m, _)) = mutated.iter().zip(&entered).find(|(_, e)| e.is_some()) {
-                let mut levels = Levels::default();
-                levels.deeper(m, Damage::Rebox, "attr");
-                return levels;
-            }
-            for m in &mutated {
+            for (m, (old, new)) in mutated.iter().zip(old.iter().zip(&new)) {
+                let same = match (old, new) {
+                    (Some(a), Some(b)) => super::rebox::same_generated(a, b),
+                    (a, b) => a.is_none() && b.is_none(),
+                };
+                if !same {
+                    levels.deeper(m, "attr");
+                }
                 if !targets.iter().any(|t| Rc::ptr_eq(t, m)) {
                     targets.push(m.clone());
                 }
@@ -134,7 +137,6 @@ impl Document {
             },
             None => None,
         };
-        let mut levels = Levels::default();
         let entries = targets
             .iter()
             .zip(before.into_iter().zip(after))
@@ -148,12 +150,12 @@ impl Document {
                 (Some(old), Some(new)) => (old, new),
                 (None, None) => continue,
                 _ => {
-                    levels.deeper(target, Damage::Rebox, "box");
+                    levels.deeper(target, "box");
                     continue;
                 }
             };
             if let Some(why) = rest_change(&old.rest, &new.rest) {
-                levels.deeper(target, Damage::Rebox, why);
+                levels.deeper(target, why);
                 continue;
             }
             // The hover layer of the box is a cascaded stage of its own
@@ -165,7 +167,7 @@ impl Document {
                     Some(b.clone())
                 }
                 _ => {
-                    levels.deeper(target, Damage::Rebox, "hover");
+                    levels.deeper(target, "hover");
                     continue;
                 }
             };
@@ -175,11 +177,11 @@ impl Document {
             // A restyled unwrapped wrapper: its values reach every top-level
             // box and the text of the page.
             if unwrapped.as_ref().is_some_and(|u| u.folds(i)) {
-                levels.deeper(target, Damage::Rebox, "unwrapped");
+                levels.deeper(target, "unwrapped");
                 continue;
             }
             let Some(id) = index.id(target) else {
-                levels.deeper(target, Damage::Rebox, "unaddressed");
+                levels.deeper(target, "unaddressed");
                 continue;
             };
             let (old, new) = match &parent {
@@ -194,7 +196,7 @@ impl Document {
                 (Damage::None, _) => (Damage::Paint, "hover"),
                 (Damage::Rebox, why) => {
                     super::why_value::note(why, &old, &new);
-                    levels.deeper(target, Damage::Rebox, why);
+                    levels.deeper(target, why);
                     continue;
                 }
                 (Damage::Layout, why) => {
@@ -216,7 +218,7 @@ impl Document {
             // derives it, not the cascade of the element.
             let canvas = restyle.background() && restyle.tag == "body";
             if restyle.tag == "html" || canvas {
-                levels.deeper(target, Damage::Rebox, "canvas");
+                levels.deeper(target, "canvas");
                 continue;
             }
             levels.restyles.insert(id, restyle);
