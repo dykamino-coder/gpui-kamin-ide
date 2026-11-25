@@ -137,16 +137,7 @@ impl Scene {
     /// layer of a text line) every command takes the layer's order, which the
     /// run keeps (`BoxEnv::layer`).
     pub(crate) fn open_box(&mut self, owner: u32, area: Bounds<ScaledPixels>, mut env: BoxEnv) -> bool {
-        // A group's scene (`in_group`) is composited into the layer as one
-        // result: a run of its commands is no run of the layer.
-        // A paint record that keeps box runs (`super::placed`) is no group.
-        if self.book.open_box.is_some()
-            || (self.in_group && self.book.record_runs.is_none() && self.book.group_runs.is_none())
-            || self.layer_stack.len() > 1
-            || self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER)
-            || !self.depth.plane_stack.is_empty()
-            || !self.depth.contexts.is_empty()
-        {
+        if self.run_refusal().is_some() {
             return false;
         }
         env.layer = self.layer_stack.last().copied();
@@ -158,6 +149,24 @@ impl Scene {
             split: false,
         });
         true
+    }
+
+    /// Why a box's own paint opened now would keep no run (`open_box`), for
+    /// the DevTools `why` journal; `None` when it would.
+    pub(crate) fn run_refusal(&self) -> Option<&'static str> {
+        Some(match () {
+            _ if self.book.open_box.is_some() => "inside the run of another box",
+            // A group's scene (`in_group`) is composited into the layer as one
+            // result: a run of its commands is no run of the layer.
+            // A paint record that keeps box runs (`super::placed`) is no group.
+            _ if self.in_group && self.book.record_runs.is_none() && self.book.group_runs.is_none() => {
+                "inside a composition group"
+            }
+            _ if self.layer_stack.len() > 1 => "inside a nested stacking layer",
+            _ if self.layer_stack.last() == Some(&super::super::BOTTOM_LAYER) => "inside the bottom layer",
+            _ if !self.depth.plane_stack.is_empty() || !self.depth.contexts.is_empty() => "inside a 3D context",
+            _ => return None,
+        })
     }
 
     /// Whether a box's own paint is open.

@@ -39,16 +39,18 @@ pub const CODES: &[&str] = &[
     "not_admitted",
     "uncacheable",
     // Causes beyond `frame_miss.*` and `paint_path.refused_*` (`codes` below).
+    "damage.value",
     "frame_unpublished",
     "layout_retry.container_size",
     "layout_retry.flow_refused",
     "layout_retry.replay_refused",
-    "no_layer.spliced",
     "no_layer.painted_environment",
     "no_layer.painted_ink",
     "no_layer.painted_nested",
     "no_layer.painted_other",
     "no_layer.dropped",
+    "offscreen.unknown_area",
+    "offscreen.on_screen",
     "no_layer.unrecorded",
     "no_layer.frame_unrecorded",
     "not_own",
@@ -127,12 +129,23 @@ pub fn to_json(entry: &Entry) -> Value {
     })
 }
 
-/// Serializes the tests of this crate that subscribe: the journal is process-wide.
+/// A test's reader of the notes made on its thread.
 #[cfg(test)]
-pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription) {
+pub(crate) struct TestReader {
+    _journal: kamin_style::journal::ThreadSubscription,
+    _frames: trace::Trace,
+}
+
+/// Serializes the tests of this crate that subscribe, each reading the notes
+/// of its own thread: tests running beside it note into the same journal.
+#[cfg(test)]
+pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, TestReader) {
     static ONE: trace::Shared<()> = trace::Shared::new(());
     let guard = ONE.lock();
-    let sub = subscribe();
+    let sub = TestReader {
+        _journal: kamin_style::journal::subscribe_thread(),
+        _frames: trace::Trace::start(),
+    };
     take();
     (guard, sub)
 }

@@ -44,7 +44,17 @@ impl Refusal {
 
 /// The box builder supplies the decorations it actually emitted. When planning an
 /// edit, the same description checks whether the new output still fits the record.
-pub(super) fn painter(e: &Element, c: &BoxStyle, decorated: impl FnOnce() -> bool) -> Own {
+/// `boxed`: the element is built as a box of its own (a `Div`), not as runs of a
+/// paragraph: an inline element made a flex or grid item (blockified,
+/// css-display-3 §2.7), an atomic inline. Its paint is then a box's, whatever its
+/// `display` says, and a transform moves the box, not the pieces of a band.
+pub(super) fn painter(
+    e: &Element,
+    c: &BoxStyle,
+    boxed: bool,
+    decorated: impl FnOnce() -> bool,
+) -> Own {
+    let band = !boxed && e.inline && c.reset_box_layout.display.is_none();
     if matches!(e.tag.as_str(), "html" | "body") {
         return Own::Not(Refusal::RootCanvas);
     }
@@ -57,7 +67,7 @@ pub(super) fn painter(e: &Element, c: &BoxStyle, decorated: impl FnOnce() -> boo
         Some(Refusal::Clone)
     } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
         Some(Refusal::Filter)
-    } else if e.inline
+    } else if band
         && (c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor)
     {
         // Band pieces on a transformed line keep refusing.
@@ -68,7 +78,7 @@ pub(super) fn painter(e: &Element, c: &BoxStyle, decorated: impl FnOnce() -> boo
         // a 3D context keeps no run, and the layer refuses it.
         None
     };
-    if e.inline && c.reset_box_layout.display.is_none() {
+    if band {
         return if effect.is_some() {
             Own::Not(Refusal::BandEffect)
         } else {

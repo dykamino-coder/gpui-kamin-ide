@@ -81,7 +81,7 @@ fn same_but_color_and(
         && *block_tag == o.block_tag
         && *plain_block_box == o.plain_block_box
         && *reset_text_box == o.reset_text_box
-        && (*reset_cascade == o.reset_cascade
+        && (level::same_cascade(reset_cascade, &o.reset_cascade)
             || borders && same_cascade_but_border_colors(reset_cascade, &o.reset_cascade))
         && *reset_box_layout == o.reset_box_layout
         && *reset_flex == o.reset_flex
@@ -157,7 +157,7 @@ fn same_layout_ui(a: &InheritedUi, b: &InheritedUi) -> bool {
 fn same_cascade_but_border_colors(a: &ResetCascade, b: &ResetCascade) -> bool {
     let mut a = a.clone();
     a.side_order.border[2] = b.side_order.border[2];
-    a == *b
+    level::same_cascade(&a, b)
 }
 
 fn same_but_border_colors(a: &ResetBorder, b: &ResetBorder) -> bool {
@@ -232,6 +232,8 @@ fn generated(image: &Option<super::ImageSource>) -> bool {
     !image.as_ref().is_some_and(super::ImageSource::loads_url)
 }
 
+mod level;
 mod svg;
+pub use level::Damage;
 #[cfg(test)]
 mod tests;

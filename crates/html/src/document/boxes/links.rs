@@ -50,6 +50,27 @@ impl BoxTree {
         self.get(id)?.layout_slot.as_deref()
     }
 
+    /// Box `id` and its ancestors as DevTools `why` names them: the source,
+    /// whether the box holds inline content, a layout slot and fragments.
+    pub(crate) fn describe_chain(&self, id: BoxId, depth: usize) -> String {
+        std::iter::once(id)
+            .chain(self.ancestors(id))
+            .take(depth)
+            .filter_map(|b| {
+                let r = self.get(b)?;
+                let slot = r.layout_slot.as_deref();
+                Some(format!(
+                    "{b:?}{{{:?} inline={} slot={} fragments={}}}",
+                    r.origin,
+                    r.inline.is_some(),
+                    slot.is_some(),
+                    slot.is_some_and(|s| s.inline.is_some()),
+                ))
+            })
+            .collect::<Vec<_>>()
+            .join(" < ")
+    }
+
     /// The layout result slot (created on first access). It lives as long
     /// as the box; an epoch change does not reset it: layout decides its validity.
     pub(crate) fn slot_mut(&mut self, id: BoxId) -> Option<&mut LayoutSlot> {

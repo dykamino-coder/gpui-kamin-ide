@@ -173,19 +173,18 @@ fn a_band_on_a_justified_box_builds_its_frame(cx: &mut TestAppContext) {
     assert_eq!(edited, fresh, "the built frame differs from a fresh one");
 }
 
-/// A bordered `span` that is a flex item: the layer holds its own box but not
-/// its band, whose pieces edge spacers cut. The revision refuses before any
-/// box is recorded again (`revision::layer_write`), and the frame is built.
+/// A bordered `span` that is a flex item is blockified (css-display-3 §2.7):
+/// it is built as a box of its own, not as pieces of a band, and the layer
+/// takes its new fill as that box's (`revision::layer_write`), the frame kept.
 #[gpui::test]
-fn a_cut_band_is_refused_before_any_record(cx: &mut TestAppContext) {
+fn a_flex_item_span_takes_its_fill_as_a_box(cx: &mut TestAppContext) {
     let css = "div{display:flex} #s{border:1px solid #acd;padding:1px} #s.b{background:#eee}";
     let body = "<div><span id=s class='CLASS'>side word</span></div>";
-    let (kept, edited, fresh, refused, queued) = edit_refused(cx, css, body, "b");
+    let (kept, edited, fresh, refused, _) = edit_refused(cx, css, body, "b");
     assert!(
-        !kept,
-        "the cut band is not recorded again: the frame is built"
+        kept,
+        "the blockified span is a box the layer holds: {refused}"
     );
-    assert_eq!(queued, 0, "a box was queued to record again: {refused}");
     assert_eq!(
         edited, fresh,
         "the frame differs from a fresh one: {refused}"

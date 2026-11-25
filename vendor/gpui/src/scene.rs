@@ -6,6 +6,7 @@ pub use analytic_gradient::{AnalyticGradient, GradientQuad, GradientDescriptor, 
 mod layer;
 pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counters};
 pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
+pub(crate) use layer::no_run;
 mod damage;
 pub(crate) mod image_resources;
 mod record; mod group_replay;
