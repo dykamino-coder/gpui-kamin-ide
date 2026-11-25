@@ -149,7 +149,14 @@ impl Window {
                                 "no paint, and it moves apart from its parent"
                             }
                             _ if node.torn => "torn",
-                            _ if node.paint.is_some() && node.painted_in != Some(space) => "painted in another scene",
+                            _ if node.paint.is_some() && node.painted_in != Some(space) => {
+                                // A composition group of the record, or a record or layer scene.
+                                let groups = source.groups.get(paint.groups()).unwrap_or_default();
+                                return Some(match groups.iter().position(|group| Some(group.scene.scroll.space) == node.painted_in) {
+                                    Some(at) => format!("scroll node {:?}: painted in the scene of group {at} of {}", node.id, groups.len()),
+                                    None => format!("scroll node {:?}: painted in another scene (a record's or a layer's)", node.id),
+                                });
+                            }
                             _ => return None,
                         };
                         Some(format!("scroll node {:?}: {why}", node.id))
@@ -181,7 +188,14 @@ impl Window {
                         let scene = &group.scene;
                         let all = 0..scene.paint_operations.len();
                         let why = match label {
-                            None if !scene.scroll.marks.is_empty() => "its label is under no node, its commands are".into(),
+                            None if !scene.scroll.marks.is_empty() => {
+                                // Where the group is and whose commands it holds, so the
+                                // journal ties it to the nodes listed for the frame.
+                                let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
+                                nodes.dedup();
+                                nodes.truncate(4);
+                                format!("its label is under no node, its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
+                            }
                             None => return None,
                             Some(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
                                 Ok(()) => return None,
