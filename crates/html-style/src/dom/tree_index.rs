@@ -54,6 +54,13 @@ pub struct HasMarks {
     leases: crate::budget::admission::Buffer<Option<crate::budget::LiveReservation>>,
 }
 
+impl HasMarks {
+    /// The marks by node.
+    pub fn marks(&self) -> &HashMap<HandleKey, Vec<u64>> {
+        &self.marks
+    }
+}
+
 /// Everything the style walk reads about a node besides the node itself.
 pub struct TreeIndex {
     pub(crate) style_sharing: crate::style::cascade::sharing::StyleSharing,

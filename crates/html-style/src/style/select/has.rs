@@ -177,9 +177,10 @@ pub fn parse_has_arg(arg: &str) -> Option<HasArg> {
 }
 
 /// Один индекс области используется всеми якорями; ledger оплачивает реальные кандидаты.
-pub fn mark_has(
+/// `args` — the arguments to mark, all of a sheet's or some (`dom::restyle_probe`).
+pub fn mark_has<A: std::borrow::Borrow<HasArg>>(
     handle: &Handle,
-    args: &[HasArg],
+    args: &[A],
     path: &mut Vec<Ancestor>,
     tree: &mut TreeIndex,
 ) -> Result<(), Error> {
@@ -190,6 +191,7 @@ pub fn mark_has(
     let admission = tree.admission();
     let mut found = marks::Marks::new(scope.records.len(), &admission)?;
     for arg in args {
+        let arg = arg.borrow();
         found.argument();
         for (sibling, sel) in &arg.parts {
             found.alternative()?;

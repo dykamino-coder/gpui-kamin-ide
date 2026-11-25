@@ -37,6 +37,58 @@ impl Computed {
         out
     }
 
+    /// This style (the cascaded stage of a box) with each group that differs
+    /// between `old` and `new` taken from `new`: what a recascade gives a box
+    /// whose damage is `Damage::Layout`. `None` when such a group of this
+    /// style is not that of `old` (the build adjusted it: the box does not
+    /// take the change in place). Only the groups a layout damage may change
+    /// are compared (`damage::level`); the others stay this style's.
+    pub fn with_layout_of(&self, old: &Computed, new: &Computed) -> Option<Computed> {
+        let mut out = self.clone();
+        macro_rules! take {
+            ($($group:ident).+) => {
+                if old.$($group).+ != new.$($group).+ {
+                    if self.$($group).+ != old.$($group).+ {
+                        return None;
+                    }
+                    out.$($group).+ = new.$($group).+.clone();
+                }
+            };
+        }
+        take!(reset_text_box);
+        take!(reset_box_layout);
+        take!(reset_flex);
+        take!(reset_border);
+        take!(reset_grid);
+        take!(reset_background);
+        take!(reset_svg_math);
+        take!(reset_cascade.side_order);
+        let (inh, new_inh) = (&old.inh.0, &new.inh.0);
+        let font = inh.font != new_inh.font;
+        let flow = inh.text_flow != new_inh.text_flow;
+        let ui = inh.ui != new_inh.ui;
+        if font || flow || ui {
+            let own = &self.inh.0;
+            if font && own.font != inh.font
+                || flow && own.text_flow != inh.text_flow
+                || ui && own.ui != inh.ui
+            {
+                return None;
+            }
+            let groups = std::rc::Rc::make_mut(&mut out.inh.0);
+            if font {
+                groups.font = new_inh.font.clone();
+            }
+            if flow {
+                groups.text_flow = new_inh.text_flow.clone();
+            }
+            if ui {
+                groups.ui = new_inh.ui.clone();
+            }
+        }
+        Some(out)
+    }
+
     /// The paint-only groups hold the same values in both styles.
     pub fn same_paint_groups(&self, other: &Computed) -> bool {
         self.inh.ui == other.inh.ui
