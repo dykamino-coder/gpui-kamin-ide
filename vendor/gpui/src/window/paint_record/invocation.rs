@@ -85,10 +85,13 @@ impl Window {
         paint_scope::Identity::capture(self).check_pass(self)?;
         let mut scene = scene;
         scene.end_record_runs();
-        if !self.replay_placed_carrying(&scene, scaled, Some(clip)) {
-            // A record with groups: their runs follow the copy (`placed_groups`).
-            self.place_record_copy(&scene, scaled, clip);
-        }
+        // A copy under a scroll node is marked under it (`with_copies_marked`).
+        self.with_copies_marked(|window| {
+            if !window.replay_placed_carrying(&scene, scaled, Some(clip)) {
+                // A record with groups: their runs follow the copy (`placed_groups`).
+                window.place_record_copy(&scene, scaled, clip);
+            }
+        });
         Ok(invocation)
     }
 

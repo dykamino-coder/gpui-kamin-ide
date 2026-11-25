@@ -661,8 +661,11 @@ impl Scene {
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
         let source = ReplaySource::Graft(graft, false);
-        if !self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |_| true) {
-            for operation in &scene.paint_operations {
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        if !self.replay_shifted(operations, source, &scene.book.images, |_| true) {
+            for operation in operations {
                 self.replay_image_operation(operation.clone(), &scene.book.images);
             }
         }
@@ -726,7 +729,10 @@ impl Scene {
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
         let source = ReplaySource::Graft(graft, false);
-        self.replay_shifted(&scene.paint_operations, source, &scene.book.images, |operation| match operation {
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        self.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
