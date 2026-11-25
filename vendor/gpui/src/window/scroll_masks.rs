@@ -26,7 +26,7 @@ impl Frame {
     /// `mark_copied`): its id and real clip chain in scene pixels. A
     /// primitive the scene could not keep taints the node.
     pub(crate) fn with_scene_node<R>(&mut self, scale: f32, f: impl FnOnce(&mut Scene) -> R) -> R {
-        let open = self.scroll_paint.open.last().map(|&(index, _)| index);
+        let open = self.recorded_node();
         self.scene.scroll.open = open.map(|index| {
             let node = &self.scroll_nodes[index as usize];
             (node.id, node.clip.scale(scale))
@@ -39,6 +39,17 @@ impl Frame {
             }
         }
         result
+    }
+
+    /// The innermost open paint node a command painted now is marked under:
+    /// none in a paint record while only the nodes open before it began are
+    /// (`ScrollBook::record_base`), which mark its copy where it lands.
+    fn recorded_node(&self) -> Option<u32> {
+        let open = &self.scroll_paint.open;
+        if self.scene.scroll.record_base.is_some_and(|base| open.len() <= base) {
+            return None;
+        }
+        open.last().map(|&(index, _)| index)
     }
 }
 
@@ -92,7 +103,7 @@ impl Window {
     pub(crate) fn with_copies_marked<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         let scale = self.scale_factor();
         let frame = &mut self.next_frame;
-        let open = frame.scroll_paint.open.last().map(|&(index, _)| index);
+        let open = frame.recorded_node();
         let node = open.map(|index| {
             let node = &frame.scroll_nodes[index as usize];
             (node.id, node.clip.scale(scale))

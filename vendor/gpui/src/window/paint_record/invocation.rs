@@ -117,7 +117,12 @@ impl Window {
                 window.mask_scale = None;
                 window.element_opacity = 1.0;
             }
-            window.with_isolated_scene(paint)
+            window.with_isolated_scene(|window| {
+                // Its copy is marked where it lands (`ScrollBook::record_base`).
+                let base = window.next_frame.scroll_paint.open.len();
+                window.next_frame.scene.scroll.record_base = Some(base);
+                paint(window)
+            })
         }).0
     }
 }
