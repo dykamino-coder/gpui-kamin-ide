@@ -122,6 +122,9 @@ pub(crate) struct DamageIndex {
     pub(crate) shift: Option<FrameShift>,
     /// Why a frame offered a scroll step was not drawn as a move (DevTools `why`).
     pub(crate) shift_miss: Option<&'static str>,
+    /// KaminIDE patch: frames since a moved comparison last ran over its
+    /// budget (0: it did not), carried from frame to frame.
+    pub(crate) over_budget: u32,
     /// What the comparison of this frame with the last found (DevTools `why`).
     pub(crate) shift_stats: Option<ShiftStats>,
 }
@@ -549,6 +552,10 @@ impl Scene {
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
             Some(_) if shift_budget_us() == 0 => Some("hardware_raster"),
+            // A moved comparison that ran over its budget most likely does
+            // again on the same page: it is tried again every 8th frame. In
+            // place, layers recorded again unchanged keep it cheap.
+            Some(Ok(d)) if d != (0, 0) && previous.book.index.over_budget % 8 != 0 => Some("over_budget_last"),
             Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
                 Err(why) => Some(why),
                 Ok(shift) => {
@@ -570,6 +577,12 @@ impl Scene {
                     }
                 }
             },
+        };
+        index.over_budget = match (moved, index.shift_miss) {
+            (Some(Ok(d)), Some("over_budget")) if d != (0, 0) => 1,
+            (Some(Ok(d)), Some("over_budget_last")) if d != (0, 0) => previous.book.index.over_budget + 1,
+            (Some(Ok(d)), _) if d != (0, 0) => 0,
+            _ => previous.book.index.over_budget,
         };
         trace::log_damage(self, &index, previous);
         // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой

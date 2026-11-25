@@ -42,6 +42,7 @@ pub(crate) struct FontInfo {
 mod scene_capture;
 mod canvas;
 mod frame_capture;
+mod cull;
 mod gpu_wait;
 mod group_region;
 mod group_stage;
@@ -550,6 +551,11 @@ impl DirectXRenderer {
     /// 4 ms and more, more than the strips it could leave unrastered.
     const SOFTWARE_SHIFT_BUDGET_US: u32 = 2000;
 
+    /// KaminIDE patch: on a hardware adapter, the CPU time a frame
+    /// comparison may take: a whole frame costs a few milliseconds of
+    /// encoding and GPU time there, a strip a fraction of it.
+    const HARDWARE_SHIFT_BUDGET_US: u32 = 1500;
+
     /// KaminIDE patch: the same device, pipelines and render target format
     /// as a window renderer, drawing into a texture instead of a swap chain
     /// back buffer; `present` does nothing.
@@ -570,13 +576,18 @@ impl DirectXRenderer {
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
         // KaminIDE patch: a frame comparison pays only when it costs less
-        // than the raster it saves. A hardware adapter rasters the window in
-        // less CPU than reading its primitives, so frames keep the damage of
-        // the layer bookkeeping there; WARP rasters on the CPU, so a frame is
-        // compared within a budget and drawn whole past it.
+        // than the raster it saves. Redraw rectangles draw only the
+        // instances that reach them (`cull`), so a moved step costs a copy
+        // and a strip on either adapter; the budget is what the whole raster
+        // it replaces costs on the CPU: WARP rasters there, a hardware
+        // adapter only encodes.
         let software = unsafe { devices.adapter.GetDesc1() }
             .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
-        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
+        gpui::set_shift_budget_us(if software {
+            Self::SOFTWARE_SHIFT_BUDGET_US
+        } else {
+            Self::HARDWARE_SHIFT_BUDGET_US
+        });
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
         let resources = if offscreen {
@@ -1013,6 +1024,9 @@ impl DirectXRenderer {
             self.upload_scene_buffers(scene)?;
         }
         let b = base.unwrap_or_default();
+        // KaminIDE patch: within a redraw rectangle of the frame, a batch
+        // draws only the instances that can reach it (`cull`).
+        let rect = self.blur.frame_within.filter(|_| self.group_target.is_none());
 
         let annotation = self
             .devices
@@ -1030,24 +1044,60 @@ impl DirectXRenderer {
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
             match batch {
-                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
+                PrimitiveBatch::Shadows(range) => {
+                    let items = &scene.shadows[range.clone()];
+                    let runs = cull::runs(items, rect, |s| {
+                        cull::extent(s.bounds, &s.content_mask, None, 3.0 * s.blur_radius.0.max(0.0) + 2.0)
+                    });
+                    runs.into_iter()
+                        .try_for_each(|r| self.draw_shadows(b[0] + range.start + r.start, r.len()))
+                }
                 PrimitiveBatch::Quads(range) => {
-                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
+                    let items = &scene.quads[range.clone()];
+                    let runs = cull::runs(items, rect, |q| {
+                        cull::extent(q.bounds, &q.content_mask, Some(&q.transformation), 2.0)
+                    });
+                    runs.into_iter().try_for_each(|r| {
+                        self.draw_quads(&scene.quads[range.start + r.start..range.start + r.end], b[1] + range.start + r.start)
+                    })
                 }
                 PrimitiveBatch::Paths(range) => {
                     let paths = &scene.paths[range];
                     self.draw_paths_to_intermediate(paths)?;
                     self.draw_paths_from_intermediate(paths)
                 }
-                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
+                PrimitiveBatch::Underlines(range) => {
+                    let items = &scene.underlines[range.clone()];
+                    let runs = cull::runs(items, rect, |u| cull::extent(u.bounds, &u.content_mask, None, 2.0));
+                    runs.into_iter()
+                        .try_for_each(|r| self.draw_underlines(b[2] + range.start + r.start, r.len()))
+                }
                 PrimitiveBatch::MonochromeSprites { texture_id, range } => {
-                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
+                    let items = &scene.monochrome_sprites[range.clone()];
+                    let runs = cull::runs(items, rect, |s| {
+                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
+                    });
+                    runs.into_iter().try_for_each(|r| {
+                        self.draw_monochrome_sprites(texture_id, b[3] + range.start + r.start, r.len())
+                    })
                 }
                 PrimitiveBatch::SubpixelSprites { texture_id, range } => {
-                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
+                    let items = &scene.subpixel_sprites[range.clone()];
+                    let runs = cull::runs(items, rect, |s| {
+                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
+                    });
+                    runs.into_iter().try_for_each(|r| {
+                        self.draw_subpixel_sprites(texture_id, b[4] + range.start + r.start, r.len())
+                    })
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, range } => {
-                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
+                    let items = &scene.polychrome_sprites[range.clone()];
+                    let runs = cull::runs(items, rect, |s| {
+                        cull::extent(s.bounds, &s.content_mask, Some(&s.transformation), 2.0)
+                    });
+                    runs.into_iter().try_for_each(|r| {
+                        self.draw_polychrome_sprites(texture_id, b[5] + range.start + r.start, r.len())
+                    })
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
                 PrimitiveBatch::Layer(_) => Ok(()),
