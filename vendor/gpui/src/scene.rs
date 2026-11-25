@@ -10,7 +10,7 @@ mod damage;
 pub(crate) mod image_resources;
 mod record; mod group_replay;
 #[doc(hidden)]
-pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats};
+pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
