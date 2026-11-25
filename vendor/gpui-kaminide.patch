@@ -43613,10 +43613,10 @@ index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa1115745
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e4281e8caceb8ae34d9020db21fcb7d0d35f7b60
+index 0000000000000000000000000000000000000000..9e1565a9d8aab95225c19d85ef00145a6f73a56e
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,49 @@
 +//! KaminIDE patch (DevTools `why`): anchors the frame drew without paint.
 +
 +use super::*;
@@ -43633,15 +43633,6 @@ index 0000000000000000000000000000000000000000..e4281e8caceb8ae34d9020db21fcb7d0
 +        }
 +        let site = core::panic::Location::caller();
 +        let frame = &self.rendered_frame;
-+        let space_of = |space: SceneSpace| {
-+            if space == frame.scene.scroll.space {
-+                return format!("the frame's scene ({} commands)", frame.scene.paint_operations.len());
-+            }
-+            match frame.scene.groups.iter().position(|group| group.scene.scroll.space == space) {
-+                Some(at) => format!("the scene of group {at} of {}", frame.scene.groups.len()),
-+                None => format!("another scene {space:?} (a layer's)"),
-+            }
-+        };
 +        for (at, node) in frame.scroll_nodes.iter().enumerate() {
 +            if node.anchored && node.paint.is_none() {
 +                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
@@ -43649,7 +43640,7 @@ index 0000000000000000000000000000000000000000..e4281e8caceb8ae34d9020db21fcb7d0
 +                    let landing = match left.first() {
 +                        None => "no range left to land".to_string(),
 +                        Some((_, paint, space, main)) => {
-+                            format!("{} ranges left unlanded, first {paint:?} (main {main}) in {}", left.len(), space_of(*space))
++                            format!("{} ranges left unlanded, first {paint:?} (main {main}) in {}", left.len(), self.describe_space(*space))
 +                        }
 +                    };
 +                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}; {landing}", node.id.0, node.chain, node.clip, node.parent)
@@ -43657,8 +43648,24 @@ index 0000000000000000000000000000000000000000..e4281e8caceb8ae34d9020db21fcb7d0
 +            }
 +        }
 +    }
++
++    /// Which scene of the rendered frame `space` is, for the journal: the
++    /// frame's, a group's, or a retained layer's the frame draws.
++    pub(crate) fn describe_space(&self, space: SceneSpace) -> String {
++        let scene = &self.rendered_frame.scene;
++        if space == scene.scroll.space {
++            return format!("the frame's scene ({} commands)", scene.paint_operations.len());
++        }
++        if let Some(at) = scene.groups.iter().position(|group| group.scene.scroll.space == space) {
++            return format!("the scene of group {at} of {}", scene.groups.len());
++        }
++        let layer = scene.paint_operations.iter().position(|operation| layer_spaces(std::slice::from_ref(operation)) == [space]);
++        match layer {
++            Some(op) => format!("the scene of the retained layer at command {op} of the frame's"),
++            None => "a scene the frame does not draw (a record's or a nested layer's)".into(),
++        }
++    }
 +}
-\ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes/source.rs b/vendor/gpui/src/window/scroll_nodes/source.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..c3463351f421df4a5f75bc8b6becf8a3a5aa8a20
@@ -43790,7 +43797,7 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..138f23ec807efb2267f6ff548137e8924367889d
+index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57fbcecf72c
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
 @@ -0,0 +1,482 @@
@@ -43946,7 +43953,7 @@ index 0000000000000000000000000000000000000000..138f23ec807efb2267f6ff548137e892
 +                    Some(space) if space == self.rendered_frame.scene.scroll.space => "the frame's scene".into(),
 +                    Some(space) => match groups.iter().position(|group| group.scene.scroll.space == space) {
 +                        Some(at) => format!("the scene of group {at} of {}", groups.len()),
-+                        None => "another scene (a record's, a layer's or another group's)".into(),
++                        None => self.describe_space(space),
 +                    },
 +                };
 +                let why = if node.torn {

@@ -150,7 +150,7 @@ impl Window {
                     Some(space) if space == self.rendered_frame.scene.scroll.space => "the frame's scene".into(),
                     Some(space) => match groups.iter().position(|group| group.scene.scroll.space == space) {
                         Some(at) => format!("the scene of group {at} of {}", groups.len()),
-                        None => "another scene (a record's, a layer's or another group's)".into(),
+                        None => self.describe_space(space),
                     },
                 };
                 let why = if node.torn {

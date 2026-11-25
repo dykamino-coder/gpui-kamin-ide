@@ -14,15 +14,6 @@ impl Window {
         }
         let site = core::panic::Location::caller();
         let frame = &self.rendered_frame;
-        let space_of = |space: SceneSpace| {
-            if space == frame.scene.scroll.space {
-                return format!("the frame's scene ({} commands)", frame.scene.paint_operations.len());
-            }
-            match frame.scene.groups.iter().position(|group| group.scene.scroll.space == space) {
-                Some(at) => format!("the scene of group {at} of {}", frame.scene.groups.len()),
-                None => format!("another scene {space:?} (a layer's)"),
-            }
-        };
         for (at, node) in frame.scroll_nodes.iter().enumerate() {
             if node.anchored && node.paint.is_none() {
                 crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
@@ -30,12 +21,29 @@ impl Window {
                     let landing = match left.first() {
                         None => "no range left to land".to_string(),
                         Some((_, paint, space, main)) => {
-                            format!("{} ranges left unlanded, first {paint:?} (main {main}) in {}", left.len(), space_of(*space))
+                            format!("{} ranges left unlanded, first {paint:?} (main {main}) in {}", left.len(), self.describe_space(*space))
                         }
                     };
                     format!("node {at} id {} chain {:?} clip {:?} parent {:?}; {landing}", node.id.0, node.chain, node.clip, node.parent)
                 });
             }
+        }
+    }
+
+    /// Which scene of the rendered frame `space` is, for the journal: the
+    /// frame's, a group's, or a retained layer's the frame draws.
+    pub(crate) fn describe_space(&self, space: SceneSpace) -> String {
+        let scene = &self.rendered_frame.scene;
+        if space == scene.scroll.space {
+            return format!("the frame's scene ({} commands)", scene.paint_operations.len());
+        }
+        if let Some(at) = scene.groups.iter().position(|group| group.scene.scroll.space == space) {
+            return format!("the scene of group {at} of {}", scene.groups.len());
+        }
+        let layer = scene.paint_operations.iter().position(|operation| layer_spaces(std::slice::from_ref(operation)) == [space]);
+        match layer {
+            Some(op) => format!("the scene of the retained layer at command {op} of the frame's"),
+            None => "a scene the frame does not draw (a record's or a nested layer's)".into(),
         }
     }
 }
