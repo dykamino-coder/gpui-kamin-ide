@@ -586,7 +586,7 @@ impl Scene {
             // A moved comparison that ran over its budget most likely does
             // again on the same page: it is tried again every 8th frame. In
             // place, layers recorded again unchanged keep it cheap.
-            Some(Ok(d)) if d != (0, 0) && previous.book.index.over_budget % 8 != 0 => Some("over_budget_last"),
+            Some(Ok(d)) if d != (0, 0) && !previous.book.index.over_budget.is_multiple_of(8) => Some("over_budget_last"),
             Some(Ok(d)) => match self.timed_plan_shift(
                 previous,
                 size,

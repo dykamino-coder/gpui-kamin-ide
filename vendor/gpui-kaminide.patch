@@ -14601,7 +14601,7 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ae3ab3676b55058dffa7e15cc9702b3eadc49f6
+index 0000000000000000000000000000000000000000..0cb0d42802cbfd2acccba08ed65fc559ac7c3f45
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
 @@ -0,0 +1,940 @@
@@ -15193,7 +15193,7 @@ index 0000000000000000000000000000000000000000..5ae3ab3676b55058dffa7e15cc9702b3
 +            // A moved comparison that ran over its budget most likely does
 +            // again on the same page: it is tried again every 8th frame. In
 +            // place, layers recorded again unchanged keep it cheap.
-+            Some(Ok(d)) if d != (0, 0) && previous.book.index.over_budget % 8 != 0 => Some("over_budget_last"),
++            Some(Ok(d)) if d != (0, 0) && !previous.book.index.over_budget.is_multiple_of(8) => Some("over_budget_last"),
 +            Some(Ok(d)) => match self.timed_plan_shift(
 +                previous,
 +                size,
