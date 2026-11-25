@@ -77,6 +77,15 @@ impl LayerCache {
         Some(buffers)
     }
 
+    /// This frame drew layer `id` without its buffers (`cull`): they stay its
+    /// cache for the next frame that draws it whole.
+    pub(super) fn keep(&mut self, id: u64) {
+        let frame = self.frame;
+        if let Some(layer) = self.layers.get_mut(&id) {
+            layer.frame = frame;
+        }
+    }
+
     /// The device was lost: every buffer with it.
     pub(super) fn clear(&mut self) {
         self.layers.clear();

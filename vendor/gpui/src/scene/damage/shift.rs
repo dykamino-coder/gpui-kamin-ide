@@ -29,6 +29,8 @@ use collections::FxHashMap;
 use items::{Item, bin, each_primitive, items, unchanged_layers};
 
 mod compare;
+#[cfg(test)]
+mod group_tests;
 mod items;
 #[cfg(test)]
 mod layer_tests;
@@ -113,19 +115,21 @@ impl Scene {
     }
 
     /// `plan_shift` within the comparison budget (`shift_budget_us`), with its
-    /// CPU time in `stats.us`.
+    /// CPU time in `stats.us`; `groups` matches this frame's groups to the
+    /// last frame's (`Scene::group_base`, plus one; 0: none).
     pub(super) fn timed_plan_shift(
         &self,
         previous: &Scene,
         size: (u32, u32),
         d: (i32, i32),
+        groups: &[u32],
         stats: &mut ShiftStats,
     ) -> Result<FrameShift, &'static str> {
         let started = std::time::Instant::now();
         let budget = super::shift_budget_us();
         let deadline =
             (budget != u32::MAX).then(|| started + std::time::Duration::from_micros(budget as u64));
-        let plan = self.plan_shift_within(previous, size, d, stats, deadline);
+        let plan = self.plan_shift_within(previous, size, d, groups, stats, deadline);
         stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
         plan
     }
@@ -141,7 +145,7 @@ impl Scene {
         d: (i32, i32),
         stats: &mut ShiftStats,
     ) -> Result<FrameShift, &'static str> {
-        self.plan_shift_within(previous, size, d, stats, None)
+        self.plan_shift_within(previous, size, d, &[], stats, None)
     }
 
     /// `plan_shift` that gives up (`over_budget`) once `deadline` passes: the
@@ -151,6 +155,7 @@ impl Scene {
         previous: &Scene,
         size: (u32, u32),
         d: (i32, i32),
+        groups: &[u32],
         stats: &mut ShiftStats,
         deadline: Option<std::time::Instant>,
     ) -> Result<FrameShift, &'static str> {
@@ -198,6 +203,7 @@ impl Scene {
         let mut cmp = compare::Moved {
             d: (d.0 as f32, d.1 as f32),
             w: wa,
+            groups,
             exact: FxHashMap::default(),
         };
         let mut damage = rects::Damage::new(w, h);
