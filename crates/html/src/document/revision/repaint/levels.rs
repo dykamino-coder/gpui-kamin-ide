@@ -98,7 +98,7 @@ impl Document {
             };
             for (m, (old, new)) in mutated.iter().zip(old.iter().zip(&new)) {
                 let same = match (old, new) {
-                    (Some(a), Some(b)) => super::rebox::same_boxes(a, b),
+                    (Some(a), Some(b)) => super::rebox::same_generated(a, b),
                     (a, b) => a.is_none() && b.is_none(),
                 };
                 if !same {

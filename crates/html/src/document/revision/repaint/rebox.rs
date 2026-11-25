@@ -31,7 +31,7 @@ mod outside;
 mod spine;
 mod unit;
 mod wrappers;
-pub(super) use unit::same_boxes;
+pub(super) use unit::same_generated;
 
 use crate::document::Document;
 use crate::document::revision::boxes::Boxes;

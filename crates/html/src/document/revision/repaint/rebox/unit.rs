@@ -150,9 +150,23 @@ fn adopt_identities(mut built: Element, retained: &Element) -> Element {
     built
 }
 
+/// Two walks of one element without its children (`walk::shallow`) generate
+/// the same boxes: the element's own box is its restyle's, compared by the
+/// probe; its generated boxes (`::before`, `::after`, markers) are compared
+/// here.
+pub(in crate::document::revision::repaint) fn same_generated(a: &[Node], b: &[Node]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|pair| match pair {
+            (Node::Element(x), Node::Element(y)) if x.node_id != 0 && x.node_id == y.node_id => {
+                same_boxes(&x.children, &y.children)
+            }
+            (x, y) => same_boxes(std::slice::from_ref(x), std::slice::from_ref(y)),
+        })
+}
+
 /// Two builds of the same nodes give the same boxes, value for value (the
 /// synthetic boxes of `b` compared under the identities of `a`'s).
-pub(in crate::document::revision::repaint) fn same_boxes(a: &[Node], b: &[Node]) -> bool {
+fn same_boxes(a: &[Node], b: &[Node]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|pair| match pair {
             (Node::Element(x), Node::Element(y)) => {
