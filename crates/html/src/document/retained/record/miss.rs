@@ -18,8 +18,6 @@ pub(in crate::document::retained) enum FrameMiss {
     Scheduled,
     /// Document values were not ready for the frame (`frame_ready`).
     NotReady,
-    /// A deferred draw painted a composition group after the record.
-    Unreplayable,
     /// The layout read a scroll offset that changed while recording.
     ScrollRead,
     /// The frame key changed (document generation, options, viewport).
@@ -41,14 +39,13 @@ pub(in crate::document::retained) enum FrameMiss {
 const SCROLL: [ScrollRefusal; ScrollRefusal::ALL.len()] = ScrollRefusal::ALL;
 
 /// Reasons before the scrolled replay refusals, in counter order.
-const PLAIN: [(FrameMiss, &str); 14] = [
+const PLAIN: [(FrameMiss, &str); 13] = [
     (FrameMiss::Resources, "resources"),
     (FrameMiss::Unpublished, "unpublished"),
     (FrameMiss::NotRoot, "not_root"),
     (FrameMiss::Commands, "commands"),
     (FrameMiss::Scheduled, "scheduled"),
     (FrameMiss::NotReady, "not_ready"),
-    (FrameMiss::Unreplayable, "unreplayable"),
     (FrameMiss::ScrollRead, "scroll_read"),
     (FrameMiss::Key, "key"),
     (FrameMiss::Stale, "stale"),
@@ -94,7 +91,6 @@ impl FrameMiss {
             FrameMiss::Commands => "frame_miss.commands",
             FrameMiss::Scheduled => "frame_miss.scheduled",
             FrameMiss::NotReady => "frame_miss.not_ready",
-            FrameMiss::Unreplayable => "frame_miss.unreplayable",
             FrameMiss::ScrollRead => "frame_miss.scroll_read",
             FrameMiss::Key => "frame_miss.key",
             FrameMiss::Stale => "frame_miss.stale",

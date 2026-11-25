@@ -11,7 +11,7 @@
 //! content, so a step that moves part of the groups keeps all of them that moved.
 
 use super::super::{Area, KIND_SHIFT, bits, paint_order};
-use super::compare::{Moved, at};
+use super::compare::{Moved, Pair, at};
 use super::items::Item;
 use crate::scene::{PaintGroup, PaintSurface, Scene};
 use crate::{ContentMask, Point, ScaledPixels};
@@ -54,7 +54,14 @@ fn movable(g: &PaintGroup) -> bool {
 /// For the groups of `new` without a match in `base` (old group plus one),
 /// the group of `old` that paints the same image moved by `d`; marks them in
 /// `moved` and returns the moved matches alone (old plus one, 0: none).
-pub(in crate::scene::damage) fn match_moved(new: &Scene, old: &Scene, d: (i32, i32), size: (u32, u32), base: &mut [u32], moved: &mut Vec<bool>) -> Vec<u32> {
+pub(in crate::scene::damage) fn match_moved(
+    new: &Scene,
+    old: &Scene,
+    d: (i32, i32),
+    size: (u32, u32),
+    base: &mut [u32],
+    moved: &mut Vec<bool>,
+) -> Vec<u32> {
     moved.clear();
     moved.resize(new.groups.len(), false);
     let mut map = vec![0u32; new.groups.len()];
@@ -64,7 +71,12 @@ pub(in crate::scene::damage) fn match_moved(new: &Scene, old: &Scene, d: (i32, i
         taken[o as usize - 1] = true;
     }
     let mut buckets: FxHashMap<[u32; 13], Vec<u32>> = FxHashMap::default();
-    for (o, g) in old.groups.iter().enumerate().filter(|(o, g)| !taken[*o] && movable(g)) {
+    for (o, g) in old
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(o, g)| !taken[*o] && movable(g))
+    {
         buckets.entry(key(g, d)).or_default().push(o as u32);
     }
     // Nested groups come first (`Scene::groups`): an enclosing group's
@@ -73,11 +85,12 @@ pub(in crate::scene::damage) fn match_moved(new: &Scene, old: &Scene, d: (i32, i
         if base[g] != 0 || !movable(group) {
             continue;
         }
-        let Some(bucket) = buckets.get(&key(group, (0.0, 0.0))) else { continue };
-        let found = bucket
-            .iter()
-            .copied()
-            .find(|&o| !taken[o as usize] && same_group_moved(group, &old.groups[o as usize], d, size, &map));
+        let Some(bucket) = buckets.get(&key(group, (0.0, 0.0))) else {
+            continue;
+        };
+        let found = bucket.iter().copied().find(|&o| {
+            !taken[o as usize] && same_group_moved(group, &old.groups[o as usize], d, size, &map)
+        });
         if let Some(o) = found {
             taken[o as usize] = true;
             map[g] = o + 1;
@@ -89,14 +102,26 @@ pub(in crate::scene::damage) fn match_moved(new: &Scene, old: &Scene, d: (i32, i
 }
 
 /// Group `a` paints the image of group `b` moved by `d`.
-fn same_group_moved(a: &PaintGroup, b: &PaintGroup, d: (f32, f32), size: (u32, u32), map: &[u32]) -> bool {
-    let moved_point = |p: &Point<ScaledPixels>| Point { x: ScaledPixels(p.x.0 + d.0), y: ScaledPixels(p.y.0 + d.1) };
+fn same_group_moved(
+    a: &PaintGroup,
+    b: &PaintGroup,
+    d: (f32, f32),
+    size: (u32, u32),
+    map: &[u32],
+) -> bool {
+    let moved_point = |p: &Point<ScaledPixels>| Point {
+        x: ScaledPixels(p.x.0 + d.0),
+        y: ScaledPixels(p.y.0 + d.1),
+    };
     a.bounds == at(b.bounds, d)
         && a.blur_radius.to_bits() == b.blur_radius.to_bits()
         && a.blend == b.blend
         && a.polygon_inverse == b.polygon_inverse
         && a.polygon.len() == b.polygon.len()
-        && a.polygon.iter().zip(&b.polygon).all(|(p, q)| *p == moved_point(q))
+        && a.polygon
+            .iter()
+            .zip(&b.polygon)
+            .all(|(p, q)| *p == moved_point(q))
         && match (&a.mask, &b.mask) {
             (None, None) => true,
             (Some(x), Some(y)) => x.id == y.id,
@@ -130,9 +155,22 @@ fn same_scene_moved(a: &Scene, b: &Scene, d: (f32, f32), w: Area, map: &[u32]) -
     if ea.len() != eb.len() {
         return false;
     }
-    let cmp = Moved { d, w, exact: FxHashMap::default(), cell: None, groups: map, labels: Some((a, b)) };
-    let item = |scene, entry| Item { scene, entry, area: w, marker: 0 };
-    ea.iter().zip(&eb).all(|(&x, &y)| x >> KIND_SHIFT == y >> KIND_SHIFT && cmp.exact_pair(item(a, x), item(b, y)))
+    let cmp = Moved {
+        d,
+        w,
+        exact: FxHashMap::default(),
+        groups: map,
+        labels: Some((a, b)),
+    };
+    let item = |scene, entry| Item {
+        scene,
+        entry,
+        area: w,
+        marker: 0,
+    };
+    ea.iter().zip(&eb).all(|(&x, &y)| {
+        x >> KIND_SHIFT == y >> KIND_SHIFT && cmp.exact_pair(item(a, x), item(b, y)) == Pair::Same
+    })
 }
 
 /// Composite `a` puts its image where `b`'s moved by `d` lands (`cut` and

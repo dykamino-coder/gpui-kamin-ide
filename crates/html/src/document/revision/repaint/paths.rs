@@ -58,7 +58,7 @@ pub(super) fn style_paths(
 /// outside the cascaded stage (for a new background, no decoration inputs
 /// either; for new border colours, no inline box). Its subtree follows by
 /// rematerialization: under new inherited
-/// values no box keeps a hover or first-letter/-line layer, animation frames
+/// values no box keeps a first-letter/-line layer, animation frames
 /// or such copies; under a new background alone only a style that inherits
 /// reset values explicitly reads it (css-cascade-5 §7.3.1), and no such style
 /// is a layer or keeps copies.
@@ -78,7 +78,10 @@ fn takes(e: &Element, r: &Restyle) -> bool {
     elements(std::slice::from_ref(&Node::Element(e.clone())), |b, _| {
         let copies = b.anim.is_some() || b.style.holds_inherited_copies();
         if inherited {
-            !copies && layers(b).all(|l| l.is_none())
+            // A hover layer is a cascaded stage (the element's declarations
+            // with its `:hover` rules over them, `walk::pseudo_styles`): it
+            // keeps no inherited value and follows a new one like the box does.
+            !copies && [&b.first_letter, &b.first_line].iter().all(|l| l.is_none())
         } else {
             !(copies && b.style.inherits_reset())
                 && layers(b).flatten().all(|l| !l.inherits_reset())

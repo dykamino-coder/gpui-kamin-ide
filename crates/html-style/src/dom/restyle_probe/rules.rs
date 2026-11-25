@@ -44,7 +44,7 @@ impl RestyleProbe {
     pub(in crate::dom) fn built(
         doc: Rc<Scope>,
         has_args: Vec<HasArg>,
-        reads_attr: bool,
+        reads_attr: crate::dom::attr_reads::AttrReads,
         (media, asked): (Media, Media),
         extra_css: &str,
     ) -> Self {
@@ -59,8 +59,8 @@ impl RestyleProbe {
     }
 
     /// Лист документа или тема читают атрибуты элементов вне селекторов.
-    pub fn reads_attr(&self) -> bool {
-        self.reads_attr
+    pub fn reads_attr(&self) -> &crate::dom::attr_reads::AttrReads {
+        &self.reads_attr
     }
 
     /// Правила области документа (агент, тема, листы страницы).

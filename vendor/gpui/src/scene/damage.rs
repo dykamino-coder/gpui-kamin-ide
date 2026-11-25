@@ -562,7 +562,7 @@ impl Scene {
             None => None,
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
-            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default()), &groups) {
+            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default()), &groups) {
                 Err(why) => Some(why),
                 Ok(shift) => {
                     let damaged = match index.damage {

@@ -24,6 +24,8 @@ pub struct ShiftStats {
     pub differs: [u32; SHIFT_KINDS],
     /// The first differing pair: new kind, old kind, the union of their areas.
     pub first: Option<(u8, u8, [f32; 4])>,
+    /// CPU time of the comparison, microseconds.
+    pub us: u32,
 }
 
 fn kind(item: &Item) -> u8 {
@@ -44,7 +46,7 @@ impl ShiftStats {
 impl std::fmt::Display for ShiftStats {
     /// `cells 120 count 3 differ quad 40 poly 2 first quad/quad [x0,y0,x1,y1]`.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "cells {} count {}", self.cells, self.count_cells)?;
+        write!(f, "cells {} count {} us {}", self.cells, self.count_cells, self.us)?;
         let shown = self.differs.iter().zip(SHIFT_KIND_NAMES).filter(|(n, _)| **n > 0);
         for (i, (n, name)) in shown.enumerate() {
             write!(f, "{}{name} {n}", if i == 0 { " differ " } else { " " })?;

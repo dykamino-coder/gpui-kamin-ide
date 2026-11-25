@@ -12722,7 +12722,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca6e5a9af6
+index 160587a4ad924f80c2dd01b90a8300febbc13105..eed7429016682d0cdbd641171946fa3756f60f6a
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,40 @@
@@ -13689,19 +13689,24 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1056,3 @@
+@@ -156,6 +1056,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.polychrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.monochrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.subpixel_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-+        self.polychrome_sprites.sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-@@ -162,0 +1060 @@
++        // KaminIDE patch: sprites of one order keep their paint order (a stable
++        // sort), as quads do. Upstream also sorted them by atlas tile id, so two
++        // overlapping glyphs of one text run blended in the order the atlas
++        // happened to number their tiles: the same text with tiles made by
++        // another font instance or in another frame differed by a code.
++        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
++        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
++        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
+@@ -162,0 +1065 @@
 +        self.finish_layers();
-@@ -190,2 +1088,97 @@
+@@ -190,2 +1093,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13801,7 +13806,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1205,5 @@
+@@ -212,2 +1210,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13809,13 +13814,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1212,4 @@
+@@ -216 +1217,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1217,12 @@
+@@ -217,0 +1222,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13828,13 +13833,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1236 @@
+@@ -224,0 +1241 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1251 @@
+@@ -238,0 +1256 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1265 @@
+@@ -251,0 +1270 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1274,72 @@
+@@ -259,0 +1279,72 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13907,20 +13912,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1372,2 @@
+@@ -285,0 +1377,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1407,4 @@
+@@ -318,0 +1412,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1556 @@
+@@ -463,0 +1561 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1589,2 @@
+@@ -495,0 +1594,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1623,6 @@
+@@ -528,5 +1628,6 @@
 -        }
 -    }
 -}
@@ -13932,7 +13937,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1640,10 @@
+@@ -543,0 +1645,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13943,25 +13948,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1658 @@
+@@ -552 +1663 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1677 @@
+@@ -571 +1682 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1687,5 @@
+@@ -580,0 +1692,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1714,5 @@
+@@ -602,0 +1719,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1766,12 @@
+@@ -649,0 +1771,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -13974,19 +13979,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1836 @@
+@@ -708 +1841 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1855 @@
+@@ -727 +1860 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1874 @@
+@@ -746 +1879 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1879 @@
+@@ -751 +1884 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1886,54 @@
+@@ -757,0 +1891,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -14041,7 +14046,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1956,23 @@
+@@ -773,0 +1961,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14065,19 +14070,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..da3314a3c7f6f34cc898c74bdeb9acca
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2001,2 @@
+@@ -795,0 +2006,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2023 @@
+@@ -815,0 +2028 @@
 +            color_mapping: None,
-@@ -835,0 +2044,6 @@
+@@ -835,0 +2049,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2164,63 @@
+@@ -949,0 +2169,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -14588,7 +14593,7 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..72e63a8c63c6229b2153c3b6e49fe925a889ce69
+index 0000000000000000000000000000000000000000..81c5cb52afa39766db407236974b6a251db13238
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
 @@ -0,0 +1,885 @@
@@ -15127,7 +15132,7 @@ index 0000000000000000000000000000000000000000..72e63a8c63c6229b2153c3b6e49fe925
 +            None => None,
 +            Some(Err(why)) => Some(why),
 +            Some(_) if !comparable => Some("not_compared"),
-+            Some(Ok(d)) => match self.plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
++            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
 +                Err(why) => Some(why),
 +                Ok(shift) => {
 +                    let damaged = match index.damage {
@@ -15758,10 +15763,10 @@ index 0000000000000000000000000000000000000000..a1c92c9485e43cd86faa343cff00d8dd
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/damage/shift.rs b/vendor/gpui/src/scene/damage/shift.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d06713ac0
+index 0000000000000000000000000000000000000000..e967f49771354f03d6de07fc17c8ebd3be7e486a
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift.rs
-@@ -0,0 +1,244 @@
+@@ -0,0 +1,251 @@
 +//! KaminIDE patch: a scroll step as a move of the frame drawn last.
 +//!
 +//! A wheel step moves most of the frame by a whole number of device pixels
@@ -15876,6 +15881,14 @@ index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d
 +        out
 +    }
 +
++    /// `plan_shift` with its CPU time in `stats.us`.
++    pub(super) fn timed_plan_shift(&self, previous: &Scene, size: (u32, u32), d: (i32, i32), stats: &mut ShiftStats) -> Result<FrameShift, &'static str> {
++        let started = std::time::Instant::now();
++        let plan = self.plan_shift(previous, size, d, stats);
++        stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
++        plan
++    }
++
 +    /// The frame drawn as `previous` moved by `d` device pixels, with what
 +    /// then needs a raster; `Err` names why not: the comparison cannot run,
 +    /// or the redraw would cover about the whole window anyway.
@@ -15928,7 +15941,6 @@ index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d
 +            d: (d.0 as f32, d.1 as f32),
 +            w: wa,
 +            exact: FxHashMap::default(),
-+            cell: None,
 +        };
 +        let mut damage = rects::Damage::new(w, h);
 +        damage.uncovered(copy);
@@ -16008,17 +16020,18 @@ index 0000000000000000000000000000000000000000..7a2dfe0fde1a1dbc9b0326ed50f6183d
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/compare.rs b/vendor/gpui/src/scene/damage/shift/compare.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91de4e023d9
+index 0000000000000000000000000000000000000000..8573b5c0cff5fef4b7765d0f1f0dd18502aecd94
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/compare.rs
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,283 @@
 +//! KaminIDE patch: a primitive of the new frame against one of the last frame
 +//! moved by `d` (`plan_shift`), both cut by the moved window `W`.
 +//!
 +//! A mask clips at pixel centres, so within a cell only the mask's part in
-+//! the cell decides pixels: a pair whose masks differ (the clip of a scroller
-+//! moved against its stationary clip) is compared again with both masks cut
-+//! by the cell, and differs only in the cells where the clips really part.
++//! the cell decides pixels. A pair is compared once: a pair equal but for its
++//! masks (the clip of a scroller moved against its stationary clip) keeps
++//! both cut masks and is equal in each cell where the masks cut by the cell
++//! are equal, so only the cells where the clips really part differ.
 +
 +use super::super::{Area, KIND_SHIFT, clipped, same_path};
 +use super::Item;
@@ -16027,13 +16040,23 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +use crate::{Bounds, ContentMask, Point, ScaledPixels, TransformationMatrix, point, size};
 +use collections::FxHashMap;
 +
-+/// The comparison of one plan: the move, `W` and the exact results by item pair.
++/// What a pair of primitives paints, compared once for all cells.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub(super) enum Pair {
++    Same,
++    Differ,
++    /// Equal but for the masks: the new one and the moved old one, cut by `W`.
++    Masks(Bounds<ScaledPixels>, Bounds<ScaledPixels>),
++    /// Plain fills whose edges differ: compared again per cell, where an edge
++    /// beyond the cell's part of both masks paints nothing.
++    Quads,
++}
++
++/// The comparison of one plan: the move, `W` and the results by item pair.
 +pub(super) struct Moved {
 +    pub(super) d: (f32, f32),
 +    pub(super) w: Area,
-+    pub(super) exact: FxHashMap<(u32, u32), bool>,
-+    /// The cell part masks are cut by too, while a pair is compared within it.
-+    pub(super) cell: Option<Area>,
++    pub(super) exact: FxHashMap<(u32, u32), Pair>,
 +}
 +
 +fn at(b: Bounds<ScaledPixels>, d: (f32, f32)) -> Bounds<ScaledPixels> {
@@ -16077,12 +16100,43 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +        && o.y.0 + s.height.0 >= p[3] as f32
 +}
 +
++/// The integer rectangle `p` (x0, y0, x1, y1) as bounds.
++fn rect(p: [u32; 4]) -> Bounds<ScaledPixels> {
++    let [x0, y0, x1, y1] = p.map(|v| v as f32);
++    Bounds {
++        origin: point(ScaledPixels(x0), ScaledPixels(y0)),
++        size: size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
++    }
++}
++
++/// `b` cut by `w`; a mask that lets no pixel through is equal whatever its place.
++fn within(b: Bounds<ScaledPixels>, w: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++    let b = b.intersect(&w);
++    if b.size.width.0 <= 0.0 || b.size.height.0 <= 0.0 {
++        Bounds::default()
++    } else {
++        b
++    }
++}
++
++/// `a == b` once `b` has `a`'s mask: equal but for the masks, or different.
++fn masks<T: PartialEq>(
++    a: &T,
++    mut b: T,
++    mask: fn(&mut T) -> &mut ContentMask<ScaledPixels>,
++    ma: Bounds<ScaledPixels>,
++) -> Pair {
++    let mb = std::mem::replace(&mut mask(&mut b).bounds, ma);
++    if *a == b {
++        Pair::Masks(ma, mb)
++    } else {
++        Pair::Differ
++    }
++}
++
 +impl Moved {
 +    fn window(&self) -> Bounds<ScaledPixels> {
-+        let w = match self.cell {
-+            Some(c) => [self.w[0].max(c[0]), self.w[1].max(c[1]), self.w[2].min(c[2]), self.w[3].min(c[3])],
-+            None => self.w,
-+        };
++        let w = self.w;
 +        Bounds {
 +            origin: point(ScaledPixels(w[0]), ScaledPixels(w[1])),
 +            size: size(ScaledPixels(w[2] - w[0]), ScaledPixels(w[3] - w[1])),
@@ -16090,11 +16144,7 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +    }
 +
 +    fn cut(&self, m: &mut ContentMask<ScaledPixels>) {
-+        m.bounds = m.bounds.intersect(&self.window());
-+        // Masks that let no pixel through are equal whatever their place.
-+        if m.bounds.size.width.0 <= 0.0 || m.bounds.size.height.0 <= 0.0 {
-+            m.bounds = Bounds::default();
-+        }
++        m.bounds = within(m.bounds, self.window());
 +    }
 +
 +    fn shift(&self, m: &mut ContentMask<ScaledPixels>) {
@@ -16105,7 +16155,7 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +    /// Item `x` (new frame) paints within cell part `p` what item `y` (last
 +    /// frame) paints there once moved.
 +    pub(super) fn same(&mut self, x: (u32, Item), y: (u32, Item), p: [u32; 4]) -> bool {
-+        let exact = match self.exact.get(&(x.0, y.0)) {
++        let pair = match self.exact.get(&(x.0, y.0)) {
 +            Some(&known) => known,
 +            None => {
 +                let known = self.exact_pair(x.1, y.1);
@@ -16113,13 +16163,30 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +                known
 +            }
 +        };
-+        if exact || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p)) {
-+            return true;
-+        }
-+        self.cell = Some(p.map(|v| v as f32));
-+        let within = self.exact_pair(x.1, y.1);
-+        self.cell = None;
-+        within
++        let equal = match pair {
++            Pair::Same => true,
++            Pair::Differ => false,
++            Pair::Masks(a, b) => within(a, rect(p)) == within(b, rect(p)),
++            Pair::Quads => self.quads_within(x.1, y.1, p),
++        };
++        equal || (x.1.entry >> KIND_SHIFT == 1 && self.same_fill(x.1, y.1, p))
++    }
++
++    /// Two plain fills within cell part `p`: an edge beyond the cell's part
++    /// of both masks paints nothing there.
++    fn quads_within(&self, x: Item, y: Item, p: [u32; 4]) -> bool {
++        let mask = (1 << KIND_SHIFT) - 1;
++        let (mut a, mut b) = (
++            x.scene.quads[(x.entry & mask) as usize],
++            y.scene.quads[(y.entry & mask) as usize],
++        );
++        place(&mut b.bounds, &mut b.transformation, self.d);
++        self.cut(&mut a.content_mask);
++        self.shift(&mut b.content_mask);
++        a.content_mask.bounds = within(a.content_mask.bounds, rect(p));
++        b.content_mask.bounds = within(b.content_mask.bounds, rect(p));
++        b.order = a.order;
++        a == b || clipped::same_visible(&a, &b)
 +    }
 +
 +    /// Two plain fills of one paint, each covering `p` (a stationary page
@@ -16145,19 +16212,31 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +        same == a
 +    }
 +
-+    fn exact_pair(&self, x: Item, y: Item) -> bool {
++    /// The pair's result for every cell; a moved clip that parts the pair's
++    /// masks leaves it `Masks`, decided per cell.
++    fn exact_pair(&self, x: Item, y: Item) -> Pair {
++        let verdict = |same: bool| if same { Pair::Same } else { Pair::Differ };
 +        let mask = (1 << KIND_SHIFT) - 1;
 +        let (i, j) = ((x.entry & mask) as usize, (y.entry & mask) as usize);
 +        let (sa, sb): (&Scene, &Scene) = (x.scene, y.scene);
 +        let d = self.d;
++        macro_rules! pair {
++            ($a:ident, $b:ident) => {{
++                $b.order = $a.order;
++                if $a == $b {
++                    Pair::Same
++                } else {
++                    masks(&$a, $b, |p| &mut p.content_mask, $a.content_mask.bounds)
++                }
++            }};
++        }
 +        macro_rules! sprite {
 +            ($list:ident) => {{
 +                let (mut a, mut b) = (sa.$list[i], sb.$list[j]);
 +                place(&mut b.bounds, &mut b.transformation, d);
 +                self.cut(&mut a.content_mask);
 +                self.shift(&mut b.content_mask);
-+                b.order = a.order;
-+                a == b
++                pair!(a, b)
 +            }};
 +        }
 +        match x.entry >> KIND_SHIFT {
@@ -16167,27 +16246,33 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +                b.element_bounds = at(b.element_bounds, d);
 +                self.cut(&mut a.content_mask);
 +                self.shift(&mut b.content_mask);
-+                b.order = a.order;
-+                a == b
++                pair!(a, b)
 +            }
 +            1 => {
 +                let (mut a, mut b) = (sa.quads[i], sb.quads[j]);
 +                if !movable(&a) || !movable(&b) {
-+                    return false;
++                    return Pair::Differ;
 +                }
 +                place(&mut b.bounds, &mut b.transformation, d);
 +                self.cut(&mut a.content_mask);
 +                self.shift(&mut b.content_mask);
 +                if a.is_analytic_gradient() || b.is_analytic_gradient() {
-+                    return sa.same_gradient_quad(&a, sb, &b);
++                    return verdict(sa.same_gradient_quad(&a, sb, &b));
 +                }
 +                b.order = a.order;
-+                a == b || clipped::same_visible(&a, &b)
++                if a == b || clipped::same_visible(&a, &b) {
++                    return Pair::Same;
++                }
++                match pair!(a, b) {
++                    // Plain fills whose edges differ may still match per cell.
++                    Pair::Differ if clipped::plain(&a) && clipped::plain(&b) => Pair::Quads,
++                    other => other,
++                }
 +            }
 +            2 => {
 +                let (a, b) = (&sa.paths[i], &sb.paths[j]);
 +                if a.color_mapping.is_some() || b.color_mapping.is_some() {
-+                    return false;
++                    return Pair::Differ;
 +                }
 +                let (mut a, mut b) = (a.clone(), b.clone());
 +                b.bounds = at(b.bounds, d);
@@ -16204,21 +16289,21 @@ index 0000000000000000000000000000000000000000..542dbf903e1f79064df2c05ca3fbe91d
 +                        };
 +                    self.shift(&mut v.content_mask);
 +                }
-+                same_path(&a, &b)
++                // A mask per vertex: compared exactly, not per cell.
++                verdict(same_path(&a, &b))
 +            }
 +            3 => {
 +                let (mut a, mut b) = (sa.underlines[i], sb.underlines[j]);
 +                b.bounds = at(b.bounds, d);
 +                self.cut(&mut a.content_mask);
 +                self.shift(&mut b.content_mask);
-+                b.order = a.order;
-+                a == b
++                pair!(a, b)
 +            }
 +            4 => sprite!(monochrome_sprites),
 +            5 => sprite!(subpixel_sprites),
 +            6 => sprite!(polychrome_sprites),
 +            // A group's image or a backdrop: its own scene would have to move.
-+            _ => false,
++            _ => Pair::Differ,
 +        }
 +    }
 +}
@@ -16673,10 +16758,10 @@ index 0000000000000000000000000000000000000000..fe731ab27fcc53bc3a54f4e7cee92d73
 +}
 diff --git a/vendor/gpui/src/scene/damage/shift/stats.rs b/vendor/gpui/src/scene/damage/shift/stats.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a32f78d5c
+index 0000000000000000000000000000000000000000..350619b14b82ab167d471e478892965d53c1a62d
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage/shift/stats.rs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,60 @@
 +//! KaminIDE patch: what a frame comparison found different, by primitive kind
 +//! (DevTools `why`): the counters that name why a scroll step or an edit was
 +//! drawn whole instead of guessing it from the page.
@@ -16703,6 +16788,8 @@ index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a
 +    pub differs: [u32; SHIFT_KINDS],
 +    /// The first differing pair: new kind, old kind, the union of their areas.
 +    pub first: Option<(u8, u8, [f32; 4])>,
++    /// CPU time of the comparison, microseconds.
++    pub us: u32,
 +}
 +
 +fn kind(item: &Item) -> u8 {
@@ -16723,7 +16810,7 @@ index 0000000000000000000000000000000000000000..97baf37f9d0a81bb572790b8f89e866a
 +impl std::fmt::Display for ShiftStats {
 +    /// `cells 120 count 3 differ quad 40 poly 2 first quad/quad [x0,y0,x1,y1]`.
 +    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-+        write!(f, "cells {} count {}", self.cells, self.count_cells)?;
++        write!(f, "cells {} count {} us {}", self.cells, self.count_cells, self.us)?;
 +        let shown = self.differs.iter().zip(SHIFT_KIND_NAMES).filter(|(n, _)| **n > 0);
 +        for (i, (n, name)) in shown.enumerate() {
 +            write!(f, "{}{name} {n}", if i == 0 { " differ " } else { " " })?;
@@ -21546,10 +21633,10 @@ index 0000000000000000000000000000000000000000..0383bd78d456d75b1844df6cc09d2ef2
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2916e7a0a452dae47c5673d9e19fdaf379439cd6
+index 0000000000000000000000000000000000000000..e67d42c178d4027fb19de96ac427cbc2d8948e2c
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,218 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -21741,6 +21828,32 @@ index 0000000000000000000000000000000000000000..2916e7a0a452dae47c5673d9e19fdaf3
 +    let full = record.copy_record(Point::default(), None);
 +    assert_eq!(full.paint_operations.len(), 1000);
 +    assert_eq!(full.paint_operations.capacity(), 1000);
++}
++
++#[test]
++fn finish_keeps_the_paint_order_of_equal_order_sprites() {
++    // Overlapping glyphs of one order blend in the order they were painted,
++    // whatever ids the atlas gave their tiles.
++    use crate::{AtlasTextureKind, TileId};
++    let sprite = |tile_id: u32, x: f32| MonochromeSprite {
++        order: 7,
++        pad: 0,
++        bounds: rect(x, 0., 10., 10.),
++        content_mask: ContentMask { bounds: rect(x, 0., 10., 10.) },
++        color: Hsla::default(),
++        tile: AtlasTile {
++            texture_id: AtlasTextureId { index: 0, kind: AtlasTextureKind::Monochrome },
++            tile_id: TileId(tile_id),
++            padding: 0,
++            bounds: Bounds::default(),
++        },
++        transformation: TransformationMatrix::unit(),
++    };
++    let mut scene = Scene::default();
++    scene.monochrome_sprites = vec![sprite(9, 0.), sprite(3, 4.), sprite(5, 8.)];
++    scene.finish();
++    let painted: Vec<u32> = scene.monochrome_sprites.iter().map(|s| s.tile.tile_id.0).collect();
++    assert_eq!(painted, [9, 3, 5]);
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks.rs b/vendor/gpui/src/scene/scroll_marks.rs
 new file mode 100644
@@ -32604,7 +32717,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6faca23a1229
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bd388aa542a2ba0641e946740542860134d24792
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -32703,20 +32816,23 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    // KaminIDE patch: restore host scopes when drawing outside the original traversal.
 +    render_contexts: render_context::Snapshot,
 +    layout_owner: RetainedLayout,
-@@ -984,0 +1071,6 @@
+@@ -984,0 +1071,9 @@
++    // KaminIDE patch: the composition groups its paint made in the frame's
++    // list; a reused draw copies them (`scroll_deferred::reuse_deferred_paint`).
++    pub(crate) groups: Range<usize>,
 +    // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
 +    isolated: Option<IsolatedDraw>,
 +    // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
 +    scroll: scroll_deferred::DeferredScroll,
 +    // KaminIDE patch: the line that deferred it, for DevTools' scroll refusals.
 +    pub(crate) site: &'static core::panic::Location<'static>,
-@@ -995,0 +1088,5 @@
+@@ -995,0 +1091,5 @@
 +    /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
 +    pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
 +    /// KaminIDE patch: scopes of single segment placements (index in `hitboxes`),
 +    /// overriding the scope of their hitbox id.
 +    pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
-@@ -996,0 +1094,11 @@
+@@ -996,0 +1097,11 @@
 +    /// KaminIDE patch: scroll containers prepainted in this frame (`scroll_nodes`).
 +    pub(crate) scroll_nodes: Vec<scroll_nodes::ScrollNodeRecord>,
 +    /// KaminIDE patch: the scroll nodes open while prepainting.
@@ -32728,16 +32844,16 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    /// KaminIDE patch: paint that follows a scroll offset outside its node
 +    /// (`paint_scroll_dependent`), with its scene index.
 +    pub(crate) scroll_dependents: Vec<(scroll_nodes::ScrollNodeId, usize, crate::scene::scroll_marks::SceneSpace)>,
-@@ -997,0 +1106,2 @@
+@@ -997,0 +1109,2 @@
 +    /// KaminIDE patch: views drawn isolated in this frame.
 +    pub(crate) isolated_views: FxHashSet<EntityId>,
-@@ -1018,0 +1129,2 @@
+@@ -1018,0 +1132,2 @@
 +    /// KaminIDE patch: scroll nodes prepainted so far (`scroll_nodes`).
 +    scroll_nodes_index: usize,
-@@ -1022 +1134 @@
+@@ -1022 +1137 @@
 -#[derive(Clone, Default)]
 +#[derive(Clone, Default, PartialEq)]
-@@ -1034,0 +1147,89 @@
+@@ -1034,0 +1150,89 @@
 +/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
 +pub(crate) fn pack_index(index: usize) -> u32 {
 +    u32::try_from(index).expect("frame list index fits 32 bits")
@@ -32827,29 +32943,29 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    }
 +}
 +
-@@ -1051,0 +1253,2 @@
+@@ -1051,0 +1256,2 @@
 +            hitbox_scopes: FxHashMap::default(),
 +            hitbox_entry_scopes: FxHashMap::default(),
-@@ -1052,0 +1256,5 @@
+@@ -1052,0 +1259,5 @@
 +            scroll_nodes: Vec::new(),
 +            scroll_node_stack: Vec::new(),
 +            scroll_paint: Default::default(),
 +            scroll_hitboxes: Vec::new(),
 +            scroll_dependents: Vec::new(),
-@@ -1053,0 +1262 @@
+@@ -1053,0 +1265 @@
 +            isolated_views: FxHashSet::default(),
-@@ -1081,0 +1291,2 @@
+@@ -1081,0 +1294,2 @@
 +        self.hitbox_scopes.clear();
 +        self.hitbox_entry_scopes.clear();
-@@ -1082,0 +1294,5 @@
+@@ -1082,0 +1297,5 @@
 +        self.scroll_nodes.clear();
 +        self.scroll_node_stack.clear();
 +        self.scroll_paint.clear();
 +        self.scroll_hitboxes.clear();
 +        self.scroll_dependents.clear();
-@@ -1083,0 +1300 @@
+@@ -1083,0 +1303 @@
 +        self.isolated_views.clear();
-@@ -1118,3 +1335,6 @@
+@@ -1118,3 +1338,6 @@
 -        for hitbox in self.hitboxes.iter().rev() {
 -            let bounds = hitbox.bounds.intersect(&hitbox.content_mask.bounds);
 -            if bounds.contains(&position) {
@@ -32859,18 +32975,18 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                None => self.hitbox_scopes.get(&hitbox.id),
 +            };
 +            if hit_transform::HitScope::hitbox_contains(scope, hitbox, position) {
-@@ -1154 +1374,4 @@
+@@ -1154 +1377,4 @@
 -        self.scene.finish();
 +        // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
 +        self.scene.finish_frame();
 +        // KaminIDE patch: what changed against the frame this one replays.
 +        self.scene.note_damage(&prev_frame.scene);
-@@ -1174,0 +1398,2 @@
+@@ -1174,0 +1401,2 @@
 +    natural_images: natural_image::Cache,
 +    image_uploads: image_resources::ImageUploads,
-@@ -1184,0 +1410 @@
+@@ -1184,0 +1413 @@
 +    layout_owner: RetainedLayout,
-@@ -1187 +1413,6 @@
+@@ -1187 +1416,6 @@
 -    pub(crate) text_style_stack: Vec<TextStyleRefinement>,
 +    pub(crate) text_style_stack: TextStyleScope,
 +    // KaminIDE patch: typed host context belongs to this window and traversal.
@@ -32878,7 +32994,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    paint_window: Rc<()>,
 +    paint_pass: PaintPassId,
 +    paint_scope: PaintScopeId,
-@@ -1189,0 +1421,23 @@
+@@ -1189,0 +1424,23 @@
 +    /// KaminIDE patch: nesting depth of [`Window::with_exact_element_offset`];
 +    /// while non-zero, `layout_bounds` adds the element offset unsnapped.
 +    pub(crate) exact_element_offset_depth: u32,
@@ -32902,7 +33018,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    mask_map: Option<TransformationMatrix>,
 +    /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
 +    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
-@@ -1190,0 +1445,25 @@
+@@ -1190,0 +1448,25 @@
 +    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
 +    pub(crate) box_fill: Option<Bounds<Pixels>>,
 +    /// KaminIDE patch: the bands painted now are cut into pieces by another
@@ -32928,12 +33044,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    pub(crate) unpresented_readback: bool,
 +    pub(crate) paint_owner: u32,
 +    pub(crate) paint_value: Option<crate::LayerValue>,
-@@ -1191,0 +1471,4 @@
+@@ -1191,0 +1474,4 @@
 +    /// KaminIDE patch: `set_scroll_interest_margin`.
 +    pub(crate) scroll_interest_margin: Pixels,
 +    /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
 +    hit_scope: Option<Rc<hit_transform::HitScope>>,
-@@ -1205,0 +1489,8 @@
+@@ -1205,0 +1492,8 @@
 +    /// KaminIDE patch: a dirty view lies outside every isolated view, so the
 +    /// root must be drawn again (`window/isolated.rs`).
 +    dirty_outside_isolated: bool,
@@ -32942,38 +33058,38 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    /// KaminIDE patch: entities the drawn frame read; a frame that keeps the
 +    /// root keeps observing them.
 +    last_accessed_entities: FxHashSet<EntityId>,
-@@ -1218,0 +1510,5 @@
+@@ -1218,0 +1513,5 @@
 +    /// KaminIDE patch: the hosts' steps before a draw (`update_rendering`).
 +    pub(crate) update_rendering_observers: SubscriberSet<(), AnyObserver>,
 +    /// KaminIDE patch: element states of layout reads (`update_rendering`).
 +    layout_scroll_inputs: Option<Vec<retained_layout_inputs::ScrollInput>>,
 +    pub(crate) read_states: update_rendering::ReadStates,
-@@ -1235,0 +1532,3 @@
+@@ -1235,0 +1535,3 @@
 +    // KaminIDE patch: a completed layout changed an input to style/layout.
 +    layout_retry: bool,
 +    layout_inputs: Option<FxHashSet<LayoutInputId>>,
-@@ -1237,0 +1537,3 @@
+@@ -1237,0 +1540,3 @@
 +    /// KaminIDE patch: фокус пришёл с КЛАВИАТУРЫ (`:focus-visible` браузера).
 +    /// Поднимается на Tab-переходах, гаснет на любом mouse-down.
 +    pub(crate) focus_visible: bool,
-@@ -1241,0 +1544,4 @@
+@@ -1241,0 +1547,4 @@
 +    /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
 +    interaction_epoch: u64,
 +    /// KaminIDE patch: frames drawn so far (Window::frame_serial).
 +    pub(crate) frame_serial: u64,
-@@ -1522,0 +1829 @@
+@@ -1522,0 +1832 @@
 +
-@@ -1717,0 +2025,3 @@
+@@ -1717,0 +2028,3 @@
 +                log::debug!(target: "gpui::frame", "request force={} deferred={} source={:?} dirty={} nested={}",
 +                    request_frame_options.force_render, deferred_force_render,
 +                    request_frame_options.signal_source, invalidator.is_dirty(), draw_in_progress());
-@@ -1833,0 +2144 @@
+@@ -1833,0 +2147 @@
 +                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={needs_present}");
-@@ -1837,0 +2149,3 @@
+@@ -1837,0 +2152,3 @@
 +                                // KaminIDE patch: стоимость кадра — в счётчики
 +                                // `frame_perf`, приложение печатает сводку.
 +                                let t0 = std::time::Instant::now();
-@@ -1844 +2158,14 @@
+@@ -1844 +2161,14 @@
 -                                window.present();
 +                                let t1 = std::time::Instant::now();
 +                                // KaminIDE patch: a drawn frame that changed
@@ -32989,7 +33105,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                                // KaminIDE patch: the app is not idle (`App::on_idle`).
 +                                cx.frame_drawn();
 +                                // drop the arena elements after present to reduce latency
-@@ -1851 +2178,10 @@
+@@ -1851 +2181,10 @@
 -                        .update(&mut cx, |_, window, _| window.present())
 +                        .update(&mut cx, |_, window, _| {
 +                            // KaminIDE patch: presenting the drawn frame again
@@ -33001,32 +33117,32 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                                std::sync::atomic::Ordering::Relaxed,
 +                            );
 +                        })
-@@ -1872,0 +2209,2 @@
+@@ -1872,0 +2212,2 @@
 +                log::debug!(target: "gpui::frame", "complete dirty={} next={}",
 +                    invalidator.is_dirty(), next_frame_callbacks.borrow().len());
-@@ -2073,0 +2412,2 @@
+@@ -2073,0 +2415,2 @@
 +            natural_images: Default::default(),
 +            image_uploads: Default::default(),
-@@ -2079,0 +2420 @@
+@@ -2079,0 +2423 @@
 +            layout_owner: RetainedLayout::active(),
-@@ -2082 +2423,5 @@
+@@ -2082 +2426,5 @@
 -            text_style_stack: Vec::new(),
 +            text_style_stack: TextStyleScope::default(),
 +            render_contexts: Default::default(),
 +            paint_window: Rc::new(()),
 +            paint_pass: PaintPassId::default(),
 +            paint_scope: PaintScopeId::default(),
-@@ -2084,0 +2430,6 @@
+@@ -2084,0 +2433,6 @@
 +            exact_element_offset_depth: 0,
 +            raster_frame: RasterFrame::default(),
 +            transformation_stack: Vec::new(),
 +            mask_scale: None,
 +            mask_map: None,
 +            plane_contexts: Vec::new(),
-@@ -2085,0 +2437,2 @@
+@@ -2085,0 +2440,2 @@
 +            scroll_interest_margin: Pixels::ZERO,
 +            hit_scope: None,
-@@ -2086,0 +2440,12 @@
+@@ -2086,0 +2443,12 @@
 +            box_fill: None,
 +            band_split: false,
 +            layer_recording: None,
@@ -33039,73 +33155,73 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            unpresented_readback: false,
 +            paint_owner: 0,
 +            paint_value: None,
-@@ -2096,0 +2462,3 @@
+@@ -2096,0 +2465,3 @@
 +            dirty_outside_isolated: false,
 +            root_ranges: None,
 +            last_accessed_entities: FxHashSet::default(),
-@@ -2109,0 +2478,3 @@
+@@ -2109,0 +2481,3 @@
 +            update_rendering_observers: SubscriberSet::new(),
 +            layout_scroll_inputs: None,
 +            read_states: Default::default(),
-@@ -2127,0 +2499,2 @@
+@@ -2127,0 +2502,2 @@
 +            layout_retry: false,
 +            layout_inputs: None,
-@@ -2129,0 +2503,2 @@
+@@ -2129,0 +2506,2 @@
 +            // KaminIDE patch: см. `Window::focus_visible`
 +            focus_visible: false,
-@@ -2131,0 +2507,2 @@
+@@ -2131,0 +2510,2 @@
 +            interaction_epoch: 0,
 +            frame_serial: 0,
-@@ -2191,0 +2569 @@
+@@ -2191,0 +2572 @@
 +
-@@ -2194,0 +2573,2 @@
+@@ -2194,0 +2576,2 @@
 +        // KaminIDE patch: the walk stops at an isolated view, which is redrawn
 +        // alone; reaching the top means the root is drawn again.
-@@ -2201 +2581 @@
+@@ -2201 +2584 @@
 -                break;
 +                return;
-@@ -2203 +2583,5 @@
+@@ -2203 +2586,5 @@
 -        }
 +            if self.rendered_frame.isolated_views.contains(&view_id) {
 +                return;
 +            }
 +        }
 +        self.dirty_outside_isolated = true;
-@@ -2315,0 +2700,2 @@
+@@ -2315,0 +2703,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2317,0 +2704 @@
+@@ -2317,0 +2707 @@
 +            crate::dirty_sources::note("refresh", std::panic::Location::caller());
-@@ -2352,0 +2740 @@
+@@ -2352,0 +2743 @@
 +        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2367,0 +2756 @@
+@@ -2367,0 +2759 @@
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-@@ -2378,0 +2768,5 @@
+@@ -2378,0 +2771,5 @@
 +    /// KaminIDE patch: фокус получен клавиатурой — рисуем `:focus-visible`.
 +    pub fn focus_visible(&self) -> bool {
 +        self.focus_visible
 +    }
 +
-@@ -2385,0 +2780,2 @@
+@@ -2385,0 +2783,2 @@
 +            // KaminIDE patch: Tab — клавиатурная модальность
 +            self.focus_visible = true;
-@@ -2396,0 +2793,2 @@
+@@ -2396,0 +2796,2 @@
 +            // KaminIDE patch: Shift+Tab — тоже клавиатура
 +            self.focus_visible = true;
-@@ -2409,3 +2807 @@
+@@ -2409,3 +2810 @@
 -        for refinement in &self.text_style_stack {
 -            style.refine(refinement);
 -        }
 +        self.text_style_stack.refine(&mut style);
-@@ -2649,0 +3046,2 @@
+@@ -2649,0 +3049,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2650,0 +3049 @@
+@@ -2650,0 +3052 @@
 +        crate::dirty_sources::note("next-frame", std::panic::Location::caller());
-@@ -2669,0 +3069,2 @@
+@@ -2669,0 +3072,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2672,0 +3074,14 @@
+@@ -2672,0 +3077,14 @@
 +    }
 +
 +    /// KaminIDE patch: show the last drawn frame again, without a draw.
@@ -33120,7 +33236,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        self.platform_window.schedule_frame();
 +        // Presenting creates frame demand without dirtying the window.
 +        self.invalidator.wake_platform();
-@@ -2764 +3179,16 @@
+@@ -2764 +3182,16 @@
 -        self.rendered_frame.scene.quads.clone()
 +        let scene = &self.rendered_frame.scene;
 +        let mut quads = scene.quads.clone();
@@ -33138,7 +33254,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        let frame = &self.rendered_frame;
 +        let areas = frame.hitboxes.iter().map(|hitbox| hitbox.bounds.intersect(&hitbox.content_mask.bounds)).collect();
 +        (areas, frame.deferred_draws.len())
-@@ -2770,3 +3200,27 @@
+@@ -2770,3 +3203,27 @@
 -        self.rendered_frame.scene.underlines.clone()
 -    }
 -
@@ -33169,7 +33285,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        crate::scene::draw_sequence(&self.rendered_frame.scene, &mut out);
 +        out
 +    }
-@@ -2884,2 +3338,66 @@
+@@ -2884,2 +3341,66 @@
 -    /// Handle window movement for Linux and macOS.
 -    /// Tells the compositor to take control of window movement (Wayland and X11)
 +    /// KaminIDE patch: raw ID3D11Device окна — по нему открывается общий
@@ -33238,7 +33354,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +
 +    /// KaminIDE patch: нарисовать чужую текстуру как обычный спрайт — с теми
 +    /// же скруглением и маской, что у картинок.
-@@ -2887 +3405,71 @@
+@@ -2887 +3408,71 @@
 -    /// Events may not be received during a move operation.
 +    /// Зовётся в фазе отрисовки элемента.
 +    pub fn paint_external_texture(
@@ -33311,38 +33427,38 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    }
 +
 +    /// Start moving the window (drag) via the platform.
-@@ -3019,0 +3608 @@
+@@ -3019,0 +3611 @@
 +        let depth = self.element_id_stack.len();
-@@ -3021,3 +3610 @@
+@@ -3021,3 +3613 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -3038,0 +3626 @@
+@@ -3038,0 +3629 @@
 +            let depth = self.rem_size_override_stack.len();
-@@ -3040,3 +3628 @@
+@@ -3040,3 +3631 @@
 -            let result = f(self);
 -            self.rem_size_override_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.rem_size_override_stack.truncate(*depth), f).0
-@@ -3109 +3695 @@
+@@ -3109 +3698 @@
 -            self.next_frame.scene.insert_primitive(underline);
 +            self.insert_scene_primitive(underline);
-@@ -3127 +3713 @@
+@@ -3127 +3716 @@
 -            self.next_frame.scene.insert_primitive(underline);
 +            self.insert_scene_primitive(underline);
-@@ -3133 +3719 @@
+@@ -3133 +3722 @@
 -            self.next_frame.scene.insert_primitive(Underline {
 +            self.insert_scene_primitive(Underline {
-@@ -3189,5 +3774,0 @@
+@@ -3189,5 +3777,0 @@
 -    #[inline]
 -    fn snap_border_widths(&self, edges: Edges<Pixels>) -> Edges<ScaledPixels> {
 -        edges.map(|e| self.snap_stroke(*e))
 -    }
 -
-@@ -3304,0 +3886 @@
+@@ -3304,0 +3889 @@
 +    #[track_caller]
-@@ -3305,0 +3888,17 @@
+@@ -3305,0 +3891,17 @@
 +        // KaminIDE patch: DevTools `why` reads which requests each draw served
 +        // and which caller drew (the platform frame request or a forced draw).
 +        crate::dirty_sources::trace::mark("draw");
@@ -33360,18 +33476,18 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    }
 +
 +    fn draw_frame(&mut self, cx: &mut App) -> ArenaClearNeeded {
-@@ -3355,0 +3955,6 @@
+@@ -3355,0 +3958,6 @@
 +        // A caught unwind still aborts this pass; never publish its partial scene.
 +        if !self.paint_pass.is_live() {
 +            // KaminIDE patch: the recorded root ranges index the dropped frame.
 +            self.root_ranges = None;
 +            return arena_scope.exit(&cx.element_arena);
 +        }
-@@ -3356,0 +3962 @@
+@@ -3356,0 +3965 @@
 +        self.dirty_outside_isolated = false;
-@@ -3387,0 +3994 @@
+@@ -3387,0 +3997 @@
 +        retained_layout::release_frame_layouts();
-@@ -3390,0 +3998,12 @@
+@@ -3390,0 +4001,12 @@
 +        // KaminIDE patch: where the new scene paints otherwise than the one this
 +        // window drew last (scene/damage.rs); a renderer that keeps its target
 +        // redraws only there.
@@ -33384,22 +33500,22 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        self.next_frame
 +            .scene
 +            .note_frame_damage_moved(&self.rendered_frame.scene, self.frame_serial + 1, device, moved);
-@@ -3395,0 +4015 @@
+@@ -3395,0 +4018 @@
 +        self.frame_serial += 1;
-@@ -3463,0 +4084 @@
+@@ -3463,0 +4087 @@
 +        self.last_accessed_entities.clone_from(&entities);
-@@ -3488,0 +4110,3 @@
+@@ -3488,0 +4113,3 @@
 +        // KaminIDE patch: the frame holds its layers' content only while it
 +        // is drawn (`scene::layer`); a host's write after this copies nothing.
 +        self.rendered_frame.scene.hold_layers();
-@@ -3489,0 +4114,2 @@
+@@ -3489,0 +4117,2 @@
 +        self.rendered_frame.scene.release_layers();
 +        self.frame_presented = true;
-@@ -3554,3 +4179,0 @@
+@@ -3554,3 +4182,0 @@
 -        if self.a11y.is_active() {
 -            self.a11y.begin_frame();
 -        }
-@@ -3579,37 +4202,18 @@
+@@ -3579,37 +4205,18 @@
 -        let scale_factor = self.scale_factor();
 -        let mut root_element = self.root.as_ref().unwrap().clone().into_any_element();
 -        let root_layout_id = root_element.request_layout(self, cx);
@@ -33455,12 +33571,12 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        );
 +
 +        let _hit_started = std::time::Instant::now();
-@@ -3616,0 +4221,4 @@
+@@ -3616,0 +4224,4 @@
 +        crate::frame_perf::HITTEST_US.fetch_add(
 +            _hit_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3620 +4228,16 @@
+@@ -3620 +4231,16 @@
 -        root_element.paint(self, cx);
 +        let _paint_started = std::time::Instant::now();
 +        // KaminIDE patch: a kept root replays its paint records (`window/isolated.rs`).
@@ -33478,20 +33594,20 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            _paint_started.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
 +        );
-@@ -3763,0 +4387,5 @@
+@@ -3763,0 +4390,5 @@
 +                let _render_scope = self.render_contexts.enter_snapshot(
 +                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
 +                );
 +                // KaminIDE patch: a dirty isolated view is drawn again alone.
 +                self.rebuild_isolated(deferred_draw_ix, cx);
-@@ -3768,2 +4396 @@
+@@ -3768,2 +4399 @@
 -                    self.text_style_stack
 -                        .clone_from(&deferred_draw.text_style_stack);
 +                    self.text_style_stack = deferred_draw.text_style_stack.clone();
-@@ -3781,0 +4409,2 @@
+@@ -3781,0 +4412,2 @@
 +                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
 +                let entered = self.enter_deferred_prepaint(deferred_draw_ix);
-@@ -3783,4 +4412,8 @@
+@@ -3783,4 +4415,8 @@
 -                    self.with_rendered_view(current_view, |window| {
 -                        window.with_rem_size(Some(rem_size), |window| {
 -                            window.with_absolute_element_offset(absolute_offset, |window| {
@@ -33504,18 +33620,20 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                                window.with_absolute_element_offset(absolute_offset, |window| {
 +                                    element.prepaint(window, cx);
 +                                });
-@@ -3792 +4425 @@
+@@ -3792 +4428 @@
 -                    self.reuse_prepaint(prepaint_range);
 +                    self.reuse_deferred_prepaint(deferred_draw_ix, prepaint_range);
-@@ -3793,0 +4427 @@
+@@ -3793,0 +4430 @@
 +                self.leave_deferred_prepaint(entered);
-@@ -3800 +4434 @@
+@@ -3800 +4437 @@
 -            self.text_style_stack.clear();
 +            self.text_style_stack = TextStyleScope::default();
-@@ -3817,0 +4452,2 @@
+@@ -3817,0 +4455,2 @@
 +            let _render_scope = self.render_contexts
 +                .enter_snapshot(deferred_draw.render_contexts.clone());
-@@ -3827,5 +4463,9 @@
+@@ -3824,0 +4464 @@
++            let groups_start = self.next_frame.scene.groups.len();
+@@ -3827,5 +4467,9 @@
 -                self.with_rendered_view(deferred_draw.current_view, |window| {
 -                    window.with_content_mask(content_mask, |window| {
 -                        window.with_rem_size(Some(deferred_draw.rem_size), |window| {
@@ -33530,17 +33648,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                                element.paint(window, cx);
 +                            });
 +                        })
-@@ -3833 +4473,2 @@
+@@ -3833 +4477,2 @@
 -                })
 +                });
 +                self.leave_deferred_paint(entered);
-@@ -3835 +4476,2 @@
+@@ -3835 +4480,2 @@
 -                self.reuse_paint(deferred_draw.paint_range.clone());
 +                let range = deferred_draw.paint_range.clone();
-+                self.reuse_deferred_paint(&mut deferred_draw.scroll, range);
-@@ -3857,0 +4500 @@
++                self.reuse_deferred_paint(&mut deferred_draw.scroll, range, deferred_draw.groups.clone());
+@@ -3838,0 +4485 @@
++            deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
+@@ -3857,0 +4505 @@
 +            scroll_nodes_index: self.next_frame.scroll_nodes.len(),
-@@ -3862,0 +4506,16 @@
+@@ -3862,0 +4511,16 @@
 +        // KaminIDE patch: the scroll nodes prepainted in the range, and where
 +        // they land (deferred draws keep their owner node, `scroll_deferred`).
 +        let owners = scroll_deferred::OwnerMap::new(&range, self);
@@ -33557,14 +33677,15 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                self.next_frame.hitbox_entry_scopes.insert(entry, scope.clone());
 +            }
 +        }
-@@ -3901,0 +4561,2 @@
+@@ -3901,0 +4566,2 @@
 +                    render_contexts: deferred_draw.render_contexts.clone(),
 +                    layout_owner: deferred_draw.layout_owner.clone(),
-@@ -3908,0 +4570,3 @@
+@@ -3908,0 +4575,4 @@
++                    groups: deferred_draw.groups.clone(),
 +                    isolated: deferred_draw.isolated.clone(),
 +                    scroll: owners.copy(&deferred_draw.scroll),
 +                    site: deferred_draw.site,
-@@ -3910,0 +4575,9 @@
+@@ -3910,0 +4581,9 @@
 +        // KaminIDE patch: reused isolated draws stay isolated in the new frame.
 +        let isolated = &mut self.next_frame.isolated_views;
 +        for draw in &self.rendered_frame.deferred_draws
@@ -33574,11 +33695,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                isolated.insert(draw.view.entity_id());
 +            }
 +        }
-@@ -3927 +4600,2 @@
+@@ -3927 +4606,2 @@
 -    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
 +    /// KaminIDE patch: `reuse_paint` of everything but the scene commands.
 +    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) {
-@@ -3966,5 +4640,38 @@
+@@ -3966,5 +4646,38 @@
 -            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
 -        self.next_frame.scene.replay(
 -            range.start.scene_index..range.end.scene_index,
@@ -33622,7 +33743,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    ) -> R {
 +        let scope = self.render_contexts.enter(context);
 +        self.with_restore(scope, |_, _| {}, f).0
-@@ -3982,4 +4689,3 @@
+@@ -3982,4 +4695,3 @@
 -            self.text_style_stack.push(style);
 -            let result = f(self);
 -            self.text_style_stack.pop();
@@ -33630,7 +33751,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            let inner = self.text_style_stack.push(style);
 +            let outer = std::mem::replace(&mut self.text_style_stack, inner);
 +            self.with_restore(outer, |window, outer| window.text_style_stack = std::mem::take(outer), f).0
-@@ -3988,0 +4695,24 @@
+@@ -3988,0 +4701,24 @@
 +    }
 +
 +    /// Apply borrowed text and overflow context together during child drawing.
@@ -33655,7 +33776,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    #[inline(never)]
 +    fn push_text_style_ref(&mut self, style: &TextStyleRefinement) {
 +        self.text_style_stack = self.text_style_stack.push(style.clone());
-@@ -4034,0 +4765,8 @@
+@@ -4034,0 +4771,8 @@
 +        let depth = self.content_mask_stack.len();
 +        let _clip_scope = self.push_content_mask(mask);
 +        self.with_restore(depth, |window, depth| window.content_mask_stack.truncate(*depth), f).0
@@ -33664,7 +33785,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    // Prepare mask temporaries before entering the recursive child traversal.
 +    #[inline(never)]
 +    fn push_content_mask(&mut self, mask: Option<ContentMask<Pixels>>) -> Option<render_context::Scope> {
-@@ -4036,5 +4774,12 @@
+@@ -4036,5 +4780,12 @@
 -            let mask = mask.intersect(&self.content_mask());
 -            self.content_mask_stack.push(mask);
 -            let result = f(self);
@@ -33682,7 +33803,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            let scope = self.segment_clip_scope(mask, false);
 +            self.content_mask_stack.push(mask.intersect(&self.content_mask()));
 +            scope
-@@ -4042,2 +4787,136 @@
+@@ -4042,2 +4793,136 @@
 -            f(self)
 -        }
 +            None
@@ -33821,7 +33942,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    ) -> R {
 +        let prev = self.mask_scale.replace((origin, scale));
 +        self.with_restore(prev, |window, prev| window.mask_scale = *prev, f).0
-@@ -4060,0 +4940,19 @@
+@@ -4060,0 +4946,19 @@
 +    }
 +
 +    /// KaminIDE patch: like [`Self::with_element_offset`], but descendants'
@@ -33841,21 +33962,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        let abs_offset = self.element_offset() + offset;
 +        self.with_restore(depth, |window, depth| window.exact_element_offset_depth = *depth,
 +            |window| window.with_absolute_element_offset(abs_offset, f)).0
-@@ -4071,0 +4970 @@
+@@ -4071,0 +4976 @@
 +        let depth = self.element_offset_stack.len();
-@@ -4073,3 +4972 @@
+@@ -4073,3 +4978 @@
 -        let result = f(self);
 -        self.element_offset_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_offset_stack.truncate(*depth), f).0
-@@ -4091,3 +4988 @@
+@@ -4091,3 +4994 @@
 -        let result = f(self);
 -        self.element_opacity = previous_opacity;
 -        result
 +        self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
-@@ -4106,0 +5002 @@
+@@ -4106,0 +5008 @@
 +            self.next_frame.hitbox_entry_scopes.retain(|entry, _| *entry < index.hitboxes_index);
-@@ -4147 +5043,10 @@
+@@ -4147 +5049,10 @@
 -        cx.asset_entry::<A>(source).use_by(self.current_view())
 +        // KaminIDE patch: a measure callback (detached layout during
 +        // `compute_layout`) has no current view; then the window's root view
@@ -33867,7 +33988,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            Some(view) => entry.use_by(view),
 +            None => entry.get(),
 +        }
-@@ -4157,0 +5063,56 @@
+@@ -4157,0 +5069,56 @@
 +    /// Obtain the current element offset. This method should only be called during the
 +    /// prepaint phase of element drawing.
 +    /// KaminIDE patch: действующее преобразование.
@@ -33924,30 +34045,30 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        self.with_transform_frame(combined, keeps_axes.then_some(combined), f)
 +    }
 +
-@@ -4168,2 +5129 @@
+@@ -4168,2 +5135 @@
 -    /// Obtain the current element opacity. This method should only be called during the
 -    /// prepaint phase of element drawing.
 +    /// Текущая накопленная непрозрачность элемента в фазе prepaint или paint.
-@@ -4171 +5131 @@
+@@ -4171 +5137 @@
 -    pub(crate) fn element_opacity(&self) -> f32 {
 +    pub fn element_opacity(&self) -> f32 {
-@@ -4178,0 +5139 @@
+@@ -4178,0 +5145 @@
 +        if let Some(mask) = self.segment_capture_mask() { return mask; }
-@@ -4196,0 +5158 @@
+@@ -4196,0 +5164 @@
 +        let depth = self.element_id_stack.len();
-@@ -4198,3 +5160 @@
+@@ -4198,3 +5166 @@
 -        let result = f(self);
 -        self.element_id_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.element_id_stack.truncate(*depth), f).0
-@@ -4330,2 +5290,2 @@
+@@ -4330,2 +5296,2 @@
 -        self.invalidator.debug_assert_paint_or_prepaint();
 -
 +        // KaminIDE patch: without an id nothing is read or written, so an
 +        // element without one lays out in any phase (`update_rendering`).
-@@ -4369,0 +5330 @@
+@@ -4369,0 +5336 @@
 +    #[track_caller]
-@@ -4375,0 +5337,47 @@
+@@ -4375,0 +5343,47 @@
 +    ) {
 +        let site = core::panic::Location::caller();
 +        self.defer_draw_at(element, absolute_offset, priority, content_mask, site);
@@ -33995,14 +34116,15 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        content_mask: Option<ContentMask<Pixels>>,
 +        scroll: scroll_deferred::DeferredScroll,
 +        site: &'static core::panic::Location<'static>,
-@@ -4383,0 +5392,2 @@
+@@ -4383,0 +5398,2 @@
 +            render_contexts: self.render_contexts.snapshot(),
 +            layout_owner: self.retained_layout(),
-@@ -4390,0 +5401,3 @@
+@@ -4390,0 +5407,4 @@
++            groups: 0..0,
 +            isolated: None,
 +            scroll,
 +            site,
-@@ -4405,12 +5418,93 @@
+@@ -4405,12 +5425,93 @@
 -            self.next_frame
 -                .scene
 -                .push_layer(self.cover_bounds(clipped_bounds));
@@ -34108,13 +34230,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        }, |window| {
 +            if pushed { window.with_paint_scope(f) } else { f(window) }
 +        }).0
-@@ -4442 +5536 @@
+@@ -4442 +5543 @@
 -            self.next_frame.scene.insert_primitive(Shadow {
 +            self.insert_scene_primitive(Shadow {
-@@ -4487 +5581 @@
+@@ -4487 +5588 @@
 -            self.next_frame.scene.insert_primitive(Shadow {
 +            self.insert_scene_primitive(Shadow {
-@@ -4554,2 +5648,8 @@
+@@ -4554,2 +5655,8 @@
 -        let snapped_bounds = self.snap_bounds(quad.bounds);
 -        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
 +        // KaminIDE patch: действующее преобразование едет вместе с квадом.
@@ -34125,19 +34247,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        // округление сдвигало бы их второй раз, а у преобразованного квада
 +        // локальные координаты снэпать нельзя вовсе (см. decisions.md).
 +        let scale_factor = self.scale_factor();
-@@ -4556,0 +5657 @@
+@@ -4556,0 +5664 @@
 +            transformation,
-@@ -4558,2 +5659,2 @@
+@@ -4558,2 +5666,2 @@
 -            bounds: snapped_bounds,
 -            content_mask: self.snapped_content_mask(),
 +            bounds: quad.bounds.scale(scale_factor),
 +            content_mask: self.content_mask().scale(scale_factor),
-@@ -4562,2 +5663,2 @@
+@@ -4562,2 +5670,2 @@
 -            corner_radii: quad.corner_radii.scale(self.scale_factor()),
 -            border_widths: snapped_border_widths,
 +            corner_radii: quad.corner_radii.scale(scale_factor),
 +            border_widths: quad.border_widths.scale(scale_factor),
-@@ -4567,2 +5668,8 @@
+@@ -4567,2 +5675,8 @@
 -        if !quad.background.is_transparent() {
 -            self.next_frame.scene.insert_primitive(quad);
 +        // The strip split below restricts screen-space content masks, which
@@ -34148,24 +34270,24 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            if self.paint_value.is_some() {
 +                self.bind_painted_quad(before, opacity);
 +            }
-@@ -4578 +5685 @@
+@@ -4578 +5692 @@
 -            self.next_frame.scene.insert_primitive(quad);
 +            self.insert_scene_primitive(quad);
-@@ -4608 +5715 @@
+@@ -4608 +5722 @@
 -                self.next_frame.scene.insert_primitive(Quad {
 +                self.insert_scene_primitive(Quad {
-@@ -4630,3 +5737 @@
+@@ -4630,3 +5744 @@
 -        self.next_frame
 -            .scene
 -            .insert_primitive(path.scale(scale_factor));
 +        self.insert_scene_primitive(path.scale(scale_factor));
-@@ -4646 +5751 @@
+@@ -4646 +5758 @@
 -        self.next_frame.scene.insert_primitive(underline);
 +        self.insert_scene_primitive(underline);
-@@ -4668 +5773 @@
+@@ -4668 +5780 @@
 -        self.next_frame.scene.insert_primitive(Underline {
 +        self.insert_scene_primitive(Underline {
-@@ -4676,0 +5782,9 @@
+@@ -4676,0 +5789,9 @@
 +    }
 +
 +    /// KaminIDE patch: set the offset added to the origin of every glyph
@@ -34175,7 +34297,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    /// its glyphs keep the fractional position while its boxes stay snapped.
 +    pub fn replace_glyph_offset(&mut self, offset: Point<Pixels>) -> Point<Pixels> {
 +        std::mem::replace(&mut self.raster_frame.glyph_offset, offset)
-@@ -4699,14 +5813,32 @@
+@@ -4699,14 +5820,32 @@
 -        let glyph_origin = origin.scale(scale_factor);
 -
 -        let quantized_origin = Point::new(
@@ -34222,7 +34344,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            )
 +        };
 +        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size, pixel_exact);
-@@ -4738 +5870,6 @@
+@@ -4738 +5877,6 @@
 -            let content_mask = self.snapped_content_mask();
 +            // KaminIDE patch: маска без upstream-расширения до целых пикселей
 +            // (как у квада, см. `paint_quad`).
@@ -34230,19 +34352,19 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            // KaminIDE patch: глиф едет тем же преобразованием, что и
 +            // подложка, — иначе повёрнутая кнопка оставляла бы ровный текст.
 +            let transformation = self.current_transformation();
-@@ -4741 +5878 @@
+@@ -4741 +5885 @@
 -                self.next_frame.scene.insert_primitive(SubpixelSprite {
 +                self.insert_scene_primitive(SubpixelSprite {
-@@ -4748 +5885 @@
+@@ -4748 +5892 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4751 +5888 @@
+@@ -4751 +5895 @@
 -                self.next_frame.scene.insert_primitive(MonochromeSprite {
 +                self.insert_scene_primitive(MonochromeSprite {
-@@ -4758 +5895 @@
+@@ -4758 +5902 @@
 -                    transformation: TransformationMatrix::unit(),
 +                    transformation,
-@@ -4763,19 +5899,0 @@
+@@ -4763,19 +5906,0 @@
 -    }
 -
 -    fn should_use_subpixel_rendering(&self, font_id: FontId, font_size: Pixels) -> bool {
@@ -34262,7 +34384,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 -        };
 -
 -        mode == TextRenderingMode::Subpixel
-@@ -4798,0 +5917,14 @@
+@@ -4798,0 +5924,14 @@
 +        self.paint_emoji_alpha(origin, font_id, glyph_id, font_size, 1.0)
 +    }
 +
@@ -34277,11 +34399,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        font_size: Pixels,
 +        alpha: f32,
 +    ) -> Result<()> {
-@@ -4803 +5935,2 @@
+@@ -4803 +5942,2 @@
 -        let integer_origin = glyph_origin.map(|c| ScaledPixels(round_half_toward_zero(c.0)));
 +        // KaminIDE patch: floor, as for monochrome glyphs (see `paint_glyph`).
 +        let integer_origin = glyph_origin.map(|px| px.floor());
-@@ -4829,4 +5962,6 @@
+@@ -4829,4 +5969,6 @@
 -            let content_mask = self.snapped_content_mask();
 -            let opacity = self.element_opacity();
 -
@@ -34292,25 +34414,25 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            let transformation = self.current_transformation();
 +            self.insert_scene_primitive(PolychromeSprite {
 +                transformation,
-@@ -4898 +6033 @@
+@@ -4898 +6040 @@
 -        self.next_frame.scene.insert_primitive(MonochromeSprite {
 +        self.insert_scene_primitive(MonochromeSprite {
-@@ -4948,4 +6083 @@
+@@ -4948,4 +6090 @@
 -                    Cow::Borrowed(
 -                        data.as_bytes(frame_index)
 -                            .expect("It's the caller's job to pass a valid frame index"),
 -                    ),
 +                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
-@@ -4954,0 +6087 @@
+@@ -4954,0 +6094 @@
 +        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
-@@ -5004 +6137,5 @@
+@@ -5004 +6144,5 @@
 -        self.next_frame.scene.insert_primitive(PolychromeSprite {
 +        // KaminIDE patch: картинка едет действующим преобразованием.
 +        let transformation = self.current_transformation();
 +        let before = self.next_frame.scene.len();
 +        self.insert_scene_primitive(PolychromeSprite {
 +            transformation,
-@@ -5013,0 +6151,76 @@
+@@ -5013,0 +6158,76 @@
 +        if self.next_frame.scene.len() > before {
 +            self.next_frame.scene.keep_image(tile, lease);
 +        }
@@ -34387,7 +34509,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        if self.next_frame.scene.len() > before {
 +            self.next_frame.scene.keep_image(tile, lease);
 +        }
-@@ -5018,0 +6232,218 @@
+@@ -5018,0 +6239,218 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -34606,10 +34728,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        result
 +    }
 +
-@@ -5028 +6459 @@
+@@ -5028 +6466 @@
 -        self.next_frame.scene.insert_primitive(PaintSurface {
 +        self.insert_scene_primitive(PaintSurface {
-@@ -5076,0 +6508,24 @@
+@@ -5076,0 +6515,24 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -34634,7 +34756,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6538,26 @@
+@@ -5082,0 +6545,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -34661,7 +34783,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6571,66 @@
+@@ -5089,0 +6578,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -34728,10 +34850,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6656,2 @@
+@@ -5108,0 +6663,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6661,252 @@
+@@ -5112 +6668,252 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -34985,7 +35107,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6933,48 @@
+@@ -5132,0 +6940,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -35034,7 +35156,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +6995,6 @@
+@@ -5147,2 +7002,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -35043,11 +35165,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5160 +7012,2 @@
+@@ -5160 +7019,2 @@
 -        let content_mask = self.content_mask();
 +        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
 +        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
-@@ -5169 +7022,10 @@
+@@ -5169 +7029,10 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -35059,7 +35181,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            }
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +7074,16 @@
+@@ -5211,0 +7081,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -35076,21 +35198,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +7102 @@
+@@ -5223,0 +7109 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +7104 @@
+@@ -5225,3 +7111 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +7113 @@
+@@ -5235,0 +7120 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +7115 @@
+@@ -5237,3 +7122 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +7335,7 @@
+@@ -5458,0 +7342,7 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        // A wheel step moves scroll offsets, which retained records replay
 +        // through their scroll nodes (`retained_scrolled`); a listener that
@@ -35098,44 +35220,44 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        if !matches!(event, PlatformInput::ScrollWheel(_)) {
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
 +        }
-@@ -5792,0 +7676,5 @@
+@@ -5792,0 +7683,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -5872,0 +7761,6 @@
+@@ -5872,0 +7768,6 @@
 +            // KaminIDE patch: this frame shows the state before the key's
 +            // handlers run, so it is drawn at the epoch before this input
 +            // (`dispatch_event` counted it): a retained subtree replays here
 +            // and judges the input once its handlers ran.
 +            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
 +            self.interaction_epoch = before;
-@@ -5873,0 +7768,2 @@
+@@ -5873,0 +7775,2 @@
 +            // Inputs the draw itself counted (a focus change) stay counted.
 +            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
-@@ -6132 +8028 @@
+@@ -6132 +8035 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +8040 @@
+@@ -6144 +8047 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +8060 @@
+@@ -6164 +8067 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +8292 @@
+@@ -6396 +8299 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +8315 @@
+@@ -6419 +8322 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8494 @@
+@@ -6598 +8501 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8597 @@
+@@ -6701 +8604 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6789,0 +8686,7 @@
+@@ -6789,0 +8693,7 @@
 +    }
 +
 +    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
@@ -35143,7 +35265,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    /// report it.
 +    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.platform_window.gpu_memory(sink)
-@@ -7181,0 +9085,11 @@
+@@ -7181,0 +9092,11 @@
 +        // KaminIDE patch: a read sets states aside for the next frame, which
 +        // takes them before those of the drawn frame (`update_rendering`).
 +        if self.read_states.active {
@@ -35155,13 +35277,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +                .or_else(|| self.rendered_frame.element_states.remove(&key));
 +            return (key, state);
 +        }
-@@ -7186,0 +9101 @@
+@@ -7186,0 +9108 @@
 +            .or_else(|| self.read_states.states.remove(&key))
-@@ -7196,0 +9112,3 @@
+@@ -7196,0 +9119,3 @@
 +        if self.read_states.active {
 +            return self.read_states.states.insert(key, state);
 +        }
-@@ -7733,0 +9652,44 @@
+@@ -7733,0 +9659,44 @@
 +impl Frame {
 +    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
 +    /// (`crate::heap_report`). What listeners and element states own is not walked.
@@ -35206,7 +35328,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +    }
 +}
 +
-@@ -7752,0 +9715,31 @@
+@@ -7752,0 +9722,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -35238,7 +35360,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -7913,0 +9907,36 @@
+@@ -7913,0 +9914,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -35275,7 +35397,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..20d2789e8fddc106b85dab64deff6fac
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +10064,67 @@
+@@ -8034,0 +10071,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
@@ -35468,10 +35590,10 @@ index 0000000000000000000000000000000000000000..c316c467fb6b10da4b67d583df5629e8
 +}
 diff --git a/vendor/gpui/src/window/group_replay.rs b/vendor/gpui/src/window/group_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..314a5fd6b1e8f4841ce2f2f68d5a538c7f8fcbca
+index 0000000000000000000000000000000000000000..f0d10159c2f44094ca0ea25f5de6d52a49c3d330
 --- /dev/null
 +++ b/vendor/gpui/src/window/group_replay.rs
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,164 @@
 +//! KaminIDE patch: the composition groups of a retained paint record
 +//! (`scene::group_replay`).
 +//!
@@ -35533,17 +35655,32 @@ index 0000000000000000000000000000000000000000..314a5fd6b1e8f4841ce2f2f68d5a538c
 +            && self.retained_replayable(prepaint, &ungrouped)
 +    }
 +
-+    /// Copy the groups `record` made in the rendered frame to the end of this
-+    /// frame's list, scrolled by `scrolled` (the plan's node shifts and clips
-+    /// in scene pixels, with each group's label node), and renumber the
-+    /// labels the replay copies next (`Scene::relabel`, reset by the caller).
-+    /// Returns the range the copies take.
++    /// Why `retained_replayable_with_groups` refuses, for the `why` journal:
++    /// the first condition that fails, or `None` when it would replay.
++    pub fn explain_replayable_with_groups(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> Option<String> {
++        let groups = paint.groups();
++        if !groups.is_empty() && self.replay_source().is_some() {
++            return Some(format!("groups {groups:?} recorded while replaying a scene layer"));
++        }
++        let made = self.rendered_frame.scene.groups.len();
++        if groups.end > made {
++            return Some(format!("groups {groups:?} past the rendered frame's {made}"));
++        }
++        let mut ungrouped = paint.clone();
++        ungrouped.groups = (0, 0);
++        (!self.retained_replayable(prepaint, &ungrouped)).then(|| "commands are not replayable".into())
++    }
++
++    /// Copy the `groups` of the rendered frame's list (made by a record or by
++    /// a deferred draw) to the end of this frame's list, scrolled by
++    /// `scrolled` (the plan's node shifts and clips in scene pixels, with each
++    /// group's label node), and renumber the labels the replay copies next
++    /// (`Scene::relabel`, reset by the caller). Returns the range the copies take.
 +    pub(super) fn replay_groups(
 +        &mut self,
-+        record: &RetainedPaint,
++        groups: Range<usize>,
 +        scrolled: Option<(&[Option<ScrollNodeId>], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
 +    ) -> Range<usize> {
-+        let groups = record.groups();
 +        let base = self.next_frame.scene.groups.len();
 +        let prev = &self.rendered_frame.scene;
 +        if groups.is_empty() || prev.groups.len() < groups.end {
@@ -39549,10 +39686,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ce45c7e72ce656d53b59c39d73044820c95f2ce9
+index 0000000000000000000000000000000000000000..c311bceea1916b6026dfb9b48aa064246b3a9e09
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,863 @@
+@@ -0,0 +1,845 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -39745,30 +39882,12 @@ index 0000000000000000000000000000000000000000..ce45c7e72ce656d53b59c39d73044820
 +    }
 +
 +    /// Whether a record made in the rendered frame can be replayed into this
-+    /// one. Deferred draws paint after the whole tree, outside the subtree's
-+    /// paint range, and nested deferred draws are appended after their owner;
-+    /// when the subtree registered any, every deferred draw from its first one
-+    /// on must be free of composition groups.
-+    pub fn retained_replayable(&self, prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
-+        use crate::scene::{PaintOperation, Primitive};
-+        let frame = &self.rendered_frame;
-+        // A range recorded inside a scene layer is in its scene (`reuse_paint`).
-+        let source = self.replay_source();
-+        let scene = source.as_deref().map_or(&frame.scene, |layer| layer.scene());
-+        let prepaint = prepaint.range();
-+        let first = prepaint.start.deferred_draws_index;
-+        let groups = |draw: &DeferredDraw| {
-+            let range = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
-+            scene.paint_operations[range].iter().any(|operation| {
-+                matches!(
-+                    operation,
-+                    PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0
-+                )
-+            })
-+        };
++    /// one. The deferred draws it registered paint after the whole tree and
++    /// copy the composition groups they made (`reuse_deferred_paint`), so
++    /// only the record's own commands decide; the prepaint is kept for the
++    /// hosts' call shape.
++    pub fn retained_replayable(&self, _prepaint: &RetainedPrepaint, paint: &RetainedPaint) -> bool {
 +        paint.replayable()
-+            && (first == prepaint.end.deferred_draws_index
-+                || !frame.deferred_draws[first..].iter().any(groups))
 +    }
 +
 +    /// Run the paint of a subtree and return its range in this frame.
@@ -39791,7 +39910,7 @@ index 0000000000000000000000000000000000000000..ce45c7e72ce656d53b59c39d73044820
 +    /// The caller guarantees the record comes from the rendered frame.
 +    pub fn replay_retained_paint(&mut self, record: &RetainedPaint) -> RetainedPaint {
 +        debug_assert!(record.replayable, "non-replayable paint record");
-+        let (start, groups) = (self.paint_index(), self.replay_groups(record, None));
++        let (start, groups) = (self.paint_index(), self.replay_groups(record.groups(), None));
 +        self.reuse_paint(record.range());
 +        self.next_frame.scene.relabel = 0;
 +        self.allow_replayed(record);
@@ -41122,10 +41241,10 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +}
 diff --git a/vendor/gpui/src/window/scroll_deferred.rs b/vendor/gpui/src/window/scroll_deferred.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..87fead50fcedb92aadb1986d5641ce708f48b4f1
+index 0000000000000000000000000000000000000000..a5c96fe90a17c6fd6395bb638d435d9fedf549b1
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_deferred.rs
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,213 @@
 +//! KaminIDE patch: deferred draws that belong to a scroll node.
 +//!
 +//! A deferred draw paints after the whole tree, in priority order, but its
@@ -41268,13 +41387,26 @@ index 0000000000000000000000000000000000000000..87fead50fcedb92aadb1986d5641ce70
 +    }
 +
 +    /// Paint of a deferred draw without its element: a copy of its rendered
-+    /// commands, moved by the plan of the scrolled replay that copied it.
-+    pub(super) fn reuse_deferred_paint(&mut self, scroll: &mut DeferredScroll, range: Range<PaintIndex>) {
-+        let Some((plan, _)) = scroll.plan.take() else {
-+            return self.reuse_paint(range);
-+        };
-+        self.reuse_paint_state(&range);
-+        self.replay_scenes_scrolled(range.start.scene_index..range.end.scene_index, &plan);
++    /// commands, moved by the plan of the scrolled replay that copied it,
++    /// with the composition `groups` it made in the rendered frame copied
++    /// and its labels renumbered, as a record's (`replay_groups`).
++    pub(super) fn reuse_deferred_paint(&mut self, scroll: &mut DeferredScroll, range: Range<PaintIndex>, groups: Range<usize>) {
++        let scenes = range.start.scene_index..range.end.scene_index;
++        match scroll.plan.take() {
++            None => {
++                self.replay_groups(groups, None);
++                self.reuse_paint(range);
++            }
++            Some((plan, _)) => {
++                self.reuse_paint_state(&range);
++                let scale = self.scale_factor();
++                let node = |id: ScrollNodeId| plan.scaled(id, scale);
++                let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), groups.clone());
++                self.replay_groups(groups, Some((&labels, &node)));
++                self.replay_scenes_scrolled(scenes, &plan);
++            }
++        }
++        self.next_frame.scene.relabel = 0;
 +    }
 +
 +    /// What a deferred draw of a record adds to the record for a scrolled
@@ -42615,10 +42747,10 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f2ca3b1b3
+index 0000000000000000000000000000000000000000..e4e77319f9e84fb944309b57f3b6c14ede3187ee
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,364 @@
+@@ -0,0 +1,386 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -42667,6 +42799,12 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +
 +    pub(super) fn node(&self, id: ScrollNodeId) -> &PlannedNode {
 +        &self.nodes[self.by_id[&id]]
++    }
++
++    /// A planned node's shift and clip in scene pixels (`Scene::replay_scrolled`).
++    pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
++        let node = self.node(id);
++        (node.shift.scale(scale), node.clip.scale(scale))
 +    }
 +}
 +
@@ -42760,9 +42898,11 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +                    .iter()
 +                    .find_map(|node| {
 +                        let why = match () {
-+                            _ if node.paint.is_none() => "no paint",
++                            _ if node.paint.is_none() && (node.anchored || node.source.offset() != node.offset) => {
++                                "no paint, and it moves apart from its parent"
++                            }
 +                            _ if node.torn => "torn",
-+                            _ if node.painted_in != Some(space) => "painted in another scene",
++                            _ if node.paint.is_some() && node.painted_in != Some(space) => "painted in another scene",
 +                            _ => return None,
 +                        };
 +                        Some(format!("scroll node {:?}: {why}", node.id))
@@ -42827,7 +42967,8 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +            }
 +            for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
 +                // Every paint range of the node in its part's scene, deferred ones too.
-+                if node.paint.is_none() || node.painted_in != Some(scene.scroll.space) || node.torn {
++                let painted = node.paint.is_some();
++                if (painted && node.painted_in != Some(scene.scroll.space)) || node.torn {
 +                    return Err(at(ScrollRefusal::Node));
 +                }
 +                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
@@ -42843,6 +42984,12 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +                    None => node.clip,
 +                };
 +                let shift = node.source.replay_shift(parent_shift, node.offset, new);
++                // A node whose children painted nothing as it (hidden, or painted
++                // under the node open around them) is replayed only moving with its
++                // parent: whatever it shows then moves as its parent's commands.
++                if !painted && shift != parent_shift {
++                    return Err(at(ScrollRefusal::Node));
++                }
 +                let interest = moved(node.interest, shift);
 +                if !inside(clip, interest) {
 +                    return Err(at(ScrollRefusal::Interest));
@@ -42863,6 +43010,19 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +            let labels = source.group_label_nodes(scenes.clone(), groups.clone());
 +            if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
 +                return Err(at(ScrollRefusal::Groups));
++            }
++        }
++        // So do those of its deferred draws, in the frame's scene
++        // (`reuse_deferred_paint`).
++        let frame = &self.rendered_frame;
++        for draw in plan.draws.keys().map(|&index| &frame.deferred_draws[index]) {
++            let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
++            let groups = draw.groups.clone();
++            if !groups.is_empty() {
++                let labels = frame.scene.group_label_nodes(painted, groups.clone());
++                if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
++                    return Err(at(ScrollRefusal::Groups));
++                }
 +            }
 +        }
 +        for (part, (indices, span, scene)) in parts.iter().enumerate() {
@@ -42925,13 +43085,10 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +        self.reuse_paint_state(&range);
 +        let scenes = range.start.scene_index..range.end.scene_index;
 +        let scale = self.scale_factor();
-+        let node = |id: ScrollNodeId| {
-+            let node = plan.node(id);
-+            (node.shift.scale(scale), node.clip.scale(scale))
-+        };
++        let node = |id: ScrollNodeId| plan.scaled(id, scale);
 +        // Groups come from the rendered frame (`plan_scrolled_replay` refuses a layer's).
 +        let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), record.groups());
-+        let groups = self.replay_groups(record, Some((&labels, &node)));
++        let groups = self.replay_groups(record.groups(), Some((&labels, &node)));
 +        self.replay_scenes_scrolled(scenes, plan);
 +        self.next_frame.scene.relabel = 0;
 +        self.allow_replayed(record);
@@ -42964,10 +43121,7 @@ index 0000000000000000000000000000000000000000..8157beaed231d302926c9c40768b2c7f
 +        edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
 +        edges.sort_unstable();
 +        edges.dedup();
-+        let node = |id: ScrollNodeId| {
-+            let node = plan.node(id);
-+            (node.shift.scale(scale), node.clip.scale(scale))
-+        };
++        let node = |id: ScrollNodeId| plan.scaled(id, scale);
 +        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
 +        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
 +        let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
