@@ -120,10 +120,13 @@ fn a_media_query_on_the_width_rebuilds_the_contents_it_restyles(cx: &mut TestApp
 }
 
 #[gpui::test]
-fn a_container_query_on_the_width_rebuilds_the_contents_it_restyles(cx: &mut TestAppContext) {
+fn contents_under_a_container_no_value_reads_replay(cx: &mut TestAppContext) {
+    // No value of the document reads a container's size (the engine parses
+    // no `@container` rule and the page has no `cq*` length): the size is an
+    // input of nothing, so a new width keeps the contents of a fixed column.
     let css = "div{container-type:inline-size} \
                @container (min-width:500px){td span{display:inline-block;padding-left:7px}}";
-    assert_eq!(resized(cx, &cells(FIXED, "", css)), 0);
+    assert!(resized(cx, &cells(FIXED, "", css)) > 0);
 }
 
 /// Blocks in a wrapper block (not root-flow blocks), each with a block of

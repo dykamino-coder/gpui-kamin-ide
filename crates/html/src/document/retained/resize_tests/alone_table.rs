@@ -78,7 +78,6 @@ fn a_table_that_follows_the_window_is_built_at_width_changes(cx: &mut TestAppCon
     for css in [
         "table{width:50%}",
         "span{max-width:10vw}",
-        "body{container-type:inline-size} @container (min-width:801px){td{padding:3px}}",
         "@media (min-width:801px){td{padding:3px}}",
     ] {
         let html = page(css);
@@ -86,4 +85,14 @@ fn a_table_that_follows_the_window_is_built_at_width_changes(cx: &mut TestAppCon
         assert_eq!(blocks, 0, "the table was replayed: {css}");
         assert_eq!(last, fresh(cx, &html), "the frame at 801 differs: {css}");
     }
+    // A container whose size no value reads (no `@container` rule is parsed,
+    // no `cq*` length): whatever replays, the frame is the fresh one.
+    let html =
+        page("body{container-type:inline-size} @container (min-width:801px){td{padding:3px}}");
+    let (_, last) = resized(cx, &html);
+    assert_eq!(
+        last,
+        fresh(cx, &html),
+        "the frame at 801 differs under a container"
+    );
 }
