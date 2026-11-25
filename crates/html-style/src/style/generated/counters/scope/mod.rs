@@ -64,13 +64,13 @@ impl Counters {
         self.quotes.push((depth, value));
     }
 
-    /// Выход из узла со своим `counter-reset` (Blink
-    /// `RemoveCounterIfAncestorExists`): если под его счётчиком в стеке лежит
-    /// счётчик ПРЕДКА (или предыдущего брата предка, но не своего брата),
-    /// последующие братья наследуют именно тот — значит, свой снимается.
-    /// Иначе `<span style="counter-reset: c 98">` внутри `#test { counter-reset:
-    /// c }` продолжал бы счёт у следующих братьев (`counter-001`: `99 13 14`,
-    /// а не `99 100 101`).
+    /// The exit from a node with its own `counter-reset` (Blink
+    /// `RemoveCounterIfAncestorExists`): when the stack holds a counter of an
+    /// ANCESTOR under it (or of an ancestor's earlier sibling, not of its own
+    /// sibling), the following siblings inherit that one, and its own is
+    /// dropped. Otherwise `<span style="counter-reset: c 98">` inside
+    /// `#test { counter-reset: c }` would go on counting for the following
+    /// siblings (`counter-001`: `99 13 14`, not `99 100 101`).
     pub(super) fn drop_shadowed_reset(&mut self, name: &str) {
         let isolated = self.outside.is_some();
         let cur = &self.path;

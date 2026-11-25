@@ -73,8 +73,6 @@ pub static DAMAGE_REBOX: AtomicU64 = AtomicU64::new(0);
 pub static HAS_MARKED: AtomicU64 = AtomicU64::new(0);
 /// Subtrees whose boxes the box executor built again (`repaint::rebox`).
 pub static REBOX_UNITS: AtomicU64 = AtomicU64::new(0);
-/// Roots the box executor widened to their parent element.
-pub static REBOX_WIDENED: AtomicU64 = AtomicU64::new(0);
 
 #[track_caller]
 pub(crate) fn note_plan(counter: &AtomicU64) {
@@ -130,7 +128,7 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 29;
+const PATH: usize = 28;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
@@ -170,7 +168,6 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &DAMAGE_REBOX,
         &HAS_MARKED,
         &REBOX_UNITS,
-        &REBOX_WIDENED,
     ]
 }
 
@@ -205,7 +202,6 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "damage_rebox",
     "has_marked",
     "rebox_units",
-    "rebox_widened",
     "not_own_root_canvas",
     "not_own_hover",
     "not_own_inline",

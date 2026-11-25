@@ -11,10 +11,12 @@
 //!    it (anonymous wrappers, lifted grid boxes, run-ins, the removed
 //!    `html`/`body`) made its boxes other than its own walk does;
 //! 2. it adds one box of its own to its parent before and after the batch,
-//!    with the same cascaded values (the parent's walk and passes read only
-//!    that box), and the passes do not move it or wrap it (`spine`);
+//!    from which the parent's walk reads the same values (`outside`), and
+//!    the passes of the build give its ancestors and their other children
+//!    the same values, neither moving nor wrapping it (`spine`);
 //! 3. it reads no counter or quote from the walk before it, and hands the
-//!    same updates to the walk after it (`Counters::isolated`).
+//!    same updates to the walk after it, or counters whose scope a following
+//!    sibling ends (`Counters::isolated`, `outside`).
 //!
 //! Otherwise its parent element is the root, and the rule applies to it;
 //! the document is the last root (`roots::fall_back_document`). Blink
@@ -25,19 +27,19 @@
 //! (`nsCSSFrameConstructor::MaybeRecreateContainerForFrameRemoval`,
 //! `WipeContainingBlock`).
 
+mod outside;
 mod spine;
 mod unit;
+mod wrappers;
 pub(super) use unit::same_boxes;
 
-use super::fold::{Parent, Unwrapped};
 use crate::document::Document;
 use crate::document::revision::boxes::Boxes;
 use crate::document::revision::mutation::Batch;
 use crate::document::revision::patch::Path;
 use crate::document::revision::source_index::SourceIndex;
+use crate::dom::Element;
 use crate::dom::restyle_probe::{RestyleCache, RestyleProbe};
-use crate::dom::{Element, Node};
-use crate::paint_path as why;
 use markup5ever_rcdom::{Handle, NodeData};
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -166,7 +168,6 @@ impl Document {
                     units.push(unit);
                 }
                 Err(cause) => {
-                    why::add(&why::REBOX_WIDENED, 1);
                     if crate::why::enabled() {
                         crate::why::note("paint_path.rebox_widened", || cause.to_string());
                     }
@@ -181,58 +182,6 @@ impl Document {
             }
         }
         Ok(Reboxed(units))
-    }
-
-    /// The values the boxes at the top of the tree take from the wrappers
-    /// `unwrap_document` removed, and the boxes the walk builds for those
-    /// wrappers (without children), outer first: the passes of a full build
-    /// run under them.
-    fn folded(
-        &self,
-        walks: &Walks<'_>,
-        cache: &mut RestyleCache,
-    ) -> Result<(Option<Parent>, Vec<Element>), &'static str> {
-        let document = &walks.input.dom.document;
-        let mut wrappers = Vec::new();
-        let Some(unwrapped) = Unwrapped::add(&self.nodes, document, &mut wrappers) else {
-            return Err("unwrapped");
-        };
-        let Some(unwrapped) = unwrapped else {
-            return Ok((None, Vec::new()));
-        };
-        let values = &self.state.values;
-        let styles = cache
-            .kept_styles(walks.probe, walks.input, values, &wrappers)
-            .map_err(|_| "budget")?;
-        let styles = |i: usize| styles[i].as_ref().map(|p| &*p.style);
-        let parent = unwrapped
-            .parent(styles, self.state.values())
-            .ok_or("unwrapped")?;
-        // `unwrap_document` removes `html` with its only child `body`, or
-        // `html` alone: the tree keeps the box of a wrapper it did not remove.
-        let boxed = |tag: &str| {
-            self.nodes
-                .iter()
-                .any(|n| matches!(n, Node::Element(e) if e.tag == tag && e.node_id != 0))
-        };
-        let built = cache
-            .shallows(walks.probe, walks.input, values, &wrappers, walks.mutated)
-            .map_err(|_| "budget")?;
-        // The wrappers are not elements of a rebuilt subtree.
-        values.traversal.take_rebuilt();
-        let mut stubs = Vec::new();
-        for (nodes, tag) in built.into_iter().zip(["html", "body"]) {
-            if boxed(tag) {
-                break;
-            }
-            let Ok([Node::Element(mut e)]) = <[Node; 1]>::try_from(nodes.ok_or("unwrapped")?)
-            else {
-                return Err("unwrapped");
-            };
-            e.children = crate::dom::Children::default();
-            stubs.push(e);
-        }
-        Ok((Some(parent), stubs))
     }
 }
 
@@ -261,6 +210,7 @@ fn within(handle: &Handle, root: &Handle) -> bool {
     false
 }
 
+/// The parent node of `node` in the source DOM.
 fn parent(node: &Handle) -> Option<Handle> {
     let weak = node.parent.take();
     let parent = weak

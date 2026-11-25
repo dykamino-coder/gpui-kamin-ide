@@ -81,12 +81,11 @@ impl Document {
         let mut levels = Levels::default();
         if reads {
             // `attr()` in generated content (`::before`, `::after`, markers):
-            // the pseudo-element boxes of a mutated element, which this probe
-            // does not restyle, are built with the element's own box and no
-            // children (`walk::shallow`) before and after the batch; boxes
-            // that differ take the new value only by a rebuild of the
-            // element's boxes (`attr`, `rebox`). Its own style and every
-            // other target are probed as any.
+            // the pseudo-element boxes of a mutated element, which the probe
+            // does not restyle, are built with its own box and no children
+            // (`walk::shallow`) before and after the batch; boxes that differ
+            // take the new value by a rebuild of its boxes (`attr`, `rebox`).
+            // Its own style and every other target are probed as any.
             let traversal = &values.traversal;
             traversal.begin_rebuild();
             let old = cache.shallows(&probe, input, values, &mutated, &mutated);
