@@ -7,6 +7,27 @@ use super::Move;
 use markup5ever_rcdom::{Handle, NodeData};
 use std::rc::Rc;
 
+impl super::Features {
+    /// Whether a rule reads a changed name in a compound whose element is a
+    /// sibling of the subject's ancestors or of the subject (`+`, `~`,
+    /// `:nth-child(of S)`, `:has()`, or an argument this map does not trace):
+    /// only then does a mutation change what a parent's census of its
+    /// children answers (Blink builds sibling invalidation sets only for
+    /// such features, `rule_invalidation_data.cc`).
+    pub fn reads_siblings(&self) -> bool {
+        self.0.iter().flat_map(|(path, _)| path).any(|step| {
+            matches!(
+                step,
+                Move::NextSibling
+                    | Move::LaterSiblings
+                    | Move::Siblings
+                    | Move::HasAnchors
+                    | Move::Document
+            )
+        })
+    }
+}
+
 /// The elements one `step` reaches from `set`.
 pub(super) fn apply(step: Move, set: &[Handle]) -> Vec<Handle> {
     let mut out = Targets::default();

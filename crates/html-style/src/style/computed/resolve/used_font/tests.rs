@@ -42,12 +42,12 @@ impl FontFactsProvider for Faces {
     }
 }
 
-fn styled(css: &str, vcx: ValueCx<'_>) -> Computed {
+pub(super) fn styled(css: &str, vcx: ValueCx<'_>) -> Computed {
     let mut style = Computed::default();
     style.apply_decls(&crate::style::css::parse_decls(css), vcx);
     style
 }
-fn doc() -> Rc<crate::values::DocumentValues> {
+pub(super) fn doc() -> Rc<crate::values::DocumentValues> {
     let doc = crate::values::DocumentValues::detached(Default::default());
     doc.install_font_facts(Some(Rc::new(Faces)));
     doc
@@ -141,22 +141,6 @@ fn font_size_adjust_from_font_is_numeric_before_inheriting_another_face() {
     );
     assert_eq!(vertical.inh.font.font_size_adjust, Some((u8::MAX, 0.0)));
     assert_eq!(vertical.used_font(16.0, vcx).size_px, 20.0);
-}
-
-#[test]
-fn a_cascaded_from_font_equals_itself() {
-    let doc = doc();
-    let vcx = doc.values();
-    let css = "font-family:narrow;font-size-adjust:cap-height from-font";
-    let (a, b) = (styled(css, vcx), styled(css, vcx));
-    // Two cascades of one declaration are one value: a restyle compares
-    // them (`Computed::damage`) and a memo keys by the font group.
-    assert!(a.inh.font == b.inh.font);
-    assert_eq!(
-        a.inh.font.font_size_adjust,
-        Some((1 + crate::style::computed::SIZE_ADJUST_FROM_FONT, 0.0))
-    );
-    assert_eq!(a.font_adjustment(), None);
 }
 
 #[test]

@@ -135,9 +135,9 @@ pub fn kerning(v: &str) -> Option<u8> {
 }
 
 /// `font-size-adjust: none | [ ex-height | cap-height | ch-width | ic-width |
-/// ic-height ]? [ from-font | <number [0,∞]> ]` (css-fonts-5): метрика и
-/// число; `from-font` — метрика со сдвигом `SIZE_ADJUST_FROM_FONT` (число
-/// решает стадия вычисленных значений); `none` — метрика `u8::MAX`.
+/// ic-height ]? [ from-font | <number [0,∞]> ]` (css-fonts-5): the metric and
+/// the number; `from-font` is the metric shifted by `SIZE_ADJUST_FROM_FONT`
+/// (the computed-value stage resolves its number); `none` is metric `u8::MAX`.
 pub fn size_adjust(v: &str, vcx: ValueCx<'_>) -> Option<(u8, f32)> {
     let lower = lower(v);
     if lower == "none" {

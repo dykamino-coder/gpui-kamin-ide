@@ -169,4 +169,6 @@ impl Computed {
 }
 
 #[cfg(test)]
+mod from_font_tests;
+#[cfg(test)]
 mod tests;
