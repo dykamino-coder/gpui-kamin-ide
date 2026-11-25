@@ -71,6 +71,7 @@ mod initial;
 pub use groups::*;
 mod clone_audit;
 mod damage;
+pub use damage::Damage;
 mod paint_color;
 pub use clone_audit::CloneAudit;
 mod paint_groups;

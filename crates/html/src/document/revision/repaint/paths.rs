@@ -41,7 +41,12 @@ pub(super) fn style_paths(
             if e.tag != r.tag {
                 continue;
             }
-            if !(e.style.cascaded().same_paint_groups(&r.old) && takes(e, r)) {
+            let cascaded = e.style.cascaded();
+            let fits = match r.damage.0 {
+                crate::style::computed::Damage::Paint => cascaded.same_paint_groups(&r.old),
+                _ => cascaded.with_layout_of(&r.old, &r.new).is_some(),
+            };
+            if !(fits && takes(e, r)) {
                 return None;
             }
             paths.push((path, id));
@@ -64,7 +69,14 @@ pub(super) fn style_paths(
 /// is a layer or keeps copies.
 fn takes(e: &Element, r: &Restyle) -> bool {
     let (inherited, background, borders) = (r.inherited(), r.background(), r.borders());
-    if e.anim.is_some() || e.style.holds_inherited_copies() {
+    // A layout restyle drops the box's own used copy (`cascaded_mut`): the
+    // next layout makes it again from the new values.
+    let layout = r.damage.0 == crate::style::computed::Damage::Layout;
+    let own = |b: &Element| match layout {
+        true => b.style.holds_copies_but_used(),
+        false => b.style.holds_inherited_copies(),
+    };
+    if e.anim.is_some() || own(e) {
         return false;
     }
     if (background || borders) && e.style.holds_decoration() {
@@ -75,18 +87,26 @@ fn takes(e: &Element, r: &Restyle) -> bool {
     if borders && (e.inline || TABLE_PARTS.contains(&e.tag.as_str())) {
         return false;
     }
-    elements(std::slice::from_ref(&Node::Element(e.clone())), |b, _| {
-        let copies = b.anim.is_some() || b.style.holds_inherited_copies();
-        if inherited {
-            // A hover layer is a cascaded stage (the element's declarations
-            // with its `:hover` rules over them, `walk::pseudo_styles`): it
-            // keeps no inherited value and follows a new one like the box does.
-            !copies && [&b.first_letter, &b.first_line].iter().all(|l| l.is_none())
-        } else {
-            !(copies && b.style.inherits_reset())
-                && layers(b).flatten().all(|l| !l.inherits_reset())
-        }
-    })
+    elements(
+        std::slice::from_ref(&Node::Element(e.clone())),
+        |b, path| {
+            let copies = b.anim.is_some()
+                || if path.len() == 1 {
+                    own(b)
+                } else {
+                    b.style.holds_inherited_copies()
+                };
+            if inherited {
+                // A hover layer is a cascaded stage (the element's declarations
+                // with its `:hover` rules over them, `walk::pseudo_styles`): it
+                // keeps no inherited value and follows a new one like the box does.
+                !copies && [&b.first_letter, &b.first_line].iter().all(|l| l.is_none())
+            } else {
+                !(copies && b.style.inherits_reset())
+                    && layers(b).flatten().all(|l| !l.inherits_reset())
+            }
+        },
+    )
 }
 
 /// The tags of the HTML table parts (HTML §15.3.8 gives them table displays).

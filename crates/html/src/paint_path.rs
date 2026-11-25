@@ -37,24 +37,13 @@ pub static REFUSED_REBUILT: AtomicU64 = AtomicU64::new(0);
 /// The revision is not quiet (diagnostics, failures, limits), the theme or
 /// the source changed.
 pub static REFUSED_PLAN_STATE: AtomicU64 = AtomicU64::new(0);
-/// An edited element the box tree does not hold, or an attribute the frame
-/// build reads (not `class` or `data-*` the sheets read).
-pub static REFUSED_PLAN_ELEMENT: AtomicU64 = AtomicU64::new(0);
 /// A text edit the boxes cannot take in place, or one beside a restyle.
 pub static REFUSED_PLAN_TEXT: AtomicU64 = AtomicU64::new(0);
-/// The restyle probe, its targets or their cascades did not resolve.
-pub static REFUSED_RESTYLE_PROBE: AtomicU64 = AtomicU64::new(0);
-/// `attr()` reads attributes outside selectors.
-pub static REFUSED_RESTYLE_ATTR: AtomicU64 = AtomicU64::new(0);
-/// A target's values outside its style struct changed (pseudo-elements, counters...).
-pub static REFUSED_RESTYLE_REST: AtomicU64 = AtomicU64::new(0);
-/// A target's change reaches layout.
-pub static REFUSED_RESTYLE_LAYOUT: AtomicU64 = AtomicU64::new(0);
-/// A restyle of `html`, of the canvas background of `body` or of an
-/// unwrapped wrapper.
-pub static REFUSED_RESTYLE_ROOT: AtomicU64 = AtomicU64::new(0);
-/// The boxes of the batch were not found along paths, or a patch failed.
-pub static REFUSED_PLAN_PATHS: AtomicU64 = AtomicU64::new(0);
+/// The one fallback of the style level (`document::revision::repaint::roots`):
+/// a batch whose damage reaches layout or the box tree of some element
+/// (`DAMAGE_LAYOUT`, `DAMAGE_REBOX`) is rebuilt until those levels have
+/// their executors. No other style refusal rebuilds the document.
+pub static REFUSED_DAMAGE: AtomicU64 = AtomicU64::new(0);
 
 /// Revisions committed by plan (`document::revision::commit`): a rebuild
 /// of the document is none of them.
@@ -74,6 +63,16 @@ pub static WRITE_NS: AtomicU64 = AtomicU64::new(0);
 /// Elements a restyle of a batch probed (`revision::repaint`): the style
 /// work of an edit is proportional to them.
 pub static RESTYLED_ELEMENTS: AtomicU64 = AtomicU64::new(0);
+/// Elements of a batch whose damage is paint only (`Damage::Paint`).
+pub static DAMAGE_PAINT: AtomicU64 = AtomicU64::new(0);
+/// Roots of dirty subtrees whose damage reaches layout (`Damage::Layout`).
+pub static DAMAGE_LAYOUT: AtomicU64 = AtomicU64::new(0);
+/// Roots of subtrees whose boxes change (`Damage::Rebox`).
+pub static DAMAGE_REBOX: AtomicU64 = AtomicU64::new(0);
+/// Markings of `:has()` arguments over the whole document the probes of
+/// batches made (`dom::restyle_probe`): each is a pass over the document,
+/// the relational cost of a restyle.
+pub static HAS_MARKED: AtomicU64 = AtomicU64::new(0);
 
 #[track_caller]
 pub(crate) fn note_plan(counter: &AtomicU64) {
@@ -129,7 +128,7 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 29;
+const PATH: usize = 27;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
@@ -153,14 +152,8 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &REFUSED_SHAPE,
         &REFUSED_REBUILT,
         &REFUSED_PLAN_STATE,
-        &REFUSED_PLAN_ELEMENT,
         &REFUSED_PLAN_TEXT,
-        &REFUSED_RESTYLE_PROBE,
-        &REFUSED_RESTYLE_ATTR,
-        &REFUSED_RESTYLE_REST,
-        &REFUSED_RESTYLE_LAYOUT,
-        &REFUSED_RESTYLE_ROOT,
-        &REFUSED_PLAN_PATHS,
+        &REFUSED_DAMAGE,
         &PLAN_CLEAN,
         &PLAN_PATCHED,
         &PLAN_RESTYLED,
@@ -170,6 +163,10 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &ARRIVED_DECORATION,
         &WRITE_NS,
         &RESTYLED_ELEMENTS,
+        &DAMAGE_PAINT,
+        &DAMAGE_LAYOUT,
+        &DAMAGE_REBOX,
+        &HAS_MARKED,
     ]
 }
 
@@ -188,14 +185,8 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "refused_shape",
     "refused_rebuilt",
     "refused_plan_state",
-    "refused_plan_element",
     "refused_plan_text",
-    "refused_restyle_probe",
-    "refused_restyle_attr",
-    "refused_restyle_rest",
-    "refused_restyle_layout",
-    "refused_restyle_root",
-    "refused_plan_paths",
+    "refused_damage",
     "plan_clean",
     "plan_patched",
     "plan_restyled",
@@ -205,6 +196,10 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "arrived_decoration",
     "write_ns",
     "restyled_elements",
+    "damage_paint",
+    "damage_layout",
+    "damage_rebox",
+    "has_marked",
     "not_own_root_canvas",
     "not_own_hover",
     "not_own_inline",

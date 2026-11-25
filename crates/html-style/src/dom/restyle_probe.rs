@@ -13,12 +13,13 @@ use super::shadow::Scope;
 use super::tree_index::{HasMarks, TreeIndex};
 use super::walk::{self, Chains, Probed};
 use crate::style::css::Media;
-use crate::style::select::has::{HasArg, mark_has};
+use crate::style::select::has::HasArg;
 use crate::values::DocumentValues;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+mod relational;
 mod rules;
 
 /// Правила документа одной ревизии для проб его элементов.
@@ -44,9 +45,12 @@ pub struct RestyleCache {
     /// держит такой набор на каждое имя листа, здесь он строится при первой
     /// правке имени.
     sets: Vec<(Changed, Rc<Features>)>,
-    /// The batch probed now changes a name a `:has()` argument reads: its
-    /// marks are made again for each probe (`targets`).
-    remark: bool,
+    /// The `:has()` arguments (by place in the probe's) that read a name
+    /// the batch probed now changes: their marks are made again for each
+    /// probe (`relational`).
+    remark: Vec<usize>,
+    /// Whole-document markings since `take_remarks`.
+    remarks: u64,
     /// The mutated elements of the batch probed now (`targets`).
     mutated: Vec<Handle>,
     /// The last probe of each element probed since the rules were built, by
@@ -126,10 +130,10 @@ impl RestyleCache {
     ) -> Vec<Handle> {
         // A name read inside a `:has()` argument changes its marks: each
         // probe of this batch (before and after it) marks them again.
-        self.remark = super::invalidation::has_reads(&probe.has_args, changed);
-        if self.remark {
-            self.has = None;
-        }
+        let reads = |a: &HasArg| super::invalidation::has_reads(std::slice::from_ref(a), changed);
+        self.remark = (0..probe.has_args.len())
+            .filter(|&i| reads(&probe.has_args[i]))
+            .collect();
         self.mutated = mutated.to_vec();
         let same =
             |(c, _): &&(Changed, _)| c.classes == changed.classes && c.attrs == changed.attrs;
@@ -161,17 +165,9 @@ impl RestyleCache {
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
         let mut tree = TreeIndex::new(values.clone(), input.xhtml);
         let document = &input.dom.document;
-        if self.remark {
-            // The ancestor records kept on the paths hold the old marks too.
-            self.has = None;
-            self.chains = Chains::default();
-        }
         self.chains.forget_parents(&self.mutated);
         if !probe.has_args.is_empty() {
-            match self.has.take() {
-                Some(has) => tree.put_has(has),
-                None => mark_has(document, &probe.has_args, &mut vec![], &mut tree)?,
-            }
+            self.marks(document, &probe.has_args, &mut tree)?;
         }
         let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;

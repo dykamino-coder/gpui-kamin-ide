@@ -2,7 +2,7 @@
 
 use super::*;
 use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::RcDom;
+use markup5ever_rcdom::{NodeData, RcDom};
 use std::rc::Rc;
 
 fn changed() -> Changed {

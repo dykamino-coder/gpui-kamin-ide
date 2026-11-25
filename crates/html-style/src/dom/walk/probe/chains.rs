@@ -48,6 +48,9 @@ struct Context {
     survey: Rc<Survey>,
     vars: Rc<VarMap>,
     preserve: bool,
+    /// The used colour scheme the children are entered with (the parent's,
+    /// walk::enter); None under the document: the probe's own.
+    scheme: Option<crate::style::values::value::Scheme>,
 }
 
 impl Chains {
@@ -72,6 +75,22 @@ impl Chains {
         });
     }
 
+    /// Drop the contexts whose ancestor records (or parent) are `marked`:
+    /// the records carry the `:has()` marks of their elements, and these
+    /// changed (`restyle_probe::relational`).
+    pub fn forget_marked(
+        &mut self,
+        marked: &std::collections::HashSet<crate::dom::tree_index::HandleKey>,
+    ) {
+        if marked.is_empty() {
+            return;
+        }
+        self.0.retain(|c| {
+            let parent = crate::dom::tree_index::HandleKey::of(&c.parent);
+            !marked.contains(&parent) && !c.path.iter().any(|r| marked.contains(&r.key))
+        });
+    }
+
     /// The children of `parent` have a context.
     pub(super) fn knows(&self, parent: &Handle) -> bool {
         self.find(parent).is_some()
@@ -92,6 +111,7 @@ impl Chains {
             survey: first.survey.clone(),
             vars: first.vars.clone(),
             preserve: first.preserve,
+            scheme: Some(first.vcx.scheme),
         });
     }
 
@@ -104,6 +124,7 @@ impl Chains {
                 survey: Survey::children(root, tree),
                 vars: Rc::new(VarMap::new()),
                 preserve: false,
+                scheme: None,
             });
         }
     }
@@ -132,7 +153,7 @@ impl Chains {
             vars: context.vars.clone(),
             preserve: context.preserve,
             depth: context.path.len() + 1,
-            vcx,
+            vcx: context.scheme.map_or(vcx, |s| vcx.with_scheme(s)),
             // Targets are few: each is cascaded, none shares a style.
             parent_share: 0,
         };

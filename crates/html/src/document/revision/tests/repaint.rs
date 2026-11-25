@@ -124,3 +124,43 @@ fn has_and_sibling_rules_on_a_shape_class_equal_a_fresh_build() {
     update(&page(""), &page(" class=h"), "");
     update(&page(" class=h"), &page(""), "");
 }
+
+#[test]
+fn a_background_of_an_element_with_hover_rules_is_restyled_in_place() {
+    // The hover layer of the element changes with its background: a paint
+    // change of a cascaded stage of its own, written with the box's.
+    let style = "html.alt .own{background:#eee}.own:hover{color:red}";
+    let old = page(style, "");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (true, true));
+}
+
+#[test]
+fn a_geometry_change_is_a_layout_root_at_the_one_fallback() {
+    use crate::paint_path::{DAMAGE_LAYOUT, REFUSED_DAMAGE};
+    use std::sync::atomic::Ordering::Relaxed;
+    let style = "html.alt .own{width:50px;background:#eee}";
+    let old = page(style, "");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    let (roots, refused) = (DAMAGE_LAYOUT.load(Relaxed), REFUSED_DAMAGE.load(Relaxed));
+    assert_eq!(both(&old, &new), (false, false));
+    assert!(DAMAGE_LAYOUT.load(Relaxed) >= roots + 2);
+    assert!(REFUSED_DAMAGE.load(Relaxed) >= refused + 2);
+}
+
+#[test]
+fn calc_values_of_restyled_elements_do_not_grow_the_document_arena() {
+    let style = ".own{width:calc(50% + 4px)}.own.hot{color:red}";
+    let old = page(style, "");
+    let new = old.replace("class=own", "class=\"own hot\"");
+    let mut doc = crate::document::Document::builder(&old, "")
+        .build()
+        .unwrap();
+    doc.update(&new, "").unwrap();
+    let after_one = doc.state.values.calc.records();
+    for i in 0..6 {
+        doc.update(if i % 2 == 0 { &old } else { &new }, "")
+            .unwrap();
+    }
+    assert_eq!(doc.state.values.calc.records(), after_one);
+}

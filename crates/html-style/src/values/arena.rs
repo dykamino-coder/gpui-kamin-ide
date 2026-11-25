@@ -32,6 +32,8 @@ impl ArenaKey {
 pub struct Arena<T> {
     doc: RefCell<Vec<T>>,
     frame: RefCell<Vec<T>>,
+    /// Records of the document region by the hash of their value (`store_once`).
+    once: RefCell<std::collections::HashMap<u64, Vec<u32>>>,
 }
 
 impl<T> Default for Arena<T> {
@@ -39,11 +41,17 @@ impl<T> Default for Arena<T> {
         Arena {
             doc: RefCell::new(Vec::new()),
             frame: RefCell::new(Vec::new()),
+            once: RefCell::default(),
         }
     }
 }
 
 impl<T> Arena<T> {
+    /// Records of the document region.
+    pub fn records(&self) -> usize {
+        self.doc.borrow().len()
+    }
+
     pub(super) fn clear_frame(&self) {
         self.frame.borrow_mut().clear();
     }
@@ -78,6 +86,41 @@ pub fn store<T>(vcx: ValueCx<'_>, pick: fn(&DocumentValues) -> &Arena<T>, value:
     ArenaKey { owner, slot }
 }
 
+/// `store` of a value the document region keeps once: an equal value
+/// stored before (with the same `hash`) gives its record back. A restyle in
+/// place cascades its targets again (`dom::restyle_probe`), and every probe
+/// would otherwise add the same bodies to the document region for as long
+/// as the document lives; equal values also give equal handles, so styles
+/// compare by their values. The frame region is cleared with its frame.
+pub fn store_once<T: PartialEq>(
+    vcx: ValueCx<'_>,
+    pick: fn(&DocumentValues) -> &Arena<T>,
+    value: T,
+    hash: u64,
+) -> ArenaKey {
+    let doc = vcx.doc;
+    if vcx.frame {
+        return store(vcx, pick, value);
+    }
+    let arena = pick(doc);
+    let owner = doc.owner.get();
+    let mut once = arena.once.borrow_mut();
+    let slots = once.entry(hash).or_default();
+    let mut list = arena.doc.borrow_mut();
+    if let Some(&slot) = slots
+        .iter()
+        .find(|&&s| list.get(s as usize) == Some(&value))
+    {
+        return ArenaKey { owner, slot };
+    }
+    let Ok(slot) = u32::try_from(list.len()) else {
+        debug_assert!(false, "арена документа переполнена");
+        return ArenaKey::INVALID;
+    };
+    list.push(value);
+    slots.push(slot);
+    ArenaKey { owner, slot }
+}
 /// Прочитать запись по ручке в документе контекста; `None` — ручка чужая
 /// или устарела (сброшенный кадр): это ошибка связи, и отладочная сборка её
 /// не прячет.
@@ -101,4 +144,29 @@ pub fn load<T: Clone>(
         "ручка арены без записи: {key:?}"
     );
     got
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::style::values::value::Sum;
+
+    #[test]
+    fn an_equal_sum_stored_again_takes_its_first_record() {
+        let values = crate::values::DocumentValues::detached(Default::default());
+        let vcx = values.values();
+        let sum = Sum {
+            px: 4.0,
+            pct: 0.5,
+            has_percentage: true,
+            ..Sum::default()
+        };
+        let other = Sum { px: 5.0, ..sum };
+        fn pick(d: &crate::values::DocumentValues) -> &super::Arena<Sum> {
+            &d.calc
+        }
+        let first = super::store_once(vcx, pick, sum, 1);
+        assert_eq!(super::store_once(vcx, pick, sum, 1), first);
+        assert_ne!(super::store_once(vcx, pick, other, 1), first);
+        assert_eq!(values.calc.doc.borrow().len(), 2);
+    }
 }

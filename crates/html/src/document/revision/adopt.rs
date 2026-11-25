@@ -19,6 +19,7 @@ use super::commit::{Edited, Plan};
 use super::mentions::{Mentions, mentions};
 use super::mutation::{AttrChange, Batch, open};
 use super::patch::{Target, attr_paths, patch};
+use super::repaint::roots::fall_back_rebox;
 use super::text::{TextEdits, editable, patch_texts, text_paths};
 use crate::document::Document;
 use crate::paint_path as why;
@@ -90,10 +91,12 @@ impl Document {
                     // A class the sheets read: its restyle may still reach
                     // only inherited paint values (`repaint`).
                     Some(_) if open(&change.element, &root) => {
-                        let changed = why::why(changed, &why::REFUSED_RESTYLE_PROBE)?;
+                        let Some(changed) = changed else {
+                            return fall_back_rebox("an attribute the build reads");
+                        };
                         return self.repaint_plan(batch, changed, theme_css);
                     }
-                    _ => return why::refuse(&why::REFUSED_PLAN_ELEMENT),
+                    _ => return fall_back_rebox("an element outside an open root"),
                 }
             }
         }
@@ -125,11 +128,13 @@ impl Document {
         // коробок после пакета то же самое, и копировать нечего.
         let attrs = match targets.is_empty() {
             true => Vec::new(),
-            false => why::why(
-                self.boxes()
-                    .and_then(|b| attr_paths(&self.nodes, &b, &targets)),
-                &why::REFUSED_PLAN_PATHS,
-            )?,
+            false => match self
+                .boxes()
+                .and_then(|b| attr_paths(&self.nodes, &b, &targets))
+            {
+                Some(attrs) => attrs,
+                None => return fall_back_rebox("attributes rewritten by the build"),
+            },
         };
         let found = why::why(text_paths(&self.nodes, &texts), &why::REFUSED_PLAN_TEXT)?;
         if attrs.is_empty() && found.is_empty() {
@@ -137,7 +142,7 @@ impl Document {
         }
         let mut nodes = (*self.nodes).clone();
         if !(patch(&mut nodes, &attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
-            return why::refuse(&why::REFUSED_PLAN_PATHS);
+            return fall_back_rebox("a box path");
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
         // лишь селекторы и `attr()` каскада, а не сборка кадра.

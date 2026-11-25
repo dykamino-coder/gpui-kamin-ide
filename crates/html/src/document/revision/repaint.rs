@@ -1,53 +1,57 @@
-//! Ревизия пакета смен `class` и `data-*`, чей перерасчёт стиля меняет у
-//! нескольких элементов только значения краски (`Computed::same_layout`:
-//! наследуемую группу UI с цветом и собственный фон коробки): дерево коробок
-//! с копией путей к ним и новыми группами каскадного стиля, без сборки
-//! документа.
+//! The revision of a batch of `class` and `data-*` changes by the damage of
+//! each element it restyles (`levels`): the elements the batch may reach are
+//! found by the features of the rules (`dom::invalidation::targets`), their
+//! cascades before and after the batch come from the same entry into the
+//! element as a full build (`dom::restyle_probe`), and the difference of the
+//! two computed styles is the element's damage (`Computed::damage`). When
+//! every damage is paint, the boxes take the new paint values along copied
+//! paths (`Plan::Restyled`; descendants follow by rematerialization). Damage
+//! that reaches layout or the box tree goes to the roots of its subtrees
+//! (`roots`).
 //!
-//! Blink перечитывает стиль только помеченных инвалидацией элементов
-//! (`style_invalidator.cc:286`; набор самого элемента — `:154`, набор
-//! потомков с признаком субъекта, в том числе именем атрибута, —
-//! `invalidation_set.cc:120`), потомкам с изменённым наследуемым — каскад
-//! без сопоставления (`element.cc:5550`), а кадру по разнице стилей — только
-//! перерисовку (`layout_object.cc:2879`, paint invalidation без layout).
-//! Stylo так же каскадирует детей по их прежним правилам (`matching.rs:865`,
-//! `RECASCADE_SELF`). Здесь элементы, которых может коснуться пакет, ищутся по
-//! признакам правил (`dom::invalidation::targets`), их каскад до и после
-//! записи пакета считает тот же вход в элемент, что и полная сборка
-//! (`dom::restyle_probe`), а потомки получают новые значения родителя
-//! повторной материализацией (`style::cascade::materialize`): их каскадные
-//! стили те же. Факты раскладки прошлого дерева остаются основой
-//! (`Plan::Patched`), и каждый перерассчитанный элемент кадр может только
-//! перекрасить (`Plan::Restyled`).
+//! Blink recalculates only the elements invalidation marked
+//! (`style_invalidator.cc:286`), cascades descendants with a changed
+//! inherited value without matching (`element.cc:5550`) and turns the
+//! difference of the styles into the frame's work (`StyleDifference`,
+//! `layout_object.cc:2879`); Stylo recascades children by their old rules
+//! (`matching.rs:865`, `RECASCADE_SELF`) and derives `RestyleDamage`.
 
 mod fold;
+mod levels;
 mod paths;
+pub(in crate::document) mod roots;
+mod why_value;
 
 use super::boxes::Boxes;
 use super::commit::{Edited, Plan};
 pub(in crate::document) use super::kept::Kept;
 use super::mutation::Batch;
 use super::patch::{Target, apply, attr_paths, patch};
-use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use crate::paint_path::{self as why, refuse};
-use crate::style::computed::Computed;
-use paths::{painted_borders, style_paths};
+use crate::style::computed::{Computed, Damage};
+use paths::style_paths;
 use std::collections::HashMap;
 
-/// Перерасчёт одного элемента: тег его коробок и каскадный стиль до и после
-/// пакета; стили раскладываются одинаково.
+/// The restyle of one element its boxes take in place: their tag, the
+/// cascaded style before and after the batch and its damage (`Paint` or
+/// `Layout`, with the group that decides it).
 struct Restyle {
     tag: String,
+    handle: markup5ever_rcdom::Handle,
+    damage: (Damage, &'static str),
+    /// The new hover layer, when it changes (paint values only).
+    hover: Option<Box<Computed>>,
     old: Box<Computed>,
     new: Box<Computed>,
 }
 
 impl Restyle {
-    /// Меняются наследуемые значения: их получает всё поддерево.
+    /// Inherited values change: the whole subtree takes them.
     fn inherited(&self) -> bool {
-        self.old.inh.ui != self.new.inh.ui
+        let (old, new) = (&self.old.inh.0, &self.new.inh.0);
+        old.ui != new.ui || old.font != new.font || old.text_flow != new.text_flow
     }
 
     /// Меняется собственный фон коробки.
@@ -62,8 +66,10 @@ impl Restyle {
 }
 
 impl Document {
-    /// План пакета смен `class` и `data-*`, если перерасчёт стиля меняет у
-    /// найденных элементов только значения краски; `None` — нужна сборка.
+    /// План пакета смен `class` и `data-*`: перерасчёт стиля найденных
+    /// элементов и уровень повреждения каждого (`levels`). Пакет, у которого
+    /// все уровни — краска, перекрашивает коробки на месте; уровни раскладки
+    /// и коробок уходят в одну точку (`roots::fall_back`), `None` — сборка.
     /// `changed` — the names and node ids of the batch (`invalidation`).
     pub(super) fn repaint_plan(
         &self,
@@ -72,34 +78,58 @@ impl Document {
         theme_css: &str,
     ) -> Option<Plan> {
         let values = &self.state.values;
-        if !batch.texts.is_empty() || values.quirks() {
+        if !batch.texts.is_empty() {
             return refuse(&why::REFUSED_PLAN_TEXT);
+        }
+        if values.quirks() {
+            return roots::fall_back_rebox("quirks");
         }
         let input = why::why(values.traversal.take_source(), &why::REFUSED_PLAN_STATE)?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let index = kept.ids(&values.traversal.elements());
-        let restyles = why::why(index, &why::REFUSED_RESTYLE_PROBE).and_then(|index| {
-            self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache)
+        let levels = kept.ids(&values.traversal.elements()).map(|index| {
+            let levels =
+                self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache);
+            (levels, index)
         });
         values.traversal.retain(input);
-        let boxes = why::why(kept.boxes(&self.nodes), &why::REFUSED_PLAN_PATHS)?;
-        let plan = self.restyled(batch, &changed.elements, &boxes, restyles?)?;
+        let Some((levels, index)) = levels else {
+            return roots::fall_back_rebox("index");
+        };
+        let Some(boxes) = kept.boxes(&self.nodes) else {
+            return roots::fall_back_rebox("boxes");
+        };
+        if !levels.deeper.is_empty() {
+            return roots::fall_back(&levels, &index, &boxes);
+        }
+        let plan = self.restyled(batch, &changed.elements, &boxes, &levels.restyles)?;
+        // A layout damage is the input of the layout of dirty subtrees over
+        // the retained box tree (`Plan::Restyled` with `Damage::Layout`);
+        // until the commit takes it, the batch is rebuilt at the one point.
+        if levels
+            .restyles
+            .values()
+            .any(|r| r.damage.0 == Damage::Layout)
+        {
+            return roots::fall_back(&levels, &index, &boxes);
+        }
+        why::add(&why::DAMAGE_PAINT, levels.restyles.len() as u64);
         self.restyle.set(Some(kept));
         Some(plan)
     }
 
-    /// The box tree with the attributes of `batch` and the paint values of
-    /// `restyles` written along copied paths.
+    /// The box tree with the attributes of `batch` and the paint or layout
+    /// values of `restyles` written along copied paths; `None` when some box does not
+    /// take them in place, which rebuilds its boxes (`Damage::Rebox`).
     /// `ids` — the node ids of the elements of `batch`, in its order.
     fn restyled(
         &self,
         batch: &Batch,
         ids: &[u64],
         boxes: &Boxes,
-        restyles: HashMap<u64, Restyle>,
+        restyles: &HashMap<u64, Restyle>,
     ) -> Option<Plan> {
         let mut attrs = HashMap::new();
         for (change, &id) in batch.elements.iter().zip(ids) {
@@ -112,23 +142,21 @@ impl Document {
                 },
             );
         }
-        let attrs_to_write = why::why(
-            attr_paths(&self.nodes, boxes, &attrs),
-            &why::REFUSED_PLAN_PATHS,
-        )?;
+        let Some(attrs_to_write) = attr_paths(&self.nodes, boxes, &attrs) else {
+            return roots::fall_back_rebox("attributes rewritten by the build");
+        };
         // Rules that change no cascaded value (an inline style or a more
         // specific rule wins): the batch writes only `class`/`data-*`, which the
         // frame build does not read; the frame stays as recorded (`Plan::Clean`).
         if restyles.is_empty() && attrs_to_write.is_empty() {
             return Some(Plan::Clean(None));
         }
-        let style_paths = why::why(
-            style_paths(&self.nodes, boxes, &restyles),
-            &why::REFUSED_PLAN_PATHS,
-        )?;
+        let Some(style_paths) = style_paths(&self.nodes, boxes, &restyles) else {
+            return roots::fall_back_rebox("a box keeps copies of its paint values");
+        };
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, &attrs_to_write, &attrs) {
-            return refuse(&why::REFUSED_PLAN_PATHS);
+            return roots::fall_back_rebox("attributes rewritten by the build");
         }
         let edited = |nodes| Edited {
             nodes,
@@ -138,119 +166,36 @@ impl Document {
             return Some(Plan::Clean(Some(edited(nodes))));
         }
         for (path, id) in &style_paths {
-            match (apply(&mut nodes, path), restyles.get(id)) {
-                (Some(Node::Element(e)), Some(r)) => e.style.set_cascaded_paint(&r.new),
-                _ => return refuse(&why::REFUSED_PLAN_PATHS),
+            let (Some(Node::Element(e)), Some(r)) = (apply(&mut nodes, path), restyles.get(id))
+            else {
+                return roots::fall_back_rebox("a box path");
+            };
+            let written = match r.damage.0 {
+                Damage::Paint => {
+                    e.style.set_cascaded_paint(&r.new);
+                    true
+                }
+                _ => e.style.set_cascaded_layout(&r.old, &r.new),
+            };
+            let hovered = match (&r.hover, &mut e.hover) {
+                (None, _) => true,
+                (Some(hover), Some(layer)) => {
+                    layer.set_cascaded_paint(hover);
+                    true
+                }
+                (Some(_), None) => false,
+            };
+            if !(written && hovered) {
+                return roots::fall_back_rebox("the build adjusted a value of the box");
             }
         }
-        let mut restyled: Vec<u64> = restyles.into_keys().collect();
+        let damage = restyles
+            .values()
+            .map(|r| r.damage.0)
+            .max()
+            .unwrap_or(Damage::Paint);
+        let mut restyled: Vec<u64> = restyles.keys().copied().collect();
         restyled.sort_unstable();
-        Some(Plan::Restyled(edited(nodes), restyled, style_paths))
-    }
-
-    /// Перерасчёты элементов, чей стиль меняет пакет, по номерам коробок;
-    /// `None` — пакет доходит дальше значений краски.
-    fn restyles(
-        &self,
-        batch: &mut Batch,
-        changed: &crate::dom::invalidation::Changed,
-        (input, index): (&crate::dom::input::Admitted, &SourceIndex),
-        theme_css: &str,
-        cache: &mut crate::dom::restyle_probe::RestyleCache,
-    ) -> Option<HashMap<u64, Restyle>> {
-        let values = &self.state.values;
-        let media = self.state.media();
-        let probe = cache.probe(input, theme_css, media, values).ok().flatten();
-        let probe = why::why(probe, &why::REFUSED_RESTYLE_PROBE)?;
-        // `attr()` reads attributes by name, of the element its declaration
-        // applies to (also a `::before`, which this probe does not restyle):
-        // only a batch that changes a name the sheets or a mutated element's
-        // own `style=""` read is rebuilt (`AttrReads`).
-        let own = batch
-            .elements
-            .iter()
-            .flat_map(|c| c.old.iter().chain(&c.new));
-        let styles = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
-        let reads = probe.reads_attr().with_styles(styles);
-        if reads.reads_any_of(changed.attrs.iter().map(String::as_str)) {
-            return refuse(&why::REFUSED_RESTYLE_ATTR);
-        }
-        let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let mut targets = cache.targets(&probe, changed, &mutated);
-        crate::paint_path::add(&crate::paint_path::RESTYLED_ELEMENTS, targets.len() as u64);
-        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
-        // values into the cascades of their children's boxes: the probe
-        // folds them the same way.
-        let unwrapped = fold::Unwrapped::add(&self.nodes, &input.dom.document, &mut targets);
-        let unwrapped = why::why(unwrapped, &why::REFUSED_RESTYLE_ROOT)?;
-        // The styles before the batch are those the last probe of each
-        // target left (Blink and Stylo keep the old style on the element);
-        // only targets no edit has probed yet are cascaded.
-        let before = cache.kept_styles(&probe, input, values, &targets).ok();
-        let before = why::why(before, &why::REFUSED_RESTYLE_PROBE)?;
-        batch.write();
-        let after = cache.styles(&probe, input, values, &targets);
-        batch.undo();
-        let after = why::why(after.ok(), &why::REFUSED_RESTYLE_PROBE)?;
-        let vcx = self.state.values();
-        let parent = match &unwrapped {
-            Some(u) => Some(why::why(
-                u.parent(|i| before[i].as_ref().map(|p| &*p.style), vcx),
-                &why::REFUSED_RESTYLE_ROOT,
-            )?),
-            None => None,
-        };
-        let ids = targets.iter().map(|target| index.id(target));
-        let mut out = HashMap::new();
-        let entries = targets.iter().zip(ids).zip(before).zip(after).enumerate();
-        for (i, (((target, id), old), new)) in entries {
-            // A target the cascade walk does not enter before or after (in a
-            // `display: none` subtree, a dropped tag) generates no box either
-            // time (css-display-3 §2.5): its new style paints nothing. One
-            // that gains or loses its box changes layout.
-            let (old, new) = match (old, new) {
-                (Some(old), Some(new)) => (old, new),
-                (None, None) => continue,
-                _ => return refuse(&why::REFUSED_RESTYLE_LAYOUT),
-            };
-            if old.rest != new.rest {
-                return refuse(&why::REFUSED_RESTYLE_REST);
-            }
-            if *old.style == *new.style {
-                continue;
-            }
-            // A batch that restyles an unwrapped wrapper rebuilds: its values
-            // reach every top-level box and the text of the page.
-            if unwrapped.as_ref().is_some_and(|u| u.folds(i)) {
-                return refuse(&why::REFUSED_RESTYLE_ROOT);
-            }
-            let id = why::why(id, &why::REFUSED_RESTYLE_PROBE)?;
-            let (old, new) = match &parent {
-                Some(p) => (
-                    p.fold(target, old.style, vcx),
-                    p.fold(target, new.style, vcx),
-                ),
-                None => (old.style, new.style),
-            };
-            // The frame may only repaint: layout reads the same values.
-            let borders = painted_borders(&old) && painted_borders(&new);
-            if !(old.same_layout(&new) || borders && old.same_layout_but_border_colors(&new)) {
-                return refuse(&why::REFUSED_RESTYLE_LAYOUT);
-            }
-            let restyle = Restyle {
-                tag: super::adopt::tag_of(target),
-                old,
-                new,
-            };
-            // The canvas takes its background from the root element or from
-            // `body` (css-backgrounds-3 §2.11.2): document preparation
-            // derives it, not the cascade of the element.
-            let canvas = restyle.background() && restyle.tag == "body";
-            if restyle.tag == "html" || canvas {
-                return refuse(&why::REFUSED_RESTYLE_ROOT);
-            }
-            out.insert(id, restyle);
-        }
-        Some(out)
+        Some(Plan::Restyled(edited(nodes), restyled, style_paths, damage))
     }
 }

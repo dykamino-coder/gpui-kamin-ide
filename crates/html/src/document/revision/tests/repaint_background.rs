@@ -98,13 +98,12 @@ fn a_child_that_inherits_the_background_follows_by_materialization() {
 }
 
 #[test]
-fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
+fn the_canvas_background_layout_values_and_url_images_rebuild() {
     for style in [
         "html.alt body{background:#eee}",
         "html.alt{background:#eee}",
         "html.alt [data-deep]{background:#eee;padding:1px}",
         "html.alt [data-deep]{background:url(a.png)}",
-        "html.alt [data-deep]{background:#eee}[data-deep]:hover{color:red}",
     ] {
         let old = page(style);
         let new = old.replace("<html>", "<html class=\"alt\">");
