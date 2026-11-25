@@ -112,10 +112,20 @@ impl Scene {
         out
     }
 
-    /// `plan_shift` with its CPU time in `stats.us`.
-    pub(super) fn timed_plan_shift(&self, previous: &Scene, size: (u32, u32), d: (i32, i32), stats: &mut ShiftStats) -> Result<FrameShift, &'static str> {
+    /// `plan_shift` within the comparison budget (`shift_budget_us`), with its
+    /// CPU time in `stats.us`.
+    pub(super) fn timed_plan_shift(
+        &self,
+        previous: &Scene,
+        size: (u32, u32),
+        d: (i32, i32),
+        stats: &mut ShiftStats,
+    ) -> Result<FrameShift, &'static str> {
         let started = std::time::Instant::now();
-        let plan = self.plan_shift(previous, size, d, stats);
+        let budget = super::shift_budget_us();
+        let deadline =
+            (budget != u32::MAX).then(|| started + std::time::Duration::from_micros(budget as u64));
+        let plan = self.plan_shift_within(previous, size, d, stats, deadline);
         stats.us = started.elapsed().as_micros().min(u32::MAX as u128) as u32;
         plan
     }
@@ -131,6 +141,20 @@ impl Scene {
         d: (i32, i32),
         stats: &mut ShiftStats,
     ) -> Result<FrameShift, &'static str> {
+        self.plan_shift_within(previous, size, d, stats, None)
+    }
+
+    /// `plan_shift` that gives up (`over_budget`) once `deadline` passes: the
+    /// comparison then costs more than the raster it could save.
+    fn plan_shift_within(
+        &self,
+        previous: &Scene,
+        size: (u32, u32),
+        d: (i32, i32),
+        stats: &mut ShiftStats,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<FrameShift, &'static str> {
+        let late = || deadline.is_some_and(|t| std::time::Instant::now() >= t);
         let (w, h) = size;
         // `d == (0, 0)` compares the frame with the last one in place: the
         // frame damage when the retained layers' bookkeeping cannot tell it.
@@ -168,6 +192,9 @@ impl Scene {
         let (cols, rows) = (w.div_ceil(DAMAGE_TILE), h.div_ceil(DAMAGE_TILE));
         let (sa, ea) = bin(&new, cols, rows);
         let (sb, eb) = bin(&old, cols, rows);
+        if late() {
+            return Err("over_budget");
+        }
         let mut cmp = compare::Moved {
             d: (d.0 as f32, d.1 as f32),
             w: wa,
@@ -195,6 +222,9 @@ impl Scene {
                 continue;
             }
             stats.cells += 1;
+            if late() {
+                return Err("over_budget");
+            }
             let (a, b) = (
                 &ea[sa[t] as usize..sa[t + 1] as usize],
                 &eb[sb[t] as usize..sb[t + 1] as usize],
@@ -211,7 +241,9 @@ impl Scene {
                 let (x, y) = ((x, new[x as usize]), (y, old[y as usize]));
                 let differs = match x.1.same_marker(&y.1) {
                     Some(same) => !same,
-                    None => x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p),
+                    None => {
+                        x.1.entry >> KIND_SHIFT != y.1.entry >> KIND_SHIFT || !cmp.same(x, y, p)
+                    }
                 };
                 if differs {
                     let u = [
