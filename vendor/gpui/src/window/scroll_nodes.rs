@@ -107,6 +107,7 @@ impl ScrollNodeRecord {
     }
 }
 
+mod anchor_trace;
 mod source;
 pub(crate) use source::NodeSource;
 
@@ -610,26 +611,6 @@ fn trace_pairing(frame: &Frame, elements: &[ElementId], id: ScrollNodeId, cursor
             tail.join(" < ")
         )
     });
-}
-
-impl Window {
-    /// KaminIDE patch (DevTools `why`): anchors of the frame just drawn whose
-    /// children never painted (`paint` none): prepaint opened them, paint did
-    /// not pair them.
-    #[track_caller]
-    pub(crate) fn trace_unpainted_anchors(&self) {
-        if !crate::dirty_sources::trace::enabled() {
-            return;
-        }
-        let site = core::panic::Location::caller();
-        for (at, node) in self.rendered_frame.scroll_nodes.iter().enumerate() {
-            if node.anchored && node.paint.is_none() {
-                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
-                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}", node.id.0, node.chain, node.clip, node.parent)
-                });
-            }
-        }
-    }
 }
 
 #[cfg(test)]

@@ -42829,10 +42829,10 @@ index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e23
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..227974e6208a917972f3bcfebf984faabc9af57e
+index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa111574541fbdd36
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,796 @@
+@@ -0,0 +1,777 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -42942,6 +42942,7 @@ index 0000000000000000000000000000000000000000..227974e6208a917972f3bcfebf984faa
 +    }
 +}
 +
++mod anchor_trace;
 +mod source;
 +pub(crate) use source::NodeSource;
 +
@@ -43447,26 +43448,6 @@ index 0000000000000000000000000000000000000000..227974e6208a917972f3bcfebf984faa
 +    });
 +}
 +
-+impl Window {
-+    /// KaminIDE patch (DevTools `why`): anchors of the frame just drawn whose
-+    /// children never painted (`paint` none): prepaint opened them, paint did
-+    /// not pair them.
-+    #[track_caller]
-+    pub(crate) fn trace_unpainted_anchors(&self) {
-+        if !crate::dirty_sources::trace::enabled() {
-+            return;
-+        }
-+        let site = core::panic::Location::caller();
-+        for (at, node) in self.rendered_frame.scroll_nodes.iter().enumerate() {
-+            if node.anchored && node.paint.is_none() {
-+                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
-+                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}", node.id.0, node.chain, node.clip, node.parent)
-+                });
-+            }
-+        }
-+    }
-+}
-+
 +#[cfg(test)]
 +mod tests {
 +    use super::*;
@@ -43627,6 +43608,54 @@ index 0000000000000000000000000000000000000000..227974e6208a917972f3bcfebf984faa
 +        assert!(unpaired.detail.contains("found None nodes of the id []"), "{}", unpaired.detail);
 +        let paired = events.iter().find(|e| e.kind == "scroll_node.paint_paired").unwrap();
 +        assert!(paired.detail.contains("found Some(0) nodes of the id [0:free:anchor]"), "{}", paired.detail);
++    }
++}
+\ No newline at end of file
+diff --git a/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e4281e8caceb8ae34d9020db21fcb7d0d35f7b60
+--- /dev/null
++++ b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
+@@ -0,0 +1,41 @@
++//! KaminIDE patch (DevTools `why`): anchors the frame drew without paint.
++
++use super::*;
++
++impl Window {
++    /// Anchors of the frame just drawn whose children never painted (`paint`
++    /// none): prepaint opened them, paint did not pair them. A copied node
++    /// tells where its range was left unlanded (`scroll_paint.landing`): in
++    /// the frame's scene, a group's or another (a layer's).
++    #[track_caller]
++    pub(crate) fn trace_unpainted_anchors(&self) {
++        if !crate::dirty_sources::trace::enabled() {
++            return;
++        }
++        let site = core::panic::Location::caller();
++        let frame = &self.rendered_frame;
++        let space_of = |space: SceneSpace| {
++            if space == frame.scene.scroll.space {
++                return format!("the frame's scene ({} commands)", frame.scene.paint_operations.len());
++            }
++            match frame.scene.groups.iter().position(|group| group.scene.scroll.space == space) {
++                Some(at) => format!("the scene of group {at} of {}", frame.scene.groups.len()),
++                None => format!("another scene {space:?} (a layer's)"),
++            }
++        };
++        for (at, node) in frame.scroll_nodes.iter().enumerate() {
++            if node.anchored && node.paint.is_none() {
++                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
++                    let left: Vec<_> = frame.scroll_paint.landing.iter().filter(|entry| entry.0 as usize == at).collect();
++                    let landing = match left.first() {
++                        None => "no range left to land".to_string(),
++                        Some((_, paint, space, main)) => {
++                            format!("{} ranges left unlanded, first {paint:?} (main {main}) in {}", left.len(), space_of(*space))
++                        }
++                    };
++                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}; {landing}", node.id.0, node.chain, node.clip, node.parent)
++                });
++            }
++        }
 +    }
 +}
 \ No newline at end of file
