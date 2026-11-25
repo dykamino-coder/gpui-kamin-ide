@@ -5,6 +5,7 @@ use super::Restyle;
 use crate::document::revision::boxes::{Boxes, at};
 use crate::document::revision::patch::{Path, elements};
 use crate::dom::{Element, Node};
+use crate::values::ValueCx;
 use std::collections::HashMap;
 
 /// The tree keeps its `body` box (under `html` and the viewport box).
@@ -32,6 +33,7 @@ pub(super) fn style_paths(
     nodes: &[Node],
     boxes: &Boxes,
     restyles: &HashMap<u64, Restyle>,
+    vcx: ValueCx<'_>,
 ) -> Result<Vec<(Path, u64)>, &'static str> {
     let mut paths = Vec::new();
     for (&id, r) in restyles {
@@ -59,7 +61,7 @@ pub(super) fn style_paths(
                 super::why_value::note(group, cascaded, &r.old);
                 return Err("a box holds other values of the changed groups");
             }
-            takes(e, r)?;
+            takes(e, r, vcx)?;
             paths.push((path, id));
         }
         if paths.len() == before {
@@ -75,10 +77,12 @@ pub(super) fn style_paths(
 /// either; for new border colours, no inline box). Its subtree follows by
 /// rematerialization: under new inherited
 /// values no box keeps a first-letter/-line layer, animation frames
-/// or such copies; under a new background alone only a style that inherits
-/// reset values explicitly reads it (css-cascade-5 §7.3.1), and no such style
-/// is a layer or keeps copies.
-fn takes(e: &Element, r: &Restyle) -> Result<(), &'static str> {
+/// or such copies; under a new background alone only a style whose explicit
+/// `inherit` of a reset property reads the changed value (css-cascade-5
+/// §7.3.1, `SharedStyle::inherits_reset_of`: by the value, not by the
+/// presence of an `inherit`) follows it, and no such style is a layer or
+/// keeps copies.
+fn takes(e: &Element, r: &Restyle, vcx: ValueCx<'_>) -> Result<(), &'static str> {
     let (inherited, background, borders) = (r.inherited(), r.background(), r.borders());
     // A layout restyle drops the box's own used copy (`cascaded_mut`): the
     // next layout makes it again from the new values.
@@ -104,6 +108,10 @@ fn takes(e: &Element, r: &Restyle) -> Result<(), &'static str> {
     if borders && (e.inline || TABLE_PARTS.contains(&e.tag.as_str())) {
         return Err("an inline box or a table part with new border colours");
     }
+    // The values a descendant's explicit `inherit` may read changed from the
+    // element's old style to its new one; a deeper parent passes them on only
+    // by such an `inherit` too, so the element's change bounds them.
+    let reads = |s: &crate::dom::SharedStyle| s.inherits_reset_of(&r.old, &r.new, vcx);
     let why = std::cell::Cell::new("");
     let follows = elements(
         std::slice::from_ref(&Node::Element(e.clone())),
@@ -129,13 +137,13 @@ fn takes(e: &Element, r: &Restyle) -> Result<(), &'static str> {
                         .any(|l| l.is_some())
                         .then_some("a descendant has a first-letter/-line layer")
                 })
-            } else if copies.is_some() && b.style.inherits_reset() {
+            } else if copies.is_some() && reads(&b.style) {
                 copies
             } else {
                 layers(b)
                     .flatten()
-                    .any(|l| l.inherits_reset())
-                    .then_some("a layer of a descendant inherits a reset value")
+                    .any(reads)
+                    .then_some("a layer of a descendant inherits a changed reset value")
             };
             if let Some(reason) = fails {
                 why.set(reason);

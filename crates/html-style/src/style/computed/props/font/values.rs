@@ -2,7 +2,7 @@
 //! §line-height): ОДИН разбор на свойство — им реестр проверяет объявление, им
 //! же обработчик пишет поля стиля.
 
-use crate::style::computed::{family_name_ok, split_outside_parens};
+use crate::style::computed::{SIZE_ADJUST_FROM_FONT, family_name_ok, split_outside_parens};
 use crate::style::css::LonghandId;
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
@@ -136,7 +136,8 @@ pub fn kerning(v: &str) -> Option<u8> {
 
 /// `font-size-adjust: none | [ ex-height | cap-height | ch-width | ic-width |
 /// ic-height ]? [ from-font | <number [0,∞]> ]` (css-fonts-5): метрика и
-/// число (`NaN` — `from-font`); `none` — метрика `u8::MAX`.
+/// число; `from-font` — метрика со сдвигом `SIZE_ADJUST_FROM_FONT` (число
+/// решает стадия вычисленных значений); `none` — метрика `u8::MAX`.
 pub fn size_adjust(v: &str, vcx: ValueCx<'_>) -> Option<(u8, f32)> {
     let lower = lower(v);
     if lower == "none" {
@@ -156,15 +157,13 @@ pub fn size_adjust(v: &str, vcx: ValueCx<'_>) -> Option<(u8, f32)> {
         "ic-height" => 4,
         _ => return None,
     };
-    let want = if number == "from-font" {
-        f32::NAN
-    } else {
-        match crate::style::values::value::number(number, vcx) {
-            Some(k) if k >= 0.0 => k,
-            _ => return None,
-        }
-    };
-    Some((metric, want))
+    if number == "from-font" {
+        return Some((metric + SIZE_ADJUST_FROM_FONT, 0.0));
+    }
+    match crate::style::values::value::number(number, vcx) {
+        Some(k) if k >= 0.0 => Some((metric, k)),
+        _ => None,
+    }
 }
 
 /// `font-variant-emoji: normal | text | emoji | unicode` (css-fonts-4 §6.13).

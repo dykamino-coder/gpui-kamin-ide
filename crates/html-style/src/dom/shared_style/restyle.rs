@@ -36,6 +36,18 @@ impl SharedStyle {
         crate::style::cascade::materialize::inherits_reset(&self.cascaded)
     }
 
+    /// Whether the explicit `inherit` of a reset property in this style reads
+    /// a value that differs between the parent styles `old` and `new`
+    /// (`inherits_reset` narrowed to the values the change gives the parent).
+    pub fn inherits_reset_of(
+        &self,
+        old: &Computed,
+        new: &Computed,
+        vcx: crate::values::ValueCx<'_>,
+    ) -> bool {
+        crate::style::cascade::materialize::reads_reset_of(&self.cascaded, old, new, vcx)
+    }
+
     /// Whether document preparation resolved decoration inputs of this box
     /// from cascaded values (the canvas background and its donor,
     /// css-backgrounds-3 §2.11.2): a new cascaded background does not reach

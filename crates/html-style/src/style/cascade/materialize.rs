@@ -21,7 +21,7 @@ use std::rc::Rc;
 mod container_input;
 mod inherited;
 mod materialized;
-pub(crate) use inherited::inherits_reset;
+pub(crate) use inherited::{inherits_reset, reads_reset_of};
 use materialized::{Inputs, Materialized, inputs, stored};
 mod recompute;
 mod sharing;

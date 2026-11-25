@@ -151,7 +151,7 @@ impl Document {
         if restyles.is_empty() && attrs_to_write.is_empty() {
             return Some(Plan::Clean(None));
         }
-        let style_paths = match style_paths(&self.nodes, boxes, restyles) {
+        let style_paths = match style_paths(&self.nodes, boxes, restyles, self.state.values()) {
             Ok(paths) => paths,
             Err(why) => return roots::fall_back_rebox(why),
         };

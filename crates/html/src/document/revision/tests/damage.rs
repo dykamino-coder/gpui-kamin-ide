@@ -59,9 +59,10 @@ fn records_no_frame_reads_keep_the_frame_and_the_state() {
     assert_eq!(kept(PAGE, "p", "data-k", "1", &boxed), Some(false));
     let classed = PAGE.replace("<p>a", "<p class=\"zz\">a");
     assert_eq!(kept(PAGE, "p", "class", "zz", &classed), Some(false));
-    // Элемент вне обхода сборки (`head`) не адресуется правкой: каскад заново.
+    // An element outside the build's walk (`head`) has no box: an attribute
+    // no sheet reads changes nothing (css-display-3 §2.5).
     let head = PAGE.replace("<head>", "<head data-k=\"1\">");
-    assert_eq!(kept(PAGE, "head", "data-k", "1", &head), None);
+    assert_eq!(kept(PAGE, "head", "data-k", "1", &head), Some(true));
     // Упомянутый листом класс меняет каскад.
     let on = PAGE.replace("<p>a", "<p class=\"on\">a");
     assert_eq!(kept(PAGE, "p", "class", "on", &on), None);
