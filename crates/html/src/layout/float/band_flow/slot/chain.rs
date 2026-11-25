@@ -10,8 +10,9 @@
 use super::Retained;
 use crate::layout::reuse::BandKey;
 
-/// Records one box keeps: its own host's and a few synthetic hosts'.
-const HOSTS: usize = 4;
+/// Records one box keeps: its own host's and those of the runs of one
+/// block (a list of items each wrapped around an icon float).
+const HOSTS: usize = 16;
 
 /// The record of `key` in the chain at `head`, or else the head, whose
 /// differing input the `why` journal names.
