@@ -24,10 +24,8 @@ const EXAMPLES: usize = 4;
 static READERS: AtomicUsize = AtomicUsize::new(0);
 /// Readers among `READERS` that take the notes of their own thread only.
 static THREAD_READERS: AtomicUsize = AtomicUsize::new(0);
-thread_local! {
-    /// Thread readers living on this thread.
-    static HERE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
+/// The threads of the thread readers, one entry per reader.
+static THREADS: Shared<Vec<std::thread::ThreadId>> = Shared::new(Vec::new());
 static JOURNAL: Shared<Journal> = Shared::new(Journal::new());
 
 /// Whether the journal records (some reader is subscribed).
@@ -65,13 +63,18 @@ pub struct ThreadSubscription(Subscription, std::marker::PhantomData<*const ()>)
 /// not kept. Any process-wide reader keeps every note.
 pub fn subscribe_thread() -> ThreadSubscription {
     THREAD_READERS.fetch_add(1, Relaxed);
-    HERE.with(|n| n.set(n.get() + 1));
+    THREADS.lock().push(std::thread::current().id());
     ThreadSubscription(subscribe(), std::marker::PhantomData)
 }
 
 impl Drop for ThreadSubscription {
     fn drop(&mut self) {
-        HERE.with(|n| n.set(n.get() - 1));
+        let here = std::thread::current().id();
+        let mut threads = THREADS.lock();
+        if let Some(at) = threads.iter().position(|t| *t == here) {
+            threads.swap_remove(at);
+        }
+        drop(threads);
         THREAD_READERS.fetch_sub(1, Relaxed);
     }
 }
@@ -79,7 +82,8 @@ impl Drop for ThreadSubscription {
 /// Whether a note made on this thread is kept: a process-wide reader lives,
 /// or a thread reader of this thread.
 fn kept_here() -> bool {
-    READERS.load(Relaxed) > THREAD_READERS.load(Relaxed) || HERE.with(|n| n.get() > 0)
+    READERS.load(Relaxed) > THREAD_READERS.load(Relaxed)
+        || THREADS.lock().contains(&std::thread::current().id())
 }
 
 /// One decision: its stable code, details and the engine line that made it.
