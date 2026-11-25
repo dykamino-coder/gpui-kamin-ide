@@ -9,6 +9,12 @@ use crate::values::ValueCx;
 pub struct CalcId(crate::values::ArenaKey);
 
 pub fn calc_store(s: Sum, vcx: ValueCx<'_>) -> CalcId {
+    if s.ext[super::units::Ext::Cqw as usize..]
+        .iter()
+        .any(|v| *v != 0.0)
+    {
+        crate::values::container_reads::note(vcx);
+    }
     CalcId(crate::values::store_once(vcx, |d| &d.calc, s, sum_hash(&s)))
 }
 

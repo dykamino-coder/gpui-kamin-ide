@@ -16,6 +16,7 @@ mod font_facts;
 pub use font_facts::UsedFace;
 pub use font_facts::UsedFontKey;
 pub mod image_values;
+pub mod container_reads;
 pub mod property_registry;
 pub mod readiness;
 pub mod synthetic_ids;

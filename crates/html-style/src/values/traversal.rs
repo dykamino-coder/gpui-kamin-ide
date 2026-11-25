@@ -32,6 +32,8 @@ pub struct TraversalState {
     embedded: Cell<bool>,
     /// A computation read the viewport size (`values::viewport_reads`).
     pub viewport_read: Cell<bool>,
+    /// A stored sum holds a container-relative length (`values::container_reads`).
+    pub container_lengths: Cell<bool>,
     /// The viewport-dependent media queries of the build being recorded
     /// (`style::css::reads::record`).
     pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
