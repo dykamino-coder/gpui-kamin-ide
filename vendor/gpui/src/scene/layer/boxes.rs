@@ -70,6 +70,10 @@ pub(crate) struct BoxEnv {
     /// outside layers, ordered by the bounds tree).
     pub(crate) layer: Option<crate::scene::DrawOrder>,
     pub(crate) painter: RunPainter,
+    /// The hitbox whose hover refines the box's style (`Interactivity::hover_style`)
+    /// and whether the run was painted hovered: a later recording paints the
+    /// style the box shows now (`Window::layer_box_hover`).
+    pub(crate) hover: Option<(crate::HitboxId, bool)>,
 }
 
 /// A box's own paint in a layer: its owner, its placed area and ink, its run

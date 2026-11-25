@@ -2943,7 +2943,7 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            self.paint_own_box(&style, bounds, window, cx);
+            self.paint_own_box(&style, bounds, hitbox, window, cx);
             style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
                 window.with_child_style(&style, bounds, |window| {
                     window.with_tab_group(tab_group, |window| {
@@ -3695,13 +3695,17 @@ impl Interactivity {
     /// recursive frame of `paint_with_state`, which every nesting level of a
     /// deep tree lays out again.
     #[inline(never)]
-    fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, hitbox: Option<&Hitbox>, window: &mut Window, cx: &mut App) {
         let contents = if self.box_painter.is_some() {
             crate::scene::BoxContents::External
         } else {
             self.box_run
         };
         let painter = crate::scene::RunPainter::Box(contents);
+        // A hover style refines the box's paint: its run notes the hitbox and
+        // whether this paint showed it (`compute_style`).
+        let hovered = self.rare().is_some_and(|rare| rare.hover_style.is_some());
+        window.run_hover = hitbox.filter(|_| hovered).map(|h| (h.id, window.hover_shown(h.id, cx)));
         window.with_run(self.paint_owner, bounds, painter, |window| {
             style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
         });
