@@ -90,6 +90,9 @@ pub struct ImageStore {
     cancel: Cancellation,
     /// Пределы и отмены заданий до выдачи в журнал документа.
     diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
+    /// `layout_facts` and the revision it was computed at plus one (0: none),
+    /// atomic because raster loads borrow the store across threads (`view`).
+    facts: [std::sync::atomic::AtomicU64; 2],
 }
 
 impl Default for ImageStore {
@@ -115,6 +118,7 @@ impl ImageStore {
             budget: crate::budget::RevisionBudget::standalone(),
             cancel: Cancellation::default(),
             diagnostics: Default::default(),
+            facts: Default::default(),
         }
     }
 

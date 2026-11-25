@@ -4,8 +4,10 @@
 //! floats) is a function of its subtree, the containing-block width it is
 //! measured at, and what its build reads from outside the subtree: the same
 //! environment a content record keys on (`KeyEnv`), the host's identity, the
-//! counters its build starts from, the viewport and the image revision (a
-//! decoded image changes an intrinsic size without a box epoch). The width is
+//! counters its build starts from, the viewport and the images' layout facts
+//! (`ImageReadView::layout_facts`: a decoded image changes an intrinsic size
+//! without a box epoch, while the store's own revision moves with every
+//! document revision). The width is
 //! the measure's own input and keys each kept plan; the subtree is clean while
 //! the host's build epoch is not newer than the publication of the record
 //! (`BoxTree::build_epoch`). Blink keys `LayoutResult` by the
@@ -26,6 +28,9 @@ pub(crate) struct BandKey {
     start: Counters,
     viewport: (f32, f32),
     images: u64,
+    /// The walk of a synthetic host to its boxes (`boxed_elements`); 0 for a
+    /// host with a box of its own.
+    shape: u64,
 }
 
 impl BandKey {
@@ -44,6 +49,7 @@ impl BandKey {
             _ if self.start != other.start => Some("counters"),
             _ if self.viewport != other.viewport => Some("viewport"),
             _ if self.images != other.images => Some("images"),
+            _ if self.shape != other.shape => Some("shape"),
             _ => None,
         }
     }
@@ -70,6 +76,7 @@ impl BandKey {
             start: Counters::zero(),
             viewport: (width, 0.0),
             images: 0,
+            shape: 0,
         }
     }
 }
@@ -90,16 +97,21 @@ impl FlowReuse {
             return None;
         }
         let frame = self.store.epoch();
-        let (owner, seen) = {
+        let (owner, seen, shape) = {
             let mut boxes = opts.cx.doc().boxes.try_borrow_mut().ok()?;
-            let Some(owner) = owner(&boxes, node_id, nodes) else {
-                crate::why::note("band_slot.none", || "no box answers for the host".into());
-                return None;
+            let (owner, shape) = match owner(&boxes, node_id, nodes) {
+                Ok(owner) => owner,
+                Err(why) => {
+                    crate::why::note("band_slot.none", || {
+                        format!("no box answers for the host {node_id}: {why}")
+                    });
+                    return None;
+                }
             };
             let seen = boxes
                 .slot_mut(owner.slot)
                 .map(|s| *s.band_seen.get_or_insert(frame));
-            (owner, seen)
+            (owner, seen, shape)
         };
         // The first frame of a host records nothing: a record pays off only
         // in a later frame, and a page drawn once must not pay for it.
@@ -114,7 +126,8 @@ impl FlowReuse {
             ids: super::key::ids(inherited),
             start: Counters::read(&opts.cx),
             viewport: vcx.viewport,
-            images: vcx.doc.images.borrow().snapshot().revision(),
+            images: vcx.doc.images.borrow().snapshot().layout_facts(),
+            shape,
         };
         Some((owner, key, frame))
     }
@@ -129,24 +142,61 @@ impl FlowReuse {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BandBoxes {
     /// The record's box: the host's own, or for a synthetic host (`wrap_floats`)
-    /// the box of its first element child, one per host.
+    /// the box of the first boxed element it holds (`boxed_elements`).
     pub(crate) slot: BoxId,
     /// The box whose subtree holds every input box of the host: the host's
     /// own, or the parent of its children.
     pub(crate) epoch: BoxId,
 }
 
-fn owner(boxes: &BoxTree, node_id: u64, nodes: &[Node]) -> Option<BandBoxes> {
+fn owner(boxes: &BoxTree, node_id: u64, nodes: &[Node]) -> Result<(BandBoxes, u64), &'static str> {
     if let Some(own) = boxes.box_of(node_id) {
-        return Some(BandBoxes {
+        let own = BandBoxes {
             slot: own,
             epoch: own,
-        });
+        };
+        return Ok((own, 0));
     }
-    let first = nodes.iter().find_map(|n| match n {
-        Node::Element(e) => boxes.box_of(e.node_id),
-        _ => None,
-    })?;
-    let epoch = boxes.owner_of(nodes)?;
-    Some(BandBoxes { slot: first, epoch })
+    // A synthetic host (`band_measured::measured_host`) may hold synthetic
+    // children too (runs, leads): it answers by the boxed elements it holds
+    // through them, which must be children of one box.
+    let mut boxed = Vec::new();
+    let mut shape = std::hash::DefaultHasher::new();
+    boxed_elements(boxes, nodes, &mut boxed, &mut shape);
+    let first = boxed.first().and_then(|n| boxes.box_of(*n)).ok_or("no boxed element")?;
+    let mut epoch = None;
+    for node in &boxed {
+        let parent = boxes.box_of(*node).and_then(|b| boxes.get(b)).ok_or("no box")?.parent;
+        if *epoch.get_or_insert(parent) != parent {
+            return Err("boxes of different parents");
+        }
+    }
+    let epoch = epoch.filter(|id| boxes.get(*id).is_some()).ok_or("no parent box")?;
+    Ok((BandBoxes { slot: first, epoch }, std::hash::Hasher::finish(&shape)))
+}
+
+/// The boxed elements of `nodes`, through elements without a box, in order;
+/// `shape` hashes the walk, so two synthetic hosts that answer by the same
+/// first box never share a record (`BandKey::shape`).
+fn boxed_elements(
+    boxes: &BoxTree,
+    nodes: &[Node],
+    out: &mut Vec<u64>,
+    shape: &mut std::hash::DefaultHasher,
+) {
+    use std::hash::Hash;
+    nodes.len().hash(shape);
+    for node in nodes {
+        let Node::Element(e) = node else {
+            0u8.hash(shape);
+            continue;
+        };
+        if boxes.box_of(e.node_id).is_some() {
+            e.node_id.hash(shape);
+            out.push(e.node_id);
+        } else {
+            e.tag.hash(shape);
+            boxed_elements(boxes, &e.children, out, shape);
+        }
+    }
 }
