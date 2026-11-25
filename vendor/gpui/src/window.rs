@@ -3891,6 +3891,7 @@ impl Window {
         // KaminIDE patch: DevTools `why` reads which requests each draw served
         // and which caller drew (the platform frame request or a forced draw).
         crate::dirty_sources::trace::mark("draw");
+        crate::scene::no_run::drawn();
         // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
         self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));

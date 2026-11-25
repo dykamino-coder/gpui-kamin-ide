@@ -91,6 +91,7 @@ impl Window {
             bindings.reserve_exact(bound);
             boxes.reserve_exact(runs);
         }
+        crate::scene::no_run::start();
         let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
         // The frame's scene and no recording wait in `state` while `f`
         // paints into a new scene; restoring swaps them back, on unwind too.

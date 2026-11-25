@@ -151,8 +151,8 @@ impl Document {
             self.note_no_layer();
             return false;
         };
-        let own = |e: &crate::dom::Element| {
-            crate::paint::box_tree::styled::requested_painter(&self.state, e)
+        let own = |e: &crate::dom::Element, boxed: bool| {
+            crate::paint::box_tree::styled::requested_painter(&self.state, e, boxed)
         };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {

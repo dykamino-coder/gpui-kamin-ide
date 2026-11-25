@@ -235,7 +235,7 @@ pub fn census(doc: &crate::Document) -> std::collections::BTreeMap<&'static str,
             Some("control")
         } else {
             use crate::paint::box_tree::styled::{Own, requested_painter};
-            match requested_painter(&state, e) {
+            match requested_painter(&state, e, false) {
                 Own::Plain => None,
                 Own::Band => Some("inline"),
                 Own::Not(reason) => Some(reason.label()),

@@ -49,7 +49,7 @@ pub(super) fn write_paint_values(
     new: &[Node],
     paths: &[(Path, u64)],
     layer_for: impl Fn(u64) -> Option<LayerHandle>,
-    own: impl Fn(&Element) -> Own,
+    own: impl Fn(&Element, bool) -> Own,
     grouped: impl Fn(&Element) -> bool,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
@@ -75,10 +75,14 @@ pub(super) fn write_paint_values(
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
-        if unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
+        // No painted value of the box changed (a restyle that matched other
+        // rules to the same paint): its painter, recorded or not, paints the
+        // same commands, and nothing is written or recorded.
+        let unchanged = damage == PaintDamage::Value(PaintValue::default());
+        if unchanged || unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
-        if unseen(path) {
+        if unseen(path) || skipped::skipped(old, path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
             continue;
         }
@@ -102,7 +106,9 @@ pub(super) fn write_paint_values(
         // A box that is all its group holds paints the group again with
         // its decorations (`retained::box_repaint`, `group_painters`).
         let group = || layer.holds_group_root(owner) && grouped(b);
-        let banded = match (recorded, own(b)) {
+        // A box recorded as a box of its own stays one: layout is kept.
+        let boxed = recorded.is_some_and(|p| p != LayerPainter::Band);
+        let banded = match (recorded, own(b, boxed)) {
             (Some(LayerPainter::Box), Own::Plain) => false,
             (Some(LayerPainter::DecoratedBox), Own::Not(Refusal::Decoration))
                 if kept_decorations(a, b) =>
@@ -123,13 +129,27 @@ pub(super) fn write_paint_values(
             (Some(LayerPainter::Band) | None, Own::Band) => true,
             (_, Own::Not(reason)) => {
                 refuse_not_own(reason);
-                why::not_own(reason, owner, &b.tag, recorded);
+                why::not_own(
+                    reason,
+                    owner,
+                    &b.tag,
+                    &layer,
+                    recorded,
+                    (damage, own(b, boxed)),
+                );
                 return None;
             }
             _ => {
                 // The recorded painter and the new paint have no write between them.
                 refuse_not_own(Refusal::Kind);
-                why::not_own(Refusal::Kind, owner, &b.tag, recorded);
+                why::not_own(
+                    Refusal::Kind,
+                    owner,
+                    &b.tag,
+                    &layer,
+                    recorded,
+                    (damage, own(b, boxed)),
+                );
                 return None;
             }
         };
@@ -144,7 +164,13 @@ pub(super) fn write_paint_values(
                     } else {
                         crate::paint_path::refuse_with(
                             &crate::paint_path::REFUSED_BY_LAYER,
-                            || format!("band of <{}> {owner} has no run in the layer", b.tag),
+                            || {
+                                let why = layer.no_run(owner).unwrap_or("not painted");
+                                format!(
+                                    "band of <{}> {owner} has no run in the layer ({why})",
+                                    b.tag
+                                )
+                            },
                         );
                         return None;
                     }
@@ -205,33 +231,12 @@ pub(super) fn write_paint_values(
     Some(Taken { records, deferred })
 }
 
-/// What the layer took of a restyle: the boxes the next frame records again
-/// and the boxes off the screen whose records wait.
-#[derive(Default)]
-pub(super) struct Taken {
-    pub(super) records: Vec<(Path, u64)>,
-    pub(super) deferred: Vec<(Path, u64)>,
-}
-
-/// The box numbered `id` at `path` in `nodes`; `None` when the path leads
-/// elsewhere (the trees do not share their shape).
-pub(in crate::document) fn at<'a>(
-    nodes: &'a [Node],
-    path: &[usize],
-    id: u64,
-) -> Option<&'a Element> {
-    super::patch::element_at(nodes, path).filter(|e| e.node_id == id)
-}
-
-/// The element holding the box at `path` in `nodes`.
-pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> Option<&'a Element> {
-    path.len()
-        .checked_sub(1)
-        .and_then(|n| element_at(nodes, &path[..n]))
-}
-
 mod fill;
+mod skipped;
+mod taken;
 mod why;
 use fill::kept_decorations;
 pub(super) use fill::painted_background;
+pub(super) use taken::Taken;
+pub(in crate::document) use taken::{at, parent_at};
 use why::refuse_not_own;

@@ -72,7 +72,23 @@ pub(super) fn waits(
     let Some(area) = area else {
         crate::why::note("offscreen.unknown_area", || {
             let missing = match kind {
-                Wait::Inline => unknown_fragments(store, boxes, a),
+                Wait::Inline => unknown_fragments(store, boxes, a, || {
+                    // The nearest block on the path: the container's element.
+                    let block = (1..path.len())
+                        .rev()
+                        .filter_map(|n| element_at(old, &path[..n]))
+                        .find(|e| !e.inline);
+                    match block.and_then(|e| Some((e, u32::try_from(e.node_id).ok()?))) {
+                        Some((e, owner)) => format!(
+                            "block <{}> {owner}: runs {:?}, area {:?}, no run {:?}",
+                            e.tag,
+                            layer.run_painters(owner),
+                            layer.box_area(owner),
+                            layer.no_run(owner)
+                        ),
+                        None => "no block on the path".into(),
+                    }
+                }),
                 Wait::Decoration => "no decorated run in the layer".into(),
             };
             format!("box {} <{}>: no {kind:?} area: {missing}", a.node_id, b.tag)
@@ -111,24 +127,38 @@ fn inline_area(
     })?
 }
 
+/// The container of inline box `id`'s line fragments: its nearest ancestor
+/// whose slot holds fragments, or else whose inline content holds the box.
+/// A paragraph writes into the box its flow belongs to
+/// (`layout::reuse::fragment_target`), which may hold no published inline
+/// content of its own (a paragraph of a render copy of the children).
+fn container(
+    boxes: &crate::document::boxes::BoxTree,
+    id: crate::dom::BoxId,
+) -> Option<crate::dom::BoxId> {
+    boxes.ancestors(id).find(|p| {
+        boxes.slot(*p).is_some_and(|s| s.inline.is_some())
+            || boxes.get(*p).is_some_and(|r| r.inline.is_some())
+    })
+}
+
 /// Why `fragments_of` knows no fragments of inline box `a` (DevTools `why`).
 fn unknown_fragments(
     store: &Store,
     boxes: &crate::document::boxes::BoxTree,
     a: &Element,
+    container_run: impl FnOnce() -> String,
 ) -> String {
     let Some(id) = boxes.box_of(a.node_id) else {
         return "no box".into();
     };
-    let container = boxes
-        .ancestors(id)
-        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()));
-    let Some(container) = container else {
+    let Some(container) = container(boxes, id) else {
         return "no inline container".into();
     };
     match boxes.slot(container).map(|s| s.inline.as_deref()) {
         None => format!(
-            "the container has no layout slot: {}",
+            "the container has no layout slot (its paragraphs wrote no fragments; {}): {}",
+            container_run(),
             boxes.describe_chain(id, 6)
         ),
         Some(None) => "the container's paragraphs wrote no fragments".into(),
@@ -152,9 +182,7 @@ fn fragments_of<R>(
 ) -> Option<R> {
     use crate::document::boxes::inline::ItemKind;
     let id = boxes.box_of(a.node_id)?;
-    let container = boxes
-        .ancestors(id)
-        .find(|p| boxes.get(*p).is_some_and(|r| r.inline.is_some()))?;
+    let container = container(boxes, id)?;
     let fragments = boxes.slot(container)?.inline.as_deref()?;
     if !store.fragments_hold(fragments.stamp()) {
         return None;
@@ -164,14 +192,27 @@ fn fragments_of<R>(
         return Some(f(fragments, Some(own)));
     }
     // A nested inline can inherit another run's owner. Only an opening item
-    // in this recorded flow is covered by its enclosing inline fragments.
-    let content = boxes.get(container)?.inline.as_ref()?;
-    if !content
-        .items()
-        .iter()
-        .any(|item| item.box_id == id && item.kind == ItemKind::Open)
-    {
-        return None;
+    // in this recorded flow is covered by its enclosing inline fragments; a
+    // container whose flow the box tree did not publish (a paragraph of a
+    // render copy) covers a box reached from it through inline boxes alone.
+    match boxes.get(container)?.inline.as_ref() {
+        Some(content) => {
+            let open = |item: &crate::document::boxes::inline::Item| {
+                item.box_id == id && item.kind == ItemKind::Open
+            };
+            if !content.items().iter().any(open) {
+                return None;
+            }
+        }
+        None => {
+            let inline = (1..path.len()).rev().map_while(|n| {
+                let e = element_at(old, &path[..n])?;
+                (boxes.box_of(e.node_id)? != container).then_some(e.inline)
+            });
+            if !inline.into_iter().all(|inline| inline) {
+                return None;
+            }
+        }
     }
     let owner = (1..path.len())
         .rev()

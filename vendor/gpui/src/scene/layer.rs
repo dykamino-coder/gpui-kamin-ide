@@ -22,6 +22,7 @@ mod boxes;
 mod frame;
 mod group_content;
 mod group_runs;
+pub(crate) mod no_run;
 mod order;
 mod order_line;
 mod placed;
@@ -187,12 +188,21 @@ impl SceneLayer {
         }
         bindings.sort_by_key(|b| (b.owner, b.value, b.quad));
         // Kept while the scene was painted: no second pass over the commands.
-        let bounds = scene.book.primitive_ink;
+        let ink = scene.book.primitive_ink;
         #[cfg(debug_assertions)]
         assert!(
-            bounds == ink_of_commands(&scene.paint_operations),
+            ink == ink_of_commands(&scene.paint_operations),
             "the scene's kept ink differs from its commands"
         );
+        // A run covers its box's placed area, painted or not: the layer is
+        // ordered and drawn over it, so a box that paints nothing now (an
+        // empty box, a band without a fill) can paint there later
+        // (`Window::rerecord_layer_box`) as a paint from scratch would place
+        // it, and a layer of such boxes alone still has its place in a frame.
+        let bounds = boxes
+            .iter()
+            .filter(|b| b.group.is_none() && !b.area.is_empty())
+            .fold(ink, |acc, b| Some(acc.map_or(b.area, |a| a.union(&b.area))));
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
         let by_owner = std::cell::OnceCell::new();
