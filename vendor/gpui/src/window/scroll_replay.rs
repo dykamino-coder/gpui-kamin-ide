@@ -100,7 +100,7 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Result<ScrollReplay, ScrollRefusal> {
-        self.located_scroll_plan(prepaint, paint, layer).map_err(|(refusal, _)| refusal)
+        self.located_scroll_plan(prepaint, paint, layer).map_err(|(refusal, _, _)| refusal)
     }
 
     /// Why `scroll_replay_plan` refuses, for DevTools: the refusal, the line
@@ -112,7 +112,7 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Option<(ScrollRefusal, &'static core::panic::Location<'static>, String)> {
-        let (refusal, site) = self.located_scroll_plan(prepaint, paint, layer).err()?;
+        let (refusal, site, refused) = self.located_scroll_plan(prepaint, paint, layer).err()?;
         let range = prepaint.range();
         let detail = match refusal {
             ScrollRefusal::DeferredDraws => {
@@ -136,31 +136,41 @@ impl Window {
                 format!("{} deferred draws in the record, refused: {}", draws.len(), sites.join("; "))
             }
             ScrollRefusal::Node => {
-                let first = range.start.scroll_nodes_index;
-                let nodes = &self.rendered_frame.scroll_nodes[first..range.end.scroll_nodes_index];
+                // The node the plan refused, wherever it is (the record's, or a
+                // deferred draw's), and what decided it.
+                let Some(node) = refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) else {
+                    return Some((refusal, site, String::new()));
+                };
                 let content = layer.map(LayerHandle::content);
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
-                let space = source.scroll.space;
-                nodes
-                    .iter()
-                    .find_map(|node| {
-                        let why = match () {
-                            _ if node.paint.is_none() && (node.anchored || node.source.offset() != node.offset) => {
-                                "no paint, and it moves apart from its parent"
-                            }
-                            _ if node.torn => "torn",
-                            // A node painted in one of the record's composition groups is planned.
-                            _ if node.paint.is_some()
-                                && node.painted_in != Some(space)
-                                && !source.groups.get(paint.groups()).unwrap_or_default().iter().any(|group| Some(group.scene.scroll.space) == node.painted_in) =>
-                            {
-                                "painted in another scene (a record's or a layer's)"
-                            }
-                            _ => return None,
-                        };
-                        Some(format!("scroll node {:?}: {why}", node.id))
-                    })
-                    .unwrap_or_default()
+                let groups = source.groups.get(paint.groups()).unwrap_or_default();
+                let scene = match node.painted_in {
+                    None => "no paint".to_string(),
+                    Some(space) if space == source.scroll.space => "the record's scene".into(),
+                    Some(space) if space == self.rendered_frame.scene.scroll.space => "the frame's scene".into(),
+                    Some(space) => match groups.iter().position(|group| group.scene.scroll.space == space) {
+                        Some(at) => format!("the scene of group {at} of {}", groups.len()),
+                        None => "another scene (a record's, a layer's or another group's)".into(),
+                    },
+                };
+                let why = if node.torn {
+                    "torn"
+                } else if node.paint.is_none() {
+                    "no paint, and it moves apart from its parent into a clip that shows"
+                } else {
+                    "painted in a scene the part does not own"
+                };
+                format!(
+                    "scroll node {:?} (frame node {}): {why}; painted in {scene}, anchored {}, offset {:?} -> {:?}, chain {:?}, clip {:?}, parent {:?}",
+                    node.id,
+                    refused.unwrap_or_default(),
+                    node.anchored,
+                    node.offset,
+                    node.source.offset(),
+                    node.chain,
+                    node.clip,
+                    node.parent
+                )
             }
             ScrollRefusal::Unmarked
             | ScrollRefusal::UnmarkedLayer
@@ -180,7 +190,7 @@ impl Window {
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
                 let groups = paint.groups();
                 let scenes = paint.range().start.scene_index..paint.range().end.scene_index;
-                let labels = source.group_label_nodes(scenes, groups.clone());
+                let labels = source.group_label_nodes(scenes.clone(), groups.clone());
                 // The first group whose scene a moved copy cannot take, and why.
                 let refused = source.groups.get(groups.clone()).unwrap_or_default().iter().zip(&labels).enumerate().find_map(
                     |(at, (group, label))| {
@@ -193,7 +203,19 @@ impl Window {
                                 let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
                                 nodes.dedup();
                                 nodes.truncate(4);
-                                format!("its label is under no node, its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
+                                // Where its label is: in the record's commands, in a group's, or neither.
+                                let number = (groups.start + at + 1) as u32;
+                                let label_of = |operations: &[crate::scene::PaintOperation]| {
+                                    operations.iter().position(|operation| {
+                                        matches!(operation, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Surface(s)) if s.group == number)
+                                    })
+                                };
+                                let found = match label_of(&source.paint_operations) {
+                                    Some(op) => format!("label at command {op} of the frame's scene (record {scenes:?})"),
+                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene.paint_operations).map(|op| format!("label at command {op} of group {k}")))
+                                        .unwrap_or_else(|| "label not found (dormant or in a reservoir)".into()),
+                                };
+                                format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
                             }
                             None => return None,
                             Some(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
@@ -217,10 +239,15 @@ impl Window {
         prepaint: &RetainedPrepaint,
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
-    ) -> Result<ScrollReplay, (ScrollRefusal, &'static core::panic::Location<'static>)> {
+    ) -> Result<ScrollReplay, (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>)> {
         #[track_caller]
-        fn at(refusal: ScrollRefusal) -> (ScrollRefusal, &'static core::panic::Location<'static>) {
-            (refusal, core::panic::Location::caller())
+        fn at(refusal: ScrollRefusal) -> (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>) {
+            (refusal, core::panic::Location::caller(), None)
+        }
+        // A refusal by one node names it (`explain_scroll_refusal`).
+        #[track_caller]
+        fn at_node(refusal: ScrollRefusal, index: usize) -> (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>) {
+            (refusal, core::panic::Location::caller(), Some(index))
         }
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
@@ -273,7 +300,7 @@ impl Window {
                 let painted = node.paint.is_some();
                 let group = group_of(node);
                 if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
-                    return Err(at(ScrollRefusal::Node));
+                    return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
                 if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
@@ -295,7 +322,7 @@ impl Window {
                 // Moving apart, it shows nothing while its clip stays empty (an
                 // anchor past the viewport edge, whose children were never painted).
                 if !painted && shift != parent_shift && !clip.is_empty() {
-                    return Err(at(ScrollRefusal::Node));
+                    return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let interest = moved(node.interest, shift);
                 if !inside(clip, interest) {
