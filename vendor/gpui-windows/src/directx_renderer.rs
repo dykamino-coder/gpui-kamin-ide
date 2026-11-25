@@ -551,11 +551,6 @@ impl DirectXRenderer {
     /// 4 ms and more, more than the strips it could leave unrastered.
     const SOFTWARE_SHIFT_BUDGET_US: u32 = 2000;
 
-    /// KaminIDE patch: on a hardware adapter, the CPU time a frame
-    /// comparison may take: a whole frame costs a few milliseconds of
-    /// encoding and GPU time there, the rectangles it leaves a fraction.
-    const HARDWARE_SHIFT_BUDGET_US: u32 = 1500;
-
     /// KaminIDE patch: the same device, pipelines and render target format
     /// as a window renderer, drawing into a texture instead of a swap chain
     /// back buffer; `present` does nothing.
@@ -576,17 +571,13 @@ impl DirectXRenderer {
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
         // KaminIDE patch: a frame comparison pays only when it costs less
-        // than the raster it saves. Redraw rectangles draw only the instances
-        // that reach them (`cull`), so a moved step costs a copy and a strip
-        // on either adapter; the budget is what the whole raster it replaces
-        // costs on the CPU: WARP rasters there, a hardware adapter encodes.
+        // than the raster it saves. A hardware adapter rasters the window in
+        // less CPU than reading its primitives, so frames keep the damage of
+        // the layer bookkeeping there; WARP rasters on the CPU, so a frame is
+        // compared within a budget and drawn whole past it.
         let software = unsafe { devices.adapter.GetDesc1() }
             .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
-        gpui::set_shift_budget_us(if software {
-            Self::SOFTWARE_SHIFT_BUDGET_US
-        } else {
-            Self::HARDWARE_SHIFT_BUDGET_US
-        });
+        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
         let resources = if offscreen {
