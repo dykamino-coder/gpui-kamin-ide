@@ -39,13 +39,18 @@ fn wheel_steps_over_columns_replay_without_a_build(cx: &mut TestAppContext) {
 /// its viewport anchor cancels: a wheel step replays it in place.
 #[gpui::test]
 fn wheel_steps_over_a_lifted_fixed_box_replay_without_a_build(cx: &mut TestAppContext) {
+    let (_one, _sub) = crate::why::test_reader();
     let html = rows(&fixed_box().replace("position:fixed;", "position:fixed;z-index:2;"));
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &html);
     frame(vcx);
     for (i, dy) in [-120., -120., 120.].into_iter().enumerate() {
         let name = format!("wheel {i} by {dy}");
+        crate::why::take();
         let (builds, replays) = step(cx, &html, &name, |c| wheel_by(c, dy), &view, vcx);
-        assert_eq!((builds, replays), (0, 2), "{name}");
+        // A build names its cause (`frame_miss.*`).
+        let causes = crate::why::take().journal.causes;
+        let causes: Vec<_> = causes.iter().filter(|cause| cause.code.starts_with("frame_miss")).collect();
+        assert_eq!((builds, replays), (0, 2), "{name}: {causes:?}");
     }
 }

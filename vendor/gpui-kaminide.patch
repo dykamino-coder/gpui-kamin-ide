@@ -35878,7 +35878,7 @@ index 0000000000000000000000000000000000000000..c316c467fb6b10da4b67d583df5629e8
 +}
 diff --git a/vendor/gpui/src/window/group_replay.rs b/vendor/gpui/src/window/group_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d5bb8496f684fbe3fe150f2553ddc5839dd747ca
+index 0000000000000000000000000000000000000000..39db25a60ea396f919117f044253183c4f121457
 --- /dev/null
 +++ b/vendor/gpui/src/window/group_replay.rs
 @@ -0,0 +1,164 @@
@@ -35894,7 +35894,7 @@ index 0000000000000000000000000000000000000000..d5bb8496f684fbe3fe150f2553ddc583
 +//! other records keep refusing groups (`RetainedPaint::replayable`).
 +
 +use super::*;
-+use crate::{PaintGroup, ScrollNodeId};
++use crate::ScrollNodeId;
 +
 +impl RetainedPaint {
 +    /// This output with the groups `made` of the frame's list.
@@ -43267,7 +43267,7 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..99379758f0da1b629a4f8fcb8053d3d062baa426
+index 0000000000000000000000000000000000000000..bbfd9eed02770e3fd4c1d840a53293bc38d2473a
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
 @@ -0,0 +1,455 @@
@@ -43533,7 +43533,7 @@ index 0000000000000000000000000000000000000000..99379758f0da1b629a4f8fcb8053d3d0
 +            // its ranges in the group's scene: the group's copy moves its
 +            // commands (`groups_scrollable` checks them) and lands it (`replay_groups`).
 +            let grouped = scene.groups.get(groups.clone()).unwrap_or_default();
-+            let group_of = |node: &ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
++            let group_of = |node: &super::scroll_nodes::ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
 +            if let Some(owner) = owners[part] {
 +                // The owner moves the draw: it must be planned before it.
 +                if owner.is_some_and(|owner| !slots.contains_key(&owner)) {

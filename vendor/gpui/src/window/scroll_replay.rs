@@ -260,7 +260,7 @@ impl Window {
             // its ranges in the group's scene: the group's copy moves its
             // commands (`groups_scrollable` checks them) and lands it (`replay_groups`).
             let grouped = scene.groups.get(groups.clone()).unwrap_or_default();
-            let group_of = |node: &ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
+            let group_of = |node: &super::scroll_nodes::ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
             if let Some(owner) = owners[part] {
                 // The owner moves the draw: it must be planned before it.
                 if owner.is_some_and(|owner| !slots.contains_key(&owner)) {

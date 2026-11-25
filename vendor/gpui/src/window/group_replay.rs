@@ -10,7 +10,7 @@
 //! other records keep refusing groups (`RetainedPaint::replayable`).
 
 use super::*;
-use crate::{PaintGroup, ScrollNodeId};
+use crate::ScrollNodeId;
 
 impl RetainedPaint {
     /// This output with the groups `made` of the frame's list.
