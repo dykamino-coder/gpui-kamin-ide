@@ -13,6 +13,8 @@ mod record; mod group_replay;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
+mod projected;
+pub use projected::homography_image;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
 pub(crate) mod scroll_marks;
@@ -243,6 +245,10 @@ pub(crate) struct SceneBook {
     pub(crate) fresh: u32,
     pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
     pub(crate) damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// `damage` of a frame that replays the last one but draws effect groups:
+    /// it holds only when every group paints the image the group of the same
+    /// index painted (`DamageIndex::group_base`), which is known later.
+    pub(crate) grouped_damage: Option<Option<Bounds<ScaledPixels>>>,
     /// Union of the placed bounds within their content masks of every
     /// primitive command, kept where a command is added: the bounds of a
     /// layer finished from this scene (`SceneLayer::finish`) without a second
@@ -459,6 +465,7 @@ impl Scene {
         self.book.fresh = 0;
         self.book.layer_damage = None;
         self.book.damage = None;
+        self.book.grouped_damage = None;
         self.book.primitive_ink = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();

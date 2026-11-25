@@ -49,6 +49,8 @@ def crate_features(manifest: dict) -> dict[str, str]:
 TEST_FILTERS = {
     "gpui-windows": [
         "directx_atlas::",
+        "directx_renderer::cull::",
+        "directx_renderer::group_region::",
         "directx_renderer::recovery_tests::damage",
         "directx_renderer::group_atlas",
         "window::drop_target",

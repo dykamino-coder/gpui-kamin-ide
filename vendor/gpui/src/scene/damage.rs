@@ -16,7 +16,7 @@
 //! ними считается неизвестным (`SceneDamage::Unknown`): рендерер рисует всё.
 
 use super::{PaintGroup, PaintSurface, Path, Primitive, Scene, TransformationMatrix};
-use crate::{Bounds, ScaledPixels};
+use crate::{Bounds, ScaledPixels, point, size};
 use collections::FxHashMap;
 
 mod clipped;
@@ -122,6 +122,9 @@ pub(crate) struct DamageIndex {
     pub(crate) shift: Option<FrameShift>,
     /// Why a frame offered a scroll step was not drawn as a move (DevTools `why`).
     pub(crate) shift_miss: Option<&'static str>,
+    /// KaminIDE patch: frames since a moved comparison last ran over its
+    /// budget (0: it did not), carried from frame to frame.
+    pub(crate) over_budget: u32,
     /// What the comparison of this frame with the last found (DevTools `why`).
     pub(crate) shift_stats: Option<ShiftStats>,
 }
@@ -281,13 +284,27 @@ fn entry_area(scene: &Scene, entry: u32) -> Option<Area> {
             if s.group == 0 {
                 return None;
             }
-            match scene.groups.get(s.group as usize - 1) {
-                Some(g) if g.projection.is_none() => area_of(
-                    s.bounds,
-                    s.content_mask.bounds,
-                    3.0 * g.blur_radius.max(0.0) + 2.0,
-                ),
-                _ => FULL,
+            let Some(g) = scene.groups.get(s.group as usize - 1) else {
+                return Some(FULL);
+            };
+            let grow = 3.0 * g.blur_radius.max(0.0) + 2.0;
+            let Some(m) = g.projection else {
+                return Some(area_of(s.bounds, s.content_mask.bounds, grow));
+            };
+            // A plane's mark lies under its 3D context's mask: it writes
+            // only where its ink lands (`projected`), 2 px more for the
+            // shader's rounding of the map.
+            let (o, z) = (g.bounds.origin, g.bounds.size);
+            let ink = [o.x.0 - grow, o.y.0 - grow, o.x.0 + z.width.0 + grow, o.y.0 + z.height.0 + grow];
+            match super::homography_image(&m, ink) {
+                Some(f) => {
+                    let image = Bounds {
+                        origin: point(ScaledPixels(f[0]), ScaledPixels(f[1])),
+                        size: size(ScaledPixels(f[2] - f[0]), ScaledPixels(f[3] - f[1])),
+                    };
+                    area_of(image, s.content_mask.bounds, 2.0)
+                }
+                None => FULL,
             }
         }
     })
@@ -400,6 +417,25 @@ fn bits<const N: usize>(v: Option<[f32; N]>) -> Option<[u32; N]> {
     v.map(|a| a.map(f32::to_bits))
 }
 
+/// Two surfaces draw alike given the same image (group or backdrop).
+pub(super) fn same_surface_values(a: &PaintSurface, b: &PaintSurface) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (a, b);
+        false
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        a.bounds == b.bounds
+            && a.content_mask == b.content_mask
+            && a.corner_radii == b.corner_radii
+            && a.blur_radius.to_bits() == b.blur_radius.to_bits()
+            && a.opacity.to_bits() == b.opacity.to_bits()
+            && bits(a.color_matrix) == bits(b.color_matrix)
+            && a.fragment == b.fragment
+    }
+}
+
 impl Compare<'_> {
     /// Примитив `a` сцены `sa` (новой стороны) рисует то же, что `b` сцены `sb`.
     fn same(&mut self, sa: &Scene, a: u32, sb: &Scene, b: u32) -> bool {
@@ -430,23 +466,9 @@ impl Compare<'_> {
     }
 
     fn same_surface(&mut self, a: &PaintSurface, b: &PaintSurface) -> bool {
-        #[cfg(target_os = "macos")]
-        {
-            let _ = (a, b);
-            false
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            a.bounds == b.bounds
-                && a.content_mask == b.content_mask
-                && a.corner_radii == b.corner_radii
-                && a.blur_radius.to_bits() == b.blur_radius.to_bits()
-                && a.opacity.to_bits() == b.opacity.to_bits()
-                && bits(a.color_matrix) == bits(b.color_matrix)
-                && a.fragment == b.fragment
-                && (a.group == 0) == (b.group == 0)
-                && (a.group == 0 || self.same_group(a.group - 1, b.group - 1))
-        }
+        same_surface_values(a, b)
+            && (a.group == 0) == (b.group == 0)
+            && (a.group == 0 || self.same_group(a.group - 1, b.group - 1))
     }
 
     /// Группа `a` нового кадра рисует ту же картинку, что группа `b` прошлого.
@@ -536,6 +558,19 @@ impl Scene {
         index.build(self, size);
         index.id = id;
         index.base = previous.book.index.id;
+        // A group of the last frame that paints the same image hands this one
+        // its buffer (the renderer's group cache); groups are matched by
+        // content, not by index. The layer damage of a frame with groups and
+        // the in-place comparison both rest on the match, so it runs first.
+        index.group_base.clear();
+        if index.base != 0 {
+            let mut cmp = Compare {
+                new: self,
+                old: previous,
+                groups: FxHashMap::default(),
+            };
+            group_match::match_groups(&mut cmp, &mut index.group_base);
+        }
         index.damage = self.damage_against(&index, previous);
         let comparable = previous.book.index.size == Some(size) && index.base != 0;
         // A frame whose scroll nodes stayed but whose damage is unknown (a
@@ -549,7 +584,17 @@ impl Scene {
             Some(Err(why)) => Some(why),
             Some(_) if !comparable => Some("not_compared"),
             Some(_) if shift_budget_us() == 0 => Some("hardware_raster"),
-            Some(Ok(d)) => match self.timed_plan_shift(previous, size, d, index.shift_stats.insert(ShiftStats::default())) {
+            // A moved comparison that ran over its budget most likely does
+            // again on the same page: it is tried again every 8th frame. In
+            // place, layers recorded again unchanged keep it cheap.
+            Some(Ok(d)) if d != (0, 0) && !previous.book.index.over_budget.is_multiple_of(8) => Some("over_budget_last"),
+            Some(Ok(d)) => match self.timed_plan_shift(
+                previous,
+                size,
+                d,
+                &index.group_base,
+                index.shift_stats.insert(ShiftStats::default()),
+            ) {
                 Err(why) => Some(why),
                 Ok(shift) => {
                     let damaged = match index.damage {
@@ -571,18 +616,13 @@ impl Scene {
                 }
             },
         };
+        index.over_budget = match (moved, index.shift_miss) {
+            (Some(Ok(d)), Some("over_budget")) if d != (0, 0) => 1,
+            (Some(Ok(d)), Some("over_budget_last")) if d != (0, 0) => previous.book.index.over_budget + 1,
+            (Some(Ok(d)), _) if d != (0, 0) => 0,
+            _ => previous.book.index.over_budget,
+        };
         trace::log_damage(self, &index, previous);
-        // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
-        // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
-        index.group_base.clear();
-        if index.base != 0 {
-            let mut cmp = Compare {
-                new: self,
-                old: previous,
-                groups: FxHashMap::default(),
-            };
-            group_match::match_groups(&mut cmp, &mut index.group_base);
-        }
         self.book.index = index;
     }
 
@@ -607,7 +647,14 @@ impl Scene {
         // (`Scene::damage`, set by `Scene::note_damage` before this), which
         // knows the rectangles written into them since the last frame.
         if !self.book.layers.is_empty() || !previous.book.layers.is_empty() {
-            return match self.damage() {
+            // With effect groups the layer damage holds when every group
+            // paints the image of the last frame's group of the same index:
+            // a mark then shows the same image wherever no layer was written.
+            let kept = self.groups.len() == previous.groups.len()
+                && index.group_base.len() == self.groups.len()
+                && index.group_base.iter().enumerate().all(|(g, &o)| o as usize == g + 1);
+            let damage = self.damage().or(self.book.grouped_damage.filter(|_| kept));
+            return match damage {
                 Some(None) => SceneDamage::Unchanged,
                 Some(Some(r)) => {
                     let x0 = r.origin.x.0.max(0.).floor() as u32;
