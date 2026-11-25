@@ -28,6 +28,12 @@ impl Counters {
         }
     }
 
+    /// The anchor counter alone: the paint keys number deferred draws and
+    /// never reach a geometry (`content::band::BandKey`).
+    pub(crate) fn anchors(self) -> u32 {
+        self.anchors
+    }
+
     /// These counters advanced as far as `from` advanced to `to`: an inert
     /// subtree takes its keys in order and none of them reaches its output
     /// (`content`), so a replay after an inserted or removed box moves them.

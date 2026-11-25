@@ -2,8 +2,8 @@
 //!
 //! A box keeps the record of its own host and of the synthetic hosts it
 //! answers for (`content::band::owner`: the runs of inline content around
-//! floats in one block). They differ by key (the walk to their boxes and the
-//! counters they start from), so each box holds a short chain of records and
+//! floats in one block). They differ by key (the walk to their boxes, with the
+//! text they hold), so each box holds a short chain of records and
 //! a host reads and writes only its own: with one record the hosts of a
 //! block would replace each other's every frame and none would be read.
 
