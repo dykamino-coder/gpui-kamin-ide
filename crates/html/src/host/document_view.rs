@@ -147,4 +147,6 @@ mod resize_tests;
 #[cfg(test)]
 mod scroll_replay_tests;
 #[cfg(test)]
+mod scroll_record_tests;
+#[cfg(test)]
 mod tests;
