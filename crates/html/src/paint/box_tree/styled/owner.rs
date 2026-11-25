@@ -12,7 +12,6 @@ pub(crate) enum Own {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refusal {
     RootCanvas,
-    Hover,
     Hidden,
     Clone,
     Filter,
@@ -28,7 +27,6 @@ impl Refusal {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::RootCanvas => "root_canvas",
-            Self::Hover => "hover",
             Self::Hidden => "hidden",
             Self::Clone => "clone",
             Self::Filter => "filter",
@@ -57,9 +55,6 @@ pub(super) fn painter(
     let band = !boxed && e.inline && c.reset_box_layout.display.is_none();
     if matches!(e.tag.as_str(), "html" | "body") {
         return Own::Not(Refusal::RootCanvas);
-    }
-    if c.inh.ui.pointer_events_none != Some(true) && e.hover.is_some() {
-        return Own::Not(Refusal::Hover);
     }
     let effect = if c.inh.ui.hidden == Some(true) {
         Some(Refusal::Hidden)

@@ -73,6 +73,7 @@ impl SceneLayer {
             bindings: Vec::new(),
             boxes,
             by_owner: std::cell::OnceCell::new(),
+            hovers: std::cell::OnceCell::new(),
         };
         let done = sub.check_box(local, &new).map(|plan| sub.replace_box(local, new, Vec::new(), plan));
         for (k, &i) in members.iter().enumerate() {

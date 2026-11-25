@@ -1447,6 +1447,8 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
     pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the hover hitbox of the box whose own paint opens a run next (layer_box).
+    pub(crate) run_hover: Option<(HitboxId, bool)>,
     /// KaminIDE patch: the bands painted now are cut into pieces by another
     /// painter (`Window::paint_split_bands`).
     pub(crate) band_split: bool,
@@ -2441,6 +2443,7 @@ impl Window {
             hit_scope: None,
             element_opacity: 1.0,
             box_fill: None,
+            run_hover: None,
             band_split: false,
             layer_recording: None,
             #[cfg(any(test, feature = "test-support"))]
