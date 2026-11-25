@@ -108,13 +108,19 @@ impl GradientData {
                     pad: [0; 3],
                 }));
         }
-        for q in quads.iter_mut().filter(|q| q.is_analytic_gradient()) {
-            q.background.stop_count += base;
-        }
+        quads.iter_mut().for_each(|q| q.offset_gradient(base));
     }
 }
 
 impl Quad {
+    /// A copy of this quad drawn with its scene's gradients appended at
+    /// `base` of a larger buffer (`GradientData::append`).
+    pub fn offset_gradient(&mut self, base: u32) {
+        if self.is_analytic_gradient() {
+            self.background.stop_count += base;
+        }
+    }
+
     /// Whether this quad addresses the scene's analytic gradient buffer.
     pub fn is_analytic_gradient(&self) -> bool {
         self.background.tag == crate::color::BackgroundTag::AnalyticGradient

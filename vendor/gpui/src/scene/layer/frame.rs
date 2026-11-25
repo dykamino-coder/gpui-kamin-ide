@@ -205,15 +205,18 @@ impl Scene {
     /// no raster at all.
     pub(crate) fn note_damage(&mut self, previous: &Scene) {
         let same = self.book.fresh == 0
-            && self.groups.is_empty()
-            && previous.groups.is_empty()
             && self.hoisted_backdrops.is_empty()
             && self.paint_operations.len() == previous.paint_operations.len()
             && self.book.layers.len() == previous.book.layers.len()
             && self.book.layers.iter().zip(&previous.book.layers).all(|(a, b)| {
                 a.order == b.order && Weak::ptr_eq(&a.cell, &b.cell)
             });
-        self.book.damage = same.then_some(self.book.layer_damage);
+        // A group's image is painted from its own scene, which the layer
+        // writes do not track: with groups the damage holds only once the
+        // groups are matched (`note_frame_damage_moved`).
+        let grouped = !self.groups.is_empty() || !previous.groups.is_empty();
+        self.book.damage = (same && !grouped).then_some(self.book.layer_damage);
+        self.book.grouped_damage = (same && grouped).then_some(self.book.layer_damage);
     }
 
     /// The device-pixel rectangle this frame changed against the frame

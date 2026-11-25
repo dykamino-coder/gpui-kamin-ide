@@ -7,7 +7,7 @@
 //! both cut masks and is equal in each cell where the masks cut by the cell
 //! are equal, so only the cells where the clips really part differ.
 
-use super::super::{Area, KIND_SHIFT, clipped, same_path};
+use super::super::{Area, KIND_SHIFT, clipped, same_path, same_surface_values};
 use super::Item;
 use crate::color::BackgroundTag;
 use crate::scene::{Quad, Scene};
@@ -26,10 +26,12 @@ pub(super) enum Pair {
     Quads,
 }
 
-/// The comparison of one plan: the move, `W` and the results by item pair.
-pub(super) struct Moved {
+/// The comparison of one plan: the move, `W`, the match of this frame's
+/// groups to the last frame's (`Scene::group_base`) and the results by item pair.
+pub(super) struct Moved<'g> {
     pub(super) d: (f32, f32),
     pub(super) w: Area,
+    pub(super) groups: &'g [u32],
     pub(super) exact: FxHashMap<(u32, u32), Pair>,
 }
 
@@ -108,7 +110,7 @@ fn masks<T: PartialEq>(
     }
 }
 
-impl Moved {
+impl Moved<'_> {
     fn window(&self) -> Bounds<ScaledPixels> {
         let w = self.w;
         Bounds {
@@ -276,7 +278,14 @@ impl Moved {
             4 => sprite!(monochrome_sprites),
             5 => sprite!(subpixel_sprites),
             6 => sprite!(polychrome_sprites),
-            // A group's image or a backdrop: its own scene would have to move.
+            // In place, a group's mark is equal when the group paints the
+            // image of the group it matched (the renderer keeps that image)
+            // under equal values. Moved, its own scene would have to move.
+            _ if self.d == (0.0, 0.0) => {
+                let (a, b) = (&sa.surfaces[i], &sb.surfaces[j]);
+                let matched = a.group > 0 && self.groups.get(a.group as usize - 1) == Some(&b.group);
+                verdict(matched && same_surface_values(a, b))
+            }
             _ => Pair::Differ,
         }
     }
