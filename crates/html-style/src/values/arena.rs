@@ -114,7 +114,7 @@ pub fn store_once<T: PartialEq>(
         return ArenaKey { owner, slot };
     }
     let Ok(slot) = u32::try_from(list.len()) else {
-        debug_assert!(false, "арена документа переполнена");
+        debug_assert!(false, "the document arena is full");
         return ArenaKey::INVALID;
     };
     list.push(value);

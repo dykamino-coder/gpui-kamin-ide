@@ -54,7 +54,7 @@ impl Restyle {
         old.ui != new.ui || old.font != new.font || old.text_flow != new.text_flow
     }
 
-    /// Меняется собственный фон коробки.
+    /// The box's own background changes.
     fn background(&self) -> bool {
         self.old.reset_background != self.new.reset_background
     }
@@ -66,10 +66,10 @@ impl Restyle {
 }
 
 impl Document {
-    /// План пакета смен `class` и `data-*`: перерасчёт стиля найденных
-    /// элементов и уровень повреждения каждого (`levels`). Пакет, у которого
-    /// все уровни — краска, перекрашивает коробки на месте; уровни раскладки
-    /// и коробок уходят в одну точку (`roots::fall_back`), `None` — сборка.
+    /// The plan of a batch of `class` and `data-*` changes: the restyle of the
+    /// elements found and the damage of each (`levels`). A batch whose every
+    /// damage is paint repaints the boxes in place; layout and box damage go
+    /// to one point (`roots::fall_back`); `None` is a build.
     /// `changed` — the names and node ids of the batch (`invalidation`).
     pub(super) fn repaint_plan(
         &self,
