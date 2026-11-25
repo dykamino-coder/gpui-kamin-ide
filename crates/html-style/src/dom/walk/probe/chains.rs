@@ -93,7 +93,7 @@ impl Chains {
     }
 
     /// The children of `parent` have a context.
-    pub(super) fn knows(&self, parent: &Handle) -> bool {
+    pub(in crate::dom::walk) fn knows(&self, parent: &Handle) -> bool {
         self.find(parent).is_some()
     }
 
@@ -132,7 +132,7 @@ impl Chains {
 
     /// The visit of `target` under its parent's context and the path it is
     /// entered with; `None`: no context, or `target` is not a child.
-    pub(super) fn visit<'a>(
+    pub(in crate::dom::walk) fn visit<'a>(
         &self,
         parent: &Handle,
         target: &Handle,

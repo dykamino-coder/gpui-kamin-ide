@@ -36,18 +36,19 @@ fn a_class_on_the_element_itself_recolours_its_subtree_in_place() {
 }
 
 #[test]
-fn layout_values_backgrounds_and_generated_content_rebuild() {
+fn layout_values_backgrounds_and_generated_content_rebuild_the_boxes_of_their_element() {
     for style in [
         "html.alt body{font-size:20px}",
         "html.alt body{font-weight:bold}",
         "html.alt body{background:#eee}",
         "html.alt body{color:#111;margin:1px}",
         "html.alt p::before{content:'x'}",
+        // `attr(class)` of `p`: the edited `html` generates no box that reads it.
         "html.alt body{color:#111}p::after{content:attr(class)}",
     ] {
         let old = page(style, "");
         let new = old.replace("<html>", "<html class=\"alt\">");
-        assert_eq!(both(&old, &new), (false, false), "{style}");
+        assert_eq!(both(&old, &new), (true, true), "{style}");
     }
 }
 
@@ -86,11 +87,11 @@ fn restyled_elements_without_a_box_are_left_and_the_rest_recolours_in_place() {
     let old = page(style, body);
     let new = old.replace("<html>", "<html class=\"alt\">");
     assert_eq!(both(&old, &new), (true, true));
-    // An element that gains its box rebuilds.
+    // An element that gains its box rebuilds the boxes of its parent.
     let style = "html.alt body{color:#111}html.alt .h{display:block}.h{display:none}";
     let old = page(style, "<div class=h>h</div>");
     let new = old.replace("<html>", "<html class=\"alt\">");
-    assert_eq!(both(&old, &new), (false, false));
+    assert_eq!(both(&old, &new), (true, true));
 }
 
 #[test]
@@ -136,16 +137,16 @@ fn a_background_of_an_element_with_hover_rules_is_restyled_in_place() {
 }
 
 #[test]
-fn a_geometry_change_is_a_layout_root_at_the_one_fallback() {
-    use crate::paint_path::{DAMAGE_LAYOUT, REFUSED_DAMAGE};
+fn a_geometry_change_rebuilds_the_boxes_of_its_element_in_place() {
+    use crate::paint_path::{DAMAGE_LAYOUT, REBOX_UNITS};
     use std::sync::atomic::Ordering::Relaxed;
     let style = "html.alt .own{width:50px;background:#eee}";
     let old = page(style, "");
     let new = old.replace("<html>", "<html class=\"alt\">");
-    let (roots, refused) = (DAMAGE_LAYOUT.load(Relaxed), REFUSED_DAMAGE.load(Relaxed));
-    assert_eq!(both(&old, &new), (false, false));
+    let (roots, units) = (DAMAGE_LAYOUT.load(Relaxed), REBOX_UNITS.load(Relaxed));
+    assert_eq!(both(&old, &new), (true, true));
     assert!(DAMAGE_LAYOUT.load(Relaxed) >= roots + 2);
-    assert!(REFUSED_DAMAGE.load(Relaxed) >= refused + 2);
+    assert!(REBOX_UNITS.load(Relaxed) >= units + 2);
 }
 
 #[test]

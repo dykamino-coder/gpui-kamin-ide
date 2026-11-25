@@ -48,7 +48,7 @@ pub mod outcome;
 mod page_scheme;
 mod parse_document;
 pub mod restyle_probe;
-pub use walk::{Probed, ProbedRest};
+pub use walk::{Probed, ProbedRest, Subtree};
 #[cfg(test)]
 mod class_token_tests;
 pub mod source_walk;

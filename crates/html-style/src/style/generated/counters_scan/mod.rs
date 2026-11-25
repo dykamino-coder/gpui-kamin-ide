@@ -42,7 +42,7 @@ fn tag_of(h: &Handle) -> String {
 }
 
 /// Whether this node establishes a separate scope for this counter.
-fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
+pub fn instantiates(style: &Computed, h: &Handle, name: &str) -> bool {
     if style.reset_box_layout.display == Some(Display::Contents) {
         return false;
     }
