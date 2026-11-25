@@ -208,6 +208,16 @@ impl Scene {
     /// `None` when there is nothing to give back: no mark under `node`, or a
     /// reservoir, whose run the grafted tree does not index.
     pub(crate) fn unscrolled_under(&self, node: ScrollNodeId) -> Option<Vec<PaintOperation>> {
+        if std::env::var_os("MEM2_TRACE").is_some() {
+            static SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let dormant = self.paint_operations.iter().filter(|op| matches!(op, PaintOperation::Dormant(_))).count();
+            if dormant > 0 && SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 6 {
+                let mut nodes: Vec<ScrollNodeId> = self.scroll.marks.iter().map(|mark| mark.node).collect();
+                nodes.dedup();
+                nodes.truncate(6);
+                eprintln!("MEM2 restore under {node:?}: {} ops, {dormant} dormant, {} marks of {nodes:?}", self.paint_operations.len(), self.scroll.marks.len());
+            }
+        }
         if !self.scroll.marks.iter().any(|mark| mark.node == node)
             || self.paint_operations.iter().any(|op| matches!(op, PaintOperation::Reservoir(_)))
         {
