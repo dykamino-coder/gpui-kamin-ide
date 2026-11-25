@@ -69,19 +69,24 @@ fn misses(layer: &LayerHandle, owner: u64, shown: Bounds<ScaledPixels>) -> bool 
         .is_some_and(|area| !grown(area).intersects(&shown))
 }
 
-/// Where a paragraph of the document whose container is node `node`, built
-/// under `opts`, writes its line fragments (`layout::retained::fragments`);
-/// `None` outside the document's own flow or for a container without a box.
+/// Where a paragraph of the document whose inline content is the flow of box
+/// `owner` (`BoxTree::flow_box`), built under `opts`, writes its line
+/// fragments (`layout::retained::fragments`): the box that holds the flow's
+/// items, which the readers of the fragments find as the nearest ancestor
+/// with inline content. The box is not taken from the paragraph's style: a
+/// run of an anonymous box, and some built paragraphs, carry a style naming
+/// no element (`self_node` 0). `None` outside the document's own flow or for
+/// a flow without a box.
 pub(crate) fn fragment_target(
     opts: &crate::layout::options::RenderOpts,
-    node: u64,
+    owner: Option<crate::dom::BoxId>,
 ) -> Option<crate::layout::retained::FragmentTarget> {
     let flow = opts.cx.contracts.reuse.as_ref()?;
     if opts.cx.contracts.document_root != Some(flow.doc) {
         return None;
     }
+    let owner = owner?;
     let boxes = opts.cx.doc().boxes.clone();
-    let owner = boxes.borrow().box_of(node)?;
     Some(crate::layout::retained::FragmentTarget {
         boxes: std::rc::Rc::downgrade(&boxes),
         owner,

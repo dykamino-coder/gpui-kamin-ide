@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 pub use arena::ArenaKey;
-pub use arena::{Arena, load, store};
+pub use arena::{Arena, load, store, store_once};
 pub use value_cx::{ValueCx, ValueDoc};
 
 /// Профили `@color-profile` документа: имя → байты ICC.

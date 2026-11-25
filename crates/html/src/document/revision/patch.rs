@@ -93,6 +93,22 @@ pub(in crate::document) fn element_at<'a>(
     }
 }
 
+/// The elements along `path` in `nodes`, outermost first, in one descent:
+/// `chain(nodes, path)[k]` is `element_at(nodes, &path[..=k])`, the chain ending
+/// at the first step that is no element.
+pub(in crate::document) fn chain<'a>(nodes: &'a [Node], path: &[usize]) -> Vec<&'a Element> {
+    let mut out = Vec::with_capacity(path.len());
+    let mut list = nodes;
+    for &i in path {
+        let Some(Node::Element(e)) = list.get(i) else {
+            break;
+        };
+        out.push(e);
+        list = &e.children;
+    }
+    out
+}
+
 /// Обход коробок в прямом порядке с путём к каждой (без рекурсии: глубина
 /// дерева коробок ограничена только пределом представления); `false` от
 /// `visit` прерывает обход, и тогда результат — `false`.

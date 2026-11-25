@@ -106,35 +106,6 @@ impl Window {
         base..scene.groups.len()
     }
 
-    /// `replay_record` of a scene layer's content that needs the frame's scene
-    /// (`RecordedLayer::Spliced`: it made groups), with what its scroll nodes
-    /// painted there: their marks, ranges and dependents move to the frame's
-    /// indices when the copy is one command per command, or the nodes are
-    /// torn (a scrolled replay of the frame then builds).
-    pub(super) fn splice_scene(&mut self, scene: &Scene) {
-        let frame = &mut self.next_frame;
-        let landed = frame.scene.paint_operations.len();
-        frame.scene.scroll.raise = 0;
-        frame.scene.replay_record(scene);
-        let count = scene.paint_operations.len();
-        frame.scene.copy_scroll_marks(scene, 0..count, landed);
-        let exact = frame.scene.paint_operations.len() - landed == count;
-        let (from, here) = (scene.scroll.space, frame.scene.scroll.space);
-        let map = |range: &Range<usize>| landed + range.start..landed + range.end;
-        for node in frame.scroll_nodes.iter_mut().filter(|node| node.painted_in == Some(from)) {
-            if exact {
-                node.paint = node.paint.as_ref().map(map);
-                node.more = node.more.iter().map(map).collect();
-                node.painted_in = Some(here);
-            } else {
-                node.torn = true;
-            }
-        }
-        for dependent in frame.scroll_dependents.iter_mut().filter(|dependent| exact && dependent.2 == from) {
-            (dependent.1, dependent.2) = (landed + dependent.1, here);
-        }
-    }
-
     /// The group labels of the rendered frame and of its groups (the group
     /// each names and the area it draws), and each group's bounds and drawn
     /// quads, in list order.

@@ -20,6 +20,7 @@
 
 use crate::document::{Document, state::DocState};
 use crate::dom::Node;
+use crate::style::computed::Damage;
 use std::rc::Rc;
 
 /// COW paths changed by attribute writes. A paint restyle can also copy
@@ -37,11 +38,12 @@ pub(super) enum Plan {
     /// Дерево с копией только путей к правкам.
     Patched(Vec<Node>),
     /// Copied paths to restyled boxes (`repaint_plan`), with the node ids of
-    /// the elements whose cascaded values changed: the block records are
+    /// the elements whose cascaded values changed and the batch's damage
+    /// (`Damage::Paint`, or `Damage::Layout` if any): the block records are
     /// compared as at a rebuild (`layout::reuse::Store::restyle`). The paths
     /// to every box of those elements, in tree order, address them in both
     /// trees: the restyle does not change the tree's shape.
-    Restyled(Edited, Vec<u64>, Vec<(super::patch::Path, u64)>),
+    Restyled(Edited, Vec<u64>, Vec<(super::patch::Path, u64)>, Damage),
 }
 
 impl Document {
@@ -74,7 +76,7 @@ impl Document {
             }
             // Only values the scene layer takes changed: they are written
             // into it, and the recorded frame (`Slot`) replays with them.
-            Plan::Restyled(edited, restyled, paths)
+            Plan::Restyled(edited, restyled, paths, Damage::Paint)
                 if self.write_paint_values(&edited.nodes, &paths) =>
             {
                 self.reuse.restyle(&self.nodes, &edited.nodes, &restyled);
@@ -96,7 +98,7 @@ impl Document {
                     timings,
                 );
             }
-            Plan::Restyled(edited, restyled, _) => {
+            Plan::Restyled(edited, restyled, ..) => {
                 *self = self.adopted(
                     edited.nodes,
                     Some(&restyled),
@@ -151,16 +153,15 @@ impl Document {
             self.note_no_layer();
             return false;
         };
-        let own = |e: &crate::dom::Element| {
-            crate::paint::box_tree::styled::requested_painter(&self.state, e)
+        let own = |e: &crate::dom::Element, boxed: bool| {
+            crate::paint::box_tree::styled::requested_painter(&self.state, e, boxed)
         };
         // A box under a block the frame skipped: any block on its path.
         let unseen = |path: &super::patch::Path| {
             self.reuse.skipped_any()
-                && (1..=path.len()).any(|k| {
-                    super::patch::element_at(&self.nodes, &path[..k])
-                        .is_some_and(|e| self.reuse.unpainted(e.node_id))
-                })
+                && super::patch::chain(&self.nodes, path)
+                    .iter()
+                    .any(|e| self.reuse.unpainted(e.node_id))
         };
         // A box whose runs showed no pixel of the layer's frame.
         let off = |id: u64| {

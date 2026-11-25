@@ -29,6 +29,7 @@ impl Window {
     /// Box `owner` has paint in this recording outside its runs: the layer
     /// holds none of its runs and bindings (`SceneLayer::finish`).
     pub(crate) fn unhold_owner(&mut self, owner: u32) {
+        crate::scene::no_run::note(owner, "its paint left its runs (a split or unshown band piece, paint placed apart)");
         if let Some(runs) = self.next_frame.scene.book.record_runs.as_mut() {
             runs.unheld.push(owner);
         } else if let Some(recording) = self.layer_recording.as_mut() {

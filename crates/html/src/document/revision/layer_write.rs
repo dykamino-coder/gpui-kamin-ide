@@ -17,7 +17,7 @@
 //! colour as a value all the same; a group root records its group (`grouped`).
 
 use super::paint_damage::{PaintDamage, PaintValue, classify, unpainted_svg};
-use super::patch::{Path, element_at};
+use super::patch::Path;
 use crate::dom::{Element, Node};
 use crate::layout::reuse::Wait;
 use crate::paint::box_tree::styled::{Own, Refusal};
@@ -49,7 +49,7 @@ pub(super) fn write_paint_values(
     new: &[Node],
     paths: &[(Path, u64)],
     layer_for: impl Fn(u64) -> Option<LayerHandle>,
-    own: impl Fn(&Element) -> Own,
+    own: impl Fn(&Element, bool) -> Own,
     grouped: impl Fn(&Element) -> bool,
     unseen: impl Fn(&Path) -> bool,
     off: impl Fn(u64) -> bool,
@@ -68,14 +68,20 @@ pub(super) fn write_paint_values(
         let (a, b) = (at(old, path, *id)?, at(new, path, *id)?);
         // A box in an `svg` subtree: an `svg` element on its path.
         let in_svg = || {
-            (1..=path.len()).any(|k| element_at(old, &path[..k]).is_some_and(|e| e.tag == "svg"))
+            super::patch::chain(old, path)
+                .iter()
+                .any(|e| e.tag == "svg")
         };
         let damage = classify(a, b, in_svg);
         if damage == PaintDamage::Rebuild {
             crate::paint_path::add(&crate::paint_path::REFUSED_NOT_PAINT, 1);
             return None;
         }
-        if unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
+        // No painted value of the box changed (a restyle that matched other
+        // rules to the same paint): its painter, recorded or not, paints the
+        // same commands, and nothing is written or recorded.
+        let unchanged = damage == PaintDamage::Value(PaintValue::default());
+        if unchanged || unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
         if unseen(path) {
@@ -87,14 +93,23 @@ pub(super) fn write_paint_values(
         let owner = u32::try_from(a.node_id).ok()?;
         let layer = layer_for(a.node_id)?;
         let recorded = layer.painter(owner);
+        // A box under an ancestor that skips its contents paints nothing: asked
+        // only before a refusal, the walk up its path costs no other edit.
+        let skip = || {
+            let skipped = skipped::skipped(old, path);
+            if skipped {
+                crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
+            }
+            skipped
+        };
         let mut wait = |kind, reason| {
             if let Some(frame) = waits(kind, path, a, b) {
                 frames.push(frame);
-                Some(())
-            } else {
+            } else if !skip() {
                 refuse_not_own(reason);
-                None
+                return None;
             }
+            Some(())
         };
         // A box whose decorations stay as painted takes its own fill
         // (`kept_decorations`); its decorations are elements of the frame.
@@ -102,7 +117,9 @@ pub(super) fn write_paint_values(
         // A box that is all its group holds paints the group again with
         // its decorations (`retained::box_repaint`, `group_painters`).
         let group = || layer.holds_group_root(owner) && grouped(b);
-        let banded = match (recorded, own(b)) {
+        // A box recorded as a box of its own stays one: layout is kept.
+        let boxed = recorded.is_some_and(|p| p != LayerPainter::Band);
+        let banded = match (recorded, own(b, boxed)) {
             (Some(LayerPainter::Box), Own::Plain) => false,
             (Some(LayerPainter::DecoratedBox), Own::Not(Refusal::Decoration))
                 if kept_decorations(a, b) =>
@@ -121,15 +138,17 @@ pub(super) fn write_paint_values(
                 false
             }
             (Some(LayerPainter::Band) | None, Own::Band) => true,
-            (_, Own::Not(reason)) => {
+            _ if skip() => continue,
+            // Not own paint, or the recorded painter and the new paint have no
+            // write between them.
+            (_, wanted) => {
+                let reason = if let Own::Not(r) = wanted {
+                    r
+                } else {
+                    Refusal::Kind
+                };
                 refuse_not_own(reason);
-                why::not_own(reason, owner, &b.tag, recorded);
-                return None;
-            }
-            _ => {
-                // The recorded painter and the new paint have no write between them.
-                refuse_not_own(Refusal::Kind);
-                why::not_own(Refusal::Kind, owner, &b.tag, recorded);
+                why::not_own(reason, owner, &b.tag, &layer, recorded, (damage, wanted));
                 return None;
             }
         };
@@ -141,8 +160,17 @@ pub(super) fn write_paint_values(
                 super::layer_band::BandChange::Pieces => {
                     if let Some(frame) = waits(Wait::Inline, path, a, b) {
                         frames.push(frame);
-                    } else {
-                        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+                    } else if !skip() {
+                        crate::paint_path::refuse_with(
+                            &crate::paint_path::REFUSED_BY_LAYER,
+                            || {
+                                let why = layer.no_run(owner).unwrap_or("not painted");
+                                format!(
+                                    "band of <{}> {owner} has no run in the layer ({why})",
+                                    b.tag
+                                )
+                            },
+                        );
                         return None;
                     }
                 }
@@ -188,8 +216,10 @@ pub(super) fn write_paint_values(
     }
     // A box the layer cannot record again builds the frame as before;
     // nothing is written then.
-    if !records.iter().all(|r| held(r.1)) {
-        crate::paint_path::add(&crate::paint_path::REFUSED_BY_LAYER, 1);
+    if let Some((_, id)) = records.iter().find(|r| !held(r.1)) {
+        crate::paint_path::refuse_with(&crate::paint_path::REFUSED_BY_LAYER, || {
+            format!("box {id} has no run the layer can record again")
+        });
         return None;
     }
     let values = writes.apply(paths, &mut records)?;
@@ -200,33 +230,12 @@ pub(super) fn write_paint_values(
     Some(Taken { records, deferred })
 }
 
-/// What the layer took of a restyle: the boxes the next frame records again
-/// and the boxes off the screen whose records wait.
-#[derive(Default)]
-pub(super) struct Taken {
-    pub(super) records: Vec<(Path, u64)>,
-    pub(super) deferred: Vec<(Path, u64)>,
-}
-
-/// The box numbered `id` at `path` in `nodes`; `None` when the path leads
-/// elsewhere (the trees do not share their shape).
-pub(in crate::document) fn at<'a>(
-    nodes: &'a [Node],
-    path: &[usize],
-    id: u64,
-) -> Option<&'a Element> {
-    super::patch::element_at(nodes, path).filter(|e| e.node_id == id)
-}
-
-/// The element holding the box at `path` in `nodes`.
-pub(in crate::document) fn parent_at<'a>(nodes: &'a [Node], path: &[usize]) -> Option<&'a Element> {
-    path.len()
-        .checked_sub(1)
-        .and_then(|n| element_at(nodes, &path[..n]))
-}
-
 mod fill;
+mod skipped;
+mod taken;
 mod why;
 use fill::kept_decorations;
 pub(super) use fill::painted_background;
+pub(super) use taken::Taken;
+pub(in crate::document) use taken::{at, parent_at};
 use why::refuse_not_own;

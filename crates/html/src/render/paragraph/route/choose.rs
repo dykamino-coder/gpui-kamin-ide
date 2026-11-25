@@ -25,7 +25,8 @@ pub(crate) fn route_pieces(
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
     keep: Option<crate::layout::reuse::paragraph::Sealed>,
-    shared: Option<SharedString>,
+    // The retained text the paragraph may share and the box of its flow.
+    (shared, flow): (Option<SharedString>, Option<crate::dom::BoxId>),
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -115,6 +116,7 @@ pub(crate) fn route_pieces(
                 clamp_tag,
                 line_atoms,
                 keep,
+                flow,
             );
         }
     }
@@ -234,7 +236,7 @@ mod tests {
                     None,
                     vec![],
                     None,
-                    None,
+                    (None, None),
                 );
                 assert_eq!(
                     element.downcast_mut::<gpui::StyledText>().is_some(),

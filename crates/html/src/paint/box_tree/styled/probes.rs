@@ -11,13 +11,15 @@ use crate::{
     style::computed::BoxStyle,
 };
 
-/// The painter requested by new used values, before program changes are applied.
+/// The painter requested by new used values, before program changes are
+/// applied; `boxed`: `e` is built as a box of its own (`owner::painter`).
 pub(crate) fn requested_painter(
     doc: &std::rc::Rc<crate::document::state::DocState>,
     e: &Element,
+    boxed: bool,
 ) -> Own {
     let style = BoxStyle::shared(e.style.used());
-    owner::painter(e, &style, || {
+    owner::painter(e, &style, boxed, || {
         gpui::with_temporary_element_arena(|| {
             let cx = crate::layout::cx::LayoutCx::default()
                 .with_doc(crate::layout::cx::BuildDoc::of(doc.clone()));
@@ -74,7 +76,7 @@ mod tests {
         let owners = Rc::strong_count(&state.values);
         for _ in 0..8 {
             assert_eq!(
-                requested_painter(&state, e),
+                requested_painter(&state, e, true),
                 Own::Not(super::super::Refusal::Decoration)
             );
             assert_eq!(Rc::strong_count(&state.values), owners);

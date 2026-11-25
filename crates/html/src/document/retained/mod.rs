@@ -43,6 +43,8 @@ mod far_tests;
 #[cfg(test)]
 mod float_root_replay_tests;
 #[cfg(test)]
+mod framed_layer_tests;
+#[cfg(test)]
 mod invalidation_tests;
 #[cfg(test)]
 mod kept_paragraph_tests;
