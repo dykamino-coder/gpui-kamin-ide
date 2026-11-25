@@ -136,10 +136,9 @@ pub fn walk_children(
     preserve: bool,
     out: &mut Vec<Node>,
     vcx: ValueCx<'_>,
-    mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
+    invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
 ) -> Result<(), crate::budget::admission::Error> {
-    let admission = tree.admission();
-    let mut jobs = visits(
+    let jobs = visits(
         Survey::children(handle, tree),
         scope.clone(),
         Rc::new(vars.clone()),
@@ -148,6 +147,20 @@ pub fn walk_children(
         vcx,
         0,
     )?;
+    run(jobs, tree, counters, path, out, invalidation)
+}
+
+/// The walk from the visits `jobs` (siblings, in order) under `path`: the
+/// boxes they build are appended to `out`.
+pub(super) fn run(
+    mut jobs: Buffer<Visit<'_>>,
+    tree: &TreeIndex,
+    counters: &mut Counters,
+    path: &mut Vec<Ancestor>,
+    out: &mut Vec<Node>,
+    mut invalidation: Option<&mut crate::dom::invalidation::Invalidation>,
+) -> Result<(), crate::budget::admission::Error> {
+    let admission = tree.admission();
     let sharing = super::element_sharing::ElementSharing::default();
     let mut work = Buffer::default();
     while let Some(job) = jobs.pop() {

@@ -19,6 +19,7 @@
 mod fold;
 mod levels;
 mod paths;
+mod rebox;
 pub(in crate::document) mod roots;
 mod why_value;
 
@@ -82,7 +83,7 @@ impl Document {
             return refuse(&why::REFUSED_PLAN_TEXT);
         }
         if values.quirks() {
-            return roots::fall_back_rebox("quirks");
+            return roots::fall_back_document("quirks");
         }
         let input = why::why(values.traversal.take_source(), &why::REFUSED_PLAN_STATE)?;
         // The probes leave the cache in the state of the DOM after the
@@ -94,35 +95,61 @@ impl Document {
                 self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache);
             (levels, index)
         });
-        values.traversal.retain(input);
         let Some((levels, index)) = levels else {
-            return roots::fall_back_rebox("index");
+            values.traversal.retain(input);
+            return roots::fall_back_document("index");
         };
         let Some(boxes) = kept.boxes(&self.nodes) else {
-            return roots::fall_back_rebox("boxes");
+            values.traversal.retain(input);
+            return roots::fall_back_document("boxes");
         };
-        if !levels.deeper.is_empty() {
-            return roots::fall_back(&levels, &index, &boxes);
+        let roots = roots::roots(&levels);
+        if roots.is_empty() {
+            values.traversal.retain(input);
+            let plan = self.restyled(batch, &changed.elements, &boxes, &levels.restyles, None)?;
+            why::add(&why::DAMAGE_PAINT, levels.restyles.len() as u64);
+            self.restyle.set(Some(kept));
+            return Some(plan);
         }
-        let plan = self.restyled(batch, &changed.elements, &boxes, &levels.restyles)?;
-        // A layout damage is the input of the layout of dirty subtrees over
-        // the retained box tree (`Plan::Restyled` with `Damage::Layout`);
-        // until the commit takes it, the batch is rebuilt at the one point.
-        if levels
+        let reboxed = self.reboxed(
+            batch,
+            roots,
+            &levels,
+            (&input, &index, &boxes),
+            theme_css,
+            &mut kept,
+        );
+        values.traversal.retain(input);
+        let reboxed = match reboxed {
+            Ok(reboxed) => reboxed,
+            Err(cause) => {
+                let causes = roots::causes(&levels);
+                return roots::fall_back_document(&format!("{cause} ({causes})"));
+            }
+        };
+        // Paint restyles outside the rebuilt subtrees are written in place.
+        let restyles: HashMap<u64, Restyle> = levels
             .restyles
-            .values()
-            .any(|r| r.damage.0 == Damage::Layout)
-        {
-            return roots::fall_back(&levels, &index, &boxes);
-        }
-        why::add(&why::DAMAGE_PAINT, levels.restyles.len() as u64);
+            .into_iter()
+            .filter(|(_, r)| r.damage.0 == Damage::Paint && !reboxed.covers(&r.handle))
+            .collect();
+        let Some(plan) = self.restyled(batch, &changed.elements, &boxes, &restyles, Some(&reboxed))
+        else {
+            values.traversal.abandon_rebuild();
+            return None;
+        };
+        why::add(&why::DAMAGE_PAINT, restyles.len() as u64);
+        why::add(&why::REBOX_UNITS, reboxed.0.len() as u64);
+        reboxed.commit(values);
+        kept.reshaped();
         self.restyle.set(Some(kept));
         Some(plan)
     }
 
-    /// The box tree with the attributes of `batch` and the paint or layout
-    /// values of `restyles` written along copied paths; `None` when some box does not
-    /// take them in place, which rebuilds its boxes (`Damage::Rebox`).
+    /// The box tree with the attributes of `batch`, the paint values of
+    /// `restyles` and the rebuilt boxes of `units` written along copied
+    /// paths; `None` when some box does not take them in place, which makes
+    /// the document the root (`roots::fall_back_document`).
     /// `ids` — the node ids of the elements of `batch`, in its order.
     fn restyled(
         &self,
@@ -130,9 +157,14 @@ impl Document {
         ids: &[u64],
         boxes: &Boxes,
         restyles: &HashMap<u64, Restyle>,
+        units: Option<&rebox::Reboxed>,
     ) -> Option<Plan> {
         let mut attrs = HashMap::new();
         for (change, &id) in batch.elements.iter().zip(ids) {
+            // A rebuilt box carries the new attributes already.
+            if units.is_some_and(|u| u.covers(&change.element)) {
+                continue;
+            }
             attrs.insert(
                 id,
                 Target {
@@ -143,41 +175,36 @@ impl Document {
             );
         }
         let Some(attrs_to_write) = attr_paths(&self.nodes, boxes, &attrs) else {
-            return roots::fall_back_rebox("attributes rewritten by the build");
+            return roots::fall_back_document("attributes rewritten by the build");
         };
+        let units = units.filter(|u| !u.0.is_empty());
         // Rules that change no cascaded value (an inline style or a more
         // specific rule wins): the batch writes only `class`/`data-*`, which the
         // frame build does not read; the frame stays as recorded (`Plan::Clean`).
-        if restyles.is_empty() && attrs_to_write.is_empty() {
+        if restyles.is_empty() && attrs_to_write.is_empty() && units.is_none() {
             return Some(Plan::Clean(None));
         }
         let style_paths = match style_paths(&self.nodes, boxes, restyles, self.state.values()) {
             Ok(paths) => paths,
-            Err(why) => return roots::fall_back_rebox(why),
+            Err(why) => return roots::fall_back_document(why),
         };
         let mut nodes = (*self.nodes).clone();
         if !patch(&mut nodes, &attrs_to_write, &attrs) {
-            return roots::fall_back_rebox("attributes rewritten by the build");
+            return roots::fall_back_document("attributes rewritten by the build");
         }
         let edited = |nodes| Edited {
             nodes,
             attrs: attrs_to_write,
         };
-        if restyles.is_empty() {
+        if restyles.is_empty() && units.is_none() {
             return Some(Plan::Clean(Some(edited(nodes))));
         }
         for (path, id) in &style_paths {
             let (Some(Node::Element(e)), Some(r)) = (apply(&mut nodes, path), restyles.get(id))
             else {
-                return roots::fall_back_rebox("a box path");
+                return roots::fall_back_document("a box path");
             };
-            let written = match r.damage.0 {
-                Damage::Paint => {
-                    e.style.set_cascaded_paint(&r.new);
-                    true
-                }
-                _ => e.style.set_cascaded_layout(&r.old, &r.new),
-            };
+            e.style.set_cascaded_paint(&r.new);
             let hovered = match (&r.hover, &mut e.hover) {
                 (None, _) => true,
                 (Some(hover), Some(layer)) => {
@@ -186,17 +213,32 @@ impl Document {
                 }
                 (Some(_), None) => false,
             };
-            if !(written && hovered) {
-                return roots::fall_back_rebox("the build adjusted a value of the box");
+            if !hovered {
+                return roots::fall_back_document("the build adjusted a value of the box");
             }
         }
-        let damage = restyles
-            .values()
-            .map(|r| r.damage.0)
-            .max()
-            .unwrap_or(Damage::Paint);
         let mut restyled: Vec<u64> = restyles.keys().copied().collect();
+        let damage = match units {
+            None => Damage::Paint,
+            Some(units) => {
+                let vcx = self.state.values();
+                for unit in &units.0 {
+                    let Some(slot) = apply(&mut nodes, &unit.path) else {
+                        return roots::fall_back_document("a box path");
+                    };
+                    *slot = Node::Element(unit.node.clone());
+                    // The images of the new styles join the document's.
+                    crate::values::image_values::prepare(std::slice::from_ref(slot), vcx);
+                    restyled.extend_from_slice(&unit.ids);
+                }
+                if units.0.iter().any(|u| u.masks) {
+                    self.state.values.masks.collect(&nodes, vcx);
+                }
+                Damage::Rebox
+            }
+        };
         restyled.sort_unstable();
+        restyled.dedup();
         Some(Plan::Restyled(edited(nodes), restyled, style_paths, damage))
     }
 }

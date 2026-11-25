@@ -15,7 +15,7 @@ const PAGE: &str = "<!doctype html><html@0><head><style>\
     [data-a] + [data-b]{background:#ccc}[data-a] + div [data-c]{background:#bbb}\
     .grp > p{color:#123}html.alt [data-deep]{background:#aaa}.zed{color:#456}\
     li:nth-child(2n){color:#321}.pick li{background:#888}\
-    .wide{margin-left:1px}</style></head><body>\
+    .wide{margin-left:1px}html.cv{background:#ddd}</style></head><body>\
     <div id=a@1><p class=t>1</p><p data-deep@2>2 <span@3>3</span></p></div>\
     <div@4>s</div><div@5><div@6><p@7>4</p><span@8>5</span></div></div>\
     <ul@9><li@10>6</li><li@11>7</li><li@12>8</li></ul></body></html>";
@@ -41,6 +41,8 @@ const TOGGLES: &[(usize, &str)] = &[
     (11, ".pick"),
     (12, ".zed"),
     (6, ".wide"),
+    // The canvas background of the root rebuilds the document.
+    (0, ".cv"),
 ];
 
 const PLACES: usize = 13;
@@ -116,6 +118,9 @@ fn a_later_edit_matches_through_the_attributes_an_earlier_one_left() {
 fn a_rebuild_between_edits_starts_the_probe_over() {
     let last = TOGGLES.len() - 1;
     assert_eq!(run(&states(&[0, 10, last, 10, 0, last, 0, 10])), 6);
+    // A margin rebuilds the boxes of its element in place.
+    let wide = TOGGLES.len() - 2;
+    assert_eq!(run(&states(&[0, 10, wide, 10, 0, wide, 0, 10])), 8);
 }
 
 #[test]

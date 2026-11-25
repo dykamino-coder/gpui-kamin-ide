@@ -36,9 +36,9 @@ fn border_colours_of_a_block_are_restyled_in_place() {
 }
 
 #[test]
-fn border_colours_of_table_parts_and_inline_boxes_and_widths_rebuild() {
+fn border_colours_of_table_parts_and_inline_boxes_rebuild_and_widths_rebox() {
     assert_eq!(both(".lit td{border-color:#00f}"), (false, false));
     assert_eq!(both(".lit span{border-color:#00f}"), (false, false));
-    assert_eq!(both(".lit .box{border-width:3px}"), (false, false));
-    assert_eq!(both(".lit .box{border-style:dashed}"), (false, false));
+    assert_eq!(both(".lit .box{border-width:3px}"), (true, true));
+    assert_eq!(both(".lit .box{border-style:dashed}"), (true, true));
 }
