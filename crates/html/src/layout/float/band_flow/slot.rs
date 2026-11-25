@@ -16,6 +16,8 @@ use crate::document::boxes::BoxTree;
 use crate::layout::reuse::{BandBoxes, BandKey};
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+mod chain;
+mod host;
 
 /// Plans kept per host: the widths one layout pass measures a host at
 /// (final, min/max-content probes of its parent).
@@ -23,9 +25,11 @@ const PLANS: usize = 4;
 
 /// The kept result of a band host (`LayoutSlot::band`).
 pub(crate) struct Retained {
-    key: Rc<BandKey>,
+    pub(super) key: Rc<BandKey>,
     /// `BoxTree::clock` of the publication the plans were made at.
-    at: u32,
+    pub(super) at: u32,
+    /// The next record of the same box (`slot_chain`).
+    pub(super) other: Option<Box<Retained>>,
     intrinsic: Option<Stamped<(f32, f32)>>,
     plans: [Option<Stamped<Rc<Plan>>>; PLANS],
     next: usize,
@@ -39,6 +43,22 @@ impl std::fmt::Debug for Retained {
             .field("at", &self.at)
             .field("plans", &self.plans.iter().flatten().count())
             .finish()
+    }
+}
+
+#[cfg(test)]
+impl Retained {
+    /// An empty record of `key` made at publication `at`.
+    pub(super) fn for_tests(key: Rc<BandKey>, at: u32) -> Self {
+        Self {
+            key,
+            at,
+            other: None,
+            intrinsic: None,
+            plans: Default::default(),
+            next: 0,
+            probes: Default::default(),
+        }
     }
 }
 
@@ -113,9 +133,9 @@ impl HostSlot {
         let boxes = boxes.try_borrow().ok()?;
         let epoch = boxes.build_epoch(owner.epoch)?;
         let slot = boxes.slot(owner.slot);
-        let Some(kept) = slot.and_then(|s| (if kid { &s.probe } else { &s.band }).as_deref())
-        else {
-            crate::why::note(code(kid), || "no record".into());
+        let head = slot.map(|s| if kid { &s.probe } else { &s.band });
+        let Some(kept) = head.and_then(|head| chain::find(head, &self.key)) else {
+            crate::why::note(host::code(kid), || "no record".into());
             return None;
         };
         let stale = match () {
@@ -123,7 +143,7 @@ impl HostSlot {
             _ => kept.key.differs(&self.key).map(|what| ("outside input: ", what)),
         };
         if let Some((why, what)) = stale {
-            crate::why::note(code(kid), || format!("{why}{what}"));
+            crate::why::note(host::code(kid), || format!("{why}{what}"));
             return None;
         }
         f(kept)
@@ -194,23 +214,17 @@ impl HostSlot {
         let Some(slot) = boxes.slot_mut(owner.slot) else {
             return;
         };
-        let record = if kid { &mut slot.probe } else { &mut slot.band };
-        let stale = record
-            .as_ref()
-            .is_none_or(|kept| epoch > kept.at || kept.at > clock || !kept.key.same(&self.key));
-        if stale {
-            *record = Some(Box::new(Retained {
-                key: self.key.clone(),
-                at: clock,
-                intrinsic: None,
-                plans: Default::default(),
-                next: 0,
-                probes: Default::default(),
-            }));
-        }
-        if let Some(kept) = record.as_deref_mut() {
-            f(kept);
-        }
+        let head = if kid { &mut slot.probe } else { &mut slot.band };
+        let kept = chain::entry(head, &self.key, epoch, clock, || Retained {
+            key: self.key.clone(),
+            at: clock,
+            other: None,
+            intrinsic: None,
+            plans: Default::default(),
+            next: 0,
+            probes: Default::default(),
+        });
+        f(kept);
     }
 
     /// Keep `plan` (made in this frame) by its numbers.
@@ -224,7 +238,7 @@ impl HostSlot {
             {
                 return;
             }
-            kept.plans[kept.next] = Some(self.stamp(Rc::new(numbers(plan))));
+            kept.plans[kept.next] = Some(self.stamp(Rc::new(host::numbers(plan))));
             kept.next = (kept.next + 1) % PLANS;
         });
     }
@@ -232,52 +246,5 @@ impl HostSlot {
     /// Keep the min/max-content pair of this frame.
     pub(super) fn keep_intrinsic(&self, sizes: (f32, f32)) {
         self.write(|kept| kept.intrinsic = Some(self.stamp(sizes)));
-    }
-}
-
-impl super::BandFlow {
-    /// Keep and reuse the host's plans between frames in `slot`.
-    pub(crate) fn kept(mut self, slot: Option<HostSlot>) -> Self {
-        self.slot = slot.map(Rc::new);
-        self
-    }
-
-    /// The kept result, unless this build measures under a scope the key
-    /// does not cover (fragmentation, line clamping and its positioning).
-    pub(super) fn host_slot(&self) -> Option<Rc<HostSlot>> {
-        let plain = self.fragment.is_none() && self.clamp.is_none() && self.positioning.is_none();
-        if !plain && self.slot.is_some() {
-            crate::why::note("band_slot.none", || "fragmented or clamped".into());
-        }
-        self.slot.clone().filter(|_| plain)
-    }
-}
-
-/// The `why` code of a miss of a host's or a child's record.
-fn code(kid: bool) -> &'static str {
-    if kid {
-        "band_kid.miss"
-    } else {
-        "band_slot.miss"
-    }
-}
-
-/// `plan` without its prepared elements, which belong to its frame.
-fn numbers(plan: &Plan) -> Plan {
-    fn strip(slots: &[super::Slot]) -> Vec<super::Slot> {
-        slots
-            .iter()
-            .map(|s| super::Slot {
-                prepared: Default::default(),
-                kids: strip(&s.kids),
-                ..s.clone()
-            })
-            .collect()
-    }
-    Plan {
-        width: plan.width,
-        height: plan.height,
-        slots: strip(&plan.slots),
-        measured_extent: plan.measured_extent.clone(),
     }
 }
