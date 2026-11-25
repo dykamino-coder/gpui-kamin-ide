@@ -43,17 +43,13 @@ fn layout_values_backgrounds_and_generated_content_rebuild_the_boxes_of_their_el
         "html.alt body{background:#eee}",
         "html.alt body{color:#111;margin:1px}",
         "html.alt p::before{content:'x'}",
+        // `attr(class)` of `p`: the edited `html` generates no box that reads it.
+        "html.alt body{color:#111}p::after{content:attr(class)}",
     ] {
         let old = page(style, "");
         let new = old.replace("<html>", "<html class=\"alt\">");
         assert_eq!(both(&old, &new), (true, true), "{style}");
     }
-    // A class read by `attr()` in generated content beside a layout change
-    // of `body`: the root widens to the document.
-    let style = "html.alt body{color:#111}p::after{content:attr(class)}";
-    let old = page(style, "");
-    let new = old.replace("<html>", "<html class=\"alt\">");
-    assert_eq!(both(&old, &new), (false, false), "{style}");
 }
 
 #[test]

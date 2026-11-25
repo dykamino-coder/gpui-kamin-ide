@@ -66,6 +66,23 @@ fn attr_in_generated_content_rebuilds_only_its_element() {
 }
 
 #[test]
+fn a_root_class_beside_attr_in_generated_content_matches_a_fresh_build() {
+    // The sheet reads `class` through `attr()`, of `p`: no box of the edited
+    // `html` reads it.
+    let reads = "<style>p::after{content:attr(class)}</style></head>";
+    let old = page("<p data-n=1 class=p>a</p>")
+        .replace("<html>", "<html class=k1>")
+        .replace("</head>", reads);
+    let new = old.replace("<html class=k1>", "<html class=k2>");
+    assert!(edit(&old, &[("html", 0, "class", Some("k2"))], &new));
+    // A generated box of `html` that reads its class.
+    let style = "<style>html::before{content:attr(class)}</style>";
+    let old = old.replace("</head>", &format!("{style}</head>"));
+    let new = old.replace("<html class=k1>", "<html class=k2>");
+    edit(&old, &[("html", 0, "class", Some("k2"))], &new);
+}
+
+#[test]
 fn display_changes_rebuild_the_parent_of_the_box() {
     let old = page("<div><span class=x>a</span> b <i>c</i></div><p>d</p>");
     let new = old.replace(" class=x", "");

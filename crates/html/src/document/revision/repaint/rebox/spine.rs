@@ -84,7 +84,10 @@ impl Passes<'_> {
                 })
                 .collect();
             let mut with = level.clone();
-            *with.get_mut(path[k])? = inner;
+            if path[k] >= with.len() {
+                return None;
+            }
+            with[path[k]] = inner;
             stubs.push(level);
             if k == 0 {
                 top = with;
@@ -119,7 +122,10 @@ impl Passes<'_> {
                 return None;
             }
             if k + 1 < path.len() {
-                let Node::Element(e) = level.get_mut(at)? else {
+                if at >= level.len() {
+                    return None;
+                }
+                let Node::Element(e) = &mut level[at] else {
                     return None;
                 };
                 let children = std::mem::take(&mut e.children).into_vec();
