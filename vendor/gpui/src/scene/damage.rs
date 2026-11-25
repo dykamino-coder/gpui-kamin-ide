@@ -566,9 +566,10 @@ impl Scene {
             None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
             moved => moved,
         };
-        // Группа прошлого кадра, что рисует ту же картинку, отдаёт этой свой
-        // буфер (кэш групп рендерера); сопоставление по содержимому, не по номеру.
-        // Сравнение на месте считает метку такой группы на том же месте равной.
+        // A group of the last frame that paints the same image hands this one
+        // its buffer (the renderer's group cache); groups are matched by
+        // content, not by index. The in-place comparison takes the mark of
+        // such a group at the same place as equal, so it runs first.
         index.group_base.clear();
         if index.base != 0 {
             let mut cmp = Compare {

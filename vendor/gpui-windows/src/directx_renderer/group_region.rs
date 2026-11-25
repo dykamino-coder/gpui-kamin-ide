@@ -84,8 +84,7 @@ impl Region {
 /// image can cover (`footprint`). A plane mark is placed under the content
 /// mask of its 3D context, about the whole window
 /// (`Window::insert_plane_mark`), and the composite pass ran over all of it:
-/// on WARP each face of a cube cost a window of pixels (25.11: 576 faces,
-/// 275 Mpx, 0.45 s a frame). The pixels
+/// on WARP each face of a cube cost a window of pixels. The pixels
 /// left out sample no source and take no colour, and the cut edges are whole
 /// pixels, so the frame is the same; cc and WebRender bound a render
 /// surface's composite the same way, by its content's projected bounds

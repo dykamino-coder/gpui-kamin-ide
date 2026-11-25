@@ -2,9 +2,8 @@
 //! rectangles (`Plan::Within`, `Plan::Shift`), gathered for one pass.
 //!
 //! A pass per rectangle over every batch costs a draw call per batch and
-//! rectangle; on WARP a draw call costs more than the instances it draws
-//! (25.11: splitting batches into runs made a css2 scroll step 26 ms against
-//! 19.5). So the rectangles are made disjoint and every instance that can
+//! rectangle; on WARP a draw call costs more than the instances it draws,
+//! so splitting batches into more runs made scroll steps slower. So the rectangles are made disjoint and every instance that can
 //! reach one is copied once per rectangle it reaches, with its content mask
 //! cut to that rectangle: one upload, one draw per run of batches of one kind
 //! that reach any rectangle, and the masks keep every pixel outside the

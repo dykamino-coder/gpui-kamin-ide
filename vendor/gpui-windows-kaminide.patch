@@ -10322,17 +10322,16 @@ index 0000000000000000000000000000000000000000..b1a9a86f489c0bb0164c60fe79099959
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/cull.rs b/vendor/gpui-windows/src/directx_renderer/cull.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..424b08728c8f0e9fe03e569fa6fecc04afa61c40
+index 0000000000000000000000000000000000000000..4f0caf4aa4914ad7bd2ff3e467bd5051d3820a78
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/cull.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,165 @@
 +//! KaminIDE patch: the instances of a frame that write inside its redraw
 +//! rectangles (`Plan::Within`, `Plan::Shift`), gathered for one pass.
 +//!
 +//! A pass per rectangle over every batch costs a draw call per batch and
-+//! rectangle; on WARP a draw call costs more than the instances it draws
-+//! (25.11: splitting batches into runs made a css2 scroll step 26 ms against
-+//! 19.5). So the rectangles are made disjoint and every instance that can
++//! rectangle; on WARP a draw call costs more than the instances it draws,
++//! so splitting batches into more runs made scroll steps slower. So the rectangles are made disjoint and every instance that can
 +//! reach one is copied once per rectangle it reaches, with its content mask
 +//! cut to that rectangle: one upload, one draw per run of batches of one kind
 +//! that reach any rectangle, and the masks keep every pixel outside the
@@ -12674,10 +12673,10 @@ index 0000000000000000000000000000000000000000..d499e6b7d4974c8db896725db30df02f
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_region.rs b/vendor/gpui-windows/src/directx_renderer/group_region.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ae30c0fc12cb5c1fa51137855d0674a14e0cff1
+index 0000000000000000000000000000000000000000..dc210abcbd046796d7dfc25fae10c96aae34f28a
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_region.rs
-@@ -0,0 +1,289 @@
+@@ -0,0 +1,288 @@
 +//! KaminIDE patch: целочисленные области групп и ограниченный пул совместимых текстур.
 +
 +use super::*;
@@ -12764,8 +12763,7 @@ index 0000000000000000000000000000000000000000..1ae30c0fc12cb5c1fa51137855d0674a
 +/// image can cover (`footprint`). A plane mark is placed under the content
 +/// mask of its 3D context, about the whole window
 +/// (`Window::insert_plane_mark`), and the composite pass ran over all of it:
-+/// on WARP each face of a cube cost a window of pixels (25.11: 576 faces,
-+/// 275 Mpx, 0.45 s a frame). The pixels
++/// on WARP each face of a cube cost a window of pixels. The pixels
 +/// left out sample no source and take no colour, and the cut edges are whole
 +/// pixels, so the frame is the same; cc and WebRender bound a render
 +/// surface's composite the same way, by its content's projected bounds
