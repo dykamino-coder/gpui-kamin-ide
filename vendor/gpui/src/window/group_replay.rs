@@ -83,7 +83,7 @@ impl Window {
     pub(super) fn replay_groups(
         &mut self,
         groups: Range<usize>,
-        scrolled: Option<(&[Option<ScrollNodeId>], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
+        scrolled: Option<(&[crate::scene::GroupLabel], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
     ) -> Range<usize> {
         let base = self.next_frame.scene.groups.len();
         let prev = &self.rendered_frame.scene;
@@ -110,7 +110,7 @@ impl Window {
             edges.dedup();
             let copy = match scrolled {
                 Some((labels, node)) => {
-                    Scene::replayed_group_landing(group, delta, labels.get(at).copied().flatten(), &node, &mut edges)
+                    Scene::replayed_group_landing(group, delta, labels.get(at).and_then(|label| label.node()), &node, &mut edges)
                 }
                 None => Scene::replayed_group_landing(group, delta, None, &still, &mut edges),
             };

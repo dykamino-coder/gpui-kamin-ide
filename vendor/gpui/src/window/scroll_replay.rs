@@ -190,14 +190,14 @@ impl Window {
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
                 let groups = paint.groups();
                 let scenes = paint.range().start.scene_index..paint.range().end.scene_index;
-                let labels = source.group_label_nodes(scenes.clone(), groups.clone());
+                let labels = source.group_labels(scenes.clone(), groups.clone());
                 // The first group whose scene a moved copy cannot take, and why.
                 let refused = source.groups.get(groups.clone()).unwrap_or_default().iter().zip(&labels).enumerate().find_map(
                     |(at, (group, label))| {
                         let scene = &group.scene;
                         let all = 0..scene.paint_operations.len();
                         let why = match label {
-                            None if !scene.scroll.marks.is_empty() => {
+                            crate::scene::GroupLabel::Unmarked if !scene.scroll.marks.is_empty() => {
                                 // Where the group is and whose commands it holds, so the
                                 // journal ties it to the nodes listed for the frame.
                                 let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
@@ -217,8 +217,8 @@ impl Window {
                                 };
                                 format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
                             }
-                            None => return None,
-                            Some(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
+                            crate::scene::GroupLabel::Unmarked | crate::scene::GroupLabel::Hidden => return None,
+                            crate::scene::GroupLabel::Under(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
                                 Ok(()) => return None,
                                 Err(_) => scene.scroll_refusal_detail(std::iter::once(all.clone())).unwrap_or_default(),
                             },
@@ -348,7 +348,7 @@ impl Window {
         // The groups the record made move with their labels' nodes (`group_replay`).
         let groups = paint.groups();
         if !groups.is_empty() {
-            let labels = source.group_label_nodes(scenes.clone(), groups.clone());
+            let labels = source.group_labels(scenes.clone(), groups.clone());
             if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                 return Err(at(ScrollRefusal::Groups));
             }
@@ -360,7 +360,7 @@ impl Window {
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             let groups = draw.groups.clone();
             if !groups.is_empty() {
-                let labels = frame.scene.group_label_nodes(painted, groups.clone());
+                let labels = frame.scene.group_labels(painted, groups.clone());
                 if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                     return Err(at(ScrollRefusal::Groups));
                 }
@@ -430,7 +430,7 @@ impl Window {
         let scale = self.scale_factor();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         // Groups come from the rendered frame (`plan_scrolled_replay` refuses a layer's).
-        let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), record.groups());
+        let labels = self.rendered_frame.scene.group_labels(scenes.clone(), record.groups());
         let groups = self.replay_groups(record.groups(), Some((&labels, &node)));
         self.replay_scenes_scrolled(scenes, plan);
         self.next_frame.scene.relabel = 0;

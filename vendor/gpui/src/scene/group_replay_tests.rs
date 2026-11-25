@@ -111,3 +111,40 @@ fn renumbering_reaches_dormant_labels_without_touching_the_shared_command() {
     let plain = scene.relabeled(&PaintOperation::Primitive(Primitive::Quad(quad(0., 0.))));
     assert!(matches!(plain, PaintOperation::Primitive(Primitive::Quad(_))));
 }
+
+/// Groups 1 (nested, labelled in group 2's scene) and 2 (labelled in the
+/// frame with mask `mask`), each holding a command under a scroll node.
+fn labelled(mask: Bounds<ScaledPixels>) -> Scene {
+    let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 1000., 1000.));
+    let mut frame = Scene::default();
+    let mut nested = Scene { in_group: true, ..Scene::default() };
+    nested.scroll.open = Some((node, chain));
+    nested.insert_primitive(quad(20., 0.));
+    nested.scroll.open = None;
+    frame.groups.push(group(finished(nested), 20.));
+    let mut outer = Scene { in_group: true, ..Scene::default() };
+    outer.scroll.open = Some((node, chain));
+    outer.insert_primitive(quad(0., 0.));
+    outer.scroll.open = None;
+    outer.insert_primitive(label(1, 20.));
+    frame.groups.push(group(finished(outer), 0.));
+    frame.insert_primitive(PaintSurface { content_mask: ContentMask { bounds: mask }, ..label(2, 0.) });
+    frame.insert_primitive(quad(40., 0.));
+    finished(frame)
+}
+
+#[test]
+fn a_group_whose_label_no_offset_shows_is_hidden_and_copied_by_any_replay() {
+    // Outside its own mask the label is dropped; the group it labels is
+    // composited by no replay of the frame, nor is the group nested in it.
+    let frame = labelled(rect(300., 300., 10., 10.));
+    assert!(labels(&frame).is_empty());
+    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
+    assert_eq!(found, vec![GroupLabel::Hidden; 2]);
+    assert!(frame.groups_scrollable(0..2, &found, |_| false));
+    // Drawn under no node, its commands under a node would not follow it.
+    let frame = labelled(rect(0., 0., 10., 10.));
+    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
+    assert_eq!(found, vec![GroupLabel::Unmarked; 2]);
+    assert!(!frame.groups_scrollable(0..2, &found, |_| true));
+}

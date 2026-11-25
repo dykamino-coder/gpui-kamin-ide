@@ -9,7 +9,7 @@ pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, Layer
 pub(crate) use layer::no_run;
 mod damage;
 pub(crate) mod image_resources;
-mod record; mod group_replay;
+mod record; mod group_replay; pub(crate) use group_replay::GroupLabel;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
