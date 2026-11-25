@@ -128,12 +128,23 @@ pub fn to_json(entry: &Entry) -> Value {
     })
 }
 
-/// Serializes the tests of this crate that subscribe: the journal is process-wide.
+/// A test's reader of the notes made on its thread.
 #[cfg(test)]
-pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription) {
+pub(crate) struct TestReader {
+    _journal: kamin_style::journal::ThreadSubscription,
+    _frames: trace::Trace,
+}
+
+/// Serializes the tests of this crate that subscribe, each reading the notes
+/// of its own thread: tests running beside it note into the same journal.
+#[cfg(test)]
+pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, TestReader) {
     static ONE: trace::Shared<()> = trace::Shared::new(());
     let guard = ONE.lock();
-    let sub = subscribe();
+    let sub = TestReader {
+        _journal: kamin_style::journal::subscribe_thread(),
+        _frames: trace::Trace::start(),
+    };
     take();
     (guard, sub)
 }

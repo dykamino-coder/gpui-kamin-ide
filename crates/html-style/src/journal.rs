@@ -22,6 +22,12 @@ const CAUSES: usize = 512;
 const EXAMPLES: usize = 4;
 
 static READERS: AtomicUsize = AtomicUsize::new(0);
+/// Readers among `READERS` that take the notes of their own thread only.
+static THREAD_READERS: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    /// Thread readers living on this thread.
+    static HERE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 static JOURNAL: Shared<Journal> = Shared::new(Journal::new());
 
 /// Whether the journal records (some reader is subscribed).
@@ -48,6 +54,32 @@ impl Drop for Subscription {
             crate::resources::css_images::forget_why();
         }
     }
+}
+
+/// A reader of the notes made on its own thread ([`subscribe_thread`]).
+#[must_use = "the journal records only while the subscription lives"]
+pub struct ThreadSubscription(Subscription, std::marker::PhantomData<*const ()>);
+
+/// Start recording the notes made on the calling thread: while only such
+/// readers live, a note from another thread (a test running beside them) is
+/// not kept. Any process-wide reader keeps every note.
+pub fn subscribe_thread() -> ThreadSubscription {
+    THREAD_READERS.fetch_add(1, Relaxed);
+    HERE.with(|n| n.set(n.get() + 1));
+    ThreadSubscription(subscribe(), std::marker::PhantomData)
+}
+
+impl Drop for ThreadSubscription {
+    fn drop(&mut self) {
+        HERE.with(|n| n.set(n.get() - 1));
+        THREAD_READERS.fetch_sub(1, Relaxed);
+    }
+}
+
+/// Whether a note made on this thread is kept: a process-wide reader lives,
+/// or a thread reader of this thread.
+fn kept_here() -> bool {
+    READERS.load(Relaxed) > THREAD_READERS.load(Relaxed) || HERE.with(|n| n.get() > 0)
 }
 
 /// One decision: its stable code, details and the engine line that made it.
@@ -120,7 +152,7 @@ pub fn note_at(
     site: &'static Location<'static>,
     detail: impl FnOnce() -> String,
 ) {
-    if enabled() {
+    if enabled() && kept_here() {
         let cause = Cause {
             code,
             detail: detail(),
@@ -136,7 +168,7 @@ pub fn note_at(
 /// Count a hit of `cache`.
 #[inline]
 pub fn cache_hit(cache: &'static str) {
-    if enabled() {
+    if enabled() && kept_here() {
         with(|j| j.caches.entry(cache).or_default().hits += 1);
     }
 }
@@ -145,7 +177,7 @@ pub fn cache_hit(cache: &'static str) {
 #[track_caller]
 #[inline]
 pub fn cache_miss(cache: &'static str, reason: &'static str, detail: impl FnOnce() -> String) {
-    if enabled() {
+    if enabled() && kept_here() {
         let site = Location::caller();
         let detail = detail();
         with(|j| {
@@ -187,50 +219,4 @@ pub(crate) fn test_reader() -> (std::sync::MutexGuard<'static, ()>, Subscription
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn off_means_no_records_and_no_detail_work() {
-        let _one = test_reader().0;
-        // No subscription in this test: nothing is computed, nothing kept.
-        note("off", || unreachable!("detail of a disabled journal"));
-        cache_hit("off");
-        cache_miss("off", "new_key", || {
-            unreachable!("detail of a disabled journal")
-        });
-        let j = take();
-        assert!(j.causes.iter().all(|c| c.code != "off") && !j.caches.contains_key("off"));
-    }
-
-    #[test]
-    fn records_while_subscribed_with_the_callers_line_and_bounds() {
-        let (_one, sub) = test_reader();
-        let line = line!() + 1;
-        note("code", || "detail".into());
-        cache_hit("c");
-        for _ in 0..EXAMPLES + 2 {
-            cache_miss("c", "evicted", String::new);
-        }
-        let j = take();
-        let mine: Vec<_> = j.causes.iter().filter(|c| c.code == "code").collect();
-        assert_eq!(mine.len(), 1);
-        assert!(mine[0].site().ends_with(&format!("journal.rs:{line}")));
-        let c = &j.caches["c"];
-        assert_eq!((c.hits, c.misses["evicted"]), (1, EXAMPLES as u64 + 2));
-        assert_eq!(c.examples.len(), EXAMPLES);
-
-        for _ in 0..CAUSES + 3 {
-            note("many", String::new);
-        }
-        let j = take();
-        assert_eq!(j.causes.len(), CAUSES);
-        assert!(j.dropped >= 3);
-
-        // The last reader leaving stops recording and drops the rest.
-        note("left", String::new);
-        drop(sub);
-        assert!(!enabled());
-        assert!(take().causes.is_empty());
-    }
-}
+mod tests;
