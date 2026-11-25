@@ -47,6 +47,16 @@ pub(super) fn style_paths(
                 _ => cascaded.with_layout_of(&r.old, &r.new).is_some(),
             };
             if !fits {
+                let group = if cascaded.inh.ui != r.old.inh.ui {
+                    "inh.ui"
+                } else if cascaded.reset_background != r.old.reset_background {
+                    "background"
+                } else if cascaded.reset_border != r.old.reset_border {
+                    "border"
+                } else {
+                    "all"
+                };
+                super::why_value::note(group, cascaded, &r.old);
                 return Err("a box holds other values of the changed groups");
             }
             takes(e, r)?;

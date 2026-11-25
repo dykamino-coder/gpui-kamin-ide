@@ -5,7 +5,8 @@
 use crate::style::computed::Computed;
 
 /// Journal the first difference of the group `group` (a name from
-/// `Computed::damage`) between `old` and `new`, if the journal is on.
+/// `Computed::damage`) between `old` and `new`, if the journal is on; also
+/// between a box's cascaded stage and the probe's old style (`paths`).
 pub(super) fn note(group: &'static str, old: &Computed, new: &Computed) {
     if !crate::why::enabled() {
         return;
@@ -25,6 +26,7 @@ fn debug(c: &Computed, group: &str) -> String {
         "background" => format!("{:?}", c.reset_background),
         "cascade" => format!("{:?}", c.reset_cascade),
         "text_box" => format!("{:?}", c.reset_text_box),
+        "inh.ui" => format!("{:?}", i.ui),
         "inh.font" => format!("{:?}", i.font),
         "inh.text_flow" => format!("{:?}", i.text_flow),
         "inh.text_ink" => format!("{:?}", i.text_ink),
