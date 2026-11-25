@@ -84,6 +84,22 @@ impl Document {
         let reads = probe.reads_attr().with_styles(styles);
         let reads = reads.reads_any_of(changed.attrs.iter().map(String::as_str));
         if reads {
+            // `attr()` in generated content (`::before`, `::after`, markers):
+            // the pseudo-element boxes of a mutated element the build entered,
+            // which this probe does not restyle, take the new value only by a
+            // rebuild of them (`attr`), and box damage rebuilds the
+            // document at the one fallback point (`roots::fall_back`). Its
+            // entry before the batch decides that: the batch cascades no
+            // other target, so a batch that falls back cascades only once,
+            // in the build.
+            let Ok(entered) = cache.kept_styles(&probe, input, values, &mutated) else {
+                return Levels::document(document, "budget");
+            };
+            if let Some((m, _)) = mutated.iter().zip(&entered).find(|(_, e)| e.is_some()) {
+                let mut levels = Levels::default();
+                levels.deeper(m, Damage::Rebox, "attr");
+                return levels;
+            }
             for m in &mutated {
                 if !targets.iter().any(|t| Rc::ptr_eq(t, m)) {
                     targets.push(m.clone());
@@ -138,13 +154,6 @@ impl Document {
             };
             if let Some(why) = rest_change(&old.rest, &new.rest) {
                 levels.deeper(target, Damage::Rebox, why);
-                continue;
-            }
-            // `attr()` in generated content (`::before`, `::after`, markers):
-            // the pseudo-element boxes of a mutated element, which this probe
-            // does not restyle, take the new value only by a rebuild of them.
-            if reads && mutated.iter().any(|m| Rc::ptr_eq(m, target)) {
-                levels.deeper(target, Damage::Rebox, "attr");
                 continue;
             }
             // The hover layer of the box is a cascaded stage of its own
