@@ -20,8 +20,9 @@
 //!   path is replaced by the one its entry gives (`entered`): ancestor
 //!   compounds read the attributes the batch left;
 //! - the census of the children of a parent counts their names, so each probe
-//!   of a batch drops the contexts of the mutated elements' parents
-//!   (`forget_parents`); the sheets of the document do not change, so every
+//!   of a batch whose names a rule reads in a sibling compound drops the
+//!   contexts of the mutated elements' parents (`forget_parents`,
+//!   `Features::reads_siblings`); the sheets of the document do not change, so every
 //!   other census still answers every question a selector asks the siblings.
 use super::super::sibling_survey::{Survey, Visit};
 use crate::dom::shadow::Scope;

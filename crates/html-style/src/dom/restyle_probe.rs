@@ -51,7 +51,8 @@ pub struct RestyleCache {
     remark: Vec<usize>,
     /// Whole-document markings since `take_remarks`.
     remarks: u64,
-    /// The mutated elements of the batch probed now (`targets`).
+    /// The mutated elements of the batch probed now whose parents' census a
+    /// rule reads (`targets`, `Features::reads_siblings`).
     mutated: Vec<Handle>,
     /// The last probe of each element probed since the rules were built, by
     /// address (the handle keeps the address taken): the style an element
@@ -134,7 +135,6 @@ impl RestyleCache {
         self.remark = (0..probe.has_args.len())
             .filter(|&i| reads(&probe.has_args[i]))
             .collect();
-        self.mutated = mutated.to_vec();
         let same =
             |(c, _): &&(Changed, _)| c.classes == changed.classes && c.attrs == changed.attrs;
         let features = match self.sets.iter().find(same) {
@@ -151,6 +151,14 @@ impl RestyleCache {
                 self.sets.push((names, features.clone()));
                 features
             }
+        };
+        // A parent's census of its children (`Chains`) answers sibling
+        // compounds only: a batch no rule reads beside its elements keeps
+        // every context, and each probe enters its targets alone instead of
+        // cascading their ancestor chains again.
+        self.mutated = match features.reads_siblings() {
+            true => mutated.to_vec(),
+            false => Vec::new(),
         };
         features.targets(mutated)
     }

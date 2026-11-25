@@ -123,3 +123,27 @@ fn a_name_in_an_argument_not_parsed_here_restyles_the_whole_document() {
     assert_eq!(tags(&found), ["section", "p", "p"]);
     assert!(found.iter().any(|h| Rc::ptr_eq(h, &outside)));
 }
+
+#[test]
+fn only_sibling_compounds_read_a_parents_census() {
+    let reads = |css: &str| {
+        let rules = crate::style::css::parse_stylesheet(css).unwrap();
+        features(&rules, &changed()).reads_siblings()
+    };
+    for css in [
+        "html.alt [data-deep]{background:red}",
+        ".alt > p{color:red}",
+        "p.alt{color:red}",
+        "p:is(.alt){color:red}",
+    ] {
+        assert!(!reads(css), "{css}");
+    }
+    for css in [
+        ".alt + p{color:red}",
+        ".alt ~ p{color:red}",
+        "p:nth-child(2 of .alt){color:red}",
+        "div:has(.alt){color:red}",
+    ] {
+        assert!(reads(css), "{css}");
+    }
+}

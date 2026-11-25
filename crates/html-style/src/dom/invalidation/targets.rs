@@ -86,6 +86,25 @@ pub fn targets(rules: &[Rule], changed: &Changed, mutated: &[Handle]) -> Vec<Han
 }
 
 impl Features {
+    /// Whether a rule reads a changed name in a compound whose element is a
+    /// sibling of the subject's ancestors or of the subject (`+`, `~`,
+    /// `:nth-child(of S)`, `:has()`, or an argument this map does not trace):
+    /// only then does a mutation change what a parent's census of its
+    /// children answers (Blink builds sibling invalidation sets only for
+    /// such features, `rule_invalidation_data.cc`).
+    pub fn reads_siblings(&self) -> bool {
+        self.0.iter().flat_map(|(path, _)| path).any(|step| {
+            matches!(
+                step,
+                Move::NextSibling
+                    | Move::LaterSiblings
+                    | Move::Siblings
+                    | Move::HasAnchors
+                    | Move::Document
+            )
+        })
+    }
+
     /// The elements `mutated` and those each path reaches from them with the
     /// subject feature of its rule, in that order, each once.
     pub fn targets(&self, mutated: &[Handle]) -> Vec<Handle> {
