@@ -872,6 +872,12 @@ impl Scene {
                 self.paint_operations.push(operation);
                 continue;
             }
+            if matches!(operation, PaintOperation::Dormant(_)) && std::env::var_os("MEM2_TRACE").is_some() {
+                static SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+                if SEEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 3 {
+                    eprintln!("MEM2 unmarked dormant copy, open {:?}\n{}", self.scroll.open, std::backtrace::Backtrace::force_capture());
+                }
+            }
             let mut quad = None;
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
