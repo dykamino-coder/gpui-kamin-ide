@@ -42,6 +42,7 @@ pub(crate) struct FontInfo {
 mod scene_capture;
 mod canvas;
 mod frame_capture;
+mod cull;
 mod gpu_wait;
 mod group_region;
 mod group_stage;
@@ -968,29 +969,6 @@ impl DirectXRenderer {
         self.timing_main = false;
         self.gpu_timer.end(&ctx);
         drawn
-    }
-
-    /// KaminIDE patch: draw `scene` within each of `rects` (cleared first). The
-    /// scissor goes on only now: the group passes and their blurs write other
-    /// targets in their own coordinates. Instances are uploaded for the first
-    /// rectangle; the others draw from the same buffers.
-    fn draw_scene_within(&mut self, scene: &Scene, rects: &[Region], clear_color: [f32; 4]) -> Result<()> {
-        let ctx = self.dev().device_context.clone();
-        let mut uploaded = false;
-        for &region in rects {
-            let state = self.begin_scissor(region)?;
-            let clear = *self.backdrop.as_ref().unwrap_or(&clear_color);
-            let drawn = self.clear_frame(clear).and_then(|()| {
-                self.backdrop_pending = self.backdrop.is_some();
-                self.blur.frame_within = Some(region);
-                self.draw_scene_at(scene, uploaded.then_some([0; 6]))
-            });
-            self.blur.frame_within = None;
-            unsafe { ctx.RSSetState(&state) };
-            drawn?;
-            uploaded = true;
-        }
-        Ok(())
     }
 
     /// KaminIDE patch: примитивы одной сцены — кадра или группы.
@@ -2302,7 +2280,7 @@ impl DirectXRenderer {
         }
         let mask_clip = self.blur.group_clip.get(g).copied().unwrap_or([0.0; 4]);
         let (vw, vh) = (self.width as f32, self.height as f32);
-        let quad = BlurQuad {
+        let mut quad = BlurQuad {
             bounds: [
                 s.bounds.origin.x.0,
                 s.bounds.origin.y.0,
@@ -2337,6 +2315,7 @@ impl DirectXRenderer {
             source_rect: self.blur.group_regions[slot].floats(),
             backdrop_rect: [0.0; 4],
         };
+        group_region::narrow_composite(&mut quad, vw, vh);
         Some((quad, place.page))
     }
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {
