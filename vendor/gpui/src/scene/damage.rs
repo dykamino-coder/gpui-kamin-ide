@@ -558,18 +558,10 @@ impl Scene {
         index.build(self, size);
         index.id = id;
         index.base = previous.book.index.id;
-        index.damage = self.damage_against(&index, previous);
-        let comparable = previous.book.index.size == Some(size) && index.base != 0;
-        // A frame whose scroll nodes stayed but whose damage is unknown (a
-        // retained layer recorded anew) is compared with the last in place.
-        let moved = match moved {
-            None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
-            moved => moved,
-        };
         // A group of the last frame that paints the same image hands this one
         // its buffer (the renderer's group cache); groups are matched by
-        // content, not by index. The in-place comparison takes the mark of
-        // such a group at the same place as equal, so it runs first.
+        // content, not by index. The layer damage of a frame with groups and
+        // the in-place comparison both rest on the match, so it runs first.
         index.group_base.clear();
         if index.base != 0 {
             let mut cmp = Compare {
@@ -579,6 +571,14 @@ impl Scene {
             };
             group_match::match_groups(&mut cmp, &mut index.group_base);
         }
+        index.damage = self.damage_against(&index, previous);
+        let comparable = previous.book.index.size == Some(size) && index.base != 0;
+        // A frame whose scroll nodes stayed but whose damage is unknown (a
+        // retained layer recorded anew) is compared with the last in place.
+        let moved = match moved {
+            None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
+            moved => moved,
+        };
         index.shift_miss = match moved {
             None => None,
             Some(Err(why)) => Some(why),
@@ -647,7 +647,14 @@ impl Scene {
         // (`Scene::damage`, set by `Scene::note_damage` before this), which
         // knows the rectangles written into them since the last frame.
         if !self.book.layers.is_empty() || !previous.book.layers.is_empty() {
-            return match self.damage() {
+            // With effect groups the layer damage holds when every group
+            // paints the image of the last frame's group of the same index:
+            // a mark then shows the same image wherever no layer was written.
+            let kept = self.groups.len() == previous.groups.len()
+                && index.group_base.len() == self.groups.len()
+                && index.group_base.iter().enumerate().all(|(g, &o)| o as usize == g + 1);
+            let damage = self.damage().or(self.book.grouped_damage.filter(|_| kept));
+            return match damage {
                 Some(None) => SceneDamage::Unchanged,
                 Some(Some(r)) => {
                     let x0 = r.origin.x.0.max(0.).floor() as u32;

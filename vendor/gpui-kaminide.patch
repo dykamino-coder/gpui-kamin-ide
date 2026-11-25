@@ -12722,7 +12722,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45798f74af
+index 160587a4ad924f80c2dd01b90a8300febbc13105..d83a4d3720a96b9115c4e8d5c531e28adf48b963
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,42 @@
@@ -12872,7 +12872,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 @@ -44,0 +183,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +193,97 @@
+@@ -52,0 +193,101 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: renumber copied group labels by this (group_replay).
@@ -12927,6 +12927,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    pub(crate) fresh: u32,
 +    pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
 +    pub(crate) damage: Option<Option<Bounds<ScaledPixels>>>,
++    /// `damage` of a frame that replays the last one but draws effect groups:
++    /// it holds only when every group paints the image the group of the same
++    /// index painted (`DamageIndex::group_base`), which is known later.
++    pub(crate) grouped_damage: Option<Option<Bounds<ScaledPixels>>>,
 +    /// Union of the placed bounds within their content masks of every
 +    /// primitive command, kept where a command is added: the bounds of a
 +    /// layer finished from this scene (`SceneLayer::finish`) without a second
@@ -12970,7 +12974,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +294,140 @@
+@@ -56,0 +298,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -13111,10 +13115,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +        }
 +    }
 +
-@@ -57,0 +435,2 @@
+@@ -57,0 +439,2 @@
 +        self.book.images.clear();
 +        self.segment_capture = None;
-@@ -59 +438,7 @@
+@@ -59 +442,7 @@
 -        self.primitive_bounds.clear();
 +        self.scroll.clear();
 +        self.groups.clear();
@@ -13123,18 +13127,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +446 @@
+@@ -60,0 +450 @@
 +        self.bottom_seq = 0;
-@@ -63,0 +450,2 @@
+@@ -63,0 +454,2 @@
 +        self.book.gradients.clear();
 +        self.book.gradient_values.clear();
-@@ -68,0 +457,14 @@
+@@ -68,0 +461,15 @@
 +        self.book.layers.clear();
 +        self.book.layer_order.clear();
 +        self.book.layer_sources.clear();
 +        self.book.fresh = 0;
 +        self.book.layer_damage = None;
 +        self.book.damage = None;
++        self.book.grouped_damage = None;
 +        self.book.primitive_ink = None;
 +        self.hoisted_backdrops.clear();
 +        self.depth = DepthSort::default();
@@ -13143,16 +13148,16 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +        self.ink_allowed = (0, 0);
 +        self.clear_damage_index();
 +        crate::window::reset_ink_scopes();
-@@ -76 +478 @@
+@@ -76 +483 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -77,0 +480,2 @@
+@@ -77,0 +485,2 @@
 +        // KaminIDE patch: a layer opened under a scroll node moves with it.
 +        self.mark_layer(bounds);
-@@ -79 +483 @@
+@@ -79 +488 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +491,15 @@
+@@ -86,0 +496,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -13168,9 +13173,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +507 @@
+@@ -87,0 +512 @@
 +        self.book.fresh += 1;
-@@ -89,3 +509,13 @@
+@@ -89,3 +514,13 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -13187,7 +13192,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +            None => None,
 +        };
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -96,6 +526,12 @@
+@@ -96,6 +531,12 @@
 -
 -        let order = self
 -            .layer_stack
@@ -13206,13 +13211,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +            Some(o) => o,
 +            None =>self.tree_mut().insert(ordered.unwrap_or(clipped_bounds)) * ORDER_STEP,
 +        };
-@@ -106,0 +543,5 @@
+@@ -106,0 +548,5 @@
 +            Primitive::Gradient(p) => {
 +                p.quad.order = order;
 +                self.register_gradient(p);
 +                self.quads.push(p.quad);
 +            }
-@@ -136,0 +578,16 @@
+@@ -136,0 +583,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -13229,7 +13234,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +596,40 @@
+@@ -139,2 +601,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -13272,7 +13277,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +637,122 @@
+@@ -142 +642,122 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let landed = self.paint_operations.len();
 +        self.scroll.raise = 0;
@@ -13396,7 +13401,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +760,290 @@
+@@ -144,4 +765,290 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -13691,7 +13696,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1058,8 @@
+@@ -156,6 +1063,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
@@ -13706,9 +13711,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
 +        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
 +        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
-@@ -162,0 +1067 @@
+@@ -162,0 +1072 @@
 +        self.finish_layers();
-@@ -190,2 +1095,97 @@
+@@ -190,2 +1100,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13808,7 +13813,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1212,5 @@
+@@ -212,2 +1217,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13816,13 +13821,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1219,4 @@
+@@ -216 +1224,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1224,12 @@
+@@ -217,0 +1229,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13835,13 +13840,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1243 @@
+@@ -224,0 +1248 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1258 @@
+@@ -238,0 +1263 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1272 @@
+@@ -251,0 +1277 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1281,72 @@
+@@ -259,0 +1286,72 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13914,20 +13919,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1379,2 @@
+@@ -285,0 +1384,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1414,4 @@
+@@ -318,0 +1419,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1563 @@
+@@ -463,0 +1568 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1596,2 @@
+@@ -495,0 +1601,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1630,6 @@
+@@ -528,5 +1635,6 @@
 -        }
 -    }
 -}
@@ -13939,7 +13944,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1647,10 @@
+@@ -543,0 +1652,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13950,25 +13955,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1665 @@
+@@ -552 +1670 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1684 @@
+@@ -571 +1689 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1694,5 @@
+@@ -580,0 +1699,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1721,5 @@
+@@ -602,0 +1726,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1773,12 @@
+@@ -649,0 +1778,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -13981,19 +13986,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1843 @@
+@@ -708 +1848 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1862 @@
+@@ -727 +1867 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1881 @@
+@@ -746 +1886 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1886 @@
+@@ -751 +1891 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1893,54 @@
+@@ -757,0 +1898,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -14048,7 +14053,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1963,23 @@
+@@ -773,0 +1968,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14072,19 +14077,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..3407027d35f0facef24afe1fd016eb45
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2008,2 @@
+@@ -795,0 +2013,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2030 @@
+@@ -815,0 +2035 @@
 +            color_mapping: None,
-@@ -835,0 +2051,6 @@
+@@ -835,0 +2056,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2171,63 @@
+@@ -949,0 +2176,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -14601,10 +14606,10 @@ index 0000000000000000000000000000000000000000..fdc875c9b43df785c65a1bbda117eaaa
 +}
 diff --git a/vendor/gpui/src/scene/damage.rs b/vendor/gpui/src/scene/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6e4fc3cd404b09aeead16e2d52549b918d9224c3
+index 0000000000000000000000000000000000000000..90b8d351dd81a1a66cffed878ba2c379e44c62f5
 --- /dev/null
 +++ b/vendor/gpui/src/scene/damage.rs
-@@ -0,0 +1,941 @@
+@@ -0,0 +1,948 @@
 +//! KaminIDE patch: повреждение кадра — где новая сцена рисует иначе, чем та,
 +//! что окно рисовало прошлым кадром.
 +//!
@@ -15165,18 +15170,10 @@ index 0000000000000000000000000000000000000000..6e4fc3cd404b09aeead16e2d52549b91
 +        index.build(self, size);
 +        index.id = id;
 +        index.base = previous.book.index.id;
-+        index.damage = self.damage_against(&index, previous);
-+        let comparable = previous.book.index.size == Some(size) && index.base != 0;
-+        // A frame whose scroll nodes stayed but whose damage is unknown (a
-+        // retained layer recorded anew) is compared with the last in place.
-+        let moved = match moved {
-+            None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
-+            moved => moved,
-+        };
 +        // A group of the last frame that paints the same image hands this one
 +        // its buffer (the renderer's group cache); groups are matched by
-+        // content, not by index. The in-place comparison takes the mark of
-+        // such a group at the same place as equal, so it runs first.
++        // content, not by index. The layer damage of a frame with groups and
++        // the in-place comparison both rest on the match, so it runs first.
 +        index.group_base.clear();
 +        if index.base != 0 {
 +            let mut cmp = Compare {
@@ -15186,6 +15183,14 @@ index 0000000000000000000000000000000000000000..6e4fc3cd404b09aeead16e2d52549b91
 +            };
 +            group_match::match_groups(&mut cmp, &mut index.group_base);
 +        }
++        index.damage = self.damage_against(&index, previous);
++        let comparable = previous.book.index.size == Some(size) && index.base != 0;
++        // A frame whose scroll nodes stayed but whose damage is unknown (a
++        // retained layer recorded anew) is compared with the last in place.
++        let moved = match moved {
++            None if comparable && index.damage == SceneDamage::Unknown => Some(Ok((0, 0))),
++            moved => moved,
++        };
 +        index.shift_miss = match moved {
 +            None => None,
 +            Some(Err(why)) => Some(why),
@@ -15254,7 +15259,14 @@ index 0000000000000000000000000000000000000000..6e4fc3cd404b09aeead16e2d52549b91
 +        // (`Scene::damage`, set by `Scene::note_damage` before this), which
 +        // knows the rectangles written into them since the last frame.
 +        if !self.book.layers.is_empty() || !previous.book.layers.is_empty() {
-+            return match self.damage() {
++            // With effect groups the layer damage holds when every group
++            // paints the image of the last frame's group of the same index:
++            // a mark then shows the same image wherever no layer was written.
++            let kept = self.groups.len() == previous.groups.len()
++                && index.group_base.len() == self.groups.len()
++                && index.group_base.iter().enumerate().all(|(g, &o)| o as usize == g + 1);
++            let damage = self.damage().or(self.book.grouped_damage.filter(|_| kept));
++            return match damage {
 +                Some(None) => SceneDamage::Unchanged,
 +                Some(Some(r)) => {
 +                    let x0 = r.origin.x.0.max(0.).floor() as u32;
@@ -17843,10 +17855,10 @@ index 0000000000000000000000000000000000000000..7983be154ef29ae4e963a9d3ccfa9935
 +}
 diff --git a/vendor/gpui/src/scene/layer.rs b/vendor/gpui/src/scene/layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..582f92e8c55d0d69c0326da1f448651bfd678a65
+index 0000000000000000000000000000000000000000..8120ec11204ced41229ebadafbc5a7dc8c4d2d18
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer.rs
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,285 @@
 +//! KaminIDE patch: a retained scene layer.
 +//!
 +//! A host paints content once into a layer (`Window::record_scene_layer`),
@@ -18130,6 +18142,8 @@ index 0000000000000000000000000000000000000000..582f92e8c55d0d69c0326da1f448651b
 +mod clipped_tests;
 +#[cfg(test)]
 +mod group_runs_tests;
++#[cfg(test)]
++mod grouped_damage_tests;
 diff --git a/vendor/gpui/src/scene/layer/boxes.rs b/vendor/gpui/src/scene/layer/boxes.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..adf702b31388b9e5fddde294bd644de14d3de465
@@ -18431,10 +18445,10 @@ index 0000000000000000000000000000000000000000..b99f6e442b65c5477e0d8b6f75af751f
 +}
 diff --git a/vendor/gpui/src/scene/layer/frame.rs b/vendor/gpui/src/scene/layer/frame.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8f39cc5f881eda2f7e573c6066a776add60dbfc1
+index 0000000000000000000000000000000000000000..aff9537f8bdb7c0d608fb3cd9d3d75461f10febf
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/frame.rs
-@@ -0,0 +1,230 @@
+@@ -0,0 +1,233 @@
 +//! KaminIDE patch: layers inside a frame scene (`scene::layer`).
 +//!
 +//! The frame takes one command per layer (`PaintOperation::Layer`) that names
@@ -18642,15 +18656,18 @@ index 0000000000000000000000000000000000000000..8f39cc5f881eda2f7e573c6066a776ad
 +    /// no raster at all.
 +    pub(crate) fn note_damage(&mut self, previous: &Scene) {
 +        let same = self.book.fresh == 0
-+            && self.groups.is_empty()
-+            && previous.groups.is_empty()
 +            && self.hoisted_backdrops.is_empty()
 +            && self.paint_operations.len() == previous.paint_operations.len()
 +            && self.book.layers.len() == previous.book.layers.len()
 +            && self.book.layers.iter().zip(&previous.book.layers).all(|(a, b)| {
 +                a.order == b.order && Weak::ptr_eq(&a.cell, &b.cell)
 +            });
-+        self.book.damage = same.then_some(self.book.layer_damage);
++        // A group's image is painted from its own scene, which the layer
++        // writes do not track: with groups the damage holds only once the
++        // groups are matched (`note_frame_damage_moved`).
++        let grouped = !self.groups.is_empty() || !previous.groups.is_empty();
++        self.book.damage = (same && !grouped).then_some(self.book.layer_damage);
++        self.book.grouped_damage = (same && grouped).then_some(self.book.layer_damage);
 +    }
 +
 +    /// The device-pixel rectangle this frame changed against the frame
@@ -19091,6 +19108,100 @@ index 0000000000000000000000000000000000000000..44019c9c3803613731e23eb3f24fa428
 +    assert_eq!(layer.version(), 1);
 +}
 \ No newline at end of file
+diff --git a/vendor/gpui/src/scene/layer/grouped_damage_tests.rs b/vendor/gpui/src/scene/layer/grouped_damage_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..28ffc84608f4084c4e3d9dc78c59028edf63b397
+--- /dev/null
++++ b/vendor/gpui/src/scene/layer/grouped_damage_tests.rs
+@@ -0,0 +1,88 @@
++//! The layer damage of a replayed frame that draws effect groups
++//! (`Scene::note_damage`, `grouped_damage`).
++
++use super::{Binding, LayerHandle, LayerValue, SceneLayer};
++use crate::scene::{PaintGroup, SceneDamage};
++use crate::{Background, Bounds, ContentMask, Hsla, Quad, ScaledPixels, Scene, hsla, point, size};
++use std::rc::Rc;
++
++const W: u32 = 400;
++const H: u32 = 400;
++
++fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
++    Bounds {
++        origin: point(ScaledPixels(x), ScaledPixels(y)),
++        size: size(ScaledPixels(w), ScaledPixels(h)),
++    }
++}
++
++fn quad(b: Bounds<ScaledPixels>, color: Hsla) -> Quad {
++    Quad {
++        bounds: b,
++        content_mask: ContentMask {
++            bounds: rect(0., 0., W as f32, H as f32),
++        },
++        background: Background::from(color),
++        ..Default::default()
++    }
++}
++
++fn red() -> Hsla {
++    hsla(0., 1., 0.5, 1.)
++}
++
++fn blue() -> Hsla {
++    hsla(0.66, 1., 0.5, 1.)
++}
++
++/// A layer whose owner 7 paints one box at (50, 50).
++fn layer() -> LayerHandle {
++    let mut scene = Scene::default();
++    scene.insert_primitive(quad(rect(50., 50., 100., 100.), red()));
++    let op = (scene.paint_operations.len() - 1) as u32;
++    let bindings = vec![Binding { owner: 7, value: LayerValue::Background, quad: 0, op, opacity: 1. }];
++    LayerHandle::new(SceneLayer::finish(scene, bindings, Vec::new()))
++}
++
++/// A group at (250, 250) painting one box of `color`.
++fn group(color: Hsla) -> PaintGroup {
++    let mut inner = Scene::default();
++    inner.insert_primitive(quad(rect(250., 250., 50., 50.), color));
++    PaintGroup {
++        scene: Rc::new(inner),
++        bounds: rect(250., 250., 50., 50.),
++        ..Default::default()
++    }
++}
++
++/// The damage of a frame replaying `rendered` after owner 7 turned blue,
++/// drawing `next_group` where `rendered` drew a red group.
++fn replayed(layer: &LayerHandle, next_group: PaintGroup) -> SceneDamage {
++    let mut rendered = Scene::default();
++    rendered.insert_layer(layer, rect(0., 0., W as f32, H as f32));
++    rendered.groups.push(group(red()));
++    rendered.finish();
++    rendered.note_frame_damage(&Scene::default(), 1, (W, H));
++    rendered.release_layers();
++    layer.set_background(7, red(), blue()).expect("owner 7 painted red");
++    let mut next = Scene::default();
++    next.replay(0..rendered.paint_operations.len(), &rendered);
++    next.groups.push(next_group);
++    next.finish();
++    next.note_damage(&rendered);
++    next.note_frame_damage(&rendered, 2, (W, H));
++    next.frame_damage().0
++}
++
++#[test]
++fn a_replayed_frame_whose_groups_paint_the_same_images_is_damaged_where_its_layers_were_written() {
++    assert_eq!(
++        replayed(&layer(), group(red())),
++        SceneDamage::Rect { x: 50, y: 50, width: 100, height: 100 }
++    );
++}
++
++#[test]
++fn a_group_that_paints_another_image_leaves_the_layer_damage_unknown() {
++    assert_eq!(replayed(&layer(), group(blue())), SceneDamage::Unknown);
++}
 diff --git a/vendor/gpui/src/scene/layer/order.rs b/vendor/gpui/src/scene/layer/order.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..cab5f255190c3f9f50bf0c1a668fe10d8115e719

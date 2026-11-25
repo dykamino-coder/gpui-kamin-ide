@@ -281,3 +281,5 @@ mod placed_tests;
 mod clipped_tests;
 #[cfg(test)]
 mod group_runs_tests;
+#[cfg(test)]
+mod grouped_damage_tests;

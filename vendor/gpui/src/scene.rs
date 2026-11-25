@@ -244,6 +244,10 @@ pub(crate) struct SceneBook {
     pub(crate) fresh: u32,
     pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
     pub(crate) damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// `damage` of a frame that replays the last one but draws effect groups:
+    /// it holds only when every group paints the image the group of the same
+    /// index painted (`DamageIndex::group_base`), which is known later.
+    pub(crate) grouped_damage: Option<Option<Bounds<ScaledPixels>>>,
     /// Union of the placed bounds within their content masks of every
     /// primitive command, kept where a command is added: the bounds of a
     /// layer finished from this scene (`SceneLayer::finish`) without a second
@@ -460,6 +464,7 @@ impl Scene {
         self.book.fresh = 0;
         self.book.layer_damage = None;
         self.book.damage = None;
+        self.book.grouped_damage = None;
         self.book.primitive_ink = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
