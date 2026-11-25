@@ -29,6 +29,8 @@ mod content_replay_tests;
 #[cfg(test)]
 mod content_resize_tests;
 mod counters;
+#[cfg(test)]
+mod hover_repaint_tests;
 mod snapshot;
 pub use snapshot::FrameCounters;
 #[cfg(test)]

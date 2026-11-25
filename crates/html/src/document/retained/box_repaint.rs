@@ -7,6 +7,9 @@
 //! layout or the element tree. Its style comes from the one `Div` the box
 //! would build, without its children (`paint::box_tree::styled::own_paint_div`),
 //! the interim painter until the boxes own their used style (B1). A box with
+//! a hover style paints it refined by the hover its hitbox shows now, as its
+//! `Div` does (`gpui::Window::layer_box_hover`); a replay records again the
+//! boxes whose hover changed since their paint (`layer_hover_changes`). A box with
 //! decorations (child elements) that is all its composition group holds
 //! paints the group again: its own paint and its decorations without layout
 //! (`styled::group_painters`), the group's scene replaced whole
@@ -63,6 +66,27 @@ fn group_paint(
     painted.ok_or(why)
 }
 
+/// The path of the element with `node_id` in `nodes`: a walk, made only for
+/// the few boxes the pointer entered or left.
+fn path_of(nodes: &[crate::dom::Node], node_id: u64) -> Option<Vec<usize>> {
+    let mut path = Vec::new();
+    let mut stack = vec![(nodes, 0usize)];
+    while let Some((list, at)) = stack.pop() {
+        path.truncate(stack.len());
+        let Some(node) = list.get(at) else { continue };
+        stack.push((list, at + 1));
+        let crate::dom::Node::Element(e) = node else {
+            continue;
+        };
+        path.push(at);
+        if e.node_id == node_id {
+            return Some(path);
+        }
+        stack.push((&e.children, 0));
+    }
+    None
+}
+
 impl Builder {
     /// Record the queued boxes again before the frame replays; `false` when
     /// the frame must be built.
@@ -87,6 +111,22 @@ impl Builder {
             }
             self.store
                 .queue_repaints(self.store.due_repaints(&layer, shown));
+            // The pointer entered or left boxes with a hover style: each is
+            // recorded again with the hover it shows now, like an edit.
+            let hovers = window.layer_hover_changes(&layer, cx);
+            if !hovers.is_empty() {
+                let paths: Vec<_> = hovers
+                    .iter()
+                    .filter_map(|&owner| {
+                        let id = u64::from(owner);
+                        Some((path_of(&self.nodes, id)?, id))
+                    })
+                    .collect();
+                if paths.len() != hovers.len() {
+                    return false;
+                }
+                self.store.queue_repaints(paths);
+            }
         }
         let ids = self.store.take_repaints();
         if ids.is_empty() {
@@ -128,6 +168,17 @@ impl Builder {
             let mut div = crate::paint::box_tree::styled::own_paint_div(e, &self.opts.cx);
             let mut style = gpui::Style::default();
             style.refine(div.style());
+            // A box with a hover style paints the hover it shows now, as its
+            // `Div` decides it from its hitbox (`gpui::Window::layer_box_hover`).
+            if window.layer_box_hover(&layer, owner, cx) == Some(true)
+                && let Some(hover) = &e.hover
+            {
+                let own = crate::style::computed::BoxStyle::shared(e.style.used());
+                style.refine(&crate::paint::apply::hover_refinement(
+                    hover.cascaded(),
+                    &own,
+                ));
+            }
             // A box that is all its group holds paints the group again with
             // its decorations (`group_paint`): its run may also hold the
             // decorations an earlier group paint put there, whatever painter

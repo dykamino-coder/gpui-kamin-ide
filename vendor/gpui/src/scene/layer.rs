@@ -73,6 +73,9 @@ pub struct SceneLayer {
     /// `(owner, index into boxes)`, sorted: a box's runs by bisection
     /// (`runs_of`), not a scan of every run of the layer. Built lazily.
     by_owner: std::cell::OnceCell<Vec<(u32, u32)>>,
+    /// The indices of the runs painted with a hover style (`BoxEnv::hover`),
+    /// built at the first lookup (`hover_runs`).
+    hovers: std::cell::OnceCell<Vec<u32>>,
 }
 
 /// Union of the placed bounds within their content masks of `operations`'
@@ -150,6 +153,7 @@ impl Clone for SceneLayer {
             bindings: self.bindings.clone(),
             boxes: self.boxes.clone(),
             by_owner: self.by_owner.clone(),
+            hovers: self.hovers.clone(),
         }
     }
 }
@@ -209,7 +213,8 @@ impl SceneLayer {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         layer_counters::RECORDS.fetch_add(1, Relaxed);
         let by_owner = std::cell::OnceCell::new();
-        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner }
+        let hovers = std::cell::OnceCell::new();
+        Self { scene, id: NEXT.fetch_add(1, Relaxed), version: 0, bounds, bindings, boxes, by_owner, hovers }
     }
 
     /// `(owner, index into boxes)` sorted, built at the first lookup: a layer
@@ -231,6 +236,13 @@ impl SceneLayer {
             .iter()
             .take_while(move |&&(o, _)| o == owner)
             .map(|&(_, at)| at as usize)
+    }
+
+    /// The indices of the runs painted with a hover style, in paint order.
+    pub(crate) fn hover_runs(&self) -> &[u32] {
+        self.hovers.get_or_init(|| {
+            self.boxes.iter().enumerate().filter(|(_, b)| b.env.hover.is_some()).map(|(at, _)| at as u32).collect()
+        })
     }
 
     /// Union of the primitives' bounds within their content masks; `None`
