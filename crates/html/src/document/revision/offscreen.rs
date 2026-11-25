@@ -17,11 +17,15 @@
 //!   only while that slot's frame is the layer's; a box nested in a band
 //!   owner takes its owner's fragments, a box no band owner holds (a culled
 //!   inline box gaining a band without padding or border) its container's
-//!   lines;
+//!   lines; a box no fragment places (its paragraph was not painted in the
+//!   layer's frame) everything below its nearest ancestor with a run in the
+//!   layer (`below`);
 //! - a box with decorations: its run in the layer, the box with its ink;
 //! - both grown by the reach of the shadows and outline of either style; a
 //!   filter, a border image or a border shape reaches farther than this
 //!   knows, and is never deferred.
+
+mod below;
 
 use super::patch::{Path, chain};
 use crate::dom::{Element, Node};
@@ -64,7 +68,10 @@ pub(super) fn waits(
         return None;
     };
     let area = match kind {
-        Wait::Inline => inline_area(store, boxes, (old, path), a, b, outset),
+        Wait::Inline => inline_area(store, boxes, (old, path), a, b, outset).or_else(|| {
+            let up = chain(old, &path[..path.len().saturating_sub(1)]);
+            below::below(layer, &up, b, outset, store.shown_scale())
+        }),
         Wait::Decoration => u32::try_from(a.node_id)
             .ok()
             .and_then(|owner| layer.decoration_area(owner, gpui::px(outset), store.shown_scale())),
