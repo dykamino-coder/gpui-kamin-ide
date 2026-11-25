@@ -21,6 +21,8 @@ use std::rc::Rc;
 
 mod relational;
 mod rules;
+mod subtree;
+pub use subtree::finish_boxes;
 
 /// Правила документа одной ревизии для проб его элементов.
 pub struct RestyleProbe {

@@ -29,9 +29,9 @@ fn a_conic_gradient_replaced_by_a_colour_is_restyled_in_place() {
 }
 
 #[test]
-fn an_image_with_a_url_replaced_by_a_colour_rebuilds() {
+fn an_image_with_a_url_replaced_by_a_colour_rebuilds_its_boxes() {
     let image = "url(data:image/gif;base64,R0lGODlhAQABAAAAACw=)";
     let (old, new) = (page(image, ""), page(image, " data-edit=\"1\""));
-    assert!(!update(&old, &new, ""), "url -> colour");
-    assert!(!update(&new, &old, ""), "colour -> url");
+    assert!(update(&old, &new, ""), "url -> colour");
+    assert!(update(&new, &old, ""), "colour -> url");
 }

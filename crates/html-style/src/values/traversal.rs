@@ -37,7 +37,11 @@ pub struct TraversalState {
     pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
     /// Equal paints of this document's boxes, shared (SharedPaints).
     pub paints: crate::style::decoration_paint::SharedPaints,
+    /// A walk of one subtree of the built document (`rebuild`).
+    rebuild: RefCell<Option<rebuild::Rebuild>>,
 }
+
+mod rebuild;
 
 impl TraversalState {
     pub fn retain(&self, source: Admitted) {
@@ -68,10 +72,14 @@ impl TraversalState {
     /// Обход дошёл до исходного текста `handle`: его номер, следующий по
     /// порядку обхода (`None` после `u32::MAX` текстов).
     pub fn record_text(&self, handle: &Handle) -> Option<crate::dom::TextId> {
+        if let Some(id) = self.rebuilt_text(handle) {
+            return Some(id);
+        }
         let mut texts = self.texts.borrow_mut();
         let id = u32::try_from(texts.len() + 1).ok()?;
         texts.push(std::rc::Rc::as_ptr(handle) as usize);
         self.text_keys.borrow_mut().push(handle.key());
+        self.note_text(handle, id);
         crate::dom::TextId::new(id)
     }
 
@@ -107,6 +115,9 @@ impl TraversalState {
 
     /// Обход построил коробку исходного элемента; его ключ выдан при создании.
     pub fn record_element(&self, handle: &Handle) {
+        if self.rebuilt_element(handle) {
+            return;
+        }
         self.elements
             .borrow_mut()
             .push(std::rc::Rc::as_ptr(handle) as usize);

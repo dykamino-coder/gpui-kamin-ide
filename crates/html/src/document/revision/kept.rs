@@ -42,6 +42,13 @@ impl Kept {
         self.boxes.clone()
     }
 
+    /// An edit rebuilt some boxes (`repaint::rebox`): the indexes of the
+    /// tree's shape and of its elements start over.
+    pub(super) fn reshaped(&mut self) {
+        self.boxes = None;
+        self.ids = None;
+    }
+
     /// The box numbers of the source elements `list` of the build, indexed on
     /// the first edit in place.
     pub(super) fn ids(&mut self, list: &[usize]) -> Option<Rc<SourceIndex>> {

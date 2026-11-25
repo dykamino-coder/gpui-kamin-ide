@@ -10,8 +10,10 @@ mod pending;
 mod probe;
 pub use probe::{Chains, Probed, ProbedRest, probe};
 mod sibling_survey;
+mod subtree;
 pub use ancestor::element_attrs;
 pub(super) use engine::walk_children;
+pub use subtree::{Subtree, shallow, subtree};
 
 mod text_nodes;
 
