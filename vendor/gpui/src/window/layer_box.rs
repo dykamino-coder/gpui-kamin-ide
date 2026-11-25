@@ -38,6 +38,9 @@ impl Window {
         };
         let area = self.box_area(&env);
         if !self.next_frame.scene.open_box(owner, area, env) {
+            if let Some(why) = self.next_frame.scene.run_refusal() {
+                crate::scene::no_run::note(owner, why);
+            }
             // A partial set of runs cannot represent all paint for this owner.
             self.unhold_owner(owner);
             return self.with_paint_owner(owner, f);

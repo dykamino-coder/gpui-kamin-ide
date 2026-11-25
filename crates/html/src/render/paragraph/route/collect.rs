@@ -193,9 +193,6 @@ pub(crate) fn paragraph_pieces_routed(
     // переноса распорка атома читается как U+FFFC (`Paragraph::linebreaks`):
     // так атом кладёт и Blink (`inline_items_builder.cc`, знак-заместитель
     // объекта), а класс CB даёт разрыв до и после (UAX #14 LB20).
-    // Прежде абзац с атомом уходил в гибкий ряд слов (`as_wrapped_row`): одна
-    // высота строки на ряд, базовая линия текста taffy не видна, `top`/
-    // `bottom`/`text-top` не выражались.
     let mut line_atoms: LineAtoms = Vec::new();
     let atom_count = pieces
         .iter()
@@ -235,6 +232,7 @@ pub(crate) fn paragraph_pieces_routed(
     let keep = keep.and_then(|keep| keep.seal(nodes, flow_text));
     let doc = opts.cx.doc();
     let shared = doc.boxes.borrow().flow_text(nodes, inherited.self_node);
+    let flow_box = doc.boxes.borrow().flow_box(nodes, inherited.self_node);
     route_pieces(
         pieces,
         inherited,
@@ -245,6 +243,6 @@ pub(crate) fn paragraph_pieces_routed(
         clamp_tag,
         line_atoms,
         keep,
-        shared,
+        (shared, flow_box),
     )
 }

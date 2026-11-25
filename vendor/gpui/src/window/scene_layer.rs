@@ -25,35 +25,30 @@ pub(crate) struct LayerRecording {
 pub enum RecordedLayer {
     /// The content's commands are in the layer and nowhere else yet: the
     /// caller paints the layer (`Window::paint_scene_layer`) where it wants it.
+    /// Content that needs the frame scene (groups naming the frame's scroll
+    /// nodes or 3D planes, hoisted backdrops) is a layer too, drawn by a copy
+    /// (`SceneLayer::framed`): writes and box runs address it as any layer.
     Layer(LayerHandle),
-    /// The content needs the frame scene (composition groups or hoisted
-    /// backdrops): its commands were placed in the frame as if painted there,
-    /// at other indices than recorded, so ranges recorded inside are void.
-    Spliced(NoLayer),
     /// The paint environment allows no layer (a transform, opacity, mask,
     /// group, capture, open ink sinks or a layer being recorded): the content
     /// painted into the frame.
     Painted(NoLayer),
 }
 
-/// Why `record_scene_layer` made no layer, for DevTools: a stable reason,
-/// the line that decided and, when spliced, what the content made.
+/// Why `record_scene_layer` made no layer, for DevTools: a stable reason and
+/// the line that decided.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NoLayer {
-    /// `environment`, `ink`, `nested`, `disabled` (painted) or `groups` (spliced).
+    /// `environment`, `ink`, `nested` or `disabled`.
     pub reason: &'static str,
     /// The line that decided.
     pub site: &'static core::panic::Location<'static>,
-    /// Composition groups of spliced content.
-    pub groups: usize,
-    /// Hoisted backdrops of spliced content.
-    pub backdrops: usize,
 }
 
 impl NoLayer {
     #[track_caller]
-    fn at(reason: &'static str, groups: usize, backdrops: usize) -> Self {
-        Self { reason, site: core::panic::Location::caller(), groups, backdrops }
+    fn at(reason: &'static str) -> Self {
+        Self { reason, site: core::panic::Location::caller() }
     }
 }
 
@@ -75,10 +70,10 @@ impl Window {
             || self.scene_layers_disabled()
         {
             let why = match () {
-                _ if !self.retained_root_environment() => NoLayer::at("environment", 0, 0),
-                _ if !scene.ink.is_empty() || scene.ink_scope != 0 => NoLayer::at("ink", 0, 0),
-                _ if self.layer_recording.is_some() => NoLayer::at("nested", 0, 0),
-                _ => NoLayer::at("disabled", 0, 0),
+                _ if !self.retained_root_environment() => NoLayer::at("environment"),
+                _ if !scene.ink.is_empty() || scene.ink_scope != 0 => NoLayer::at("ink"),
+                _ if self.layer_recording.is_some() => NoLayer::at("nested"),
+                _ => NoLayer::at("disabled"),
             };
             let previous = mem::replace(&mut self.layer_source, source);
             let (result, _) = self.with_restore(previous, |window, previous| {
@@ -99,6 +94,7 @@ impl Window {
             bindings.reserve_exact(bound);
             boxes.reserve_exact(runs);
         }
+        crate::scene::no_run::start();
         let recording = Box::new(LayerRecording { bindings, boxes, unheld: Vec::new(), source });
         // The frame's scene and no recording wait in `state` while `f`
         // paints into a new scene; restoring swaps them back, on unwind too.
@@ -112,16 +108,22 @@ impl Window {
         let (mut bindings, mut boxes, unheld) =
             recording.map_or_else(Default::default, |r| (r.bindings, r.boxes, r.unheld));
         crate::scene::release_unheld(&mut bindings, &mut boxes, unheld);
-        // A layer keeps the groups it made (`grouped_layer`) unless they name
-        // the frame's scroll nodes or 3D planes; hoisted backdrops need the
-        // frame painted under the layer.
-        if !scene.hoisted_backdrops.is_empty() || (!scene.groups.is_empty() && !Self::layer_keeps_groups(&scene)) {
-            let why = NoLayer::at("groups", scene.groups.len(), scene.hoisted_backdrops.len());
-            let scene = self.adopt_scene(scene);
-            self.splice_scene(&scene);
-            return (result, RecordedLayer::Spliced(why));
-        }
+        // A layer keeps the groups and hoisted backdrops it made, even when
+        // they name the frame's scroll nodes or 3D planes: a frame draws such
+        // a layer by a copy (`grouped_layer`), and the layer stays the one
+        // target of writes and box runs and the source of the ranges recorded
+        // inside it. A layer records at the frame's root only, outside any
+        // paint record's segment capture, so the copy binds no segments.
+        debug_assert!(self.next_frame.scene.segment_capture.is_none(), "a layer inside a segment capture");
         (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
+    }
+
+    /// Keep what the last frame drew of `layer` until this frame is
+    /// presented: a host that records that content anew without it as the
+    /// source (a layer of a draw lifted out of the document) still lets the
+    /// comparison of this frame with the last find it (`scene::damage::shift`).
+    pub fn keep_last_layer(&mut self, layer: &LayerHandle) {
+        self.next_frame.scene.keep_layer_source(&layer.content());
     }
 
     /// Tests paint without scene layers (`Window::set_scene_layers`).
@@ -134,11 +136,11 @@ impl Window {
 
     /// Draw `layer` here: one command in the frame, ordered like one
     /// primitive covering the layer's ink within the content mask. A layer
-    /// that kept groups is copied instead (`paint_grouped_layer`).
+    /// that kept groups or backdrops is copied instead (`paint_grouped_layer`).
     pub fn paint_scene_layer(&mut self, layer: &LayerHandle) {
         self.invalidator.debug_assert_paint();
         let content = layer.content();
-        if !content.scene.groups.is_empty() {
+        if content.copied() {
             return self.paint_grouped_layer(layer, &content, true);
         }
         let mask = self.content_mask().scale(self.scale_factor());
@@ -147,12 +149,12 @@ impl Window {
     }
 
     /// Draw again a layer that kept groups and was written since the frame
-    /// that drew it (`SceneLayer::has_groups`): its last copy in the
+    /// that drew it (`SceneLayer::copied`): its last copy in the
     /// rendered frame is stale, a replay of it would show the old content.
     pub fn redraw_scene_layer(&mut self, layer: &LayerHandle) {
         self.invalidator.debug_assert_paint();
         let content = layer.content();
-        if !content.has_groups() {
+        if !content.copied() {
             return self.paint_scene_layer(layer);
         }
         self.paint_grouped_layer(layer, &content, false);
