@@ -169,6 +169,31 @@ impl Window {
                     .scroll_refusal_detail(nodes.iter().flat_map(|node| node.ranges()))
                     .unwrap_or_else(|| "in a deferred draw of the record".into())
             }
+            ScrollRefusal::Groups => {
+                let content = layer.map(LayerHandle::content);
+                let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+                let groups = paint.groups();
+                let scenes = paint.range().start.scene_index..paint.range().end.scene_index;
+                let labels = source.group_label_nodes(scenes, groups.clone());
+                // The first group whose scene a moved copy cannot take, and why.
+                let refused = source.groups.get(groups.clone()).unwrap_or_default().iter().zip(&labels).enumerate().find_map(
+                    |(at, (group, label))| {
+                        let scene = &group.scene;
+                        let all = 0..scene.paint_operations.len();
+                        let why = match label {
+                            None if !scene.scroll.marks.is_empty() => "its label is under no node, its commands are".into(),
+                            None => return None,
+                            Some(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
+                                Ok(()) => return None,
+                                Err(_) => scene.scroll_refusal_detail(std::iter::once(all.clone())).unwrap_or_default(),
+                            },
+                        };
+                        Some(format!("group {at} of {} (label node {label:?}): {why}", labels.len()))
+                    },
+                );
+                let layered = if layer.is_some() { "painted in a scene layer; " } else { "" };
+                format!("{layered}{}", refused.unwrap_or_else(|| "a group's marks name a node the plan does not know".into()))
+            }
             _ => String::new(),
         };
         Some((refusal, site, detail))
