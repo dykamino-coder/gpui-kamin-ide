@@ -84,7 +84,7 @@ pub(super) fn write_paint_values(
         if unchanged || unpainted_svg(old, path) || super::paint_damage::unboxed(a, b) {
             continue;
         }
-        if unseen(path) || skipped::skipped(old, path) {
+        if unseen(path) {
             crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
             continue;
         }
@@ -93,14 +93,23 @@ pub(super) fn write_paint_values(
         let owner = u32::try_from(a.node_id).ok()?;
         let layer = layer_for(a.node_id)?;
         let recorded = layer.painter(owner);
+        // A box under an ancestor that skips its contents paints nothing: asked
+        // only before a refusal, the walk up its path costs no other edit.
+        let skip = || {
+            let skipped = skipped::skipped(old, path);
+            if skipped {
+                crate::paint_path::add(&crate::paint_path::UNSEEN, 1);
+            }
+            skipped
+        };
         let mut wait = |kind, reason| {
             if let Some(frame) = waits(kind, path, a, b) {
                 frames.push(frame);
-                Some(())
-            } else {
+            } else if !skip() {
                 refuse_not_own(reason);
-                None
+                return None;
             }
+            Some(())
         };
         // A box whose decorations stay as painted takes its own fill
         // (`kept_decorations`); its decorations are elements of the frame.
@@ -129,29 +138,17 @@ pub(super) fn write_paint_values(
                 false
             }
             (Some(LayerPainter::Band) | None, Own::Band) => true,
-            (_, Own::Not(reason)) => {
+            _ if skip() => continue,
+            // Not own paint, or the recorded painter and the new paint have no
+            // write between them.
+            (_, wanted) => {
+                let reason = if let Own::Not(r) = wanted {
+                    r
+                } else {
+                    Refusal::Kind
+                };
                 refuse_not_own(reason);
-                why::not_own(
-                    reason,
-                    owner,
-                    &b.tag,
-                    &layer,
-                    recorded,
-                    (damage, own(b, boxed)),
-                );
-                return None;
-            }
-            _ => {
-                // The recorded painter and the new paint have no write between them.
-                refuse_not_own(Refusal::Kind);
-                why::not_own(
-                    Refusal::Kind,
-                    owner,
-                    &b.tag,
-                    &layer,
-                    recorded,
-                    (damage, own(b, boxed)),
-                );
+                why::not_own(reason, owner, &b.tag, &layer, recorded, (damage, wanted));
                 return None;
             }
         };
@@ -163,7 +160,7 @@ pub(super) fn write_paint_values(
                 super::layer_band::BandChange::Pieces => {
                     if let Some(frame) = waits(Wait::Inline, path, a, b) {
                         frames.push(frame);
-                    } else {
+                    } else if !skip() {
                         crate::paint_path::refuse_with(
                             &crate::paint_path::REFUSED_BY_LAYER,
                             || {
