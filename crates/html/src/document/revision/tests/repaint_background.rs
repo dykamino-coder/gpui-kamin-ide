@@ -98,16 +98,19 @@ fn a_child_that_inherits_the_background_follows_by_materialization() {
 }
 
 #[test]
-fn the_canvas_background_layout_values_and_url_images_rebuild() {
+fn the_canvas_background_rebuilds_and_layout_values_and_url_images_rebox() {
+    // The canvas takes the root's background (css-backgrounds-3 §2.11.2).
+    let old = page("html.alt{background:#eee}");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (false, false));
     for style in [
         "html.alt body{background:#eee}",
-        "html.alt{background:#eee}",
         "html.alt [data-deep]{background:#eee;padding:1px}",
         "html.alt [data-deep]{background:url(a.png)}",
     ] {
         let old = page(style);
         let new = old.replace("<html>", "<html class=\"alt\">");
-        assert_eq!(both(&old, &new), (false, false), "{style}");
+        assert_eq!(both(&old, &new), (true, true), "{style}");
     }
 }
 
