@@ -12,26 +12,11 @@ pub(crate) struct Counters {
 }
 
 impl Counters {
-    /// No key and no anchor taken.
-    #[cfg(test)]
-    pub(crate) fn zero() -> Self {
-        Self {
-            keys: 0,
-            anchors: 0,
-        }
-    }
-
     pub(crate) fn read(cx: &LayoutCx) -> Self {
         Self {
             keys: cx.deferred.keys.get(),
             anchors: crate::layout::positioned::anchor::seq(&cx.layout().anchors),
         }
-    }
-
-    /// The anchor counter alone: the paint keys number deferred draws and
-    /// never reach a geometry (`content::band::BandKey`).
-    pub(crate) fn anchors(self) -> u32 {
-        self.anchors
     }
 
     /// These counters advanced as far as `from` advanced to `to`: an inert

@@ -4,19 +4,22 @@
 //! floats) is a function of its subtree, the containing-block width it is
 //! measured at, and what its build reads from outside the subtree: the same
 //! environment a content record keys on (`KeyEnv`), the host's identity, the
-//! anchor counter its build starts from, the viewport and the images' layout
-//! facts (`ImageReadView::layout_facts`: a decoded image changes an intrinsic
+//! viewport and the images' layout facts (`ImageReadView::layout_facts`: a decoded image changes an intrinsic
 //! size without a box epoch, while the store's own revision moves with every
 //! document revision). The width is the measure's own input and keys each
 //! kept plan; the subtree is clean while the host's build epoch is not newer
 //! than the publication of the record (`BoxTree::build_epoch`). Blink keys
 //! `LayoutResult` by the `ConstraintSpace` the same way; the epoch replaces
-//! its dirty bits.
+//! its dirty bits. The build counters are not in it: paint keys number
+//! deferred draws and anchor numbers order anchors for out-of-flow boxes,
+//! neither is an input of the in-flow and float geometry a plan keeps (a host
+//! that holds positioned boxes keeps nothing, `BandFlow::host_slot`), and both
+//! move with every build before the host, a probe as well.
 use super::key::KeyEnv;
 use crate::document::boxes::BoxTree;
 use crate::dom::{BoxId, Node};
 use crate::layout::options::RenderOpts;
-use crate::layout::reuse::{Counters, FlowReuse};
+use crate::layout::reuse::FlowReuse;
 use crate::style::computed::BoxStyle;
 use std::rc::Rc;
 
@@ -24,9 +27,6 @@ use std::rc::Rc;
 pub(crate) struct BandKey {
     env: Rc<KeyEnv>,
     ids: [u64; 4],
-    /// The anchor counter the build starts from; the paint key counter is
-    /// not an input of a geometry and moves with every box drawn before.
-    anchors: u32,
     viewport: (f32, f32),
     images: u64,
     /// The walk of a synthetic host to its boxes (`boxed_elements`); 0 for a
@@ -47,7 +47,6 @@ impl BandKey {
                 Some(self.env.differs(&other.env))
             }
             _ if self.ids != other.ids => Some("ids"),
-            _ if self.anchors != other.anchors => Some("anchors"),
             _ if self.viewport != other.viewport => Some("viewport"),
             _ if self.images != other.images => Some("images"),
             _ if self.shape != other.shape => Some("shape"),
@@ -74,7 +73,6 @@ impl BandKey {
                 fonts: 0,
             }),
             ids: [0; 4],
-            anchors: 0,
             viewport: (width, 0.0),
             images: 0,
             shape: 0,
@@ -125,7 +123,6 @@ impl FlowReuse {
         let key = BandKey {
             env: self.store.inputs.env(&env),
             ids: super::key::ids(inherited),
-            anchors: Counters::read(&opts.cx).anchors(),
             viewport: vcx.viewport,
             images: vcx.doc.images.borrow().snapshot().layout_facts(),
             shape,
