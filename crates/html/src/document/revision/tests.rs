@@ -46,6 +46,7 @@ mod damage;
 mod differential;
 mod invalidation;
 mod media;
+mod rebox;
 mod records;
 mod repaint;
 mod repaint_background;
@@ -88,8 +89,10 @@ fn unmentioned_data_attributes_and_classes_keep_the_cascade() {
 fn mentioned_names_and_other_changes_rebuild_the_cascade() {
     let d = |attrs: &str| PAGE.replace("<p>d", &format!("<p {attrs}>d"));
     let attr_style = "style=\"--n:attr(data-n)\"";
-    let rebuilt = [
-        // Класс, атрибут или `attr()` в листе документа, теме или своём `style`.
+    // A class, an attribute or `attr()` in the document's sheet, the theme or
+    // the element's own `style` that changes its boxes rebuilds them in
+    // place (`repaint::rebox`).
+    let reboxed = [
         (PAGE.to_string(), d("class=\"on\""), ""),
         (
             PAGE.to_string(),
@@ -98,6 +101,11 @@ fn mentioned_names_and_other_changes_rebuild_the_cascade() {
         ),
         (PAGE.to_string(), d("data-n=5"), "[DATA-N]{margin:1px}"),
         (d(attr_style), d(&format!("{attr_style} data-n=5")), ""),
+    ];
+    for (old, new, theme) in &reboxed {
+        assert!(update(old, new, theme), "{new} {theme}");
+    }
+    let rebuilt = [
         // Атрибут, который каскад читает сам, дети и комментарии.
         (PAGE.to_string(), PAGE.replace("<p id=x>", "<p id=y>"), ""),
         (

@@ -14,7 +14,9 @@
 //! сегменты (они настоящие братья содержимого хозяина).
 
 use std::collections::HashMap;
+mod isolated;
 mod scope;
+pub use isolated::Outside;
 pub use scope::Scope;
 /// Сегмент пути для `::marker`: маркер — ПЕРВЫЙ ребёнок пункта, до
 /// `::before` (css-lists-3 §marker-pseudo), поэтому его номер меньше.
@@ -32,6 +34,8 @@ struct Entry {
     /// Счётчик создан как `reversed(имя)`: пункты списка считают ВНИЗ
     /// (css-lists-3 §list-item-counter).
     reversed: bool,
+    /// Created by an update in an isolated walk: the real counter is outside.
+    outside: bool,
 }
 
 /// Счётчики документа и адрес текущего узла в дереве коробок.
@@ -58,6 +62,9 @@ pub struct Counters {
     /// Счётчики, созданные `counter-reset` на узлах текущего пути: на выходе
     /// из узла их снимает `drop_shadowed_reset`.
     resets: Vec<(Vec<u32>, String)>,
+    /// An isolated walk of one subtree (`isolated`): what it reads from and
+    /// hands to the counters outside it.
+    outside: Option<Box<Outside>>,
 }
 
 /// Путь родителя: адрес без последнего сегмента.
@@ -150,41 +157,16 @@ impl Counters {
             owner: cur.clone(),
             value,
             reversed,
+            outside: false,
         });
         if !self.resets.iter().any(|(o, n)| *o == cur && n == name) {
             self.resets.push((cur, name.to_string()));
         }
     }
 
-    /// Выход из узла со своим `counter-reset` (Blink
-    /// `RemoveCounterIfAncestorExists`): если под его счётчиком в стеке лежит
-    /// счётчик ПРЕДКА (или предыдущего брата предка, но не своего брата),
-    /// последующие братья наследуют именно тот — значит, свой снимается.
-    /// Иначе `<span style="counter-reset: c 98">` внутри `#test { counter-reset:
-    /// c }` продолжал бы счёт у следующих братьев (`counter-001`: `99 13 14`,
-    /// а не `99 100 101`).
-    fn drop_shadowed_reset(&mut self, name: &str) {
-        let cur = &self.path;
-        let Some(st) = self.stack.get_mut(name) else {
-            return;
-        };
-        if st.len() < 2 || st.last().is_none_or(|e| e.owner != *cur) {
-            return;
-        }
-        let prev = &st[st.len() - 2].owner;
-        if let Some(root) = self.boundaries.last()
-            && !(prev.len() > root.len() && covers(root, prev))
-        {
-            return;
-        }
-        let pp = parent(prev);
-        if covers(prev, cur) || (covers(pp, cur) && pp != parent(cur)) {
-            st.pop();
-        }
-    }
-
     /// Считает ли внутренний счётчик этого имени вниз.
     pub fn is_reversed(&mut self, name: &str) -> bool {
+        self.read(name);
         let Some(st) = self.stack.get_mut(name) else {
             return false;
         };
@@ -208,22 +190,32 @@ impl Counters {
         });
         match st.last_mut().filter(|_| local) {
             Some(top) => {
+                let outside = top.outside;
                 top.value = if is_set {
                     delta
                 } else {
                     top.value.saturating_add(delta)
+                };
+                if outside {
+                    self.hand_out(name, delta, is_set);
                 }
             }
-            None => st.push(Entry {
-                owner: self.path.clone(),
-                value: delta,
-                reversed: false,
-            }),
+            None => {
+                let outside = self.outside.is_some();
+                st.push(Entry {
+                    owner: self.path.clone(),
+                    value: delta,
+                    reversed: false,
+                    outside,
+                });
+                self.hand_out(name, delta, is_set);
+            }
         }
     }
     /// `counter(имя)`: значение ВНУТРЕННЕГО счётчика; чтение счётчик не
     /// создаёт — пустой стек читается нулём.
     pub fn value_of(&mut self, name: &str) -> i64 {
+        self.read(name);
         let Some(st) = self.stack.get_mut(name) else {
             return 0;
         };
@@ -233,6 +225,8 @@ impl Counters {
 
     /// `counters(имя, разделитель)`: вся цепочка от внешнего к внутреннему.
     pub fn chain_of(&mut self, name: &str) -> Vec<i64> {
+        // The chain starts at the outermost counter, outside a subtree.
+        self.read_outside();
         let Some(st) = self.stack.get_mut(name) else {
             return vec![0];
         };

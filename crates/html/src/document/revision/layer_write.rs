@@ -10,8 +10,9 @@
 //! client (`display_item_client.h:60`) and repaints its items into a new
 //! artifact, moving every cached item of the chunk
 //! (`paint_controller.cc:228`, `:267`); here the layer's other commands stay
-//! where they are. A box whose paint is not its own commands only (hover
-//! layers, decorations painted as child elements, the root's canvas) refuses,
+//! where they are. A box with a hover style is recorded again with the hover
+//! it shows (`retained::box_repaint`). A box whose paint is not its own
+//! commands only (decorations painted as child elements, the root's canvas) refuses,
 //! and the document builds its frame as before; a box with decorations whose
 //! change leaves them as painted (`fill::kept_decorations`) takes a new fill
 //! colour as a value all the same; a group root records its group (`grouped`).

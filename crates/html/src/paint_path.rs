@@ -39,11 +39,9 @@ pub static REFUSED_REBUILT: AtomicU64 = AtomicU64::new(0);
 pub static REFUSED_PLAN_STATE: AtomicU64 = AtomicU64::new(0);
 /// A text edit the boxes cannot take in place, or one beside a restyle.
 pub static REFUSED_PLAN_TEXT: AtomicU64 = AtomicU64::new(0);
-/// The one fallback of the style level (`document::revision::repaint::roots`):
-/// a batch whose damage reaches layout or the box tree of some element
-/// (`DAMAGE_LAYOUT`, `DAMAGE_REBOX`) is rebuilt until those levels have
-/// their executors. No other style refusal rebuilds the document.
-pub static REFUSED_DAMAGE: AtomicU64 = AtomicU64::new(0);
+/// Batches whose damage the box executor (`document::revision::repaint::rebox`)
+/// widened up to the document: its root is the document, which is built.
+pub static REFUSED_DOCUMENT: AtomicU64 = AtomicU64::new(0);
 
 /// Revisions committed by plan (`document::revision::commit`): a rebuild
 /// of the document is none of them.
@@ -73,6 +71,8 @@ pub static DAMAGE_REBOX: AtomicU64 = AtomicU64::new(0);
 /// batches made (`dom::restyle_probe`): each is a pass over the document,
 /// the relational cost of a restyle.
 pub static HAS_MARKED: AtomicU64 = AtomicU64::new(0);
+/// Subtrees whose boxes the box executor built again (`repaint::rebox`).
+pub static REBOX_UNITS: AtomicU64 = AtomicU64::new(0);
 
 #[track_caller]
 pub(crate) fn note_plan(counter: &AtomicU64) {
@@ -128,7 +128,7 @@ pub(crate) fn refuse<T>(reason: &AtomicU64) -> Option<T> {
 pub mod not_own;
 
 /// Counters before the reasons of `REFUSED_NOT_OWN` (`not_own`) in `NAMES`.
-const PATH: usize = 27;
+const PATH: usize = 28;
 
 /// The counters in the order of the names `NAMES`.
 pub fn read() -> [u64; NAMES.len()] {
@@ -153,7 +153,7 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &REFUSED_REBUILT,
         &REFUSED_PLAN_STATE,
         &REFUSED_PLAN_TEXT,
-        &REFUSED_DAMAGE,
+        &REFUSED_DOCUMENT,
         &PLAN_CLEAN,
         &PLAN_PATCHED,
         &PLAN_RESTYLED,
@@ -167,6 +167,7 @@ fn counters() -> [&'static AtomicU64; PATH] {
         &DAMAGE_LAYOUT,
         &DAMAGE_REBOX,
         &HAS_MARKED,
+        &REBOX_UNITS,
     ]
 }
 
@@ -186,7 +187,7 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "refused_rebuilt",
     "refused_plan_state",
     "refused_plan_text",
-    "refused_damage",
+    "refused_document",
     "plan_clean",
     "plan_patched",
     "plan_restyled",
@@ -200,8 +201,8 @@ pub const NAMES: [&str; PATH + not_own::REASONS.len()] = [
     "damage_layout",
     "damage_rebox",
     "has_marked",
+    "rebox_units",
     "not_own_root_canvas",
-    "not_own_hover",
     "not_own_inline",
     "not_own_hidden",
     "not_own_clone",
