@@ -118,6 +118,14 @@ impl Window {
         (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
     }
 
+    /// Keep what the last frame drew of `layer` until this frame is
+    /// presented: a host that records that content anew without it as the
+    /// source (a layer of a draw lifted out of the document) still lets the
+    /// comparison of this frame with the last find it (`scene::damage::shift`).
+    pub fn keep_last_layer(&mut self, layer: &LayerHandle) {
+        self.next_frame.scene.keep_layer_source(&layer.content());
+    }
+
     /// Tests paint without scene layers (`Window::set_scene_layers`).
     fn scene_layers_disabled(&self) -> bool {
         #[cfg(any(test, feature = "test-support"))]

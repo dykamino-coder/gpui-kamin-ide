@@ -81,7 +81,11 @@ impl Store {
     ) -> Option<gpui::RetainedPaint> {
         let source = self.scene_layer();
         if fresh {
-            self.layer.lifted.borrow_mut().clear();
+            // The lifted draws record anew: the last frame's content of each
+            // stays known to the comparison of this frame with it.
+            for lifted in self.layer.lifted.borrow_mut().drain(..) {
+                window.keep_last_layer(&lifted);
+            }
             // The frame painting now names its skipped blocks when it finishes.
             self.layer.unpainted.take();
             let shown = window.content_mask().bounds.scale(window.scale_factor());

@@ -41139,10 +41139,10 @@ index 0000000000000000000000000000000000000000..2b7ac4060fda9ecd435f58b7ad6758c0
 +}
 diff --git a/vendor/gpui/src/window/scene_layer.rs b/vendor/gpui/src/window/scene_layer.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b3d5be8ac3570a02625cfd1b4b16e4398f3aeed4
+index 0000000000000000000000000000000000000000..ab1e24ee0e896baa660071215d7d960dde9d6846
 --- /dev/null
 +++ b/vendor/gpui/src/window/scene_layer.rs
-@@ -0,0 +1,252 @@
+@@ -0,0 +1,260 @@
 +//! KaminIDE patch: recording retained scene layers (`scene::layer`) and
 +//! binding the values a host may write into them.
 +//!
@@ -41261,6 +41261,14 @@ index 0000000000000000000000000000000000000000..b3d5be8ac3570a02625cfd1b4b16e439
 +        // paint record's segment capture, so the copy binds no segments.
 +        debug_assert!(self.next_frame.scene.segment_capture.is_none(), "a layer inside a segment capture");
 +        (result, RecordedLayer::Layer(LayerHandle::new(SceneLayer::finish(scene, bindings, boxes))))
++    }
++
++    /// Keep what the last frame drew of `layer` until this frame is
++    /// presented: a host that records that content anew without it as the
++    /// source (a layer of a draw lifted out of the document) still lets the
++    /// comparison of this frame with the last find it (`scene::damage::shift`).
++    pub fn keep_last_layer(&mut self, layer: &LayerHandle) {
++        self.next_frame.scene.keep_layer_source(&layer.content());
 +    }
 +
 +    /// Tests paint without scene layers (`Window::set_scene_layers`).
