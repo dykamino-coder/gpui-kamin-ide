@@ -149,13 +149,12 @@ impl Window {
                                 "no paint, and it moves apart from its parent"
                             }
                             _ if node.torn => "torn",
-                            _ if node.paint.is_some() && node.painted_in != Some(space) => {
-                                // A composition group of the record, or a record or layer scene.
-                                let groups = source.groups.get(paint.groups()).unwrap_or_default();
-                                return Some(match groups.iter().position(|group| Some(group.scene.scroll.space) == node.painted_in) {
-                                    Some(at) => format!("scroll node {:?}: painted in the scene of group {at} of {}", node.id, groups.len()),
-                                    None => format!("scroll node {:?}: painted in another scene (a record's or a layer's)", node.id),
-                                });
+                            // A node painted in one of the record's composition groups is planned.
+                            _ if node.paint.is_some()
+                                && node.painted_in != Some(space)
+                                && !source.groups.get(paint.groups()).unwrap_or_default().iter().any(|group| Some(group.scene.scroll.space) == node.painted_in) =>
+                            {
+                                "painted in another scene (a record's or a layer's)"
                             }
                             _ => return None,
                         };
@@ -239,7 +238,7 @@ impl Window {
         // deferred draw it registered (`scroll_deferred`), in the frame's scene:
         // the deferred pass paints outside the layer the record may paint in.
         let main = prepaints.start.scroll_nodes_index..prepaints.end.scroll_nodes_index;
-        let mut parts = vec![(main.clone(), scenes.clone(), source)];
+        let mut parts = vec![(main.clone(), scenes.clone(), source, paint.groups())];
         // Draws nested in a draw (registered while it prepainted) follow it.
         let mut owners = vec![None];
         let mut draws: Vec<usize> = (prepaints.start.deferred_draws_index..prepaints.end.deferred_draws_index).collect();
@@ -249,14 +248,19 @@ impl Window {
             let draw = &self.rendered_frame.deferred_draws[index];
             let (nodes, painted, nested) = self.deferred_scroll_part(draw).map_err(|refusal| at(refusal))?;
             plan.draws.insert(index, parts.len() - 1);
-            parts.push((nodes, painted, &self.rendered_frame.scene));
+            parts.push((nodes, painted, &self.rendered_frame.scene, draw.groups.clone()));
             owners.push(Some(draw.scroll.owner));
             draws.extend(nested);
             next += 1;
         }
         plan.main = main.len();
         let mut slots = FxHashMap::<u32, usize>::default();
-        for (part, (indices, span, scene)) in parts.iter().enumerate() {
+        for (part, (indices, span, scene, groups)) in parts.iter().enumerate() {
+            // A node painted inside one of the part's composition groups has
+            // its ranges in the group's scene: the group's copy moves its
+            // commands (`groups_scrollable` checks them) and lands it (`replay_groups`).
+            let grouped = scene.groups.get(groups.clone()).unwrap_or_default();
+            let group_of = |node: &ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
             if let Some(owner) = owners[part] {
                 // The owner moves the draw: it must be planned before it.
                 if owner.is_some_and(|owner| !slots.contains_key(&owner)) {
@@ -267,9 +271,11 @@ impl Window {
             for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
                 // Every paint range of the node in its part's scene, deferred ones too.
                 let painted = node.paint.is_some();
-                if (painted && node.painted_in != Some(scene.scroll.space)) || node.torn {
+                let group = group_of(node);
+                if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
                     return Err(at(ScrollRefusal::Node));
                 }
+                let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
                 if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
                     return Err(at(ScrollRefusal::NodeRange));
                 }
@@ -302,7 +308,14 @@ impl Window {
         }
         // Paint that follows a moved node's offset outside it (a thumb).
         let moved = |id: ScrollNodeId| plan.by_id.get(&id).is_some_and(|&at| plan.nodes[at].shift != Point::default());
-        if parts.iter().any(|(_, span, scene)| self.scroll_dependents_moved(scene.scroll.space, span, moved)) {
+        // In the part's scene, or in the scene of one of its groups.
+        let dependents = |(_, span, scene, groups): &(_, Range<usize>, &crate::scene::Scene, Range<usize>)| {
+            self.scroll_dependents_moved(scene.scroll.space, span, moved)
+                || scene.groups.get(groups.clone()).unwrap_or_default().iter().any(|group| {
+                    self.scroll_dependents_moved(group.scene.scroll.space, &(0..group.scene.paint_operations.len()), moved)
+                })
+        };
+        if parts.iter().any(dependents) {
             return Err(at(ScrollRefusal::Dependent));
         }
         // The groups the record made move with their labels' nodes (`group_replay`).
@@ -326,8 +339,10 @@ impl Window {
                 }
             }
         }
-        for (part, (indices, span, scene)) in parts.iter().enumerate() {
-            let nodes = self.rendered_frame.scroll_nodes[indices.clone()].iter().flat_map(|node| node.ranges());
+        for (part, (indices, span, scene, _)) in parts.iter().enumerate() {
+            // Nodes painted in a group are checked with its scene (`groups_scrollable`).
+            let nodes = self.rendered_frame.scroll_nodes[indices.clone()].iter();
+            let nodes = nodes.filter(|node| node.painted_in == Some(scene.scroll.space)).flat_map(|node| node.ranges());
             // A deferred draw's commands are all under its owner or its nodes.
             let whole = (part > 0).then(|| span.clone());
             // The scene's check (`scene::scroll_marks::check`) decided: its caller is the site.

@@ -141,21 +141,44 @@ impl Scene {
         label: Option<ScrollNodeId>,
         node: &impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
     ) -> PaintGroup {
+        Self::replayed_group_landing(group, delta, label, node, &mut [])
+    }
+
+    /// `replayed_group` that also tells where the commands at `edges` (old
+    /// indices in the group's scene, sorted) land in the copy's scene, as
+    /// `replay_scrolled` tells it: the scroll nodes painted in the group take
+    /// their ranges in the copy (`Window::replay_groups`). A copy that is
+    /// not one command per command (an unscrolled replay that dropped one)
+    /// marks them `usize::MAX`.
+    pub(crate) fn replayed_group_landing(
+        group: &PaintGroup,
+        delta: i32,
+        label: Option<ScrollNodeId>,
+        node: &impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
+        edges: &mut [(usize, usize)],
+    ) -> PaintGroup {
+        let same = |edges: &mut [(usize, usize)], exact: bool| {
+            for edge in edges.iter_mut() {
+                edge.1 = if exact { edge.0 } else { usize::MAX };
+            }
+        };
         // Unmoved and with no labels to renumber, the replay would be an
         // exact copy: share the content instead (one copy across frames).
         let labels = || group.scene.surfaces.iter().any(|surface| surface.group > 0);
         if label.is_none() && (delta == 0 || !labels()) {
+            same(edges, true);
             return group.clone();
         }
         let mut scene = Scene { in_group: true, relabel: delta, ..Scene::default() };
         let all = 0..group.scene.paint_operations.len();
         let shift = match label {
             Some(id) => {
-                scene.replay_scrolled(all, &group.scene, node, &mut []);
+                scene.replay_scrolled(all, &group.scene, node, edges);
                 node(id).0
             }
             None => {
-                scene.replay(all, &group.scene);
+                scene.replay(all.clone(), &group.scene);
+                same(edges, scene.paint_operations.len() == all.len());
                 Point::default()
             }
         };

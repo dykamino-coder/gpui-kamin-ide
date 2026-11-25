@@ -667,7 +667,7 @@ impl Scene {
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
         let source = ReplaySource::Graft(graft, false);
         // KaminIDE patch: under a scroll node, what the record marked under it.
-        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(Some(node), &[]));
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
         let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
         if !self.replay_shifted(operations, source, &scene.book.images, |_| true) {
             for operation in operations {
@@ -734,16 +734,10 @@ impl Scene {
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
         let source = ReplaySource::Graft(graft, false);
-        // KaminIDE patch: under a scroll node, what the record marked under it,
-        // and under each node it opened inside itself (`ScrollBook::inner`).
-        let open = self.scroll.open.map(|(node, _)| node);
-        let restored = (open.is_some() || !self.scroll.inner.is_empty())
-            .then(|| scene.unscrolled_under(open, &self.scroll.inner))
-            .flatten();
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
         let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
-        // The record's marks tell which of its nodes a command copies under.
-        let marks = (!self.scroll.inner.is_empty()).then_some(&scene.scroll.marks[..]);
-        self.replay_shifted_marked(operations, marks, source, &scene.book.images, |operation| match operation {
+        self.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
@@ -835,22 +829,6 @@ impl Scene {
         operations: &[PaintOperation],
         source: ReplaySource,
         images: &image_resources::ImageResources,
-        place: impl FnMut(&mut PaintOperation) -> bool,
-    ) -> bool {
-        self.replay_shifted_marked(operations, None, source, images, place)
-    }
-
-    /// KaminIDE patch: `replay_shifted` of a paint record whose scroll marks
-    /// are `marks` (sorted by command): a command it marked under a node it
-    /// opened inside itself is copied under that node (`ScrollBook::copy_node`),
-    /// and while such nodes land, where each command landed is kept
-    /// (`ScrollBook::landed`).
-    fn replay_shifted_marked(
-        &mut self,
-        operations: &[PaintOperation],
-        marks: Option<&[scroll_marks::ScrollMark]>,
-        source: ReplaySource,
-        images: &image_resources::ImageResources,
         mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
         if !self.layer_stack.is_empty()
@@ -885,16 +863,7 @@ impl Scene {
         // clipped record copies only what is visible), and a frame keeps its
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
-        let landing = marks.is_some();
-        if landing {
-            self.scroll.landed.clear();
-        }
-        let mut marks = marks.unwrap_or_default().iter().peekable();
-        for (at, operation) in operations.iter().enumerate() {
-            if landing {
-                self.scroll.landed.push(self.paint_operations.len() as u32);
-            }
-            let mark = marks.next_if(|mark| mark.op as usize == at);
+        for operation in operations {
             let mut operation = self.relabeled(operation);
             if !place(&mut operation) {
                 layer::PlacedMap::skip(&mut self.book.placed_map);
@@ -902,8 +871,7 @@ impl Scene {
             }
             // KaminIDE patch: a copy landing under a scroll node is marked
             // there, ordered by its own mask, dormant where the chain hides it.
-            let node = self.scroll.copy_node(mark);
-            if node.is_some_and(|node| self.mark_copied(&mut operation, shift, node)) {
+            if self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
                 let at = self.paint_operations.len();
                 layer::PlacedMap::land(&mut self.book.placed_map, at, None);
                 self.paint_operations.push(operation);
@@ -948,9 +916,6 @@ impl Scene {
             self.paint_operations.push(operation);
         }
         Self::count_copied(copied);
-        if landing {
-            self.scroll.landed.push(self.paint_operations.len() as u32);
-        }
         if let Some(ink) = ink {
             crate::window::ink_add(&self.ink, self.ink_scope, ink);
             crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));

@@ -460,3 +460,49 @@ fn an_unpainted_anchor_replays_only_while_its_clip_is_empty(cx: &mut TestAppCont
         })
         .unwrap();
 }
+/// A scroll node painted inside a composition group (a stationary anchor of
+/// a box with opacity) has its range in the group's scene. A step of the
+/// scroller around it replays with the group, and the copied node lands in
+/// the scene of the group's copy, so the next step replays again instead of
+/// finding the node without paint.
+#[crate::test]
+fn a_node_painted_in_a_group_replays_step_after_step(cx: &mut TestAppContext) {
+    let window = cx.add_window(|_, _| Empty);
+    window
+        .update(cx, |_, window, _| {
+            window.scroll_interest_margin = px(100.);
+            let tall = rect(0., 0., 100., 100.);
+            let (outer, token) = (ScrollHandle::new(), Rc::new(()));
+            outer.set_max_offset(point(px(0.), px(1000.)));
+            let anchor = ScrollNodeId::of_token(&token);
+            let counter: Rc<dyn Fn() -> Point<Pixels>> = {
+                let outer = outer.clone();
+                Rc::new(move || -outer.offset())
+            };
+            window.invalidator.set_phase(DrawPhase::Prepaint);
+            let (_, mut prepaint) = window.record_retained_prepaint(|window| {
+                window.with_scroll_node_prepaint(&outer, tall, |window| {
+                    window.with_scroll_anchor_prepaint(anchor, counter.clone(), |_| {});
+                });
+            });
+            window.invalidator.set_phase(DrawPhase::Paint);
+            let (_, mut paint) = window.record_retained_paint(|window| {
+                window.with_scroll_node_paint(ScrollNodeId::of(&outer), |window| {
+                    quad(window, 10.);
+                    let bounds = rect(0., 0., 50., 50.);
+                    window.paint_group(bounds, Corners::default(), 0., 0.5, 0, &[], None, None, |window| {
+                        window.with_scroll_node_paint(anchor, |window| quad(window, 20.));
+                    });
+                });
+            });
+            for (step, to) in [-20., -40.].into_iter().enumerate() {
+                next_frame(window);
+                (prepaint, paint) = scrolled(window, (&prepaint, &paint), &outer, to)
+                    .unwrap_or_else(|| panic!("step {step} replays with the group"));
+                let space = window.next_frame.scene.groups.last().map(|group| group.scene.scroll.space);
+                let node = window.next_frame.scroll_nodes.iter().find(|node| node.id == anchor).unwrap();
+                assert_eq!((node.paint.is_some(), node.painted_in), (true, space), "step {step}: the anchor lands in the group's copy");
+            }
+        })
+        .unwrap();
+}

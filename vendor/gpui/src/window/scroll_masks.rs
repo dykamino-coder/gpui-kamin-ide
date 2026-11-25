@@ -51,46 +51,6 @@ impl Frame {
         }
         open.last().map(|&(index, _)| index)
     }
-
-    /// After a copy of the paint record of scene `space`: its nodes `inner`
-    /// take the frame ranges `landed` maps their record ranges to, and the
-    /// dependents painted in it their frame commands. Copied again, the
-    /// record's commands under them land outside their ranges: they are
-    /// torn. Not copied command per command (`landed` empty), they stay in
-    /// the record's scene, which a scrolled replay refuses.
-    fn land_record_nodes(&mut self, space: SceneSpace, inner: &[u32], landed: &[u32]) {
-        if let Some((_, nodes)) = self.scroll_paint.records.iter().find(|(of, _)| *of == space) {
-            for &at in nodes {
-                self.scroll_nodes[at as usize].torn = true;
-            }
-            return;
-        }
-        if inner.is_empty() || landed.is_empty() {
-            return;
-        }
-        let here = self.scene.scroll.space;
-        let map = |range: &Range<usize>| {
-            let at = |index: usize| landed.get(index).map(|&to| to as usize);
-            Some(at(range.start)?..at(range.end)?)
-        };
-        for &at in inner {
-            let node = &mut self.scroll_nodes[at as usize];
-            let paint = node.paint.as_ref().map(map);
-            let more: Option<Vec<_>> = node.more.iter().map(map).collect();
-            match (paint, more) {
-                (Some(Some(paint)), Some(more)) => {
-                    (node.paint, node.more, node.painted_in) = (Some(paint), more, Some(here));
-                }
-                _ => node.torn = true,
-            }
-        }
-        for dependent in self.scroll_dependents.iter_mut().filter(|dependent| dependent.2 == space) {
-            if let Some(&to) = landed.get(dependent.1) {
-                (dependent.1, dependent.2) = (to as usize, here);
-            }
-        }
-        self.scroll_paint.records.push((space, inner.to_vec()));
-    }
 }
 
 impl Window {
@@ -140,18 +100,7 @@ impl Window {
     /// under (`Scene::mark_copied`), as `with_scene_node` does for one
     /// primitive: a record placed under a scroll node moves with it in a
     /// scrolled replay instead of refusing it as unmarked paint.
-    ///
-    /// `record`: the record's scene and the shift it lands with. The scroll
-    /// nodes opened inside the record (painted in its scene) land with it, as
-    /// `splice_scene` lands a group's: their commands are copied under them
-    /// (`ScrollBook::inner`) and their ranges become frame ranges, so a step of
-    /// such a node replays instead of refusing a node painted in another scene.
-    /// A record copied again, or moved, leaves them unlanded or torn.
-    pub(crate) fn with_copies_marked<R>(
-        &mut self,
-        record: Option<(SceneSpace, Point<ScaledPixels>)>,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    pub(crate) fn with_copies_marked<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         let scale = self.scale_factor();
         let frame = &mut self.next_frame;
         let open = frame.recorded_node();
@@ -160,32 +109,13 @@ impl Window {
             (node.id, node.clip.scale(scale))
         });
         frame.scene.scroll.open = node;
-        let space = record.map(|(space, _)| space);
-        // The nodes painted in the record's scene. A moved copy would need
-        // them moved too (their prepainted clips and hitboxes): they stay.
-        let inner: Vec<u32> = match record {
-            Some((space, shift)) if shift == Point::default() => (0..frame.scroll_nodes.len() as u32)
-                .filter(|&at| frame.scroll_nodes[at as usize].painted_in == Some(space))
-                .collect(),
-            _ => Vec::new(),
-        };
-        frame.scene.scroll.inner = inner
-            .iter()
-            .map(|&at| &frame.scroll_nodes[at as usize])
-            .map(|node| (node.id, node.clip.scale(scale)))
-            .collect();
         let result = f(self);
         let frame = &mut self.next_frame;
         frame.scene.scroll.open = None;
-        frame.scene.scroll.inner.clear();
         if std::mem::take(&mut frame.scene.scroll.lost) {
             if let Some(index) = open {
                 frame.scroll_nodes[index as usize].torn = true;
             }
-        }
-        if let Some(space) = space {
-            let landed = std::mem::take(&mut frame.scene.scroll.landed);
-            frame.land_record_nodes(space, &inner, &landed);
         }
         result
     }
