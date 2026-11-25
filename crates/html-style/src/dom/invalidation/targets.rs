@@ -101,14 +101,17 @@ impl Features {
         for (test, path, feature) in &self.0 {
             let admitted = |m: &&Handle| test.as_ref().is_none_or(|t| t.admits(m));
             let mut set: Vec<Handle> = mutated.iter().filter(admitted).cloned().collect();
-            for &step in path {
+            let Some((&last, steps)) = path.split_last() else {
+                continue;
+            };
+            for &step in steps {
                 set = apply(step, &set);
             }
-            for node in &set {
+            reach(last, &set, &mut |node| {
                 if feature.as_ref().is_none_or(|(k, f)| has(*k, f, node)) {
                     out.add(node);
                 }
-            }
+            });
         }
         out.list
     }
@@ -226,7 +229,7 @@ fn pseudo<'s>(sel: &'s Selector, raw: &str, changed: &Changed) -> Vec<Reach<'s>>
 
 mod admits;
 mod walk;
-use walk::{Targets, apply, has};
+use walk::{Targets, apply, has, reach};
 
 #[cfg(test)]
 mod logical_tests;
