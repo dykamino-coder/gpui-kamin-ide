@@ -36,9 +36,10 @@ impl Wrap for Lifted {
         let (_, recorded) = window.record_scene_layer(None, |window| self.child.paint(window, cx));
         if let gpui::RecordedLayer::Layer(layer) = recorded {
             window.paint_scene_layer(&layer);
-            // Group layers are spliced when replayed. They retain the existing
-            // rebuild path until their group commands can be updated in place.
-            if !layer.content().has_groups()
+            // A layer copied into frames (groups, backdrops) replays from the
+            // rendered frame's copy here: it keeps the rebuild path until its
+            // draw replays from the layer as written.
+            if !layer.content().copied()
                 && layer.content().bounds().is_some_and(|b| {
                     let mask = window.content_mask().bounds.scale(window.scale_factor());
                     !b.intersect(&mask).is_empty()

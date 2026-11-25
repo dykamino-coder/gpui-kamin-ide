@@ -13,22 +13,13 @@ impl Document {
         match (self.reuse.scene_layer().is_some(), self.reuse.no_layer()) {
             (false, Some(why)) => {
                 let code = match why.reason {
-                    "groups" => "no_layer.spliced",
                     "environment" => "no_layer.painted_environment",
                     "ink" => "no_layer.painted_ink",
                     "nested" => "no_layer.painted_nested",
                     "dropped" => "no_layer.dropped",
                     _ => "no_layer.painted_other",
                 };
-                crate::why::note_at(code, why.site, || match why.reason {
-                    "groups" => format!(
-                        "spliced: the frame's paint made {} composition groups (a group or \
-                         the layer names scroll nodes or a 3D plane) and {} hoisted backdrops; \
-                         layer records voided (layout/reuse/layer.rs void_frame_records)",
-                        why.groups, why.backdrops
-                    ),
-                    reason => format!("no scene layer: {reason}"),
-                });
+                crate::why::note_at(code, why.site, || format!("no scene layer: {}", why.reason));
             }
             (false, None) => crate::why::note("no_layer.unrecorded", || {
                 "no frame painted into a scene layer yet".into()

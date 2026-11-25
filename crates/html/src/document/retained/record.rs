@@ -73,8 +73,11 @@ impl Record {
         // A layer that kept composition groups is copied into each frame, not
         // drawn by one command: the copy comes from the layer as written since
         // (`gpui::Window::replay_retained_paint_with_layer`), not from the
-        // rendered frame's stale one.
-        let layer = store.scene_layer().filter(|_| self.layered.is_some());
+        // rendered frame's stale one. A framed layer has no record of its own
+        // (`Store::paint_layered`) and is copied all the same.
+        let layer = store
+            .scene_layer()
+            .filter(|l| self.layered.is_some() || l.content().framed());
         let paint = match &layer {
             Some(layer) => window.replay_retained_paint_with_layer(&self.paint, layer),
             None => window.replay_retained_paint(&self.paint),

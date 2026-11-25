@@ -43,7 +43,7 @@ pub(crate) fn group_painters(
     let empty = !e.children.iter().any(|n| !is_blank(n));
     if !empty
         || cx.position.geometry_record.is_some()
-        || owner::painter(e, &style, || false) != Own::Plain
+        || owner::painter(e, &style, true, || false) != Own::Plain
     {
         return None;
     }
@@ -211,7 +211,7 @@ fn built_div(
     // The box's own fill binds to its number in the document's scene layer
     // (`document::revision::layer_write`).
     let id = u32::try_from(e.node_id).unwrap_or(0);
-    let d = match owner::painter(e, style, || decorated) {
+    let d = match owner::painter(e, style, true, || decorated) {
         Own::Plain => d.paint_owner(id),
         Own::Not(Refusal::Decoration) => match crate::paint::decorations::outset(c) {
             Some(outset) => d.decorated_paint_owner(id, gpui::px(outset)),

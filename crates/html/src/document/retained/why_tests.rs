@@ -98,17 +98,19 @@ fn a_paint_the_layer_cannot_take_is_not_own(cx: &mut TestAppContext) {
     );
 }
 #[gpui::test]
-fn a_frame_without_a_layer_names_the_layer_refusal(cx: &mut TestAppContext) {
-    // A plane of a 3D context is a group the layer cannot keep (its
-    // projection is the frame's), so the frame splices its scene and keeps
-    // no layer (`gpui::Window::layer_keeps_groups`).
+fn a_layer_with_a_3d_plane_takes_the_paint_edit(cx: &mut TestAppContext) {
+    // A plane of a 3D context is a group whose projection is the frame's: the
+    // frame copies the layer as its own paint (`gpui::SceneLayer::framed`),
+    // and the layer still takes the paint-only edit beside it.
     let css = "#p{perspective:100px} #r{transform:rotateY(20deg);opacity:.5} \
                #s{background:#eee} #s.b{background:#0af}";
     let body =
         "<div id=p><div id=r>x</div></div><div id=s class='CLASS' style='height:20px'></div>";
     let causes = causes(cx, css, body, "b");
-    let cause = find(&causes, "no_layer.spliced", "window/scene_layer.rs");
-    assert!(cause.detail.contains("spliced"), "{}", cause.detail);
+    let refused = causes
+        .iter()
+        .find(|c| c.code.starts_with("no_layer.") || c.code.starts_with("paint_path.refused"));
+    assert!(refused.is_none(), "{causes:#?}");
 }
 
 #[gpui::test]
