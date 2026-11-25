@@ -233,7 +233,11 @@ fn rest_change(a: &ProbedRest, b: &ProbedRest) -> Option<&'static str> {
         (a.vars != b.vars, "vars"),
         (a.first_letter != b.first_letter, "first_letter"),
         (a.first_line != b.first_line, "first_line"),
-        (a.list_item != b.list_item, "list_item"),
+        // A probe numbers list items among its own entries, not the
+        // document's: only whether the element is a list item compares. Its
+        // number changes only with a counter, `display` or a box of another
+        // element (css-lists-3 §4), which is that element's own damage.
+        (a.list_item.is_some() != b.list_item.is_some(), "list_item"),
         (a.hidden != b.hidden, "hidden"),
         (a.box_level != b.box_level, "box_level"),
         (a.before != b.before, "before"),

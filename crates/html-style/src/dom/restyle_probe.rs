@@ -210,9 +210,9 @@ impl RestyleCache {
 
     /// The entries of `targets` at the current state of the source DOM, as
     /// `styles` gives them: the kept probes if every target has one, else a
-    /// probe of them all. A list item probes again: the entries of one probe
-    /// count list items in the order of its targets (`walk::probe`), so its
-    /// number compares only between probes of the same targets.
+    /// probe of them all. The list item number of an entry counts only the
+    /// entries of its probe (`walk::probe`): a restyle compares whether the
+    /// element is a list item, not the number.
     pub fn kept_styles(
         &mut self,
         probe: &RestyleProbe,
@@ -220,10 +220,10 @@ impl RestyleCache {
         values: &Rc<DocumentValues>,
         targets: &[Handle],
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
-        let kept = |t: &Handle| match self.last.get(&(Rc::as_ptr(t) as usize)) {
-            Some((_, Some(p))) if p.rest.list_item.is_some() => None,
-            Some((_, p)) => Some(p.clone()),
-            None => None,
+        let kept = |t: &Handle| {
+            self.last
+                .get(&(Rc::as_ptr(t) as usize))
+                .map(|(_, p)| p.clone())
         };
         match targets.iter().map(kept).collect::<Option<Vec<_>>>() {
             Some(kept) => Ok(kept),
