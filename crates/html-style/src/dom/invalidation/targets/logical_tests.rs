@@ -147,3 +147,27 @@ fn only_sibling_compounds_read_a_parents_census() {
         assert!(reads(css), "{css}");
     }
 }
+
+#[test]
+fn escaped_names_in_arguments_are_read_by_their_decoded_names() {
+    // Utility sheets escape names in arguments (`.space-y-0\.5`): an argument
+    // that reads no changed name stays local, one whose decoded name is a
+    // changed one follows it, whether its selectors parse here or not.
+    let (_root, section, _, _) = nodes();
+    let cases = [
+        (r":where(.space-y-0\.5>:not(:last-child)){margin:0}", vec!["section"]),
+        (r":is(.\*\:flex>*){display:flex}", vec!["section"]),
+        (r"p:not(.\61 lt p){color:red}", vec!["section", "p"]),
+        (r"p:host(.\61lt){color:red}", vec!["section", "p", "p"]),
+        (r"p:host(.x\:y){color:red}", vec!["section"]),
+    ];
+    for (css, want) in cases {
+        let rules = crate::style::css::parse_stylesheet(css).unwrap();
+        let found = targets(&rules, &changed(), std::slice::from_ref(&section));
+        let mut got = tags(&found);
+        got.sort();
+        let mut want: Vec<String> = want.into_iter().map(String::from).collect();
+        want.sort();
+        assert_eq!(got, want, "{css}");
+    }
+}

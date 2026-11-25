@@ -162,12 +162,9 @@ fn pseudo(sel: &Selector, raw: &str, changed: &Changed) -> Vec<Vec<Move>> {
             .any(|n| changed.attrs.iter().any(|a| a.eq_ignore_ascii_case(n)))
     };
     let text = || {
-        raw.contains('\\')
-            || changed
-                .classes
-                .iter()
-                .chain(&changed.attrs)
-                .any(|n| mentions(raw, n))
+        (changed.classes.iter())
+            .chain(&changed.attrs)
+            .any(|n| mentions(raw, n))
     };
     let Some(arg) = sel.prepared(raw) else {
         // Not parsed here (or a pseudo-element): a name in it may be read anywhere.

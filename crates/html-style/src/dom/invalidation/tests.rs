@@ -62,7 +62,9 @@ fn an_unparsed_selector_reads_a_name_only_as_a_whole_identifier() {
         ("nth-child(2 of .a-b)", false),
         ("is(.B, p)", true),
         ("not([data-b])", false),
-        ("x\\62", true),
+        ("x\\62", false),
+        ("is(.\\62 )", true),
+        ("where(.a\\.5>:not(:checked))", false),
     ] {
         let changed = Changed {
             elements: vec![1],
