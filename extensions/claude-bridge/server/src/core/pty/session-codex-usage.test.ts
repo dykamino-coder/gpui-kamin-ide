@@ -2,7 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codexPlanUsage, isCompactCommand, loadCodexChoice, modelLine, sessionContextFor, startedContext } from './session-codex'
+import {
+  codexPlanUsage,
+  isCompactCommand,
+  loadCodexChoice,
+  modelLine,
+  sessionContextFor,
+  startedContext,
+} from './session-codex'
 import type { CodexRateLimits } from '../../shared/codex-rate-limits'
 
 const limits = (primary: number | null, secondary: number | null): CodexRateLimits => ({
