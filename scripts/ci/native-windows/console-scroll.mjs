@@ -13,7 +13,7 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
   }, true);
   await step("open-native-console-panel", () => rpc("kamin:command:execute", [id + ".focus"]));
   const terminal = body => probe({ cmd: "wveval", id, body, timeoutMs: 6000 });
-  const state = async () => (await terminal(`const c=document.querySelector('.bridge-console');
+  const state = async () => (await terminal(`const c=Array.from(document.querySelectorAll('.bridge-console')).find(el=>el.getClientRects().length);
     const track=c?.querySelector('.xterm-scrollable-element>.scrollbar.vertical');
     const slider=track?.querySelector('.slider');
     if (!track || !slider || c.dataset.terminalScreen!=='normal') return null;
