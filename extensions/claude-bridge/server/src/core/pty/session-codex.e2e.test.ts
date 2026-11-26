@@ -563,6 +563,25 @@ describe('codex chat over the Bridge session WebSocket', () => {
     })
     await say(again, 'after restart', 'k2')
     await again.entry((e) => text(e) === 'echo: after restart [model=gpt-fake-mini effort=low]')
+    const first = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'low')
+    again.send({ type: 'session:change-effort', effort: 'xhigh' })
+    await again.next((f) => f.type === 'session:model-changed' && f.effort === 'xhigh')
+    await say(again, 'next turn', 'k3')
+    const second = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'xhigh')
+    expect(second.turnId).not.toBe(first.turnId)
+    await again.entry((e) => text(e) === 'echo: next turn [model=gpt-fake-mini effort=xhigh]')
+    const rpcFile = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const requests = fs
+      .readFileSync(rpcFile, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(
+      requests
+        .filter((r) => r.method === 'turn/start')
+        .slice(-2)
+        .map((r) => r.effort),
+    ).toEqual([first.requestedEffort, second.requestedEffort])
     again.send({ type: 'session:end' })
     again.close()
   }, 30_000)
