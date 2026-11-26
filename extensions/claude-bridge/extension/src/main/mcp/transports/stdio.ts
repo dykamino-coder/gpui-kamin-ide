@@ -151,7 +151,7 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
         // пишем ВСЁ — там оно и нужно.
         // Файл сервера отсутствует (плагин снесли, запись осталась) — это не
         // лечится ретраями; exit-хендлер увидит диагноз и не станет реконнектить.
-        if (line.includes('Cannot find module') || line.includes('MODULE_NOT_FOUND')) {
+        if (!state.permanentFailure && (line.includes('Cannot find module') || line.includes('MODULE_NOT_FOUND'))) {
           state.permanentFailure = line.trim()
         }
         stderrConsoleCount += 1

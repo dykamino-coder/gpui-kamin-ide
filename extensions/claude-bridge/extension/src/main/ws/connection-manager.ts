@@ -37,7 +37,17 @@ import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
 import { lingerForSessionEnd } from './session-end-linger'
 
-export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+import type { TabInfo, WorkspacePermissionMode } from '../../shared/types'
+export type PermissionMode = WorkspacePermissionMode
+
+function workspaceMode(value: unknown): PermissionMode | undefined {
+  switch (value) {
+    case 'plan': return 'readOnly'
+    case 'default': case 'auto': return 'ask'
+    case 'ask': case 'readOnly': case 'acceptEdits': case 'dontAsk': case 'bypassPermissions': return value
+    default: return undefined
+  }
+}
 
 /** Streaming protocol this client speaks. >=1 tells the server to send
  *  incremental `streaming:delta` frames between boundary snapshots instead of a
@@ -71,6 +81,7 @@ export interface ExtendedConnectionState {
 /** Server close code for "this token already has the maximum number of
  *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
 export const SESSION_LIMIT_CLOSE_CODE = 4002
+const INVALID_TOKEN_CLOSE_CODE = 4001
 
 /** The refusal that stays on the tab: set by a session-limit close, kept
  *  through the reconnect states that follow, cleared once the tab connects or
@@ -80,7 +91,9 @@ export function stickyRefusal(
   next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
   intentional: boolean,
 ): ConnectionRefusal | undefined {
-  if (next.status === 'authenticated' || intentional) return undefined
+  // A new admission decision supersedes the previous refusal. Losing the
+  // transport alone provides no such decision.
+  if (next.status === 'authenticated' || intentional || next.closeCode === INVALID_TOKEN_CLOSE_CODE) return undefined
   if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
   return previous
 }
@@ -152,6 +165,7 @@ export class ConnectionManager {
   // Optional callback to enrich tree with tab metadata before sending to renderer
   static enrichTree: ((tree: any[]) => void) | null = null
   // Optional callback when session info (effort/model) arrives from server
+  static onWorkspacePermission: ((tabId: string, mode: WorkspacePermissionMode) => void) | null = null
   static onSessionInfo: ((tabId: string, effort?: string, model?: string) => void) | null = null
   // The server told this tab the user's main agent (agent:preferences).
   static onAgentPreferences: ((tabId: string, engine: AgentEngine) => void) | null = null
@@ -344,7 +358,8 @@ export class ConnectionManager {
    *  the mirror so a later run can prove its copy is still a prefix. */
   private mirrorHead: string | null = null
 
-  constructor(config: ConnectionConfig, window: BrowserWindow, tabId: string, conversationId?: string) {
+  constructor(config: ConnectionConfig, window: BrowserWindow, tabId: string, conversationId?: string, restoredPermission?: unknown) {
+    if (restoredPermission !== undefined) this.permissionMode = workspaceMode(restoredPermission) ?? 'ask'
     this.config = config
     this.engine = config.engine
     this.pendingModel = config.model ?? null
@@ -387,8 +402,29 @@ export class ConnectionManager {
   getSettingsDir(): string | null {
     return this.settingsDir
   }
-  setPermissionMode(mode: PermissionMode): void {
-    this.permissionMode = mode
+  codexCollaboration: TabInfo['codexCollaboration']
+
+  changeCodexCollaboration(mode: string, sessionId: string): void {
+    if (this.getEngine() === 'codex' && sessionId === this.getSessionId() &&
+        this.codexCollaboration && (mode === 'default' || (mode === 'plan' && this.codexCollaboration.available.includes(mode)))) {
+      this.send({ type: 'session:codex-collaboration', mode, sessionId })
+    }
+  }
+
+  getWorkspacePermission(): PermissionMode {
+    return this.permissionMode
+  }
+
+  setPermissionMode(value: string): boolean {
+    const mode = workspaceMode(value)
+    if (!mode) return false
+    if (mode !== this.permissionMode) {
+      this.permissionMode = mode
+      for (const respond of [...this.pendingPermissions.values()]) respond('cancelled')
+      ConnectionManager.onWorkspacePermission?.(this.tabId, mode)
+      ConnectionManager.onSessionInfo?.(this.tabId)
+    }
+    return true
   }
   getSessionId(): string | undefined {
     return this.state.sessionId
@@ -1841,6 +1877,7 @@ export class ConnectionManager {
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
+      noteCollaboration: (value, id) => { if (!id || id === this.getSessionId()) this.codexCollaboration = value },
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
       settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),

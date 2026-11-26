@@ -1,80 +1,79 @@
 import type { JSX } from 'preact'
 import { useState } from 'preact/hooks'
+import styles from './ModelDropdown.module.css'
 import { Dropdown } from './Dropdown'
 import { DropdownTrigger } from './DropdownTrigger'
 import { DropdownOption } from './DropdownOption'
-import { currentPermission } from '../../signals/ui'
 import { useBridge } from '../../hooks/useBridge'
-import { activeTabId } from '../../signals/tabs'
+import { activeTabId, tabs } from '../../signals/tabs'
 import { jsonlEntriesByTab } from '../../signals/jsonl'
+import type { WorkspacePermissionMode } from '../../../shared/types'
 
-const PERM_OPTIONS = [
-  { value: 'default', icon: 'fa-shield-halved', name: 'Default', description: 'Ask before every action' },
-  { value: 'acceptEdits', icon: 'fa-code', name: 'Accept edits', description: 'Auto-accept file edits, ask for shell' },
-  { value: 'plan', icon: 'fa-clipboard-list', name: 'Plan mode', description: 'Plan first, then ask to execute' },
-  { value: 'auto', icon: 'fa-wand-magic-sparkles', name: 'Auto', description: 'AI decides what is safe to run' },
-  { value: 'dontAsk', icon: 'fa-forward', name: "Don't ask", description: 'Accept everything without prompts' },
-  { value: 'bypassPermissions', icon: 'fa-triangle-exclamation', name: 'Bypass permissions', description: 'Skip all permission checks' },
-] as const
+const WORKSPACE_OPTIONS = [
+  { value: 'ask', icon: 'fa-shield-halved', name: 'Use approval rules', description: 'Ask for tools that need approval.' },
+  { value: 'readOnly', icon: 'fa-book-open', name: 'Read tools only', description: 'Allow file reads and searches. Block edits, shell and external tools.' },
+  { value: 'acceptEdits', icon: 'fa-code', name: 'Accept file edits', description: 'Allow file edits by default. Explicit tool rules still apply.' },
+  { value: 'dontAsk', icon: 'fa-ban', name: 'Deny on prompt', description: 'Deny any tool that would require a prompt.' },
+  { value: 'bypassPermissions', icon: 'fa-triangle-exclamation', name: 'Allow workspace tools', description: 'Skip the workspace host approval prompt.' },
+] satisfies { value: WorkspacePermissionMode; icon: string; name: string; description: string }[]
 
-function inferTabPermissionMode(tabId: string | null): string | null {
-  if (!tabId) return null
+const CLAUDE_MODES: Record<string, string> = {
+  default: 'Default', acceptEdits: 'Accept edits', plan: 'Plan', auto: 'Auto', dontAsk: "Don’t ask", bypassPermissions: 'Bypass permissions',
+}
+
+function lastClaudeMode(tabId: string, conversation?: string): string | undefined {
   const entries = jsonlEntriesByTab.value.get(tabId)
-  if (!entries) return null
-  // Walk backwards for the freshest permissionMode — either the dedicated
-  // `permission-mode`/`mode` entry or the inline field on user/assistant ones.
+  if (!entries) return
   for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i]
-    if (!e) continue
-    // Generic `mode` rows can describe conversation state (e.g. `normal`
-    // after /clear). Only supported permission values can override the label.
-    if ((e.type === 'mode' || (e.type as string) === 'permission-mode') && PERM_OPTIONS.some(o => o.value === (e as any).mode)) {
-      return (e as any).mode
-    }
-    if (PERM_OPTIONS.some(o => o.value === (e as any).permissionMode)) return (e as any).permissionMode
+    const row = entries[i] as { type?: string; mode?: string; permissionMode?: string; engine?: string; sessionId?: string } | undefined
+    if (!row || row.engine === 'codex' || (conversation && row.sessionId && row.sessionId !== conversation)) continue
+    const mode = row.type === 'mode' || row.type === 'permission-mode' ? row.mode : row.permissionMode
+    if (mode && Object.hasOwn(CLAUDE_MODES, mode)) return CLAUDE_MODES[mode]
   }
-  return null
 }
 
 export function PermissionsDropdown(): JSX.Element {
-  const [open, setOpen] = useState(false)
+  const [openedFor, setOpenedFor] = useState<string | null>(null)
   const bridge = useBridge()
   const tabId = activeTabId.value
-  const tabPermission = inferTabPermissionMode(tabId)
-  const permission = tabPermission ?? currentPermission.value
-
-  const current = PERM_OPTIONS.find(o => o.value === permission) ?? PERM_OPTIONS[3]
-
-  function handleSelect(value: string): void {
-    currentPermission.value = value
-    setOpen(false)
-    if (!tabId) return
-    bridge.changePermissionMode(tabId, value)
-  }
-
+  const tab = tabs.value.find(t => t.id === tabId)
+  const codex = tab?.engine === 'codex'
+  const target = tab ? JSON.stringify([tab.id, tab.engine, tab.sessionId]) : null
+  const open = target !== null && openedFor === target
+  const workspace = WORKSPACE_OPTIONS.find(o => o.value === tab?.workspacePermission)
+  const collaboration = tab?.codexCollaboration
+  const claude = tab && !codex ? lastClaudeMode(tab.id, tab.conversationId) : undefined
+  const close = () => setOpenedFor(null)
   return (
-    <Dropdown
-      open={open}
-      onToggle={() => setOpen(v => !v)}
-      align="left"
-      trigger={
-        <DropdownTrigger
-          icon={current.icon}
-          label={current.name}
-          open={open}
-        />
-      }
-    >
-      {PERM_OPTIONS.map(opt => (
-        <DropdownOption
-          key={opt.value}
-          icon={opt.icon}
-          name={opt.name}
-          description={opt.description}
-          selected={permission === opt.value}
-          onClick={() => handleSelect(opt.value)}
-        />
-      ))}
+    <Dropdown open={open} onToggle={() => setOpenedFor(open ? null : target)} align="left"
+      trigger={<DropdownTrigger icon={workspace?.icon ?? 'fa-shield-halved'} label={workspace?.name ?? 'Permissions'} open={open} />}>
+      {codex ? <>
+        <div class={styles.groupLabel}>Codex · read-only server sandbox</div>
+        {collaboration?.selected === 'plan' && !collaboration.available.includes('default') &&
+          <DropdownOption icon="fa-comment" name="Reset to engine default"
+            description="Clear the saved Plan override for the next turn." selected={false}
+            disabled={!tab?.sessionId || tab.status !== 'connected'}
+            onClick={() => { close(); if (tab?.sessionId) bridge.changeCodexCollaboration(tab.id, tab.sessionId, 'default') }} />}
+        {collaboration?.available.map(mode =>
+          <DropdownOption key={mode} icon={mode === 'plan' ? 'fa-clipboard-list' : 'fa-comment'}
+            name={mode === 'plan' ? 'Plan' : 'Default'}
+            description={mode === 'plan' ? 'Plan the task on the next turn.' : 'Work on the task on the next turn.'}
+            selected={collaboration.selected === mode} disabled={!tab?.sessionId || tab.status !== 'connected'}
+            onClick={() => { close(); if (tab?.sessionId) bridge.changeCodexCollaboration(tab.id, tab.sessionId, mode) }} />
+        )}
+      </> : <>
+        <div class={styles.groupLabel}>Claude Code</div>
+        <DropdownOption icon="fa-terminal" name="Change mode in Console"
+          description={(claude ? `Last reported: ${claude}. ` : '') + 'At the idle prompt, Shift+Tab cycles the modes available to this session.'}
+          selected={false} disabled={!tab || tab.status !== 'connected'}
+          onClick={() => { close(); if (tab) bridge.openPermissionConsole(tab.id) }} />
+      </>}
+      <div class={styles.groupLabel}>Workspace tool approvals</div>
+      {WORKSPACE_OPTIONS.map(opt =>
+        <DropdownOption key={opt.value} icon={opt.icon} name={opt.name} description={opt.description}
+          selected={workspace?.value === opt.value} disabled={!workspace}
+          onClick={() => { close(); if (tab && workspace) bridge.changePermissionMode(tab.id, opt.value) }} />
+      )}
     </Dropdown>
   )
 }

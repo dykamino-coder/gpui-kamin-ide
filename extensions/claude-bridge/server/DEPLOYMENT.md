@@ -396,3 +396,7 @@ credential-подобные строки заменяются на `[REDACTED:<k
 в Bridge log; содержимое, запросы поиска и raw id в journal не попадают.
 Отключить инструменты для всего сервера: `KAMIN_PROJECT_SESSION_TOOLS=off`
 (в env-file, затем пересоздать контейнер).
+
+### Default reasoning effort for new ChatGPT sessions
+
+Set `BRIDGE_CODEX_DEFAULT_EFFORT=xhigh` in the Bridge service environment to use Extra high across new Codex chats on that deployment. Bridge checks the selected model's advertised reasoning levels. A model that omits the configured level uses its native default. An existing chat keeps its selected level when resumed. An explicit choice for a chat takes precedence.

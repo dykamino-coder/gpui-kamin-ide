@@ -6,8 +6,8 @@
 //! базы единиц (`em`, `vw`, доля…) положительны, поэтому `round(A, B)`,
 //! `mod`, `hypot`, `abs`, `sign` от `a·u` и `b·u` равны тем же функциям от
 //! `a` и `b`, умноженным на `u`. Смесь природ (`round(1em, 3px)`) решается
-//! только после каскада — такая запись, как и `min()` над смесью,
-//! отбрасывается.
+//! only after the cascade: like `min()` over mixed units, such a value is
+//! kept as a `calc_tree` tree until its bases exist.
 
 use super::Sum;
 use super::calc::{Calc, Val};
