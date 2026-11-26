@@ -1021,7 +1021,9 @@ export class McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`)
       }
-      const fullMsg = state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg)
+      // An exit callback may already have diagnosed the current attempt or
+      // recorded that its reconnect budget was exhausted.
+      const fullMsg = state.error ?? state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg)
       state.error = fullMsg
       this.appendLog(id, 'error', `[connect] failed — ${fullMsg}`)
       if (hint) this.appendLog(id, 'warn', `[connect] hint: ${hint}`)

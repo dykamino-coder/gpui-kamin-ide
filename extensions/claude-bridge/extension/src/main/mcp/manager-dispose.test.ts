@@ -146,6 +146,7 @@ it('exhausts ordinary exit retries with bounded backoff and leaves the server id
     await vi.advanceTimersByTimeAsync(15 * 60_000)
     const attempts = vi.mocked(connectStdio).mock.calls.length
     expect(attempts).toBe(11)
+    expect(instance.getServers()[0]?.error).toContain('gave up after 10 attempts')
     await instance.initAll()
     await vi.advanceTimersByTimeAsync(15 * 60_000)
     expect(connectStdio).toHaveBeenCalledTimes(attempts)

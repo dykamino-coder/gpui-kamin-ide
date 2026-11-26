@@ -55151,7 +55151,7 @@ var McpServerManager = class _McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`);
       }
-      const fullMsg = state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg);
+      const fullMsg = state.error ?? state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg);
       state.error = fullMsg;
       this.appendLog(id, "error", `[connect] failed \u2014 ${fullMsg}`);
       if (hint) this.appendLog(id, "warn", `[connect] hint: ${hint}`);
