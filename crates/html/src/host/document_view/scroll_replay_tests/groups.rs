@@ -79,7 +79,10 @@ fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut T
 fn wheel_steps_over_a_page_in_an_isolation_group_match_fresh(cx: &mut TestAppContext) {
     let mut rows = String::new();
     for i in 0..60 {
-        rows.push_str(&format!("<p style='margin:0;height:40px;background:#{:03x}'>row {i}</p>", 0x345 + i * 7));
+        rows.push_str(&format!(
+            "<p style='margin:0;height:40px;background:#{:03x}'>row {i}</p>",
+            0x345 + i * 7
+        ));
         if i % 9 == 4 {
             rows.push_str("<div style='overflow-x:auto;height:90px'><div style='width:900px;height:80px;\
                 background:linear-gradient(90deg,#c96,#369)'><div style='margin:10px;width:120px;height:50px;\
