@@ -117,6 +117,7 @@ mod tests {
             size(ScaledPixels(10.), ScaledPixels(10.)),
         );
         PolychromeSprite {
+            pattern: crate::Size::default(),
             bounds,
             content_mask: ContentMask { bounds },
             tile,

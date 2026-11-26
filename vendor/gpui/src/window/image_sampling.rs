@@ -17,7 +17,40 @@ pub enum ImageSampling {
     NearestSnapped,
 }
 
+/// A repeated image requested around one cell's paint (`with_sprite_pattern`).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PatternRequest {
+    cells: (u32, u32),
+    corner_radii: Corners<Pixels>,
+}
+
 impl Window {
+    /// KaminIDE patch: paint the first cell of a grid of `cells` (columns,
+    /// rows) equal, abutting cells of one image as ONE sprite over the grid.
+    ///
+    /// The image sprite `f` paints (`paint_image_with_sampling`) for the
+    /// first cell is widened over the whole grid with that cell's snapped
+    /// size as its pattern and `corner_radii` (the grid's) as its corners;
+    /// each cell then samples exactly what its own sprite would (the shader
+    /// addresses the cell's texels the same way). A background of a thousand
+    /// tiles was a thousand instances. The caller guarantees that the cells
+    /// step by the snapped cell size exactly (a whole number of device
+    /// pixels). Returns whether a sprite took the request; when not (nothing
+    /// drew, or `f` drew no image sprite), only the first cell is painted.
+    pub fn with_sprite_pattern<R>(
+        &mut self,
+        cells: (u32, u32),
+        corner_radii: Corners<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> (R, bool) {
+        self.sprite_pattern = Some(PatternRequest {
+            cells,
+            corner_radii,
+        });
+        let result = f(self);
+        (result, self.sprite_pattern.take().is_none())
+    }
+
     /// Paint an image with an explicit sampling mode during the paint phase.
     /// Panics if `frame_index` is invalid, like `paint_image`.
     pub fn paint_image_with_sampling(
@@ -67,20 +100,19 @@ impl Window {
             .expect("Callback above only returns Some");
         let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
         let content_mask = self.content_mask().scale(scale_factor);
-        let corner_radii = corner_radii.scale(scale_factor);
+        // Unsnapped cells keep fractional edges, which only their own
+        // sprites draw exactly: such a request is left untaken.
+        let pattern = match sampling {
+            ImageSampling::LinearSubpixel => None,
+            _ => self.sprite_pattern.take(),
+        };
+        let corner_radii = pattern
+            .map_or(corner_radii, |p| p.corner_radii)
+            .scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
         let before = self.next_frame.scene.len();
-        // Under the open scroll node like every primitive (`insert_scene_primitive`).
-        self.insert_scene_primitive(PolychromeSprite {
-            transformation,
-            order: 0,
-            pad: u32::from(matches!(
-                sampling,
-                ImageSampling::Nearest | ImageSampling::NearestSnapped
-            )),
-            grayscale: grayscale.into(),
-            bounds: match sampling {
+        let cell = match sampling {
                 ImageSampling::LinearSubpixel => bounds,
                 ImageSampling::LinearSnapped | ImageSampling::NearestSnapped => {
                     Bounds::from_corners(
@@ -91,7 +123,26 @@ impl Window {
                 _ => bounds
                     .map_origin(|origin| origin.floor())
                     .map_size(|size| size.ceil()),
-            },
+        };
+        // A pattern spans the grid of cells from the first cell's place.
+        let (bounds, pattern) = match pattern {
+            Some(PatternRequest { cells: (nx, ny), .. }) => (
+                Bounds::new(cell.origin, size(cell.size.width * nx as f32, cell.size.height * ny as f32)),
+                cell.size,
+            ),
+            None => (cell, Size::default()),
+        };
+        // Under the open scroll node like every primitive (`insert_scene_primitive`).
+        self.insert_scene_primitive(PolychromeSprite {
+            transformation,
+            order: 0,
+            pad: u32::from(matches!(
+                sampling,
+                ImageSampling::Nearest | ImageSampling::NearestSnapped
+            )),
+            grayscale: grayscale.into(),
+            bounds,
+            pattern,
             content_mask,
             corner_radii,
             tile,
