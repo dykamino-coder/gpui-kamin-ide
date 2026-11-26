@@ -433,7 +433,7 @@ export function fromDigest(d: TurnDigest, source: HandoffSource, total: number):
   const head = [
     `<${CONTEXT_TAG}>`,
     `Bridge note, not written by the user: you are joining a conversation the user is having with`,
-    `${names.join(' and ')}; until now ${latest} answered. Treat the history below as your own earlier`,
+    `${names.join(' and ')}. Engine previously selected: ${latest}. Treat the history below as your own earlier`,
     'turns: keep its facts, decisions and open tasks, and do not greet the user as if the conversation',
     'were new. Tool results are abbreviated; re-read files or re-run commands when you need their current',
     "content. Then answer the user's message above.",

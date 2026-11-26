@@ -1359,6 +1359,7 @@ export async function switchSessionEngine(
     // display, transcript mirror, sub-agent placement) belongs to the chat, not
     // to the engine: the joining engine starts with it, like a wake or restart.
     ...engineSwitchLaunchContext(old.launchConfig),
+    carryRegistrations: old,
     cwd: old.cwd,
     cols: 120,
     rows: 40,
