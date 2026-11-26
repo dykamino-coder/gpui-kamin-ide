@@ -22,6 +22,12 @@ export function stdioWorkingDirectory(config: Pick<ExternalMcpServerConfig, 'wor
   return resolveWorkingDirectory(config.workingDirectory, config.projectRoot)
 }
 
+/** MCP peers use stderr for ordinary logging as well as transport failures. */
+function stderrFailure(line: string): boolean {
+  if (/^\s*\[?(?:trace|debug|info)\b/i.test(line)) return false
+  return /\b(?:error|fatal|panic|exception|failed|refused|ENOENT|ECONNREFUSED|EPIPE|MODULE_NOT_FOUND)\b|cannot find module/i.test(line)
+}
+
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
   const command = state.config.command
@@ -86,7 +92,7 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
     // internal reconnect loop and dump identical errors several times per
     // second when the upstream (named pipe / socket / external app) is
     // offline. Kill the child after either:
-    //   (a) a sustained burst — N total stderr lines in W seconds, or
+    //   (a) a sustained burst — N stderr errors in W seconds, or
     //   (b) the SAME error line repeated R times in a row.
     const STDERR_BURST_LIMIT = 20     // lines
     const STDERR_BURST_WINDOW = 10000 // 10s
@@ -121,18 +127,23 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
         const line = stderrBuf.slice(0, idx).replace(/\r$/, '')
         stderrBuf = stderrBuf.slice(idx + 1)
         if (!line) continue
-        const now = Date.now()
-        stderrTimes = stderrTimes.filter(t => now - t < STDERR_BURST_WINDOW)
-        stderrTimes.push(now)
-        if (line === lastLine) lastLineCount++
-        else { lastLine = line; lastLineCount = 1 }
-        if (stderrTimes.length > STDERR_BURST_LIMIT) {
-          tripCircuit(`${stderrTimes.length} stderr lines in ${STDERR_BURST_WINDOW / 1000}s`)
-          return
-        }
-        if (lastLineCount > STDERR_REPEAT_LIMIT) {
-          tripCircuit(`identical line repeated ${lastLineCount}× ("${line.slice(0, 80)}")`)
-          return
+        const failure = stderrFailure(line)
+        if (failure) {
+          const now = Date.now()
+          stderrTimes = stderrTimes.filter(t => now - t < STDERR_BURST_WINDOW)
+          stderrTimes.push(now)
+          if (line === lastLine) lastLineCount++
+          else { lastLine = line; lastLineCount = 1 }
+          if (stderrTimes.length > STDERR_BURST_LIMIT) {
+            tripCircuit(`${stderrTimes.length} stderr errors in ${STDERR_BURST_WINDOW / 1000}s`)
+            return
+          }
+          if (lastLineCount > STDERR_REPEAT_LIMIT) {
+            tripCircuit(`identical line repeated ${lastLineCount}× ("${line.slice(0, 80)}")`)
+            return
+          }
+        } else {
+          lastLineCount = 0
         }
         // В КОНСОЛЬ — только первые строки: каждая идёт через IPC ребёнок →
         // родитель → stdout → клиент, и на холодном старте сломанный сервер
@@ -145,9 +156,10 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
         }
         stderrConsoleCount += 1
         if (stderrConsoleCount <= STDERR_CONSOLE_LIMIT) {
-          console.error(`[MCP ${state.config.name}] stderr:`, line)
+          const log = failure ? console.error : console.info
+          log(`[MCP ${state.config.name}] stderr:`, line)
         } else if (stderrConsoleCount === STDERR_CONSOLE_LIMIT + 1) {
-          console.error(`[MCP ${state.config.name}] stderr: …дальше только в панель логов`)
+          console.info(`[MCP ${state.config.name}] stderr: …дальше только в панель логов`)
         }
         ctx.appendLog(id, 'stderr', line)
       }
