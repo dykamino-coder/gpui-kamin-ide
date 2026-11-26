@@ -5,6 +5,8 @@ import { open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
+import { registerClient } from "./cef-input.mjs";
+import { checkEngineMenus } from "./engine-menus.mjs";
 import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs";
 
 const [scenario, capture, output] = process.argv.slice(2);
@@ -97,12 +99,13 @@ try {
       const pkg = JSON.parse(await readFile("extensions/claude-bridge/server/package.json", "utf8"));
       assert.equal(value.data.version, pkg.version);
     }, true);
+    const driver = { step, probe, web, report };
+    await registerClient(driver, origin);
     let tab;
     await step("create-synthetic-codex-chat", async () => {
       // Keep the disposable Bridge credential inside the isolated renderer.
-      const { value } = await web(`const origin = ${JSON.stringify(origin)};
-        const { token } = await window.bridgeCmd.raw('createToken', origin, 'native-smoke');
-        return await window.bridgeCmd.raw('createTab', { serverUrl: origin, token, engine: 'codex',
+      const { value } = await web(`const { serverUrl, token } = await window.bridgeCmd.raw('getConfig');
+        return await window.bridgeCmd.raw('createTab', { serverUrl, token, engine: 'codex',
           cwd: ${JSON.stringify(fixture?.directory ?? "")} })`);
       assert.equal(typeof value, "string");
       tab = value;
@@ -122,7 +125,8 @@ try {
       assert.equal(value.settling, false);
       assert.ok(value.items.some(row => row.type === "assistant" && row.text.startsWith(`echo: ${marker} [model=`)));
     }, true);
-    if (fixture) await checkWorkspaceLink({ fixture, step, probe, web, report });
+    if (fixture) await checkWorkspaceLink({ fixture, ...driver });
+    if (scenario === "engine-menus") await checkEngineMenus(driver, tab);
   }
   report.status = "passed";
 } catch (error) {

@@ -9,7 +9,7 @@ on:
       scenario:
         description: Last boundary to exercise
         type: choice
-        options: [bridge-roundtrip, native-client, workspace-link, extension-hooks]
+        options: [bridge-roundtrip, native-client, workspace-link, engine-menus, extension-hooks]
         default: bridge-roundtrip
   # Bootstrap the optional workflow and exercise changes to this harness only.
   pull_request:
@@ -140,6 +140,7 @@ jobs:
           name: native-windows-${{ env.SMOKE_SCENARIO }}-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/native-smoke-report/pipeline.json
+            ${{ runner.temp }}/native-smoke-report/runtime.json
             ${{ runner.temp }}/native-smoke-report/report.json
             ${{ runner.temp }}/native-smoke-report/window.png
           retention-days: 3

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { clickElement } from "./cef-input.mjs";
 
 export async function createWorkspaceFixture(capture) {
   const directory = path.join(capture, "fixture-project");
@@ -21,24 +22,9 @@ export async function checkWorkspaceLink({ fixture, step, probe, web, report }) 
     assert.equal(sameFile((await observed()).location?.path), false);
     assert.equal(typeof (await web(`return window.bridgeCmd.send(${JSON.stringify(markdown)})`)).value, "string");
   });
-  let point;
-  await step("assistant-link-hit-test", async () => {
-    // Use the hyperlink in the echoed assistant answer, never the user's message.
-    const { value } = await web(`const link = Array.from(document.querySelectorAll(
-        '.jsonl-entry-assistant a[data-workspace-location]')).find(a => a.textContent === 'Open fixture');
-      if (!link) return null;
-      link.scrollIntoView({block:'center',inline:'nearest'});
-      const b = link.getBoundingClientRect(), x = b.left + b.width/2, y = b.top + b.height/2;
-      return link.contains(document.elementFromPoint(x,y)) ? {x,y} : null`);
-    assert.ok(value && Number.isFinite(value.x) && Number.isFinite(value.y));
-    point = value;
-  }, true);
-  await step("cef-mouse-click", async () => {
-    for (const action of ["move", "down", "up"]) {
-      const reply = await probe({ cmd: "webmouse", id: "claudeBridgeChat", action, ...point });
-      assert.equal(reply.delivery, "cef-host");
-    }
-  });
+  await clickElement({ step, web, probe }, "assistant-workspace-link",
+    `Array.from(document.querySelectorAll('.jsonl-entry-assistant a[data-workspace-location]'))
+      .find(a => a.textContent === 'Open fixture')`);
   await step("native-editor-file-and-caret", async () => {
     const { location } = await observed();
     assert.ok(sameFile(location?.path));
