@@ -71,11 +71,13 @@ fn wheel_steps_replay_deferred_draws_with_their_scroll_node(cx: &mut TestAppCont
 }
 
 /// A positioned box with a `z-index` paints in a deferred draw, its blended
-/// child in a composition group of that draw: a wheel step replays the frame
-/// with the group moved and copied (`gpui::Window::reuse_deferred_paint`),
-/// drawing what a fresh tree at the new offset draws.
+/// child in a composition group of that draw. The group spills over the
+/// whole window (`group_area`), which a scroll does not move: a moved copy
+/// would composite it off the window, so each wheel step builds
+/// (`frame_miss.scroll_dependent`) and draws what a fresh tree at the new
+/// offset draws.
 #[gpui::test]
-fn a_deferred_composition_group_replays_scrolled(cx: &mut TestAppContext) {
+fn a_deferred_composition_group_spilling_over_the_window_builds_scrolled(cx: &mut TestAppContext) {
     let lifted = "<div style='position:relative;z-index:1;width:60px;height:60px;background:lime'>\
         <div style='mix-blend-mode:multiply;width:30px;height:30px;background:red'></div></div>";
     let html = rows(lifted);
@@ -93,7 +95,13 @@ fn a_deferred_composition_group_replays_scrolled(cx: &mut TestAppContext) {
         let offset = root(&view, vcx).offset();
         assert_same(&name, &painted(vcx), &fresh_quads(cx, &html, offset));
         assert_eq!(labels(vcx), fresh_with(cx, &html, offset, labels), "{name}");
-        assert_eq!((b1 - b0, r1 - r0), (0, 2), "{name}");
+        let misses = vcx.update(|_, cx| view.read(cx).document.take_frame_misses());
+        let dependent = misses.iter().any(|(miss, _)| miss == "scroll_dependent");
+        assert!(
+            dependent && b1 - b0 == 1,
+            "{name}: builds {} for {misses:?}",
+            b1 - b0
+        );
     }
 }
 

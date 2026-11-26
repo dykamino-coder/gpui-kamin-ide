@@ -44861,10 +44861,10 @@ index 0000000000000000000000000000000000000000..f79f1792eea18cee4f2a7ff008a6bd4a
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7bfdf95240d63a0206ac89d369fe63bb66cb1a26
+index 0000000000000000000000000000000000000000..2a57b01161d9d325cd96b52393620ed2f1ed050e
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,558 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -45226,9 +45226,12 @@ index 0000000000000000000000000000000000000000..7bfdf95240d63a0206ac89d369fe63bb
 +                    return Err(at_node(ScrollRefusal::Transform, index));
 +                }
 +                // A move by a fraction of a device pixel lands its paint between
-+                // the pixels a fresh paint there snaps to: it is built.
++                // the pixels a fresh paint there snaps to: it is built. A
++                // follower (a scrollbar thumb, a sticky box) is placed by its
++                // own function of the offset, unsnapped, so it moves exactly.
 +                let device = shift.scale(self.scale_factor());
-+                if device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0 {
++                let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { .. });
++                if !follower && (device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0) {
 +                    return Err(at_node(ScrollRefusal::Fractional, index));
 +                }
 +                // A node whose children painted nothing as it (hidden, or painted
