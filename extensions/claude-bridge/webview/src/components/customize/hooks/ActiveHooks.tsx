@@ -3,7 +3,8 @@
 // list-row rendering are in sibling modules to keep this thin.
 
 import type { JSX } from 'preact'
-import { useEffect, useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
+import { activeTabId, tabs } from '../../../signals/tabs'
 import { useBridge } from '../../../hooks/useBridge'
 import { readPanelCache, writePanelCache } from '../../../lib/panel-cache'
 import { EmptyState } from '../../ui/EmptyState'
@@ -49,6 +50,13 @@ async function customConfirm(title: string, message: string, opts?: { confirmLab
 }
 
 export function ActiveHooks(): JSX.Element {
+  const tab = tabs.value.find(row => row.id === activeTabId.value)
+  const sessionId = tab?.status === 'connected' ? tab.sessionId : undefined
+  return <SessionHooks key={sessionId ?? ''} sessionId={sessionId} />
+}
+
+function SessionHooks({ sessionId }: { sessionId?: string }): JSX.Element {
+  const generation = useRef(0)
   const bridge = useBridge()
   const [flatHooks, setFlatHooks] = useState<FlatHook[]>([])
   const [userHooks, setUserHooks] = useState<HooksByEvent>({})
@@ -62,40 +70,41 @@ export function ActiveHooks(): JSX.Element {
   // `showSpinner=false` on the cache-first revalidation path so we don't flip
   // the "Loading…" row back on over already-painted cached data.
   async function refresh(showSpinner = true): Promise<void> {
+    const request = ++generation.current
     if (showSpinner) setLoading(true)
     setLoadError(false)
     try {
-      const [activeTabId, tabs, settingsList] = await Promise.all([
-        bridge.getActiveTab(),
-        bridge.listTabs(),
+      const [settingsList, active] = await Promise.all([
         bridge.hooksList(),
+        sessionId ? bridge.hooksActive(sessionId) : { hooks: [] },
       ])
-      const sessionId = tabs.find(tab => tab.id === activeTabId)?.sessionId
-      const active = sessionId ? await bridge.hooksActive(sessionId) : { hooks: [] }
+      if (request !== generation.current) return
       const flat = (active?.hooks ?? []) as unknown as FlatHook[]
       const user = (settingsList?.hooks ?? {}) as unknown as HooksByEvent
       setFlatHooks(flat)
       setUserHooks(user)
-      writePanelCache('hooks.active.v1', { flat, user })
+      if (sessionId) writePanelCache('hooks.active.v2', { sessionId, flat, user })
     } catch {
       // Surface the failure so a broken load reads as "couldn't load" (PanelError
       // + Retry) instead of silently falling through to the "No hooks" empty state.
-      setLoadError(true)
+      if (request === generation.current) setLoadError(true)
     } finally {
-      setLoading(false)
+      if (request === generation.current) setLoading(false)
     }
   }
   useEffect(() => {
     // Cache-first: paint the last-known hooks instantly (clears the spinner),
     // then revalidate in the background WITHOUT re-showing the spinner.
-    const cached = readPanelCache<{ flat: FlatHook[]; user: HooksByEvent }>('hooks.active.v1')
-    if (cached) {
+    const cached = readPanelCache<{ sessionId: string; flat: FlatHook[]; user: HooksByEvent }>('hooks.active.v2')
+    const canUseCache = cached && sessionId && cached.sessionId === sessionId
+    if (canUseCache) {
       setFlatHooks(cached.flat)
       setUserHooks(cached.user)
       setLoading(false)
     }
-    void refresh(!cached).catch(() => {})
-  }, [])
+    void refresh(!canUseCache)
+    return () => { generation.current++ }
+  }, [sessionId])
 
   function findUserIndex(h: FlatHook): { matcherIdx: number; handlerIdx: number } | null {
     if (h.source.kind !== 'user') return null
@@ -136,8 +145,8 @@ export function ActiveHooks(): JSX.Element {
         {!loading && !loadError && filtered.length === 0 && (
           <EmptyState
             icon="fa-link"
-            title={flatHooks.length === 0 ? 'No hooks configured.' : 'No hooks match the filter.'}
-            hint={flatHooks.length === 0
+            title={!sessionId ? 'No connected chat' : flatHooks.length === 0 ? 'No active hooks.' : 'No hooks match the filter.'}
+            hint={!sessionId ? 'Connect a chat to see its active hooks.' : flatHooks.length === 0
               ? <>Click <b>+ New hook</b>, install a template from the <b>Library</b> tab, or edit <code>~/.claude/settings.json</code> directly.</>
               : 'Adjust the search query.'}
           />

@@ -1,5 +1,33 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Integration batch source acceptance, 2026-11-26
+
+The following fixes shipped in [kaminide-v1.0.130](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.130). The automated merge gates passed. The deployment owner will check the last column after publication.
+
+| Incident | Merged fix | Verified scenario | Deployment observation |
+| --- | --- | --- | --- |
+| [INC-0133](runtime-issues/INC-2026-0133.md) | [#1223](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1223) | both switch directions and original answers | switch in both directions in one disposable chat |
+| [INC-0134](runtime-issues/INC-2026-0134.md) | [#1222](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1222) | resumed RPC and real 0.170.0 CLI with a mock HTTP provider | compare new and resumed turns at different selected levels |
+| [INC-0135](runtime-issues/INC-2026-0135.md) | [#1221](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1221) | first tools/list on create, resume and switch | find a test tool on the first turn |
+| [INC-0136](runtime-issues/INC-2026-0136.md) | [#1224](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1224) | real child handshake and repeated connection error control | connect a permitted peer and list its tools |
+| [INC-0137](runtime-issues/INC-2026-0137.md) | [#1225](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1225) | filtered catalog, native and legacy Max, rejected change and next turn | compare the picker with model/list and restore the selected effort |
+| [INC-0138](runtime-issues/INC-2026-0138.md) | [#1226](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1226) | panel mount, late connection, tab switch and delayed reply | open Customize before connecting and switch between chats |
+| [INC-0139](runtime-issues/INC-2026-0139.md) | [#1227](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1227) | local status receipt without a model turn and ordinary text pass-through | send /status in a disposable Codex chat |
+
+## Acceptance on the published server 6.3.206 — 2026-11-26
+
+Acceptance by the release executor `rel129` on the published
+`dykamino/open-claude-bridge:6.3.206` image (own container, no network, empty
+Codex home, no account or model). The details are in each card's dated
+section.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0129](runtime-issues/INC-2026-0129.md) | passed: Codex Interactive and Resume start in the browser terminal (`--no-daemon`); they exited with code 1 on 6.3.205 | deployment owner observation |
+| [INC-0130](runtime-issues/INC-2026-0130.md) | passed: output written before the PTY exit reaches the client before the exit frame | deployment owner observation |
+| [INC-0132](runtime-issues/INC-2026-0132.md) | passed: a Codex virtual PTY (PID 0) reports no metrics instead of the container tree | deployment owner observation |
+| [INC-0131](runtime-issues/INC-2026-0131.md) | not applicable: investigation, no fix | fresh capture of one synthetic first turn |
+
 ## Acceptance on the published KaminIDE 1.0.127 — 2026-11-26
 
 Acceptance by the release executor `rel128` on the payload of the
