@@ -12,8 +12,9 @@ import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs
 const [scenario, capture, output] = process.argv.slice(2);
 const manifest = JSON.parse(await readFile(path.join(capture, "manifest.json"), "utf8"));
 const installed = scenario === "installed-client";
+const behavior = installed ? process.env.INSTALLED_SCENARIO ?? "native-client" : scenario;
 const report = { candidate: manifest.candidate_sha, exeSha256: manifest.source_exe_sha256,
-  scenario, class: installed ? "hosted-windows-installed-release" : "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
+  scenario, behavior, class: installed ? "hosted-windows-installed-release" : "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
 const origin = `http://127.0.0.1:${Number(process.env.CLAUDE_PROXY_PORT)}`;
 
 async function step(name, check, retry = false) {
@@ -74,8 +75,8 @@ try {
     const { value } = await web("return document.readyState === 'complete' && typeof window.bridgeCmd?.raw === 'function'");
     assert.equal(value, true);
   }, true);
-  if (!installed && scenario !== "native-client") {
-    const fixture = scenario === "workspace-link" ? await createWorkspaceFixture(capture) : null;
+  if (behavior !== "native-client") {
+    const fixture = behavior === "workspace-link" ? await createWorkspaceFixture(capture) : null;
     await step("loopback-bridge-health", async () => {
       const reply = await fetch(`${origin}/health`, {signal: AbortSignal.timeout(3000)});
       assert.ok(reply.ok);
@@ -114,8 +115,8 @@ try {
       assert.equal(value.settling, false);
       assert.ok(value.items.some(row => row.type === "assistant" && row.text.startsWith(`echo: ${marker} [model=`)));
     }, true);
-    if (fixture) await checkWorkspaceLink({ fixture, ...driver });
-    if (scenario === "engine-menus") await checkEngineMenus(driver, tab);
+    if (fixture) await checkWorkspaceLink({ fixture, installed, ...driver });
+    if (behavior === "engine-menus") await checkEngineMenus(driver, tab);
   }
   report.status = "passed";
 } catch (error) {

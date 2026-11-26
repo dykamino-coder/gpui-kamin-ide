@@ -19,10 +19,7 @@ try {
     $env:KAMIN_PROBE_PORT = '19357'
     $env:KAMIN_PROBE_TOKEN = [guid]::NewGuid().ToString('N')
     if ($Scenario -ne 'native-client') {
-        $env:CLAUDE_PROXY_PORT = '13456'
-        $env:BRIDGE_CODEX_BIN = (Resolve-Path 'extensions/claude-bridge/server/test-support/fake-codex.mjs').Path
-        $env:FAKE_CODEX_LOGGED_IN = '1'
-        $runner = Start-Process node -ArgumentList @('extensions/claude-bridge/server/test-support/run.mjs', ("`"$bridge`"")) -PassThru -WindowStyle Hidden
+        $runner = & (Join-Path $PSScriptRoot 'start-bridge.ps1') -DataDirectory $bridge
     }
     # The production minimum-power policy takes precedence over DebugDevice::Warp.
     # Select the default policy so the disposable debug launcher can select WARP.
@@ -54,3 +51,6 @@ try {
     # Never archive server state, probe tokens, logs or the browser profile.
     Remove-Item -LiteralPath $capture -Recurse -Force
 }
+
+# A child may exit between enumeration and taskkill; all owned state has been removed.
+exit 0

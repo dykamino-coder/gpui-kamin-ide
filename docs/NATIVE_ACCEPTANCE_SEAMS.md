@@ -39,7 +39,10 @@ DisplayVersion, обе регистрации команды Explorer, install l
 Extension Host и страницу CEF. Версия из UI сохраняется в version.png для
 чтения. Видимость контекстного меню в окне Explorer и полная installer-матрица
 остаются отдельными проверками.
-Report фиксирует класс `hosted-windows-installed-release`.
+Параметр `installed_scenario` позволяет дополнительно выполнить `bridge-roundtrip`,
+`workspace-link` или `engine-menus` на установленном клиенте. В release-сценарии
+ссылки положение курсора проверяется сохранением тестовой вставки в строке 4,
+столбце 2 временного файла. Report фиксирует класс `hosted-windows-installed-release`.
 
 ```bash
 commit=$(git rev-parse HEAD)

@@ -9,13 +9,20 @@ on:
       installer_source:
         description: For installed-client, release-candidate PR checks run ID or published kaminide-vX.Y.Z tag
         type: string
+      installed_scenario:
+        description: Scenario after upgrading the verified installed client
+        type: choice
+        options: [native-client, bridge-roundtrip, workspace-link, engine-menus]
+        default: native-client
       scenario:
         description: Last boundary to exercise
         type: choice
         options: [bridge-roundtrip, native-client, workspace-link, engine-menus, extension-hooks, installed-client]
         default: bridge-roundtrip
-  # Bootstrap the optional workflow and exercise changes to this harness only.
+  # Bootstrap the optional workflow once for a same-repository harness PR.
+  # Subsequent exact candidates run on explicit dispatch.
   pull_request:
+    types: [opened, reopened]
     paths:
       - .github/workflows/native-windows-smoke.yml
       - scripts/ci/native-windows/**
@@ -40,6 +47,7 @@ jobs:
       SMOKE_SHA: ${{ inputs.candidate }}
       DRIVER_SHA: ${{ github.sha }}
       INSTALLER_SOURCE: ${{ inputs.installer_source }}
+      INSTALLED_SCENARIO: ${{ inputs.installed_scenario }}
     steps:
       - name: Validate release inputs
         run: |
@@ -86,6 +94,10 @@ jobs:
           gh release download "kaminide-v$previous" --pattern $name --dir $baselineDir
           if ($LASTEXITCODE -or ('sha256:' + (Get-FileHash (Join-Path $baselineDir $name)).Hash.ToLowerInvariant()) -ne $digest) { throw 'Previous release digest mismatch' }
           $previous.ToString() | Set-Content (Join-Path $baselineDir 'version.txt')
+      - name: Install isolated Bridge dependencies for the selected scenario
+        if: env.INSTALLED_SCENARIO != 'native-client'
+        working-directory: extensions/claude-bridge/server
+        run: npm ci --no-audit --no-fund
       - name: Verify, install and exercise the shipped client
         run: ./.native-smoke-harness/scripts/ci/native-windows/installed.ps1 -PackageDir (Join-Path $env:RUNNER_TEMP 'installer-package')
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

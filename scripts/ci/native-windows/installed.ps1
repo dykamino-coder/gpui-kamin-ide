@@ -8,6 +8,7 @@ $capture = Join-Path $env:RUNNER_TEMP ('installed-client-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $capture,$evidence | Out-Null
 $app = $null
 $setup = $null
+$runner = $null
 $stage = 'provenance'
 $checks = [ordered]@{ provenance = $false; previousVersion = $false; inAppUpdateAndRestart = $false
     versionFile = $false; displayVersion = $false; explorerRegistration = $false; installationLog = $false }
@@ -85,6 +86,9 @@ try {
         version = $metadata.versions.app; source = $env:INSTALLER_SOURCE; installer_sha256 = $metadata.installer.sha256
     } | ConvertTo-Json | Set-Content (Join-Path $capture 'manifest.json')
     $stage = 'exercise-installed-client'
+    if ($env:INSTALLED_SCENARIO -ne 'native-client') {
+        $runner = & (Join-Path $PSScriptRoot 'start-bridge.ps1') -DataDirectory (Join-Path $capture 'bridge')
+    }
     node (Join-Path $PSScriptRoot 'probe-smoke.mjs') installed-client $capture $evidence
     if ($LASTEXITCODE) { throw 'Installed-client boundary failed. See report.json.' }
     $stage = 'complete'
@@ -97,7 +101,7 @@ try {
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
     } | ConvertTo-Json | Set-Content (Join-Path $evidence 'pipeline.json')
     $owned = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($capture + '\', [StringComparison]::OrdinalIgnoreCase) })
-    foreach ($child in @($app, $setup) + $owned) {
+    foreach ($child in @($app, $setup, $runner) + $owned) {
         if ($child -and !$child.HasExited) { taskkill /PID $child.Id /T /F | Out-Null }
     }
     # Chromium can release its memory-mapped metrics file after the process tree exits.
@@ -110,3 +114,6 @@ try {
         }
     }
 }
+
+# The profile was removed. A taskkill race on an already exited child is harmless.
+exit 0
