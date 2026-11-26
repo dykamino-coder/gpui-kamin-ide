@@ -53867,7 +53867,7 @@ async function connectStdio(ctx, id) {
         } else {
           lastLineCount = 0;
         }
-        if (line.includes("Cannot find module") || line.includes("MODULE_NOT_FOUND")) {
+        if (!state.permanentFailure && (line.includes("Cannot find module") || line.includes("MODULE_NOT_FOUND"))) {
           state.permanentFailure = line.trim();
         }
         stderrConsoleCount += 1;
@@ -54450,7 +54450,7 @@ var McpServerManager = class _McpServerManager {
     }
     const promises = [];
     for (const [id, state] of this.servers) {
-      if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
+      if (!state.permanentFailure && state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         if (LAZY_STDIO_MCP && isStdio(state.config) && state.status !== "connected" && this.lazySchemaCache[mcpConnectionFingerprint(state.config)]) {
           continue;
         }
@@ -54488,6 +54488,7 @@ var McpServerManager = class _McpServerManager {
       if (state.config.autoDiscovered) {
         prevBudget.set(state.config.name, {
           attempts: state.reconnectAttempts ?? 0,
+          permanentFailure: state.permanentFailure,
           fp: mcpConnectionFingerprint(state.config)
         });
       }
@@ -54521,7 +54522,11 @@ var McpServerManager = class _McpServerManager {
       if (prev && prev.fp === mcpConnectionFingerprint(config)) {
         const st = this.servers.get(stableId);
         st.reconnectAttempts = prev.attempts;
-        if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
+        if (prev.permanentFailure) {
+          st.permanentFailure = prev.permanentFailure;
+          st.status = "error";
+          st.error = prev.permanentFailure;
+        } else if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
           st.status = "error";
           st.error = `Auto-reconnect gave up after ${MAX_RECONNECT_ATTEMPTS} attempts (config unchanged since). Toggle the server off/on or fix its config to retry.`;
         }
@@ -54651,7 +54656,7 @@ var McpServerManager = class _McpServerManager {
    *  stdio, не connected/connecting, кэш по fingerprint есть). */
   lazyCachedSchemasFor(state) {
     if (!LAZY_STDIO_MCP) return null;
-    if (!state.config.enabled || !isStdio(state.config)) return null;
+    if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) return null;
     if (state.status === "connected" || state.status === "connecting") return null;
     return this.lazySchemaCache[mcpConnectionFingerprint(state.config)] ?? null;
   }
@@ -54861,7 +54866,7 @@ var McpServerManager = class _McpServerManager {
     }
     if (LAZY_STDIO_MCP) {
       for (const state of this.servers.values()) {
-        if (!state.config.enabled || !isStdio(state.config)) continue;
+        if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) continue;
         const cached3 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
         if (cached3?.some((t) => exposedToolName(state, t.name) === toolName)) return true;
       }
@@ -55022,7 +55027,7 @@ var McpServerManager = class _McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`);
       }
-      const fullMsg = extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg;
+      const fullMsg = state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg);
       state.error = fullMsg;
       this.appendLog(id, "error", `[connect] failed \u2014 ${fullMsg}`);
       if (hint) this.appendLog(id, "warn", `[connect] hint: ${hint}`);
