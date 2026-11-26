@@ -56,6 +56,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const host = new BridgeHost(context, {
     onOpenChat: openChat,
+    onOpenPermissionConsole: () => { void vscode.commands.executeCommand("claudeBridgeConsoleView.focus") },
     onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
   })
   const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath)

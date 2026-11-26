@@ -54,6 +54,11 @@ export class SessionsBridge {
       const meta = bridgeMetaFor(conversationId, cwd, tm.getConnection(tabId)?.getEngine())
       void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...(conversationId === null ? { name: 'New conversation' } : {}) })
     }
+    ConnectionManager.onWorkspacePermission = (tabId, mode) => {
+      const kid = this.tabToKamin.get(tabId)
+      if (kid) void kaminide.sessions.updateSession(kid, { metadata: { bridgeWorkspacePermission: mode } })
+      this.recovery?.save()
+    }
     const prevTitle = ConnectionManager.onSessionTitle
     ConnectionManager.onSessionTitle = (tabId, title) => {
       prevTitle?.(tabId, title)
@@ -181,7 +186,7 @@ export class SessionsBridge {
         conversationId: meta.conversationId!,
         sessionLabel: s.name,
         ...(meta.engine ? { engine: meta.engine } : {}),
-      }, { background: true })
+      }, { background: true, workspacePermission: s.metadata?.bridgeWorkspacePermission })
       if (tabId) {
         this.kaminToTab.set(s.id, tabId)
         this.tabToKamin.set(tabId, s.id)
@@ -321,11 +326,11 @@ export class SessionsBridge {
       tabId = tm.resumeSession({
         serverUrl: cfg.serverUrl, token: cfg.token, cwd, conversationId: meta.conversationId, sessionLabel: s.name,
         ...(meta.engine ? { engine: meta.engine } : {}),
-      })
+      }, { workspacePermission: s.metadata?.bridgeWorkspacePermission })
     } else {
       const choice = agentForNewChat(meta, this.pendingChoice, this.host.getConfigStore().getDefaultEngine())
       if (!meta?.engine) this.pendingChoice = null
-      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice })
+      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice }, { workspacePermission: s.metadata?.bridgeWorkspacePermission })
     }
     if (tabId) {
       this.kaminToTab.set(s.id, tabId)
@@ -354,6 +359,7 @@ export class SessionsBridge {
   }
 
   dispose(): void {
+    ConnectionManager.onWorkspacePermission = null
     if (this.resyncTimer) { clearTimeout(this.resyncTimer); this.resyncTimer = null }
     if (this.warmTimer) { clearTimeout(this.warmTimer); this.warmTimer = null }
     for (const t of this.prefillTimers) clearTimeout(t)

@@ -249,6 +249,7 @@ export type ClientToServerMsg =
   | WsMsgMcpDenied
   | WsMsgElicitationResponse
   | WsMsgSessionResume
+  | { type: 'session:codex-collaboration'; sessionId: string; mode: 'default' | 'plan' }
   | WsMsgSessionChangeEffort
   | WsMsgSessionChangeModel
   | WsMsgSessionSwitchEngine

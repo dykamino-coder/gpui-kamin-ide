@@ -61,21 +61,18 @@ export function checkToolPermission(
   // Internal resource/prompt relays are continuations of an MCP protocol
   // request, not model-invokable shell tools. They are never advertised in
   // tools/list and must not surface a misleading permission dialog.
-  if (toolName.startsWith('__bridge_mcp_')) return { allowed: true }
+  if (toolName === '__bridge_mcp_resource_read' || toolName === '__bridge_mcp_prompt_get') return { allowed: true }
   const mode = ctx.permissionMode()
   if (mode === 'bypassPermissions') return { allowed: true }
 
   const category = ctx.permissionManager.getToolCategory(toolName)
 
-  if (mode === 'acceptEdits') {
-    if (category !== 'shell' && category !== 'git') return { allowed: true }
-    // Shell/git → ask user
-  } else {
-    const decision = ctx.permissionManager.checkPermission(toolName, input)
-    if (decision === 'allow') return { allowed: true }
-    if (decision === 'deny') return { allowed: false, reason: 'Permission denied by policy' }
-    // decision === 'ask' → ask user
+  if (mode === 'readOnly' && category !== 'read-only') {
+    return { allowed: false, reason: 'Workspace tool blocked by read-only policy' }
   }
+  const decision = ctx.permissionManager.checkPermission(toolName, input, mode === 'acceptEdits')
+  if (decision === 'allow') return { allowed: true }
+  if (decision === 'deny' || mode === 'dontAsk') return { allowed: false, reason: 'Permission denied by policy' }
 
   return new Promise<PermissionOutcome>((resolve) => {
     const settle = (outcome: PermissionOutcome): boolean => {
@@ -194,6 +191,7 @@ export async function handleMcpCall(
     status: 'pending',
   })
 
+  const checkedMode = ctx.permissionMode()
   const permission = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input)
   if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
   mcpDiagnostic(permission.allowed ? 'permission-allowed' : 'permission-denied', correlation)
@@ -211,6 +209,10 @@ export async function handleMcpCall(
     if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return
     if (controller.signal.aborted) {
       ctx.denyMcp(msg.requestId, 'Permission request cancelled')
+      return
+    }
+    if (ctx.permissionMode() !== checkedMode) {
+      ctx.denyMcp(msg.requestId, 'Workspace permission mode changed before execution')
       return
     }
     result = await executeTool(msg.toolName, msg.input, {
