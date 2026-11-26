@@ -55,7 +55,10 @@ mod tests {
         // The next frame asks for them again: all hit, none is built anew.
         for k in 0..3 {
             let again = cache.get_or_insert_with(k, || unreachable!("key {k} rebuilt"));
-            assert!(Arc::ptr_eq(again.as_ref().unwrap(), frame[k as usize].as_ref().unwrap()));
+            assert!(Arc::ptr_eq(
+                again.as_ref().unwrap(),
+                frame[k as usize].as_ref().unwrap()
+            ));
         }
         drop(frame);
         // Released, the oldest go with the next insert and the budget holds again.
