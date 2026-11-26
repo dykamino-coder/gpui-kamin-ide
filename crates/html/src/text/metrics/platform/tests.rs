@@ -178,3 +178,25 @@ fn backend_face_identity_is_native_document_scoped_and_revision_scoped() {
         .unwrap();
     assert_ne!(first.face, later.face);
 }
+
+#[test]
+fn generic_families_follow_the_platform_table_and_ui_generics_match_nothing() {
+    let doc = document();
+    let used = |value: &str| family(&doc, value).inh.font.font_family;
+    assert_eq!(used("sans-serif").as_deref(), Some("Arial"));
+    assert_eq!(used("system-ui").as_deref(), Some("Segoe UI"));
+    assert_eq!(used("Absent, serif").as_deref(), Some("Times New Roman"));
+    assert_eq!(used("cursive").as_deref(), Some("Comic Sans MS"));
+    assert_eq!(used("fantasy").as_deref(), Some("Impact"));
+    // A `ui-*` generic without a platform face passes the walk to the next family.
+    assert_eq!(
+        used("ui-sans-serif, system-ui, sans-serif").as_deref(),
+        Some("Segoe UI")
+    );
+    assert_eq!(used("ui-serif, serif").as_deref(), Some("Times New Roman"));
+    assert_eq!(used("ui-monospace, Ahem").as_deref(), Some("Ahem"));
+    // With nothing after it, the document font remains.
+    let ui_mono = family(&doc, "ui-monospace");
+    assert_eq!(ui_mono.inh.font.font_family.as_deref(), Some(""));
+    assert_eq!(ui_mono.inh.font.monospace, Some(false));
+}
