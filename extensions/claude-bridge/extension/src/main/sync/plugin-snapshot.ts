@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import { bridgeStatePath } from '../bridge-state'
 import type { SyncPluginData } from '../../shared/sync-types'
-import { listEnabledInstalledPlugins, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
+import { listEnabledInstalledPlugins, pluginSkillRefs, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
 import { buildMonitorTriggerHooks } from '../plugin-monitors'
 import { collectPluginModuleTree } from './plugin-modules'
 
@@ -311,15 +311,7 @@ export async function buildPluginSnapshots(): Promise<Record<string, SyncPluginD
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace)
     const options = loadNonSensitiveOptions(plugin.key, manifest)
 
-    const defaultSkills = path.join(plugin.installPath, 'skills')
-    const marketplaceRootSource = fs.existsSync(path.join(plugin.installPath, '.claude-plugin', 'marketplace.json'))
-    const skillsRefs = [
-      ...(fs.existsSync(defaultSkills) && !(marketplaceRootSource && manifest.skills !== undefined) ? ['skills'] : []),
-      ...manifestPathRefs(manifest.skills),
-    ]
-    if (skillsRefs.length === 0 && fs.existsSync(path.join(plugin.installPath, 'SKILL.md'))) {
-      skillsRefs.push('SKILL.md')
-    }
+    const skillsRefs = pluginSkillRefs(plugin.installPath, manifest)
 
     // Per Claude's merge contract commands/agents/outputStyles/themes replace
     // their default directory when explicitly declared; skills add to default.
