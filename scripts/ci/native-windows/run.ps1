@@ -21,8 +21,8 @@ try {
     if ($Scenario -ne 'native-client') {
         $runner = & (Join-Path $PSScriptRoot 'start-bridge.ps1') -DataDirectory $bridge
     }
-    # The production minimum-power policy takes precedence over DebugDevice::Warp.
-    # Select the default policy so the disposable debug launcher can select WARP.
+    # Immutable product candidates can predate the launcher fix for the default
+    # adapter policy required by DebugDevice::Warp.
     $env:KAMIN_GPU_ADAPTER = 'default'
     $stage = 'launch-client'
     ./scripts/start_native_acceptance.ps1 -Exe $exe -EvidenceDir $client -WithHost -Warp -SoftwareCef -Port 19357
