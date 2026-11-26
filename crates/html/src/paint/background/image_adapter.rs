@@ -15,12 +15,14 @@ type UploadedPixels = (u32, u32, Arc<[u8]>);
 static IDENTITIES: BoundedCache<RasterIdentity, Image> =
     BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
         .with_key_weight(|key: &RasterIdentity| key.0.bytes.len())
+        .with_holders(crate::paint::cache::held_elsewhere)
         .for_paint();
 // Только готовые точки: ни URL, ни политика, ни ресурсы документа здесь не
 // переиспользуются. Полное равенство байт исключает коллизии короткого хэша.
 static PIXELS: BoundedCache<UploadedPixels, Image> =
     BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
         .with_key_weight(|key: &UploadedPixels| key.2.len())
+        .with_holders(crate::paint::cache::held_elsewhere)
         .for_paint();
 
 /// An image file for a texture: GPUI gets its size at once, and the pixels are decoded
