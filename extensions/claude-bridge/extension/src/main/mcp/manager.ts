@@ -47,7 +47,7 @@ import {
   type McpTestLogEntry,
 } from './test-log'
 import { connectStdio, callStdioTool, stdioJsonRpc, stdioWorkingDirectory } from './transports/stdio'
-import { connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
+import { retryableHttpHandshake, connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
 import { connectSseLegacy, sseJsonRpcRequest } from './transports/sse-legacy'
 import { connectWs, callWsTool, wsJsonRpc } from './transports/ws'
 import type { McpServerState, TransportContext } from './transports/context'
@@ -310,13 +310,14 @@ export class McpServerManager {
       console.error('[MCP OAuth] Legacy token migration failed:', err)
     }
 
-    // Connect all enabled servers (fire and forget — individual failures are logged).
+    // Await the initial handshakes; individual failures reach their server status.
     // Skip any that already SPENT their reconnect budget on an unchanged config:
     // initAll is also the reload path (plugin install / data sync re-runs it), so
     // without this a permanently-broken server would be re-attempted on every sync,
     // re-arming the exact churn the give-up cap exists to stop. At startup nothing
     // has spent its budget, so every enabled server is still tried.
-    const promises: Promise<void>[] = []
+    const network: Promise<void>[] = []
+    const coldStdio: string[] = []
     for (const [id, state] of this.servers) {
       if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         // Ленивый stdio: схемы уже в диск-кэше → процесс НЕ поднимаем, тулы
@@ -330,12 +331,21 @@ export class McpServerManager {
         ) {
           continue
         }
-        promises.push(this.connectServer(id).catch((err) => {
-          console.error(`[MCP] Failed to connect "${state.config.name}":`, err instanceof Error ? err.message : err)
-        }))
+        if (isStdio(state.config)) coldStdio.push(id)
+        else network.push(this.connectServer(id))
       }
     }
-    await Promise.allSettled(promises)
+    // Each stdio initialization may launch a package manager. Keep them off
+    // the bare host activation path and bound simultaneous cold launches.
+    const pending = coldStdio.values()
+    const startStdio = async () => {
+      for (const id of pending) {
+        if (this.disposed) break
+        const state = this.servers.get(id)
+        if (state?.config.enabled && state.status !== 'connected') await this.connectServer(id)
+      }
+    }
+    await Promise.allSettled([...network, startStdio(), startStdio(), startStdio()])
   }
 
   // ─── Auto-discovery ─────────────────────────────────
@@ -1018,6 +1028,11 @@ export class McpServerManager {
       }
       const fullMsg = extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg
       state.error = fullMsg
+      // A failed HTTP handshake has no child exit or socket close callback.
+      // Reuse the same capped backoff only for an explicitly transient failure.
+      if (state.config.type === 'http' && !state.reconnectTimer && retryableHttpHandshake(err)) {
+        this.scheduleReconnect(id, baseMsg)
+      }
       this.appendLog(id, 'error', `[connect] failed — ${fullMsg}`)
       if (hint) this.appendLog(id, 'warn', `[connect] hint: ${hint}`)
       // `cause` is optional; passing it unconditionally printed a literal
