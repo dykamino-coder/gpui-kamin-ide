@@ -50,7 +50,7 @@ export function unifiedLogPath(ref: ConversationRef): string {
 }
 
 /** Native transcript of a segment (Claude JSONL or Bridge's codex projection). */
-function nativeTranscriptPath(segment: ConversationSegment): string | null {
+export function nativeTranscriptPath(segment: ConversationSegment): string | null {
   return segment.nativeId ? path.join(slugDirOf(segment.settingsDir), `${segment.nativeId}.jsonl`) : null
 }
 
