@@ -15,8 +15,6 @@ export interface CodexLimitWindow {
 }
 
 export interface CodexLimitBucket {
-  /** This bucket came from the ordinary account view, independent of map order. */
-  accountWide?: true
   id: string | null
   name: string | null
   primary: CodexLimitWindow | null
@@ -25,7 +23,7 @@ export interface CodexLimitBucket {
 }
 
 export interface CodexRateLimits {
-  /** The account-wide view, then any per-limit buckets other than it. */
+  /** The compatibility snapshot and additional named buckets reported by Codex. */
   buckets: CodexLimitBucket[]
   credits: { hasCredits: boolean; unlimited: boolean; balance: string | null } | null
   planType: string | null
@@ -80,10 +78,13 @@ export function parseCodexRateLimits(raw: unknown, now = Date.now()): CodexRateL
   const main = obj(res.rateLimits)
   const buckets: CodexLimitBucket[] = []
   const first = bucket(main)
-  if (first) buckets.push({ ...first, accountWide: true })
   const byId = obj(res.rateLimitsByLimitId)
+  // Codex can copy a feature bucket into the legacy single-bucket field.
+  // Prefer an explicitly keyed account over an unlabelled legacy snapshot.
+  const mappedAccount = bucket(byId?.codex)
+  if (first && (first.id !== null || !mappedAccount)) buckets.push(first)
   for (const [id, value] of Object.entries(byId ?? {})) {
-    if (first && (first.id ?? 'codex') === id) continue
+    if (first?.id === id) continue
     const b = bucket(value)
     if (b) buckets.push({ ...b, id: b.id ?? id })
   }

@@ -283,7 +283,7 @@ export function codexPlanUsage(
   model: string | null,
   effort: string | null,
 ): SessionUsage {
-  const account = limits.buckets.find(b => b.accountWide) ?? limits.buckets.find(b => b.id === 'codex' || b.id === null)
+  const account = limits.buckets.find(b => b.id === 'codex') ?? limits.buckets.find(b => b.id === null)
   const windows: SessionUsageWindow[] = []
   for (const [slot, w] of [
     ['primary', account?.primary],

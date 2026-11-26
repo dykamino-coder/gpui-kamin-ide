@@ -98,7 +98,6 @@ describe('codex errors and plan limits', () => {
     )
     expect(parsed.buckets).toEqual([
       {
-        accountWide: true,
         id: 'codex',
         name: null,
         primary: { usedPercent: 42, windowMinutes: 300, resetsAt: 1_700_010_000_000 },
