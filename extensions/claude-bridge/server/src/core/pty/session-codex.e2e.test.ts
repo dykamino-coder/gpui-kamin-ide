@@ -387,6 +387,31 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   })
 
+  it('shows /status locally before a first Codex turn', async () => {
+    const client = await Client.open(port)
+    try {
+      await createChat(client, { engine: 'codex' })
+      const rpc = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+      const starts = () =>
+        fs
+          .readFileSync(rpc, 'utf8')
+          .split('\n')
+          .filter((line) => line.includes('"method":"turn/start"')).length
+      const before = starts()
+      expect(await say(client, '/status', 'status-command')).toMatchObject({ state: 'read' })
+      await client.entry(
+        (e) => e.type === 'system' && String(e.content).includes('model: gpt-fake · next-turn effort: medium'),
+      )
+      expect(starts()).toBe(before)
+      await say(client, 'describe /status', 'ordinary-text')
+      await client.entry((e) => text(e).startsWith('echo: describe /status'))
+      expect(starts()).toBe(before + 1)
+    } finally {
+      client.send({ type: 'session:end' })
+      client.close()
+    }
+  })
+
   it('switches model and effort for the next turn, interrupts, and explains failures', async () => {
     const client = await Client.open(port)
     await createChat(client, { engine: 'codex' })

@@ -12,6 +12,8 @@ export interface SessionAgentInput {
   /** A whole user message; the engine sends receipts itself, carrying
    *  `userText` (what the user wrote, without Bridge's hidden context). */
   submit(text: string, submissionId?: string, userText?: string): void
+  /** Show cached engine status without submitting a model turn. */
+  showStatus?(text: string, submissionId?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
   /** Re-send the engine's live turn state to a newly attached client: an edge
