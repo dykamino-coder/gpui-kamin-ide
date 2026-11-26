@@ -1,6 +1,7 @@
 //! Real presentation and idle boundaries, without pixel readback or inferred frame times.
 
 use super::counters::Counters;
+use super::cpu::Cpu;
 use gpui::profiler::journal::{
     ForegroundJournalCollector, ForegroundJournalEntry as Entry, IntervalBoundary as Boundary,
 };
@@ -13,10 +14,12 @@ use std::{
 
 #[derive(Default)]
 struct Step {
-    mark: Option<Instant>,
+    mark: Option<(Instant, Cpu)>,
     total: Duration,
     longest: Duration,
     calls: usize,
+    cpu_ms: f64,
+    cpu_valid: bool,
 }
 
 pub struct Timing {
@@ -28,6 +31,9 @@ pub struct Timing {
     pub document_ms: f64,
     pub parse_ms: f64,
     pub style_ms: f64,
+    cpu: Cpu,
+    pub io_cpu_ms: Option<f64>,
+    pub document_cpu_ms: Option<f64>,
     first: Option<Duration>,
     idle: Option<Duration>,
     last_present: Option<Duration>,
@@ -47,7 +53,7 @@ impl Timing {
         // GPUI SubscriberSet iterates monotonically increasing subscription ids.
         // Registered before DocumentView::open; the matching hook is registered after it.
         let subscription = window.on_update_rendering(move |_, _| {
-            before.borrow_mut().mark = Some(Instant::now());
+            before.borrow_mut().mark = Some((Instant::now(), Cpu::read()));
         });
         Self {
             viewport,
@@ -58,6 +64,9 @@ impl Timing {
             document_ms: 0.,
             parse_ms: 0.,
             style_ms: 0.,
+            cpu: Cpu::read(),
+            io_cpu_ms: None,
+            document_cpu_ms: None,
             first: None,
             idle: None,
             last_present: None,
@@ -75,8 +84,16 @@ impl Timing {
         let step = self.step.clone();
         self.after = Some(window.on_update_rendering(move |_, _| {
             let mut step = step.borrow_mut();
-            if let Some(mark) = step.mark.take() {
+            if let Some((mark, cpu)) = step.mark.take() {
                 let elapsed = mark.elapsed();
+                if step.calls == 0 {
+                    step.cpu_valid = true;
+                }
+                if let Some(cpu_ms) = cpu.elapsed_ms() {
+                    step.cpu_ms += cpu_ms;
+                } else {
+                    step.cpu_valid = false;
+                }
                 step.total += elapsed;
                 step.longest = step.longest.max(elapsed);
                 step.calls += 1;
@@ -140,10 +157,13 @@ impl Timing {
             "longest_draw_without_document_step_ms": ms(self.longest_draw),
             "longest_raster_submit_ms": ms(self.longest_present),
             "io_ms": self.io_ms, "document_ms": self.document_ms,
+            "request_cpu_ms": self.cpu.elapsed_ms(),
+            "io_cpu_ms": self.io_cpu_ms, "document_cpu_ms": self.document_cpu_ms,
             "parse_ms": self.parse_ms, "style_ms": self.style_ms,
             "document_other_ms": (other >= 0.).then_some(other),
             "document_phase_accounting_valid": other >= 0.,
             "document_step_ms": ms(step.total), "longest_document_step_ms": ms(step.longest),
+            "document_step_cpu_ms": (step.calls > 0 && step.cpu_valid).then_some(step.cpu_ms),
             "document_step_calls": step.calls, "retained_builds_replays": retained,
             "builds_inside_draw": inside_draw, "gpui": self.counters.delta()})
     }

@@ -15,15 +15,20 @@ impl Browser {
         self.stamp = crate::paths::stamp(path);
         #[cfg(feature = "viewer-timing")]
         let read_at = std::time::Instant::now();
+        #[cfg(feature = "viewer-timing")]
+        let read_cpu = crate::timing::Cpu::read();
         let source = std::fs::read_to_string(path)
             .map_err(|error| format!("Cannot read {}: {error}", path.display()));
         #[cfg(feature = "viewer-timing")]
         let build_at = {
             if let Some(timing) = &mut self.timing {
                 timing.io_ms = read_at.elapsed().as_secs_f64() * 1000.;
+                timing.io_cpu_ms = read_cpu.elapsed_ms();
             }
             std::time::Instant::now()
         };
+        #[cfg(feature = "viewer-timing")]
+        let build_cpu = crate::timing::Cpu::read();
         let built = source.and_then(|html| {
             DocumentView::open(
                 Document::builder(&html, BROWSER_CSS)
@@ -38,6 +43,7 @@ impl Browser {
         #[cfg(feature = "viewer-timing")]
         if let Some(timing) = &mut self.timing {
             timing.document_ms = build_at.elapsed().as_secs_f64() * 1000.;
+            timing.document_cpu_ms = build_cpu.elapsed_ms();
             if let Ok(page) = &built {
                 let phases = page.read(cx).document().build_timings();
                 timing.parse_ms = phases.parse.as_secs_f64() * 1000.;

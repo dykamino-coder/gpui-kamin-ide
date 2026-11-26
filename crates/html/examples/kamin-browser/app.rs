@@ -104,6 +104,9 @@ impl Browser {
                 return;
             }
         };
+        // Changing file/folder mode changes chrome width. Drop the outgoing page
+        // before resizing, so it cannot restyle for a viewport it will never use.
+        self.page = None;
         self.error = None;
         self.selector_open = false;
         self.preset_width = None;

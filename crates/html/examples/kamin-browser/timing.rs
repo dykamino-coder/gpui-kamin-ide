@@ -2,9 +2,12 @@
 
 #[path = "timing_counters.rs"]
 mod counters;
+#[path = "timing_cpu.rs"]
+mod cpu;
 #[path = "timing_sample.rs"]
 mod sample;
 use crate::{app::Browser, cli::TimeOptions, folder, paths};
+pub use cpu::Cpu;
 use gpui::{App, Entity, Window};
 pub use sample::Timing;
 use std::time::{Duration, Instant};
@@ -29,7 +32,8 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
         "list_ms": sample::ms(listed.elapsed()), "profile_debug_assertions": cfg!(debug_assertions),
         "idle": "first GPUI idle after final presentation, confirmed by 250ms without presentations",
         "phases": "GPUI window counters include chrome; taffy/measure/shape overlap draw and document_step; raster_submit includes swap; no GPU readback",
-        "request_scope": "per-page open excludes process startup, font-context setup, and folder discovery"})
+        "request_scope": "per-page open excludes process startup, font-context setup, and folder discovery",
+        "cpu_scope": "all process threads through settled report, including the idle confirmation; Windows GetProcessTimes granularity applies; null when unavailable"})
     );
     let queue = folder::filtered(&files, options.base_only);
     if queue.is_empty() {
