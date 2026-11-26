@@ -18998,10 +18998,10 @@ index 0000000000000000000000000000000000000000..86a855625a2fa19811cd2197acc640e8
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/layer/group_runs.rs b/vendor/gpui/src/scene/layer/group_runs.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..28fab1c2ef5f482e36f2f2242b7c4590e318c937
+index 0000000000000000000000000000000000000000..36e97747ae03838bf8c9e914ded4dd7c7322f983
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/group_runs.rs
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,98 @@
 +//! KaminIDE patch: box runs inside the composition groups a layer kept
 +//! (`window::grouped_layer`).
 +//!
@@ -19035,11 +19035,22 @@ index 0000000000000000000000000000000000000000..28fab1c2ef5f482e36f2f2242b7c4590
 +
 +    /// The area run `at` paints in the layer: its own for the layer's scene,
 +    /// its group's composite for a group's.
++    ///
++    /// A group whose label no scene kept had it culled (`insert_primitive`):
++    /// its bounds met no content mask, and the group showed no pixel. Its
++    /// image lands nowhere but within its bounds whatever mask a later frame
++    /// draws it under, so they bound the run. They are untransformed: under
++    /// a transformation or a 3D plane the run's area is unknown.
 +    pub(crate) fn run_area(&self, at: usize) -> Option<Bounds<ScaledPixels>> {
 +        let b = self.boxes.get(at)?;
 +        match b.group {
 +            None => Some(b.area),
-+            Some(g) => self.composite_area(g),
++            Some(g) => self.composite_area(g).or_else(|| {
++                let group = self.scene.groups.get(g as usize)?;
++                (b.env.transformation == crate::TransformationMatrix::unit()
++                    && group.projection.is_none())
++                .then_some(group.bounds)
++            }),
 +        }
 +    }
 +
@@ -19091,10 +19102,10 @@ index 0000000000000000000000000000000000000000..28fab1c2ef5f482e36f2f2242b7c4590
 +}
 diff --git a/vendor/gpui/src/scene/layer/group_runs_tests.rs b/vendor/gpui/src/scene/layer/group_runs_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f0c88d7d8421023272a52e9b042f0717be56ca60
+index 0000000000000000000000000000000000000000..ea3aca67afe27ce52022e717763ea5f4131a8146
 --- /dev/null
 +++ b/vendor/gpui/src/scene/layer/group_runs_tests.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,146 @@
 +//! A layer that kept its composition groups: box runs inside a group are
 +//! replaced in the group's scene, and the result equals a fresh recording.
 +
@@ -19139,6 +19150,11 @@ index 0000000000000000000000000000000000000000..f0c88d7d8421023272a52e9b042f0717
 +
 +/// Boxes 1 and 2 inside group 0 (box 1 in `first`), its label, box 3 on top.
 +pub(super) fn grouped(first: Hsla) -> SceneLayer {
++    grouped_under(first, rect(0., 0., 1000., 1000.))
++}
++
++/// `grouped` with its label drawn under the content mask `mask`.
++fn grouped_under(first: Hsla, mask: Bounds<ScaledPixels>) -> SceneLayer {
 +    let mut inner = Scene { in_group: true, ..Scene::default() };
 +    inner.book.group_runs = Some(Vec::new());
 +    let mut runs = vec![paint_box(&mut inner, 1, rect(0., 0., 100., 20.), first)];
@@ -19150,7 +19166,7 @@ index 0000000000000000000000000000000000000000..f0c88d7d8421023272a52e9b042f0717
 +        PaintSurface {
 +            order: 0,
 +            bounds: LABEL,
-+            content_mask: ContentMask { bounds: rect(0., 0., 1000., 1000.) },
++            content_mask: ContentMask { bounds: mask },
 +            corner_radii: Default::default(),
 +            blur_radius: 0.,
 +            group: 1,
@@ -19200,6 +19216,16 @@ index 0000000000000000000000000000000000000000..f0c88d7d8421023272a52e9b042f0717
 +    assert!(layer.replace_group_run(0, new, Vec::new()).is_none());
 +    assert_eq!(quads(&layer.scene.groups[0].scene), before);
 +    assert_eq!(layer.version(), 0);
++}
++
++#[test]
++fn a_run_in_a_group_whose_label_was_culled_lies_in_the_group_bounds() {
++    // The label met no content mask: no scene kept it, and the group showed
++    // nothing; its image can land only within the group's bounds.
++    let layer = grouped_under(hsla(0., 1., 0.5, 1.), rect(0., 500., 1000., 100.));
++    assert!(layer.scene.surfaces.is_empty(), "the label was culled");
++    assert_eq!(layer.run_area(0), Some(LABEL));
++    assert_eq!(grouped(hsla(0., 1., 0.5, 1.)).run_area(0), Some(LABEL));
 +}
 +
 +#[test]

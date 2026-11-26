@@ -20,10 +20,10 @@ describe('terminal engine actions', () => {
     const commands = quickCommands('codex')
     expect(commands.map((q) => q.label)).toEqual(['Codex', 'Resume', 'Auth Status', 'Usage', 'Login', 'Logout'])
     expect(commands.filter((q) => 'codex' in q).map((q) => codexTerminalArgs(q.codex))).toEqual([
-      [],
-      ['resume', '--last'],
+      ['--no-daemon'],
+      ['--no-daemon', 'resume', '--last'],
       ['login', 'status'],
-      [],
+      ['--no-daemon'],
     ])
     expect(commands.slice(4).map((q) => 'account' in q && q.account)).toEqual(['login', 'logout'])
     expect(() => codexTerminalArgs('login')).toThrow('Unknown')
