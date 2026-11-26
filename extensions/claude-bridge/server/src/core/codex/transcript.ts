@@ -33,6 +33,8 @@ export type CodexTranscriptEntry = JsonlEntry & {
   model?: string
   usage?: CodexUsage
   contextWindow?: number
+  requestedEffort?: string | null
+  turnId?: string
 }
 
 /** Provider web search renders with the viewer's existing WebSearch card. */
@@ -113,6 +115,15 @@ export class CodexTranscriptProjector {
       case 'usage': {
         const e = this.usage(event)
         return e ? [e] : []
+      }
+      case 'turn.requestAccepted': {
+        const parent = this.parent
+        const entry = this.entry(event, `turn-request:${event.turnId}`, 'system')
+        this.parent = parent
+        entry.subtype = 'codex_turn_request'
+        entry.turnId = event.turnId
+        entry.requestedEffort = event.requestedEffort
+        return [entry]
       }
       case 'context.compaction': {
         const e = this.system(event, 'Conversation compacted', 'info', event.id)

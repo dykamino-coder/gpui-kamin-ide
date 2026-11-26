@@ -311,12 +311,9 @@ export interface SessionConfig {
   segmentStart?: { settingsDir: string }
   /** Engine switch (server-set): attach the transcript later (attachTranscript). */
   deferTranscript?: boolean
-  /** Server-set on a respawn of the same chat (hibernation wake, effort/model
-   *  restart): the client's MCP registrations carry over before the CLI asks
-   *  for its tool list, so the respawned CLI sees the same tools. */
-  carryRegistrations?: Pick<
-    PtySession,
-    'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'
+  /** This chat's client catalog, available when the engine first connects. */
+  carryRegistrations?: Partial<
+    Pick<PtySession, 'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'>
   >
 }
 

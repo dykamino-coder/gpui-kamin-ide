@@ -351,6 +351,19 @@ async function initializeMcp(mcp) {
       `Fatal error: Failed to initialize session: required MCP servers failed to initialize: bridge: handshaking with MCP server failed: HTTP ${res.status}: ${body.slice(0, 200)}`,
     )
   }
+  if (process.env.FAKE_CODEX_CAPTURE_INITIAL_TOOLS) {
+    const list = await fetch(mcp.url, {
+      method: 'POST',
+      headers: { ...mcp.headers, 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    })
+    if (!list.ok) throw new Error(`tools/list returned HTTP ${list.status}`)
+    const { result } = await list.json()
+    fs.writeFileSync(
+      process.env.FAKE_CODEX_CAPTURE_INITIAL_TOOLS,
+      JSON.stringify(result.tools.map((tool) => tool.name)),
+    )
+  }
 }
 
 async function callMcp(t, tool, argsJson) {
