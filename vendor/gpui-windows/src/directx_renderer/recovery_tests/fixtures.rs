@@ -33,6 +33,7 @@ pub(super) fn renderer(device: &DirectXDevices) -> DirectXRenderer {
             grayscale_enhanced_contrast: 1.,
             subpixel_enhanced_contrast: 1.,
             is_bgr: false,
+            text_gamma: [0; 512],
         },
         blur: BlurScratch::default(),
         group_target: None,

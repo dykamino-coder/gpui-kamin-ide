@@ -1,5 +1,17 @@
 //! Native lifecycle regression test; requires the bounded desktop launcher.
-use super::{Args, launch};
+use super::{Args, launch, text_rendering_mode};
+
+#[test]
+fn text_smoothing_defaults_to_grayscale_and_rejects_unknown_values() {
+    use gpui::TextRenderingMode::{Grayscale, PlatformDefault};
+    assert_eq!(text_rendering_mode(None).unwrap(), Grayscale);
+    assert_eq!(text_rendering_mode(Some("grayscale")).unwrap(), Grayscale);
+    assert_eq!(
+        text_rendering_mode(Some("system")).unwrap(),
+        PlatformDefault
+    );
+    assert!(text_rendering_mode(Some("lcd")).is_err());
+}
 
 #[test]
 #[ignore = "requires an isolated native desktop and a bounded process launcher"]

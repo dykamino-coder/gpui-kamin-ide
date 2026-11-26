@@ -1,32 +1,41 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Frame canvas: the frame is drawn into a kept canvas texture and each back buffer receives its accumulated damage by copy before present; a scroll step planned as a move (`Scene::frame_shift`) copies the canvas by the step through a scratch texture and rasterizes only the planned rectangles, from instances uploaded once; capture reads the canvas and reports the plan, rectangles and GPU wait.
-# 2. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.
-# 3. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
-# 4. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
-# 5. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
-# 6. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 7. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
-# 8. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
-# 9. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
-# 10. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
-# 11. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 12. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 13. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 14. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
-# 15. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 16. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 17. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
-# 18. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
-# 19. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
-# 20. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
-# 21. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
-# 22. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
-# 23. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
+# 1. Glyph masks as Chromium on Windows: rendering mode and size from the face's gasp/maxp as Skia's DirectWrite scaler picks them, grid fit on, ClearType coverage under system ClearType (averaged where LCD blending is not allowed), system smoothing/subpixel order/contrast/gamma read as gfx font render params do; coverage corrected by Skia-style mask gamma rows in an immutable constant buffer, LCD masks kept to 5/6/5 bits.
+# 2. Frame canvas: the frame is drawn into a kept canvas texture and each back buffer receives its accumulated damage by copy before present; a scroll step planned as a move (`Scene::frame_shift`) copies the canvas by the step through a scratch texture and rasterizes only the planned rectangles, from instances uploaded once; capture reads the canvas and reports the plan, rectangles and GPU wait.
+# 3. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.
+# 4. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
+# 5. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
+# 6. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+# 7. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 8. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
+# 9. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
+# 10. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
+# 11. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
+# 12. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
+# 13. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 14. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 15. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
+# 16. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 17. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 18. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 19. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
+# 20. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
+# 21. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
+# 22. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
+# 23. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
+# 24. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
+diff --git a/vendor/gpui-windows/.cargo-ok b/vendor/gpui-windows/.cargo-ok
+deleted file mode 100644
+index 5f8b795830acbab5961c1a28c76a7916c9631493..0000000000000000000000000000000000000000
+--- a/vendor/gpui-windows/.cargo-ok
++++ /dev/null
+@@ -1 +0,0 @@
+-{"v":1}
+\ No newline at end of file
 diff --git a/vendor/gpui-windows/Cargo.lock b/vendor/gpui-windows/Cargo.lock
 deleted file mode 100644
 index 110b0fe27ba2710468697c83f07e35db9afd7144..0000000000000000000000000000000000000000
@@ -4916,13 +4925,15 @@ index 110b0fe27ba2710468697c83f07e35db9afd7144..00000000000000000000000000000000
 - "zune-core",
 -]
 diff --git a/vendor/gpui-windows/Cargo.toml b/vendor/gpui-windows/Cargo.toml
-index 52a60ac53fb7aaa1662e92f83fb830b154e5cdf7..8ef3e5b95b367e09dc3a45729de76a5ebdde77a3
+index 52a60ac53fb7aaa1662e92f83fb830b154e5cdf7..4de2375598413a4f0818dfd3820a5bbd3bd4622f
 --- a/vendor/gpui-windows/Cargo.toml
 +++ b/vendor/gpui-windows/Cargo.toml
 @@ -163,0 +164,2 @@
 +    "Win32_Graphics_Direct3D11on12",
 +    "Win32_Graphics_Direct3D12",
-@@ -243,0 +246,4 @@
+@@ -192,0 +195 @@
++    "Win32_System_Registry",
+@@ -243,0 +247,4 @@
 +
 +# KaminIDE patch: SHA-256 executable DXBC chunks for capture provenance.
 +[target.'cfg(target_os = "windows")'.dependencies.sha2]
@@ -4941,17 +4952,51 @@ index 1db95715e26daf9ab0ca5097183a763cf3aa8340..1b1df44eb6b3d4f9179366a8ec0d799e
 +            "clear",
 +            // KaminIDE patch: group composites blended by the output merger
 +            "group_tiles",
+diff --git a/vendor/gpui-windows/src/alpha_correction.hlsl b/vendor/gpui-windows/src/alpha_correction.hlsl
+index 5a34a4ebf28f5ea1a4f70581e10a23b5b12f01a9..b0a9ca2e6b60a515ad2c1f9d95cd3e19079d326c
+--- a/vendor/gpui-windows/src/alpha_correction.hlsl
++++ b/vendor/gpui-windows/src/alpha_correction.hlsl
+@@ -20,4 +19,0 @@
+-float3 enhance_contrast3(float3 alpha, float k) {
+-    return alpha * (k + 1.0f) / (alpha * k + 1.0f);
+-}
+-
+@@ -27,6 +22,0 @@
+-    return a + a * (1.0f - a) * correction;
+-}
+-
+-float3 apply_alpha_correction3(float3 a, float3 b, float4 g) {
+-    float3 brightness_adjustment = g.x * b + g.y;
+-    float3 correction = brightness_adjustment * a + (g.z * b + g.w);
+@@ -43,7 +32,0 @@
+-
+-float3 apply_contrast_and_gamma_correction3(float3 sample, float3 color, float enhanced_contrast_factor, float4 gamma_ratios) {
+-    float enhanced_contrast = light_on_dark_contrast(enhanced_contrast_factor, color);
+-
+-    float3 contrasted = enhance_contrast3(sample, enhanced_contrast);
+-    return apply_alpha_correction3(contrasted, color, gamma_ratios);
+-}
 diff --git a/vendor/gpui-windows/src/direct_write.rs b/vendor/gpui-windows/src/direct_write.rs
-index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b9889bb43c35
+index 304dc38663b1c9a52c4cc2266d70d61f25472a79..c4c3e8bfa01ce3aecc1d397e70f6955026737aa1
 --- a/vendor/gpui-windows/src/direct_write.rs
 +++ b/vendor/gpui-windows/src/direct_write.rs
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,12 @@
 +//! Windows text shaping, font selection and glyph rasterization through DirectWrite.
 +
 +mod css_weight;
 +mod fallbacks;
++mod raster_mode;
++mod text_gamma;
++mod text_settings;
 +
-@@ -34,0 +40,19 @@
++use raster_mode::RasterHints;
++pub(crate) use text_gamma::packed_tables as text_gamma_tables;
++pub(crate) use text_settings::{SystemTextSettings, TextSmoothing, read_system_text_settings};
++
+@@ -3 +15 @@
+-    ffi::{c_uint, c_void},
++    ffi::c_void,
+@@ -34,0 +47,22 @@
 +    scoped_fallbacks: Option<IDWriteFontFallback>,
 +    fallback_key: Option<FontFallbacks>,
 +    /// KaminIDE patch: возможность `vert` запрошена — глифы стоячего
@@ -4970,9 +5015,11 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    /// boxes of the same geometry; they are rasterized bi-level (see
 +    /// `create_glyph_run_analysis`).
 +    pixel_exact: bool,
++    /// KaminIDE patch: gasp/maxp facts that choose the DirectWrite rendering
++    /// mode as Skia does (`raster_mode`).
++    raster_hints: RasterHints,
 +    /// Коллекция, из которой взята грань (upstream; заменяет прежний `is_system_font`).
-@@ -36 +60,9 @@
--}
+@@ -35,0 +70,49 @@
 +    /// KaminIDE patch: вес для раскладки, когда грань выбрана по CSS
 +    /// (`css_weight`); иначе — вес самой грани.
 +    layout_weight: Option<DWRITE_FONT_WEIGHT>,
@@ -4982,7 +5029,51 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +/// of `SUBPIXEL_VARIANTS_X`, so every quantized glyph origin is a whole pixel
 +/// of the supersampled grid.
 +const EXACT_SUPERSAMPLE: i32 = 8;
-@@ -80 +112,6 @@
++
++/// KaminIDE patch: how a glyph's coverage mask is produced.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++enum GlyphMask {
++    /// Ahem: supersampled bi-level (`create_glyph_run_analysis`).
++    Exact,
++    /// Font smoothing off: bi-level coverage.
++    Bilevel,
++    /// Standard smoothing: DirectWrite grayscale coverage.
++    Grayscale,
++    /// ClearType system, LCD blending not allowed here: averaged subpixels.
++    ClearTypeGray,
++    /// ClearType coverage per subpixel, blended per channel.
++    ClearTypeLcd,
++}
++
++impl GlyphMask {
++    fn texture_type(self) -> DWRITE_TEXTURE_TYPE {
++        match self {
++            Self::ClearTypeGray | Self::ClearTypeLcd => DWRITE_TEXTURE_CLEARTYPE_3x1,
++            _ => DWRITE_TEXTURE_ALIASED_1x1,
++        }
++    }
++}
++
++/// A glyph painted with LCD blending (`subpixel_rendering`) always gets
++/// per-subpixel coverage; otherwise the system smoothing decides, as the font
++/// render params do in Chromium.
++fn glyph_mask(font: &FontInfo, settings: &SystemTextSettings, params: &RenderGlyphParams) -> GlyphMask {
++    if params.subpixel_rendering {
++        return GlyphMask::ClearTypeLcd;
++    }
++    if font.pixel_exact {
++        return GlyphMask::Exact;
++    }
++    match settings.smoothing {
++        TextSmoothing::None => GlyphMask::Bilevel,
++        TextSmoothing::Grayscale => GlyphMask::Grayscale,
++        TextSmoothing::Subpixel { .. } => GlyphMask::ClearTypeGray,
++    }
+@@ -50 +133,2 @@
+-    system_subpixel_rendering: bool,
++    /// KaminIDE patch: system smoothing, subpixel order, contrast and gamma.
++    text_settings: SystemTextSettings,
+@@ -80 +164,6 @@
 -    font_info_cache: HashMap<usize, FontId>,
 +    /// KaminIDE patch: keyed by the face's COM address, so each entry retains
 +    /// its face. A fallback face DirectWrite served and then released could
@@ -4990,7 +5081,13 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    /// of the same family), which would inherit the stale FontId: the
 +    /// glyph run is then rendered with the wrong face, per process.
 +    font_info_cache: HashMap<usize, (FontId, IDWriteFontFace3)>,
-@@ -288,0 +326,8 @@
+@@ -184 +273 @@
+-        let system_subpixel_rendering = get_system_subpixel_rendering();
++        let text_settings = read_system_text_settings(&factory);
+@@ -193 +282 @@
+-            system_subpixel_rendering,
++            text_settings,
+@@ -288,0 +378,8 @@
 +    fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
 +        self.state
 +            .read()
@@ -4999,7 +5096,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            .is_some_and(|font| font.pixel_exact)
 +    }
 +
-@@ -299,0 +345,43 @@
+@@ -299,0 +397,43 @@
 +    fn layout_line_into(
 +        &self,
 +        text: &str,
@@ -5043,28 +5140,33 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            || x.features_key != y.features_key
 +    }
 +
-@@ -302 +390 @@
+@@ -302 +442 @@
 -        _font_id: FontId,
 +        font_id: FontId,
-@@ -304,0 +393,5 @@
+@@ -305 +445,9 @@
+-        if self.components.system_subpixel_rendering {
 +        // KaminIDE patch: Ahem (`pixel_exact`) растеризуется только точно и
 +        // только в оттенках серого — ClearType ему не предлагается.
 +        if self.pixel_exact_glyphs(font_id) {
 +            return TextRenderingMode::Grayscale;
 +        }
-@@ -326 +419 @@
++        if matches!(
++            self.components.text_settings.smoothing,
++            TextSmoothing::Subpixel { .. }
++        ) {
+@@ -326 +474 @@
 -                        &components.factory,
 +                        components,
-@@ -328 +420,0 @@
+@@ -328 +475,0 @@
 -                        &components.system_ui_font_name,
-@@ -333 +425,2 @@
+@@ -333 +480,2 @@
 -            let font_face_key = info.font_face.cast::<IUnknown>().unwrap().as_raw().addr();
 +            let font_face = info.font_face.clone();
 +            let font_face_key = font_face.cast::<IUnknown>().unwrap().as_raw().addr();
-@@ -335 +428 @@
+@@ -335 +483 @@
 -            this.font_info_cache.insert(font_face_key, font_id);
 +            this.font_info_cache.insert(font_face_key, (font_id, font_face));
-@@ -354,0 +448,24 @@
+@@ -354,0 +503,24 @@
 +        // KaminIDE patch: недостающее семейство заменяется системным шрифтом
 +        // интерфейса С ТЕМИ ЖЕ весом/начертанием/шириной/возможностями, а не
 +        // общим запасным стеком `TextSystem` (тот теряет вес и курсив). Прежде
@@ -5089,7 +5191,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        if font_id.is_none() && !self.fonts.is_empty() {
 +            font_id = Some(FontId(0));
 +        }
-@@ -366,23 +483,21 @@
+@@ -366,23 +538,21 @@
 -            match font_data {
 -                Cow::Borrowed(data) => unsafe {
 -                    let font_file = components
@@ -5134,7 +5236,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        None,
 +                    )?;
 +                components.builder.AddFontFile(&font_file)?;
-@@ -396,58 +510,0 @@
+@@ -396,58 +565,0 @@
 -    }
 -
 -    fn generate_font_fallbacks(
@@ -5193,35 +5295,35 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 -            builder.AddMappings(&system_fallbacks)?;
 -            Ok(Some(builder.CreateFontFallback()?))
 -        }
-@@ -469 +526 @@
+@@ -469 +581 @@
 -            ref fallbacks,
 +            fallbacks: ref font_fallbacks,
-@@ -471,0 +529,4 @@
+@@ -471,0 +584,4 @@
 +            // KaminIDE patch: ширина начертания (`font-stretch`). Узкое или
 +            // широкое начертание — это ОТДЕЛЬНЫЙ шрифт семейства, поэтому
 +            // выбирается здесь, при подборе, а не включается возможностью.
 +            stretch,
-@@ -474 +535 @@
+@@ -474 +590 @@
 -        factory: &IDWriteFactory5,
 +        components: &DirectWriteComponents,
-@@ -476 +536,0 @@
+@@ -476 +591,0 @@
 -        system_ui_font_name: &SharedString,
-@@ -478,0 +539,2 @@
+@@ -478,0 +594,2 @@
 +        let factory = &components.factory;
 +        let system_ui_font_name = &components.system_ui_font_name;
-@@ -482,2 +544,3 @@
+@@ -482,2 +599,3 @@
 -            gpui::font_name_with_fallbacks_shared(&family, &system_ui_font_name)
 -        };
 +            gpui::font_name_with_fallbacks_shared(family, system_ui_font_name)
 +        };
 +        let family_name = family.as_str();
-@@ -485 +548 @@
+@@ -485 +603 @@
 -        let font_family_h = HSTRING::from(family.as_str());
 +        let font_family_h = HSTRING::from(family_name);
-@@ -491 +554 @@
+@@ -491 +609 @@
 -                    DWRITE_FONT_STRETCH_NORMAL,
 +                    to_dwrite_stretch(stretch),
-@@ -495,0 +559,50 @@
+@@ -495,0 +614,50 @@
 +        // KaminIDE patch: запрет подмены начертания (`font-synthesis-weight`
 +        // и `-style`, css-fonts-4 §6.5) приходит своими тегами возможностей
 +        // `nsyw`/`nsys`: настоящих тегов OpenType для этого нет, а иного
@@ -5272,7 +5374,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        } else {
 +            font
 +        };
-@@ -497 +610,22 @@
+@@ -497 +665,22 @@
 -        for index in 0..total_number {
 +        // KaminIDE patch: документ просит подбор веса по CSS (тег `cssw`, см.
 +        // `css_weight`) — выбранная грань идёт первой, с подделкой жирного,
@@ -5296,7 +5398,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            .map(|_| None)
 +            .chain((0..total_number).map(Some));
 +        for slot in order {
-@@ -499,2 +633,23 @@
+@@ -499,2 +688,23 @@
 -                let font_face_ref = unsafe { font.GetFontFaceReference(index).log_err()? };
 -                let font_face = unsafe { font_face_ref.CreateFontFace().log_err()? };
 +                let font_face_ref = match (slot, css_pick.as_ref()) {
@@ -5322,7 +5424,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                // шейпинга через границу коробок и признак Ahem.
 +                let postscript_name =
 +                    get_postscript_name(&font_face, &components.locale).log_err()?;
-@@ -503,4 +658,21 @@
+@@ -503,4 +713,9 @@
 -                let fallbacks = fallbacks.as_ref().and_then(|fallbacks| {
 -                    Self::generate_font_fallbacks(fallbacks, factory, system_font_collection)
 -                        .log_err()
@@ -5336,7 +5438,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    )
 +                    .log_err()
 +                    .flatten()
-+                });
+@@ -507,0 +723,13 @@
 +                // KaminIDE patch: те же подстановки, но только для своего
 +                // семейства — для строк из нескольких семейств (`layout_fallbacks`).
 +                let scoped_fallbacks = font_fallbacks.as_ref().and_then(|fallbacks| {
@@ -5348,7 +5450,9 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    )
 +                    .log_err()
 +                    .flatten()
-@@ -513 +685,18 @@
++                });
++                let raster_hints = RasterHints::read(&font_face);
+@@ -513 +741,19 @@
 -                    font_collection: collection.clone(),
 +                    scoped_fallbacks,
 +                    fallback_key: font_fallbacks.clone(),
@@ -5357,6 +5461,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        .iter()
 +                        .any(|(tag, value)| tag == "vert" && *value > 0),
 +                    features_key: format!("{:?}", features.tag_value_list()),
++                    raster_hints,
 +                    pixel_exact: family_name.eq_ignore_ascii_case("ahem")
 +                        || postscript_name.eq_ignore_ascii_case("ahem"),
 +                    face_key: postscript_name,
@@ -5368,7 +5473,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        (None, Some(pick)) => Some(pick.layout_weight),
 +                        _ => None,
 +                    },
-@@ -536,0 +726,58 @@
+@@ -536,0 +783,58 @@
 +        // KaminIDE patch: the glyph run list is sized at its first run
 +        // (`RendererContext::reserve`): a line that draws no glyph run keeps
 +        // no list, as before.
@@ -5427,7 +5532,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        if font_runs.is_empty() {
 +            return Ok((px(0.), px(0.), px(0.)));
 +        }
-@@ -540,0 +788,22 @@
+@@ -540,0 +845,22 @@
 +
 +            // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
 +            // продвижение возьмётся из вертикальных метрик в отрисовщике.
@@ -5450,12 +5555,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    u16_at += len16;
 +                }
 +            }
-@@ -553 +822,3 @@
+@@ -553 +879,3 @@
 -                        font_info.font_face.GetWeight(),
 +                        font_info
 +                            .layout_weight
 +                            .unwrap_or_else(|| font_info.font_face.GetWeight()),
-@@ -555,2 +826,5 @@
+@@ -555,2 +883,5 @@
 -                        DWRITE_FONT_STRETCH_NORMAL,
 -                        font_size.as_f32(),
 +                        // KaminIDE patch: ширина уже учтена при подборе начертания.
@@ -5463,17 +5568,17 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
 +                        // у прогонов он теперь свой.
 +                        first_run.font_size.as_f32(),
-@@ -560,2 +834,2 @@
+@@ -560,2 +891,2 @@
 -                if let Some(ref fallbacks) = font_info.fallbacks {
 -                    format.SetFontFallback(fallbacks)?;
 +                if let Some(fallbacks) = self.layout_fallbacks(components, font_runs)? {
 +                    format.SetFontFallback(&fallbacks)?;
-@@ -570 +844,3 @@
+@@ -570 +901,3 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + first_run.len))
 +                    .unwrap_or("");
-@@ -583,11 +859,26 @@
+@@ -583,11 +916,26 @@
 -            let (ascent, descent) = {
 -                let mut first_metrics = [DWRITE_LINE_METRICS::default(); 4];
 -                let mut line_count = 0u32;
@@ -5511,13 +5616,13 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            let mut applied = font_runs[0].font_id;
 +            let mut applied_size = font_runs[0].font_size;
 +            for (run_index, run) in font_runs.iter().enumerate().skip(1) {
-@@ -595 +886,4 @@
+@@ -595 +943,4 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + run.len))
 +                    .unwrap_or("");
 +                let run_utf8_start = utf8_offset;
-@@ -597,0 +892,15 @@
+@@ -597,0 +949,15 @@
 +                let base = &self.fonts[applied.0];
 +                if !run.break_ligatures
 +                    && run.font_size == applied_size
@@ -5533,20 +5638,20 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                }
 +                applied = run.font_id;
 +                applied_size = run.font_size;
-@@ -607,2 +916,4 @@
+@@ -607,2 +973,4 @@
 -                let font_size = if break_ligatures {
 -                    font_size.as_f32().next_up()
 +                // Upstream's alternating nudge prevents ligatures spanning style runs.
 +                // Browser callers opt out to retain CSS boundary shaping (§7.4).
 +                let size = if run.break_ligatures && run_index % 2 == 1 {
 +                    run.font_size.as_f32().next_up()
-@@ -610 +921 @@
+@@ -610 +978 @@
 -                    font_size.as_f32()
 +                    run.font_size.as_f32()
-@@ -612 +923 @@
+@@ -612 +980 @@
 -                text_layout.SetFontSize(font_size, text_range)?;
 +                text_layout.SetFontSize(size, text_range)?;
-@@ -614 +925,6 @@
+@@ -614 +982,6 @@
 -                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
 +                text_layout.SetFontWeight(
 +                    font_info
@@ -5554,10 +5659,10 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        .unwrap_or_else(|| font_info.font_face.GetWeight()),
 +                    text_range,
 +                )?;
-@@ -616,2 +931,0 @@
+@@ -616,2 +988,0 @@
 -
 -                break_ligatures = !break_ligatures;
-@@ -620 +934,57 @@
+@@ -620 +991,57 @@
 -            let mut runs = Vec::new();
 +            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
 +            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
@@ -5616,21 +5721,21 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            // отрисовщика мутирует его через указатель, а указатель,
 +            // производный от &T, мутировать нельзя (UB по правилам
 +            // алиасинга: оптимизатор вправе счесть width нулём).
-@@ -625 +995,3 @@
+@@ -625 +1052,3 @@
 -                runs: &mut runs,
 +                runs: &mut *out,
 +                reserve,
 +                index_base,
-@@ -626,0 +999 @@
+@@ -626,0 +1056 @@
 +                vert_ranges,
-@@ -628 +1001 @@
+@@ -628 +1058 @@
 -            text_layout.Draw(
 +            let drawn = text_layout.Draw(
-@@ -633 +1006,2 @@
+@@ -633 +1063,2 @@
 -            )?;
 +            );
 +            drawn?;
-@@ -635,9 +1009,44 @@
+@@ -635,9 +1066,44 @@
 -
 -            Ok(LineLayout {
 -                font_size,
@@ -5684,7 +5789,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            }
 +
 +            Ok((width, ascent, descent))
-@@ -694,0 +1104,19 @@
+@@ -694,0 +1161,66 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) is placed at its full sub-pixel
 +        // position on both axes (`Window::paint_glyph` quantizes y on the x
 +        // grid for it) and rasterized bi-level by pixel-centre sampling: a
@@ -5702,41 +5807,134 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        // Every other font is unaffected.
 +        // KaminIDE patch: ClearType (upstream `subpixel_rendering`) у Ahem не
 +        // применяется — точная растеризация только в оттенках серого.
-+        let exact = font.pixel_exact && !params.subpixel_rendering;
-+        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
-@@ -696 +1124 @@
--            m11: params.scale_factor,
-+            m11: params.scale_factor * k,
-@@ -699 +1127 @@
--            m22: params.scale_factor,
-+            m22: params.scale_factor * k,
-@@ -702,0 +1131,5 @@
-+        let variants_y = if exact {
-+            SUBPIXEL_VARIANTS_X
-+        } else {
-+            SUBPIXEL_VARIANTS_Y
++        let mask = glyph_mask(font, &components.text_settings, params);
++        if mask == GlyphMask::Exact {
++            let k = EXACT_SUPERSAMPLE as f32;
++            let transform = DWRITE_MATRIX {
++                m11: params.scale_factor * k,
++                m12: 0.0,
++                m21: 0.0,
++                m22: params.scale_factor * k,
++                dx: 0.0,
++                dy: 0.0,
++            };
++            let baseline_origin_x = params.subpixel_variant.x as f32
++                / SUBPIXEL_VARIANTS_X as f32
++                / params.scale_factor;
++            let baseline_origin_y = params.subpixel_variant.y as f32
++                / SUBPIXEL_VARIANTS_X as f32
++                / params.scale_factor;
++            return Ok(unsafe {
++                components.factory.CreateGlyphRunAnalysis(
++                    &glyph_run,
++                    Some(&transform),
++                    DWRITE_RENDERING_MODE1_ALIASED,
++                    DWRITE_MEASURING_MODE_NATURAL,
++                    DWRITE_GRID_FIT_MODE_DISABLED,
++                    DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
++                    baseline_origin_x,
++                    baseline_origin_y,
++                )
++            }?);
++        }
++
++        // KaminIDE patch: every other glyph is rasterized as Skia's
++        // DirectWrite scaler does in Chromium: at its device size with the
++        // rendering mode `RasterHints::mode` picks, hinted (grid fit on), the
++        // sub-pixel offset in the transform, and ClearType coverage whenever
++        // the system smooths with ClearType (a glyph that may not use LCD
++        // blending averages it, see `rasterize_monochrome`).
++        let device_size = params.font_size.as_f32() * params.scale_factor;
++        let (rendering_mode, em_size) = match mask {
++            GlyphMask::Bilevel => (
++                DWRITE_RENDERING_MODE1_ALIASED,
++                (device_size * 64.0).round().max(64.0) / 64.0,
++            ),
++            _ => font.raster_hints.mode(device_size),
 +        };
-@@ -705,3 +1138,2 @@
++        let glyph_run = DWRITE_GLYPH_RUN {
++            fontEmSize: em_size,
++            ..glyph_run
++        };
+@@ -696 +1228 @@
+-            m11: params.scale_factor,
++            m11: 1.0,
+@@ -699,38 +1231,10 @@
+-            m22: params.scale_factor,
+-            dx: 0.0,
+-            dy: 0.0,
+-        };
+-        let baseline_origin_x =
+-            params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32 / params.scale_factor;
 -        let baseline_origin_y = params.subpixel_variant.y as f32
 -            / gpui::SUBPIXEL_VARIANTS_Y as f32
 -            / params.scale_factor;
-+        let baseline_origin_y =
-+            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
-@@ -726,0 +1159 @@
-+            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
-@@ -729,0 +1163,3 @@
-+        if exact {
-+            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
-+        }
-@@ -765 +1201,15 @@
+-
+-        let mut rendering_mode = DWRITE_RENDERING_MODE1::default();
+-        let mut grid_fit_mode = DWRITE_GRID_FIT_MODE::default();
+-        unsafe {
+-            font.font_face.GetRecommendedRenderingMode(
+-                params.font_size.as_f32(),
+-                // Using 96 as scale is applied by the transform
+-                96.0,
+-                96.0,
+-                Some(&transform),
+-                false,
+-                DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
+-                DWRITE_MEASURING_MODE_NATURAL,
+-                None,
+-                &mut rendering_mode,
+-                &mut grid_fit_mode,
+-            )?;
+-        }
+-        let rendering_mode = match rendering_mode {
+-            DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
+-            m => m,
+-        };
+-
+-        let antialias_mode = if params.subpixel_rendering {
+-            DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
+-        } else {
+-            DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE
+-        };
+-
++            m22: 1.0,
++            dx: params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32,
++            dy: params.subpixel_variant.y as f32 / SUBPIXEL_VARIANTS_Y as f32,
++        };
++        let antialias_mode = match mask {
++            GlyphMask::ClearTypeLcd | GlyphMask::ClearTypeGray => {
++                DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
++            }
++            _ => DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
++        };
+@@ -743 +1247 @@
+-                grid_fit_mode,
++                DWRITE_GRID_FIT_MODE_ENABLED,
+@@ -745,2 +1249,2 @@
+-                baseline_origin_x,
+-                baseline_origin_y,
++                0.0,
++                0.0,
+@@ -758,8 +1262,18 @@
+-
+-        let texture_type = if params.subpixel_rendering {
+-            DWRITE_TEXTURE_CLEARTYPE_3x1
+-        } else {
+-            DWRITE_TEXTURE_ALIASED_1x1
+-        };
+-
 -        let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
-+        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
++        let mask = glyph_mask(
++            &self.fonts[params.font_id.0],
++            &components.text_settings,
++            params,
++        );
++
++        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(mask.texture_type())? };
 +        // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
 +        // (a superset; columns without a sampled centre stay empty).
-+        if self.fonts[params.font_id.0].pixel_exact
-+            && !params.subpixel_rendering
-+            && bounds.right > bounds.left
-+        {
++        if mask == GlyphMask::Exact && bounds.right > bounds.left {
 +            let k = EXACT_SUPERSAMPLE;
 +            bounds = RECT {
 +                left: bounds.left.div_euclid(k),
@@ -5745,8 +5943,37 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                bottom: (bounds.bottom + k - 1).div_euclid(k),
 +            };
 +        }
-@@ -832,0 +1283,30 @@
-+            if self.fonts[params.font_id.0].pixel_exact {
+@@ -830 +1344,27 @@
+-        if !params.subpixel_rendering {
++        let mask = glyph_mask(
++            &self.fonts[params.font_id.0],
++            &components.text_settings,
++            params,
++        );
++        let rect = RECT {
++            left: glyph_bounds.origin.x.0,
++            top: glyph_bounds.origin.y.0,
++            right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
++            bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
++        };
++        if mask == GlyphMask::ClearTypeGray {
++            // KaminIDE patch: where LCD blending is not allowed, Chromium
++            // still rasterizes ClearType coverage and averages its three
++            // subpixels into one (Skia `kGenA8FromLCD`), wider and softer
++            // than DirectWrite's own grayscale.
++            let pixel_count = glyph_bounds.size.width.0 as usize * glyph_bounds.size.height.0 as usize;
++            let mut rgb = vec![0u8; pixel_count * 3];
++            unsafe {
++                glyph_analysis.CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1, &rect, &mut rgb)?
++            };
++            return Ok(rgb
++                .chunks_exact(3)
++                .map(|p| ((p[0] as u32 + p[1] as u32 + p[2] as u32) / 3) as u8)
++                .collect());
++        }
++        if mask != GlyphMask::ClearTypeLcd {
+@@ -832,0 +1373,30 @@
++            if mask == GlyphMask::Exact {
 +                // KaminIDE patch: sample the supersampled bi-level raster at each
 +                // device pixel's centre, taken just above/left of it (k/2 - 1):
 +                // an edge exactly on the centre then counts like box edge
@@ -5776,23 +6003,38 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                }
 +                return Ok(bitmap_data);
 +            }
-@@ -1384 +1864,4 @@
+@@ -834,12 +1404,2 @@
+-                glyph_analysis.CreateAlphaTexture(
+-                    DWRITE_TEXTURE_ALIASED_1x1,
+-                    &RECT {
+-                        left: glyph_bounds.origin.x.0,
+-                        top: glyph_bounds.origin.y.0,
+-                        right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
+-                        bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
+-                    },
+-                    &mut bitmap_data,
+-                )?;
+-            }
+-
++                glyph_analysis.CreateAlphaTexture(DWRITE_TEXTURE_ALIASED_1x1, &rect, &mut bitmap_data)?
++            };
+@@ -1384 +1944,4 @@
 -struct TextRendererWrapper(IDWriteTextRenderer);
 +// KaminIDE patch: обработчик версии 1 — вертикальная раскладка строки
 +// (стоячее письмо, `vert`) зовёт ТОЛЬКО его; со старым интерфейсом Draw
 +// падает с DWRITE_E_TEXTRENDERERINCOMPATIBLE.
 +struct TextRendererWrapper(IDWriteTextRenderer1);
-@@ -1393 +1876 @@
+@@ -1393 +1956 @@
 -#[implement(IDWriteTextRenderer)]
 +#[implement(IDWriteTextRenderer1)]
-@@ -1408,0 +1892,6 @@
+@@ -1408,0 +1972,6 @@
 +    /// KaminIDE patch: glyph runs the line draws at least (its shaping
 +    /// ranges); the empty list takes room for them, rounded to the power of
 +    /// two that doubling from empty would reach, at its first run. 0: grow.
 +    reserve: usize,
 +    /// KaminIDE patch: added to every glyph index (the line is a piece of a longer text).
 +    index_base: usize,
-@@ -1409,0 +1899,13 @@
+@@ -1409,0 +1979,13 @@
 +    /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
 +    /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
 +    vert_ranges: Vec<(u32, u32)>,
@@ -5806,25 +6048,25 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            | 0x180B..=0x180F | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F
 +            | 0x3164 | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xFFF0..=0xFFF8
 +            | 0x1D173..=0x1D17A | 0xE0000..=0xE0FFF)
-@@ -1514,0 +2017,5 @@
+@@ -1514,0 +2097,5 @@
 +        // KaminIDE patch: MSDN допускает NULL в glyphRunDescription (и сам
 +        // прогон) — разыменование без проверки было бы AV на чужом шрифте.
 +        if glyphrun.is_null() || glyphrundescription.is_null() {
 +            return Ok(());
 +        }
-@@ -1525,2 +2032,3 @@
+@@ -1525,2 +2112,3 @@
 -        // This `cast()` action here should never fail since we are running on Win10+, and
 -        // `IDWriteFontFace3` requires Win10
 +        // KaminIDE patch: cast не «не может упасть» — на удалённом или
 +        // экзотическом шрифте лучше молча пропустить прогон, чем уронить всю
 +        // раскладку строки (upstream возвращает здесь ошибку).
-@@ -1528,4 +2036 @@
+@@ -1528,4 +2116 @@
 -            return Err(Error::new(
 -                DWRITE_E_UNSUPPORTEDOPERATION,
 -                "Failed to cast font face",
 -            ));
 +            return Ok(());
-@@ -1535,5 +2040,2 @@
+@@ -1535,5 +2120,2 @@
 -        let font_id = context
 -            .text_system
 -            .font_info_cache
@@ -5832,7 +6074,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 -            .copied()
 +        let font_id = match context.text_system.font_info_cache.get(&font_face_key) {
 +            Some(&(font_id, _)) => font_id,
-@@ -1542,7 +2044,10 @@
+@@ -1542,7 +2124,10 @@
 -            .map_or_else(
 -                || {
 -                    let font = font_face_to_font(font_face, &self.locale)
@@ -5850,7 +6092,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    Some(&font_id) => font_id,
 +                    None => {
 +                        let Some(font_id) = context
-@@ -1551,10 +2056,13 @@
+@@ -1551,10 +2136,13 @@
 -                            .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
 -                    };
 -                    context
@@ -5874,7 +6116,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                font_id
 +            }
 +        };
-@@ -1576,0 +2085,31 @@
+@@ -1576,0 +2165,31 @@
 +        };
 +        // KaminIDE patch: стоячее вертикальное письмо (`vert`) продвигается
 +        // вертикальной метрикой глифа — advanceHeight подставленного глифа
@@ -5906,7 +6148,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            })
 +        } else {
 +            None
-@@ -1599,0 +2139,13 @@
+@@ -1599,0 +2219,13 @@
 +            // KaminIDE patch: знак-указание своего изображения не имеет.
 +            // Форму соседних букв он уже определил (соединитель, разделитель
 +            // направления), но шрифт его чаще всего не содержит — и подмена
@@ -5920,7 +6162,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                glyph_idx += cluster_glyph_count;
 +                continue;
 +            }
-@@ -1613 +2165,9 @@
+@@ -1613 +2245,9 @@
 -                        px(-glyph_offsets[this_glyph_idx].ascenderOffset),
 +                        // upstream: вертикальное смещение глифа (огласовки, метки).
 +                        // KaminIDE patch: у стоячего вертикального письма смещение
@@ -5931,15 +6173,15 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        } else {
 +                            px(-glyph_offsets[this_glyph_idx].ascenderOffset)
 +                        },
-@@ -1615 +2175 @@
+@@ -1615 +2255 @@
 -                    index: context.index_converter.utf8_ix,
 +                    index: context.index_converter.utf8_ix + context.index_base,
-@@ -1618 +2178,3 @@
+@@ -1618 +2258,3 @@
 -                context.width += glyph_advances[this_glyph_idx];
 +                context.width += vert_advances
 +                    .as_ref()
 +                    .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
-@@ -1622 +2184,11 @@
+@@ -1622 +2264,11 @@
 -        context.runs.push(ShapedRun { font_id, glyphs });
 +        if context.reserve > 0 && context.runs.capacity() == 0 {
 +            context
@@ -5952,7 +6194,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            glyphs,
 +            font_size: px(glyphrun.fontEmSize),
 +        });
-@@ -1667,0 +2240,90 @@
+@@ -1667,0 +2320,90 @@
 +    }
 +}
 +
@@ -6043,7 +6285,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            isrighttoleft,
 +            clientdrawingeffect,
 +        )
-@@ -1781,0 +2444,19 @@
+@@ -1781,0 +2524,19 @@
 +/// KaminIDE patch: PostScript-имя грани — ключ физической грани (у
 +/// синтетических bold/oblique оно то же) и признак тестового шрифта Ahem.
 +/// upstream убрал эту функцию вместе с `FontIdentifier`.
@@ -6063,9 +6305,27 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    get_name(info, locale)
 +}
 +
-@@ -1791,0 +2473 @@
+@@ -1791,0 +2553 @@
 +        stretch: FontStretch::default(),
-@@ -2170,0 +2853,16 @@
+@@ -1880,17 +2641,0 @@
+-}
+-
+-fn get_system_subpixel_rendering() -> bool {
+-    let mut value = c_uint::default();
+-    let result = unsafe {
+-        SystemParametersInfoW(
+-            SPI_GETFONTSMOOTHINGTYPE,
+-            0,
+-            Some((&mut value) as *mut c_uint as *mut c_void),
+-            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS::default(),
+-        )
+-    };
+-    if result.log_err().is_some() {
+-        value == FE_FONTSMOOTHINGCLEARTYPE
+-    } else {
+-        true
+-    }
+@@ -2170,0 +2916,16 @@
 +
 +/// KaminIDE patch: ступень ширины начертания в термины DirectWrite.
 +fn to_dwrite_stretch(stretch: FontStretch) -> DWRITE_FONT_STRETCH {
@@ -6393,6 +6653,515 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +            Ok(Some(builder.CreateFontFallback()?))
 +        }
 +    }
++}
+diff --git a/vendor/gpui-windows/src/direct_write/raster_mode.rs b/vendor/gpui-windows/src/direct_write/raster_mode.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b8c3b9282a66797a6a3ec65ec9b3b8d43fa83e3c
+--- /dev/null
++++ b/vendor/gpui-windows/src/direct_write/raster_mode.rs
+@@ -0,0 +1,176 @@
++//! KaminIDE patch: DirectWrite rendering mode and rasterization size of a
++//! glyph chosen as Skia's DirectWrite scaler chooses them in Chromium, so the
++//! glyph coverage is the one Chrome gets from DirectWrite.
++//!
++//! A `gasp` table of version 1 decides between natural and natural-symmetric
++//! smoothing for the size; without one, glyphs above 20 px or of fonts without
++//! TrueType instructions are smoothed symmetrically, and small hinted glyphs
++//! (often tuned only for GDI ClearType) use natural smoothing at the size
++//! rounded to 1/64 px.
++
++use windows::Win32::Graphics::DirectWrite::*;
++
++const fn tag(t: &[u8; 4]) -> u32 {
++    u32::from_le_bytes(*t)
++}
++
++/// What a face's `gasp` and `maxp` tables say about its rasterization.
++#[derive(Clone, Debug, Default, PartialEq, Eq)]
++pub(crate) struct RasterHints {
++    /// `gasp` version and its (max ppem, behavior flags) ranges.
++    gasp: Option<(u16, Vec<(u16, u16)>)>,
++    /// The face carries TrueType instructions.
++    hinted: bool,
++}
++
++const GASP_SYMMETRIC_SMOOTHING: u16 = 0x0008;
++
++fn be16(data: &[u8], at: usize) -> Option<u16> {
++    Some(u16::from_be_bytes([*data.get(at)?, *data.get(at + 1)?]))
++}
++
++fn parse_gasp(data: &[u8]) -> Option<(u16, Vec<(u16, u16)>)> {
++    let version = be16(data, 0)?;
++    if version > 1 {
++        return None;
++    }
++    let count = be16(data, 2)? as usize;
++    let ranges = (0..count)
++        .map(|i| Some((be16(data, 4 + 4 * i)?, be16(data, 6 + 4 * i)?)))
++        .collect::<Option<Vec<_>>>()?;
++    Some((version, ranges))
++}
++
++/// `maxp` version 1.0 (TrueType outlines) with a non-zero
++/// `maxSizeOfInstructions`.
++fn parse_hinted(data: &[u8]) -> bool {
++    data.len() >= 32 && data[..4] == [0, 1, 0, 0] && be16(data, 26).is_some_and(|n| n != 0)
++}
++
++fn with_table<T>(
++    face: &IDWriteFontFace3,
++    name: &[u8; 4],
++    read: impl FnOnce(&[u8]) -> T,
++) -> Option<T> {
++    let mut data = std::ptr::null_mut();
++    let mut size = 0u32;
++    let mut context = std::ptr::null_mut();
++    let mut exists = false.into();
++    unsafe { face.TryGetFontTable(tag(name), &mut data, &mut size, &mut context, &mut exists) }
++        .ok()?;
++    if !exists.as_bool() {
++        return None;
++    }
++    let bytes = unsafe { std::slice::from_raw_parts(data as *const u8, size as usize) };
++    let value = read(bytes);
++    unsafe { face.ReleaseFontTable(context) };
++    Some(value)
++}
++
++impl RasterHints {
++    pub(crate) fn read(face: &IDWriteFontFace3) -> Self {
++        Self {
++            gasp: with_table(face, b"gasp", parse_gasp).flatten(),
++            hinted: with_table(face, b"maxp", parse_hinted).unwrap_or(false),
++        }
++    }
++
++    /// Smoothing mode and the em size to rasterize at for a glyph of
++    /// `device_size` device pixels.
++    pub(crate) fn mode(&self, device_size: f32) -> (DWRITE_RENDERING_MODE1, f32) {
++        let gdi_size = match (device_size * 64.0).round() / 64.0 {
++            0.0 => 1.0,
++            size => size,
++        };
++        if let Some((version, ranges)) = &self.gasp
++            && *version >= 1
++        {
++            let ppem = gdi_size.round() as i32;
++            let mut min = -1;
++            for (max, flags) in ranges {
++                if min < ppem && ppem <= *max as i32 {
++                    let mode = if flags & GASP_SYMMETRIC_SMOOTHING != 0 {
++                        DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC
++                    } else {
++                        DWRITE_RENDERING_MODE1_NATURAL
++                    };
++                    return (mode, device_size);
++                }
++                min = *max as i32;
++            }
++        }
++        if device_size > 20.0 || !self.hinted {
++            (DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, device_size)
++        } else {
++            (DWRITE_RENDERING_MODE1_NATURAL, gdi_size)
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn gasp(version: u16, ranges: &[(u16, u16)]) -> Vec<u8> {
++        let mut data = [version, ranges.len() as u16]
++            .map(u16::to_be_bytes)
++            .concat();
++        for (max, flags) in ranges {
++            data.extend(max.to_be_bytes());
++            data.extend(flags.to_be_bytes());
++        }
++        data
++    }
++
++    #[test]
++    fn version_1_gasp_picks_symmetric_smoothing_per_range() {
++        let hints = RasterHints {
++            gasp: parse_gasp(&gasp(1, &[(8, 0x2), (16, 0x1 | 0x2), (0xffff, 0xf)])),
++            hinted: true,
++        };
++        assert_eq!(hints.mode(12.0), (DWRITE_RENDERING_MODE1_NATURAL, 12.0));
++        assert_eq!(hints.mode(16.4), (DWRITE_RENDERING_MODE1_NATURAL, 16.4));
++        assert_eq!(
++            hints.mode(17.0),
++            (DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, 17.0)
++        );
++    }
++
++    #[test]
++    fn without_version_1_gasp_small_hinted_glyphs_use_natural_at_gdi_size() {
++        for gasp_table in [None, parse_gasp(&gasp(0, &[(0xffff, 0x3)]))] {
++            let hints = RasterHints {
++                gasp: gasp_table,
++                hinted: true,
++            };
++            let (mode, size) = hints.mode(13.333_333);
++            assert_eq!(mode, DWRITE_RENDERING_MODE1_NATURAL);
++            assert_eq!(size, (13.333_333f32 * 64.0).round() / 64.0);
++            assert_eq!(
++                hints.mode(24.0),
++                (DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, 24.0)
++            );
++        }
++        let unhinted = RasterHints {
++            gasp: None,
++            hinted: false,
++        };
++        assert_eq!(
++            unhinted.mode(12.0),
++            (DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC, 12.0)
++        );
++    }
++
++    #[test]
++    fn instructions_are_read_from_truetype_maxp_only() {
++        let mut maxp = vec![0u8; 32];
++        maxp[..4].copy_from_slice(&[0, 1, 0, 0]);
++        assert!(!parse_hinted(&maxp));
++        maxp[27] = 9;
++        assert!(parse_hinted(&maxp));
++        maxp[..4].copy_from_slice(&[0, 0, 0x50, 0]);
++        assert!(!parse_hinted(&maxp[..6]));
++        assert_eq!(parse_gasp(&gasp(2, &[(1, 1)])), None);
++        assert_eq!(parse_gasp(&[0, 1, 0, 2, 0, 8]), None);
++    }
++}
+diff --git a/vendor/gpui-windows/src/direct_write/text_gamma.rs b/vendor/gpui-windows/src/direct_write/text_gamma.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..26f52592e8716798c47274165a80cead22713e4b
+--- /dev/null
++++ b/vendor/gpui-windows/src/direct_write/text_gamma.rs
+@@ -0,0 +1,179 @@
++//! KaminIDE patch: glyph coverage correction tables as Chromium on Windows
++//! builds them (Skia's mask gamma: a 3-bit text-luminance row per 8-bit
++//! coverage), so a glyph mask blends to the same RGB as in Chrome.
++//!
++//! Each row is computed for a text luminance `src` assuming the perceptual
++//! inverse as background (`dst = 1 - src`): coverage gets a contrast boost that
++//! fades out as the background guess gets dark, the boosted coverage mixes
++//! `src` and `dst` in linear light, and the table stores the coverage that a
++//! plain (non-linear) blend needs to reproduce that mix.
++
++/// Number of luminance rows: Skia keeps 3 bits of text luminance.
++pub(crate) const ROWS: usize = 8;
++
++/// Contrast and device gamma used for the tables. `gamma == 0.0` is sRGB.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub(crate) struct TextGammaSettings {
++    pub contrast: f32,
++    pub gamma: f32,
++}
++
++impl TextGammaSettings {
++    /// Chromium's Windows build defaults (`SK_GAMMA_SRGB`, contrast 1.0).
++    pub(crate) const CHROMIUM_DEFAULT: Self = Self {
++        contrast: 1.0,
++        gamma: 0.0,
++    };
++
++    /// Skia stores contrast in 1/255 and gamma in 1/64 steps; the tables are
++    /// built from the stored values, so the settings are quantized the same way.
++    pub(crate) fn quantized(self) -> Self {
++        let contrast = (self.contrast.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
++        let gamma = (self.gamma.clamp(0.0, 4.0 - f32::EPSILON) * 64.0) as u8;
++        Self {
++            contrast: contrast as f32 / 255.0,
++            gamma: gamma as f32 / 64.0,
++        }
++    }
++}
++
++/// 3-bit luminance level expanded to 8 bits by bit replication.
++pub(crate) fn expand_level(level: usize) -> u32 {
++    let base = (level as u32) << 5;
++    (base | (base >> 3) | (base >> 6)) & 0xff
++}
++
++fn to_linear(gamma: f32, v: f32) -> f32 {
++    if gamma == 0.0 {
++        if v <= 0.04045 {
++            v / 12.92
++        } else {
++            ((v + 0.055) / 1.055).powf(2.4)
++        }
++    } else if gamma == 1.0 {
++        v
++    } else {
++        v.powf(gamma)
++    }
++}
++
++fn from_linear(gamma: f32, v: f32) -> f32 {
++    if gamma == 0.0 {
++        if v <= 0.003_130_8 {
++            v * 12.92
++        } else {
++            1.055 * v.powf(1.0 / 2.4) - 0.055
++        }
++    } else if gamma == 1.0 {
++        v
++    } else {
++        v.powf(1.0 / gamma)
++    }
++}
++
++fn round_byte(v: f32) -> u8 {
++    (255.0 * v + 0.5).floor().clamp(0.0, 255.0) as u8
++}
++
++/// One correction row for the 8-bit text luminance `src_lum`.
++pub(crate) fn row(src_lum: u32, settings: TextGammaSettings) -> [u8; 256] {
++    let TextGammaSettings { contrast, gamma } = settings;
++    let src = src_lum as f32 / 255.0;
++    let lin_src = to_linear(gamma, src);
++    let dst = 1.0 - src;
++    let lin_dst = to_linear(gamma, dst);
++    let adjusted_contrast = contrast * lin_dst;
++    let mut table = [0u8; 256];
++    for (i, slot) in table.iter_mut().enumerate() {
++        let raw = i as f32 / 255.0;
++        let boosted = raw + (1.0 - raw) * adjusted_contrast * raw;
++        // Near-equal src and dst make the inverse blend unstable; keep only
++        // the contrast boost there.
++        *slot = if (src - dst).abs() < 1.0 / 256.0 {
++            round_byte(boosted)
++        } else {
++            let lin_out = lin_src * boosted + (1.0 - boosted) * lin_dst;
++            round_byte((from_linear(gamma, lin_out) - dst) / (src - dst))
++        };
++    }
++    table
++}
++
++/// All rows packed four bytes per word (row-major, byte `i` of a row in bits
++/// `8 * (i % 4)` of word `i / 4`), the layout the text shaders read.
++pub(crate) fn packed_tables(settings: TextGammaSettings) -> [u32; ROWS * 64] {
++    let settings = settings.quantized();
++    let mut words = [0u32; ROWS * 64];
++    for level in 0..ROWS {
++        let row = row(expand_level(level), settings);
++        for (i, byte) in row.iter().enumerate() {
++            words[level * 64 + i / 4] |= (*byte as u32) << (8 * (i % 4));
++        }
++    }
++    words
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn unpack(words: &[u32; ROWS * 64], level: usize, i: usize) -> u8 {
++        (words[level * 64 + i / 4] >> (8 * (i % 4))) as u8
++    }
++
++    #[test]
++    fn levels_expand_by_bit_replication() {
++        let levels: Vec<u32> = (0..ROWS).map(expand_level).collect();
++        assert_eq!(levels, [0, 36, 73, 109, 146, 182, 219, 255]);
++    }
++
++    #[test]
++    fn rows_keep_empty_and_full_coverage() {
++        let words = packed_tables(TextGammaSettings::CHROMIUM_DEFAULT);
++        for level in 0..ROWS {
++            assert_eq!(unpack(&words, level, 0), 0);
++            assert_eq!(unpack(&words, level, 255), 255);
++            for i in 1..256 {
++                assert!(unpack(&words, level, i) >= unpack(&words, level, i - 1));
++            }
++        }
++    }
++
++    #[test]
++    fn dark_text_thins_and_light_text_thickens_partial_coverage() {
++        // Values of the Chromium default tables (checked against Chrome frames
++        // of black and white text on the opposite background).
++        let words = packed_tables(TextGammaSettings::CHROMIUM_DEFAULT);
++        assert_eq!(unpack(&words, 0, 32), 28);
++        assert_eq!(unpack(&words, 0, 128), 119);
++        assert_eq!(unpack(&words, 7, 32), 99);
++        assert_eq!(unpack(&words, 7, 128), 188);
++    }
++
++    #[test]
++    fn settings_are_quantized_like_the_stored_ones() {
++        let q = TextGammaSettings {
++            contrast: 0.5,
++            gamma: 1.8,
++        }
++        .quantized();
++        assert_eq!(q.contrast, 128.0 / 255.0);
++        assert_eq!(q.gamma, 115.0 / 64.0);
++        assert_eq!(
++            TextGammaSettings::CHROMIUM_DEFAULT.quantized(),
++            TextGammaSettings::CHROMIUM_DEFAULT
++        );
++    }
++
++    #[test]
++    fn linear_gamma_without_contrast_is_identity() {
++        let identity = row(
++            expand_level(3),
++            TextGammaSettings {
++                contrast: 0.0,
++                gamma: 1.0,
++            },
++        );
++        assert!(identity.iter().enumerate().all(|(i, v)| *v as usize == i));
++    }
++}
+diff --git a/vendor/gpui-windows/src/direct_write/text_settings.rs b/vendor/gpui-windows/src/direct_write/text_settings.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..de82f1fa783fddd9aab50eb0899a0199536e6c1e
+--- /dev/null
++++ b/vendor/gpui-windows/src/direct_write/text_settings.rs
+@@ -0,0 +1,136 @@
++//! KaminIDE patch: system text smoothing settings read the way Chromium's
++//! `gfx::GetFontRenderParams` (Windows) and `gfx::FontUtilWin` read them, so
++//! glyph masks follow the same mode, subpixel order, contrast and gamma.
++
++use windows::{
++    Win32::{
++        Graphics::{DirectWrite::*, Gdi::*},
++        System::Registry::*,
++        UI::WindowsAndMessaging::*,
++    },
++    core::*,
++};
++
++use super::text_gamma::TextGammaSettings;
++
++/// How glyph edges are smoothed, as the system asks for.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum TextSmoothing {
++    /// Font smoothing off: bi-level glyphs.
++    None,
++    /// Standard (grayscale) antialiasing.
++    Grayscale,
++    /// ClearType with the given subpixel order.
++    Subpixel { bgr: bool },
++}
++
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub(crate) struct SystemTextSettings {
++    pub smoothing: TextSmoothing,
++    pub gamma: TextGammaSettings,
++}
++
++/// `HKCU\SOFTWARE\Microsoft\Avalon.Graphics\<primary display>`: the key the
++/// ClearType tuner writes. Chromium uses DirectWrite's contrast and gamma only
++/// when it exists; otherwise DirectWrite's defaults differ from Skia's.
++fn text_settings_key() -> Option<HKEY> {
++    let mut device = DISPLAY_DEVICEW {
++        cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32,
++        ..Default::default()
++    };
++    let mut index = 0;
++    while unsafe { EnumDisplayDevicesW(PCWSTR::null(), index, &mut device, 0) }.as_bool() {
++        index += 1;
++        if (device.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE).0 == 0 {
++            continue;
++        }
++        let name = String::from_utf16_lossy(&device.DeviceName);
++        let name = name.trim_end_matches('\0');
++        let base = name.rsplit('\\').next().unwrap_or(name);
++        let path = HSTRING::from(format!("SOFTWARE\\Microsoft\\Avalon.Graphics\\{base}"));
++        let mut key = HKEY::default();
++        let opened = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, &path, None, KEY_READ, &mut key) };
++        return opened.is_ok().then_some(key);
++    }
++    None
++}
++
++fn read_dword(key: HKEY, name: &str) -> Option<u32> {
++    let mut value = 0u32;
++    let mut size = std::mem::size_of::<u32>() as u32;
++    let name = HSTRING::from(name);
++    let status = unsafe {
++        RegGetValueW(
++            key,
++            PCWSTR::null(),
++            &name,
++            RRF_RT_REG_DWORD,
++            None,
++            Some((&mut value as *mut u32).cast()),
++            Some(&mut size),
++        )
++    };
++    status.is_ok().then_some(value)
++}
++
++fn spi_u32(action: SYSTEM_PARAMETERS_INFO_ACTION) -> Option<u32> {
++    let mut value = 0u32;
++    unsafe {
++        SystemParametersInfoW(
++            action,
++            0,
++            Some((&mut value as *mut u32).cast()),
++            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS::default(),
++        )
++    }
++    .ok()
++    .map(|_| value)
++}
++
++/// Subpixel order: the tuner's `PixelStructure` value first (0 none, 1 RGB,
++/// 2 BGR, anything else none), then the system orientation; `None` = no
++/// subpixel order known, which Chromium renders as grayscale.
++fn subpixel_order(key: Option<HKEY>) -> Option<bool> {
++    if let Some(structure) = key.and_then(|key| read_dword(key, "PixelStructure")) {
++        return match structure {
++            1 => Some(false),
++            2 => Some(true),
++            _ => None,
++        };
++    }
++    match spi_u32(SPI_GETFONTSMOOTHINGORIENTATION)? {
++        FE_FONTSMOOTHINGORIENTATIONRGB => Some(false),
++        FE_FONTSMOOTHINGORIENTATIONBGR => Some(true),
++        _ => None,
++    }
++}
++
++pub(crate) fn read_system_text_settings(factory: &IDWriteFactory5) -> SystemTextSettings {
++    let key = text_settings_key();
++    let smoothing = match spi_u32(SPI_GETFONTSMOOTHING) {
++        Some(on) if on != 0 => {
++            if spi_u32(SPI_GETFONTSMOOTHINGTYPE) == Some(FE_FONTSMOOTHINGCLEARTYPE) {
++                match subpixel_order(key) {
++                    Some(bgr) => TextSmoothing::Subpixel { bgr },
++                    None => TextSmoothing::Grayscale,
++                }
++            } else {
++                TextSmoothing::Grayscale
++            }
++        }
++        _ => TextSmoothing::None,
++    };
++    let gamma = key
++        .and_then(|_| unsafe { factory.CreateRenderingParams() }.ok())
++        .map(|params| unsafe {
++            TextGammaSettings {
++                contrast: params.GetEnhancedContrast(),
++                gamma: params.GetGamma(),
++            }
++        })
++        .unwrap_or(TextGammaSettings::CHROMIUM_DEFAULT);
++    if let Some(key) = key {
++        let _ = unsafe { RegCloseKey(key) };
++    }
++    SystemTextSettings { smoothing, gamma }
 +}
 diff --git a/vendor/gpui-windows/src/directx_atlas.rs b/vendor/gpui-windows/src/directx_atlas.rs
 index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..aeb59d203da20232fc9a807b06b5245b5c7f70d2
@@ -7220,7 +7989,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc09c7a078
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..d2e3d575a0f9eed7b1da52bf347158d9a55a8ed7
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7228,7 +7997,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,28 @@
+@@ -37 +40,32 @@
+-}
++    /// KaminIDE patch: glyph coverage correction rows (`text_gamma`), packed
++    /// as the text shaders read them from `TextGamma` (b2).
++    pub text_gamma: [u32; 512],
++}
++
 +mod scene_capture;
 +mod canvas;
 +mod cover_shape;
@@ -7256,13 +8031,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +mod damage_audit;
 +pub use damage_audit::{damage_audit_mismatches, set_damage_audit};
 +use group_region::Region;
-+
-@@ -46,0 +78,4 @@
+@@ -46,0 +81,4 @@
 +    disable_direct_composition: bool,
 +    /// KaminIDE patch: frames go to an offscreen texture, never presented
 +    /// (`WindowsPlatform::set_offscreen_windows`).
 +    offscreen: bool,
-@@ -47,0 +83,22 @@
+@@ -47,0 +86,22 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -7285,11 +8059,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// KaminIDE patch: composite runs drawn in one pass (`group_tiles`;
 +    /// `GPUI_GROUP_TILES=0` keeps the composite levels, for comparison runs).
 +    group_tiles: bool,
-@@ -50,0 +108,3 @@
+@@ -50,0 +111,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +117,299 @@
+@@ -56,0 +120,299 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -7589,13 +8363,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +421,2 @@
+@@ -61,0 +424,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +431,2 @@
+@@ -69,0 +434,2 @@
 +use present_gate::FrameLatencyGate;
 +
-@@ -72 +435,6 @@
+@@ -72 +438,6 @@
 -    swap_chain: IDXGISwapChain1,
 +    /// KaminIDE patch: `None` for an offscreen target (`new_offscreen`).
 +    swap_chain: Option<IDXGISwapChain1>,
@@ -7603,34 +8377,37 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    frame_gate: Option<FrameLatencyGate>,
 +    /// KaminIDE patch: the frame's canvas (`canvas`): with a swap chain a
 +    /// texture of its own, offscreen the target itself.
-@@ -74,0 +443,3 @@
+@@ -74,0 +446,3 @@
 +    /// KaminIDE patch: the swap chain's back buffer, which receives the
 +    /// canvas's changes before each present (`canvas`).
 +    back_buffer: Option<ID3D11Texture2D>,
-@@ -88,0 +460 @@
+@@ -88,0 +463 @@
 +    quad_gradient: analytic_gradient::GradientProgram,
-@@ -94,0 +467,6 @@
+@@ -94,0 +470,6 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
 +    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 +    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +    group_tiles_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +479,2 @@
+@@ -99,0 +481,2 @@
++    /// KaminIDE patch: immutable glyph coverage correction rows (b2).
++    text_gamma_buffer: Option<ID3D11Buffer>,
+@@ -100,0 +484,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +502 @@
+@@ -121,0 +507 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +515 @@
+@@ -133,0 +520 @@
 +            ..
-@@ -142,0 +525 @@
+@@ -142,0 +530 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +537,4 @@
+@@ -153,0 +542,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -159 +546,23 @@
+@@ -159 +551,23 @@
 -        if disable_direct_composition {
 +        Self::build(hwnd, directx_devices, disable_direct_composition, false)
 +    }
@@ -7655,7 +8432,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        offscreen: bool,
 +    ) -> Result<Self> {
 +        if disable_direct_composition && !offscreen {
-@@ -164,0 +574,8 @@
+@@ -164,0 +579,8 @@
 +        // KaminIDE patch: a frame comparison pays only when it costs less
 +        // than the raster it saves. A hardware adapter rasters the window in
 +        // less CPU than reading its primitives, so frames keep the damage of
@@ -7664,7 +8441,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        let software = unsafe { devices.adapter.GetDesc1() }
 +            .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
 +        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
-@@ -167,2 +584,6 @@
+@@ -167,2 +589,6 @@
 -        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 -            .context("Creating DirectX resources")?;
 +        let resources = if offscreen {
@@ -7673,13 +8450,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 +        }
 +        .context("Creating DirectX resources")?;
-@@ -180 +601 @@
+@@ -180 +606 @@
 -                .set_swap_chain(&resources.swap_chain)
 +                .set_swap_chain(resources.swap_chain()?)
-@@ -192,0 +614,2 @@
+@@ -192,0 +619,2 @@
 +            disable_direct_composition,
 +            offscreen,
-@@ -193,0 +617,11 @@
+@@ -193,0 +622,11 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -7691,12 +8468,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            blend_premultiplied: None,
 +            blend_replace: None,
 +            group_tiles: group_tiles::enabled(),
-@@ -195,0 +630 @@
+@@ -195,0 +635 @@
 +            backdrop: None,
-@@ -196,0 +632,2 @@
+@@ -196,0 +637,2 @@
 +            unpresented: false,
 +            retained: Default::default(),
-@@ -197,0 +635,39 @@
+@@ -197,0 +640,39 @@
 +    }
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
@@ -7736,18 +8513,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +
 +    pub fn unregister_external_texture(&self, id: AtlasTextureId) {
 +        self.atlas.unregister_external(id);
-@@ -204 +680,2 @@
+@@ -204 +685,2 @@
 -    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
 +    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
 +        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +697,2 @@
+@@ -220 +702,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -222,0 +701,2 @@
+@@ -222,0 +706,2 @@
 +        // KaminIDE patch: the clear is a draw, issued once the target, the
 +        // viewport and the frame parameters are bound (quad_clear).
-@@ -224,7 +703,0 @@
+@@ -224,7 +708,0 @@
 -            device_context.ClearRenderTargetView(
 -                resources
 -                    .render_target_view
@@ -7755,15 +8532,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -                    .context("missing render target view")?,
 -                clear_color,
 -            );
-@@ -241 +714,6 @@
+@@ -240,2 +718,9 @@
+-        }
 -        Ok(())
++            device_context
++                .PSSetConstantBuffers(2, Some(slice::from_ref(&self.globals.text_gamma_buffer)));
++        }
 +        // KaminIDE patch: a frame drawn within a rectangle clears it later,
 +        // under the scissor (`render`).
 +        if !clear {
 +            return Ok(());
 +        }
 +        self.clear_frame(clear_color)
-@@ -246,6 +724,12 @@
+@@ -246,6 +731,12 @@
 -        let result = unsafe {
 -            self.resources
 -                .as_ref()
@@ -7782,7 +8563,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        else {
 +            self.unpresented = false;
 +            return Ok(());
-@@ -253 +737,46 @@
+@@ -253 +744,46 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
 +        let copied = self.copy_to_back_buffer()?;
@@ -7830,10 +8611,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// must present even if the scene is unchanged.
 +    pub(crate) fn needs_presentation(&self) -> bool {
 +        self.unpresented
-@@ -256,0 +786,2 @@
+@@ -256,0 +793,2 @@
 +        // KaminIDE patch: layer buffers die with the device.
 +        self.layer_cache.clear();
-@@ -263,65 +794,33 @@
+@@ -263,65 +801,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7932,7 +8713,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -340 +839,65 @@
+@@ -340 +846,65 @@
 -        self.render(scene, background_appearance)?;
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (retained.rs): unite this frame's damage into every
@@ -7999,22 +8780,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -348,0 +912,5 @@
+@@ -348,0 +919,5 @@
 +    ///
 +    /// KaminIDE patch: with `within`, the target keeps the last frame and only
 +    /// those rectangles are cleared and drawn (scissor, `retained.rs`), one
 +    /// after another from the instances uploaded once; groups whose composite
 +    /// cannot reach their bounds are not drawn.
-@@ -352,0 +921 @@
+@@ -352,0 +928 @@
 +        within: Option<&[Region]>,
-@@ -354 +923,5 @@
+@@ -354 +930,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
 +        self.backdrop_pending = self.backdrop.is_some();
 +        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +930,65 @@
+@@ -357,2 +937,65 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -8082,7 +8863,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +1002,17 @@
+@@ -365,0 +1009,17 @@
 +            // KaminIDE patch: a layer draws its own batches from its buffers.
 +            if let PrimitiveBatch::Layer(index) = batch {
 +                self.draw_layer(scene, index)?;
@@ -8100,28 +8881,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                }
 +                _ => batch_area(scene, &batch),
 +            });
-@@ -370,2 +1023,4 @@
+@@ -370,2 +1030,4 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
 +                PrimitiveBatch::Quads(range) => {
 +                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
 +                }
-@@ -377 +1032 @@
+@@ -377 +1039 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +1034 @@
+@@ -379 +1041 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +1037 @@
+@@ -382 +1044 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +1040 @@
+@@ -385 +1047 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -387,0 +1043 @@
+@@ -387,0 +1050 @@
 +                PrimitiveBatch::Layer(_) => Ok(()),
-@@ -402,0 +1059,404 @@
+@@ -402,0 +1066,406 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8526,19 +9307,21 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1471,0 @@
++            device_context
++                .PSSetConstantBuffers(2, Some(slice::from_ref(&self.globals.text_gamma_buffer)));
+@@ -412 +1480,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1484,4 @@
+@@ -425 +1493,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1550,2 @@
+@@ -488 +1559,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1557,24 @@
+@@ -494 +1566,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8564,7 +9347,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_target();
-@@ -500,19 +1586,3 @@
+@@ -500,19 +1595,3 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8587,10 +9370,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        // KaminIDE patch: ResizeBuffers needs every reference to the buffers released.
 +        resources.back_buffer.take();
 +        recreate(resources, devices)?;
-@@ -539,0 +1610,2 @@
+@@ -539,0 +1619,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,4 +1671,9 @@
+@@ -599,4 +1680,9 @@
 -    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
 -        if len == 0 {
 -            return Ok(());
@@ -8604,7 +9387,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            self.backdrop_pending = false;
 +        }
 +        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-@@ -604,9 +1681,21 @@
+@@ -604,9 +1690,21 @@
 -        self.pipelines.quad_pipeline.draw_range(
 -            &devices.device_context,
 -            self.globals
@@ -8635,28 +9418,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            }
 +        }
 +        Ok(())
-@@ -621,0 +1711,6 @@
+@@ -621,0 +1720,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1739,2 @@
+@@ -643,0 +1748,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1769,4 @@
+@@ -672 +1778,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1916,4 @@
+@@ -815,0 +1925,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1924,40 @@
+@@ -819,0 +1933,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8697,7 +9480,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1967,366 @@
+@@ -822,0 +1976,366 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -9064,10 +9847,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        group_region::narrow_composite(&mut quad, vw, vh);
 +        Some((quad, place.page))
 +    }
-@@ -840 +2350 @@
+@@ -840 +2359 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2401,12 @@
+@@ -858,0 +2378 @@
++            let settings = read_system_text_settings(&factory);
+@@ -863 +2383,5 @@
+-                is_bgr: render_params.GetPixelGeometry() == DWRITE_PIXEL_GEOMETRY_BGR,
++                is_bgr: match settings.smoothing {
++                    TextSmoothing::Subpixel { bgr } => bgr,
++                    _ => render_params.GetPixelGeometry() == DWRITE_PIXEL_GEOMETRY_BGR,
++                },
++                text_gamma: text_gamma_tables(settings.gamma),
+@@ -890,0 +2415,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9080,19 +9872,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -893 +2415 @@
+@@ -893 +2429 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -900 +2422 @@
+@@ -900 +2436 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2426,2 @@
+@@ -904 +2440,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -906,0 +2430 @@
+@@ -906,0 +2444 @@
 +            back_buffer,
-@@ -912,0 +2437,32 @@
+@@ -912,0 +2451,32 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9125,17 +9917,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -923 +2479 @@
+@@ -923 +2493 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -930 +2486 @@
+@@ -930 +2500 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -932,0 +2489 @@
+@@ -932,0 +2503 @@
 +        self.back_buffer = back_buffer;
-@@ -957,0 +2515 @@
+@@ -957,0 +2529 @@
 +        let quad_gradient = analytic_gradient::GradientProgram::new()?;
-@@ -999,0 +2558,22 @@
+@@ -984 +2556,3 @@
+-            create_blend_state(device)?,
++            // KaminIDE patch: glyphs write premultiplied color kept to 8 bits
++            // (`monochrome_sprite_fragment`), blended as path sprites are.
++            create_blend_state_for_path_sprite(device)?,
+@@ -999,0 +2574,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9158,27 +9955,49 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2582 @@
+@@ -1001,0 +2598 @@
 +            group_tiles_pipeline,
-@@ -1003,0 +2585 @@
+@@ -1003,0 +2601 @@
 +            quad_gradient,
-@@ -1009,0 +2592,2 @@
+@@ -1009,0 +2608,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2603,4 @@
+@@ -1018,0 +2619,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2612 @@
+@@ -1023,0 +2628 @@
 +            comp_root,
-@@ -1030 +2619,2 @@
+@@ -1030 +2635,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2654 @@
+@@ -1040,0 +2647,19 @@
++        let text_gamma_buffer = unsafe {
++            let tables = &DirectXRenderer::get_font_info().text_gamma;
++            let desc = D3D11_BUFFER_DESC {
++                ByteWidth: std::mem::size_of_val(tables) as u32,
++                Usage: D3D11_USAGE_IMMUTABLE,
++                BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
++                CPUAccessFlags: 0,
++                MiscFlags: 0,
++                StructureByteStride: 0,
++            };
++            let data = D3D11_SUBRESOURCE_DATA {
++                pSysMem: tables.as_ptr().cast(),
++                SysMemPitch: 0,
++                SysMemSlicePitch: 0,
++            };
++            let mut buffer = None;
++            device.CreateBuffer(&desc, Some(&data), Some(&mut buffer))?;
++            buffer
++        };
+@@ -1062,0 +2688 @@
++            text_gamma_buffer,
+@@ -1063,0 +2690 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2667,16 @@
+@@ -1076 +2703,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9196,11 +10015,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2696,3 @@
+@@ -1089,0 +2732,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2708,0 @@
+@@ -1100,30 +2744,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9231,7 +10050,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        })
 -    }
 -
-@@ -1190,0 +2770,45 @@
+@@ -1190,0 +2806,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9277,10 +10096,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2821 @@
+@@ -1197 +2857 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1214,0 +2839,19 @@
+@@ -1214,0 +2875,19 @@
 +    ) -> Result<()> {
 +        self.draw_range_with_program(
 +            device_context,
@@ -9300,27 +10119,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        first_instance: u32,
 +        instance_count: u32,
 +        fragment: &ID3D11PixelShader,
-@@ -1227 +2870 @@
+@@ -1227 +2906 @@
 -            &self.fragment,
 +            fragment,
-@@ -1275,0 +2919,2 @@
+@@ -1275,0 +2955,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2964,2 @@
+@@ -1319 +3000,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2993,2 @@
+@@ -1347 +3029,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +3005 @@
+@@ -1358 +3041 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1362 +3009 @@
+@@ -1362 +3045 @@
 -    ID3D11Texture2D,
 +    (ID3D11Texture2D, Option<ID3D11Texture2D>),
-@@ -1370,2 +3017,8 @@
+@@ -1370,2 +3053,8 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
@@ -9331,7 +10150,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        None => None,
 +    };
 +    let render_target = (render_target, back_buffer);
-@@ -1395,3 +3048,22 @@
+@@ -1395,3 +3084,22 @@
 -#[inline]
 -fn create_render_target_and_its_view(
 -    swap_chain: &IDXGISwapChain1,
@@ -9357,17 +10176,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +}
 +
 +fn create_offscreen_target_and_its_view(
-@@ -1398,0 +3071,2 @@
+@@ -1398,0 +3107,2 @@
 +    width: u32,
 +    height: u32,
-@@ -1400 +3074,5 @@
+@@ -1400 +3110,5 @@
 -    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
 +    let mut render_target = None;
 +    unsafe {
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3171,33 @@
+@@ -1492,0 +3207,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9401,7 +10220,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    }
 +}
 +
-@@ -1701,7 +3412 @@
+@@ -1518 +3265,4 @@
+-    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC1_COLOR;
++    // KaminIDE patch: the first output is the premultiplied color, kept to 8
++    // bits per channel as Chromium's LCD text writes it; the second is the
++    // per-subpixel coverage.
++    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+@@ -1701,7 +3451 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9410,22 +10235,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1711,0 +3417,2 @@
+@@ -1711,0 +3456,2 @@
 +        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
 +        QuadGradient,
-@@ -1719,0 +3427,6 @@
+@@ -1719,0 +3466,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1763,0 +3477,4 @@
+@@ -1763,0 +3516,4 @@
 +                },
 +                ShaderModule::QuadGradient => match target {
 +                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
-@@ -1796,0 +3514,12 @@
+@@ -1796,0 +3553,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9438,9 +10263,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3531 @@
+@@ -1801,0 +3570 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3533 @@
+@@ -1803,64 +3572 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9506,13 +10331,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1875,0 +3543 @@
+@@ -1875,0 +3582 @@
 +                ShaderModule::QuadGradient => "quad_gradient",
-@@ -1883,0 +3552,3 @@
+@@ -1883,0 +3591,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3725,40 @@
+@@ -2054,17 +3764,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -16634,10 +17459,10 @@ index 0000000000000000000000000000000000000000..c4ade6d3d9539d918ea664c3c26c559e
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b33506977c5c1e6d612373006ad91b84574a929c
+index 0000000000000000000000000000000000000000..cf0fe42fc9c63cdbc79cfd9b945ff783a07d272d
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
-@@ -0,0 +1,103 @@
+@@ -0,0 +1,104 @@
 +//! Headless renderer and populated device-bound effect fixtures.
 +
 +use super::*;
@@ -16673,6 +17498,7 @@ index 0000000000000000000000000000000000000000..b33506977c5c1e6d612373006ad91b84
 +            grayscale_enhanced_contrast: 1.,
 +            subpixel_enhanced_contrast: 1.,
 +            is_bgr: false,
++            text_gamma: [0; 512],
 +        },
 +        blur: BlurScratch::default(),
 +        group_target: None,
@@ -18931,48 +19757,79 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae650bc8a2
+index ba89c6873354fb7449b8294878e080a68c3dd29b..8a1fb26815f6eeaf8eb5ad3312234fb8e0567000
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
 -    uint3 global_pad;
 +    float2 global_origin; // KaminIDE patch: начало локальной цели в координатах кадра
 +    uint global_pad;
-@@ -59,0 +61,2 @@
+@@ -15,0 +17,30 @@
++
++// KaminIDE patch: glyph coverage correction rows (Rust `text_gamma`): 8 rows
++// of 256 bytes, one per 3-bit text luminance, four bytes per word.
++cbuffer TextGamma: register(b2) {
++    uint4 text_gamma[128];
++};
++
++uint text_gamma_at(uint row, uint coverage) {
++    uint i = row * 256u + coverage;
++    uint word = text_gamma[i >> 4u][(i >> 2u) & 3u];
++    return (word >> ((i & 3u) * 8u)) & 0xffu;
++}
++
++// The 8-bit sRGB channels of a text color, as the color a page names.
++uint3 text_color_bytes(float3 color) {
++    return (uint3)round(saturate(color) * 255.0);
++}
++
++// Row of a glyph without per-channel coverage: the luminance of the color
++// with each channel kept to 3 bits (bit-replicated back to 8), itself kept
++// to 3 bits.
++uint text_luminance_row(float3 color) {
++    uint3 level = text_color_bytes(color) >> 5u;
++    uint3 c = (level << 5u) | (level << 2u) | (level >> 1u);
++    return ((c.r * 54u + c.g * 183u + c.b * 19u) >> 8u) >> 5u;
++}
++
++uint coverage_byte(float texel) {
++    return (uint)round(saturate(texel) * 255.0);
++}
+@@ -59,0 +91,2 @@
 +    // 3u is Checkerboard
 +    // 4u is RadialGradient (KaminIDE patch)
-@@ -66,2 +69,3 @@
+@@ -66,2 +99,3 @@
 -    LinearColorStop colors[2];
 -    uint pad;
 +    // KaminIDE patch: до четырёх опорных цветов, см. Background в color.rs.
 +    LinearColorStop colors[4];
 +    uint stop_count;
-@@ -127,0 +132,4 @@
+@@ -127,0 +162,4 @@
 +// KaminIDE patch: кривые sRGB шли НАОБОРОТ (показатели 2.2 и 1/2.2 стояли
 +// местами), и OKLab-градиент выходил вдвое темнее: середина red→lime давала
 +// (93,33,0) вместо (208,168,0). Кривая — точная, css-color-4 §10.2; вход
 +// зажимается, иначе `pow` от отрицательного даёт NaN вне охвата.
-@@ -130 +138,4 @@
+@@ -130 +168,4 @@
 -    return pow(color, float3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2));
 +    color = saturate(color);
 +    float3 lo = color * 12.92;
 +    float3 hi = 1.055 * pow(color, float3(1.0 / 2.4, 1.0 / 2.4, 1.0 / 2.4)) - 0.055;
 +    return lerp(hi, lo, step(color, float3(0.0031308, 0.0031308, 0.0031308)));
-@@ -135 +146,4 @@
+@@ -135 +176,4 @@
 -    return pow(color, float3(2.2, 2.2, 2.2));
 +    color = saturate(color);
 +    float3 lo = color / 12.92;
 +    float3 hi = pow((color + 0.055) / 1.055, float3(2.4, 2.4, 2.4));
 +    return lerp(hi, lo, step(color, float3(0.04045, 0.04045, 0.04045)));
-@@ -317 +331 @@
+@@ -317 +361 @@
 -GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[2]) {
 +GradientColor prepare_gradient_color(uint tag, uint color_space, Hsla solid, LinearColorStop colors[4]) {
-@@ -321 +335,3 @@
+@@ -321 +365,3 @@
 -    } else if (tag == 1) {
 +    } else if (tag == 1 || tag == 4) {
 +        // KaminIDE patch: тег 4 — радиальный, цвета готовятся так же
 +        // (3 занял upstream Checkerboard — у него сплошной цвет).
-@@ -336,0 +353,57 @@
+@@ -336,0 +383,57 @@
 +/// KaminIDE patch: цвет градиента в точке `t` с учётом промежуточных стопов.
 +///
 +/// Два стопа готовит вершинный шейдер (так дешевле), поэтому они приходят
@@ -19030,7 +19887,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +    return m;
 +}
 +
-@@ -340,0 +414,63 @@
+@@ -340,0 +444,63 @@
 +}
 +
 +
@@ -19094,11 +19951,11 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        }
 +    }
 +    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
-@@ -348,0 +485,3 @@
+@@ -348,0 +515,3 @@
 +    // KaminIDE patch: tag 5 (analytic) never reaches this function; those quads
 +    // are drawn by `quad_gradient_fragment`, the only program that references
 +    // the stop loop and its t5/t6 buffers.
-@@ -359,8 +498,5 @@
+@@ -359,8 +528,5 @@
 -            // Expand the short side to be the same as the long side
 -            if (bounds.size.x > bounds.size.y) {
 -                direction.y *= bounds.size.y / bounds.size.x;
@@ -19112,7 +19969,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +            // невадратной коробке заваливала угол: у наклонного градиента
 +            // полосы шли круче браузерных. Длина линии — проекция коробки на
 +            // направление, доля точки считается от её середины.
-@@ -369,39 +505,23 @@
+@@ -369,39 +535,23 @@
 -            float2 center_to_point = position - center;
 -            float t = dot(center_to_point, direction) / length(direction);
 -            // Check the direct to determine the use x or y
@@ -19175,7 +20032,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +            float t = length(d);
 +
 +            color = gradient_mix(background, t, color0, color1);
-@@ -440,0 +561,27 @@
+@@ -440,0 +591,27 @@
 +    // KaminIDE patch: сглаживание ступенек градиента.
 +    //
 +    // Плавный переход между близкими цветами ложится в 8 бит с видимыми
@@ -19203,21 +20060,21 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        color.rgb += noise / 255.0;
 +    }
 +
-@@ -509,0 +657,4 @@
+@@ -509,0 +687,4 @@
 +    // KaminIDE patch: преобразование квада. Поле обязано идти последним и
 +    // совпадать с `Quad` в scene.rs — раскладка структуры не проверяется
 +    // сборкой, расхождение видно только мусором на экране.
 +    TransformationMatrix transformation;
-@@ -537 +688,3 @@
+@@ -537 +718,3 @@
 -    float4 device_position = to_device_position(unit_vertex, quad.bounds);
 +    // KaminIDE patch: вершина проходит через матрицу — так же, как у спрайтов.
 +    float4 device_position =
 +        to_device_position_transformed(unit_vertex, quad.bounds, quad.transformation);
-@@ -545 +698,2 @@
+@@ -545 +728,2 @@
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, quad.bounds, quad.content_mask, quad.transformation);
-@@ -559,4 +713,49 @@
+@@ -559,4 +743,49 @@
 -float4 quad_fragment(QuadFragmentInput input): SV_Target {
 -    Quad quad = quads[input.quad_id];
 -    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
@@ -19271,10 +20128,10 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +
 +float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
 +                          float4 input_border_color) {
-@@ -580 +779 @@
+@@ -580 +809 @@
 -    float2 the_point = input.position.xy - quad.bounds.origin;
 +    float2 the_point = local_position - quad.bounds.origin;
-@@ -619 +818,17 @@
+@@ -619 +848,17 @@
 -    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
 +    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
 +    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
@@ -19293,24 +20150,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +    float2 inner_max = half_size - reduced_edges.zw;
 +    float2 straight_border_inner_corner_to_point =
 +        max(inner_min - center_to_point, center_to_point - inner_max);
-@@ -669 +884 @@
+@@ -669 +914 @@
 -        float4 border_color = input.border_color;
 +        float4 border_color = input_border_color;
-@@ -671 +886,2 @@
+@@ -671 +916,2 @@
 -        if (quad.border_style == 1) {
 +        // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
 +        if (quad.border_style == 1 || quad.border_style == 2) {
-@@ -685 +901,3 @@
+@@ -685 +931,3 @@
 -            const float dash_length_per_width = 2.0;
 +            // KaminIDE patch: у точечной рамки штрих равен зазору — так её и
 +            // рисует браузер; у штриховой штрих вдвое длиннее.
 +            const float dash_length_per_width = (quad.border_style == 2) ? 1.0 : 2.0;
-@@ -862,0 +1081,2 @@
+@@ -862,0 +1111,2 @@
 +    // KaminIDE patch: прежние наши `inset` + `box_bounds` слиты в поля
 +    // upstream; раскладка обязана совпадать с `struct Shadow` в scene.rs.
-@@ -913,0 +1134 @@
+@@ -913,0 +1164 @@
 +    input.position.xy += global_origin;
-@@ -952,0 +1174,12 @@
+@@ -952,0 +1204,12 @@
 +    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
 +    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
 +    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
@@ -19323,22 +20180,22 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +                             shadow.element_corner_radii);
 +        alpha *= saturate(own + 0.5);
 +    }
-@@ -966,0 +1200,2 @@
+@@ -966,0 +1230,2 @@
 +    Bounds color_bounds;
 +    TransformationMatrix color_transform;
-@@ -1002 +1237 @@
+@@ -1002 +1267 @@
 -    Bounds bounds = sprite.bounds;
 +    Bounds bounds = sprite.color_bounds;
-@@ -1017 +1252,3 @@
+@@ -1017 +1282,3 @@
 -    float4 color = gradient_color(background, input.position.xy, bounds,
 +    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
 +        + sprite.color_transform.translation;
 +    float4 color = gradient_color(background, color_position, bounds,
-@@ -1055,0 +1293 @@
+@@ -1055,0 +1323 @@
 +    input.position.xy += global_origin;
-@@ -1107,0 +1346 @@
+@@ -1107,0 +1376 @@
 +    input.position.xy += global_origin;
-@@ -1116,3 +1355,10 @@
+@@ -1116,3 +1385,10 @@
 -        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
 -        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
 -        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
@@ -19352,24 +20209,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        float2 st = (local / height) - float2(0., 0.5);
 +        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
 +        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
-@@ -1123 +1369 @@
+@@ -1123 +1399 @@
 -        float distance_in_pixels = distance * underline.bounds.size.y;
 +        float distance_in_pixels = distance * height;
-@@ -1150,0 +1397 @@
+@@ -1150,0 +1427 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1152 +1398,0 @@
+@@ -1152 +1428,0 @@
 -    float2 tile_position: POSITION;
-@@ -1157,0 +1404 @@
+@@ -1157,0 +1434 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1159 +1405,0 @@
+@@ -1159 +1435,0 @@
 -    float2 tile_position: POSITION;
-@@ -1173 +1418,0 @@
+@@ -1173 +1448,0 @@
 -    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
-@@ -1176,0 +1422 @@
+@@ -1176,0 +1452 @@
 +    output.sprite_id = sprite_id;
-@@ -1178 +1423,0 @@
+@@ -1178 +1453,0 @@
 -    output.tile_position = tile_position;
-@@ -1183,0 +1429,10 @@
+@@ -1183,0 +1459,10 @@
 +// KaminIDE patch: a glyph is read in its tile's own texels (`tile_texel`),
 +// as an image is: normalized atlas coordinates gave a glyph other filter
 +// weights wherever the atlas put its tile, so the same glyph in two tiles
@@ -19380,20 +20237,48 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +    return tile_texel(local_position, sprite.bounds, sprite.tile);
 +}
 +
-@@ -1185 +1440,2 @@
+@@ -1185,3 +1470,8 @@
 -    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
+-    float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
+-    return float4(input.color.rgb, input.color.a * alpha_corrected);
 +    input.position.xy += global_origin;
-+    float sample = sprite_texel(input).r;
-@@ -1195 +1451,2 @@
++    // KaminIDE patch: coverage corrected by the text luminance row, as Skia
++    // pre-blends glyph masks; the blend itself stays a plain one.
++    uint coverage = coverage_byte(sprite_texel(input).r);
++    float alpha = input.color.a * text_gamma_at(text_luminance_row(input.color.rgb), coverage) / 255.0;
++    // Premultiplied color kept to 8 bits before the blend, as Chromium's text
++    // draw writes it (blend ONE / INV_SRC_ALPHA).
++    return float4(round(input.color.rgb * alpha * 255.0) / 255.0, alpha);
+@@ -1195 +1485,2 @@
 -    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
 +    input.position.xy += global_origin;
 +    float3 sample = sprite_texel(input).rgb;
-@@ -1221,0 +1479,4 @@
+@@ -1199 +1490,13 @@
+-    float3 alpha_corrected = apply_contrast_and_gamma_correction3(sample, input.color.rgb, subpixel_enhanced_contrast, gamma_ratios);
++    // KaminIDE patch: each subpixel's coverage is corrected by the row of its
++    // own color channel, then kept to 5/6/5 bits and widened back by bit
++    // replication, as Chromium stores and samples LCD glyph masks.
++    uint3 coverage = uint3(coverage_byte(sample.r), coverage_byte(sample.g), coverage_byte(sample.b));
++    uint3 row = text_color_bytes(input.color.rgb) >> 5u;
++    uint3 t = uint3(
++        text_gamma_at(row.r, coverage.r),
++        text_gamma_at(row.g, coverage.g),
++        text_gamma_at(row.b, coverage.b));
++    uint3 q = uint3(t.r >> 3u, t.g >> 2u, t.b >> 3u);
++    float3 alpha = float3((q.r << 3u) | (q.r >> 2u), (q.g << 2u) | (q.g >> 4u), (q.b << 3u) | (q.b >> 2u)) / 255.0;
++
++    alpha *= input.color.a;
+@@ -1202,2 +1505,2 @@
+-    output.foreground = float4(input.color.rgb, 1.0f);
+-    output.alpha = float4(input.color.a * alpha_corrected, 1.0f);
++    output.foreground = float4(round(input.color.rgb * alpha * 255.0) / 255.0, 1.0f);
++    output.alpha = float4(alpha, 1.0f);
+@@ -1221,0 +1525,4 @@
 +    // KaminIDE patch: cell size of a repeated image (`PolychromeSprite::pattern`); zero: none.
 +    float2 pattern;
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1504,6 @@
+@@ -1243,3 +1550,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -19403,9 +20288,9 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1256,0 +1521 @@
+@@ -1256,0 +1567 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1523,26 @@
+@@ -1258,2 +1569,26 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -19434,7 +20319,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        sample = tile_texel(local_position, cell, sprite.tile);
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1558,572 @@
+@@ -1268,0 +1604,572 @@
 +
 +/*
 +**

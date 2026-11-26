@@ -2,10 +2,17 @@
 
 mod css_weight;
 mod fallbacks;
+mod raster_mode;
+mod text_gamma;
+mod text_settings;
+
+use raster_mode::RasterHints;
+pub(crate) use text_gamma::packed_tables as text_gamma_tables;
+pub(crate) use text_settings::{SystemTextSettings, TextSmoothing, read_system_text_settings};
 
 use std::{
     borrow::Cow,
-    ffi::{c_uint, c_void},
+    ffi::c_void,
     mem::ManuallyDrop,
 };
 
@@ -55,6 +62,9 @@ struct FontInfo {
     /// boxes of the same geometry; they are rasterized bi-level (see
     /// `create_glyph_run_analysis`).
     pixel_exact: bool,
+    /// KaminIDE patch: gasp/maxp facts that choose the DirectWrite rendering
+    /// mode as Skia does (`raster_mode`).
+    raster_hints: RasterHints,
     /// Коллекция, из которой взята грань (upstream; заменяет прежний `is_system_font`).
     font_collection: IDWriteFontCollection1,
     /// KaminIDE patch: вес для раскладки, когда грань выбрана по CSS
@@ -66,6 +76,47 @@ struct FontInfo {
 /// of `SUBPIXEL_VARIANTS_X`, so every quantized glyph origin is a whole pixel
 /// of the supersampled grid.
 const EXACT_SUPERSAMPLE: i32 = 8;
+
+/// KaminIDE patch: how a glyph's coverage mask is produced.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GlyphMask {
+    /// Ahem: supersampled bi-level (`create_glyph_run_analysis`).
+    Exact,
+    /// Font smoothing off: bi-level coverage.
+    Bilevel,
+    /// Standard smoothing: DirectWrite grayscale coverage.
+    Grayscale,
+    /// ClearType system, LCD blending not allowed here: averaged subpixels.
+    ClearTypeGray,
+    /// ClearType coverage per subpixel, blended per channel.
+    ClearTypeLcd,
+}
+
+impl GlyphMask {
+    fn texture_type(self) -> DWRITE_TEXTURE_TYPE {
+        match self {
+            Self::ClearTypeGray | Self::ClearTypeLcd => DWRITE_TEXTURE_CLEARTYPE_3x1,
+            _ => DWRITE_TEXTURE_ALIASED_1x1,
+        }
+    }
+}
+
+/// A glyph painted with LCD blending (`subpixel_rendering`) always gets
+/// per-subpixel coverage; otherwise the system smoothing decides, as the font
+/// render params do in Chromium.
+fn glyph_mask(font: &FontInfo, settings: &SystemTextSettings, params: &RenderGlyphParams) -> GlyphMask {
+    if params.subpixel_rendering {
+        return GlyphMask::ClearTypeLcd;
+    }
+    if font.pixel_exact {
+        return GlyphMask::Exact;
+    }
+    match settings.smoothing {
+        TextSmoothing::None => GlyphMask::Bilevel,
+        TextSmoothing::Grayscale => GlyphMask::Grayscale,
+        TextSmoothing::Subpixel { .. } => GlyphMask::ClearTypeGray,
+    }
+}
 
 pub(crate) struct DirectWriteTextSystem {
     components: DirectWriteComponents,
@@ -79,7 +130,8 @@ struct DirectWriteComponents {
     builder: IDWriteFontSetBuilder1,
     text_renderer: TextRendererWrapper,
     system_ui_font_name: SharedString,
-    system_subpixel_rendering: bool,
+    /// KaminIDE patch: system smoothing, subpixel order, contrast and gamma.
+    text_settings: SystemTextSettings,
 }
 
 impl Drop for DirectWriteComponents {
@@ -218,7 +270,7 @@ impl DirectWriteTextSystem {
 
         let gpu_state = directx_devices.map(GPUState::new).transpose()?;
 
-        let system_subpixel_rendering = get_system_subpixel_rendering();
+        let text_settings = read_system_text_settings(&factory);
         let system_ui_font_name = get_system_ui_font_name();
         let components = DirectWriteComponents {
             locale,
@@ -227,7 +279,7 @@ impl DirectWriteTextSystem {
             builder,
             text_renderer,
             system_ui_font_name,
-            system_subpixel_rendering,
+            text_settings,
         };
 
         let system_font_collection = unsafe {
@@ -395,7 +447,10 @@ impl PlatformTextSystem for DirectWriteTextSystem {
         if self.pixel_exact_glyphs(font_id) {
             return TextRenderingMode::Grayscale;
         }
-        if self.components.system_subpixel_rendering {
+        if matches!(
+            self.components.text_settings.smoothing,
+            TextSmoothing::Subpixel { .. }
+        ) {
             TextRenderingMode::Subpixel
         } else {
             TextRenderingMode::Grayscale
@@ -677,6 +732,7 @@ impl DirectWriteState {
                     .log_err()
                     .flatten()
                 });
+                let raster_hints = RasterHints::read(&font_face);
                 let font_info = FontInfo {
                     font_family_h: font_family_h.clone(),
                     font_face,
@@ -689,6 +745,7 @@ impl DirectWriteState {
                         .iter()
                         .any(|(tag, value)| tag == "vert" && *value > 0),
                     features_key: format!("{:?}", features.tag_value_list()),
+                    raster_hints,
                     pixel_exact: family_name.eq_ignore_ascii_case("ahem")
                         || postscript_name.eq_ignore_ascii_case("ahem"),
                     face_key: postscript_name,
@@ -1118,68 +1175,79 @@ impl DirectWriteState {
         // Every other font is unaffected.
         // KaminIDE patch: ClearType (upstream `subpixel_rendering`) у Ahem не
         // применяется — точная растеризация только в оттенках серого.
-        let exact = font.pixel_exact && !params.subpixel_rendering;
-        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
+        let mask = glyph_mask(font, &components.text_settings, params);
+        if mask == GlyphMask::Exact {
+            let k = EXACT_SUPERSAMPLE as f32;
+            let transform = DWRITE_MATRIX {
+                m11: params.scale_factor * k,
+                m12: 0.0,
+                m21: 0.0,
+                m22: params.scale_factor * k,
+                dx: 0.0,
+                dy: 0.0,
+            };
+            let baseline_origin_x = params.subpixel_variant.x as f32
+                / SUBPIXEL_VARIANTS_X as f32
+                / params.scale_factor;
+            let baseline_origin_y = params.subpixel_variant.y as f32
+                / SUBPIXEL_VARIANTS_X as f32
+                / params.scale_factor;
+            return Ok(unsafe {
+                components.factory.CreateGlyphRunAnalysis(
+                    &glyph_run,
+                    Some(&transform),
+                    DWRITE_RENDERING_MODE1_ALIASED,
+                    DWRITE_MEASURING_MODE_NATURAL,
+                    DWRITE_GRID_FIT_MODE_DISABLED,
+                    DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
+                    baseline_origin_x,
+                    baseline_origin_y,
+                )
+            }?);
+        }
+
+        // KaminIDE patch: every other glyph is rasterized as Skia's
+        // DirectWrite scaler does in Chromium: at its device size with the
+        // rendering mode `RasterHints::mode` picks, hinted (grid fit on), the
+        // sub-pixel offset in the transform, and ClearType coverage whenever
+        // the system smooths with ClearType (a glyph that may not use LCD
+        // blending averages it, see `rasterize_monochrome`).
+        let device_size = params.font_size.as_f32() * params.scale_factor;
+        let (rendering_mode, em_size) = match mask {
+            GlyphMask::Bilevel => (
+                DWRITE_RENDERING_MODE1_ALIASED,
+                (device_size * 64.0).round().max(64.0) / 64.0,
+            ),
+            _ => font.raster_hints.mode(device_size),
+        };
+        let glyph_run = DWRITE_GLYPH_RUN {
+            fontEmSize: em_size,
+            ..glyph_run
+        };
         let transform = DWRITE_MATRIX {
-            m11: params.scale_factor * k,
+            m11: 1.0,
             m12: 0.0,
             m21: 0.0,
-            m22: params.scale_factor * k,
-            dx: 0.0,
-            dy: 0.0,
+            m22: 1.0,
+            dx: params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32,
+            dy: params.subpixel_variant.y as f32 / SUBPIXEL_VARIANTS_Y as f32,
         };
-        let variants_y = if exact {
-            SUBPIXEL_VARIANTS_X
-        } else {
-            SUBPIXEL_VARIANTS_Y
+        let antialias_mode = match mask {
+            GlyphMask::ClearTypeLcd | GlyphMask::ClearTypeGray => {
+                DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
+            }
+            _ => DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE,
         };
-        let baseline_origin_x =
-            params.subpixel_variant.x as f32 / SUBPIXEL_VARIANTS_X as f32 / params.scale_factor;
-        let baseline_origin_y =
-            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
-
-        let mut rendering_mode = DWRITE_RENDERING_MODE1::default();
-        let mut grid_fit_mode = DWRITE_GRID_FIT_MODE::default();
-        unsafe {
-            font.font_face.GetRecommendedRenderingMode(
-                params.font_size.as_f32(),
-                // Using 96 as scale is applied by the transform
-                96.0,
-                96.0,
-                Some(&transform),
-                false,
-                DWRITE_OUTLINE_THRESHOLD_ANTIALIASED,
-                DWRITE_MEASURING_MODE_NATURAL,
-                None,
-                &mut rendering_mode,
-                &mut grid_fit_mode,
-            )?;
-        }
-        let rendering_mode = match rendering_mode {
-            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
-            DWRITE_RENDERING_MODE1_OUTLINE => DWRITE_RENDERING_MODE1_NATURAL_SYMMETRIC,
-            m => m,
-        };
-        if exact {
-            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
-        }
-
-        let antialias_mode = if params.subpixel_rendering {
-            DWRITE_TEXT_ANTIALIAS_MODE_CLEARTYPE
-        } else {
-            DWRITE_TEXT_ANTIALIAS_MODE_GRAYSCALE
-        };
-
         let glyph_analysis = unsafe {
             components.factory.CreateGlyphRunAnalysis(
                 &glyph_run,
                 Some(&transform),
                 rendering_mode,
                 DWRITE_MEASURING_MODE_NATURAL,
-                grid_fit_mode,
+                DWRITE_GRID_FIT_MODE_ENABLED,
                 antialias_mode,
-                baseline_origin_x,
-                baseline_origin_y,
+                0.0,
+                0.0,
             )
         }?;
         Ok(glyph_analysis)
@@ -1191,20 +1259,16 @@ impl DirectWriteState {
         params: &RenderGlyphParams,
     ) -> Result<Bounds<DevicePixels>> {
         let glyph_analysis = self.create_glyph_run_analysis(components, params)?;
+        let mask = glyph_mask(
+            &self.fonts[params.font_id.0],
+            &components.text_settings,
+            params,
+        );
 
-        let texture_type = if params.subpixel_rendering {
-            DWRITE_TEXTURE_CLEARTYPE_3x1
-        } else {
-            DWRITE_TEXTURE_ALIASED_1x1
-        };
-
-        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
+        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(mask.texture_type())? };
         // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
         // (a superset; columns without a sampled centre stay empty).
-        if self.fonts[params.font_id.0].pixel_exact
-            && !params.subpixel_rendering
-            && bounds.right > bounds.left
-        {
+        if mask == GlyphMask::Exact && bounds.right > bounds.left {
             let k = EXACT_SUPERSAMPLE;
             bounds = RECT {
                 left: bounds.left.div_euclid(k),
@@ -1277,10 +1341,36 @@ impl DirectWriteState {
         glyph_bounds: Bounds<DevicePixels>,
     ) -> Result<Vec<u8>> {
         let glyph_analysis = self.create_glyph_run_analysis(components, params)?;
-        if !params.subpixel_rendering {
+        let mask = glyph_mask(
+            &self.fonts[params.font_id.0],
+            &components.text_settings,
+            params,
+        );
+        let rect = RECT {
+            left: glyph_bounds.origin.x.0,
+            top: glyph_bounds.origin.y.0,
+            right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
+            bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
+        };
+        if mask == GlyphMask::ClearTypeGray {
+            // KaminIDE patch: where LCD blending is not allowed, Chromium
+            // still rasterizes ClearType coverage and averages its three
+            // subpixels into one (Skia `kGenA8FromLCD`), wider and softer
+            // than DirectWrite's own grayscale.
+            let pixel_count = glyph_bounds.size.width.0 as usize * glyph_bounds.size.height.0 as usize;
+            let mut rgb = vec![0u8; pixel_count * 3];
+            unsafe {
+                glyph_analysis.CreateAlphaTexture(DWRITE_TEXTURE_CLEARTYPE_3x1, &rect, &mut rgb)?
+            };
+            return Ok(rgb
+                .chunks_exact(3)
+                .map(|p| ((p[0] as u32 + p[1] as u32 + p[2] as u32) / 3) as u8)
+                .collect());
+        }
+        if mask != GlyphMask::ClearTypeLcd {
             let mut bitmap_data =
                 vec![0u8; glyph_bounds.size.width.0 as usize * glyph_bounds.size.height.0 as usize];
-            if self.fonts[params.font_id.0].pixel_exact {
+            if mask == GlyphMask::Exact {
                 // KaminIDE patch: sample the supersampled bi-level raster at each
                 // device pixel's centre, taken just above/left of it (k/2 - 1):
                 // an edge exactly on the centre then counts like box edge
@@ -1311,18 +1401,8 @@ impl DirectWriteState {
                 return Ok(bitmap_data);
             }
             unsafe {
-                glyph_analysis.CreateAlphaTexture(
-                    DWRITE_TEXTURE_ALIASED_1x1,
-                    &RECT {
-                        left: glyph_bounds.origin.x.0,
-                        top: glyph_bounds.origin.y.0,
-                        right: glyph_bounds.size.width.0 + glyph_bounds.origin.x.0,
-                        bottom: glyph_bounds.size.height.0 + glyph_bounds.origin.y.0,
-                    },
-                    &mut bitmap_data,
-                )?;
-            }
-
+                glyph_analysis.CreateAlphaTexture(DWRITE_TEXTURE_ALIASED_1x1, &rect, &mut bitmap_data)?
+            };
             return Ok(bitmap_data);
         }
 
@@ -2559,23 +2639,6 @@ fn get_name(string: IDWriteLocalizedStrings, locale: &HSTRING) -> Result<String>
     }
 
     Ok(String::from_utf16_lossy(&name_vec[..name_length]))
-}
-
-fn get_system_subpixel_rendering() -> bool {
-    let mut value = c_uint::default();
-    let result = unsafe {
-        SystemParametersInfoW(
-            SPI_GETFONTSMOOTHINGTYPE,
-            0,
-            Some((&mut value) as *mut c_uint as *mut c_void),
-            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS::default(),
-        )
-    };
-    if result.log_err().is_some() {
-        value == FE_FONTSMOOTHINGCLEARTYPE
-    } else {
-        true
-    }
 }
 
 fn get_system_ui_font_name() -> SharedString {

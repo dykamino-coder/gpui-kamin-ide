@@ -128,7 +128,9 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         );
 
         let setup = || -> Result<_, Box<dyn std::error::Error>> {
-            cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            cx.set_text_rendering_mode(text_rendering_mode(
+                std::env::var("ENGINE_BENCH_TEXT_AA").ok().as_deref(),
+            )?);
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
             startup.mark("font_context");
             let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
@@ -216,6 +218,21 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .take()
         .ok_or("benchmark exited before completion")?
         .map_err(Into::into)
+}
+
+/// Text smoothing of the stand (`ENGINE_BENCH_TEXT_AA`): `grayscale` (the
+/// default, comparable with earlier boards) or `system`, which smooths as the
+/// system and the browser do, LCD wherever the surface allows it.
+fn text_rendering_mode(
+    value: Option<&str>,
+) -> Result<gpui::TextRenderingMode, Box<dyn std::error::Error>> {
+    match value {
+        None | Some("grayscale") => Ok(gpui::TextRenderingMode::Grayscale),
+        Some("system") => Ok(gpui::TextRenderingMode::PlatformDefault),
+        Some(other) => {
+            Err(format!("ENGINE_BENCH_TEXT_AA must be grayscale or system, not {other}").into())
+        }
+    }
 }
 
 #[cfg(test)]

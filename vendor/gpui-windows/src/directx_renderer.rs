@@ -37,6 +37,9 @@ pub(crate) struct FontInfo {
     pub grayscale_enhanced_contrast: f32,
     pub subpixel_enhanced_contrast: f32,
     pub is_bgr: bool,
+    /// KaminIDE patch: glyph coverage correction rows (`text_gamma`), packed
+    /// as the text shaders read them from `TextGamma` (b2).
+    pub text_gamma: [u32; 512],
 }
 
 mod scene_capture;
@@ -475,6 +478,8 @@ struct DirectXRenderPipelines {
 struct DirectXGlobalElements {
     global_params_buffer: Option<ID3D11Buffer>,
     batch_params_buffer: Option<ID3D11Buffer>,
+    /// KaminIDE patch: immutable glyph coverage correction rows (b2).
+    text_gamma_buffer: Option<ID3D11Buffer>,
     sampler: Option<ID3D11SamplerState>,
     // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
     group_samplers: [Option<ID3D11SamplerState>; 4],
@@ -710,6 +715,8 @@ impl DirectXRenderer {
                 .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
+            device_context
+                .PSSetConstantBuffers(2, Some(slice::from_ref(&self.globals.text_gamma_buffer)));
         }
         // KaminIDE patch: a frame drawn within a rectangle clears it later,
         // under the scissor (`render`).
@@ -1460,6 +1467,8 @@ impl DirectXRenderer {
                 .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
+            device_context
+                .PSSetConstantBuffers(2, Some(slice::from_ref(&self.globals.text_gamma_buffer)));
         }
         Ok(())
     }
@@ -2366,11 +2375,16 @@ impl DirectXRenderer {
             let factory: IDWriteFactory5 = DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).unwrap();
             let render_params: IDWriteRenderingParams1 =
                 factory.CreateRenderingParams().unwrap().cast().unwrap();
+            let settings = read_system_text_settings(&factory);
             FontInfo {
                 gamma_ratios: gpui::get_gamma_correction_ratios(render_params.GetGamma()),
                 grayscale_enhanced_contrast: render_params.GetGrayscaleEnhancedContrast(),
                 subpixel_enhanced_contrast: render_params.GetEnhancedContrast(),
-                is_bgr: render_params.GetPixelGeometry() == DWRITE_PIXEL_GEOMETRY_BGR,
+                is_bgr: match settings.smoothing {
+                    TextSmoothing::Subpixel { bgr } => bgr,
+                    _ => render_params.GetPixelGeometry() == DWRITE_PIXEL_GEOMETRY_BGR,
+                },
+                text_gamma: text_gamma_tables(settings.gamma),
             }
         })
     }
@@ -2539,7 +2553,9 @@ impl DirectXRenderPipelines {
             "monochrome_sprite_pipeline",
             ShaderModule::MonochromeSprite,
             512,
-            create_blend_state(device)?,
+            // KaminIDE patch: glyphs write premultiplied color kept to 8 bits
+            // (`monochrome_sprite_fragment`), blended as path sprites are.
+            create_blend_state_for_path_sprite(device)?,
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
@@ -2628,6 +2644,25 @@ impl DirectXGlobalElements {
     pub fn new(device: &ID3D11Device) -> Result<Self> {
         let global_params_buffer = create_constant_buffer::<GlobalParams>(device)?;
         let batch_params_buffer = create_constant_buffer::<BatchParams>(device)?;
+        let text_gamma_buffer = unsafe {
+            let tables = &DirectXRenderer::get_font_info().text_gamma;
+            let desc = D3D11_BUFFER_DESC {
+                ByteWidth: std::mem::size_of_val(tables) as u32,
+                Usage: D3D11_USAGE_IMMUTABLE,
+                BindFlags: D3D11_BIND_CONSTANT_BUFFER.0 as u32,
+                CPUAccessFlags: 0,
+                MiscFlags: 0,
+                StructureByteStride: 0,
+            };
+            let data = D3D11_SUBRESOURCE_DATA {
+                pSysMem: tables.as_ptr().cast(),
+                SysMemPitch: 0,
+                SysMemSlicePitch: 0,
+            };
+            let mut buffer = None;
+            device.CreateBuffer(&desc, Some(&data), Some(&mut buffer))?;
+            buffer
+        };
 
         let sampler = unsafe {
             let desc = D3D11_SAMPLER_DESC {
@@ -2650,6 +2685,7 @@ impl DirectXGlobalElements {
         Ok(Self {
             global_params_buffer,
             batch_params_buffer,
+            text_gamma_buffer,
             sampler,
             group_samplers: texture_pool::samplers(device)?,
         })
@@ -3226,7 +3262,10 @@ fn create_blend_state_for_subpixel_rendering(device: &ID3D11Device) -> Result<ID
     desc.RenderTarget[0].BlendEnable = true.into();
     desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
     desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
-    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC1_COLOR;
+    // KaminIDE patch: the first output is the premultiplied color, kept to 8
+    // bits per channel as Chromium's LCD text writes it; the second is the
+    // per-subpixel coverage.
+    desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
     desc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC1_COLOR;
     // It does not make sense to draw transparent subpixel-rendered text, since it cannot be meaningfully alpha-blended onto anything else.
     desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;

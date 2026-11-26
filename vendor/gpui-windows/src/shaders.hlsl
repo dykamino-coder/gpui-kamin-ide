@@ -15,6 +15,36 @@ cbuffer BatchParams: register(b1) {
     uint3 batch_pad;
 };
 
+// KaminIDE patch: glyph coverage correction rows (Rust `text_gamma`): 8 rows
+// of 256 bytes, one per 3-bit text luminance, four bytes per word.
+cbuffer TextGamma: register(b2) {
+    uint4 text_gamma[128];
+};
+
+uint text_gamma_at(uint row, uint coverage) {
+    uint i = row * 256u + coverage;
+    uint word = text_gamma[i >> 4u][(i >> 2u) & 3u];
+    return (word >> ((i & 3u) * 8u)) & 0xffu;
+}
+
+// The 8-bit sRGB channels of a text color, as the color a page names.
+uint3 text_color_bytes(float3 color) {
+    return (uint3)round(saturate(color) * 255.0);
+}
+
+// Row of a glyph without per-channel coverage: the luminance of the color
+// with each channel kept to 3 bits (bit-replicated back to 8), itself kept
+// to 3 bits.
+uint text_luminance_row(float3 color) {
+    uint3 level = text_color_bytes(color) >> 5u;
+    uint3 c = (level << 5u) | (level << 2u) | (level >> 1u);
+    return ((c.r * 54u + c.g * 183u + c.b * 19u) >> 8u) >> 5u;
+}
+
+uint coverage_byte(float texel) {
+    return (uint)round(saturate(texel) * 255.0);
+}
+
 Texture2D<float4> t_sprite: register(t0);
 SamplerState s_sprite: register(s0);
 
@@ -1438,9 +1468,13 @@ float4 sprite_texel(MonochromeSpriteFragmentInput input) {
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     input.position.xy += global_origin;
-    float sample = sprite_texel(input).r;
-    float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
-    return float4(input.color.rgb, input.color.a * alpha_corrected);
+    // KaminIDE patch: coverage corrected by the text luminance row, as Skia
+    // pre-blends glyph masks; the blend itself stays a plain one.
+    uint coverage = coverage_byte(sprite_texel(input).r);
+    float alpha = input.color.a * text_gamma_at(text_luminance_row(input.color.rgb), coverage) / 255.0;
+    // Premultiplied color kept to 8 bits before the blend, as Chromium's text
+    // draw writes it (blend ONE / INV_SRC_ALPHA).
+    return float4(round(input.color.rgb * alpha * 255.0) / 255.0, alpha);
 }
 
 MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
@@ -1453,11 +1487,23 @@ SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentIn
     if (is_bgr) {
         sample = sample.bgr;
     }
-    float3 alpha_corrected = apply_contrast_and_gamma_correction3(sample, input.color.rgb, subpixel_enhanced_contrast, gamma_ratios);
+    // KaminIDE patch: each subpixel's coverage is corrected by the row of its
+    // own color channel, then kept to 5/6/5 bits and widened back by bit
+    // replication, as Chromium stores and samples LCD glyph masks.
+    uint3 coverage = uint3(coverage_byte(sample.r), coverage_byte(sample.g), coverage_byte(sample.b));
+    uint3 row = text_color_bytes(input.color.rgb) >> 5u;
+    uint3 t = uint3(
+        text_gamma_at(row.r, coverage.r),
+        text_gamma_at(row.g, coverage.g),
+        text_gamma_at(row.b, coverage.b));
+    uint3 q = uint3(t.r >> 3u, t.g >> 2u, t.b >> 3u);
+    float3 alpha = float3((q.r << 3u) | (q.r >> 2u), (q.g << 2u) | (q.g >> 4u), (q.b << 3u) | (q.b >> 2u)) / 255.0;
+
+    alpha *= input.color.a;
 
     SubpixelSpriteFragmentOutput output;
-    output.foreground = float4(input.color.rgb, 1.0f);
-    output.alpha = float4(input.color.a * alpha_corrected, 1.0f);
+    output.foreground = float4(round(input.color.rgb * alpha * 255.0) / 255.0, 1.0f);
+    output.alpha = float4(alpha, 1.0f);
     return output;
 }
 

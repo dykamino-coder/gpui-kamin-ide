@@ -5845,14 +5845,19 @@ impl Window {
                 q.map(|v| v.rem_euclid(n) as u8),
             )
         } else {
-            // KaminIDE patch: floor quantization as before gpui-pre 0.3.8
-            // (upstream rounds half toward zero now). Rounding moved glyphs a
-            // device pixel against boxes painted at the same fractional
-            // baseline (`inline-formatting-context-002` lost exact RGB).
+            // KaminIDE patch: x goes to the NEAREST sub-pixel variant, as Skia
+            // places horizontal text (half a variant is added before the
+            // floor), so a glyph lands on the quarter pixel Chrome draws it
+            // at. y keeps the floor quantization of gpui-pre 0.3.8 (upstream
+            // rounds half toward zero now): rounding moved glyphs a device
+            // pixel against boxes painted at the same fractional baseline
+            // (`inline-formatting-context-002` lost exact RGB).
+            let x = glyph_origin.x.0 + 0.5 / SUBPIXEL_VARIANTS_X as f32;
             (
-                glyph_origin.map(|px| px.floor()),
+                point(ScaledPixels(x.floor()), glyph_origin.y.floor()),
                 Point {
-                    x: (glyph_origin.x.0.fract() * SUBPIXEL_VARIANTS_X as f32).floor() as u8,
+                    x: (x.rem_euclid(1.0) * SUBPIXEL_VARIANTS_X as f32).floor() as u8
+                        % SUBPIXEL_VARIANTS_X,
                     y: (glyph_origin.y.0.fract() * SUBPIXEL_VARIANTS_Y as f32).floor() as u8,
                 },
             )
