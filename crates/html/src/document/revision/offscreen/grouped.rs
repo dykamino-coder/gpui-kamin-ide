@@ -21,10 +21,14 @@ use gpui::{Bounds, LayerHandle, ScaledPixels};
 /// The area of the innermost group root in `up` (outermost first) holding
 /// box `b`, device pixels in the layer; `None` when no group root holds it
 /// or a box between them moves.
-pub(super) fn area(layer: &LayerHandle, up: &[&Element], b: &Element) -> Option<Bounds<ScaledPixels>> {
-    let root = up.iter().rposition(|e| {
-        u32::try_from(e.node_id).is_ok_and(|owner| layer.holds_group_root(owner))
-    })?;
+pub(super) fn area(
+    layer: &LayerHandle,
+    up: &[&Element],
+    b: &Element,
+) -> Option<Bounds<ScaledPixels>> {
+    let root = up
+        .iter()
+        .rposition(|e| u32::try_from(e.node_id).is_ok_and(|owner| layer.holds_group_root(owner)))?;
     if moves(b) || up[root + 1..].iter().any(|e| moves(e)) {
         return None;
     }
