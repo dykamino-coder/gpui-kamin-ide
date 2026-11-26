@@ -19,6 +19,7 @@ describe('codex console renderer', () => {
     const r = new CodexConsoleRenderer()
     const out = [
       r.render(ev({ kind: 'turn.started', turnId: 'u' })),
+      r.render(ev({ kind: 'turn.requestAccepted', turnId: 'u', requestedEffort: 'xhigh' })),
       r.render(ev({ kind: 'message.user', id: 'm0', turnId: 'u', text: 'hi' })),
       r.render(ev({ kind: 'message.assistant.delta', id: 'm1', turnId: 'u', delta: 'Hel' })),
       r.render(ev({ kind: 'message.assistant.delta', id: 'm1', turnId: 'u', delta: 'lo\nworld' })),
@@ -29,6 +30,7 @@ describe('codex console renderer', () => {
       .join('')
     expect(out).toBe(
       '10:00:00 ── turn started\r\n' +
+        '10:00:00 turn/start accepted · requested effort xhigh\r\n' +
         '10:00:00 you hi\r\n' +
         '10:00:00 assistant Hello\r\nworld\r\n' +
         '10:00:00 ── turn completed in 1.5 s\r\n',

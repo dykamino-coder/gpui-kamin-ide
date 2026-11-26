@@ -22,7 +22,9 @@ export const ENGINE_SWITCH_SUBTYPE = 'engine_switch'
 /** Rows that hang on the chain but never parent the next entry: sub-agent side
  *  chains and usage records (codex `system/api_usage`). */
 function offChain(e: { isSidechain?: unknown; type?: unknown; subtype?: unknown }): boolean {
-  return Boolean(e.isSidechain) || (e.type === 'system' && e.subtype === 'api_usage')
+  return (
+    Boolean(e.isSidechain) || (e.type === 'system' && (e.subtype === 'api_usage' || e.subtype === 'codex_turn_request'))
+  )
 }
 
 /** Bytes read per step by the whole-log scans below: they run on the server's
