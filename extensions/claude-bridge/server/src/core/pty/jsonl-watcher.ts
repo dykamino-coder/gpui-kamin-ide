@@ -313,7 +313,11 @@ export class JsonlWatcher {
     }
   }
 
-  start(): void {
+  private fixedTranscript?: string
+
+  /** A server-owned transcript has a known path even before its first write. */
+  start(fixedTranscript?: string): void {
+    this.fixedTranscript = fixedTranscript
     this.startedAt = Date.now()
     this.timing('watcher.start')
     this.sendStatus({ status: 'searching' })
@@ -683,6 +687,10 @@ export class JsonlWatcher {
   }
 
   private async scanForJsonl(): Promise<string | null> {
+    if (this.fixedTranscript) {
+      const stat = await fsp.lstat(this.fixedTranscript).catch(() => null)
+      return stat?.isFile() ? this.fixedTranscript : null
+    }
     if (this.slugDir) {
       return this.scanDirectory(this.slugDir)
     }
@@ -771,6 +779,9 @@ export class JsonlWatcher {
 
     this.readInitialContent()
 
+    // The Codex projector keeps writing this thread's file across compaction.
+    if (this.fixedTranscript) return
+
     // Compaction detection: subscribe to the shared scanner instead of running
     // our own 6s readdir timer — N sessions in one project would otherwise each
     // re-scan the same slug dir every tick.
@@ -792,7 +803,7 @@ export class JsonlWatcher {
    * from discovery, so a newer abandoned transcript cannot take the view back.
    */
   adoptResumedTranscript(conversationId: string): boolean {
-    if (this.stopped || !this.filePath || !CONVERSATION_ID.test(conversationId)) return false
+    if (this.stopped || this.fixedTranscript || !this.filePath || !CONVERSATION_ID.test(conversationId)) return false
     // Recorded even when the resumed file is already the current one: the
     // /clear file the CLI left may not have been discovered yet.
     this.resumedAt = Date.now()

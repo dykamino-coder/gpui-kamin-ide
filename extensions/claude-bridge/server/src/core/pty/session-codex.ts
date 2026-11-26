@@ -577,6 +577,7 @@ export async function createCodexSession(
   attachSessionJsonlWatcher(session, config, resumed ? 0 : Date.now(), {
     recordCompactLink: deps.recordCompactLink,
     engine: 'codex',
+    fixedTranscript: transcript,
   })
 
   vpty.onExit(({ exitCode }) => {
