@@ -1,5 +1,8 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codexPlanUsage, isCompactCommand, modelLine, sessionContextFor, startedContext } from './session-codex'
+import { codexPlanUsage, isCompactCommand, loadCodexChoice, modelLine, sessionContextFor, startedContext } from './session-codex'
 import type { CodexRateLimits } from '../../shared/codex-rate-limits'
 
 const limits = (primary: number | null, secondary: number | null): CodexRateLimits => ({
@@ -70,6 +73,23 @@ describe('session context a codex thread has not seen', () => {
     const switched = sessionContextFor(startedContext(base, modelLine('gpt-6.2', 'high')), base, line)!
     expect(switched.text).toContain('`gpt-6.2-sol`')
     expect(switched.text).not.toContain('Answer tersely.')
+  })
+})
+
+describe('effort choices saved across Bridge versions', () => {
+  it('restores the legacy Extra high alias and the native Max selection', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-choice-'))
+    const filename = path.join(root, 'codex-choice-thread.json')
+    try {
+      fs.writeFileSync(filename, JSON.stringify({ effort: 'max' }))
+      expect(loadCodexChoice(root, 'thread')?.effort).toBe('xhigh')
+      fs.writeFileSync(filename, JSON.stringify({ effort: 'max', nativeEffort: true }))
+      expect(loadCodexChoice(root, 'thread')?.effort).toBe('max')
+      fs.writeFileSync(filename, JSON.stringify({ model: 'gpt-fixture' }))
+      expect(loadCodexChoice(root, 'thread')).toEqual({ model: 'gpt-fixture' })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
