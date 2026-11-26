@@ -278,12 +278,8 @@ export function codexModel(model: string | null | undefined): string | undefined
  *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
  *  windows take the ids the Claude status line uses, so the row labels them
  *  alike; context fields stay null (codex reports its window per response). */
-export function codexPlanUsage(
-  limits: CodexRateLimits,
-  model: string | null,
-  effort: string | null,
-): SessionUsage {
-  const account = limits.buckets.find(b => b.id === 'codex') ?? limits.buckets.find(b => b.id === null)
+export function codexPlanUsage(limits: CodexRateLimits, model: string | null, effort: string | null): SessionUsage {
+  const account = limits.buckets.find((b) => b.id === 'codex') ?? limits.buckets.find((b) => b.id === null)
   const windows: SessionUsageWindow[] = []
   for (const [slot, w] of [
     ['primary', account?.primary],

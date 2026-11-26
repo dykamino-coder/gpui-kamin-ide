@@ -57,13 +57,18 @@ describe('codex plan windows for the chat status row', () => {
     expect(onlyFeature.buckets).toHaveLength(1)
     expect(codexPlanUsage(onlyFeature, null, null).windows).toEqual([])
     const mixed = parseCodexRateLimits({ rateLimits: {}, rateLimitsByLimitId: { review: feature, codex: account } })
-    expect(codexPlanUsage(mixed, null, null)?.windows).toEqual([{
-      id: 'seven_day', label: 'Weekly limit', percent: 12, resetsAt: new Date(1900100000000).toISOString(),
-    }])
+    expect(codexPlanUsage(mixed, null, null)?.windows).toEqual([
+      {
+        id: 'seven_day',
+        label: 'Weekly limit',
+        percent: 12,
+        resetsAt: new Date(1900100000000).toISOString(),
+      },
+    ])
     const named = { ...feature, limitId: 'code_review' }
     const featureFallback = parseCodexRateLimits({ rateLimits: named, rateLimitsByLimitId: { code_review: named } })
     expect(codexPlanUsage(featureFallback, null, null).windows).toEqual([])
-    expect(featureFallback.buckets.map(b => b.id)).toEqual(['code_review'])
+    expect(featureFallback.buckets.map((b) => b.id)).toEqual(['code_review'])
     const legacy = parseCodexRateLimits({ rateLimits: account })
     expect(codexPlanUsage(legacy, null, null).windows[0]?.percent).toBe(12)
     const explicit = parseCodexRateLimits({ rateLimits: feature, rateLimitsByLimitId: { codex: account } })
