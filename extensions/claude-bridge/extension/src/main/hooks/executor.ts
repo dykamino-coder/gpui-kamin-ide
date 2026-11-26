@@ -159,7 +159,7 @@ function warmHookShell(shell: ResolvedShell, scriptPath: string, cwd: string, en
 export async function executeHook(
   req: HookExecuteRequest,
   fallbackCwd?: string,
-  options: { shellOnly?: boolean } = {},
+  execution: { shellOnly?: boolean; verifiedPluginRoot?: string } = {},
 ): Promise<HookExecuteResponse['result']> {
   const start = Date.now()
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -188,8 +188,7 @@ export async function executeHook(
     command = powerShellEnvPlaceholders(command)
   }
   if (req.pluginId) {
-    const installed = await loadInstalledPluginsMap()
-    const pluginRoot = installed.get(req.pluginId)?.installPath
+    const pluginRoot = execution.verifiedPluginRoot ?? (await loadInstalledPluginsMap()).get(req.pluginId)?.installPath
     if (!pluginRoot || !fs.existsSync(pluginRoot)) {
       return {
         stdout: '', stderr: `Plugin ${req.pluginId} is not installed on the client host`,
@@ -239,14 +238,14 @@ export async function executeHook(
   // bash (`Terminated`) that a direct run would not print.
   // KAMIN_HOOK_DIRECT_NODE=0 turns it off, =1 on (tests on other systems).
   const directWanted = process.env.KAMIN_HOOK_DIRECT_NODE === '1' || (process.platform === 'win32' && process.env.KAMIN_HOOK_DIRECT_NODE !== '0')
-  const nodeArgs = !execForm && !options.shellOnly && shell!.kind === 'bash' && directWanted
+  const nodeArgs = !execForm && !execution.shellOnly && shell!.kind === 'bash' && directWanted
     ? simpleNodeArgs(req.command)
     : null
   if (nodeArgs) {
     const key = JSON.stringify([warmKey(shell!.bin, shell!.args, hookEnv), cwd])
     const env = capturedEnv(key)
     if (env) direct = { args: nodeArgs, env }
-    else captureEnv(key, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { shellOnly: true }))
+    else captureEnv(key, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { ...execution, shellOnly: true }))
   }
   if (execForm) command = nativeNodeCommand(command)
   else command = shellNodeShim(shell!) + command

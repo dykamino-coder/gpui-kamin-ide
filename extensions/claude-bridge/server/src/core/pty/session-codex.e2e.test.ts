@@ -4,6 +4,9 @@
 // Only identity (token lookup) and DuckDB are stubbed; HOME is a temp dir.
 import 'reflect-metadata'
 import fs from 'node:fs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
@@ -384,6 +387,143 @@ describe('codex chat over the Bridge session WebSocket', () => {
     for (const c of [a, b]) {
       c.send({ type: 'session:end' })
       c.close()
+    }
+  }, 30_000)
+
+  it('gates the first Codex MCP tool at the client hook before dispatch and retains post-tool ordering', async () => {
+    const { getProjectSyncDir, getUserSyncDir } = await import('../sync/storage')
+    const owner = createHash('sha256').update('tok-a').digest('hex').slice(0, 16)
+    const cwd = path.join(state.home, 'synthetic-hook-project')
+    const project = getProjectSyncDir(owner, cwd)
+    const user = getUserSyncDir(owner)
+    fs.mkdirSync(project, { recursive: true })
+    fs.mkdirSync(user, { recursive: true })
+    fs.mkdirSync(cwd, { recursive: true })
+    const fixture = path.join(cwd, 'decision.cjs')
+    fs.writeFileSync(
+      fixture,
+      "process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: process.argv[2] === 'restricted.txt' ? 'deny' : 'allow' } }))",
+    )
+    const handler = { type: 'command', command: process.execPath, args: [fixture] }
+    const index = path.join(project, 'codex-tool-hooks.json')
+    const previous = fs.existsSync(index) ? fs.readFileSync(index) : null
+    fs.writeFileSync(
+      index,
+      JSON.stringify([
+        {
+          id: 'guard@fixture',
+          sourceRoot: cwd,
+          hooks: {
+            PostToolUse: [{ matcher: 'Read', hooks: [handler] }],
+            PostToolUseFailure: [{ matcher: 'Read', hooks: [handler] }],
+            PreToolUse: [{ matcher: 'Read|project_sessions_list|read_mcp_resource', hooks: [handler] }],
+          },
+        },
+      ]),
+    )
+    const projectSettings = path.join(project, 'settings.json')
+    fs.writeFileSync(
+      projectSettings,
+      JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Grep', hooks: [handler] }] } }),
+    )
+    const a = await Client.open(port)
+    const b = await Client.open(port)
+    const hookEvents: string[] = []
+    const replies: Promise<void>[] = []
+    const execFixture = promisify(execFile)
+    a.ws.on('message', (raw) => {
+      const frame = JSON.parse(String(raw))
+      if (frame.type !== 'hook:execute') return
+      hookEvents.push(frame.event)
+      replies.push(
+        (async () => {
+          expect(frame.command).toBe(process.execPath)
+          expect(frame.args).toEqual([fixture])
+          expect(frame.cwd).toBe(cwd)
+          const name = frame.payload.tool_input.file_path ?? 'restricted.txt'
+          const output =
+            frame.event === 'PreToolUse' ? (await execFixture(process.execPath, [fixture, name], { cwd })).stdout : ''
+          a.send({
+            type: 'hook:response',
+            requestId: frame.requestId,
+            result: { exitCode: 0, outcome: 'success', stdout: output, stderr: '', durationMs: 1 },
+          })
+        })(),
+      )
+    })
+    try {
+      const session = await createChat(a, { engine: 'codex', cwd, codexHookProtocol: 1 })
+      expect(session.type).toBe('session:created')
+      const { getSession } = await import('./session-core')
+      const current = getSession(session.sessionId)!
+      const { listSession } = await import('../hooks/registry')
+      expect(listSession(current.id).map((h) => [h.event, h.source.kind])).toEqual([
+        ['PreToolUse', 'project'],
+        ['PreToolUse', 'plugin'],
+        ['PostToolUse', 'plugin'],
+        ['PostToolUseFailure', 'plugin'],
+      ])
+      async function call(name: string, args: Record<string, unknown>) {
+        const response = await app.request('/mcp/' + current.id, {
+          method: 'POST',
+          headers: { authorization: 'Bearer ' + current.mcpToken, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: Date.now(),
+            method: 'tools/call',
+            params: { name, arguments: args },
+          }),
+        })
+        const body = await response.text()
+        const json = JSON.parse(body.startsWith(':') ? body.split('data: ')[1]!.trim() : body)
+        return json.result
+      }
+      expect(await call('Grep', { pattern: 'example' })).toMatchObject({ isError: true })
+      expect(await call('Read', { file_path: 'restricted.txt' })).toMatchObject({ isError: true })
+      expect(a.mcpCalls).toHaveLength(0)
+      expect(await call('project_sessions_list', {})).toMatchObject({ isError: true })
+      current.registeredResources = [
+        { uri: 'test://fixture/example', rawUri: 'test://fixture/example', name: 'example', serverId: 'fixture' },
+      ]
+      const resource = await app.request('/mcp/' + current.id, {
+        method: 'POST',
+        headers: { authorization: 'Bearer ' + current.mcpToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'r',
+          method: 'resources/read',
+          params: { uri: 'test://fixture/example' },
+        }),
+      })
+      expect((await resource.json()).error.message).toContain('blocked by the hook')
+      expect(a.mcpCalls).toHaveLength(0)
+      expect(await call('Read', { file_path: 'sample.txt' })).toMatchObject({
+        content: [{ type: 'text', text: 'host ran Read' }],
+      })
+      a.mcpReply = () => ({ isError: true, content: [{ type: 'text', text: 'unavailable fixture' }] })
+      expect(await call('Read', { file_path: 'gone.txt' })).toMatchObject({ isError: true })
+      expect(a.mcpCalls.map((c) => c.input.file_path)).toEqual(['sample.txt', 'gone.txt'])
+      expect(hookEvents).toEqual([
+        'PreToolUse',
+        'PreToolUse',
+        'PreToolUse',
+        'PreToolUse',
+        'PostToolUse',
+        'PreToolUse',
+        'PostToolUseFailure',
+      ])
+      b.send({ type: 'session:create', token: 'tok-b', cwd, engine: 'codex', protocolVersion: 1 })
+      const other = await b.next((f) => f.type === 'session:created')
+      expect(listSession(other.sessionId)).toEqual([])
+      await Promise.all(replies)
+    } finally {
+      for (const client of [a, b]) {
+        client.send({ type: 'session:end' })
+        client.close()
+      }
+      fs.rmSync(projectSettings, { force: true })
+      if (previous) fs.writeFileSync(index, previous)
+      else fs.rmSync(index, { force: true })
     }
   }, 30_000)
 
@@ -1125,6 +1265,104 @@ describe('engine switch inside one chat', () => {
     )
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
+
+  it('registers the workspace policy before a tool call after reconnect, cold resume and both engine switches', async () => {
+    const { getUserSyncDir, getProjectSyncDir } = await import('../sync/storage')
+    const owner = createHash('sha256').update('tok-a').digest('hex').slice(0, 16)
+    const project = getProjectSyncDir(owner, '/work/project')
+    fs.mkdirSync(project, { recursive: true })
+    const pluginFile = path.join(project, 'codex-tool-hooks.json')
+    fs.writeFileSync(pluginFile, '[]')
+    const directory = getUserSyncDir(owner)
+    fs.mkdirSync(directory, { recursive: true })
+    const settings = path.join(directory, 'settings.json')
+    const old = fs.existsSync(settings) ? fs.readFileSync(settings) : null
+    const handler = { type: 'command', command: 'reviewed-fixture' }
+    fs.writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Read', hooks: [handler] }] } }))
+    async function inspect(frame: Record<string, any>, engine: string) {
+      expect(frame.engine).toBe(engine)
+      const response = await app.request('/api/hooks/active/' + frame.sessionId, {
+        headers: { authorization: 'Bearer tok-a' },
+      })
+      expect(response.status).toBe(200)
+      expect((await response.json()).hooks).toContainEqual(
+        expect.objectContaining({
+          event: 'PreToolUse',
+          matcher: 'Read',
+          handler,
+          effectiveHost: 'local',
+          source: { kind: 'user', client: true },
+        }),
+      )
+    }
+    let client = await Client.open(port)
+    try {
+      const created = await createChat(client, { engine: 'codex' })
+      await inspect(created, 'codex')
+      await say(client, 'start sample', 'hook-reconnect')
+      const { conversationId } = await client.next((f) => f.type === 'session:conversation-id')
+      await client.entry((e) => text(e).startsWith('echo: start sample'))
+      client.close()
+      const resume = {
+        type: 'session:resume',
+        token: 'tok-a',
+        engine: 'codex',
+        conversationId,
+        protocolVersion: 1,
+        codexHookProtocol: 1,
+        cwd: '/work/project',
+      }
+      client = await Client.open(port)
+      fs.unlinkSync(pluginFile)
+      client.send(resume)
+      expect(await client.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+        type: 'session:error',
+        error: expect.stringContaining('synchronized'),
+      })
+      client.close()
+      client = await Client.open(port)
+      fs.writeFileSync(pluginFile, '[]')
+      client.send(resume)
+      const live = await client.next((f) => f.type === 'session:created')
+      expect(live).toMatchObject({ reattached: true, sessionId: created.sessionId })
+      await inspect(live, 'codex')
+      let older = await Client.open(port)
+      try {
+        older.send({ ...resume, codexHookProtocol: undefined, hookSyncFailed: true })
+        expect(await older.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+          type: 'session:error',
+          error: expect.stringContaining('synchronized'),
+        })
+        older.close()
+        older = await Client.open(port)
+        fs.unlinkSync(pluginFile)
+        older.send({ ...resume, codexHookProtocol: undefined })
+        expect(await older.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+          type: 'session:error',
+          error: expect.stringContaining('synchronized'),
+        })
+        fs.writeFileSync(pluginFile, '[]')
+      } finally {
+        older.close()
+      }
+      client.send({ type: 'session:end' })
+      await client.next((f) => f.type === 'session:exit')
+      client.close()
+      client = await Client.open(port)
+      client.send(resume)
+      const cold = await client.next((f) => f.type === 'session:created')
+      expect(cold.sessionId).not.toBe(created.sessionId)
+      await inspect(cold, 'codex')
+      await inspect((await switchTo(client, 'claude', 'claude-sonnet-5-5')).restarted, 'claude')
+      await inspect((await switchTo(client, 'codex', 'gpt-fake')).restarted, 'codex')
+    } finally {
+      client.send({ type: 'session:end' })
+      client.close()
+      fs.rmSync(pluginFile, { force: true })
+      if (old) fs.writeFileSync(settings, old)
+      else fs.rmSync(settings, { force: true })
+    }
+  }, 30_000)
 
   it('keeps instructions scoped to the active project on create, resume and engine switch', async () => {
     const { tokenHash, getUserSyncDir, getProjectSyncDir } = await import('../sync/routes')

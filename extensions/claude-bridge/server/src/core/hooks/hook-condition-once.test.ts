@@ -40,7 +40,7 @@ it.each<HookSource>([
   const send = vi.fn((raw: string) => {
     const frame = JSON.parse(raw)
     setImmediate(() =>
-      handleLocalHookResponse(frame.requestId, {
+      handleLocalHookResponse(ws, frame.requestId, {
         stdout: 'fixture',
         stderr: '',
         exitCode: 0,

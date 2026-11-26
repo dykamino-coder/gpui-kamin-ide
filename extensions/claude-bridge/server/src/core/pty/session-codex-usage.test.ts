@@ -10,7 +10,7 @@ import {
   sessionContextFor,
   startedContext,
 } from './session-codex'
-import type { CodexRateLimits } from '../../shared/codex-rate-limits'
+import { parseCodexRateLimits, type CodexRateLimits } from '../../shared/codex-rate-limits'
 
 const limits = (primary: number | null, secondary: number | null): CodexRateLimits => ({
   buckets: [
@@ -50,9 +50,34 @@ describe('codex plan windows for the chat status row', () => {
     })
   })
 
-  it('sends nothing when the account reports no window', () => {
-    expect(codexPlanUsage(limits(null, null), 'gpt-5.5', null)).toBeNull()
-    expect(codexPlanUsage({ ...limits(1, 1), buckets: [] }, null, null)).toBeNull()
+  it('keeps feature limits in the dashboard and shows only the ordinary account in chat', () => {
+    const feature = { primary: { usedPercent: 99, windowDurationMins: 10080, resetsAt: 1900000000 } }
+    const account = { secondary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: 1900100000 } }
+    const onlyFeature = parseCodexRateLimits({ rateLimits: {}, rateLimitsByLimitId: { review: feature } })
+    expect(onlyFeature.buckets).toHaveLength(1)
+    expect(codexPlanUsage(onlyFeature, null, null).windows).toEqual([])
+    const mixed = parseCodexRateLimits({ rateLimits: {}, rateLimitsByLimitId: { review: feature, codex: account } })
+    expect(codexPlanUsage(mixed, null, null)?.windows).toEqual([
+      {
+        id: 'seven_day',
+        label: 'Weekly limit',
+        percent: 12,
+        resetsAt: new Date(1900100000000).toISOString(),
+      },
+    ])
+    const named = { ...feature, limitId: 'code_review' }
+    const featureFallback = parseCodexRateLimits({ rateLimits: named, rateLimitsByLimitId: { code_review: named } })
+    expect(codexPlanUsage(featureFallback, null, null).windows).toEqual([])
+    expect(featureFallback.buckets.map((b) => b.id)).toEqual(['code_review'])
+    const legacy = parseCodexRateLimits({ rateLimits: account })
+    expect(codexPlanUsage(legacy, null, null).windows[0]?.percent).toBe(12)
+    const explicit = parseCodexRateLimits({ rateLimits: feature, rateLimitsByLimitId: { codex: account } })
+    expect(codexPlanUsage(explicit, null, null).windows[0]?.percent).toBe(12)
+  })
+
+  it('clears earlier windows when an account read succeeds without a current window', () => {
+    expect(codexPlanUsage(limits(null, null), 'gpt-5.5', null).windows).toEqual([])
+    expect(codexPlanUsage({ ...limits(1, 1), buckets: [] }, null, null).windows).toEqual([])
   })
 })
 
