@@ -14,6 +14,7 @@
 // the same effect as the command's exit code (see http-hook-answer.ts).
 // Legacy HTTP sessions are still translated below until they are restarted.
 
+import { observeClaudePermission } from '../pty/claude-permissions'
 import { Hono } from 'hono'
 import { dispatchHook } from './dispatcher'
 import { commandLabel, HTTP_HOOK_RELAY, httpHookAnswer } from './http-hook-answer'
@@ -123,6 +124,8 @@ export function createHooksRoutes(): Hono {
       // its shell spawn). A user's real hook for the same event still dispatches.
       const reg = listSession(sessionId).find((h) => h.id === hookId)
       if (reg?.source.kind === 'bridge') {
+        if (reg.event === event && payload.hook_event_name === event && (commandRelay || httpRelay))
+          observeClaudePermission(session, payload)
         if (commandRelay) {
           return c.json(
             {
