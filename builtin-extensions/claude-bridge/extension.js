@@ -39171,6 +39171,32 @@ function textResult5(text) {
 function errorResult5(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
+function transportFailure(error) {
+  const codes = {
+    ENOTFOUND: "DNS lookup failed",
+    EAI_AGAIN: "DNS lookup failed",
+    ECONNREFUSED: "connection refused",
+    ECONNRESET: "connection reset",
+    ENETUNREACH: "network unreachable",
+    ETIMEDOUT: "request timed out",
+    UND_ERR_CONNECT_TIMEOUT: "connection timed out",
+    UND_ERR_HEADERS_TIMEOUT: "response headers timed out",
+    UND_ERR_BODY_TIMEOUT: "response body timed out",
+    CERT_HAS_EXPIRED: "TLS certificate expired",
+    ERR_TLS_CERT_ALTNAME_INVALID: "TLS certificate hostname mismatch",
+    DEPTH_ZERO_SELF_SIGNED_CERT: "TLS certificate validation failed",
+    SELF_SIGNED_CERT_IN_CHAIN: "TLS certificate validation failed",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "TLS certificate validation failed",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "TLS certificate validation failed"
+  };
+  if (!(error instanceof Error)) return null;
+  for (const entry of [error, error.cause]) {
+    if (!entry || typeof entry !== "object" || !("code" in entry)) continue;
+    const code = entry.code;
+    if (typeof code === "string" && Object.hasOwn(codes, code)) return codes[code] + " (" + code + ")";
+  }
+  return null;
+}
 function htmlToText(html) {
   let text = html;
   text = text.replace(/<script[\s\S]*?<\/script>/gi, "");
@@ -39387,8 +39413,10 @@ Prompt: ${prompt}
 ${content}`
     );
   } catch (err) {
+    const transport = transportFailure(err);
+    if (transport) return errorResult5(`Failed to fetch ${url}: ${transport}`);
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("AbortError") || msg.includes("timeout")) {
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError") || msg.includes("timeout")) {
       return errorResult5(`Request timed out fetching ${url}`);
     }
     return errorResult5(`Failed to fetch ${url}: ${msg}`);
@@ -43455,6 +43483,40 @@ var kaminide2 = __toESM(require("kaminide"), 1);
 var import_fs37 = __toESM(require("fs"), 1);
 var import_path37 = __toESM(require("path"), 1);
 
+// src/main/mcp/startup.ts
+function mcpStartup(initialize) {
+  let started2 = false;
+  let disposed = false;
+  let release;
+  const admission = new Promise((resolve) => {
+    release = resolve;
+  });
+  let deadline;
+  const fallback = setTimeout(start, 3e4);
+  function finish() {
+    clearTimeout(deadline);
+    release();
+  }
+  function start() {
+    if (started2 || disposed) return;
+    started2 = true;
+    clearTimeout(fallback);
+    deadline = setTimeout(finish, 1500);
+    void initialize().then(finish, finish);
+  }
+  return {
+    beforeAdmission() {
+      start();
+      return admission;
+    },
+    dispose() {
+      disposed = true;
+      clearTimeout(fallback);
+      finish();
+    }
+  };
+}
+
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
 var import_node_path25 = __toESM(require("node:path"), 1);
@@ -45596,8 +45658,9 @@ function workspaceMode(value) {
 }
 var CLIENT_STREAM_PROTOCOL = 1;
 var SESSION_LIMIT_CLOSE_CODE = 4002;
+var INVALID_TOKEN_CLOSE_CODE = 4001;
 function stickyRefusal(previous, next, intentional) {
-  if (next.status === "authenticated" || intentional) return void 0;
+  if (next.status === "authenticated" || intentional || next.closeCode === INVALID_TOKEN_CLOSE_CODE) return void 0;
   if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return "session-limit";
   return previous;
 }
@@ -53039,7 +53102,9 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir) {
 }
 async function discoverPluginConfigs(pluginsDir) {
   const [plugins, marketplaceDescriptions] = await Promise.all([
-    listEnabledInstalledPlugins(),
+    // This manager serves every tab. Project-only installed servers require
+    // a catalog and executor bound to their owning project.
+    listEnabledInstalledPlugins({}),
     loadMarketplaceDescriptionsAsync(pluginsDir)
   ]);
   const nested = await Promise.all(plugins.map(async ({ name, marketplace, installPath }) => {
@@ -53153,6 +53218,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
     for (const [name, entry] of Object.entries(mcpServers)) {
       if (typeof entry !== "object" || entry === null) continue;
       const e = entry;
+      if (e.disabled === true) continue;
       const serverType = e.type === "sse" ? "sse" : e.type === "http" ? "http" : e.type === "ws" ? "ws" : "stdio";
       const config = {
         id: (0, import_crypto11.randomUUID)(),
@@ -53165,7 +53231,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
         description: `From ${import_path33.default.basename(r.path)}`
       };
       if (serverType === "http" || serverType === "sse" || serverType === "ws") {
-        config.url = e.url;
+        config.url = typeof e.url === "string" ? resolveEnvVars(e.url) : e.url;
         if (e.headers && typeof e.headers === "object") {
           config.headers = {};
           for (const [k, v] of Object.entries(e.headers)) {
@@ -53618,6 +53684,21 @@ async function fetchDispatcher(deadline) {
 }
 
 // src/main/mcp/transports/http.ts
+var HttpStatusError = class extends Error {
+  constructor(status, detail) {
+    super(`HTTP ${status}: ${detail}`);
+    this.status = status;
+  }
+  status;
+};
+function retryableHttpHandshake(error) {
+  if (error instanceof HttpStatusError) return [502, 503, 504].includes(error.status);
+  const temporary = ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"];
+  for (const candidate of [error, error instanceof Error ? error.cause : null]) {
+    if (candidate instanceof Error && temporary.includes(candidate.code ?? "")) return true;
+  }
+  return false;
+}
 async function connectHttp(ctx, id) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
@@ -53709,7 +53790,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
   }
   if (res.status === 202) return {};
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    throw new HttpStatusError(res.status, await res.text());
   }
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
@@ -53991,7 +54072,7 @@ async function connectStdio(ctx, id) {
         } else {
           lastLineCount = 0;
         }
-        if (line.includes("Cannot find module") || line.includes("MODULE_NOT_FOUND")) {
+        if (!state.permanentFailure && (line.includes("Cannot find module") || line.includes("MODULE_NOT_FOUND"))) {
           state.permanentFailure = line.trim();
         }
         stderrConsoleCount += 1;
@@ -54572,18 +54653,26 @@ var McpServerManager = class _McpServerManager {
     } catch (err) {
       console.error("[MCP OAuth] Legacy token migration failed:", err);
     }
-    const promises = [];
+    const network = [];
+    const coldStdio = [];
     for (const [id, state] of this.servers) {
-      if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
+      if (!state.permanentFailure && state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         if (LAZY_STDIO_MCP && isStdio(state.config) && state.status !== "connected" && this.lazySchemaCache[mcpConnectionFingerprint(state.config)]) {
           continue;
         }
-        promises.push(this.connectServer(id).catch((err) => {
-          console.error(`[MCP] Failed to connect "${state.config.name}":`, err instanceof Error ? err.message : err);
-        }));
+        if (isStdio(state.config)) coldStdio.push(id);
+        else network.push(this.connectServer(id));
       }
     }
-    await Promise.allSettled(promises);
+    const pending2 = coldStdio.values();
+    const startStdio = async () => {
+      for (const id of pending2) {
+        if (this.disposed) break;
+        const state = this.servers.get(id);
+        if (state?.config.enabled && state.status !== "connected") await this.connectServer(id);
+      }
+    };
+    await Promise.allSettled([...network, startStdio(), startStdio(), startStdio()]);
   }
   // ─── Auto-discovery ─────────────────────────────────
   // Discover MCP servers from three sources:
@@ -54612,6 +54701,7 @@ var McpServerManager = class _McpServerManager {
       if (state.config.autoDiscovered) {
         prevBudget.set(state.config.name, {
           attempts: state.reconnectAttempts ?? 0,
+          permanentFailure: state.permanentFailure,
           fp: mcpConnectionFingerprint(state.config)
         });
       }
@@ -54645,7 +54735,11 @@ var McpServerManager = class _McpServerManager {
       if (prev && prev.fp === mcpConnectionFingerprint(config)) {
         const st = this.servers.get(stableId);
         st.reconnectAttempts = prev.attempts;
-        if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
+        if (prev.permanentFailure) {
+          st.permanentFailure = prev.permanentFailure;
+          st.status = "error";
+          st.error = prev.permanentFailure;
+        } else if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
           st.status = "error";
           st.error = `Auto-reconnect gave up after ${MAX_RECONNECT_ATTEMPTS} attempts (config unchanged since). Toggle the server off/on or fix its config to retry.`;
         }
@@ -54775,7 +54869,7 @@ var McpServerManager = class _McpServerManager {
    *  stdio, не connected/connecting, кэш по fingerprint есть). */
   lazyCachedSchemasFor(state) {
     if (!LAZY_STDIO_MCP) return null;
-    if (!state.config.enabled || !isStdio(state.config)) return null;
+    if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) return null;
     if (state.status === "connected" || state.status === "connecting") return null;
     return this.lazySchemaCache[mcpConnectionFingerprint(state.config)] ?? null;
   }
@@ -54985,7 +55079,7 @@ var McpServerManager = class _McpServerManager {
     }
     if (LAZY_STDIO_MCP) {
       for (const state of this.servers.values()) {
-        if (!state.config.enabled || !isStdio(state.config)) continue;
+        if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) continue;
         const cached3 = this.lazySchemaCache[mcpConnectionFingerprint(state.config)];
         if (cached3?.some((t) => exposedToolName(state, t.name) === toolName)) return true;
       }
@@ -55146,8 +55240,11 @@ var McpServerManager = class _McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`);
       }
-      const fullMsg = extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg;
+      const fullMsg = state.error ?? state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg);
       state.error = fullMsg;
+      if (state.config.type === "http" && !state.reconnectTimer && retryableHttpHandshake(err)) {
+        this.scheduleReconnect(id, baseMsg);
+      }
       this.appendLog(id, "error", `[connect] failed \u2014 ${fullMsg}`);
       if (hint) this.appendLog(id, "warn", `[connect] hint: ${hint}`);
       if (cause === void 0) console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg);
@@ -55999,8 +56096,7 @@ var BridgeHost = class {
   deferredReplies = new DeferredReplies();
   onResyncNeeded;
   disposed = false;
-  startupTimers = /* @__PURE__ */ new Set();
-  releaseMcpReady;
+  mcpStartup;
   cancelMarketplaceStartup;
   sink;
   event;
@@ -56100,50 +56196,10 @@ var BridgeHost = class {
     this.mcpManager = new McpServerManager(this.sink);
     setExternalMcpManager(this.mcpManager);
     setHookEmitConfigStore(this.configStore);
-    const READY_WAIT_MS = 6e3;
-    const MCP_AFTER_AUTH_MS = 2e3;
-    const MCP_FALLBACK_MS = 3e4;
-    let mcpSettled = false;
-    let mcpKicked = false;
-    let resolveReady;
-    const mcpReady = new Promise((r) => {
-      resolveReady = r;
+    this.mcpStartup = mcpStartup(async () => {
+      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP !== "1") await this.mcpManager.initAll();
     });
-    this.releaseMcpReady = resolveReady;
-    const scheduleStartup = (run2, delay) => {
-      const timer = setTimeout(() => {
-        this.startupTimers.delete(timer);
-        if (!this.disposed) run2();
-      }, delay);
-      this.startupTimers.add(timer);
-    };
-    const kickMcp = (delay) => {
-      if (mcpKicked || this.disposed) return;
-      mcpKicked = true;
-      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === "1") {
-        mcpSettled = true;
-        resolveReady();
-        return;
-      }
-      scheduleStartup(() => {
-        this.mcpManager.initAll().catch(() => {
-        }).finally(() => {
-          mcpSettled = true;
-          resolveReady();
-        });
-      }, delay);
-    };
-    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS);
-    ConnectionManager.whenExternalToolsReady = () => {
-      if (mcpSettled || !mcpKicked) return Promise.resolve();
-      return new Promise((resolve) => {
-        const t = setTimeout(resolve, READY_WAIT_MS);
-        void mcpReady.finally(() => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-    };
+    ConnectionManager.whenExternalToolsReady = this.mcpStartup.beforeAdmission;
     registerSessionsIPC(ctx);
     registerConfigIPC(ctx);
     registerTabsIPC({ configStore: this.configStore });
@@ -56239,7 +56295,6 @@ var BridgeHost = class {
         }
         break;
       }
-      kickMcp(MCP_AFTER_AUTH_MS);
       const schemas = buildPayload();
       if (schemas.length > 0) connection.sendRaw({ type: "mcp:register-external-tools", tools: schemas });
       sendMcpCatalog(connection);
@@ -56336,10 +56391,8 @@ var BridgeHost = class {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const timer of this.startupTimers) clearTimeout(timer);
-    this.startupTimers.clear();
     this.cancelMarketplaceStartup?.();
-    this.releaseMcpReady?.();
+    this.mcpStartup.dispose();
     for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id);
     this.tabManager.dispose();
     this.mcpManager.dispose();
