@@ -16,7 +16,7 @@ impl RestyleProbe {
         extra_css: &str,
         asked: Media,
         values: &Rc<DocumentValues>,
-    ) -> Result<Option<Self>, DocumentFailure> {
+    ) -> Result<Self, DocumentFailure> {
         let mut media = asked;
         let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
         let document = &input.dom.document;
@@ -27,15 +27,14 @@ impl RestyleProbe {
         let vcx = values.values().with_scheme(scheme(media));
         let rules =
             crate::dom::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
-        let mut probe = Self::built(
+        let built = Self::built(
             rules.doc,
             rules.has_args,
             rules.reads_attr,
             (media, asked),
             extra_css,
         );
-        probe.shadows = shadows;
-        Ok(Some(probe))
+        Ok(Self { shadows, ..built })
     }
 
     /// Проба из правил сборки документа без теней (`convert_restyling`):

@@ -120,7 +120,7 @@ impl Document {
         }
         let media = self.state.media();
         let values = &self.state.values;
-        let Ok(Some(probe)) = kept.cache.probe(input, theme_css, media, values) else {
+        let Ok(probe) = kept.cache.probe(input, theme_css, media, values) else {
             return Err("probe");
         };
         let address = |h: &markup5ever_rcdom::Handle| std::rc::Rc::as_ptr(h) as usize;

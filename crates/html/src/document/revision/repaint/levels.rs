@@ -63,7 +63,7 @@ impl Document {
         let values = &self.state.values;
         let document = &input.dom.document;
         let media = self.state.media();
-        let Ok(Some(probe)) = cache.probe(input, theme_css, media, values) else {
+        let Ok(probe) = cache.probe(input, theme_css, media, values) else {
             return Levels::document(document, "probe");
         };
         let (mutated, after): (Vec<_>, Vec<&[_]>) = (batch.elements.iter())

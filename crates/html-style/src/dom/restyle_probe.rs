@@ -104,24 +104,26 @@ impl RestyleCache {
     /// `rule_invalidation_data.cc:90`), а не на мутацию. Листы документа у
     /// одних значений не меняются: текст `<style>` прочитан сборкой
     /// (`TraversalState::read_source_text`), и его правка собирает документ
-    /// заново с новыми значениями. `None` — документ с декларативными тенями.
+    /// заново с новыми значениями. Тени светлого дерева проба описывает
+    /// (`ShadowFacts`), а не отвергает.
     pub fn probe(
         &mut self,
         input: &Admitted,
         extra_css: &str,
         media: Media,
         values: &Rc<DocumentValues>,
-    ) -> Result<Option<Rc<RestyleProbe>>, DocumentFailure> {
+    ) -> Result<Rc<RestyleProbe>, DocumentFailure> {
         let same = |p: &&Rc<RestyleProbe>| p.asked == media && *p.extra_css == *extra_css;
         if let Some(probe) = self.probe.as_ref().filter(same) {
-            return Ok(Some(probe.clone()));
+            return Ok(probe.clone());
         }
         self.chains = Chains::default();
         self.sets.clear();
         self.last.clear();
         self.has = None;
-        self.probe = RestyleProbe::new(input, extra_css, media, values)?.map(Rc::new);
-        Ok(self.probe.clone())
+        let probe = Rc::new(RestyleProbe::new(input, extra_css, media, values)?);
+        self.probe = Some(probe.clone());
+        Ok(probe)
     }
 
     /// The elements `mutated` and those whose style the batch of names
