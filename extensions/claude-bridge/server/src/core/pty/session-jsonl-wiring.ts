@@ -21,6 +21,8 @@ export interface JsonlWiringHooks {
   /** Called with every adopted conversation id (proxy usage attribution). */
   onConversationId?(conversationId: string): void
   engine?: AgentEngineId
+  /** A projected thread retains its file across model turns and compaction. */
+  fixedTranscript?: string
 }
 
 export function attachSessionJsonlWatcher(
@@ -166,6 +168,6 @@ function startJsonlWatcher(
   // Read receipts: the server finds the stored prompt row itself.
   jsonlWatcher.onEntries = (entries) => sessionCliControl(session)?.transcript(entries)
   session.jsonlWatcher = jsonlWatcher
-  jsonlWatcher.start()
+  jsonlWatcher.start(conversation ? undefined : hooks.fixedTranscript)
   return jsonlWatcher
 }
