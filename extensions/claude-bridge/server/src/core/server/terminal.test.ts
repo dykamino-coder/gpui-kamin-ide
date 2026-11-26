@@ -17,6 +17,8 @@ vi.mock('node-pty', () => ({ spawn: mocks.spawn }))
 vi.mock('../codex/codex-runtime', () => ({
   codexRuntime: () => ({ home: '/bridge/account', acquireTerminal: mocks.acquire }),
 }))
+// The host's real launcher (for example node + codex.js on Windows) would prefix the argv under test.
+vi.mock('../codex/binary', () => ({ resolveCodexCommand: () => ({ command: 'codex', args: [] }) }))
 import { attachTerminalWebSocket, cleanupTerminal } from './terminal'
 
 afterEach(() => {
