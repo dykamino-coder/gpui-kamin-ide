@@ -63,18 +63,17 @@ impl Document {
         let values = &self.state.values;
         let document = &input.dom.document;
         let media = self.state.media();
-        let Ok(Some(probe)) = cache.probe(input, theme_css, media, values) else {
+        let Ok(probe) = cache.probe(input, theme_css, media, values) else {
             return Levels::document(document, "probe");
         };
-        let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let mut targets = cache.targets(&probe, changed, &mutated);
+        let (mutated, after): (Vec<_>, Vec<&[_]>) = (batch.elements.iter())
+            .map(|c| (c.element.clone(), &c.new[..]))
+            .unzip();
+        let mut targets = cache.targets(&probe, changed, (&mutated, &after));
         // `attr()` reads an attribute of the element its declaration applies
         // to (css-values-5 §7.7): a changed name the sheets or a mutated
         // element's own `style=""` read restyles the mutated elements.
-        let own = batch
-            .elements
-            .iter()
-            .flat_map(|c| c.old.iter().chain(&c.new));
+        let own = (batch.elements.iter()).flat_map(|c| c.old.iter().chain(&c.new));
         let styles = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
         let reads = probe.reads_attr().with_styles(styles);
         let reads = reads.reads_any_of(changed.attrs.iter().map(String::as_str));
@@ -110,12 +109,14 @@ impl Document {
             }
         }
         crate::paint_path::add(&crate::paint_path::RESTYLED_ELEMENTS, targets.len() as u64);
-        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
-        // values into the cascades of their children's boxes: the probe
-        // folds them the same way.
+        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their values into
+        // the cascades of their children's boxes: the probe folds them the same way.
         let Some(unwrapped) = fold::Unwrapped::add(&self.nodes, document, &mut targets) else {
             return Levels::document(document, "unwrapped");
         };
+        if let Some(why) = super::shadow_scope::refused(&probe, changed, &targets) {
+            return Levels::document(document, why);
+        }
         // The styles before the batch are those the last probe of each
         // target left (Blink and Stylo keep the old style on the element);
         // only targets no edit has probed yet are cascaded.
@@ -137,8 +138,7 @@ impl Document {
             },
             None => None,
         };
-        let entries = targets
-            .iter()
+        let entries = (targets.iter())
             .zip(before.into_iter().zip(after))
             .enumerate();
         for (i, (target, (old, new))) in entries {

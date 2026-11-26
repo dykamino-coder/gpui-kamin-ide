@@ -33,70 +33,11 @@ pub(super) fn enabled() -> bool {
     std::env::var_os("GPUI_GROUP_TILES").is_none_or(|v| v != "0")
 }
 
-/// Grow-only buffer of the tile lists and its scratch.
-#[derive(Default)]
-pub(super) struct TileLists {
-    buffer: Option<(ID3D11Buffer, Option<ID3D11ShaderResourceView>, usize)>,
-    counts: Vec<u32>,
-    data: Vec<u32>,
-    /// Passes drawn since the renderer was made (tests).
-    pub(super) passes: u32,
-}
-
-/// Tiles of `r` on a grid of `cols` columns: (first column, first row, last
-/// column, last row), inclusive.
-fn tile_span(r: Region) -> (u32, u32, u32, u32) {
-    let last = |o: u32, s: u32| (o + s.max(1) - 1) / TILE;
-    (r.x / TILE, r.y / TILE, last(r.x, r.width), last(r.y, r.height))
-}
-
-/// Bin the leading composites of `regions` on a target `width` x `height`:
-/// how many are taken (stopping before one that would put more than `cap` in
-/// a tile) and the lists: the first entry of every tile (one more than the
-/// tiles), then composite instance indices (k + 1), document order per tile.
-pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: &mut TileLists) -> usize {
-    let cols = width.div_ceil(TILE);
-    let tiles = (cols * height.div_ceil(TILE)) as usize;
-    let counts = &mut lists.counts;
-    counts.clear();
-    counts.resize(tiles, 0);
-    let mut taken = 0;
-    for &r in regions {
-        let (x0, y0, x1, y1) = tile_span(r);
-        let full = (y0..=y1).any(|y| (x0..=x1).any(|x| counts[(y * cols + x) as usize] >= cap));
-        if full {
-            break;
-        }
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                counts[(y * cols + x) as usize] += 1;
-            }
-        }
-        taken += 1;
-    }
-    let data = &mut lists.data;
-    data.clear();
-    let mut at = tiles as u32 + 1;
-    for &c in counts.iter() {
-        data.push(at);
-        at += c;
-    }
-    data.push(at);
-    data.resize(at as usize, 0);
-    // counts become each tile's write position.
-    counts.copy_from_slice(&data[..tiles]);
-    for (k, &r) in regions[..taken].iter().enumerate() {
-        let (x0, y0, x1, y1) = tile_span(r);
-        for y in y0..=y1 {
-            for x in x0..=x1 {
-                let t = (y * cols + x) as usize;
-                data[counts[t] as usize] = k as u32 + 1;
-                counts[t] += 1;
-            }
-        }
-    }
-    taken
-}
+mod bins;
+use super::cover_shape::CoverShape;
+pub(super) use bins::TileLists;
+#[cfg(test)]
+use bins::bin;
 
 impl DirectXRenderer {
     /// Whether composite `s` can join a pass: it has a retained image.
@@ -116,6 +57,7 @@ impl DirectXRenderer {
     pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
         let mut quads = vec![BlurQuad::default()];
         let mut regions = Vec::new();
+        let mut shapes = Vec::new();
         type View = Option<Option<ID3D11ShaderResourceView>>;
         let mut first: Option<(usize, View)> = None;
         for s in run.iter().take(MAX_RUN) {
@@ -135,11 +77,17 @@ impl DirectXRenderer {
             if *page != p || *pass_view != view {
                 break;
             }
+            // A source-over composite leaves a pixel it does not colour
+            // exactly as it was, so it is listed only where its shape can
+            // colour; a blend mode mixes even a transparent source, so its
+            // whole region stays listed.
+            let (vw, vh) = (self.width as f32, self.height as f32);
+            shapes.push((quad.blend_mode == 0).then(|| CoverShape::of(&quad, vw, vh)).flatten());
             quads.push(quad);
             regions.push(self.composite_region(s));
         }
         let mut lists = std::mem::take(&mut self.blur.tile_lists);
-        let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
+        let taken = bins::bin(&regions, &shapes, self.width, self.height, TILE_CAP, &mut lists);
         if taken == 0 {
             self.blur.tile_lists = lists;
             return Ok(0);
@@ -151,12 +99,14 @@ impl DirectXRenderer {
         // no backdrop copy and no draw. A lone survivor stays in the pass:
         // drawn alone it would take another path than the whole frame.
         regions.truncate(taken);
+        shapes.truncate(taken);
         if let Some(w) = self.blur.frame_within {
             let keep: Vec<usize> = (0..taken).filter(|&k| w.meets(regions[k])).collect();
             if keep.len() < taken {
                 regions = keep.iter().map(|&k| regions[k]).collect();
+                shapes = keep.iter().map(|&k| shapes[k]).collect();
                 quads = std::iter::once(quads[0]).chain(keep.iter().map(|&k| quads[k + 1])).collect();
-                bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
+                bins::bin(&regions, &shapes, self.width, self.height, TILE_CAP, &mut lists);
             }
         }
         let result = match first {
@@ -201,19 +151,29 @@ impl DirectXRenderer {
             width: x1 - x0,
             height: y1 - y0,
         };
+        // Only the tiles that list a composite are drawn; the spans follow
+        // the lists in the same buffer (`group_tiles_vertex`).
+        let spans = bins::spans(&lists.data, self.width, cover);
+        if spans.is_empty() {
+            lists.passes += 1;
+            return Ok(());
+        }
         quads.truncate(regions.len() + 1);
         quads[0].bounds = cover.floats();
         quads[0].poly_count = self.width.div_ceil(TILE);
+        quads[0].blend_mode = lists.data.len() as u32;
+        lists.data.extend(spans.iter().flat_map(|s| [s.x, s.y, s.width, s.height]));
         log::debug!(
             target: "gpui::frame",
-            "tile pass {} composites cover {}x{} lists {} entries",
+            "tile pass {} composites cover {}x{} spans {} lists {} entries",
             regions.len(),
             cover.width,
             cover.height,
+            spans.len(),
             lists.data.len()
         );
-        // One copy of the run's rectangle: every pixel starts from it.
-        self.copy_level_backdrop(slice::from_ref(&cover))?;
+        // One copy of the drawn spans: every pixel starts from it.
+        self.copy_level_backdrop(&spans)?;
         let len = lists.data.len();
         if lists.buffer.as_ref().is_none_or(|b| b.2 < len) {
             let cap = len.next_power_of_two();
@@ -232,6 +192,7 @@ impl DirectXRenderer {
         let target = self.current_target().to_vec();
         self.pipelines.group_tiles_pipeline.update_buffer(&device, &dc, quads)?;
         unsafe {
+            dc.VSSetShaderResources(4, Some(slice::from_ref(view)));
             dc.PSSetShaderResources(4, Some(slice::from_ref(view)));
             dc.OMSetRenderTargets(Some(&target), None);
         }
@@ -241,11 +202,12 @@ impl DirectXRenderer {
             slice::from_ref(&self.res().viewport),
             &self.blur.globals,
             slice::from_ref(&self.globals.sampler),
-            1,
+            spans.len() as u32,
             None,
         )?;
         unsafe {
             dc.PSSetShaderResources(2, Some(&[None]));
+            dc.VSSetShaderResources(4, Some(&[None]));
             dc.PSSetShaderResources(4, Some(&[None]));
         }
         lists.passes += 1;

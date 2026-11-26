@@ -34,6 +34,8 @@ pub struct RestyleProbe {
     extra_css: Box<str>,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
     reads_attr: crate::dom::attr_reads::AttrReads,
+    /// The shadow trees of the light tree: their hosts and sheets.
+    shadows: Rc<crate::dom::shadow::ShadowFacts>,
 }
 
 /// Проба документа между правками его ревизии: правила и контексты входа в
@@ -96,40 +98,44 @@ impl RestyleCache {
         }
     }
 
-    /// Проба документа значений `values`: правила собираются при первой
-    /// правке и служат следующим, пока тема и носитель те же. Blink так же
-    /// строит признаки правил один раз на лист (`RuleInvalidationData`,
-    /// `rule_invalidation_data.cc:90`), а не на мутацию. Листы документа у
-    /// одних значений не меняются: текст `<style>` прочитан сборкой
-    /// (`TraversalState::read_source_text`), и его правка собирает документ
-    /// заново с новыми значениями. `None` — документ с декларативными тенями.
+    /// The probe of the document of `values`: its rules are gathered on the
+    /// first edit and serve the next ones while the theme and the medium stay
+    /// the same. Blink likewise builds the rule features once per sheet
+    /// (`RuleInvalidationData`, `rule_invalidation_data.cc:90`), not per
+    /// mutation. The sheets of one set of values do not change: the build read
+    /// the text of each `<style>` (`TraversalState::read_source_text`), and an
+    /// edit of it builds the document again with new values. The shadow trees
+    /// of the light tree are described by the probe (`ShadowFacts`), not
+    /// refused.
     pub fn probe(
         &mut self,
         input: &Admitted,
         extra_css: &str,
         media: Media,
         values: &Rc<DocumentValues>,
-    ) -> Result<Option<Rc<RestyleProbe>>, DocumentFailure> {
+    ) -> Result<Rc<RestyleProbe>, DocumentFailure> {
         let same = |p: &&Rc<RestyleProbe>| p.asked == media && *p.extra_css == *extra_css;
         if let Some(probe) = self.probe.as_ref().filter(same) {
-            return Ok(Some(probe.clone()));
+            return Ok(probe.clone());
         }
         self.chains = Chains::default();
         self.sets.clear();
         self.last.clear();
         self.has = None;
-        self.probe = RestyleProbe::new(input, extra_css, media, values)?.map(Rc::new);
-        Ok(self.probe.clone())
+        let probe = Rc::new(RestyleProbe::new(input, extra_css, media, values)?);
+        self.probe = Some(probe.clone());
+        Ok(probe)
     }
 
     /// The elements `mutated` and those whose style the batch of names
     /// `changed` may change (`invalidation::targets`): always a set, up to
-    /// the whole document.
+    /// the whole document. `after`: the attributes of each mutated element
+    /// after the batch.
     pub fn targets(
         &mut self,
         probe: &RestyleProbe,
         changed: &Changed,
-        mutated: &[Handle],
+        (mutated, after): (&[Handle], &[&[html5ever::Attribute]]),
     ) -> Vec<Handle> {
         // A name read inside a `:has()` argument changes its marks: each
         // probe of this batch (before and after it) marks them again.
@@ -162,7 +168,7 @@ impl RestyleCache {
             true => mutated.to_vec(),
             false => Vec::new(),
         };
-        features.targets(mutated)
+        features.targets(mutated, after)
     }
 
     /// Вход в каждый элемент `targets` при текущем состоянии исходного DOM.

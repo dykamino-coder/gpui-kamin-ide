@@ -158,6 +158,7 @@ mod tests {
     /// A 400×300 page tile drawn 1:1 at (100, 50).
     fn page(index: u32) -> PolychromeSprite {
         PolychromeSprite {
+            pattern: gpui::Size::default(),
             order: 0,
             pad: 0,
             grayscale: false.into(),

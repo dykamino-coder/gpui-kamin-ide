@@ -55,6 +55,7 @@ mod repaint_has;
 mod repaint_images;
 mod repaint_inherited;
 mod repaint_sequence;
+mod repaint_shadow;
 mod repaint_values;
 mod revision_budget;
 mod stable_keys;

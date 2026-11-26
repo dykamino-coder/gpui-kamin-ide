@@ -20,11 +20,14 @@
 //! (`invalidation_set.h:462`), sibling (`:473`) and `:has()` sets
 //! (`rule_invalidation_data.h`); Stylo derives them from the combinators
 //! (`invalidation_map.rs:170`). Here the moves of each reading compound are
-//! composed into paths, and the subject feature of the rule (its id, class,
-//! tag or attribute) filters the elements a path reaches.
+//! composed into paths, a path starts only at the mutated elements that pass
+//! the unchanging part of the compound they would match (`Admits`), and the
+//! subject feature of the rule (its id, class, tag or attribute) filters the
+//! elements a path reaches.
 
 use super::{Changed, Kind, kind, mentions, name};
 use crate::style::css::{PseudoKind, Rule, Selector};
+use admits::{Admits, Attrs};
 use markup5ever_rcdom::Handle;
 
 /// One step from a set of elements to the elements a selector may reach.
@@ -43,13 +46,17 @@ enum Move {
     Document,
 }
 
-/// The paths of the rules that read a changed name: the moves from a mutated
-/// element to the rule's subject, and the subject feature (`None`: any).
+/// The paths of the rules that read a changed name: the unchanging part of
+/// the compound a mutated element must pass (`None`: any), the moves from it
+/// to the rule's subject, and the subject feature (`None`: any).
 pub struct Features(Vec<Path>);
 
-/// The moves from a mutated element to a rule's subject and the subject
-/// feature (`None`: any).
-type Path = (Vec<Move>, Option<(Kind, String)>);
+/// The test of a mutated element, the moves to the subject, its feature.
+type Path = (Option<Admits>, Vec<Move>, Option<(Kind, String)>);
+
+/// The moves of one reading compound to the subject, and the outermost
+/// compound whose element is the mutated element (`None`: not known).
+type Reach<'s> = (Vec<Move>, Option<&'s Selector>);
 
 /// The paths of `rules` for the names of `changed`.
 pub fn features(rules: &[Rule], changed: &Changed) -> Features {
@@ -60,17 +67,15 @@ pub fn features(rules: &[Rule], changed: &Changed) -> Features {
             continue;
         }
         let feature = kind(&rule.sel).map(|k| (k, name(&rule.sel, k).to_string()));
-        for path in paths {
+        for (path, test) in paths {
             // The mutated elements are always targets: an empty path adds nothing.
             if path.is_empty() {
                 continue;
             }
-            let path = if path.contains(&Move::Document) {
-                vec![Move::Document]
-            } else {
-                path
+            let entry = match path.contains(&Move::Document) {
+                true => (None, vec![Move::Document], feature.clone()),
+                false => (test.map(|s| Admits::of(s, changed)), path, feature.clone()),
             };
-            let entry = (path, feature.clone());
             if !out.contains(&entry) {
                 out.push(entry);
             }
@@ -82,27 +87,36 @@ pub fn features(rules: &[Rule], changed: &Changed) -> Features {
 /// The elements `mutated` and those a rule of `rules` may restyle after the
 /// names of `changed` changed on them.
 pub fn targets(rules: &[Rule], changed: &Changed, mutated: &[Handle]) -> Vec<Handle> {
-    features(rules, changed).targets(mutated)
+    features(rules, changed).targets(mutated, &[])
 }
 
 impl Features {
-    /// The elements `mutated` and those each path reaches from them with the
-    /// subject feature of its rule, in that order, each once.
-    pub fn targets(&self, mutated: &[Handle]) -> Vec<Handle> {
+    /// The elements `mutated` and those each path reaches from the ones its
+    /// test admits, with the subject feature of its rule, in that order, each once.
+    /// `after`: the attributes of each mutated element after the batch; an
+    /// element past its end passes the parts that read a changed name.
+    pub fn targets(&self, mutated: &[Handle], after: &[Attrs<'_>]) -> Vec<Handle> {
         let mut out = Targets::default();
         for m in mutated {
             out.add(m);
         }
-        for (path, feature) in &self.0 {
-            let mut set: Vec<Handle> = mutated.to_vec();
-            for &step in path {
+        for (test, path, feature) in &self.0 {
+            let admitted = |(i, m): &(usize, &Handle)| {
+                (test.as_ref()).is_none_or(|t| t.admits(m, after.get(*i).copied()))
+            };
+            let reached = mutated.iter().enumerate().filter(admitted);
+            let mut set: Vec<Handle> = reached.map(|(_, m)| m.clone()).collect();
+            let Some((&last, steps)) = path.split_last() else {
+                continue;
+            };
+            for &step in steps {
                 set = apply(step, &set);
             }
-            for node in &set {
+            reach(last, &set, &mut |node| {
                 if feature.as_ref().is_none_or(|(k, f)| has(*k, f, node)) {
                     out.add(node);
                 }
-            }
+            });
         }
         out.list
     }
@@ -110,43 +124,33 @@ impl Features {
 
 /// The moves from an element whose names changed to the subject of `sel`,
 /// one path per compound (or argument) that reads a changed name.
-fn paths(sel: &Selector, changed: &Changed) -> Vec<Vec<Move>> {
+fn paths<'s>(sel: &'s Selector, changed: &Changed) -> Vec<Reach<'s>> {
     let mut out = own(sel, changed);
-    if let Some(ancestor) = &sel.ancestor {
-        let step = if ancestor.1 {
-            Move::Children
-        } else {
-            Move::Descendants
-        };
-        out.extend(paths(&ancestor.0, changed).into_iter().map(|mut p| {
-            p.push(step);
-            p
-        }));
-    }
-    if let Some(prev) = &sel.prev {
-        let step = if prev.1 {
-            Move::NextSibling
-        } else {
-            Move::LaterSiblings
-        };
-        out.extend(paths(&prev.0, changed).into_iter().map(|mut p| {
-            p.push(step);
-            p
-        }));
+    let links = [(&sel.ancestor, Move::Children, Move::Descendants)]
+        .into_iter()
+        .chain([(&sel.prev, Move::NextSibling, Move::LaterSiblings)]);
+    for (link, near, far) in links {
+        if let Some(link) = link {
+            let step = if link.1 { near } else { far };
+            out.extend(paths(&link.0, changed).into_iter().map(|(mut p, test)| {
+                p.push(step);
+                (p, test)
+            }));
+        }
     }
     out
 }
 
 /// The paths that end at the element of the compound `sel` itself: its own
 /// classes, attributes and id, and the arguments of its pseudo-classes.
-fn own(sel: &Selector, changed: &Changed) -> Vec<Vec<Move>> {
+fn own<'s>(sel: &'s Selector, changed: &Changed) -> Vec<Reach<'s>> {
     let among = |names: &[String], n: &str| names.iter().any(|c| c.eq_ignore_ascii_case(n));
     let mut out = Vec::new();
     if sel.classes.iter().any(|c| among(&changed.classes, c))
         || sel.attrs.iter().any(|a| among(&changed.attrs, &a.name))
         || sel.id.is_some() && among(&changed.attrs, "id")
     {
-        out.push(Vec::new());
+        out.push((Vec::new(), Some(sel)));
     }
     for raw in sel.pseudo.iter().chain(&sel.also) {
         out.extend(pseudo(sel, raw, changed));
@@ -155,43 +159,41 @@ fn own(sel: &Selector, changed: &Changed) -> Vec<Vec<Move>> {
 }
 
 /// The paths through the pseudo-class `raw` of the compound `sel`.
-fn pseudo(sel: &Selector, raw: &str, changed: &Changed) -> Vec<Vec<Move>> {
+fn pseudo<'s>(sel: &'s Selector, raw: &str, changed: &Changed) -> Vec<Reach<'s>> {
     let among = |names: &[&str]| {
         names
             .iter()
             .any(|n| changed.attrs.iter().any(|a| a.eq_ignore_ascii_case(n)))
     };
     let text = || {
-        raw.contains('\\')
-            || changed
-                .classes
-                .iter()
-                .chain(&changed.attrs)
-                .any(|n| mentions(raw, n))
+        (changed.classes.iter())
+            .chain(&changed.attrs)
+            .any(|n| mentions(raw, n))
     };
+    let anywhere = || vec![(vec![Move::Document], None)];
     let Some(arg) = sel.prepared(raw) else {
         // Not parsed here (or a pseudo-element): a name in it may be read anywhere.
-        return if text() {
-            vec![vec![Move::Document]]
-        } else {
-            Vec::new()
-        };
+        return if text() { anywhere() } else { Vec::new() };
     };
-    let inner = |step: Option<Move>| -> Vec<Vec<Move>> {
-        arg.list
-            .iter()
-            .flat_map(|s| paths(s, changed))
-            .map(|mut p| {
-                p.extend(step);
-                p
-            })
-            .collect()
+    // A path that has not moved yet is at the element of `sel` too, which
+    // must then match all of `sel`: its test is that compound.
+    let inner = |step: Option<Move>| -> Vec<Reach<'s>> {
+        let reached = arg.list.iter().flat_map(|s| paths(s, changed));
+        let lift = |(mut p, test): Reach<'s>| match step {
+            Some(step) => {
+                p.push(step);
+                (p, test)
+            }
+            None if p.is_empty() => (p, Some(sel)),
+            None => (p, test),
+        };
+        reached.map(lift).collect()
     };
     // A name the argument's text holds where no parsed selector reads it
     // (a part this parser dropped) may be read anywhere.
-    let traced = |paths: Vec<Vec<Move>>| {
+    let traced = |paths: Vec<Reach<'s>>| {
         if paths.is_empty() && text() {
-            vec![vec![Move::Document]]
+            anywhere()
         } else {
             paths
         }
@@ -201,17 +203,14 @@ fn pseudo(sel: &Selector, raw: &str, changed: &Changed) -> Vec<Vec<Move>> {
         PseudoKind::NthOf(_) => traced(inner(Some(Move::Siblings))),
         PseudoKind::Has(_) => traced(inner(Some(Move::HasAnchors))),
         // `:checked` reads the attributes its state derives from (`form_state`).
-        PseudoKind::Checked => {
-            if among(&crate::dom::form_state::READS) {
-                vec![Vec::new()]
-            } else {
-                Vec::new()
-            }
-        }
+        PseudoKind::Checked => match among(&crate::dom::form_state::READS) {
+            true => vec![(Vec::new(), None)],
+            false => Vec::new(),
+        },
         // The language and direction of an element come from its ancestors.
         PseudoKind::Lang | PseudoKind::Dir(_) => {
             if among(&["lang", "dir", "xml:lang"]) || text() {
-                vec![Vec::new(), vec![Move::Descendants]]
+                vec![(Vec::new(), None), (vec![Move::Descendants], None)]
             } else {
                 Vec::new()
             }
@@ -225,17 +224,17 @@ fn pseudo(sel: &Selector, raw: &str, changed: &Changed) -> Vec<Vec<Move>> {
         | PseudoKind::UserAction => inner(None),
         // Shadow-tree and unsupported pseudo-classes: anywhere.
         PseudoKind::HasSlotted | PseudoKind::Host | PseudoKind::Other => {
-            let mut read = inner(None);
-            if !read.is_empty() || text() {
-                read = vec![vec![Move::Document]];
+            match !inner(None).is_empty() || text() {
+                true => anywhere(),
+                false => Vec::new(),
             }
-            read
         }
     }
 }
 
+mod admits;
 mod walk;
-use walk::{Targets, apply, has};
+use walk::{Targets, apply, has, reach};
 
 #[cfg(test)]
 mod logical_tests;

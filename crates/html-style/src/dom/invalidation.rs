@@ -153,11 +153,11 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
     // An unparsed argument is read as text: any mention of a name counts.
     let text = |raw: &String| {
         let mut names = changed.classes.iter().chain(&changed.attrs);
-        raw.contains('\\') || names.any(|n| mentions(raw, n))
+        names.any(|n| mentions(raw, n))
     };
     // `:checked` reads the attributes its state derives from (`form_state`).
     let state = |raw: &String| {
-        (raw.contains('\\') || mentions(raw, "checked"))
+        mentions(raw, "checked")
             && crate::dom::form_state::READS
                 .iter()
                 .any(|name| among(&changed.attrs, name))
@@ -177,8 +177,13 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
 /// `raw` has `name` (ASCII lowercase) as a whole identifier, ignoring ASCII
 /// case: a class or attribute name in a selector is one identifier token
 /// (css-syntax-3 §4.3.11), so a name inside a longer one (`b` in
-/// `::backdrop`) is not read. Escapes are taken as reading any name before.
+/// `::backdrop`) is not read. The text is compared with its escapes decoded
+/// (§4.3.7), as the parsed selectors hold their names (`.w-1\/2` names
+/// `w-1/2`): an escaped character that ends an identifier in the decoded
+/// text only splits the name (`.x\:alt` mentions `alt`), so a decoded
+/// mention is never missed, at worst one too many.
 fn mentions(raw: &str, name: &str) -> bool {
+    let raw = crate::css_syntax::unescape(raw);
     let (raw, name) = (raw.as_bytes(), name.as_bytes());
     let ident = |b: Option<&u8>| {
         b.is_some_and(|&b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b >= 0x80)

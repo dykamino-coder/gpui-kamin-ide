@@ -1476,6 +1476,8 @@ struct PolychromeSprite {
     Bounds content_mask;
     Corners corner_radii;
     AtlasTile tile;
+    // KaminIDE patch: cell size of a repeated image (`PolychromeSprite::pattern`); zero: none.
+    float2 pattern;
     // KaminIDE patch: см. `Quad::transformation`.
     TransformationMatrix transformation;
 };
@@ -1520,16 +1522,28 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
+    // KaminIDE patch: a repeated image reads the cell under the pixel as the
+    // cell's own sprite would (`PolychromeSprite::pattern`). Cells are whole
+    // device pixels laid from the sprite's origin, so their edges are exact.
+    Bounds cell = sprite.bounds;
+    if (sprite.pattern.x > 0.0 && sprite.pattern.y > 0.0) {
+        float2 k = clamp(
+            floor((local_position - sprite.bounds.origin) / sprite.pattern),
+            float2(0.0, 0.0),
+            max(round(sprite.bounds.size / sprite.pattern) - 1.0, float2(0.0, 0.0)));
+        cell.origin = sprite.bounds.origin + k * sprite.pattern;
+        cell.size = sprite.pattern;
+    }
     // KaminIDE patch: the image is read in its tile's own texels (`tile_texel`).
     float4 sample;
     if ((sprite.pad & 1u) != 0u) {
         int2 tile_last = int2(sprite.tile.bounds.size) - 1;
-        float2 source_position = (local_position - sprite.bounds.origin)
-            / sprite.bounds.size * float2(sprite.tile.bounds.size);
+        float2 source_position = (local_position - cell.origin)
+            / cell.size * float2(sprite.tile.bounds.size);
         int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0), tile_last);
         sample = t_sprite.Load(int3(int2(sprite.tile.bounds.origin) + source_texel, 0));
     } else {
-        sample = tile_texel(local_position, sprite.bounds, sprite.tile);
+        sample = tile_texel(local_position, cell, sprite.tile);
     }
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 
@@ -1786,6 +1800,11 @@ float4 group_source_with(BlurQuad q, float2 p, bool in_loop) {
     } else {
         src = group_texel(q, p);
     }
+    // A transparent texel stays transparent under every coverage below. Only
+    // in the loop (no gradient sampling follows a per-pixel branch there).
+    if (in_loop && !any(src)) {
+        return src;
+    }
     float distance = quad_sdf(p, q.bounds, q.corner_radii);
     float corner = saturate(0.5 - distance);
     // KaminIDE patch: rounded composite (clip-path `round`) — the same
@@ -2026,7 +2045,8 @@ float4 clear_fragment(ClearVertexOutput input): SV_Target {
 // KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 //
 // blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
-// tile grid's corner, poly_count = tiles per row. Composites are
+// tile grid's corner, poly_count = tiles per row, blend_mode = where the
+// drawn spans start in tile_lists. Composites are
 // blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 // than the tiles, the last is the end), then composite indices, each tile's in
 // document order. Every pixel starts from the backdrop copy and applies the
@@ -2047,10 +2067,17 @@ bool composite_covers(BlurQuad q, float2 c) {
     return all(c >= lo) && all(c < hi) && all(c >= mlo) && all(c <= mhi);
 }
 
-BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID) {
+// Instance i draws span i of the pass (`group_tiles::bins::spans`): a row of
+// tiles that list a composite, its x, y, width and height at
+// tile_lists[cover.blend_mode + 4i]. Tiles listing nothing are not drawn.
+BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID, uint span: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    uint at = blur_quads[0].blend_mode + 4u * span;
+    Bounds rect = blur_quads[0].bounds;
+    rect.origin = float2(float(tile_lists[at]), float(tile_lists[at + 1u]));
+    rect.size = float2(float(tile_lists[at + 2u]), float(tile_lists[at + 3u]));
     BlurVertexOutput output;
-    output.position = to_device_position(unit_vertex, blur_quads[0].bounds);
+    output.position = to_device_position(unit_vertex, rect);
     output.uv = unit_vertex;
     output.quad_id = 0u;
     output.clip_distance = float4(1.0, 1.0, 1.0, 1.0);

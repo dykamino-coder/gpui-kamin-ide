@@ -15,7 +15,7 @@ impl super::Features {
     /// children answers (Blink builds sibling invalidation sets only for
     /// such features, `rule_invalidation_data.cc`).
     pub fn reads_siblings(&self) -> bool {
-        self.0.iter().flat_map(|(path, _)| path).any(|step| {
+        self.0.iter().flat_map(|(_, path, _)| path).any(|step| {
             matches!(
                 step,
                 Move::NextSibling
@@ -28,34 +28,41 @@ impl super::Features {
     }
 }
 
-/// The elements one `step` reaches from `set`.
+/// The elements one `step` reaches from `set`, each once.
 pub(super) fn apply(step: Move, set: &[Handle]) -> Vec<Handle> {
     let mut out = Targets::default();
+    reach(step, set, &mut |n| out.add(n));
+    out.list
+}
+
+/// Calls `each` with every element one `step` reaches from `set` (an element
+/// reached from two members of `set` twice), collecting nothing: the last
+/// step of a path tests the subject feature as it goes, as Blink's descendant
+/// invalidation checks each element of the subtree in place.
+pub(super) fn reach(step: Move, set: &[Handle], each: &mut dyn FnMut(&Handle)) {
     for node in set {
         match step {
-            Move::Children => children(node).for_each(|c| out.add(&c)),
-            Move::Descendants => descendants(node, &mut out),
+            Move::Children => children(node).for_each(|c| each(&c)),
+            Move::Descendants => descendants(node, each),
             Move::NextSibling => {
                 if let Some(next) = siblings(node).skip_while(|s| !Rc::ptr_eq(s, node)).nth(1) {
-                    out.add(&next);
+                    each(&next);
                 }
             }
             Move::LaterSiblings => siblings(node)
                 .skip_while(|s| !Rc::ptr_eq(s, node))
                 .skip(1)
-                .for_each(|s| out.add(&s)),
-            Move::Siblings => siblings(node).for_each(|s| out.add(&s)),
+                .for_each(|s| each(&s)),
+            Move::Siblings => siblings(node).for_each(|s| each(&s)),
             Move::HasAnchors => {
                 let mut at = Some(node.clone());
                 while let Some(n) = at {
                     siblings(&n)
                         .take_while(|s| !Rc::ptr_eq(s, &n))
-                        .for_each(|s| out.add(&s));
+                        .for_each(|s| each(&s));
                     at = parent(&n);
-                    if let Some(p) = &at {
-                        if is_element(p) {
-                            out.add(p);
-                        }
+                    if let Some(p) = at.as_ref().filter(|p| is_element(p)) {
+                        each(p);
                     }
                 }
             }
@@ -64,13 +71,11 @@ pub(super) fn apply(step: Move, set: &[Handle]) -> Vec<Handle> {
                 while let Some(p) = parent(&root) {
                     root = p;
                 }
-                descendants(&root, &mut out);
+                descendants(&root, each);
             }
         }
     }
-    out.list
 }
-
 fn is_element(node: &Handle) -> bool {
     matches!(node.data, NodeData::Element { .. })
 }
@@ -103,24 +108,34 @@ fn siblings(node: &Handle) -> impl Iterator<Item = Handle> {
     kids.into_iter()
 }
 
-/// The element descendants of `node`, not inside a `template` (its content
-/// is no part of the rendered tree).
-fn descendants(node: &Handle, out: &mut Targets) {
-    let mut stack: Vec<Handle> = children(node).collect();
-    stack.reverse();
+/// The element descendants of `node` in tree order, not inside a `template`
+/// (its content is no part of the rendered tree).
+fn descendants(node: &Handle, each: &mut dyn FnMut(&Handle)) {
+    let mut stack: Vec<Handle> = node
+        .children
+        .borrow()
+        .iter()
+        .rev()
+        .filter(|c| is_element(c))
+        .cloned()
+        .collect();
     while let Some(n) = stack.pop() {
-        out.add(&n);
-        if let NodeData::Element { name, .. } = &n.data
-            && &*name.local == "template"
-        {
+        let NodeData::Element { name, .. } = &n.data else {
             continue;
+        };
+        each(&n);
+        if &*name.local != "template" {
+            stack.extend(
+                n.children
+                    .borrow()
+                    .iter()
+                    .rev()
+                    .filter(|c| is_element(c))
+                    .cloned(),
+            );
         }
-        let mut kids: Vec<Handle> = children(&n).collect();
-        kids.reverse();
-        stack.extend(kids);
     }
 }
-
 /// The element `node` has the feature.
 pub(super) fn has(kind: Kind, feature: &str, node: &Handle) -> bool {
     let NodeData::Element {

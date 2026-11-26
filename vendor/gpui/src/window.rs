@@ -1399,6 +1399,8 @@ pub struct Window {
     is_minimizable: bool,
     sprite_atlas: Arc<dyn PlatformAtlas>,
     natural_images: natural_image::Cache,
+    /// KaminIDE patch: the open repeated-image request (`with_sprite_pattern`).
+    sprite_pattern: Option<image_sampling::PatternRequest>,
     image_uploads: image_resources::ImageUploads,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
@@ -2418,6 +2420,7 @@ impl Window {
             is_minimizable,
             sprite_atlas,
             natural_images: Default::default(),
+            sprite_pattern: None,
             image_uploads: Default::default(),
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
@@ -3427,6 +3430,7 @@ impl Window {
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
         self.insert_scene_primitive(PolychromeSprite {
+            pattern: crate::Size::default(),
             transformation,
             order: 0,
             pad: 0,
@@ -3470,6 +3474,7 @@ impl Window {
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
         self.insert_scene_primitive(PolychromeSprite {
+            pattern: crate::Size::default(),
             transformation,
             order: 0,
             pad: 0,
@@ -5979,6 +5984,7 @@ impl Window {
 
             let transformation = self.current_transformation();
             self.insert_scene_primitive(PolychromeSprite {
+                pattern: crate::Size::default(),
                 transformation,
                 order: 0,
                 pad: 0,
@@ -6153,6 +6159,7 @@ impl Window {
         let transformation = self.current_transformation();
         let before = self.next_frame.scene.len();
         self.insert_scene_primitive(PolychromeSprite {
+            pattern: crate::Size::default(),
             transformation,
             order: 0,
             pad: 0,
@@ -6224,6 +6231,7 @@ impl Window {
         let transformation = self.current_transformation();
         let before = self.next_frame.scene.len();
         self.insert_scene_primitive(PolychromeSprite {
+            pattern: crate::Size::default(),
             transformation,
             order: 0,
             pad: 0,

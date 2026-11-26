@@ -15,6 +15,12 @@ describe('classifyCodexError', () => {
     ['Your access token could not be refreshed: refresh_token reused', 'unauthorized'],
     ['stream disconnected before completion: Connection refused (os error 111)', 'network'],
     ['dns error: failed to lookup address information', 'network'],
+    [
+      'Error logging in: error sending request for url (https://auth.openai.com/api/accounts/deviceauth/usercode)',
+      'network',
+    ],
+    ['403 Forbidden: {"error":{"code":"unsupported_country_region_territory"}}', 'region-blocked'],
+    ['device code request failed with status 403 Forbidden', 'other'],
     ['model gpt-x is not supported', 'other'],
   ])('%s → %s', (text, kind) => {
     expect(classifyCodexError(text).kind).toBe(kind)

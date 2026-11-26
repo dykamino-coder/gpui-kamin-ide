@@ -50,6 +50,31 @@ fn a_kept_frame_with_a_new_scene_keeps_the_group_images() {
     assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
 }
 
+/// A group image holds no pixel of the target: a resized window (a width
+/// changed by one pixel each frame) keeps every image whose region stayed.
+#[test]
+fn a_resized_target_keeps_the_group_images() {
+    let device = DirectXDevices::new().unwrap();
+    let cells: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
+    let mut r = offscreen(&device, W, H);
+    let mut first = groups(&cells);
+    first.note_frame_damage(&Scene::default(), 1, (W, H));
+    r.draw(&first, WindowBackgroundAppearance::Opaque).unwrap();
+    r.resize(gpui::size(gpui::DevicePixels(W as i32 + 1), gpui::DevicePixels(H as i32)))
+        .unwrap();
+    let mut next = groups(&cells);
+    next.note_frame_damage(&first, 2, (W + 1, H));
+    r.draw(&next, WindowBackgroundAppearance::Opaque).unwrap();
+    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 12, drawn: 0 });
+    let got = target_bytes(&mut r);
+    let mut fresh = offscreen(&device, W + 1, H);
+    let mut alone = groups(&cells);
+    alone.note_frame_damage(&Scene::default(), 1, (W + 1, H));
+    fresh.draw(&alone, WindowBackgroundAppearance::Opaque).unwrap();
+    let want = target_bytes(&mut fresh);
+    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
+}
+
 /// Groups a frame within a rectangle did not draw keep their rectangles:
 /// they take no new space, so the atlas is not packed again and the images
 /// that are there stay.
