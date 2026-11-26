@@ -86,12 +86,12 @@ pub fn style_first_line(
                     }
                     c.inh.font.line_height =
                         style.inh.font.line_height.or(base.inh.font.line_height);
-                    // TRANSITIONAL(cascade-7b-R12): Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере.
-                    // Не переносить сюда сдвиг по вертикали (§5.12.1 относит
-                    // `vertical-align` к свойствам `::first-line`): краска
-                    // поднимается, а коробка нет — высоту абзаца заявляет
-                    // `float::FirstLine` (`measure_first_line`), и подъёма она
-                    // не знает (`first-line-pseudo-012`). Возвращать вместе с ней.
+                    // `vertical-align` is not dressed: the line's root inline box
+                    // fragment nests inside `::first-line` (css-pseudo-4
+                    // §first-text-line), so the pseudo has no parent inline box to
+                    // align against, and the property is not inherited by the
+                    // line's inline boxes (§first-line-inheritance). Blink makes
+                    // the pseudo's style the line box state (`OnBeginPlaceItems`).
                     c
                 };
                 let len = text.len();
