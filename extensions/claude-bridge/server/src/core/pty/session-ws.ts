@@ -1,3 +1,4 @@
+import { HOOK_SYNC_ERROR, refreshCodexToolHooks } from '../hooks/codex-tool-hooks'
 // ============================================================================
 // Session WebSocket — multiplexed PTY stream + MCP on /ws/session
 // ============================================================================
@@ -699,6 +700,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 host: normalizeHostDeclaration(msg.host),
                 bearerHash,
+                hookSyncFailed: msg.hookSyncFailed === true,
+                codexHookProtocol: msg.codexHookProtocol === 1 ? 1 : undefined,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
                 carryRegistrations: Array.isArray(msg.externalTools)
@@ -885,7 +888,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         case 'hook:response': {
           // Local hook executor in the client host returned its result.
           const { handleLocalHookResponse } = await import('../hooks/dispatcher')
-          handleLocalHookResponse(msg.requestId, msg.result)
+          handleLocalHookResponse(ws, msg.requestId, msg.result)
           break
         }
 
@@ -957,6 +960,20 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (!ownsStartup(operation)) return
             const live = findSessionByConversation(resolved.tokenId, msg.conversationId)
             if (live) {
+              if (live.engine === 'codex') {
+                try {
+                  if (msg.hookSyncFailed) throw new Error(HOOK_SYNC_ERROR)
+                  await refreshCodexToolHooks(live, undefined, msg.codexHookProtocol)
+                } catch {
+                  if (ownsStartup(operation)) sendError(ws, HOOK_SYNC_ERROR)
+                  return
+                }
+                if (!ownsStartup(operation)) return
+              }
+              if (live.launchConfig) {
+                live.launchConfig.hookSyncFailed = msg.hookSyncFailed === true
+                live.launchConfig.codexHookProtocol = msg.codexHookProtocol === 1 ? 1 : undefined
+              }
               lifecycleLog('resume_reuse', { sessionId: live.id, resumeConversationId: msg.conversationId })
               const oldWs = sessionWsMap.get(live.id)
               sessionWsMap.set(live.id, ws)
@@ -1059,6 +1076,8 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 transcriptMirrorDir: msg.transcriptMirrorDir,
                 host: normalizeHostDeclaration(msg.host),
                 bearerHash,
+                hookSyncFailed: msg.hookSyncFailed === true,
+                codexHookProtocol: msg.codexHookProtocol === 1 ? 1 : undefined,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
                 carryRegistrations: Array.isArray(msg.externalTools)

@@ -264,9 +264,11 @@ export interface ExternalPromptDefinition {
 // ---------------------------------------------------------------------------
 
 export interface SessionConfig {
-  /** Explicit, per-conversation selection accepted by Bridge for the native CLI launch. */
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
   /** Preserve an untouched CLI session's native identity during the first mode change. */
   pristineClaudeId?: string
+  /** Explicit, per-conversation selection accepted by Bridge for the native CLI launch. */
   claudePermissionMode?: import('../pty/claude-permissions').ClaudeMode
   /** Working directory for Claude CLI */
   cwd?: string
@@ -382,6 +384,7 @@ export interface SyncPluginFile {
 }
 
 export interface SyncUserData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string> // relativePath → fileContent
   agents: Record<string, string>
   commands: Record<string, string> // ~/.claude/commands/*.md — custom slash commands
@@ -392,6 +395,7 @@ export interface SyncUserData {
 }
 
 export interface SyncProjectData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string>
   rules: Record<string, string>
   agents: Record<string, string>

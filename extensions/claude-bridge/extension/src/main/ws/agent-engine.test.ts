@@ -50,6 +50,17 @@ describe('agent engine on the client connection', () => {
     expect(plain.m.getEngine()).toBe('claude')
   })
 
+  it.each([undefined, '00000000-0000-4000-8000-000000000001'])('reports hook snapshot sync on create and resume (%s)', async stored => {
+    const { m, internal, frames, socket } = manager({engine:'codex'}, stored)
+    m.prepareHookSnapshot = vi.fn().mockRejectedValueOnce(new Error('fixture')).mockResolvedValueOnce(true)
+    await internal.startSession(socket)
+    await internal.startSession(socket)
+    expect(frames.map(f => [f.type, f.codexHookProtocol, f.hookSyncFailed])).toEqual([
+      [stored ? 'session:resume' : 'session:create', 1, true],
+      [stored ? 'session:resume' : 'session:create', 1, false],
+    ])
+  })
+
   it('hints the stored engine on resume', async () => {
     const { internal, frames, socket } = manager({ engine: 'codex' }, '00000000-0000-4000-8000-000000000001')
     await internal.startSession(socket)

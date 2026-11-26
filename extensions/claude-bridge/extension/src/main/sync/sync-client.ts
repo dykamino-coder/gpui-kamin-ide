@@ -7,7 +7,7 @@ import path from 'path'
 import os from 'os'
 import crypto from 'crypto'
 import type { SyncUserData, SyncProjectData } from '../../shared/sync-types'
-import { buildPluginSnapshots } from './plugin-snapshot'
+import { buildPluginSnapshots, scopedToolHookPlugins } from './plugin-snapshot'
 
 // ---------------------------------------------------------------------------
 // Debounce state
@@ -149,7 +149,7 @@ async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncR
   const hash = tokenHash(token)
   const claudeDir = path.join(os.homedir(), '.claude')
 
-  const [skills, agents, commands, plugins, settings, claudeMd, agentsMd] = await Promise.all([
+  const [skills, agents, commands, plugins, settings, claudeMd, agentsMd, toolHookPlugins] = await Promise.all([
     readEntrypointMd(path.join(claudeDir, 'skills'), 'skills'),
     readEntrypointMd(path.join(claudeDir, 'agents'), 'agents'),
     readEntrypointMd(path.join(claudeDir, 'commands'), 'commands'),
@@ -157,8 +157,9 @@ async function syncUserDataOnce(serverUrl: string, token: string): Promise<SyncR
     safeReadFile(path.join(claudeDir, 'settings.json')),
     safeReadFile(path.join(claudeDir, 'CLAUDE.md')),
     safeReadFile(path.join(claudeDir, 'AGENTS.md')),
+    scopedToolHookPlugins(),
   ])
-  const data: SyncUserData = { skills, agents, commands, plugins, settings, claudeMd, agentsMd }
+  const data: SyncUserData = { skills, agents, commands, plugins, settings, claudeMd, agentsMd, toolHookPlugins }
 
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`
 
@@ -213,7 +214,7 @@ async function syncProjectDataOnce(serverUrl: string, token: string, projectPath
   const hash = tokenHash(token)
   const dotClaudeDir = path.join(projectPath, '.claude')
 
-  const [skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
+  const [skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd, toolHookPlugins] = await Promise.all([
     readEntrypointMd(path.join(dotClaudeDir, 'skills'), 'skills'),
     readEntrypointMd(path.join(dotClaudeDir, 'rules'), 'commands'),  // rules: flat .md, treat like commands
     readEntrypointMd(path.join(dotClaudeDir, 'agents'), 'agents'),
@@ -224,9 +225,10 @@ async function syncProjectDataOnce(serverUrl: string, token: string, projectPath
     safeReadFile(path.join(projectPath, '.claude.json')),
     safeReadFile(path.join(projectPath, 'AGENTS.md')),
     safeReadFile(path.join(dotClaudeDir, 'AGENTS.md')),
+    scopedToolHookPlugins(projectPath),
   ])
   const data: SyncProjectData = {
-    skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd, projectPath,
+    skills, rules, agents, commands, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd, projectPath, toolHookPlugins,
   }
 
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/project`
