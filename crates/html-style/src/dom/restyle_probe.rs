@@ -104,8 +104,9 @@ impl RestyleCache {
     /// `rule_invalidation_data.cc:90`), а не на мутацию. Листы документа у
     /// одних значений не меняются: текст `<style>` прочитан сборкой
     /// (`TraversalState::read_source_text`), и его правка собирает документ
-    /// заново с новыми значениями. Тени светлого дерева проба описывает
-    /// (`ShadowFacts`), а не отвергает.
+    /// заново с новыми значениями.
+    /// The shadow trees of the light tree are described by the probe
+    /// (`ShadowFacts`), not refused.
     pub fn probe(
         &mut self,
         input: &Admitted,
