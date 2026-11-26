@@ -264,6 +264,8 @@ export interface ExternalPromptDefinition {
 // ---------------------------------------------------------------------------
 
 export interface SessionConfig {
+  /** Explicit, per-conversation selection accepted by Bridge for the native CLI launch. */
+  claudePermissionMode?: import('../pty/claude-permissions').ClaudeMode
   /** Working directory for Claude CLI */
   cwd?: string
   /** Initial terminal dimensions */

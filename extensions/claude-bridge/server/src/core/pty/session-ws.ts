@@ -3,6 +3,13 @@
 // ============================================================================
 
 import {
+  isClaudeMode,
+  observedClaudeMode,
+  permissionChangeBlocker,
+  publishClaudePermissions,
+  retainClaudeMode,
+} from './claude-permissions'
+import {
   acceptCommandReport,
   runningShellCount,
   commandSnapshot,
@@ -367,6 +374,22 @@ export function attachSessionWebSocket(_server: HttpServer): void {
     // object (launch config, model, effort, registrations) and `done` settles
     // once its teardown finished. The next message that needs the CLI wakes it.
     let asleep: { session: SleepingChat; done: Promise<void>; cols: number; rows: number } | null = null
+    const hibernate = () => {
+      const id = authenticatedSessionId
+      const session = id ? getSession(id) : undefined
+      if (!id || !session || asleep || startup || engineSwitch || socketGone || sessionWsMap.get(id) !== ws)
+        return false
+      lifecycleLog('session_hibernate', {
+        sessionId: id,
+        idleMs: Date.now() - session.lastActivityAt.getTime(),
+        conversationId: session.cliConversationId ?? undefined,
+      })
+      sessionWsMap.delete(id)
+      const { cols, rows } = session.pty
+      asleep = { session: sleepingChat(session), done: hibernateSession(id), cols, rows }
+      sendHibernationState(id, 'asleep')
+      return true
+    }
     const unregisterHibernation = registerHibernationHandle({
       awakeSessionId: () =>
         !asleep &&
@@ -376,22 +399,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         sessionWsMap.get(authenticatedSessionId) === ws
           ? authenticatedSessionId
           : null,
-      hibernate: () => {
-        const id = authenticatedSessionId
-        const session = id ? getSession(id) : undefined
-        if (!id || !session || asleep || startup || engineSwitch || socketGone || sessionWsMap.get(id) !== ws)
-          return false
-        lifecycleLog('session_hibernate', {
-          sessionId: id,
-          idleMs: Date.now() - session.lastActivityAt.getTime(),
-          conversationId: session.cliConversationId ?? undefined,
-        })
-        sessionWsMap.delete(id)
-        const { cols, rows } = session.pty
-        asleep = { session: sleepingChat(session), done: hibernateSession(id), cols, rows }
-        sendHibernationState(id, 'asleep')
-        return true
-      },
+      hibernate,
     })
 
     // Hibernation as the client sees it, on the ordinary activity frame: an
@@ -444,7 +452,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             bearerHash: old.bearerHash,
             carryRegistrations: old,
             history: undefined,
-            noSpawnOnNotFound: undefined,
+            noSpawnOnNotFound: launch.claudePermissionMode && old.cliConversationId ? true : undefined,
             segmentStart: undefined,
             deferTranscript: undefined,
             // An empty chat had nothing to resume: it starts fresh, same cwd/model.
@@ -483,6 +491,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               model: fresh.model,
             }),
           )
+          publishClaudePermissions(fresh)
           codexBinding(fresh)?.pushPlanLimits()
           sendHibernationState(fresh.id, 'awake')
           const now = Date.now()
@@ -527,6 +536,53 @@ export function attachSessionWebSocket(_server: HttpServer): void {
         msg = JSON.parse(typeof raw === 'string' ? raw : raw.toString())
       } catch {
         sendError(ws, 'Invalid JSON')
+        return
+      }
+      if (msg.type === 'session:change-claude-permission-mode') {
+        const id = authenticatedSessionId
+        if (!id || msg.sessionId !== id) return
+        const session = getSession(id)
+        if (
+          !session ||
+          session.engine === 'codex' ||
+          session.ws !== ws ||
+          sessionWsMap.get(id) !== ws ||
+          asleep ||
+          startup ||
+          engineSwitch
+        ) {
+          sendToClient(ws, {
+            type: 'session:claude-permissions',
+            sessionId: id,
+            available: [],
+            reason: 'The selected chat is not available for a mode change.',
+          })
+          return
+        }
+        if (!isClaudeMode(msg.mode)) {
+          publishClaudePermissions(session, 'Select the requested mode in the native Console.')
+          return
+        }
+        const reason = permissionChangeBlocker(session)
+        if (reason) {
+          publishClaudePermissions(session, reason)
+          return
+        }
+        try {
+          retainClaudeMode(session, msg.mode)
+          session.launchConfig = { ...session.launchConfig, claudePermissionMode: msg.mode }
+          publishClaudePermissions(session)
+          if (observedClaudeMode(session) === msg.mode) return
+          // No await between admission and stopping the idle terminal. The normal
+          // wake path owns the old process, socket, transcript and queued input.
+          if (!hibernate()) {
+            publishClaudePermissions(session, 'The chat changed before it could restart.')
+            return
+          }
+          await wake(true)
+        } catch {
+          publishClaudePermissions(session, 'The mode could not be saved. Reconnect using the native Console.')
+        }
         return
       }
       if (asleep) {
@@ -664,6 +720,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
+              publishClaudePermissions(session)
               codexBinding(session)?.pushPlanLimits()
               void sendAgentPreferences(ws, resolved.tokenId)
 
@@ -936,6 +993,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               // The client accepts terminal bytes only after session:created.
               // Reattach synchronously replays the live PTY buffer to this socket.
               reattachSession(live, ws)
+              publishClaudePermissions(live)
               if (msg.externalTools && Array.isArray(msg.externalTools)) {
                 // The reused CLI keeps its MCP connection: announce a changed
                 // catalog instead of silently swapping the snapshot.
@@ -1023,6 +1081,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }),
               )
 
+              publishClaudePermissions(session)
               codexBinding(session)?.pushPlanLimits()
               // The requested conversation is not on this server — a fresh one
               // was started. Nothing hits the JSONL until the first message, so
@@ -1223,6 +1282,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               }),
             )
 
+            publishClaudePermissions(newSession)
             debugLog('Session restarted with new effort', {
               oldSessionId,
               newSessionId: newSession.id,
@@ -1307,6 +1367,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 engineSwitch: { ...timings, contextBytes },
               }),
             )
+            publishClaudePermissions(next)
             codexBinding(next)?.pushPlanLimits()
             // The leaving CLI's queue, after the client knows the new session
             // and before the gate lets later prompts through (their order).
@@ -1463,6 +1524,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               }),
             )
 
+            publishClaudePermissions(newSession)
             debugLog('Session restarted with new model', {
               oldSessionId,
               newSessionId: newSession.id,

@@ -249,6 +249,7 @@ export type ClientToServerMsg =
   | WsMsgMcpDenied
   | WsMsgElicitationResponse
   | WsMsgSessionResume
+  | { type: 'session:change-claude-permission-mode'; sessionId: string; mode: string }
   | { type: 'session:codex-collaboration'; sessionId: string; mode: 'default' | 'plan' }
   | WsMsgSessionChangeEffort
   | WsMsgSessionChangeModel
@@ -424,6 +425,14 @@ export interface WsMsgJsonlDownloadResponse {
 }
 
 export type ServerToClientMsg =
+  | {
+      type: 'session:claude-permissions'
+      sessionId: string
+      available: readonly string[]
+      selected?: string
+      requested?: string
+      reason?: string
+    }
   | { type: 'commands:request' }
   | { type: 'commands:snapshot'; snapshot: import('../../shared/commands').CommandSnapshot }
   | { type: 'commands:output'; id: string; output: string }

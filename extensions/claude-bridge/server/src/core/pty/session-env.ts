@@ -240,7 +240,9 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
   const args: string[] = [
     '--disallowedTools',
     getDisallowedBuiltinTools().join(','),
-    '--dangerously-skip-permissions',
+    ...(sessionConfig.claudePermissionMode
+      ? ['--permission-mode', sessionConfig.claudePermissionMode]
+      : ['--dangerously-skip-permissions']),
     '--effort',
     sessionConfig.effort || 'high',
   ]
@@ -272,6 +274,13 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
   for (const pluginDir of pluginDirs) args.push('--plugin-dir', pluginDir)
 
   if (sessionConfig.extraArgs) {
+    if (
+      sessionConfig.claudePermissionMode &&
+      sessionConfig.extraArgs.some((arg) =>
+        /^--(permission-mode|dangerously-skip-permissions|allow-dangerously-skip-permissions)(=|$)/.test(arg),
+      )
+    )
+      throw new Error('Conflicting launch flags for the explicitly selected Claude permission mode.')
     args.push(...sessionConfig.extraArgs)
   }
 
