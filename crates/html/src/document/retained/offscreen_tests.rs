@@ -142,10 +142,10 @@ fn a_shadow_reaching_the_screen_from_a_band_below_is_not_left_waiting(cx: &mut T
     check(cx, |e| spans(20, e, false, css), false);
 }
 
-#[path = "offscreen_tests/culled.rs"]
-mod culled;
 #[path = "offscreen_tests/columns.rs"]
 mod columns;
+#[path = "offscreen_tests/culled.rs"]
+mod culled;
 #[path = "offscreen_tests/decorated.rs"]
 mod decorated;
 
