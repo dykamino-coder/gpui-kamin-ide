@@ -72,6 +72,38 @@ fn wheel_steps_replay_a_frame_with_composition_groups_without_a_build(cx: &mut T
     }
 }
 
+/// The whole page in an isolation group with a fixed header and a backdrop
+/// filter inside (a site's `isolate` root): the group's label and its content
+/// draw what a fresh tree at each offset draws, replayed or built.
+#[gpui::test]
+fn wheel_steps_over_a_page_in_an_isolation_group_match_fresh(cx: &mut TestAppContext) {
+    let mut rows = String::new();
+    for i in 0..60 {
+        rows.push_str(&format!("<p style='margin:0;height:40px;background:#{:03x}'>row {i}</p>", 0x345 + i * 7));
+        if i % 9 == 4 {
+            rows.push_str("<div style='overflow-x:auto;height:90px'><div style='width:900px;height:80px;\
+                background:linear-gradient(90deg,#c96,#369)'><div style='margin:10px;width:120px;height:50px;\
+                background:#fff5;backdrop-filter:blur(4px)'></div></div></div>");
+        }
+    }
+    let html = format!(
+        "<body style='margin:0;background:#111'><div style='isolation:isolate'><div style='position:fixed;\
+         top:0;left:0;right:0;height:40px;z-index:10;background:#fff'>header</div>{rows}</div></body>"
+    );
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, &html);
+    frame(vcx);
+    for (i, dy) in [-600., -120., 600., -1200.].into_iter().enumerate() {
+        let name = format!("wheel {i} by {dy}");
+        wheel_by(vcx, dy);
+        frame(vcx);
+        let offset = root(&view, vcx).offset();
+        let (quads, reference) = fresh_with(cx, &html, offset, |c| (painted(c), groups(c)));
+        assert_same(&name, &painted(vcx), &quads);
+        assert_eq!(groups(vcx), reference, "{name}: groups");
+    }
+}
+
 /// The decoration of an empty filtered box (a conic gradient, a child
 /// element) gives way to a plain fill on a page that scrolls; then wheel
 /// steps draw what a fresh tree at each offset draws. (Whether the edit is
