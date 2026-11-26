@@ -7,6 +7,9 @@ use crate::document::Document;
 use crate::dom::Node;
 use std::rc::Rc;
 
+/// A mentions index with the theme and the `<style>` texts it was built from.
+type Indexed = (Box<str>, Rc<Vec<String>>, Rc<Mentions>);
+
 /// What the edits of one document keep between them: the texts of its sheets,
 /// the probe of its restyles, the index of its boxes and the numbers of its
 /// source elements. The sheets of a
@@ -18,7 +21,7 @@ pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
     /// The names the agent sheet, a theme and `<style>` sheets mention, with
     /// the theme and the sheets they were indexed from (kept_mentions).
-    mentions: Option<(Box<str>, Rc<Vec<String>>, Rc<Mentions>)>,
+    mentions: Option<Indexed>,
     pub(super) cache: crate::dom::restyle_probe::RestyleCache,
     boxes: Option<Rc<Boxes>>,
     ids: Option<Rc<SourceIndex>>,
@@ -123,9 +126,8 @@ impl Document {
                 .get_or_insert_with(|| Rc::new(super::shape::sheets(root))))
             .clone(),
         };
-        let same = |(t, s, _): &&(Box<str>, Rc<Vec<String>>, Rc<Mentions>)| {
-            **t == *theme_css && (Rc::ptr_eq(s, &sheets) || **s == *sheets)
-        };
+        let same =
+            |(t, s, _): &&Indexed| **t == *theme_css && (Rc::ptr_eq(s, &sheets) || **s == *sheets);
         let mentions = match kept.mentions.as_ref().filter(same) {
             Some((_, _, m)) => m.clone(),
             None => {
