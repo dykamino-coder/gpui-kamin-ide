@@ -14,6 +14,7 @@ const [scenario, capture, output] = process.argv.slice(2);
 const manifest = JSON.parse(await readFile(path.join(capture, "manifest.json"), "utf8"));
 const installed = scenario === "installed-client";
 const behavior = installed ? process.env.INSTALLED_SCENARIO ?? "native-client" : scenario;
+const engineMenus = ["engine-menus", "engine-receipts"].includes(behavior);
 const report = { candidate: manifest.candidate_sha, exeSha256: manifest.source_exe_sha256,
   scenario, behavior, class: installed ? "hosted-windows-installed-release" : "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
 const origin = `http://127.0.0.1:${Number(process.env.CLAUDE_PROXY_PORT)}`;
@@ -75,7 +76,7 @@ try {
   }
   // The welcome screen has no active IDE session and does not mount the chat view.
   // Open the link fixture as the native workspace, just as "New session in folder" does.
-  if (behavior === "engine-menus") {
+  if (engineMenus) {
     // The default layout pins Console in centralBottom. Remove the pin before
     // the first IDE session binds so the menu must mount it on first use.
     await step("start-with-console-closed", () =>
@@ -146,7 +147,7 @@ try {
     }, true);
     if (fixture) await checkWorkspaceLink({ fixture, installed, ...driver });
     if (behavior === "console-scroll") await checkConsoleScroll({ ...driver, rpc });
-    if (behavior === "engine-menus") await checkEngineMenus(driver, tab);
+    if (engineMenus) await checkEngineMenus(driver, tab, behavior === "engine-receipts");
   }
   report.status = "passed";
 } catch (error) {

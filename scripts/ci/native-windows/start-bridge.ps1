@@ -2,6 +2,9 @@
 param([Parameter(Mandatory)][string]$DataDirectory)
 $ErrorActionPreference = 'Stop'
 $env:CLAUDE_PROXY_PORT = '13456'
+if ($env:SMOKE_SCENARIO -eq 'engine-receipts' -or $env:INSTALLED_SCENARIO -eq 'engine-receipts') {
+    $env:BRIDGE_FAKE_CLI_PERMISSION_RECEIPTS = '1'
+}
 $env:BRIDGE_CODEX_BIN = (Resolve-Path 'extensions/claude-bridge/server/test-support/fake-codex.mjs').Path
 # The real app-server launcher correctly strips test-only environment variables.
 # Seed only the fake provider's account fixture inside this throwaway Bridge home.

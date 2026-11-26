@@ -29,6 +29,10 @@ Windows-интеграцию командных hooks из исходников 
 Claude, повторно выбирает Opus и отдельно проверяет меню режима движка и
 инструментов рабочего пространства. После выбора «Change mode in Console» проверяет
 фокус xterm и доставку Windows Shift+Tab при первом и повторном открытии.
+Сценарий `engine-receipts` дополнительно проверяет Bypass, Manual и Plan.
+Синтетический CLI читает реальные флаги своего процесса и сообщает режим в
+UserPromptSubmit и Stop. Клиент отображает полученный режим и сохраняет Plan
+после возврата на Claude. Для сценария нужен commit с этой тестовой fixture.
 Проверки не требуют подписки.
 
 Сценарий `installed-client` принимает отдельный `installer_source`: ID запуска
@@ -43,7 +47,7 @@ Extension Host и страницу CEF. Версия из UI сохраняет�
 чтения. Видимость контекстного меню в окне Explorer и полная installer-матрица
 остаются отдельными проверками.
 Параметр `installed_scenario` позволяет дополнительно выполнить `bridge-roundtrip`,
-`workspace-link`, `console-scroll` или `engine-menus` на установленном клиенте. В release-сценарии
+`workspace-link`, `console-scroll`, `engine-menus` или `engine-receipts` на установленном клиенте. В release-сценарии
 ссылки положение курсора проверяется сохранением тестовой вставки в строке 4,
 столбце 2 временного файла. Report фиксирует класс `hosted-windows-installed-release`.
 
@@ -53,6 +57,17 @@ gh workflow run native-windows-smoke.yml -f candidate="$commit" -f scenario=brid
 gh run list --workflow native-windows-smoke.yml --limit 3
 gh run watch "$run_id" --exit-status
 gh run download "$run_id" --dir "$capture_dir"
+```
+
+До публикации релиза взять SHA сборки из имени артефакта проверок релизного PR.
+GitHub собирает merge-кандидат. `pr_checks_run` задаёт ID запуска PR checks.
+
+```bash
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+candidate=$(gh api "repos/$repo/actions/runs/$pr_checks_run/artifacts" --paginate \
+  --jq '.artifacts[] | select(.expired == false) | .name | capture("^kaminide-release-(?<sha>[a-f0-9]{40})$").sha')
+gh workflow run native-windows-smoke.yml -f candidate="$candidate" \
+  -f scenario=installed-client -f installer_source="$pr_checks_run" -f installed_scenario=workspace-link
 ```
 
 В командах `run_id` — ID нужного запуска из списка, `capture_dir` — отдельный

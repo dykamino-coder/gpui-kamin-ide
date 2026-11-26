@@ -1,6 +1,6 @@
 # Hosted-runner PoC. Never read a locally installed application/profile.
 [CmdletBinding()]
-param([ValidateSet('bridge-roundtrip', 'native-client', 'workspace-link', 'console-scroll', 'engine-menus')][string]$Scenario = 'bridge-roundtrip')
+param([ValidateSet('bridge-roundtrip', 'native-client', 'workspace-link', 'console-scroll', 'engine-menus', 'engine-receipts')][string]$Scenario = 'bridge-roundtrip')
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') { throw 'Requires a disposable hosted Windows runner' }
 $report = Join-Path $env:RUNNER_TEMP 'native-smoke-report'

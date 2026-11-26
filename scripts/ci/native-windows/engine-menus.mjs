@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { checkClaudeModeReceipts } from "./claude-mode-receipts.mjs";
 import { checkPermissionConsoleShortcut } from "./console-shortcut.mjs";
 import { byText, clickElement } from "./cef-input.mjs";
 
@@ -7,13 +8,14 @@ const option = label => byText(".perm-option-name", label);
 const modeNames = { default: "Manual", manual: "Manual", plan: "Plan", acceptEdits: "Accept edits",
   auto: "Auto", dontAsk: "Don’t ask", bypassPermissions: "Bypass permissions" };
 
-export async function checkEngineMenus(driver, tab) {
+export async function checkEngineMenus(driver, tab, receipts = false) {
   const { step, web, report } = driver;
   // Only export synthetic mode information; never export tab objects, IPC replies or credentials.
   async function state() {
     const { value } = await web(`const t=(await window.bridgeCmd.raw('listTabs')).find(t => t.id ===
         window.bridgeCmd.state().activeTabId);
       return {sameTab:t?.id === ${JSON.stringify(tab)}, engine:t?.engine, connected:t?.status === 'connected',
+        ready:window.bridgeCmd.state().promptReady, session:t?.sessionId, requested:t?.claudePermissions?.requested,
         model:t?.model, native:t?.claudePermissions?.selected ?? null,
         nativeAvailable:t?.claudePermissions?.available ?? null, codex:t?.codexCollaboration?.selected,
         controls:Array.from(document.querySelectorAll('button.perm-trigger'), el=>el.textContent.trim()),
@@ -68,10 +70,12 @@ export async function checkEngineMenus(driver, tab) {
   await inspect("codex", "initial-codex");
   await switchModel("first-opus", "Opus 5.5");
   await inspect("claude", "first-claude");
+  if (receipts) await checkClaudeModeReceipts(driver, state, tab);
   await switchModel("return-codex", "GPT Fake");
   await inspect("codex", "returned-codex");
   await switchModel("return-opus", "Opus 5.5");
   await inspect("claude", "returned-claude");
+  if (receipts) await checkClaudeModeReceipts(driver, state, tab, true);
   for (const name of ["first-console-command", "repeat-console-command"]) {
     const row = await state();
     await checkPermissionConsoleShortcut(driver, row.controls[row.controls.indexOf("Bridge tools") - 1], name);
