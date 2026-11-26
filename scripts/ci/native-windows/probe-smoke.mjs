@@ -83,6 +83,15 @@ try {
     assert.equal(value, true);
   }, true);
   if (behavior !== "native-client") {
+    // Some hosted displays clamp the outer window. Hide the right column through
+    // the normal layout action so the chat and file editor remain usable.
+    await step("prepare-chat-controls", async () => {
+      const { value } = await web("return innerWidth");
+      if (value < 400) {
+        const { bounds } = await probe({ cmd: "metric", id: "right-panel-column" });
+        if (bounds.w > 0) await probe({ cmd: "emit", kind: "layoutFlag", name: "right" });
+      }
+    });
     await step("loopback-bridge-health", async () => {
       const reply = await fetch(`${origin}/health`, {signal: AbortSignal.timeout(3000)});
       assert.ok(reply.ok);
