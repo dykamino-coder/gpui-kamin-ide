@@ -179,10 +179,7 @@ impl ImageStore {
             admission: None,
             used: std::sync::atomic::AtomicU32::new(self.epoch),
         });
-        self.log
-            .get_mut()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(id);
+        self.log().push(id);
         self.by_request.insert(request, id);
         if allowed {
             self.enqueue(id);

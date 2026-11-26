@@ -94,7 +94,7 @@ impl ImageStore {
     }
 
     /// This frame's request log; a poisoned lock keeps its list.
-    fn log(&self) -> std::sync::MutexGuard<'_, Vec<ImageId>> {
+    pub(super) fn log(&self) -> std::sync::MutexGuard<'_, Vec<ImageId>> {
         self.log.lock().unwrap_or_else(|e| e.into_inner())
     }
 
