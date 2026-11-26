@@ -1,7 +1,7 @@
 // The loopback Bridge starts the checkout-only CLI with the production PTY flags.
 // Its real child process reports permission_mode in UserPromptSubmit/Stop hooks.
 import assert from "node:assert/strict";
-import { byText, clickElement } from "./cef-input.mjs";
+import { byText, clickElement, menuOption } from "./cef-input.mjs";
 
 const names = { bypassPermissions: "Bypass permissions", default: "Manual", plan: "Plan" };
 const trigger = label => byText("button.perm-trigger", label);
@@ -42,7 +42,7 @@ export async function checkClaudeModeReceipts(driver, state, tab, returned = fal
     const before = await state();
     assert.equal(before.native, oldMode);
     await clickElement(driver, "change-to-" + mode + "-open", trigger(names[oldMode]));
-    await clickElement(driver, "change-to-" + mode + "-choose", byText(".perm-option-name", names[mode]));
+    await clickElement(driver, "change-to-" + mode + "-choose", menuOption(names[mode]));
     await step("change-to-" + mode + "-restarted-before-receipt", async () => {
       const row = await state();
       assert.ok(row.sameTab && row.connected && row.session && row.session !== before.session);

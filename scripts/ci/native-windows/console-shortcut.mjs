@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { byText, clickElement } from "./cef-input.mjs";
+import { byText, clickElement, menuOption } from "./cef-input.mjs";
 
 const invoke = promisify(execFile);
 function shell(expression) {
@@ -27,7 +27,7 @@ export async function checkPermissionConsoleShortcut(driver, label, name) {
   // Route the initiating click through the GPUI window. A key targeted at one
   // CEF view would bypass the shell's selection of the keyboard recipient.
   await clickElement(driver, name + "-trigger", byText("button.perm-trigger", label), { native: true });
-  await clickElement(driver, name + "-action", byText(".perm-option-name", "Change mode in Console"), { native: true });
+  await clickElement(driver, name + "-action", menuOption("Change mode in Console"), { native: true });
   await step(name + "-focused-terminal", async () => {
     const { value } = await terminal(`const visible=Array.from(document.querySelectorAll('.bridge-console')).find(el=>el.getClientRects().length);
       if (!visible || document.activeElement!==visible.querySelector('textarea.xterm-helper-textarea')) return false;

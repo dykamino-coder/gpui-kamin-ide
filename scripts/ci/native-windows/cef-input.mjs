@@ -29,7 +29,10 @@ export async function clickElement({ step, web, probe }, name, expression, { nat
 }
 
 export const byText = (selector, label) =>
-  `Array.from(document.querySelectorAll(${JSON.stringify(selector)})).find(el => el.textContent.trim() === ${JSON.stringify(label)})`;
+  `Array.from(document.querySelectorAll(${JSON.stringify(selector)})).find(el => el.getClientRects().length && el.textContent.trim() === ${JSON.stringify(label)})`;
+
+// Closed dropdowns keep their options in the DOM. Only the open menu can receive input.
+export const menuOption = label => byText(".perm-menu.visible .perm-option-name", label);
 
 /** Production first-run modal. The disposable credential stays inside the renderer and Extension Host. */
 export async function registerClient(driver, origin) {

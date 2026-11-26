@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { checkClaudeModeReceipts } from "./claude-mode-receipts.mjs";
 import { checkPermissionConsoleShortcut } from "./console-shortcut.mjs";
-import { byText, clickElement } from "./cef-input.mjs";
+import { byText, clickElement, menuOption } from "./cef-input.mjs";
 
 const trigger = label => byText("button.perm-trigger", label);
-const option = label => byText(".perm-option-name", label);
 const modeNames = { default: "Manual", manual: "Manual", plan: "Plan", acceptEdits: "Accept edits",
   auto: "Auto", dontAsk: "Don’t ask", bypassPermissions: "Bypass permissions" };
 
@@ -18,9 +17,9 @@ export async function checkEngineMenus(driver, tab, receipts = false) {
         ready:window.bridgeCmd.state().promptReady, session:t?.sessionId, requested:t?.claudePermissions?.requested,
         model:t?.model, native:t?.claudePermissions?.selected ?? null,
         nativeAvailable:t?.claudePermissions?.available ?? null, codex:t?.codexCollaboration?.selected,
-        controls:Array.from(document.querySelectorAll('button.perm-trigger'), el=>el.textContent.trim()),
-        options:Array.from(document.querySelectorAll('.perm-option-name'), el=>el.textContent.trim()),
-        currentOptions:Array.from(document.querySelectorAll('.perm-option[aria-disabled="true"]'), el=>
+        controls:Array.from(document.querySelectorAll('button.perm-trigger')).filter(el=>el.getClientRects().length).map(el=>el.textContent.trim()),
+        options:Array.from(document.querySelectorAll('.perm-menu.visible .perm-option-name'), el=>el.textContent.trim()),
+        currentOptions:Array.from(document.querySelectorAll('.perm-menu.visible .perm-option[aria-disabled="true"]'), el=>
           el.querySelector('.perm-option-check i') && el.querySelector('.perm-option-name')?.textContent.trim()).filter(Boolean)}`);
     return value;
   }
@@ -62,9 +61,9 @@ export async function checkEngineMenus(driver, tab, receipts = false) {
   }
   async function switchModel(name, model) {
     // The model dropdown is right-aligned; the three mode dropdowns are left-aligned.
-    const modelButton = "Array.from(document.querySelectorAll('button.perm-trigger')).at(-1)";
+    const modelButton = "Array.from(document.querySelectorAll('button.perm-trigger')).filter(el=>el.getClientRects().length).at(-1)";
     await clickElement(driver, name + "-model-open", modelButton);
-    await clickElement(driver, name + "-choose-model", option(model));
+    await clickElement(driver, name + "-choose-model", menuOption(model));
   }
   report.engineMenus = [];
   await inspect("codex", "initial-codex");
