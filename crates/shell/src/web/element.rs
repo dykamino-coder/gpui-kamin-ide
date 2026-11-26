@@ -37,6 +37,21 @@ fn focus_handle_of(id: &'static str) -> Option<gpui::FocusHandle> {
     FOCUS_HANDLES.lock().ok()?.get(id).cloned()
 }
 
+/// Give a ready view the same keyboard route as a click, without injecting input.
+pub fn focus_mounted_view(id: &str, window: &mut gpui::Window, cx: &mut gpui::App) {
+    if super::visibility::is_visible(id) && super::browsers::exists(id) {
+        let id = crate::ui::webview_body::static_view_id(id);
+        let handle = FOCUS_HANDLES
+            .lock()
+            .unwrap()
+            .entry(id)
+            .or_insert_with(|| cx.focus_handle())
+            .clone();
+        window.focus(&handle, cx);
+        super::focus::focus_view(id);
+    }
+}
+
 pub fn web_view(id: &'static str, radius: f32) -> impl IntoElement {
     let fh = focus_handle_of(id);
     // Кадр рисует canvas, а события ловит обёртка: у canvas обработчиков нет.
