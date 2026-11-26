@@ -27,7 +27,7 @@ import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtim
 import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
-import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
+import { CodexConsoleRenderer, consoleBanner } from '../codex/console-render'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
@@ -964,7 +964,7 @@ export class CodexSessionBinding {
   }
 
   appendSystem(text: string, level: 'info' | 'warning' | 'error'): void {
-    this.hooks?.console?.(consoleNotice(level, text))
+    this.hooks?.console?.(this.console.notice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return
     this.append(this.projector.project({ kind: 'notice', threadId, at: Date.now(), level, message: text }))

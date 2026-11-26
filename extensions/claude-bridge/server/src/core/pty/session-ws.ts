@@ -898,7 +898,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }
               }
 
-              reattachSession(live, ws)
               authenticatedSessionId = live.id
               authenticatedUser = resolved.userName
               authenticatedTokenId = resolved.tokenId
@@ -918,13 +917,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               const hostChanged = !sameHostDeclaration(live.host, declared)
               live.host = declared
 
-              if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                // The reused CLI keeps its MCP connection: announce a changed
-                // catalog instead of silently swapping the snapshot.
-                replaceRegisteredTools(live, msg.externalTools, 'reattach')
-              }
-              if (hostChanged && live.mcpInitialized) notifyToolListChanged(live.id)
-
               ws.send(
                 JSON.stringify({
                   type: 'session:created',
@@ -937,6 +929,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   engine: live.engine ?? 'claude',
                 }),
               )
+              // The client accepts terminal bytes only after session:created.
+              // Reattach synchronously replays the live PTY buffer to this socket.
+              reattachSession(live, ws)
+              if (msg.externalTools && Array.isArray(msg.externalTools)) {
+                // The reused CLI keeps its MCP connection: announce a changed
+                // catalog instead of silently swapping the snapshot.
+                replaceRegisteredTools(live, msg.externalTools, 'reattach')
+              }
+              if (hostChanged && live.mcpInitialized) notifyToolListChanged(live.id)
+
               if (live.cliConversationId) {
                 lifecycleLog('conversation_id', {
                   sessionId: live.id,

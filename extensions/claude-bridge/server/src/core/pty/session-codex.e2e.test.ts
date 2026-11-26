@@ -327,6 +327,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
     const again = await Client.open(port)
     again.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, conversationId: conv.conversationId })
     const replay = await again.next((f) => f.type === 'session:output')
+    const attached = await again.next((f) => f.type === 'session:created' && f.reattached === true)
+    // The client drops terminal bytes until this handshake authenticates the tab.
+    expect(again.frames.indexOf(attached)).toBeLessThan(again.frames.indexOf(replay))
     // Byte-exact: the reply streamed mid-line, and the replay must not split it.
     expect(replay.data).toBe(consoleText(client))
     again.send({ type: 'session:end' })
