@@ -89,7 +89,7 @@ describe('CodexAgentSession', () => {
   })
 
   it('sends a turn with submission id, pending model and effort; steers while it runs', async () => {
-    const { proc, session } = await started(undefined, { effort: 'high' })
+    const { proc, session, events } = await started(undefined, { effort: 'high' })
     expect(await session.setModel('gpt-6-sol')).toBe('next-turn')
     await session.send('hello', 'sub-1')
     expect(proc.requests('turn/start')).toEqual([
@@ -103,7 +103,11 @@ describe('CodexAgentSession', () => {
       },
     ])
     expect(session.running).toBe(true)
+    session.setEffort('xhigh')
     await session.send('more', 'sub-2')
+    expect(events.filter((e) => e.kind === 'turn.requestAccepted')).toEqual([
+      expect.objectContaining({ turnId: 'u1', requestedEffort: 'high' }),
+    ])
     expect(proc.requests('turn/steer')).toEqual([
       {
         threadId: 't1',
@@ -117,6 +121,19 @@ describe('CodexAgentSession', () => {
     expect(session.running).toBe(false)
     await session.send('next')
     expect(proc.requests('turn/start')[1]).not.toHaveProperty('model') // the switch applied once
+  })
+
+  it('distinguishes an omitted effort from a rejected turn request', async () => {
+    const { session, events } = await started()
+    await session.send('first')
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'turn.requestAccepted', requestedEffort: null }))
+    const rejected = await started({
+      'turn/start': () => {
+        throw new Error('rejected')
+      },
+    })
+    await expect(rejected.session.send('first')).rejects.toThrow('rejected')
+    expect(rejected.events.some((e) => e.kind === 'turn.requestAccepted')).toBe(false)
   })
 
   it('starts a new turn when a steer loses the race with turn completion', async () => {
