@@ -18,7 +18,7 @@ use crate::ScrollHandle;
 use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
 
 /// The scenes of the layers `operations` draw (`scene::layer`).
-pub(super) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
+fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
     operations
         .iter()
         .filter_map(|operation| match operation {
@@ -501,25 +501,6 @@ impl Window {
             })
             .collect();
         frame.scroll_dependents.extend(landed);
-    }
-    /// After a copy of commands from `from` of this frame's scene: copied
-    /// nodes painted in a retained layer the copy draws land where they were,
-    /// as the layer holds them (`plan_scrolled_replay`). `copied` is the
-    /// copy's source scene, whose entries it landed itself.
-    pub(crate) fn land_in_drawn_layers(&mut self, from: usize, copied: SceneSpace) {
-        let frame = &mut self.next_frame;
-        if frame.scroll_paint.landing.iter().all(|entry| entry.2 == copied) {
-            return;
-        }
-        let layers = layer_spaces(&frame.scene.paint_operations[from..]);
-        let nodes = &mut frame.scroll_nodes;
-        frame.scroll_paint.landing.retain(|(index, paint, space, main)| {
-            let drawn = layers.contains(space);
-            if drawn {
-                nodes[*index as usize].land(paint.clone(), *space, *main);
-            }
-            !drawn
-        });
     }
     /// The scroll nodes of the rendered frame inside a record made in it:
     /// both ranges of each node lie within the record's, outermost first, each

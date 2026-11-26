@@ -42852,10 +42852,10 @@ index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e23
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..17e80ea617d186c87fd874cc989eb0826b69c2dc
+index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa111574541fbdd36
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,796 @@
+@@ -0,0 +1,777 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -42876,7 +42876,7 @@ index 0000000000000000000000000000000000000000..17e80ea617d186c87fd874cc989eb082
 +use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
 +
 +/// The scenes of the layers `operations` draw (`scene::layer`).
-+pub(super) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
++fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
 +    operations
 +        .iter()
 +        .filter_map(|operation| match operation {
@@ -43360,25 +43360,6 @@ index 0000000000000000000000000000000000000000..17e80ea617d186c87fd874cc989eb082
 +            .collect();
 +        frame.scroll_dependents.extend(landed);
 +    }
-+    /// After a copy of commands from `from` of this frame's scene: copied
-+    /// nodes painted in a retained layer the copy draws land where they were,
-+    /// as the layer holds them (`plan_scrolled_replay`). `copied` is the
-+    /// copy's source scene, whose entries it landed itself.
-+    pub(crate) fn land_in_drawn_layers(&mut self, from: usize, copied: SceneSpace) {
-+        let frame = &mut self.next_frame;
-+        if frame.scroll_paint.landing.iter().all(|entry| entry.2 == copied) {
-+            return;
-+        }
-+        let layers = layer_spaces(&frame.scene.paint_operations[from..]);
-+        let nodes = &mut frame.scroll_nodes;
-+        frame.scroll_paint.landing.retain(|(index, paint, space, main)| {
-+            let drawn = layers.contains(space);
-+            if drawn {
-+                nodes[*index as usize].land(paint.clone(), *space, *main);
-+            }
-+            !drawn
-+        });
-+    }
 +    /// The scroll nodes of the rendered frame inside a record made in it:
 +    /// both ranges of each node lie within the record's, outermost first, each
 +    /// with the position of its enclosing segment when that one is inside too.
@@ -43857,10 +43838,10 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be6958131f0d4a1d
+index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57fbcecf72c
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,482 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -44066,7 +44047,19 @@ index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be695813
 +                                let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
 +                                nodes.dedup();
 +                                nodes.truncate(4);
-+                                format!("its label is drawn under no node, its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
++                                // Where its label is: in the record's commands, in a group's, or neither.
++                                let number = (groups.start + at + 1) as u32;
++                                let label_of = |operations: &[crate::scene::PaintOperation]| {
++                                    operations.iter().position(|operation| {
++                                        matches!(operation, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Surface(s)) if s.group == number)
++                                    })
++                                };
++                                let found = match label_of(&source.paint_operations) {
++                                    Some(op) => format!("label at command {op} of the frame's scene (record {scenes:?})"),
++                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene.paint_operations).map(|op| format!("label at command {op} of group {k}")))
++                                        .unwrap_or_else(|| "label not found (dormant or in a reservoir)".into()),
++                                };
++                                format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
 +                            }
 +                            crate::scene::GroupLabel::Unmarked | crate::scene::GroupLabel::Hidden => return None,
 +                            crate::scene::GroupLabel::Under(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
@@ -44146,24 +44139,15 @@ index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be695813
 +                }
 +                plan.deferred.push(plan.nodes.len()..plan.nodes.len() + indices.len());
 +            }
-+            let mut layers = None;
 +            for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
-+                // Every paint range of the node in its part's scene, deferred ones too,
-+                // or in the scene of a retained layer the part's commands draw: the copy
-+                // draws the layer as it was, so the node replays there unmoved.
++                // Every paint range of the node in its part's scene, deferred ones too.
 +                let painted = node.paint.is_some();
 +                let group = group_of(node);
-+                let foreign = painted && node.painted_in != Some(scene.scroll.space) && group.is_none();
-+                let layered = foreign
-+                    && node.painted_in.is_some_and(|space| {
-+                        let drawn = layers.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
-+                        drawn.contains(&space)
-+                    });
-+                if (foreign && !layered) || node.torn {
++                if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
 +                    return Err(at_node(ScrollRefusal::Node, index));
 +                }
 +                let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
-+                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
++                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
 +                    return Err(at(ScrollRefusal::NodeRange));
 +                }
 +                let new = node.source.offset();
@@ -44181,7 +44165,7 @@ index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be695813
 +                // parent: whatever it shows then moves as its parent's commands.
 +                // Moving apart, it shows nothing while its clip stays empty (an
 +                // anchor past the viewport edge, whose children were never painted).
-+                if (!painted && shift != parent_shift && !clip.is_empty()) || (layered && (shift != Point::default() || clip != node.clip)) {
++                if !painted && shift != parent_shift && !clip.is_empty() {
 +                    return Err(at_node(ScrollRefusal::Node, index));
 +                }
 +                let interest = moved(node.interest, shift);
@@ -44326,7 +44310,6 @@ index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be695813
 +        edges.dedup();
 +        let node = |id: ScrollNodeId| plan.scaled(id, scale);
 +        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
-+        let from = self.next_frame.scene.paint_operations.len();
 +        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
 +        let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
 +        let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
@@ -44334,7 +44317,6 @@ index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be695813
 +        for (index, paint, _, main) in mine {
 +            self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
 +        }
-+        self.land_in_drawn_layers(from, space);
 +    }
 +}
 +
