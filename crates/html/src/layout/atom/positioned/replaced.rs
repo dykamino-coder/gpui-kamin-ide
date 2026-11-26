@@ -20,6 +20,24 @@ pub(super) fn replaced_abs_atom(
     stretched: bool,
 ) -> Option<AnyElement> {
     let frame = opts.cx.frame();
+    // The form control is its own holder: it is built from the merged style
+    // with its position and insets, and paints its own border and background;
+    // a `styled_box` wrapper would paint them a second time.
+    let control = opts.cx.contracts.build.control(e, merged, opts).map(|el| {
+        opts.cx
+            .contracts
+            .build
+            .effects(el, Effect::transform(&e.style.used(), inherited, frame))
+    });
+    let holder = match control {
+        Some(control) => control,
+        None => replaced_holder(e, opts, merged),
+    };
+    place_holder(inherited, e, opts, merged, inline_cb, stretched, holder)
+}
+
+fn replaced_holder(e: &Element, opts: &RenderOpts, merged: &BoxStyle) -> AnyElement {
+    let frame = opts.cx.frame();
     let mut copy = e.clone();
     copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
     copy.style.used_mut().reset_positioned.position = None;
@@ -50,7 +68,7 @@ pub(super) fn replaced_abs_atom(
         .child(built)
         .into_any_element();
     // Shape the CSS box before moving it into a deferred positioned layer.
-    let holder = if merged.corner_shaped() {
+    if merged.corner_shaped() {
         opts.cx.contracts.build.effects(
             holder,
             Effect::GroupReplaced {
@@ -60,7 +78,18 @@ pub(super) fn replaced_abs_atom(
         )
     } else {
         holder
-    };
+    }
+}
+
+fn place_holder(
+    inherited: &BoxStyle,
+    e: &Element,
+    opts: &RenderOpts,
+    merged: &BoxStyle,
+    inline_cb: bool,
+    stretched: bool,
+    holder: AnyElement,
+) -> Option<AnyElement> {
     let holder = crate::layout::positioned::anchor::place::place_in_context(
         holder, merged, inherited, &opts.cx,
     );

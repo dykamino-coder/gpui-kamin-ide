@@ -69,10 +69,12 @@ pub(super) fn absolute_atom(
     // Тот же список, что и у обычного пути: у замещаемых детей-блоков
     // нет, и блочная ветка давала пустую коробку — картинка с краями
     // не рисовалась вовсе.
+    // A form control is a replaced box with its own natural size too.
     if matches!(
         e.tag.as_str(),
         "svg" | "img" | "canvas" | "video" | "embed" | "object" | "iframe"
-    ) {
+    ) || crate::paint::controls::is_control(&e.tag)
+    {
         return replaced_abs_atom(inherited, e, opts, &merged, inline_cb, stretched);
     }
     // Якорный заместитель прозрачен для раскладки (отдаёт `layout_id`

@@ -54,7 +54,14 @@ pub(in crate::layout::atom) fn static_position_atom(
                 _ => opts.cx.contracts.build.replaced(&copy, None, &opts.cx),
             })
         }
-        _ => None,
+        // A form control paints its own parts from the merged style (position removed above);
+        // a bare styled box would lose the checkbox or field itself.
+        _ => opts.cx.contracts.build.control(e, &merged, opts).map(|el| {
+            opts.cx
+                .contracts
+                .build
+                .effects(el, Effect::transform(&e.style.used(), inherited, frame))
+        }),
     };
     let inner = opts.cx.contracts.build.styled_box(e, &merged, &opts.cx);
     let inner = inner.children(super::children::children(e, &positioned, opts));
