@@ -1476,6 +1476,8 @@ struct PolychromeSprite {
     Bounds content_mask;
     Corners corner_radii;
     AtlasTile tile;
+    // KaminIDE patch: cell size of a repeated image (`PolychromeSprite::pattern`); zero: none.
+    float2 pattern;
     // KaminIDE patch: см. `Quad::transformation`.
     TransformationMatrix transformation;
 };
@@ -1520,16 +1522,28 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
+    // KaminIDE patch: a repeated image reads the cell under the pixel as the
+    // cell's own sprite would (`PolychromeSprite::pattern`). Cells are whole
+    // device pixels laid from the sprite's origin, so their edges are exact.
+    Bounds cell = sprite.bounds;
+    if (sprite.pattern.x > 0.0 && sprite.pattern.y > 0.0) {
+        float2 k = clamp(
+            floor((local_position - sprite.bounds.origin) / sprite.pattern),
+            float2(0.0, 0.0),
+            max(round(sprite.bounds.size / sprite.pattern) - 1.0, float2(0.0, 0.0)));
+        cell.origin = sprite.bounds.origin + k * sprite.pattern;
+        cell.size = sprite.pattern;
+    }
     // KaminIDE patch: the image is read in its tile's own texels (`tile_texel`).
     float4 sample;
     if ((sprite.pad & 1u) != 0u) {
         int2 tile_last = int2(sprite.tile.bounds.size) - 1;
-        float2 source_position = (local_position - sprite.bounds.origin)
-            / sprite.bounds.size * float2(sprite.tile.bounds.size);
+        float2 source_position = (local_position - cell.origin)
+            / cell.size * float2(sprite.tile.bounds.size);
         int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0), tile_last);
         sample = t_sprite.Load(int3(int2(sprite.tile.bounds.origin) + source_texel, 0));
     } else {
-        sample = tile_texel(local_position, sprite.bounds, sprite.tile);
+        sample = tile_texel(local_position, cell, sprite.tile);
     }
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 

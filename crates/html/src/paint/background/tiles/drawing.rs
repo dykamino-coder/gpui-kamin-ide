@@ -1,6 +1,6 @@
 //! Раскладка и окраска плиток после определения областей фона.
 
-use super::{area_corners, origin, rounded, tile_size};
+use super::{area_corners, origin, pattern_grid, rounded, tile_size};
 use crate::paint::background::*;
 use crate::resources::css_images::Source as CpuSource;
 use crate::style::computed::{BgPos, BgRepeat, BgSize, Computed, Tiling};
@@ -135,6 +135,9 @@ pub(crate) fn draw_tiles(
         box_size.1,
         span.1,
     );
+    let corners_of = area_corners::corners(c, clip);
+    let pixelated = c.inh.ui.image_pixelated == Some(true);
+    let grid = pattern_grid(&found, &xs, &ys, tile, window.scale_factor());
     // Общий потолок числа квадов: потолок НА ОСЬ пропускал произведение
     // (плитка 1x1 на вьюпорт = ~480 тысяч квадов — кадр не заканчивался,
     // hidpi-invert-filter-background висел). Плитки ПРОРЕЖИВАЮТСЯ с
@@ -142,7 +145,7 @@ pub(crate) fn draw_tiles(
     // 1x1 — точно, узор теряет лишь плотность повтора).
     const MAX_QUADS: usize = 4096;
     let mut tile = tile;
-    if xs.len() * ys.len() > MAX_QUADS {
+    if grid.is_none() && xs.len() * ys.len() > MAX_QUADS {
         let k = ((xs.len() * ys.len()) as f32 / MAX_QUADS as f32)
             .sqrt()
             .ceil() as usize;
@@ -168,8 +171,6 @@ pub(crate) fn draw_tiles(
             })
             .clone()
     };
-    let corners_of = area_corners::corners(c, clip);
-    let pixelated = c.inh.ui.image_pixelated == Some(true);
     // Собственная обрезка коробки (`overflow` ≠ visible) режет по её
     // padding-box, а фон по `background-clip` живёт до border-box: маска
     // раздвигается на рамку — ровно на то, что коробка отняла у себя сама
@@ -197,17 +198,36 @@ pub(crate) fn draw_tiles(
     let replaced = outer.map(|bounds| gpui::ContentMask { bounds });
     with_outer(window, replaced, |window| {
         window.with_content_mask(Some(gpui::ContentMask { bounds: clip }), |window| {
-            for y in &ys {
-                for x in &xs {
-                    // Reduce to Pixels only after cancelling the clip offset.
-                    let at = gpui::point(
-                        px((f64::from(f32::from(clip.origin.x)) + x) as f32),
-                        px((f64::from(f32::from(clip.origin.y)) + y) as f32),
-                    );
-                    let cell = Bounds {
-                        origin: at,
-                        size: gpui::size(px(tile.0), px(tile.1)),
-                    };
+            // Reduce to Pixels only after cancelling the clip offset.
+            let cell = |x: f64, y: f64| Bounds {
+                origin: gpui::point(
+                    px((f64::from(f32::from(clip.origin.x)) + x) as f32),
+                    px((f64::from(f32::from(clip.origin.y)) + y) as f32),
+                ),
+                size: gpui::size(px(tile.0), px(tile.1)),
+            };
+            if let Some(cells) = grid {
+                // One sprite over the grid (`Window::with_sprite_pattern`).
+                let first = cell(xs[0], ys[0]);
+                let span = Bounds {
+                    origin: first.origin,
+                    size: gpui::size(px(tile.0 * cells.0 as f32), px(tile.1 * cells.1 as f32)),
+                };
+                let (_, one) = window.with_sprite_pattern(cells, corners_of(span), |window| {
+                    let corners = corners_of(first);
+                    sampling::paint_tile(window, first, corners, &mut image, &found, pixelated, vcx)
+                });
+                if one {
+                    return;
+                }
+            }
+            for (j, y) in ys.iter().enumerate() {
+                for (i, x) in xs.iter().enumerate() {
+                    // The first cell of a grid that took no pattern is painted.
+                    if grid.is_some() && i == 0 && j == 0 {
+                        continue;
+                    }
+                    let cell = cell(*x, *y);
                     let corners = corners_of(cell);
                     sampling::paint_tile(window, cell, corners, &mut image, &found, pixelated, vcx);
                 }
