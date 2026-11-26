@@ -44,4 +44,3 @@ it('loads hooks when the selected chat connects and discards a superseded sessio
   expect(cache.write).toHaveBeenCalledWith('hooks.active.v2', expect.objectContaining({ sessionId: 'second' }))
   expect(container.textContent).toContain('No active hooks.')
 })
-
