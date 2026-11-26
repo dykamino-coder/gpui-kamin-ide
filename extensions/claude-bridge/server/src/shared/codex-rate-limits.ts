@@ -15,6 +15,8 @@ export interface CodexLimitWindow {
 }
 
 export interface CodexLimitBucket {
+  /** This bucket came from the ordinary account view, independent of map order. */
+  accountWide?: true
   id: string | null
   name: string | null
   primary: CodexLimitWindow | null
@@ -78,7 +80,7 @@ export function parseCodexRateLimits(raw: unknown, now = Date.now()): CodexRateL
   const main = obj(res.rateLimits)
   const buckets: CodexLimitBucket[] = []
   const first = bucket(main)
-  if (first) buckets.push(first)
+  if (first) buckets.push({ ...first, accountWide: true })
   const byId = obj(res.rateLimitsByLimitId)
   for (const [id, value] of Object.entries(byId ?? {})) {
     if (first && (first.id ?? 'codex') === id) continue
