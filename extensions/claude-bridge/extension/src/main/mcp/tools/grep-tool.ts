@@ -437,7 +437,10 @@ async function grepFallback(o: GrepOptions): Promise<McpResult> {
     const results = matches === null ? [] : o.outputMode === 'content' ? matches : [matches[0]!]
     return fallbackResult(results, o.offset, o.headLimit, false, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
   }
-  const walk = await walkFallback(regex, o.searchPath, o.outputMode, o.headLimit + o.offset, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
+  // Finding the newest N files requires inspecting every candidate, just like
+  // the ripgrep path. A traversal-order limit can omit the newest match.
+  const limit = o.outputMode === 'files_with_matches' ? 0 : o.headLimit + o.offset
+  const walk = await walkFallback(regex, o.searchPath, o.outputMode, limit, FALLBACK_TIMEOUT_MS, o.globs, o.showLineNumbers)
   const results = o.outputMode === 'files_with_matches' ? await sortByMtime(walk.results) : walk.results
   return fallbackResult(results, o.offset, o.headLimit, walk.timedOut, FALLBACK_TIMEOUT_MS, FALLBACK_NOTICE)
 }
@@ -463,6 +466,7 @@ async function matchFile(
       const line = (lines[i] ?? '').replace(/\r$/, '')
       regex.lastIndex = 0
       if (!regex.test(line)) continue
+      if (outputMode === 'files_with_matches') return [file]
       count++
       if (outputMode === 'content') {
         const text = line.length > MAX_COLUMNS ? '[Omitted long matching line]' : line
@@ -470,7 +474,6 @@ async function matchFile(
       }
     }
     if (count === 0) return null
-    if (outputMode === 'files_with_matches') return [file]
     if (outputMode === 'count') return [withPath ? `${file}:${count}` : String(count)]
     return out
   } catch {
@@ -508,6 +511,17 @@ export async function walkFallback(
     suppressErrors: true,
     ignore: [...VCS_DIRECTORIES.map((d) => `**/${d}/**`), '**/node_modules/**', ...exclude],
   })
+  // Bound outstanding reads while overlapping filesystem latency. Keep batch
+  // results in traversal order so content/count pagination stays unchanged.
+  let batch: Array<Promise<string[] | null>> = []
+  const flush = async (): Promise<void> => {
+    const matches = await Promise.all(batch)
+    batch = []
+    for (const match of matches) {
+      if (limit > 0 && results.length >= limit) break
+      if (match) results.push(...match)
+    }
+  }
   try {
     for await (const entry of stream) {
       if (limit > 0 && results.length >= limit) break
@@ -516,9 +530,10 @@ export async function walkFallback(
         break
       }
       const file = path.normalize(entry as string)
-      const matches = await matchFile(regex, file, outputMode, lineNumbers, true)
-      if (matches) results.push(...matches)
+      batch.push(matchFile(regex, file, outputMode, lineNumbers, true))
+      if (batch.length >= STAT_CONCURRENCY) await flush()
     }
+    await flush()
   } finally {
     ;(stream as unknown as { destroy?: () => void }).destroy?.()
   }

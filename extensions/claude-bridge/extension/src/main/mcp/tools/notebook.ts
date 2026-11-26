@@ -2,7 +2,7 @@ import fsp from 'node:fs/promises'
 import { resolveToolPath } from '../../utils/working-directory'
 import type { ToolCallContext } from '../executor'
 
-export type McpResult = { content: Array<{ type: string; text: string }> }
+export type McpResult = { isError?: boolean; content: Array<{ type: string; text: string }> }
 
 // Same ceiling the Read tool enforces. .ipynb is JSON we sync-parse, so an
 // uncapped read would block the shared exthost event loop (whole-app freeze)
@@ -22,7 +22,7 @@ function textResult(text: string): McpResult {
 }
 
 function errorResult(message: string): McpResult {
-  return { content: [{ type: 'text', text: `Error: ${message}` }] }
+  return { isError: true, content: [{ type: 'text', text: `Error: ${message}` }] }
 }
 
 interface NotebookCell {

@@ -88,4 +88,13 @@ describe('fallback without ripgrep', () => {
     const r = await grepSearch({ pattern: 'x', path: path.join(dir, 'missing') })
     expect(r.isError).toBe(true)
   })
+
+  it('selects the newest match before applying a files_with_matches limit', async () => {
+    for (const file of ['a.ts', 'b.ts', 'z-newest.ts']) {
+      fs.writeFileSync(path.join(dir, 'src', file), 'needle\n')
+      fs.utimesSync(path.join(dir, 'src', file), 1_700_000_000, file === 'z-newest.ts' ? 1_800_000_000 : 1_700_000_000)
+    }
+    const result = text(await grepSearch({ pattern: 'needle', path: dir, glob: '*.ts', head_limit: 1 }))
+    expect(result.split('\n')[0]).toBe(path.join(dir, 'src', 'z-newest.ts'))
+  })
 })
