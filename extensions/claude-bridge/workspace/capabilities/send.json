@@ -31,6 +31,7 @@
   {"id":"send:mcp-respond","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1}},
   {"id":"send:notifications:set","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/config.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:open-folder","status":"explicitly-not-applicable-with-reason","reason":"KaminIDE host feature, not Bridge","evidence":"extension/src/core-ipc.ts","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
+  {"id":"send:permission-console:ready","status":"explicitly-not-applicable-with-reason","reason":"Desktop GPUI/CEF keyboard focus handoff for the separate native Console view. The browser console has no native view focus owner.","evidence":"extension/src/permission-console-focus.ts","sources":{"webview/src/components/terminal/TerminalContainer.tsx":1}},
   {"id":"send:permission-response","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:pty-input","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"send:pty-resize","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/sessions.ts":1,"webview/src/lib/bridge-channels.ts":1}},
