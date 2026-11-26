@@ -151,6 +151,20 @@ const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'A
 /** Codex (rustls) reads extra trust roots from this variable, added to the native roots. */
 export const CODEX_CA_ENV = 'CODEX_CA_CERTIFICATE'
 
+/**
+ * Finish an env (after `injectProxyEnv`) for any process that may run codex:
+ * the Bridge codex child and the admin terminal, where `codex login` runs.
+ */
+export function applyCodexNetworkEnv(env: Record<string, string>): void {
+  // Inherited proxies get the same loopback bypass as dashboard-configured
+  // ones: MCP calls to Bridge on 127.0.0.1 must never enter the proxy.
+  if (PROXY_VARS.some((key) => env[key])) mergeLoopbackNoProxy(env)
+  // The dashboard CA reaches Node children as NODE_EXTRA_CA_CERTS; codex's
+  // HTTP stack ignores that and reads CODEX_CA_CERTIFICATE (codex-rs
+  // http-client/src/custom_ca.rs, fallback SSL_CERT_FILE).
+  if (env.NODE_EXTRA_CA_CERTS && !env[CODEX_CA_ENV]) env[CODEX_CA_ENV] = env.NODE_EXTRA_CA_CERTS
+}
+
 export interface CodexEnvOptions {
   home: string
   base?: NodeJS.ProcessEnv
@@ -172,13 +186,7 @@ export function buildCodexEnv(options: CodexEnvOptions): NodeJS.ProcessEnv {
     if (value !== undefined) env[key] = value
   }
   options.injectProxy?.(env)
-  // Inherited proxies get the same loopback bypass as dashboard-configured
-  // ones: MCP calls to Bridge on 127.0.0.1 must never enter the proxy.
-  if (PROXY_VARS.some((key) => env[key])) mergeLoopbackNoProxy(env)
-  // The dashboard CA reaches Node children as NODE_EXTRA_CA_CERTS; codex's
-  // HTTP stack ignores that and reads CODEX_CA_CERTIFICATE (codex-rs
-  // http-client/src/custom_ca.rs, fallback SSL_CERT_FILE).
-  if (env.NODE_EXTRA_CA_CERTS && !env[CODEX_CA_ENV]) env[CODEX_CA_ENV] = env.NODE_EXTRA_CA_CERTS
+  applyCodexNetworkEnv(env)
   env.CODEX_HOME = options.home
   // Codex also looks for user-level skills/agents under HOME; pointing HOME at
   // the per-user codex home keeps the server account's dotfiles out of reach.
