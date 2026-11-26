@@ -17,9 +17,8 @@
 //!   only while that slot's frame is the layer's; a box nested in a band
 //!   owner takes its owner's fragments, a box no band owner holds (a culled
 //!   inline box gaining a band without padding or border) its container's
-//!   lines; a box no fragment places (its paragraph was not painted in the
-//!   layer's frame) everything below its nearest ancestor with a run in the
-//!   layer (`below`);
+//!   lines; a box no fragment places the ink overflow of its paragraphs
+//!   kept from the layer's frame (`below`);
 //! - a box with decorations: its run in the layer, the box with its ink;
 //! - both grown by the reach of the shadows and outline of either style; a
 //!   filter, a border image or a border shape reaches farther than this
@@ -70,7 +69,7 @@ pub(super) fn waits(
     let area = match kind {
         Wait::Inline => inline_area(store, boxes, (old, path), a, b, outset).or_else(|| {
             let up = chain(old, &path[..path.len().saturating_sub(1)]);
-            below::below(layer, &up, b, outset, store.shown_scale())
+            below::below(store, boxes, &up, b, outset)
         }),
         Wait::Decoration => u32::try_from(a.node_id)
             .ok()
@@ -188,7 +187,8 @@ fn fragments_of<R>(
     use crate::document::boxes::inline::ItemKind;
     let id = boxes.box_of(a.node_id)?;
     let container = container(boxes, id)?;
-    let fragments = boxes.slot(container)?.inline.as_deref()?;
+    let slot = boxes.slot(container)?;
+    let fragments = slot.inline.as_deref()?;
     if !store.fragments_hold(fragments.stamp()) {
         return None;
     }
@@ -227,7 +227,8 @@ fn fragments_of<R>(
         .map_while(|e| (boxes.box_of(e.node_id)? != container).then_some(e.node_id))
         .filter_map(|node| u32::try_from(node).ok())
         .find(|owner| fragments.has(*owner));
-    Some(f(fragments, owner))
+    // The lines are not all the box's when a paragraph of it placed none.
+    (owner.is_some() || !below::unplaced(store, slot)).then(|| f(fragments, owner))
 }
 
 impl crate::document::Document {

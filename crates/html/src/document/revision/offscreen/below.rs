@@ -1,59 +1,68 @@
 //! The area of an inline box the layer's frame never placed: no fragment of
-//! it, nor of a band owner holding it, describes the layer (a paragraph the
-//! frame did not paint, or painted as pieces of a fragmented flow).
+//! it, nor of a band owner holding it, describes the layer (a paragraph
+//! no native paragraph painted).
 //!
-//! Such a box is bounded by its nearest ancestor with a run in the layer:
-//! normal flow lays the ancestor's contents out from its placed top onward
-//! (lines follow its content edge, overflow runs to the block and inline
-//! ends), so none of the box's ink lies above that top, less the reach of its
-//! own ink. Columns move their contents to the top of their container's
-//! column boxes (css-multicol-1 §3): under a multi-column container the top
-//! is its own. The area is everything below that top; it never misses a
-//! frame that shows anything from there down, however far a scroll jumps.
-//! An element between the ancestor and the box that moves the box itself (a
-//! positioned or transformed one) bounds nothing, and the area is unknown.
+//! Such a box lies in the ink overflow its paragraph's box kept from the
+//! layer's frame (`layout::retained::measured`): every primitive the
+//! paragraph offered, culled and deferred paint included, and the
+//! paragraph's own box, which holds its lines. Gecko bounds the paint of a
+//! frame the same way, by the ink overflow it keeps with the frame's border
+//! box. The lines hold each inline box on them but for the box's padding and
+//! border, which a restyle that keeps layout keeps: the area is grown by
+//! them and by the reach of the box's new ink. A box whose other paragraphs
+//! placed fragments in the frame holds lines its ink does not: unknown.
+//!
+//! The measure is of the old paint. The new paint of the box lies where its
+//! old box did, unless an element on the way moves it (positioned or
+//! transformed): then the area is unknown.
 
+use crate::document::boxes::BoxTree;
 use crate::dom::Element;
+use crate::layout::retained::LayoutSlot;
+use crate::layout::reuse::Store;
 use crate::style::computed::Position;
-use gpui::{Bounds, LayerHandle, ScaledPixels, point, size};
+use crate::style::values::value::Len;
+use gpui::{Bounds, ScaledPixels};
 
-/// How far, window pixels, the ink of a line reaches above its band: glyph
-/// overshoot under a small line height, emphasis marks, an overline
-/// (the reach the fragments of a paragraph painted whole allow, `cull`).
-const REACH: f32 = 64.;
-
-/// The half-plane below the top of the nearest ancestor in `up` (outermost
-/// first) with a run in `layer`, or of the outermost multi-column container
-/// holding it, grown upward by `outset` and `REACH`, device pixels at
-/// `scale`. `None` when no ancestor has a run, the container has none, or an
-/// element between the ancestor and the box `b` moves the box.
+/// The ink overflow of the nearest ancestor in `up` (outermost first) of
+/// box `b` that kept one from the layer's frame, grown by `b`'s padding,
+/// border and `outset`, device pixels at the layer's scale. `None` when no
+/// ancestor kept one or it is unknown, an element between it and `b` moves
+/// `b`, or `b`'s padding or border is no length.
 pub(super) fn below(
-    layer: &LayerHandle,
+    store: &Store,
+    boxes: &BoxTree,
     up: &[&Element],
     b: &Element,
     outset: f32,
-    scale: f32,
 ) -> Option<Bounds<ScaledPixels>> {
-    let area = |e: &Element| {
-        u32::try_from(e.node_id)
-            .ok()
-            .and_then(|o| layer.box_area(o))
-    };
-    let nearest = up.iter().rposition(|e| area(e).is_some())?;
+    let slot = |e: &Element| boxes.slot(boxes.box_of(e.node_id)?);
+    let nearest = up
+        .iter()
+        .rposition(|e| slot(e).is_some_and(|s| unplaced(store, s)))?;
+    let kept = slot(up[nearest])?;
+    // The ink is of the paragraphs that placed no fragments: a box with
+    // fragments of the frame too has lines it does not hold.
+    if kept
+        .inline
+        .as_ref()
+        .is_some_and(|f| store.fragments_hold(f.stamp()))
+    {
+        return None;
+    }
     if moves(b) || up[nearest + 1..].iter().any(|e| moves(e)) {
         return None;
     }
-    let anchor = up[..=nearest]
-        .iter()
-        .position(|e| columns(e))
-        .unwrap_or(nearest);
-    let top = area(up[anchor])?.origin.y.0 - (outset + REACH) * scale;
-    // Far enough to cover any document and still add in `f32`.
-    const FAR: f32 = 1.0e9;
-    Some(Bounds {
-        origin: point(ScaledPixels(-FAR), ScaledPixels(top)),
-        size: size(ScaledPixels(2.0 * FAR), ScaledPixels(FAR)),
-    })
+    let reach = (outset + edges(b)?) * store.shown_scale();
+    let (_, ink) = kept.ink?;
+    Some(ink?.dilate(ScaledPixels(reach)))
+}
+
+/// Whether paragraphs of the box of `slot` placed no fragments in the
+/// layer's frame (`layout::retained::measured`).
+pub(super) fn unplaced(store: &Store, slot: &LayoutSlot) -> bool {
+    slot.ink
+        .is_some_and(|(stamp, _)| store.fragments_hold(stamp))
 }
 
 /// Whether `e` places its box away from the flow its ancestor laid out.
@@ -66,8 +75,24 @@ fn moves(e: &Element) -> bool {
         || style.reset_transforms.translate.is_some()
 }
 
-/// Whether `e` is a multi-column container.
-fn columns(e: &Element) -> bool {
-    let f = &e.style.used().reset_fragmentation;
-    f.column_count.is_some() || f.column_width.is_some()
+/// The widest padding plus border of `e` on any side, window pixels;
+/// `None` for a padding or border no length gives (a percentage).
+fn edges(e: &Element) -> Option<f32> {
+    let px = |l: Option<Len>| match l {
+        None => Some(0.0),
+        Some(Len::Px(v)) => Some(v.abs()),
+        Some(_) => None,
+    };
+    let style = e.style.used();
+    let (p, w) = (&style.reset_box_layout.padding, style.borders());
+    let mut widest: f32 = 0.0;
+    for (pad, border) in [
+        (p.top, w.top),
+        (p.right, w.right),
+        (p.bottom, w.bottom),
+        (p.left, w.left),
+    ] {
+        widest = widest.max(px(pad)? + px(border)?);
+    }
+    Some(widest)
 }

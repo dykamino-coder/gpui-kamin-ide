@@ -34,11 +34,16 @@ fn a_band_on_a_nested_box_of_a_column_item_far_below_waits_and_shows_as_fresh(
 /// frame paints without placing fragments); `edit` goes on a nested
 /// `nowrap` span of item `at`.
 fn sources(at: usize, edit: &str) -> String {
+    styled(at, edit, "")
+}
+
+/// `sources` with item `at` styled `item`.
+fn styled(at: usize, edit: &str, item: &str) -> String {
     let items: String = (0..120)
         .map(|i| {
-            let mark = if i == at { edit } else { "" };
+            let (mark, item) = if i == at { (edit, item) } else { ("", "") };
             format!(
-                "<li><span class=t><cite><a class=e href=#y>Title of the work {i}</a>. \
+                "<li style='{item}'><span class=t><cite><a class=e href=#y>Title of the work {i}</a>. \
                  <i>Site</i><span class=d>. Retrieved <span class=w id=s{i}{mark}>January 23,\
                  </span> 2020</span>.</cite></span></li>"
             )
@@ -65,7 +70,7 @@ fn jumped(_: &gpui::Entity<View>, cx: &mut VisualTestContext) {
 }
 
 #[gpui::test]
-fn a_band_on_a_box_no_fragment_places_waits_below_its_ancestor_and_shows_as_fresh(
+fn a_band_on_a_box_no_fragment_places_waits_in_its_ancestor_ink_and_shows_as_fresh(
     cx: &mut TestAppContext,
 ) {
     let page = |e: &str| sources(100, e);
@@ -87,4 +92,61 @@ fn a_band_on_a_box_no_fragment_places_waits_below_its_ancestor_and_shows_as_fres
         );
         assert_eq!(edited.1, fresh.1, "shown, it differs from a fresh one");
     }
+}
+
+/// The root scrolled by `dy` pixels in one step.
+fn scrolled(cx: &mut VisualTestContext, dy: f32) {
+    use gpui::{ScrollDelta, ScrollWheelEvent, point};
+    cx.simulate_event(ScrollWheelEvent {
+        position: point(px(100.), px(100.)),
+        delta: ScrollDelta::Pixels(point(px(0.), px(-dy))),
+        ..Default::default()
+    });
+    frame(cx);
+}
+
+/// The root scrolled to the first item pulled up by `margin-top:-1000px`.
+fn to_pulled(_: &gpui::Entity<View>, cx: &mut VisualTestContext) {
+    scrolled(cx, 950.);
+}
+
+/// The edited frame and the one after `then` equal a fresh build's.
+fn same_as_fresh(
+    cx: &mut TestAppContext,
+    page: impl Fn(&str) -> String + Copy,
+    then: fn(&gpui::Entity<View>, &mut VisualTestContext),
+    waits: bool,
+) {
+    let (kept, waiting, edited, fresh) = edited(cx, page, then);
+    assert!(!fresh.1.is_empty(), "empty reference scene");
+    match waits {
+        true => assert!(kept && waiting > 0, "kept {kept}, edits waiting {waiting}"),
+        false => assert_eq!(waiting, 0, "an edit on the screen or of no area waits"),
+    }
+    assert_eq!(
+        edited.0, fresh.0,
+        "the edited frame differs from a fresh one"
+    );
+    assert_eq!(edited.1, fresh.1, "shown, it differs from a fresh one");
+}
+
+#[gpui::test]
+fn a_band_on_an_item_pulled_above_its_list_waits_in_the_list_ink_and_shows_as_fresh(
+    cx: &mut TestAppContext,
+) {
+    // Pulled 1000px above the list, still below the screen: the list's
+    // ink holds it, so the edit waits, and the scroll to it builds.
+    let pulled = |e: &str| styled(0, e, "margin-top:-1000px");
+    same_as_fresh(cx, pulled, to_pulled, true);
+    same_as_fresh(cx, pulled, jumped, true);
+    // Pulled onto the screen: the edit shows at once.
+    let shown = |e: &str| styled(0, e, "margin-top:-1950px");
+    same_as_fresh(cx, shown, jumped, false);
+}
+
+#[gpui::test]
+fn a_band_on_a_box_of_vertical_lines_far_below_shows_as_fresh(cx: &mut TestAppContext) {
+    // Turned lines paint outside the root environment: their ink is unknown.
+    let page = |e: &str| styled(100, e, "writing-mode:vertical-rl;height:12em");
+    same_as_fresh(cx, page, jumped, false);
 }
