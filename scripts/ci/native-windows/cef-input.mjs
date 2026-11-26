@@ -1,7 +1,7 @@
 // Inputs are dispatched by the CEF host at coordinates hit-tested in the application webview.
 import assert from "node:assert/strict";
 
-export async function clickElement({ step, web, probe }, name, expression) {
+export async function clickElement({ step, web, probe }, name, expression, { native = false } = {}) {
   let point;
   await step(name + "-hit-test", async () => {
     const { value } = await web(`const el = (${expression});
@@ -16,6 +16,11 @@ export async function clickElement({ step, web, probe }, name, expression) {
     point = value;
   }, true);
   await step(name + "-click", async () => {
+    if (native) {
+      const { bounds } = await probe({ cmd: "metric", id: "claudeBridgeChat" });
+      await probe({ cmd: "click", x: bounds.x + point.x, y: bounds.y + point.y });
+      return;
+    }
     for (const action of ["move", "down", "up"]) {
       const reply = await probe({ cmd: "webmouse", id: "claudeBridgeChat", action, ...point });
       assert.equal(reply.delivery, "cef-host");

@@ -31,9 +31,14 @@ export async function checkWorkspaceLink({ fixture, installed, step, probe, web,
   if (installed) {
     // The shipped executable lacks debug-only editorLocation. A saved edit at the expected
     // offset independently witnesses the focused editor, active file and cursor position.
+    await step("native-file-tab-rendered", async () => {
+      const { bounds } = await probe({ cmd: "metric", id: "file-viewer-tab" });
+      assert.ok(bounds.w > 0 && bounds.h > 0);
+    }, true);
     await step("type-into-open-native-editor", async () => {
       await probe({ cmd: "type", text: "native-mark" });
-      await probe({ cmd: "keystroke", key: "ctrl-s" });
+      const save = await probe({ cmd: "keystroke", key: "ctrl-s" });
+      assert.equal(save.handled, true);
     });
     await step("saved-edit-at-requested-location", async () => {
       const actual = (await readFile(fixture.file, "utf8")).replaceAll("\r\n", "\n");

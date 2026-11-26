@@ -89,6 +89,7 @@ try {
     if ($env:INSTALLED_SCENARIO -ne 'native-client') {
         $runner = & (Join-Path $PSScriptRoot 'start-bridge.ps1') -DataDirectory (Join-Path $capture 'bridge')
     }
+    $env:SMOKE_APP_PID = [string]$app.Id
     node (Join-Path $PSScriptRoot 'probe-smoke.mjs') installed-client $capture $evidence
     if ($LASTEXITCODE) { throw 'Installed-client boundary failed. See report.json.' }
     $stage = 'complete'

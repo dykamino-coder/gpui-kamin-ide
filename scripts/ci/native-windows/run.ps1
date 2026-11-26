@@ -29,6 +29,7 @@ try {
     $manifest = Get-Content -Raw (Join-Path $client 'manifest.json') | ConvertFrom-Json
     $app = Get-Process -Id $manifest.pid -ErrorAction SilentlyContinue
     $stage = 'exercise-client'
+    $env:SMOKE_APP_PID = [string]$app.Id
     node (Join-Path $PSScriptRoot 'probe-smoke.mjs') $Scenario $client $report
     if ($LASTEXITCODE) { throw 'Native scenario failed. See report.json.' }
     $stage = 'complete'

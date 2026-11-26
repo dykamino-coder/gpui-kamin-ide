@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { checkPermissionConsoleShortcut } from "./console-shortcut.mjs";
 import { byText, clickElement } from "./cef-input.mjs";
 
 const trigger = label => byText("button.perm-trigger", label);
@@ -71,4 +72,8 @@ export async function checkEngineMenus(driver, tab) {
   await inspect("codex", "returned-codex");
   await switchModel("return-opus", "Opus 5.5");
   await inspect("claude", "returned-claude");
+  for (const name of ["first-console-command", "repeat-console-command"]) {
+    const row = await state();
+    await checkPermissionConsoleShortcut(driver, row.controls[row.controls.indexOf("Bridge tools") - 1], name);
+  }
 }
