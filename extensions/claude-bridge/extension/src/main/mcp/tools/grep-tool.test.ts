@@ -95,7 +95,7 @@ describe('fallback without ripgrep', () => {
       fs.utimesSync(path.join(dir, 'src', file), 1_700_000_000, file === 'z-newest.ts' ? 1_800_000_000 : 1_700_000_000)
     }
     const result = text(await grepSearch({ pattern: 'needle', path: dir, glob: '*.ts', head_limit: 1 }))
-    expect(result.split('\n')[0]).toBe(path.join(dir, 'src', 'z-newest.ts'))
+    expect(result.split('\n').slice(0, 2)).toEqual(['Found 1 file', path.join(dir, 'src', 'z-newest.ts')])
   })
 })
 
