@@ -55,6 +55,7 @@ fn frame(r: &mut DirectXRenderer, tile: AtlasTile) -> Vec<u8> {
         (scaled(4.0, 40.0, W as f32, H as f32), TransformationMatrix::unit()),
     ] {
         scene.insert_primitive(PolychromeSprite {
+            pattern: gpui::Size::default(),
             order: 0,
             pad: 0,
             grayscale: false.into(),
@@ -68,6 +69,58 @@ fn frame(r: &mut DirectXRenderer, tile: AtlasTile) -> Vec<u8> {
     }
     scene.finish();
     r.render_to_image(&scene, WindowBackgroundAppearance::Opaque).unwrap().into_raw()
+}
+
+/// A grid of `cells` (columns, rows) of `cell`-sized copies of the image
+/// from (3, 2): one repeated sprite or one sprite per cell.
+fn grid(r: &mut DirectXRenderer, tile: AtlasTile, cell: (f32, f32), pad: u32, one: bool) -> Vec<u8> {
+    let (cells, at) = ((3u8, 2u8), (3.0, 2.0));
+    let sprite = |bounds, pattern| PolychromeSprite {
+        pattern,
+        order: 0,
+        pad,
+        grayscale: false.into(),
+        opacity: 1.0,
+        bounds,
+        content_mask: ContentMask { bounds: scaled(0.0, 0.0, 64.0, 64.0) },
+        corner_radii: Default::default(),
+        tile,
+        transformation: TransformationMatrix::unit(),
+    };
+    let mut scene = Scene::default();
+    if one {
+        let (w, h) = (cell.0 * f32::from(cells.0), cell.1 * f32::from(cells.1));
+        let step = Size { width: ScaledPixels(cell.0), height: ScaledPixels(cell.1) };
+        scene.insert_primitive(sprite(scaled(at.0, at.1, w, h), step));
+    } else {
+        for j in 0..cells.1 {
+            for i in 0..cells.0 {
+                let (x, y) = (at.0 + cell.0 * f32::from(i), at.1 + cell.1 * f32::from(j));
+                scene.insert_primitive(sprite(scaled(x, y, cell.0, cell.1), Size::default()));
+            }
+        }
+    }
+    scene.finish();
+    r.render_to_image(&scene, WindowBackgroundAppearance::Opaque).unwrap().into_raw()
+}
+
+/// A repeated sprite draws each cell exactly as that cell's own sprite:
+/// 1:1, scaled with bilinear weights, and nearest.
+#[test]
+fn a_repeated_sprite_draws_every_cell_as_its_own_sprite() {
+    use crate::GpuAdapterPreference as P;
+    for (p, name) in [(P::Default, "default"), (P::Software, "software")] {
+        let Ok(device) = DirectXDevices::with_instrumentation(p, gpui::Instrumentation::default()) else {
+            continue;
+        };
+        let mut r = offscreen(&device, 64, 64);
+        let tile = insert(&r, 1, W, H, texels());
+        for (cell, pad) in [((W as f32, H as f32), 0), ((19.0, 13.0), 0), ((19.0, 13.0), 1)] {
+            let (a, b) = (grid(&mut r, tile, cell, pad, true), grid(&mut r, tile, cell, pad, false));
+            let differ = a.chunks(4).zip(b.chunks(4)).filter(|(x, y)| x != y).count();
+            assert_eq!(differ, 0, "{name} {cell:?} pad {pad}: {differ} pixels differ");
+        }
+    }
 }
 
 #[test]

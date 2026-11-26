@@ -66,7 +66,7 @@ pub(super) fn unplaced(store: &Store, slot: &LayoutSlot) -> bool {
 }
 
 /// Whether `e` places its box away from the flow its ancestor laid out.
-fn moves(e: &Element) -> bool {
+pub(super) fn moves(e: &Element) -> bool {
     let style = e.style.used();
     !matches!(
         style.reset_positioned.position,
