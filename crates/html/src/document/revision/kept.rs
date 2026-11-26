@@ -1,10 +1,14 @@
 //! What the edits in place of one document keep between them (`Kept`).
 
 use super::boxes::Boxes;
+use super::mentions::Mentions;
 use super::source_index::SourceIndex;
 use crate::document::Document;
 use crate::dom::Node;
 use std::rc::Rc;
+
+/// A mentions index with the theme and the `<style>` texts it was built from.
+type Indexed = (Box<str>, Rc<Vec<String>>, Rc<Mentions>);
 
 /// What the edits of one document keep between them: the texts of its sheets,
 /// the probe of its restyles, the index of its boxes and the numbers of its
@@ -15,6 +19,9 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
+    /// The names the agent sheet, a theme and `<style>` sheets mention, with
+    /// the theme and the sheets they were indexed from (kept_mentions).
+    mentions: Option<Indexed>,
     pub(super) cache: crate::dom::restyle_probe::RestyleCache,
     boxes: Option<Rc<Boxes>>,
     ids: Option<Rc<SourceIndex>>,
@@ -27,6 +34,7 @@ impl Kept {
     ) -> std::rc::Rc<std::cell::Cell<Option<Box<Self>>>> {
         let kept = Self {
             sheets: None,
+            mentions: None,
             cache,
             boxes: None,
             ids: None,
@@ -60,15 +68,6 @@ impl Kept {
 }
 
 impl Document {
-    /// The texts of the `<style>` sheets under `root`, collected once.
-    pub(super) fn kept_sheets(&self, root: &markup5ever_rcdom::Handle) -> Rc<Vec<String>> {
-        let mut kept = self.restyle.take().unwrap_or_default();
-        let collect = || Rc::new(super::shape::sheets(root));
-        let sheets = kept.sheets.get_or_insert_with(collect).clone();
-        self.restyle.set(Some(kept));
-        sheets
-    }
-
     /// The index of the boxes of this tree, built on the first edit in place.
     pub(super) fn boxes(&self) -> Option<Rc<Boxes>> {
         let mut kept = self.restyle.take().unwrap_or_default();
@@ -91,5 +90,81 @@ impl Document {
         let ids = kept.ids(&self.state.values.traversal.elements());
         self.restyle.set(Some(kept));
         ids
+    }
+
+    /// The names the agent sheet, the theme `theme_css` and the `<style>`
+    /// sheets of this document mention (`Mentions`), indexed on the first
+    /// edit in place: Blink builds its `RuleFeatureSet` once for a set of
+    /// sheets (`rule_feature_set.cc`), not on each mutation, and the sheets
+    /// of a document do not change in place. `sheets`: the texts of the
+    /// `<style>` elements when already known (an update's markup), indexed
+    /// anew only when they differ from those of the kept index.
+    pub(super) fn kept_mentions(
+        &self,
+        root: &markup5ever_rcdom::Handle,
+        sheets: Option<&[String]>,
+        theme_css: &str,
+    ) -> Rc<Mentions> {
+        let quirks = self.state.values.quirks();
+        let index = |sheets: &[String]| {
+            let mut all = vec![crate::style::ua::user_agent_css(), theme_css];
+            if quirks {
+                all.push(crate::style::ua::QUIRKS_CSS);
+            }
+            all.extend(sheets.iter().map(String::as_str));
+            Rc::new(Mentions::of(all))
+        };
+        let mut kept = self.restyle.take().unwrap_or_default();
+        let indexed = kept.mentions.as_ref().map(|(_, s, _)| s.clone());
+        let sheets = match sheets {
+            Some(s) => match indexed.filter(|k| k.as_slice() == s) {
+                Some(k) => k,
+                None => Rc::new(s.to_vec()),
+            },
+            None => (kept
+                .sheets
+                .get_or_insert_with(|| Rc::new(super::shape::sheets(root))))
+            .clone(),
+        };
+        let same =
+            |(t, s, _): &&Indexed| **t == *theme_css && (Rc::ptr_eq(s, &sheets) || **s == *sheets);
+        let mentions = match kept.mentions.as_ref().filter(same) {
+            Some((_, _, m)) => m.clone(),
+            None => {
+                let m = index(&sheets);
+                kept.mentions = Some((theme_css.into(), sheets, m.clone()));
+                m
+            }
+        };
+        self.restyle.set(Some(kept));
+        mentions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::document::Document;
+    use std::rc::Rc;
+
+    #[test]
+    fn the_mentions_of_the_sheets_are_indexed_once_per_document_and_theme() {
+        let doc = Document::builder("<style>.a{color:red}</style><p class=a>x</p>", "")
+            .build()
+            .unwrap();
+        let root = doc.source_dom();
+        let first = doc.kept_mentions(&root, None, "");
+        assert!(Rc::ptr_eq(&first, &doc.kept_mentions(&root, None, "")));
+        assert!(first.any(&[], &["a".into()]) && !first.any(&[], &["b".into()]));
+        // Known sheets other than the kept ones, or another theme, index anew;
+        // the same known sheets again (each update's markup) do not.
+        let other = [String::from(".b{color:red}")];
+        let known = doc.kept_mentions(&root, Some(&other), "");
+        assert!(known.any(&[], &["b".into()]));
+        assert!(Rc::ptr_eq(
+            &known,
+            &doc.kept_mentions(&root, Some(&other), "")
+        ));
+        let themed = doc.kept_mentions(&root, None, ".t{}");
+        assert!(!Rc::ptr_eq(&first, &themed) && themed.any(&[], &["t".into()]));
     }
 }

@@ -124,12 +124,13 @@ impl RestyleCache {
 
     /// The elements `mutated` and those whose style the batch of names
     /// `changed` may change (`invalidation::targets`): always a set, up to
-    /// the whole document.
+    /// the whole document. `after`: the attributes of each mutated element
+    /// after the batch.
     pub fn targets(
         &mut self,
         probe: &RestyleProbe,
         changed: &Changed,
-        mutated: &[Handle],
+        (mutated, after): (&[Handle], &[&[html5ever::Attribute]]),
     ) -> Vec<Handle> {
         // A name read inside a `:has()` argument changes its marks: each
         // probe of this batch (before and after it) marks them again.
@@ -162,7 +163,7 @@ impl RestyleCache {
             true => mutated.to_vec(),
             false => Vec::new(),
         };
-        features.targets(mutated)
+        features.targets(mutated, after)
     }
 
     /// Вход в каждый элемент `targets` при текущем состоянии исходного DOM.

@@ -66,15 +66,14 @@ impl Document {
         let Ok(Some(probe)) = cache.probe(input, theme_css, media, values) else {
             return Levels::document(document, "probe");
         };
-        let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let mut targets = cache.targets(&probe, changed, &mutated);
+        let (mutated, after): (Vec<_>, Vec<&[_]>) = (batch.elements.iter())
+            .map(|c| (c.element.clone(), &c.new[..]))
+            .unzip();
+        let mut targets = cache.targets(&probe, changed, (&mutated, &after));
         // `attr()` reads an attribute of the element its declaration applies
         // to (css-values-5 §7.7): a changed name the sheets or a mutated
         // element's own `style=""` read restyles the mutated elements.
-        let own = batch
-            .elements
-            .iter()
-            .flat_map(|c| c.old.iter().chain(&c.new));
+        let own = (batch.elements.iter()).flat_map(|c| c.old.iter().chain(&c.new));
         let styles = own.filter(|a| &*a.name.local == "style").map(|a| &*a.value);
         let reads = probe.reads_attr().with_styles(styles);
         let reads = reads.reads_any_of(changed.attrs.iter().map(String::as_str));
