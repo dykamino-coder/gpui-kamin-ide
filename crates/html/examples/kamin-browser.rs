@@ -62,8 +62,13 @@ fn main() {
                     .and_then(|o| o.time.as_ref())
                     .map_or((1280., 900.), |o| {
                         (
-                            o.width as f32 + viewport::SIDEBAR_WIDTH,
-                            o.height as f32 + viewport::TOOLBAR_HEIGHT,
+                            o.width as f32 + if o.plain { 0. } else { viewport::SIDEBAR_WIDTH },
+                            o.height as f32
+                                + if o.plain {
+                                    0.
+                                } else {
+                                    viewport::TOOLBAR_HEIGHT
+                                },
                         )
                     });
             let bounds = Bounds::centered(None, size(px(dimensions.0), px(dimensions.1)), cx);

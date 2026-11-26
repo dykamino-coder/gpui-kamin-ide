@@ -31,6 +31,8 @@ pub struct Browser {
     pub stamp: Option<(SystemTime, u64)>,
     #[cfg(feature = "viewer-timing")]
     pub timing: Option<crate::timing::Timing>,
+    #[cfg(feature = "viewer-timing")]
+    pub timing_plain: bool,
     _bounds: Subscription,
     _poll: Task<()>,
 }
@@ -85,6 +87,8 @@ impl Browser {
             stamp: None,
             #[cfg(feature = "viewer-timing")]
             timing: None,
+            #[cfg(feature = "viewer-timing")]
+            timing_plain: false,
             _bounds: bounds,
             _poll: poll,
         };

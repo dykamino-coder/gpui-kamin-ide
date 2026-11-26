@@ -2,6 +2,7 @@
 
 use super::counters::Counters;
 use super::cpu::Cpu;
+use super::frames::Frames;
 use gpui::profiler::journal::{
     ForegroundJournalCollector, ForegroundJournalEntry as Entry, IntervalBoundary as Boundary,
 };
@@ -42,6 +43,7 @@ pub struct Timing {
     longest_draw: Duration,
     longest_present: Duration,
     step: Rc<RefCell<Step>>,
+    frames: Rc<RefCell<Frames>>,
     _before: Subscription,
     after: Option<Subscription>,
 }
@@ -50,9 +52,12 @@ impl Timing {
     pub fn new(viewport: (f32, f32), window: &Window, cx: &App) -> Self {
         let step = Rc::new(RefCell::new(Step::default()));
         let before = step.clone();
+        let frames = Rc::new(RefCell::new(Frames::new()));
+        let frame_start = frames.clone();
         // GPUI SubscriberSet iterates monotonically increasing subscription ids.
         // Registered before DocumentView::open; the matching hook is registered after it.
-        let subscription = window.on_update_rendering(move |_, _| {
+        let subscription = window.on_update_rendering(move |_, cx| {
+            frame_start.borrow_mut().begin(cx);
             before.borrow_mut().mark = Some((Instant::now(), Cpu::read()));
         });
         Self {
@@ -75,17 +80,27 @@ impl Timing {
             longest_draw: Duration::ZERO,
             longest_present: Duration::ZERO,
             step,
+            frames,
             _before: subscription,
             after: None,
         }
     }
 
-    pub fn built(&mut self, window: &Window) {
+    pub fn built(
+        &mut self,
+        window: &Window,
+        page: Option<&gpui::Entity<kamin_html::host::document_view::DocumentView>>,
+    ) {
+        if let Some(page) = page {
+            self.frames.borrow_mut().attach(page);
+        }
         let step = self.step.clone();
+        let frames = self.frames.clone();
         self.after = Some(window.on_update_rendering(move |_, _| {
             let mut step = step.borrow_mut();
             if let Some((mark, cpu)) = step.mark.take() {
                 let elapsed = mark.elapsed();
+                frames.borrow_mut().step(elapsed);
                 if step.calls == 0 {
                     step.cpu_valid = true;
                 }
@@ -101,7 +116,8 @@ impl Timing {
         }));
     }
 
-    pub fn poll(&mut self) -> bool {
+    pub fn poll(&mut self, cx: &App) -> bool {
+        self.frames.borrow_mut().finish(cx);
         let drained = self.journal.collect_unseen();
         self.lost += drained.lost;
         for entry in drained.entries {
@@ -149,6 +165,7 @@ impl Timing {
         settled: bool,
     ) -> serde_json::Value {
         let step = self.step.borrow();
+        let frames = self.frames.borrow();
         let other = self.document_ms - self.parse_ms - self.style_ms;
         serde_json::json!({"page": path, "viewport": self.viewport,
             "first_present_ms": self.first.map(ms), "idle_ms": self.idle.map(ms),
@@ -165,7 +182,8 @@ impl Timing {
             "document_step_ms": ms(step.total), "longest_document_step_ms": ms(step.longest),
             "document_step_cpu_ms": (step.calls > 0 && step.cpu_valid).then_some(step.cpu_ms),
             "document_step_calls": step.calls, "retained_builds_replays": retained,
-            "builds_inside_draw": inside_draw, "gpui": self.counters.delta()})
+            "builds_inside_draw": inside_draw, "gpui": self.counters.delta(),
+            "frame_samples": frames.samples, "frame_samples_dropped": frames.dropped})
     }
 }
 

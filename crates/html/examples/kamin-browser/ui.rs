@@ -108,6 +108,10 @@ impl Render for Browser {
                 })
                 .into_any_element()
         };
+        #[cfg(feature = "viewer-timing")]
+        if self.timing_plain {
+            return page;
+        }
         let mut body = div()
             .flex()
             .w_full()
@@ -151,6 +155,6 @@ impl Render for Browser {
         if self.selector_open {
             root = root.child(self.selector(cx));
         }
-        root
+        root.into_any_element()
     }
 }

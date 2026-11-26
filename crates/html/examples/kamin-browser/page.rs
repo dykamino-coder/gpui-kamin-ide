@@ -49,7 +49,7 @@ impl Browser {
                 timing.parse_ms = phases.parse.as_secs_f64() * 1000.;
                 timing.style_ms = phases.style.as_secs_f64() * 1000.;
             }
-            timing.built(window);
+            timing.built(window, built.as_ref().ok());
         }
         match built {
             Ok(page) => {

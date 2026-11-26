@@ -20,6 +20,7 @@ pub struct TimeOptions {
         allow(dead_code, reason = "used by the opt-in timing driver")
     )]
     pub base_only: bool,
+    pub plain: bool,
     pub width: u32,
     pub height: u32,
 }
@@ -41,12 +42,14 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String
     let mut time = TimeOptions {
         folder: args.next().ok_or("Expected a folder after --time.")?.into(),
         base_only: false,
+        plain: false,
         width: 800,
         height: 600,
     };
     while let Some(flag) = args.next() {
         match flag.to_str() {
             Some("--base-only") => time.base_only = true,
+            Some("--plain") => time.plain = true,
             Some("--width" | "--height") => {
                 let value = args
                     .next()
@@ -90,6 +93,7 @@ mod tests {
             "--time",
             "pages",
             "--base-only",
+            "--plain",
             "--height",
             "480",
             "--width",
@@ -99,6 +103,7 @@ mod tests {
         .time
         .unwrap();
         assert!(time.base_only);
+        assert!(time.plain);
         assert_eq!((time.width, time.height), (375, 480));
         assert!(args(&["--time"]).is_err());
         assert!(args(&["--time", "pages", "--width", "0"]).is_err());

@@ -4,6 +4,8 @@
 mod counters;
 #[path = "timing_cpu.rs"]
 mod cpu;
+#[path = "timing_frames.rs"]
+mod frames;
 #[path = "timing_sample.rs"]
 mod sample;
 use crate::{app::Browser, cli::TimeOptions, folder, paths};
@@ -28,7 +30,7 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
     eprintln!(
         "TIMING_CONFIG {}",
         serde_json::json!({"width": options.width,
-        "height": options.height, "base_only": options.base_only,
+        "height": options.height, "base_only": options.base_only, "plain": options.plain,
         "list_ms": sample::ms(listed.elapsed()), "profile_debug_assertions": cfg!(debug_assertions),
         "idle": "first GPUI idle after final presentation, confirmed by 250ms without presentations",
         "phases": "GPUI window counters include chrome; taffy/measure/shape overlap draw and document_step; raster_submit includes swap; no GPU readback",
@@ -46,7 +48,11 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
         view.base_only = options.base_only;
         view.all_files = files;
         view.files = queue.clone();
-        view.list_focus.focus(window, cx);
+        view.timing_plain = options.plain;
+        if !options.plain {
+            view.list_focus.focus(window, cx);
+        }
+        cx.notify();
     });
     let view = view.downgrade();
     window
@@ -74,7 +80,7 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
                         let Some(timing) = &mut view.timing else {
                             return true;
                         };
-                        let settled = timing.poll();
+                        let settled = timing.poll(cx);
                         let failed = view.error.is_some();
                         if !settled
                             && !failed
