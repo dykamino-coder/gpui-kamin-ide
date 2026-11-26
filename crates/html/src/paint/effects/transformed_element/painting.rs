@@ -139,34 +139,36 @@ pub(super) fn paint_body(
         let clip_ancestor = group.fragment_clip_ancestor;
         // Primitives drawn through the matrix keep its inputs: a scrolled
         // replay builds the moved matrix as this paint at the new offset would.
-        with_pivot(pivot, window, |window| crate::layout::fragment::effect_fragment::paint(
-            paint.as_deref(),
-            matrix,
-            fill_matrix.unwrap_or(matrix),
-            clip_ancestor,
-            window,
-            |window| {
-                if let Some(exact) = fill_matrix {
-                    let mut frame = window.raster_frame().clone();
-                    frame.fill_transform = Some((window.current_transformation(), exact));
-                    window.with_raster_frame(frame, |window| {
+        with_pivot(pivot, window, |window| {
+            crate::layout::fragment::effect_fragment::paint(
+                paint.as_deref(),
+                matrix,
+                fill_matrix.unwrap_or(matrix),
+                clip_ancestor,
+                window,
+                |window| {
+                    if let Some(exact) = fill_matrix {
+                        let mut frame = window.raster_frame().clone();
+                        frame.fill_transform = Some((window.current_transformation(), exact));
+                        window.with_raster_frame(frame, |window| {
+                            crate::paint::decorations::outline_phase::scoped(
+                                paint.as_ref(),
+                                window,
+                                cx,
+                                |window, cx| child.paint(window, cx),
+                            )
+                        });
+                    } else {
                         crate::paint::decorations::outline_phase::scoped(
                             paint.as_ref(),
                             window,
                             cx,
                             |window, cx| child.paint(window, cx),
-                        )
-                    });
-                } else {
-                    crate::paint::decorations::outline_phase::scoped(
-                        paint.as_ref(),
-                        window,
-                        cx,
-                        |window, cx| child.paint(window, cx),
-                    );
-                }
-            },
-        ));
+                        );
+                    }
+                },
+            )
+        });
         return;
     }
     // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---

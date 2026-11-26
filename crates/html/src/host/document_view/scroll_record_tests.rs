@@ -50,7 +50,10 @@ fn wheel_steps_over_a_lifted_fixed_box_replay_without_a_build(cx: &mut TestAppCo
         let (builds, replays) = step(cx, &html, &name, |c| wheel_by(c, dy), &view, vcx);
         // A build names its cause (`frame_miss.*`).
         let causes = crate::why::take().journal.causes;
-        let causes: Vec<_> = causes.iter().filter(|cause| cause.code.starts_with("frame_miss")).collect();
+        let causes: Vec<_> = causes
+            .iter()
+            .filter(|cause| cause.code.starts_with("frame_miss"))
+            .collect();
         assert_eq!((builds, replays), (0, 2), "{name}: {causes:?}");
     }
 }

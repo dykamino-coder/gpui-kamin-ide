@@ -1,6 +1,6 @@
-//! Точные начала матрицы трансформа до привязки к устройству (CSS Transforms 1 §3): выбор
-//! неокруглённого начала для диагонального масштаба и классификация линейной части как поворота на кратное 90°
-//! или отражения, у которых свой путь привязки краёв.
+//! Exact transform origins before device snapping (CSS Transforms 1 §3): the
+//! unrounded origin of a diagonal scale, and the linear part classified as a
+//! quarter turn or reflection, whose edges snap their own way.
 
 use crate::paint::effects::transformed_element::Transformed;
 use gpui::{Pixels, Point};

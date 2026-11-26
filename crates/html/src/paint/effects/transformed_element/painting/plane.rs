@@ -45,11 +45,11 @@ pub(super) fn origin(group: &Transformed, (rw, rh, rdx, rdy): Reference) -> (f32
     (ox, oy)
 }
 
-/// Матрица плоского пути; второе — точная матрица заливки поворота на четверть;
-/// третье — входы матрицы (`gpui::TransformPivot`), когда снаружи нет
-/// преобразования или внешнее имеет свои входы (`outer`): повтор прокрутки
-/// строит из них ту же матрицу у сдвинутой коробки той же функцией. `unit` —
-/// снаружи нет действующего преобразования.
+/// The flat path's matrix, the exact fill matrix of a quarter turn, and the
+/// matrix inputs (`gpui::TransformPivot`) when no transform is outside or
+/// the outer one has its own (`outer`): a scrolled replay builds the same
+/// matrix for the moved box from them by the same function. `unit`: no
+/// transform applies outside.
 pub(super) fn matrix(
     group: &Transformed,
     (bounds, raw_origin, scaled_origin): (Bounds<Pixels>, Point<Pixels>, Point<Pixels>),
@@ -57,7 +57,11 @@ pub(super) fn matrix(
     r: Reference,
     (scale_factor, unit): (f32, bool),
     outer: Option<Rc<TransformPivot>>,
-) -> (TransformationMatrix, Option<TransformationMatrix>, Option<TransformPivot>) {
+) -> (
+    TransformationMatrix,
+    Option<TransformationMatrix>,
+    Option<TransformPivot>,
+) {
     let (rw, rh) = (r.0, r.1);
     let (ox, oy) = origin(group, r);
     // Матрица функций в порядке записи (css-transforms-1
@@ -65,10 +69,10 @@ pub(super) fn matrix(
     // возвращается. Проценты сдвига считаются от собственного размера —
     // он известен только здесь, на отрисовке.
     let shift = |row: [f32; 3]| (row[0] + rw * row[1] + rh * row[2]) * scale_factor;
-    // Поворот на кратное четверти (и отражение) оставляет коробку осевой:
-    // её края округляются к точке устройства так же, как у той же коробки,
-    // разложенной на месте (`gpui::QuarterSnap`; `offset-path-ray-011/013/014`
-    // против эталона `translate(...)`).
+    // A quarter turn (or reflection) keeps the box axis-aligned: its edges
+    // round to the device grid as the same box laid out in place does
+    // (`gpui::QuarterSnap`; `offset-path-ray-011/013/014` against their
+    // `translate(...)` references).
     let quarter = quarter_turn(group.lin).filter(|_| unit);
     let snap = quarter.map(|_| QuarterSnap {
         bounds,
@@ -76,7 +80,7 @@ pub(super) fn matrix(
         exact_size: [f32::from(exact.width), f32::from(exact.height)],
         raw_origin,
     });
-    // Под внешним преобразованием входы есть, только когда они есть у него.
+    // Under an outer transform the inputs exist only when it has its own.
     let outer = outer.filter(|_| !unit);
     let pivoted = unit || outer.is_some();
     let pivot = TransformPivot::new(

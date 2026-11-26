@@ -26,7 +26,12 @@ fn page() -> String {
     // Quarter turns whose fills snap both edges (no border, no rounding).
     for i in 0..6 {
         let (x, y) = (57 + i * 97, 80 + i * 410);
-        let turn = ["rotate(-90deg)", "rotate(180deg)", "scaleX(-1)", "rotate(270deg) translate(0.5px, 0.25px)"][i % 4];
+        let turn = [
+            "rotate(-90deg)",
+            "rotate(180deg)",
+            "scaleX(-1)",
+            "rotate(270deg) translate(0.5px, 0.25px)",
+        ][i % 4];
         boxes.push_str(&format!(
             "<div style='position:absolute;left:{x}.5px;top:{y}.25px;width:61.5px;height:33px;\
              background:#3a6;transform:{turn}'></div>"
@@ -45,7 +50,11 @@ fn page() -> String {
     // 3D functions outside a 3D context, flattened to the screen (`Flat3d`).
     for i in 0..5 {
         let (x, y) = (90 + i * 113, 150 + i * 560);
-        let turn = ["rotateX(39deg) skewY(-15deg)", "rotate(15deg) rotateY(-32deg) scale(.95)", "rotateX(29deg) rotateY(-57deg)"][i % 3];
+        let turn = [
+            "rotateX(39deg) skewY(-15deg)",
+            "rotate(15deg) rotateY(-32deg) scale(.95)",
+            "rotateX(29deg) rotateY(-57deg)",
+        ][i % 3];
         boxes.push_str(&format!(
             "<div style='position:absolute;left:{x}px;top:{y}.5px;width:84px;height:52px;border-radius:9px;\
              background:linear-gradient(30deg,#a63,#36a);transform:{turn}'></div>"
@@ -59,7 +68,11 @@ fn page() -> String {
 fn below() -> String {
     let mut boxes = String::new();
     for i in 0..60 {
-        let (x, y, deg) = (73 + (i * 53) % 583, 45 + i * 45, 7.3 * (i + 1) as f32 % 90.0);
+        let (x, y, deg) = (
+            73 + (i * 53) % 583,
+            45 + i * 45,
+            7.3 * (i + 1) as f32 % 90.0,
+        );
         boxes.push_str(&format!(
             "<div style='position:absolute;left:{x}px;top:{y}px;width:90px;height:60px;\
              background:linear-gradient(45deg,#c96,#369);border-radius:12px;transform:rotate({deg}deg)'></div>"
@@ -79,13 +92,20 @@ fn wheel_over(cx: &mut TestAppContext, html: String) {
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &html);
     frame(vcx);
-    for (i, dy) in [-120., -40., -120., 80., -360., -120., -120.].into_iter().enumerate() {
+    for (i, dy) in [-120., -40., -120., 80., -360., -120., -120.]
+        .into_iter()
+        .enumerate()
+    {
         let (b0, r0) = frames(&view, vcx);
         wheel_by(vcx, dy);
         frame(vcx);
         let (b1, r1) = frames(&view, vcx);
         let offset = root(&view, vcx).offset();
-        let name = format!("wheel {i} by {dy} (builds {}, replays {})", b1 - b0, r1 - r0);
+        let name = format!(
+            "wheel {i} by {dy} (builds {}, replays {})",
+            b1 - b0,
+            r1 - r0
+        );
         // The quads hold their matrices: equal strings are equal bits.
         assert_same(&name, &painted(vcx), &fresh_quads(cx, &html, offset));
         assert_eq!(b1 - b0, 0, "{name}");

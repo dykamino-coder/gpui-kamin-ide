@@ -154,11 +154,11 @@ impl Flat3d {
     fn own(&self) -> [[f32; 4]; 4] {
         use crate::style::computed::{Transform, mul4};
         let (sf, (rw, rh)) = (self.scale_factor, self.reference);
-        // Из css-точек в точки устройства — подобие S·M·S⁻¹, S = diag(sf, sf,
-        // sf, 1): столбец сдвига строк 0..2 умножается на sf, строка w
-        // столбцов 0..2 делится на sf, m44 НЕ трогается. (В шаге 1 цикл `0..4`
-        // домножал и m44 — `flatten_plane` делила на него всю матрицу, и
-        // каждый объёмный элемент сжимался в 1/sf.)
+        // CSS px to device px is the similarity S·M·S⁻¹, S = diag(sf, sf, sf,
+        // 1): the translation column of rows 0..2 is multiplied by sf, the w
+        // row of columns 0..2 divided by sf, and m44 is left alone
+        // (`flatten_plane` divides the whole matrix by it: scaling it shrank
+        // every 3D box by 1/sf).
         let mut own = self.m4;
         for (i, row) in own.iter_mut().enumerate() {
             for (j, v) in row.iter_mut().enumerate() {
@@ -171,7 +171,7 @@ impl Flat3d {
         for j in 0..3 {
             own[3][j] /= sf;
         }
-        // Точка отсчёта по трём осям, в точках устройства: T(o)·M·T(−o).
+        // The origin on three axes, in device px: T(o)·M·T(−o).
         let oz = self.origin_z.unwrap_or(0.0) * sf;
         let (ox_d, oy_d) = (
             (self.raw[0] + self.origin.0) * sf,
@@ -181,13 +181,13 @@ impl Flat3d {
             mul4(Transform::translate4(ox_d, oy_d, oz), own),
             Transform::translate4(-ox_d, -oy_d, -oz),
         );
-        // Перспектива ПРЯМОГО родителя (§3d-transform-rendering, п.3:
-        // «pre-multiply the parent element's perspective matrix»); стека
-        // preserve-3d здесь ещё нет — внукам не достаётся
-        // (perspective-children-only-*). Ячейку наполнил `paint` родителя в
-        // этом же кадре (или прошлом — она переживает кадр), поэтому её видит
-        // и отложенный слой абсолюта. Плоский ребёнок (z = 0) под
-        // перспективой не меняется — потому только объёмный путь.
+        // The DIRECT parent's perspective (§3d-transform-rendering, step 3:
+        // "pre-multiply the parent element's perspective matrix"); with no
+        // preserve-3d stack here, grandchildren do not get it
+        // (perspective-children-only-*). The parent's `paint` filled the cell
+        // in this frame (or an earlier one: it outlives the frame), so a
+        // deferred absolute layer sees it too. A flat child (z = 0) is not
+        // changed by a perspective, hence the 3D path only.
         match self.perspective {
             Some(p) => mul4(p, own),
             None => own,
@@ -226,12 +226,16 @@ impl Flat3d {
 
 impl gpui::TransformBuild for Flat3d {
     fn matrix(&self) -> gpui::TransformationMatrix {
-        self.flat(&self.own()).unwrap_or_else(gpui::TransformationMatrix::unit)
+        self.flat(&self.own())
+            .unwrap_or_else(gpui::TransformationMatrix::unit)
     }
 
     fn moved(&self, delta: gpui::Point<Pixels>) -> std::rc::Rc<dyn gpui::TransformBuild> {
         let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
         let raw = [self.raw[0] + dx, self.raw[1] + dy];
-        std::rc::Rc::new(Flat3d { raw, ..self.clone() })
+        std::rc::Rc::new(Flat3d {
+            raw,
+            ..self.clone()
+        })
     }
 }
