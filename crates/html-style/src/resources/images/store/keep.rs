@@ -10,6 +10,7 @@
 //! holds it and the memory cache by its URL, not per document lifetime.
 
 use super::{ImageId, ImageState, ImageStore};
+use std::sync::atomic::Ordering::Relaxed;
 
 /// One image as a record read it: its handle and the state it had
 /// (`ImageStore::image_revision`).
@@ -26,7 +27,7 @@ impl ImageStore {
             .enumerate()
             .filter_map(|(slot, cell)| {
                 let entry = cell.entry.as_ref()?;
-                let fresh = self.epoch.wrapping_sub(entry.used.get()) <= 1;
+                let fresh = self.epoch.wrapping_sub(entry.used.load(Relaxed)) <= 1;
                 (!fresh).then_some(ImageId {
                     slot: slot as u32,
                     generation: cell.generation,
@@ -44,8 +45,8 @@ impl ImageStore {
     /// The request `id` is used in this revision.
     pub(super) fn touch(&self, id: ImageId) {
         if let Some(entry) = self.entry(id) {
-            entry.used.set(self.epoch);
-            self.log.borrow_mut().push(id);
+            entry.used.store(self.epoch, Relaxed);
+            self.log().push(id);
         }
     }
 
@@ -64,12 +65,12 @@ impl ImageStore {
 
     /// Position in this frame's request log (`reads_since`).
     pub fn log_position(&self) -> usize {
-        self.log.borrow().len()
+        self.log().len()
     }
 
     /// The images requested or replayed since log position `at`, once each.
     pub fn reads_since(&self, at: usize) -> Box<[ImageRead]> {
-        let mut ids: Vec<ImageId> = self.log.borrow().get(at..).unwrap_or_default().to_vec();
+        let mut ids: Vec<ImageId> = self.log().get(at..).unwrap_or_default().to_vec();
         ids.sort_unstable_by_key(|id| (id.slot, id.generation));
         ids.dedup();
         ids.into_iter()
@@ -92,8 +93,13 @@ impl ImageStore {
         true
     }
 
+    /// This frame's request log; a poisoned lock keeps its list.
+    fn log(&self) -> std::sync::MutexGuard<'_, Vec<ImageId>> {
+        self.log.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// The frame is over: its request log starts empty in the next one.
     pub fn end_frame_log(&self) {
-        self.log.borrow_mut().clear();
+        self.log().clear();
     }
 }

@@ -120,11 +120,8 @@ use builder::Builder;
 
 use super::Document;
 use super::state::DocState;
-use crate::dom::Node;
-use crate::layout::reuse::FlowReuse;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement};
 use std::cell::Cell;
-use std::rc::Rc;
 
 /// Записи сохраняемого кадра одного дерева документа.
 #[derive(Default)]

@@ -69,8 +69,9 @@ struct Entry {
     /// Logical квота документа на точки готового растра.
     admission: Option<super::admission::Admission>,
     /// The last document revision that requested or replayed it (`keep`);
-    /// a replay marks it through a shared borrow of the store.
-    used: std::cell::Cell<u32>,
+    /// a replay marks it through a shared borrow of the store (the store is shared
+    /// with decode threads, hence atomic).
+    used: std::sync::atomic::AtomicU32,
 }
 
 #[derive(Default)]
@@ -99,7 +100,7 @@ pub struct ImageStore {
     diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
     /// Document revisions seen (`keep::renew`) and the requests of this frame (`keep`).
     epoch: u32,
-    log: std::cell::RefCell<Vec<ImageId>>,
+    log: std::sync::Mutex<Vec<ImageId>>,
 }
 
 impl Default for ImageStore {
@@ -176,9 +177,12 @@ impl ImageStore {
             attempt: self.attempts,
             subscribers: Vec::new(),
             admission: None,
-            used: std::cell::Cell::new(self.epoch),
+            used: std::sync::atomic::AtomicU32::new(self.epoch),
         });
-        self.log.get_mut().push(id);
+        self.log
+            .get_mut()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(id);
         self.by_request.insert(request, id);
         if allowed {
             self.enqueue(id);
