@@ -53705,6 +53705,10 @@ init_working_directory();
 function stdioWorkingDirectory(config) {
   return resolveWorkingDirectory(config.workingDirectory, config.projectRoot);
 }
+function stderrFailure(line) {
+  if (/^\s*\[?(?:trace|debug|info)\b/i.test(line)) return false;
+  return /\b(?:error|fatal|panic|exception|failed|refused|ENOENT|ECONNREFUSED|EPIPE|MODULE_NOT_FOUND)\b|cannot find module/i.test(line);
+}
 async function connectStdio(ctx, id) {
   const state = ctx.servers.get(id);
   const command = state.config.command;
@@ -53788,30 +53792,36 @@ async function connectStdio(ctx, id) {
         const line = stderrBuf.slice(0, idx).replace(/\r$/, "");
         stderrBuf = stderrBuf.slice(idx + 1);
         if (!line) continue;
-        const now = Date.now();
-        stderrTimes = stderrTimes.filter((t) => now - t < STDERR_BURST_WINDOW);
-        stderrTimes.push(now);
-        if (line === lastLine) lastLineCount++;
-        else {
-          lastLine = line;
-          lastLineCount = 1;
-        }
-        if (stderrTimes.length > STDERR_BURST_LIMIT) {
-          tripCircuit(`${stderrTimes.length} stderr lines in ${STDERR_BURST_WINDOW / 1e3}s`);
-          return;
-        }
-        if (lastLineCount > STDERR_REPEAT_LIMIT) {
-          tripCircuit(`identical line repeated ${lastLineCount}\xD7 ("${line.slice(0, 80)}")`);
-          return;
+        const failure = stderrFailure(line);
+        if (failure) {
+          const now = Date.now();
+          stderrTimes = stderrTimes.filter((t) => now - t < STDERR_BURST_WINDOW);
+          stderrTimes.push(now);
+          if (line === lastLine) lastLineCount++;
+          else {
+            lastLine = line;
+            lastLineCount = 1;
+          }
+          if (stderrTimes.length > STDERR_BURST_LIMIT) {
+            tripCircuit(`${stderrTimes.length} stderr errors in ${STDERR_BURST_WINDOW / 1e3}s`);
+            return;
+          }
+          if (lastLineCount > STDERR_REPEAT_LIMIT) {
+            tripCircuit(`identical line repeated ${lastLineCount}\xD7 ("${line.slice(0, 80)}")`);
+            return;
+          }
+        } else {
+          lastLineCount = 0;
         }
         if (line.includes("Cannot find module") || line.includes("MODULE_NOT_FOUND")) {
           state.permanentFailure = line.trim();
         }
         stderrConsoleCount += 1;
         if (stderrConsoleCount <= STDERR_CONSOLE_LIMIT) {
-          console.error(`[MCP ${state.config.name}] stderr:`, line);
+          const log2 = failure ? console.error : console.info;
+          log2(`[MCP ${state.config.name}] stderr:`, line);
         } else if (stderrConsoleCount === STDERR_CONSOLE_LIMIT + 1) {
-          console.error(`[MCP ${state.config.name}] stderr: \u2026\u0434\u0430\u043B\u044C\u0448\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u043F\u0430\u043D\u0435\u043B\u044C \u043B\u043E\u0433\u043E\u0432`);
+          console.info(`[MCP ${state.config.name}] stderr: \u2026\u0434\u0430\u043B\u044C\u0448\u0435 \u0442\u043E\u043B\u044C\u043A\u043E \u0432 \u043F\u0430\u043D\u0435\u043B\u044C \u043B\u043E\u0433\u043E\u0432`);
         }
         ctx.appendLog(id, "stderr", line);
       }
