@@ -112,7 +112,7 @@ pub(super) fn compare(a: &Value, b: &Value) -> String {
     }
     // Memory: the last frame of each run, by owner.
     if let (Some(la), Some(lb)) = (fa.last(), fb.last()) {
-        let changed = super::text::changes(&owners(la), &owners(lb));
+        let changed = kamin_html::why::owner_changes(&owners(la), &owners(lb));
         for (owner, d) in changed.iter().take(SHOWN_OWNERS) {
             let _ = writeln!(s, "  memory {d:+} {owner}");
         }

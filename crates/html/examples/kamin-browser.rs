@@ -1,46 +1,46 @@
-//! A standalone browser seed: open a local HTML page, scroll its root, resize its viewport.
+//! Standalone local-page viewer: native file/folder opening and engine-owned scrolling.
 //!
-//! Run: cargo run -p kamin-html --example kamin-browser -- page.html
+//! Run: cargo run -p kamin-html --example kamin-browser -- [page.html | folder]
+//! Timing: build with `--features why-profiler`, then run
+//! `kamin-browser --time folder --why journal-dir [--base-only] [--width 800 --height 600]`.
 
+#![cfg_attr(windows, windows_subsystem = "windows")]
 #![allow(
     clippy::print_stderr,
-    reason = "process entry point reports startup failures"
+    reason = "viewer reports file loading and startup errors"
 )]
 
-use gpui::{
-    AppContext, Bounds, Context, Entity, Focusable, IntoElement, ParentElement, Render,
-    TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
-};
-use kamin_html::{BROWSER_CSS, Document, host::document_view::DocumentView};
-use std::{collections::HashSet, path::PathBuf};
+#[path = "kamin-browser/app.rs"]
+mod app;
+#[path = "kamin-browser/cli.rs"]
+mod cli;
+#[path = "kamin-browser/dialog.rs"]
+mod dialog;
+#[path = "kamin-browser/folder.rs"]
+mod folder;
+#[path = "kamin-browser/page.rs"]
+mod page;
+#[path = "kamin-browser/paths.rs"]
+mod paths;
+#[path = "kamin-browser/selector.rs"]
+mod selector;
+#[cfg(feature = "why-profiler")]
+#[path = "kamin-browser/timing.rs"]
+mod timing;
+#[path = "kamin-browser/toolbar.rs"]
+mod toolbar;
+#[path = "kamin-browser/ui.rs"]
+mod ui;
+#[path = "kamin-browser/viewport.rs"]
+mod viewport;
+#[path = "kamin-browser/window.rs"]
+mod window;
 
-struct Browser {
-    page: Result<Entity<DocumentView>, kamin_html::DocumentFailure>,
-}
-
-impl Render for Browser {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        match &self.page {
-            Ok(page) => page.clone().into_any_element(),
-            Err(error) => div()
-                .child(format!("Cannot build page: {error}"))
-                .into_any_element(),
-        }
-    }
-}
+use gpui::{AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
+use std::collections::HashSet;
 
 fn main() {
-    let Some(path) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("Usage: kamin-browser <page.html>");
-        return;
-    };
-    let html = match std::fs::read_to_string(&path) {
-        Ok(html) => html,
-        Err(error) => {
-            eprintln!("Cannot read {}: {error}", path.display());
-            return;
-        }
-    };
+    let options = cli::parse(std::env::args_os().skip(1));
     gpui_platform::application()
         .with_instrumentation(kamin_html::host::instrumentation::from_env())
         .run(move |cx| {
@@ -55,46 +55,66 @@ fn main() {
                         .into_iter()
                         .find(|name| !before.contains(name))
                 });
-            let bounds = Bounds::centered(None, size(px(1280.), px(900.)), cx);
+            let dimensions =
+                options
+                    .as_ref()
+                    .ok()
+                    .and_then(|o| o.time.as_ref())
+                    .map_or((1280., 900.), |o| {
+                        (
+                            o.width as f32 + if o.plain { 0. } else { viewport::SIDEBAR_WIDTH },
+                            o.height as f32
+                                + if o.plain {
+                                    0.
+                                } else {
+                                    viewport::TOOLBAR_HEIGHT
+                                },
+                        )
+                    });
+            let bounds = Bounds::centered(None, size(px(dimensions.0), px(dimensions.1)), cx);
             let opened = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions {
-                        title: Some(format!("Kamin Browser - {}", path.display()).into()),
+                        title: Some("Kamin Browser".into()),
                         ..Default::default()
                     }),
                     ..Default::default()
                 },
                 |window, cx| {
-                    cx.new(|cx| {
-                        let view = DocumentView::open(
-                            Document::builder(&html, BROWSER_CSS)
-                                .fonts(&fonts)
-                                .path(&path),
-                            window.viewport_size(),
-                            window,
-                            cx,
-                        )
-                        .inspect_err(|error| eprintln!("Cannot build page: {error}"));
-                        if let Ok(view) = &view {
-                            view.update(cx, |view, cx| {
-                                cx.observe_window_bounds(window, |view, window, cx| {
-                                    if let Err(error) = view.resize(window.viewport_size(), cx) {
-                                        eprintln!("Cannot resize page: {error}");
-                                    }
-                                })
-                                .detach();
-                                view.focus_handle(cx).focus(window, cx);
-                            });
+                    let path = options.as_ref().ok().and_then(|o| o.path.clone());
+                    let view = cx.new(|cx| app::Browser::new(path, fonts, window, cx));
+                    match options {
+                        Ok(options) => {
+                            #[cfg(feature = "why-profiler")]
+                            if let Some(options) = options.time {
+                                timing::start(&view, options, window, cx);
+                            }
+                            #[cfg(not(feature = "why-profiler"))]
+                            if options.time.is_some() {
+                                view.update(cx, |view, _| {
+                                    view.error = Some(
+                                        "Timing mode requires the why-profiler Cargo feature."
+                                            .into(),
+                                    )
+                                });
+                            }
                         }
-                        Browser { page: view }
-                    })
+                        Err(error) => view.update(cx, |view, _| view.error = Some(error)),
+                    }
+                    view
                 },
             );
             if let Err(error) = opened {
-                eprintln!("Cannot open page: {error}");
+                eprintln!("Cannot open viewer: {error}");
                 cx.quit();
             }
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
             cx.activate(true);
         });
 }

@@ -16,6 +16,8 @@ pub struct DocumentView {
     focus: FocusHandle,
     place: Option<ElementPlace>,
     _step: Subscription,
+    #[cfg(feature = "why-profiler")]
+    journal: Option<crate::why::WindowJournal>,
 }
 
 impl DocumentView {
@@ -40,9 +42,33 @@ impl DocumentView {
         let view = cx.weak_entity();
         let step = window.on_update_rendering(move |window, app| {
             let _ = view.update(app, |view, cx| {
+                #[cfg(feature = "why-profiler")]
+                let mut sample = view.journal.as_ref().map(|j| j.begin(&view.document));
                 if let Some(place) = &view.place {
                     view.document
-                        .update_rendering(&view.opts, place, window, cx, |_| {});
+                        .update_rendering(&view.opts, place, window, cx, |phase| {
+                            #[cfg(feature = "why-profiler")]
+                            if let Some(sample) = &mut sample {
+                                sample.phase(phase);
+                            }
+                            #[cfg(not(feature = "why-profiler"))]
+                            let _ = phase;
+                        });
+                    #[cfg(feature = "why-profiler")]
+                    if let Some(sample) = &mut sample {
+                        sample.prepared();
+                    }
+                }
+                #[cfg(feature = "why-profiler")]
+                if let Some(sample) = sample {
+                    let weak = cx.weak_entity();
+                    window.defer(cx, move |window, cx| {
+                        let _ = weak.update(cx, |view, cx| {
+                            if let Some(journal) = &view.journal {
+                                journal.drawn(sample, &view.document, window, cx);
+                            }
+                        });
+                    });
                 }
             });
         });
@@ -62,6 +88,8 @@ impl DocumentView {
             },
             focus: cx.focus_handle(),
             _step: step,
+            #[cfg(feature = "why-profiler")]
+            journal: None,
         }
     }
 
@@ -90,6 +118,13 @@ impl DocumentView {
     /// Apply document mutations, then notify this view to request a frame.
     pub fn document_mut(&mut self) -> &mut Document {
         &mut self.document
+    }
+
+    /// Attach the shared DevTools frame journal. Without a recorder there
+    /// are no diagnostic clocks, checkpoints or memory walks in this view.
+    #[cfg(feature = "why-profiler")]
+    pub fn set_journal(&mut self, journal: crate::why::WindowJournal) {
+        self.journal = Some(journal);
     }
 }
 
@@ -140,6 +175,9 @@ mod embedding_tests;
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
+#[cfg(test)]
+#[cfg(feature = "why-profiler")]
+mod journal_tests;
 #[cfg(test)]
 mod nested_scroll_tests;
 #[cfg(test)]

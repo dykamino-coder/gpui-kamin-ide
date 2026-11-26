@@ -26,9 +26,10 @@ impl Render for Panel {
 
 #[gpui::test]
 fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
-    let (panel, cx) = cx.add_window_view(|window, cx| Panel {
+    let html = LONG.replace("<main></main>", "<main>old text</main>");
+    let (panel, cx) = cx.add_window_view(move |window, cx| Panel {
         page: DocumentView::open(
-            &mut Document::builder(LONG, ""),
+            &mut Document::builder(&html, ""),
             size(px(400.), px(300.)),
             window,
             cx,
@@ -65,16 +66,19 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
         assert!(replays > 0);
     });
 
-    // A new generation still uses the element's embedding for preparation.
+    // An in-place text edit keeps the embedding across retained generations.
+    let before = cx.update(|_, cx| page.read(cx).document.frame_counters());
     cx.update(|_, cx| {
         page.update(cx, |page, cx| {
             page.document
-                .update(&format!("{LONG}<p>new text</p>"), "")
+                .update(
+                    &LONG.replace("<main></main>", "<main>new longer text</main>"),
+                    "",
+                )
                 .unwrap();
             cx.notify();
         });
     });
-    let before = cx.update(|_, cx| page.read(cx).document.frame_counters());
     frame(cx);
     cx.update(|_, cx| {
         let (builds, _, inside) = page
