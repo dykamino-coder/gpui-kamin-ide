@@ -45596,8 +45596,9 @@ function workspaceMode(value) {
 }
 var CLIENT_STREAM_PROTOCOL = 1;
 var SESSION_LIMIT_CLOSE_CODE = 4002;
+var INVALID_TOKEN_CLOSE_CODE = 4001;
 function stickyRefusal(previous, next, intentional) {
-  if (next.status === "authenticated" || intentional) return void 0;
+  if (next.status === "authenticated" || intentional || next.closeCode === INVALID_TOKEN_CLOSE_CODE) return void 0;
   if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return "session-limit";
   return previous;
 }

@@ -81,6 +81,7 @@ export interface ExtendedConnectionState {
 /** Server close code for "this token already has the maximum number of
  *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
 export const SESSION_LIMIT_CLOSE_CODE = 4002
+const INVALID_TOKEN_CLOSE_CODE = 4001
 
 /** The refusal that stays on the tab: set by a session-limit close, kept
  *  through the reconnect states that follow, cleared once the tab connects or
@@ -90,7 +91,9 @@ export function stickyRefusal(
   next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
   intentional: boolean,
 ): ConnectionRefusal | undefined {
-  if (next.status === 'authenticated' || intentional) return undefined
+  // A new admission decision supersedes the previous refusal. Losing the
+  // transport alone provides no such decision.
+  if (next.status === 'authenticated' || intentional || next.closeCode === INVALID_TOKEN_CLOSE_CODE) return undefined
   if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
   return previous
 }
