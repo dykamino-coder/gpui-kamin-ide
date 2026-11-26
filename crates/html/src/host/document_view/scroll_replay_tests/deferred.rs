@@ -88,10 +88,10 @@ fn a_deferred_composition_group_spilling_over_the_window_builds_scrolled(cx: &mu
     let labels = |c: &mut VisualTestContext| c.update(|window, _| window.painted_groups().0);
     for (i, dy) in [-20., -20., 20.].into_iter().enumerate() {
         let name = format!("wheel {i} by {dy}");
-        let (b0, r0) = frames(&view, vcx);
+        let (b0, _) = frames(&view, vcx);
         wheel_by(vcx, dy);
         frame(vcx);
-        let (b1, r1) = frames(&view, vcx);
+        let (b1, _) = frames(&view, vcx);
         let offset = root(&view, vcx).offset();
         assert_same(&name, &painted(vcx), &fresh_quads(cx, &html, offset));
         assert_eq!(labels(vcx), fresh_with(cx, &html, offset, labels), "{name}");
