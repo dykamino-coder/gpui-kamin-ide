@@ -36,6 +36,7 @@ function thinkingDisplayChoice(value: unknown): Pick<SessionConfig, 'thinkingDis
 import {
   codexBinding,
   codexEffort as codexReasoningEffort,
+  effectiveEffort,
   codexModel as toCodexModel,
   saveCodexChoice,
 } from './session-codex'
@@ -1085,25 +1086,31 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             sendError(ws, 'Session not found')
             return
           }
-          if (!isEffortLevel(msg.effort)) {
-            sendError(ws, `Unsupported effort level: ${String(msg.effort).slice(0, 32)}`)
-            return
-          }
           const codexEffort = codexBinding(session)
           if (codexEffort) {
             // codex takes the effort per turn: it applies from the next turn, no restart.
-            codexEffort.agent.setEffort(codexReasoningEffort(msg.effort))
-            session.effort = msg.effort
-            saveCodexChoice(session, { effort: msg.effort })
+            const supported = codexRuntime().knownModel(session.model)?.reasoningEfforts
+            const level = codexReasoningEffort(msg.effort, supported)
+            if (level) {
+              codexEffort.agent.setEffort(level)
+              session.effort = level
+              saveCodexChoice(session, { effort: level })
+            } else {
+              codexEffort.appendSystem('The selected Codex model does not support that reasoning effort.', 'warning')
+            }
             ws.send(
               JSON.stringify({
                 type: 'session:model-changed',
                 sessionId: authenticatedSessionId,
                 model: session.model,
-                effort: msg.effort,
+                effort: session.effort,
                 inPlace: true,
               }),
             )
+            return
+          }
+          if (!isEffortLevel(msg.effort)) {
+            sendError(ws, `Unsupported effort level: ${String(msg.effort).slice(0, 32)}`)
             return
           }
           // Live path: `/effort <level>` in the running CLI keeps the PTY, the
@@ -1342,7 +1349,10 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               await codexModel.agent.setModel(next)
               codexModel.modelChanged(next)
               session.model = next
-              saveCodexChoice(session, { model: next })
+              const level = effectiveEffort(next, session.effort, codexRuntime())
+              codexModel.agent.setEffort(level)
+              session.effort = level ?? null
+              saveCodexChoice(session, { model: next, effort: level })
               if (session.conversation) noteSegmentModel(session.conversation, next)
             }
             ws.send(

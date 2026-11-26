@@ -1291,7 +1291,7 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
  *  `minimal` has no Claude `--effort`, so Claude starts on its default then. */
 export function switchedEffort(effort: string | null | undefined, engine: AgentEngineId): string | undefined {
   if (!effort) return undefined
-  if (engine === 'codex') return effort
+  if (engine === 'codex') return effort === 'max' ? 'xhigh' : effort
   return CLAUDE_EFFORTS.has(effort) ? effort : undefined
 }
 /** Claude Code's `--effort` scale (live-switch.ts EFFORT_LEVELS). */
