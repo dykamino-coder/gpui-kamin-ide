@@ -1,8 +1,8 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
 use super::super::frame::{raster_phase_matches, scaled};
-use super::{ReplayRecord, plain_environment};
-use gpui::{LayoutId, Pixels, Point, Window};
+use super::{Ranges, ReplayRecord, plain_environment};
+use gpui::{ContentMask, LayoutId, Pixels, Point, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -13,6 +13,9 @@ pub(in crate::layout::reuse) struct ReplaySlot {
     /// How far the block lies from where it painted (`valid`): a content
     /// record whose output moves (`Ranges::movable`) replays moved.
     pub(super) offset: Cell<Point<Pixels>>,
+    /// The copy meets another mask than its record's and is clipped by it
+    /// (`Replay::prepaint`).
+    pub(super) cut: Cell<bool>,
 }
 
 impl ReplaySlot {
@@ -21,6 +24,7 @@ impl ReplaySlot {
             record,
             layout: Cell::new(None),
             offset: Cell::new(Point::default()),
+            cut: Cell::new(false),
         }
     }
 
@@ -61,7 +65,7 @@ impl ReplaySlot {
                 _ if r.serial + 1 != serial => Some("serial"),
                 _ if !r.lines.complete() => Some("lines"),
                 _ if r.scale != scale => Some("scale"),
-                _ if r.mask != mask => Some("mask"),
+                _ if !clip_holds(r, window, id, origin, &mask) => Some("mask"),
                 _ if r.size != size => Some("size"),
                 _ if moved
                     && !(moves
@@ -87,4 +91,54 @@ impl ReplaySlot {
             None => Some("ranges"),
         }
     }
+}
+
+/// The record's mask still holds at `origin`: it is the frame's `mask`, or a
+/// container's clip (`Ranges::container`) whose layout parent lies the same
+/// size where the record moved with it, inside the frame's mask. The clip of
+/// an ancestor above the parent is not known here: `Replay` clips by it.
+fn clip_holds(
+    r: &Ranges,
+    window: &mut Window,
+    id: LayoutId,
+    origin: Point<Pixels>,
+    mask: &ContentMask<Pixels>,
+) -> bool {
+    if r.mask == *mask {
+        return true;
+    }
+    let (Some(container), Some(parent)) = (r.container, window.parent_layout_id(id)) else {
+        return false;
+    };
+    let offset = origin - r.origin;
+    let moved = gpui::Bounds {
+        origin: r.mask.bounds.origin + offset,
+        size: r.mask.bounds.size,
+    };
+    let shift = window.layout_origin_unrounded(parent) - container.origin;
+    window.layout_size_unrounded(parent) == container.size
+        && near(shift.x, offset.x)
+        && near(shift.y, offset.y)
+        && within(moved, mask.bounds)
+}
+
+/// Unrounded layout positions of one placement differ by float noise only;
+/// their device edges round alike (`raster_phase_matches`).
+fn near(a: Pixels, b: Pixels) -> bool {
+    (a - b).abs() < gpui::px(1.0 / 64.0)
+}
+
+/// `inner` lies inside `outer` but for float noise (`near`).
+pub(super) fn within(inner: gpui::Bounds<Pixels>, outer: gpui::Bounds<Pixels>) -> bool {
+    let (a, b) = (inner, outer);
+    let ge = |x: Pixels, y: Pixels| x > y || near(x, y);
+    ge(a.origin.x, b.origin.x)
+        && ge(a.origin.y, b.origin.y)
+        && ge(b.origin.x + b.size.width, a.origin.x + a.size.width)
+        && ge(b.origin.y + b.size.height, a.origin.y + a.size.height)
+}
+
+/// `a` and `b` are the same bounds but for float noise (`near`).
+pub(super) fn same(a: gpui::Bounds<Pixels>, b: gpui::Bounds<Pixels>) -> bool {
+    within(a, b) && within(b, a)
 }

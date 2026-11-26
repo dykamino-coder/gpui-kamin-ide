@@ -1,9 +1,10 @@
 //! Элементы повтора: обёртка записи вокруг собранного блока и заместитель,
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
-use super::{PendingReplay, ReplaySlot, plain_environment};
+use super::slot::{same, within};
+use super::{ClipFrame, PendingReplay, ReplaySlot, plain_environment};
 use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred_moved};
-use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Window};
+use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Point, Window};
 use std::rc::Rc;
 /// Прозрачная обёртка блока: снимает узлы раскладки, диапазоны prepaint и
 /// краски этого кадра.
@@ -56,9 +57,14 @@ impl Wrap for ReplayRecorder {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
             let mask = window.content_mask();
+            let container = window.parent_layout_id(id).map(|parent| ClipFrame {
+                origin: window.layout_origin_unrounded(parent),
+                size: window.layout_size_unrounded(parent),
+            });
             self.pending.capture(|c| {
                 c.prepaint = Some((range, origin, size));
                 c.mask = Some(mask);
+                c.container = container;
             });
         }
     }
@@ -143,8 +149,34 @@ impl Hooks for Replay {
 
     fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, _: &mut App) {
         let offset = self.slot.offset.get();
+        let mask = window.content_mask();
         self.slot.record.ranges(|r| {
-            r.prepaint = window.replay_retained_prepaint_moved(&r.prepaint, offset);
+            // The frame check saw no ancestor clip (`ReplaySlot::refusal`):
+            // one that changed while the record stayed clips its copy, and a
+            // copy whose ink it cut no longer moves. A record with listeners
+            // keeps the plain copy, as before clipped records were made.
+            // A container's clip moved with it; the frame's mask stays.
+            let moved = |b: Bounds<Pixels>, by: Point<Pixels>| Bounds {
+                origin: b.origin + by,
+                size: b.size,
+            };
+            let by = if r.container.is_some() {
+                offset
+            } else {
+                Point::default()
+            };
+            let expected = moved(r.mask.bounds, by);
+            // Only a paint-only copy is clipped (`replay_retained_paint_clipped`).
+            let cut = !same(mask.bounds, expected) && r.movable;
+            if cut {
+                r.movable &= within(expected, mask.bounds);
+            }
+            r.mask = mask;
+            if let Some(container) = &mut r.container {
+                container.origin += offset;
+            }
+            self.slot.cut.set(cut);
+            r.prepaint = window.replay_retained_prepaint_clipped(&r.prepaint, offset, cut);
         });
     }
 
@@ -156,12 +188,16 @@ impl Hooks for Replay {
         window: &mut Window,
         _: &mut App,
     ) {
-        let offset = self.slot.offset.get();
+        let (offset, cut) = (self.slot.offset.get(), self.slot.cut.get());
         self.slot.record.ranges(|r| {
             // Строки вне открытого кадра рисуются на месте: в выводе блока.
             let (lines, paint) = window.record_retained_paint(|window| {
-                window.replay_retained_paint_moved(&r.paint, offset);
-                replay_deferred_moved(window, &r.lines, offset)
+                if cut {
+                    window.replay_retained_paint_clipped(&r.paint, offset);
+                } else {
+                    window.replay_retained_paint_moved(&r.paint, offset);
+                }
+                replay_deferred_moved(window, &r.lines, offset, cut)
             });
             r.paint = paint;
             r.lines = lines;

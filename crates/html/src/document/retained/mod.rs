@@ -21,6 +21,8 @@ mod box_repaint_tests;
 #[cfg(test)]
 mod child_removal_tests;
 #[cfg(test)]
+mod clip_replay_tests;
+#[cfg(test)]
 mod column_repaint_tests;
 #[cfg(test)]
 mod column_unseen_tests;
