@@ -24,6 +24,9 @@ try {
         $env:FAKE_CODEX_LOGGED_IN = '1'
         $runner = Start-Process node -ArgumentList @('extensions/claude-bridge/server/test-support/run.mjs', ("`"$bridge`"")) -PassThru -WindowStyle Hidden
     }
+    # The production minimum-power policy takes precedence over DebugDevice::Warp.
+    # Select the default policy so the disposable debug launcher can select WARP.
+    $env:KAMIN_GPU_ADAPTER = 'default'
     $stage = 'launch-client'
     ./scripts/start_native_acceptance.ps1 -Exe $exe -EvidenceDir $client -WithHost -Warp -SoftwareCef -Port 19357
     $manifest = Get-Content -Raw (Join-Path $client 'manifest.json') | ConvertFrom-Json
