@@ -26,7 +26,7 @@ import {
 import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
 import { codexLockdownConfig, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog, type ModelCatalog } from './model-catalog'
-import { probeCodexNetwork } from './network-probe'
+import { probeCodexNetwork, type CodexNetworkReport } from './network-probe'
 import { currentModels } from './model-list-filter'
 import { parseCodexRateLimits, type CodexRateLimits } from '../../shared/codex-rate-limits'
 
@@ -107,11 +107,13 @@ export interface CodexRuntimeOptions {
   /** Replaces the `codex --version` probe (tests). */
   probeVersion?: () => Promise<string>
   accountTtlMs?: number
-  /** Replaces the proxy/TLS probe behind a failed account read (tests). */
-  probeNetwork?: (env: NodeJS.ProcessEnv) => Promise<CodexErrorInfo | null>
+  /** Replaces the network probe behind a failed account read or login (tests). */
+  probeNetwork?: (env: NodeJS.ProcessEnv) => Promise<CodexNetworkReport>
 }
 
 const ACCOUNT_TTL_MS = 60_000
+/** Repeated health/dashboard asks within this window share one probe. */
+const NETWORK_REPORT_TTL_MS = 30_000
 
 function run(command: CodexCommand, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -139,6 +141,7 @@ export class CodexRuntime {
   private readonly listening = new WeakSet<CodexHost>()
   private readonly accountListeners = new Set<(status: CodexAccountStatus) => void>()
   private probe: { value: Promise<CodexAvailability>; at: number; ok: boolean } | undefined
+  private network: { value: Promise<CodexNetworkReport>; at: number } | undefined
 
   constructor(private readonly options: CodexRuntimeOptions = {}) {
     this.env = options.env ?? process.env
@@ -249,7 +252,11 @@ export class CodexRuntime {
       return
     }
     this.account = undefined
-    void this.accountStatus({ fresh: true })
+    // A failed login ("device code request failed with status 403") names no
+    // cause; the probe tells the proxy from OpenAI before the card refreshes.
+    const failed = this.lastError
+    void (failed ? this.explainFailure(failed).then((info) => void (this.lastError = info)) : Promise.resolve())
+      .then(() => this.accountStatus({ fresh: true }))
       .then((status) => {
         for (const listener of this.accountListeners) listener(status)
       })
@@ -290,7 +297,7 @@ export class CodexRuntime {
         planType: null,
         accountType: null,
         pendingLogin: this.pending,
-        error: await this.explainReadFailure(classifyCodexError((error as Error).message)),
+        error: await this.explainFailure(classifyCodexError((error as Error).message)),
         checkFailed: true,
       }
     }
@@ -305,12 +312,27 @@ export class CodexRuntime {
     return this.limits
   }
 
-  /** codex names no cause for a blocked connection ("workspace routing
-   *  discovery failed"); ask the network the way codex would. */
-  private async explainReadFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
-    if (info.kind !== 'other' && info.kind !== 'network') return info
+  /** Probe of every host codex needs, through the codex env; asks within
+   *  NETWORK_REPORT_TTL_MS share one probe (the /health route is public). */
+  networkReport(options: { fresh?: boolean } = {}): Promise<CodexNetworkReport> {
+    if (!options.fresh && this.network && Date.now() - this.network.at < NETWORK_REPORT_TTL_MS) {
+      return this.network.value
+    }
     const env = buildCodexEnv({ home: this.home, base: this.env, injectProxy: injectProxyEnv })
-    const cause = await (this.options.probeNetwork ?? probeCodexNetwork)(env).catch(() => null)
+    const value = (this.options.probeNetwork ?? probeCodexNetwork)(env)
+    const entry = { value, at: Date.now() }
+    this.network = entry
+    value.catch(() => {
+      if (this.network === entry) this.network = undefined
+    })
+    return value
+  }
+
+  /** codex names no cause for a blocked connection ("workspace routing
+   *  discovery failed", a bare 403 at login); ask the network the way codex would. */
+  async explainFailure(info: CodexErrorInfo): Promise<CodexErrorInfo> {
+    if (info.kind !== 'other' && info.kind !== 'network') return info
+    const cause = (await this.networkReport().catch(() => null))?.problem
     if (!cause) return info
     return { kind: cause.kind, message: cause.message, detail: `${info.detail}; ${cause.detail}` }
   }
