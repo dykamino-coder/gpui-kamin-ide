@@ -119,9 +119,14 @@ try {
       assert.equal(value, tab);
     });
     await step("render-synthetic-answer", async () => {
-      const { value } = await web("return window.bridgeCmd.entries(12)");
-      assert.equal(value.settling, false);
-      assert.ok(value.items.some(row => row.type === "assistant" && row.text.startsWith(`echo: ${marker} [model=`)));
+      const expected = `echo: ${marker} [model=`;
+      const { value } = await web(`const entries=window.bridgeCmd.entries(20), expected=${JSON.stringify(expected)};
+        return { settled:!entries.settling,
+          user:entries.items.some(row=>row.type==='user' && row.text===${JSON.stringify(marker)}),
+          assistant:entries.items.some(row=>row.type==='assistant' && row.text.startsWith(expected)),
+          rendered:Array.from(document.querySelectorAll('.jsonl-entry-assistant')).some(el=>el.textContent.includes(expected)) }`);
+      report.turn = value;
+      assert.ok(value.settled && value.user && value.assistant && value.rendered);
     }, true);
     if (fixture) await checkWorkspaceLink({ fixture, installed, ...driver });
     if (behavior === "engine-menus") await checkEngineMenus(driver, tab);
