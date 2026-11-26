@@ -99,12 +99,19 @@ impl Window {
         let scale = self.scale_factor();
         // The flat transform painted now, for a mark's move (`TransformPivot`).
         let pivot = self.transform_pivot.clone();
-        let transformed = !self.current_transformation().moves_exactly();
         self.next_frame.with_scene_node(scale, |scene| {
-            (scene.scroll.pivot, scene.scroll.transformed) = (pivot, transformed);
+            scene.scroll.pivot = pivot;
             scene.insert_primitive(primitive);
-            (scene.scroll.pivot, scene.scroll.transformed) = (None, false);
+            scene.scroll.pivot = None;
         });
+    }
+
+    /// The pivot of the current transformation, when it is the matrix the
+    /// innermost `with_transform_pivot` builds: a transform painted under it
+    /// builds its own pivot on it.
+    pub fn current_transform_pivot(&self) -> Option<std::rc::Rc<crate::TransformPivot>> {
+        let current = self.current_transformation();
+        self.transform_pivot.clone().filter(|pivot| pivot.matrix() == current)
     }
 
     /// Run `f` painting under the flat transform `pivot` builds (its

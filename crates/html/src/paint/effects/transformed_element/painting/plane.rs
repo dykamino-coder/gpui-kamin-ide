@@ -5,6 +5,7 @@
 use crate::paint::effects::transform_geometry::quarter_turn;
 use crate::paint::effects::transformed_element::Transformed;
 use gpui::{Bounds, Pixels, Point, QuarterSnap, Size, TransformPivot, TransformationMatrix};
+use std::rc::Rc;
 
 /// Опорная коробка: ширина, высота и смещение от начала коробки (`raw_origin`).
 pub(super) type Reference = (f32, f32, f32, f32);
@@ -46,14 +47,16 @@ pub(super) fn origin(group: &Transformed, (rw, rh, rdx, rdy): Reference) -> (f32
 
 /// Матрица плоского пути; второе — точная матрица заливки поворота на четверть;
 /// третье — входы матрицы (`gpui::TransformPivot`), когда снаружи нет
-/// преобразования: повтор прокрутки строит из них ту же матрицу у сдвинутой
-/// коробки той же функцией. `unit` — снаружи нет действующего преобразования.
+/// преобразования или внешнее имеет свои входы (`outer`): повтор прокрутки
+/// строит из них ту же матрицу у сдвинутой коробки той же функцией. `unit` —
+/// снаружи нет действующего преобразования.
 pub(super) fn matrix(
     group: &Transformed,
     (bounds, raw_origin, scaled_origin): (Bounds<Pixels>, Point<Pixels>, Point<Pixels>),
     exact: Size<Pixels>,
     r: Reference,
     (scale_factor, unit): (f32, bool),
+    outer: Option<Rc<TransformPivot>>,
 ) -> (TransformationMatrix, Option<TransformationMatrix>, Option<TransformPivot>) {
     let (rw, rh) = (r.0, r.1);
     let (ox, oy) = origin(group, r);
@@ -73,12 +76,15 @@ pub(super) fn matrix(
         exact_size: [f32::from(exact.width), f32::from(exact.height)],
         raw_origin,
     });
+    // Под внешним преобразованием входы есть, только когда они есть у него.
+    let outer = outer.filter(|_| !unit);
+    let pivoted = unit || outer.is_some();
     let pivot = TransformPivot::new(
         quarter.unwrap_or(group.lin),
         [shift(group.tr[0]), shift(group.tr[1])],
         (scaled_origin, [ox, oy]),
         scale_factor,
-        snap,
+        (snap, outer),
     );
-    (pivot.local(), pivot.fill(), unit.then_some(pivot))
+    (pivot.local(), pivot.fill(), pivoted.then_some(pivot))
 }

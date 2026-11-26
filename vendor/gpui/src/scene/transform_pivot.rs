@@ -12,6 +12,7 @@
 
 use super::{Point, ScaledPixels, TransformationMatrix};
 use crate::{Bounds, Pixels};
+use std::rc::Rc;
 
 /// A flat transform around its origin, as the painter resolved it.
 #[derive(Clone, Debug, PartialEq)]
@@ -25,12 +26,14 @@ pub struct TransformPivot {
     offset: [f32; 2],
     scale_factor: f32,
     snap: Option<QuarterSnap>,
+    /// The pivot of the transform this one is painted under, if any.
+    outer: Option<Rc<TransformPivot>>,
     /// The matrix before an outer transform composes it.
     local: TransformationMatrix,
     /// The quarter turn's exact fill matrix (`fill`).
     fill: Option<TransformationMatrix>,
-    /// `unit · local`, as primitives painted under it with no outer
-    /// transform hold it (`Window::with_transformation_masked`).
+    /// `outer · local` (`unit · local` with none), as primitives painted
+    /// under it hold it (`Window::with_transformation_masked`).
     built: TransformationMatrix,
 }
 
@@ -49,14 +52,14 @@ pub struct QuarterSnap {
 }
 
 impl TransformPivot {
-    /// The pivot of `linear` and `translation` around `base + offset`; a
-    /// quarter turn also snaps its edges from `snap`.
+    /// The pivot of `linear` and `translation` around `base + offset`,
+    /// painted under `outer`; a quarter turn also snaps its edges from `snap`.
     pub fn new(
         linear: [[f32; 2]; 2],
         translation: [f32; 2],
         (base, offset): (Point<Pixels>, [f32; 2]),
         scale_factor: f32,
-        snap: Option<QuarterSnap>,
+        (snap, outer): (Option<QuarterSnap>, Option<Rc<TransformPivot>>),
     ) -> Self {
         let dev = |v: f32| Pixels(v).scale(scale_factor);
         let origin = Point { x: dev(base.x.0 + offset[0]), y: dev(base.y.0 + offset[1]) };
@@ -65,8 +68,8 @@ impl TransformPivot {
         if let Some(snap) = snap {
             snap_quarter(&mut local, snap, scale_factor);
         }
-        let built = TransformationMatrix::unit().compose(local);
-        TransformPivot { linear, translation, base, offset, scale_factor, snap, local, fill, built }
+        let built = outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.built).compose(local);
+        TransformPivot { linear, translation, base, offset, scale_factor, snap, outer, local, fill, built }
     }
 
     /// The matrix to paint under (an outer transform composes it).
@@ -80,7 +83,7 @@ impl TransformPivot {
     }
 
     /// The matrix primitives painted under this pivot hold.
-    pub(crate) fn matrix(&self) -> TransformationMatrix {
+    pub fn matrix(&self) -> TransformationMatrix {
         self.built
     }
 
@@ -98,7 +101,8 @@ impl TransformPivot {
             raw_origin: shift(snap.raw_origin),
             ..snap
         });
-        Self::new(self.linear, self.translation, (shift(self.base), self.offset), self.scale_factor, snap)
+        let outer = self.outer.as_ref().map(|outer| Rc::new(outer.moved(offset)));
+        Self::new(self.linear, self.translation, (shift(self.base), self.offset), self.scale_factor, (snap, outer))
     }
 }
 
@@ -178,9 +182,11 @@ mod tests {
             for scroll in [-40.0_f32, -1680.0, 3.0, 65_000.0] {
                 let at = point(px(113.0), px(486.0));
                 let to = point(at.x, at.y + px(scroll));
-                let pivot = TransformPivot::new(linear, [4.0, -2.5], (at, [37.5, 12.25]), 2.0, quarter.then(|| snap(at)));
+                let outer = |at: Point<Pixels>| Rc::new(TransformPivot::new([[c, s], [-s, c]], [1.5, 0.0], (at, [3.0, 9.0]), 2.0, (None, None)));
+                let nested = |at: Point<Pixels>| (!quarter).then(|| outer(at));
+                let pivot = TransformPivot::new(linear, [4.0, -2.5], (at, [37.5, 12.25]), 2.0, (quarter.then(|| snap(at)), nested(at)));
                 let moved = pivot.moved(point(ScaledPixels(0.0), ScaledPixels(scroll * 2.0)));
-                let fresh = TransformPivot::new(linear, [4.0, -2.5], (to, [37.5, 12.25]), 2.0, quarter.then(|| snap(to)));
+                let fresh = TransformPivot::new(linear, [4.0, -2.5], (to, [37.5, 12.25]), 2.0, (quarter.then(|| snap(to)), nested(to)));
                 assert_eq!(moved.matrix().translation.map(f32::to_bits), fresh.matrix().translation.map(f32::to_bits));
                 assert_eq!(moved, fresh);
             }

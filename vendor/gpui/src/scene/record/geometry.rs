@@ -198,7 +198,7 @@ mod tests {
     fn a_scrolled_rotation_takes_the_fresh_bits_from_its_pivot() {
         let (c, s) = (0.9575, 0.2883);
         let linear = [[c, -s], [s, c]];
-        let pivot_at = |y: f32| TransformPivot::new(linear, [0.0; 2], (point(px(73.0), px(y)), [27.0, 42.0]), 1.0, None);
+        let pivot_at = |y: f32| TransformPivot::new(linear, [0.0; 2], (point(px(73.0), px(y)), [27.0, 42.0]), 1.0, (None, None));
         let mut conjugation_missed = 0;
         for d in [-40.0_f32, -120.0, -360.0, -1680.0, 80.0] {
             let pivot = pivot_at(486.0);

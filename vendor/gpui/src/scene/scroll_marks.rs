@@ -76,10 +76,8 @@ pub(crate) struct ScrollBook {
     /// itself, carried to its copy (carry).
     pub(crate) carry: Option<Box<carry::Carry>>,
     /// Around one insert (`Window::insert_scene_primitive`): the pivot of
-    /// the flat transform painted now, and whether the matrix painted now
-    /// cannot be moved exactly by a shift (`moves_exactly`).
+    /// the flat transform painted now.
     pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
-    pub(crate) transformed: bool,
     /// A primitive marked under the open node is drawn through a matrix a
     /// shift cannot move exactly, without its pivot: the node cannot be
     /// replayed moved (`Window::note_unpivoted`).
@@ -98,7 +96,7 @@ impl ScrollBook {
         self.marks.clear();
         self.open = None;
         self.carry = None;
-        (self.pivot, self.transformed, self.unpivoted) = (None, false, false);
+        (self.pivot, self.unpivoted) = (None, false);
         self.pivots.clear();
         self.copying = None;
     }
@@ -157,8 +155,10 @@ impl Scene {
     /// the primitive holds its matrix. A primitive a shift cannot move
     /// exactly without one notes its node (`ScrollBook::unpivoted`).
     fn pivot_of(&mut self, primitive: &Primitive) -> Option<std::rc::Rc<TransformPivot>> {
+        // A primitive without a matrix (a shadow, path, underline or surface)
+        // is placed by its bounds alone: a shift moves it exactly.
         let matrix = primitive.transformation();
-        if matrix.map_or(!self.scroll.transformed, TransformationMatrix::moves_exactly) {
+        if matrix.is_none_or(TransformationMatrix::moves_exactly) {
             return None;
         }
         let pivot = self.scroll.pivot.as_ref().filter(|pivot| matrix == Some(&pivot.matrix())).cloned();

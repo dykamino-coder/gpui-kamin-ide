@@ -32,6 +32,16 @@ fn page() -> String {
              background:#3a6;transform:{turn}'></div>"
         ));
     }
+    // A transform under a transform (built on the outer pivot), with a shadow.
+    for i in 0..4 {
+        let (x, y) = (140 + i * 120, 300 + i * 650);
+        boxes.push_str(&format!(
+            "<div style='position:absolute;left:{x}px;top:{y}px;width:120px;height:80px;background:#ddd;\
+             box-shadow:3px 4px 6px #0006;transform:rotate(9deg)'><div style='margin:10px;width:60px;\
+             height:40px;background:linear-gradient(45deg,#c96,#369);border-radius:6px;\
+             transform:rotate(-36deg) scaleY(-1)'></div></div>"
+        ));
+    }
     format!("<body style='margin:0;height:3200px;position:relative;background:#eee'>{boxes}</body>")
 }
 

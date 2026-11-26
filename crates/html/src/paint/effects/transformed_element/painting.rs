@@ -120,8 +120,9 @@ pub(super) fn paint_body(
         // `transform-background-001/002`, `transform-fixed-bg-001/003`).
         let unit = window.current_transformation() == gpui::TransformationMatrix::unit();
         let geometry = (bounds, raw_origin, scaled_origin);
+        let outer = (!unit).then(|| window.current_transform_pivot()).flatten();
         let (matrix, fill_matrix, pivot) =
-            plane::matrix(group, geometry, exact, r, (scale_factor, unit));
+            plane::matrix(group, geometry, exact, r, (scale_factor, unit), outer);
         if let Some(all) =
             crate::layout::fragment::effect_fragment::pieces::active(paint.as_deref())
         {

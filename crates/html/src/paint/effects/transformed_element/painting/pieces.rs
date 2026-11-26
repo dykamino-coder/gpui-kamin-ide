@@ -26,7 +26,7 @@ pub(super) fn pieces(
         .iter()
         .map(|p| {
             let r = plane::reference(group, raw_origin, exact, Some(p.reference(own)));
-            plane::matrix(group, geometry, exact, r, snap).0
+            plane::matrix(group, geometry, exact, r, snap, None).0
         })
         .collect();
     let [[a, b], [c, d]] = matrix.rotation_scale;
