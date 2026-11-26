@@ -321,6 +321,8 @@ async function execute(command) {
       // A synthetic fact the answer carries (user input itself is never captured).
       const row = rec.assistant([{ type: 'text', text: `noted: ${parameter ?? ''}` }])
       if (permissionReceipts) {
+        // Native resume repair keeps provider message IDs with the msg_ prefix.
+        row.message.id = 'msg_' + row.uuid
         row.timestamp = new Date().toISOString()
         row.message.stop_reason = 'end_turn'
       }

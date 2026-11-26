@@ -7,6 +7,7 @@ import http from 'node:http'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { once } from 'node:events'
 import { fakeCliPath } from './dev-cli'
+import { repairJsonlTail } from './jsonl-repair'
 import { JsonlWatcher, computeProjectSlug } from './jsonl-watcher'
 import { projectSlug, usageLayouts } from '../../../test-support/fixtures.mjs'
 import { seedPluginFixture } from '../../../test-support/plugin-fixture.mjs'
@@ -133,6 +134,8 @@ describe('credential-free fake Claude', () => {
     expect(events).toEqual(names.map((event) => ({ event, mode: event === 'SessionStart' ? undefined : expected })))
     const answer = entries(s).at(-1)
     expect(answer.message.stop_reason).toBe('end_turn')
+    const file = path.join(s.root, '.claude/projects', computeProjectSlug(s.cwd), answer.sessionId + '.jsonl')
+    expect((await repairJsonlTail(file)).repaired).toBe(false)
     expect(Date.parse(answer.timestamp)).toBeGreaterThanOrEqual(started)
     expect(cli.output()).toContain('app=claude-code:state=idle')
   })
