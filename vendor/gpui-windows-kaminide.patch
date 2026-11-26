@@ -7219,7 +7219,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818ce9811043
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..8664d87ab0218990cd4f87696c10b73a2adec2ac
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7227,9 +7227,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,27 @@
+@@ -38,0 +42,28 @@
 +mod scene_capture;
 +mod canvas;
++mod cover_shape;
 +mod frame_capture;
 +mod cull;
 +mod gpu_wait;
@@ -7255,12 +7256,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +pub use damage_audit::{damage_audit_mismatches, set_damage_audit};
 +use group_region::Region;
 +
-@@ -46,0 +77,4 @@
+@@ -46,0 +78,4 @@
 +    disable_direct_composition: bool,
 +    /// KaminIDE patch: frames go to an offscreen texture, never presented
 +    /// (`WindowsPlatform::set_offscreen_windows`).
 +    offscreen: bool,
-@@ -47,0 +82,22 @@
+@@ -47,0 +83,22 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -7283,11 +7284,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    /// KaminIDE patch: composite runs drawn in one pass (`group_tiles`;
 +    /// `GPUI_GROUP_TILES=0` keeps the composite levels, for comparison runs).
 +    group_tiles: bool,
-@@ -50,0 +107,3 @@
+@@ -50,0 +108,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +116,299 @@
+@@ -56,0 +117,299 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -7587,13 +7588,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +420,2 @@
+@@ -61,0 +421,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +430,2 @@
+@@ -69,0 +431,2 @@
 +use present_gate::FrameLatencyGate;
 +
-@@ -72 +434,6 @@
+@@ -72 +435,6 @@
 -    swap_chain: IDXGISwapChain1,
 +    /// KaminIDE patch: `None` for an offscreen target (`new_offscreen`).
 +    swap_chain: Option<IDXGISwapChain1>,
@@ -7601,34 +7602,34 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    frame_gate: Option<FrameLatencyGate>,
 +    /// KaminIDE patch: the frame's canvas (`canvas`): with a swap chain a
 +    /// texture of its own, offscreen the target itself.
-@@ -74,0 +442,3 @@
+@@ -74,0 +443,3 @@
 +    /// KaminIDE patch: the swap chain's back buffer, which receives the
 +    /// canvas's changes before each present (`canvas`).
 +    back_buffer: Option<ID3D11Texture2D>,
-@@ -88,0 +459 @@
+@@ -88,0 +460 @@
 +    quad_gradient: analytic_gradient::GradientProgram,
-@@ -94,0 +466,6 @@
+@@ -94,0 +467,6 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
 +    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 +    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +    group_tiles_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +478,2 @@
+@@ -100,0 +479,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +501 @@
+@@ -121,0 +502 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +514 @@
+@@ -133,0 +515 @@
 +            ..
-@@ -142,0 +524 @@
+@@ -142,0 +525 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +536,4 @@
+@@ -153,0 +537,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -159 +545,23 @@
+@@ -159 +546,23 @@
 -        if disable_direct_composition {
 +        Self::build(hwnd, directx_devices, disable_direct_composition, false)
 +    }
@@ -7653,7 +7654,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        offscreen: bool,
 +    ) -> Result<Self> {
 +        if disable_direct_composition && !offscreen {
-@@ -164,0 +573,8 @@
+@@ -164,0 +574,8 @@
 +        // KaminIDE patch: a frame comparison pays only when it costs less
 +        // than the raster it saves. A hardware adapter rasters the window in
 +        // less CPU than reading its primitives, so frames keep the damage of
@@ -7662,7 +7663,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        let software = unsafe { devices.adapter.GetDesc1() }
 +            .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
 +        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
-@@ -167,2 +583,6 @@
+@@ -167,2 +584,6 @@
 -        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 -            .context("Creating DirectX resources")?;
 +        let resources = if offscreen {
@@ -7671,13 +7672,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 +        }
 +        .context("Creating DirectX resources")?;
-@@ -180 +600 @@
+@@ -180 +601 @@
 -                .set_swap_chain(&resources.swap_chain)
 +                .set_swap_chain(resources.swap_chain()?)
-@@ -192,0 +613,2 @@
+@@ -192,0 +614,2 @@
 +            disable_direct_composition,
 +            offscreen,
-@@ -193,0 +616,11 @@
+@@ -193,0 +617,11 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -7689,12 +7690,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            blend_premultiplied: None,
 +            blend_replace: None,
 +            group_tiles: group_tiles::enabled(),
-@@ -195,0 +629 @@
+@@ -195,0 +630 @@
 +            backdrop: None,
-@@ -196,0 +631,2 @@
+@@ -196,0 +632,2 @@
 +            unpresented: false,
 +            retained: Default::default(),
-@@ -197,0 +634,39 @@
+@@ -197,0 +635,39 @@
 +    }
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
@@ -7734,18 +7735,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +
 +    pub fn unregister_external_texture(&self, id: AtlasTextureId) {
 +        self.atlas.unregister_external(id);
-@@ -204 +679,2 @@
+@@ -204 +680,2 @@
 -    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
 +    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
 +        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +696,2 @@
+@@ -220 +697,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -222,0 +700,2 @@
+@@ -222,0 +701,2 @@
 +        // KaminIDE patch: the clear is a draw, issued once the target, the
 +        // viewport and the frame parameters are bound (quad_clear).
-@@ -224,7 +702,0 @@
+@@ -224,7 +703,0 @@
 -            device_context.ClearRenderTargetView(
 -                resources
 -                    .render_target_view
@@ -7753,7 +7754,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 -                    .context("missing render target view")?,
 -                clear_color,
 -            );
-@@ -241 +713,6 @@
+@@ -241 +714,6 @@
 -        Ok(())
 +        // KaminIDE patch: a frame drawn within a rectangle clears it later,
 +        // under the scissor (`render`).
@@ -7761,7 +7762,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            return Ok(());
 +        }
 +        self.clear_frame(clear_color)
-@@ -246,6 +723,12 @@
+@@ -246,6 +724,12 @@
 -        let result = unsafe {
 -            self.resources
 -                .as_ref()
@@ -7780,7 +7781,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        else {
 +            self.unpresented = false;
 +            return Ok(());
-@@ -253 +736,46 @@
+@@ -253 +737,46 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
 +        let copied = self.copy_to_back_buffer()?;
@@ -7828,10 +7829,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    /// must present even if the scene is unchanged.
 +    pub(crate) fn needs_presentation(&self) -> bool {
 +        self.unpresented
-@@ -256,0 +785,2 @@
+@@ -256,0 +786,2 @@
 +        // KaminIDE patch: layer buffers die with the device.
 +        self.layer_cache.clear();
-@@ -263,65 +793,33 @@
+@@ -263,65 +794,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7930,7 +7931,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -340 +838,65 @@
+@@ -340 +839,65 @@
 -        self.render(scene, background_appearance)?;
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (retained.rs): unite this frame's damage into every
@@ -7997,22 +7998,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -348,0 +911,5 @@
+@@ -348,0 +912,5 @@
 +    ///
 +    /// KaminIDE patch: with `within`, the target keeps the last frame and only
 +    /// those rectangles are cleared and drawn (scissor, `retained.rs`), one
 +    /// after another from the instances uploaded once; groups whose composite
 +    /// cannot reach their bounds are not drawn.
-@@ -352,0 +920 @@
+@@ -352,0 +921 @@
 +        within: Option<&[Region]>,
-@@ -354 +922,5 @@
+@@ -354 +923,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
 +        self.backdrop_pending = self.backdrop.is_some();
 +        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +929,65 @@
+@@ -357,2 +930,77 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -8052,7 +8053,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
 +        self.timing_main = true;
 +        let drawn = match within {
-+            None => self.draw_scene(scene),
++            None => self.draw_scene_whole(scene),
 +            Some(rects) => self.draw_scene_within(scene, rects, clear_color),
 +        };
 +        self.timing_main = false;
@@ -8070,6 +8071,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        self.draw_scene_at(scene, None)
 +    }
 +
++    /// KaminIDE patch: a whole frame drawn under the scissor of the whole
++    /// target, the rasterizer state of the frames drawn within rectangles:
++    /// WARP builds its pipeline for each program and state the first time it
++    /// draws them, so a first edit frame drawn within a rectangle paid that
++    /// again for every program the whole frames had already drawn.
++    fn draw_scene_whole(&mut self, scene: &Scene) -> Result<()> {
++        let state = self.begin_scissor(group_region::Region::full(self.width, self.height))?;
++        let drawn = self.draw_scene(scene);
++        unsafe { self.dev().device_context.RSSetState(&state) };
++        drawn
++    }
++
 +    /// KaminIDE patch: draw `scene`'s batches; with `base` its instances were
 +    /// already uploaded as part of a larger buffer (a stage layer, see
 +    /// `group_batch::upload_layer`) starting at these offsets per instance kind
@@ -8080,35 +8093,35 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +1001,6 @@
+@@ -365,0 +1014,6 @@
 +            // KaminIDE patch: a layer draws its own batches from its buffers.
 +            if let PrimitiveBatch::Layer(index) = batch {
 +                self.draw_layer(scene, index)?;
 +                continue;
 +            }
 +            let cost = self.timing_main.then(|| batch_area(scene, &batch));
-@@ -370,2 +1011,4 @@
+@@ -370,2 +1024,4 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
 +                PrimitiveBatch::Quads(range) => {
 +                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
 +                }
-@@ -377 +1020 @@
+@@ -377 +1033 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +1022 @@
+@@ -379 +1035 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +1025 @@
+@@ -382 +1038 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +1028 @@
+@@ -385 +1041 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -387,0 +1031 @@
+@@ -387,0 +1044 @@
 +                PrimitiveBatch::Layer(_) => Ok(()),
-@@ -402,0 +1047,404 @@
+@@ -402,0 +1060,404 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8513,19 +8526,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1459,0 @@
+@@ -412 +1472,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1472,4 @@
+@@ -425 +1485,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1538,2 @@
+@@ -488 +1551,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1545,24 @@
+@@ -494 +1558,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8551,7 +8564,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_frames();
-@@ -500,19 +1574,3 @@
+@@ -500,19 +1587,3 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8574,10 +8587,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        // KaminIDE patch: ResizeBuffers needs every reference to the buffers released.
 +        resources.back_buffer.take();
 +        recreate(resources, devices)?;
-@@ -539,0 +1598,2 @@
+@@ -539,0 +1611,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,4 +1659,9 @@
+@@ -599,4 +1672,9 @@
 -    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
 -        if len == 0 {
 -            return Ok(());
@@ -8591,7 +8604,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            self.backdrop_pending = false;
 +        }
 +        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-@@ -604,9 +1669,21 @@
+@@ -604,9 +1682,21 @@
 -        self.pipelines.quad_pipeline.draw_range(
 -            &devices.device_context,
 -            self.globals
@@ -8622,28 +8635,28 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            }
 +        }
 +        Ok(())
-@@ -621,0 +1699,6 @@
+@@ -621,0 +1712,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1727,2 @@
+@@ -643,0 +1740,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1757,4 @@
+@@ -672 +1770,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1904,4 @@
+@@ -815,0 +1917,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1912,40 @@
+@@ -819,0 +1925,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8684,7 +8697,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1955,366 @@
+@@ -822,0 +1968,366 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -9051,10 +9064,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        group_region::narrow_composite(&mut quad, vw, vh);
 +        Some((quad, place.page))
 +    }
-@@ -840 +2338 @@
+@@ -840 +2351 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2389,12 @@
+@@ -890,0 +2402,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9067,19 +9080,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -893 +2403 @@
+@@ -893 +2416 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -900 +2410 @@
+@@ -900 +2423 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2414,2 @@
+@@ -904 +2427,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -906,0 +2418 @@
+@@ -906,0 +2431 @@
 +            back_buffer,
-@@ -912,0 +2425,32 @@
+@@ -912,0 +2438,32 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9112,17 +9125,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -923 +2467 @@
+@@ -923 +2480 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -930 +2474 @@
+@@ -930 +2487 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -932,0 +2477 @@
+@@ -932,0 +2490 @@
 +        self.back_buffer = back_buffer;
-@@ -957,0 +2503 @@
+@@ -957,0 +2516 @@
 +        let quad_gradient = analytic_gradient::GradientProgram::new()?;
-@@ -999,0 +2546,22 @@
+@@ -999,0 +2559,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9145,27 +9158,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2570 @@
+@@ -1001,0 +2583 @@
 +            group_tiles_pipeline,
-@@ -1003,0 +2573 @@
+@@ -1003,0 +2586 @@
 +            quad_gradient,
-@@ -1009,0 +2580,2 @@
+@@ -1009,0 +2593,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2591,4 @@
+@@ -1018,0 +2604,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2600 @@
+@@ -1023,0 +2613 @@
 +            comp_root,
-@@ -1030 +2607,2 @@
+@@ -1030 +2620,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2642 @@
+@@ -1063,0 +2655 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2655,16 @@
+@@ -1076 +2668,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9183,11 +9196,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2684,3 @@
+@@ -1089,0 +2697,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2696,0 @@
+@@ -1100,30 +2709,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9218,7 +9231,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 -        })
 -    }
 -
-@@ -1190,0 +2758,45 @@
+@@ -1190,0 +2771,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9264,10 +9277,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2809 @@
+@@ -1197 +2822 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1214,0 +2827,19 @@
+@@ -1214,0 +2840,19 @@
 +    ) -> Result<()> {
 +        self.draw_range_with_program(
 +            device_context,
@@ -9287,27 +9300,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        first_instance: u32,
 +        instance_count: u32,
 +        fragment: &ID3D11PixelShader,
-@@ -1227 +2858 @@
+@@ -1227 +2871 @@
 -            &self.fragment,
 +            fragment,
-@@ -1275,0 +2907,2 @@
+@@ -1275,0 +2920,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2952,2 @@
+@@ -1319 +2965,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2981,2 @@
+@@ -1347 +2994,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +2993 @@
+@@ -1358 +3006 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1362 +2997 @@
+@@ -1362 +3010 @@
 -    ID3D11Texture2D,
 +    (ID3D11Texture2D, Option<ID3D11Texture2D>),
-@@ -1370,2 +3005,8 @@
+@@ -1370,2 +3018,8 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
@@ -9318,7 +9331,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +        None => None,
 +    };
 +    let render_target = (render_target, back_buffer);
-@@ -1395,3 +3036,22 @@
+@@ -1395,3 +3049,22 @@
 -#[inline]
 -fn create_render_target_and_its_view(
 -    swap_chain: &IDXGISwapChain1,
@@ -9344,17 +9357,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +}
 +
 +fn create_offscreen_target_and_its_view(
-@@ -1398,0 +3059,2 @@
+@@ -1398,0 +3072,2 @@
 +    width: u32,
 +    height: u32,
-@@ -1400 +3062,5 @@
+@@ -1400 +3075,5 @@
 -    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
 +    let mut render_target = None;
 +    unsafe {
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3159,33 @@
+@@ -1492,0 +3172,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9388,7 +9401,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +    }
 +}
 +
-@@ -1701,7 +3400 @@
+@@ -1701,7 +3413 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9397,22 +9410,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1711,0 +3405,2 @@
+@@ -1711,0 +3418,2 @@
 +        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
 +        QuadGradient,
-@@ -1719,0 +3415,6 @@
+@@ -1719,0 +3428,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1763,0 +3465,4 @@
+@@ -1763,0 +3478,4 @@
 +                },
 +                ShaderModule::QuadGradient => match target {
 +                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
-@@ -1796,0 +3502,12 @@
+@@ -1796,0 +3515,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9425,9 +9438,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3519 @@
+@@ -1801,0 +3532 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3521 @@
+@@ -1803,64 +3534 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9493,13 +9506,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b26ef8601ff9258267a6697535e5818c
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1875,0 +3531 @@
+@@ -1875,0 +3544 @@
 +                ShaderModule::QuadGradient => "quad_gradient",
-@@ -1883,0 +3540,3 @@
+@@ -1883,0 +3553,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3713,40 @@
+@@ -2054,17 +3726,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -10309,6 +10322,243 @@ index 0000000000000000000000000000000000000000..b1a9a86f489c0bb0164c60fe79099959
 +            };
 +        }
 +        Ok(Some(rect))
++    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/cover_shape.rs b/vendor/gpui-windows/src/directx_renderer/cover_shape.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee2110d9fb81bf4fe47c4efd1c0aa0276d74e4dc
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/cover_shape.rs
+@@ -0,0 +1,231 @@
++//! KaminIDE patch: the convex frame shape a group composite can colour.
++//!
++//! A tile pass (`group_tiles`) lists a composite in every tile its region
++//! meets, and every pixel of a listed tile runs the composite's steps. For a
++//! plane of a 3D context the region is the bounding box of its image, so a
++//! face turned edge-on listed a box of tiles it barely crosses: on hzDAF the
++//! pixel steps of a frame were several times the pixels the faces cover.
++//! Where the composite colours is bounded more tightly by convex shapes:
++//! the frame points whose raster point under the plane's homography lies in
++//! its raster rectangle, in front of the eye (five half-planes: convex, and
++//! bounded also where the rectangle reaches past the horizon), and its clip
++//! polygon (a BSP piece or the near-clipped face) when that is convex. A tile
++//! is listed only where those shapes meet it, as vello's coarse rasterizer
++//! bins a path by the tiles its edges cross, not by its bounding box.
++
++use super::BlurQuad;
++
++/// Distance (px) a shape is grown by: the shader maps and rounds every
++/// pixel in f32 and an antialiased polygon edge colours half a pixel out.
++const MARGIN: f32 = 2.0;
++
++/// Most edges of a shape: the five bounds of a plane's image and an 8-gon clip.
++const MAX_EDGES: usize = 13;
++
++/// Half-planes `a·x + b·y + c <= 0` (unit normals pointing out) whose
++/// intersection, grown by `MARGIN`, holds every pixel the composite colours.
++#[derive(Clone, Copy, Debug)]
++pub(super) struct CoverShape {
++    edges: [[f32; 3]; MAX_EDGES],
++    len: usize,
++}
++
++impl CoverShape {
++    /// The shape of composite `q` on a `vw` x `vh` target; `None` when nothing
++    /// tighter than its region is known (no plane image and no convex clip).
++    pub(super) fn of(q: &BlurQuad, vw: f32, vh: f32) -> Option<Self> {
++        let mut shape = CoverShape {
++            edges: [[0.0; 3]; MAX_EDGES],
++            len: 0,
++        };
++        if q.proj[2][3] > 0.5 {
++            // The shader samples only frame points p in front of the eye
++            // (w = m2·p > 0) whose raster point (m0·p, m1·p) / w lies within
++            // the target and the image rectangle (`group_source_with`). Each
++            // bound is linear in p once multiplied by w > 0, so the set is
++            // the intersection of five frame half-planes, bounded even where
++            // the rectangle reaches behind the eye and its corners do not map.
++            let s = q.source_rect;
++            let rect = [s[0].max(0.0), s[1].max(0.0), (s[0] + s[2]).min(vw), (s[1] + s[3]).min(vh)];
++            if !(rect[0] < rect[2] && rect[1] < rect[3]) {
++                shape.add_half_plane([0.0, 0.0, 1.0]);
++                return Some(shape);
++            }
++            let [m0, m1, m2] = [0, 1, 2].map(|r| [q.proj[r][0], q.proj[r][1], q.proj[r][2]]);
++            // g·p >= 0 inside, for g = w, x - x0 w, y - y0 w, x1 w - x, y1 w - y.
++            let side = |a: [f32; 3], k: f32, b: [f32; 3]| [0, 1, 2].map(|i| a[i] - k * b[i]);
++            let neg = |g: [f32; 3]| g.map(|v| -v);
++            for g in [
++                m2,
++                side(m0, rect[0], m2),
++                side(m1, rect[1], m2),
++                neg(side(m0, rect[2], m2)),
++                neg(side(m1, rect[3], m2)),
++            ] {
++                shape.add_half_plane(neg(g));
++            }
++        }
++        let count = (q.poly_count & 15) as usize;
++        if q.poly_count & 16 == 0 && (3..=8).contains(&count) {
++            let points: Vec<[f32; 2]> = (0..count)
++                .map(|i| [q.poly[i / 2][(i % 2) * 2], q.poly[i / 2][(i % 2) * 2 + 1]])
++                .collect();
++            shape.add_convex(&points);
++        }
++        (shape.len > 0).then_some(shape)
++    }
++
++    /// Add the half-plane `e·(x, y, 1) <= 0`, its normal made a unit one. A
++    /// line at infinity (no normal) holds everywhere or nowhere: the first
++    /// adds nothing, the second an edge no point meets.
++    fn add_half_plane(&mut self, e: [f32; 3]) {
++        if self.len == MAX_EDGES || !e.iter().all(|v| v.is_finite()) {
++            return;
++        }
++        let len = (e[0] * e[0] + e[1] * e[1]).sqrt();
++        self.edges[self.len] = if len > f32::EPSILON * e[2].abs() {
++            e.map(|v| v / len)
++        } else if e[2] > 0.0 {
++            [0.0, 0.0, f32::MAX]
++        } else {
++            return;
++        };
++        self.len += 1;
++    }
++
++    /// Add the edges of polygon `points` when it is convex and finite; a
++    /// concave or degenerate one adds nothing (the region bounds it).
++    fn add_convex(&mut self, points: &[[f32; 2]]) {
++        let n = points.len();
++        if n < 3 || self.len + n > MAX_EDGES || !points.iter().flatten().all(|v| v.is_finite()) {
++            return;
++        }
++        let cross = |i: usize| {
++            let (a, b, c) = (points[i], points[(i + 1) % n], points[(i + 2) % n]);
++            (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
++        };
++        let turns: Vec<f32> = (0..n).map(cross).collect();
++        let sign = if turns.iter().all(|&t| t >= 0.0) {
++            1.0
++        } else if turns.iter().all(|&t| t <= 0.0) {
++            -1.0
++        } else {
++            return;
++        };
++        let mut edges = [[0.0f32; 3]; 8];
++        for i in 0..n {
++            let (a, b) = (points[i], points[(i + 1) % n]);
++            // Outward normal of a counter-clockwise (sign 1, y down: clockwise
++            // on screen) edge a -> b.
++            let (nx, ny) = (sign * (b[1] - a[1]), sign * (a[0] - b[0]));
++            let len = (nx * nx + ny * ny).sqrt();
++            if !(len > 1e-6) {
++                return;
++            }
++            let (nx, ny) = (nx / len, ny / len);
++            edges[i] = [nx, ny, -(nx * a[0] + ny * a[1])];
++        }
++        self.edges[self.len..self.len + n].copy_from_slice(&edges[..n]);
++        self.len += n;
++    }
++
++    /// The x interval (lo, hi) the shape (grown by `MARGIN`) may reach
++    /// within the band of rows `y0..y1`; `None` when it misses the band.
++    /// Each edge bounds x for its most permissive row of the band, so the
++    /// interval holds every point of the shape there (it may hold more).
++    pub(super) fn columns(&self, y0: f32, y1: f32) -> Option<(f32, f32)> {
++        let (mut lo, mut hi) = (f32::NEG_INFINITY, f32::INFINITY);
++        for &[a, b, c] in &self.edges[..self.len] {
++            let rest = MARGIN - c - (b * y0).min(b * y1);
++            if a.abs() < 1e-6 {
++                if rest < 0.0 {
++                    return None;
++                }
++            } else if a > 0.0 {
++                hi = hi.min(rest / a);
++            } else {
++                lo = lo.max(rest / a);
++            }
++        }
++        (lo <= hi).then_some((lo, hi))
++    }
++
++    /// Whether the shape (grown by `MARGIN`) may meet the rectangle `r`
++    /// (x0, y0, x1, y1).
++    #[cfg(test)]
++    fn meets(&self, r: [f32; 4]) -> bool {
++        self.columns(r[1], r[3]).is_some_and(|(lo, hi)| lo <= r[2] && hi >= r[0])
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::{BlurQuad, CoverShape};
++
++    #[test]
++    fn a_turned_plane_meets_only_the_tiles_its_image_crosses() {
++        let mut q = BlurQuad::default();
++        // Frame to raster: x' = x - y, y' = y, so the raster square 0..100
++        // lies in the frame on the parallelogram (0,0) (100,0) (200,100) (100,100).
++        q.proj = [[1.0, -1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0]];
++        q.source_rect = [0.0, 0.0, 100.0, 100.0];
++        let s = CoverShape::of(&q, 800.0, 600.0).unwrap();
++        assert!(s.meets([40.0, 0.0, 56.0, 16.0]));
++        assert!(s.meets([150.0, 80.0, 166.0, 96.0]));
++        // Inside the bounding box (0..200 x 0..100), outside the parallelogram.
++        assert!(!s.meets([0.0, 80.0, 16.0, 96.0]));
++        assert!(!s.meets([176.0, 0.0, 192.0, 16.0]));
++        // Within the margin of an edge it is kept.
++        assert!(s.meets([101.0, 0.0, 117.0, 1.0]));
++    }
++
++    #[test]
++    fn a_convex_clip_bounds_a_flat_composite_and_a_concave_one_does_not() {
++        let mut q = BlurQuad::default();
++        q.poly_count = 3;
++        q.poly[0] = [0.0, 0.0, 100.0, 0.0];
++        q.poly[1] = [0.0, 100.0, 0.0, 0.0];
++        let s = CoverShape::of(&q, 800.0, 600.0).unwrap();
++        assert!(s.meets([0.0, 0.0, 16.0, 16.0]));
++        assert!(!s.meets([80.0, 80.0, 96.0, 96.0]));
++        // Inverted polygons colour outside: nothing tighter is known.
++        q.poly_count = 3 | 16;
++        assert!(CoverShape::of(&q, 800.0, 600.0).is_none());
++        // A concave quadrilateral (an arrow head) is left to the region.
++        q.poly_count = 4;
++        q.poly[0] = [0.0, 0.0, 100.0, 50.0];
++        q.poly[1] = [0.0, 100.0, 30.0, 50.0];
++        assert!(CoverShape::of(&q, 800.0, 600.0).is_none());
++    }
++
++    #[test]
++    fn without_a_plane_or_a_clip_nothing_is_known() {
++        assert!(CoverShape::of(&BlurQuad::default(), 800.0, 600.0).is_none());
++    }
++
++    /// The raster rectangle reaches past the horizon (its corners at x = 100
++    /// map behind the eye): the image is unbounded to the right but its
++    /// other sides still bound it.
++    #[test]
++    fn a_plane_reaching_past_the_horizon_is_bounded_by_its_half_planes() {
++        let mut q = BlurQuad::default();
++        // Frame to raster: (x, y) / w with w = 0.02 x + 1, so raster x stays
++        // below 50 for every frame x and raster y <= 50 is frame y <= x + 50.
++        q.proj = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.02, 0.0, 1.0, 1.0]];
++        q.source_rect = [0.0, 0.0, 100.0, 50.0];
++        let s = CoverShape::of(&q, 800.0, 600.0).unwrap();
++        assert!(s.meets([700.0, 0.0, 716.0, 16.0]));
++        assert!(s.meets([0.0, 40.0, 16.0, 56.0]));
++        assert!(!s.meets([0.0, 200.0, 16.0, 216.0]));
++        assert!(!s.meets([-40.0, 0.0, -24.0, 16.0]));
++    }
++
++    #[test]
++    fn a_plane_image_off_the_target_meets_nothing() {
++        let mut q = BlurQuad::default();
++        q.proj = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0]];
++        q.source_rect = [900.0, 0.0, 100.0, 50.0];
++        let s = CoverShape::of(&q, 800.0, 600.0).unwrap();
++        assert!(!s.meets([0.0, 0.0, 800.0, 600.0]));
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/cull.rs b/vendor/gpui-windows/src/directx_renderer/cull.rs
@@ -13457,10 +13707,10 @@ index 0000000000000000000000000000000000000000..cc7317a71e56ae16682701821419c3da
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb6a9b04f7
+index 0000000000000000000000000000000000000000..b75612b557e5df359e7e2b043a45eccf00e9caac
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles.rs
-@@ -0,0 +1,257 @@
+@@ -0,0 +1,219 @@
 +//! KaminIDE patch: a run of overlapping group composites in one pass.
 +//!
 +//! A blend mode mixed in the shader reads a copy of the backdrop, and a
@@ -13496,70 +13746,11 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +    std::env::var_os("GPUI_GROUP_TILES").is_none_or(|v| v != "0")
 +}
 +
-+/// Grow-only buffer of the tile lists and its scratch.
-+#[derive(Default)]
-+pub(super) struct TileLists {
-+    buffer: Option<(ID3D11Buffer, Option<ID3D11ShaderResourceView>, usize)>,
-+    counts: Vec<u32>,
-+    data: Vec<u32>,
-+    /// Passes drawn since the renderer was made (tests).
-+    pub(super) passes: u32,
-+}
-+
-+/// Tiles of `r` on a grid of `cols` columns: (first column, first row, last
-+/// column, last row), inclusive.
-+fn tile_span(r: Region) -> (u32, u32, u32, u32) {
-+    let last = |o: u32, s: u32| (o + s.max(1) - 1) / TILE;
-+    (r.x / TILE, r.y / TILE, last(r.x, r.width), last(r.y, r.height))
-+}
-+
-+/// Bin the leading composites of `regions` on a target `width` x `height`:
-+/// how many are taken (stopping before one that would put more than `cap` in
-+/// a tile) and the lists: the first entry of every tile (one more than the
-+/// tiles), then composite instance indices (k + 1), document order per tile.
-+pub(super) fn bin(regions: &[Region], width: u32, height: u32, cap: u32, lists: &mut TileLists) -> usize {
-+    let cols = width.div_ceil(TILE);
-+    let tiles = (cols * height.div_ceil(TILE)) as usize;
-+    let counts = &mut lists.counts;
-+    counts.clear();
-+    counts.resize(tiles, 0);
-+    let mut taken = 0;
-+    for &r in regions {
-+        let (x0, y0, x1, y1) = tile_span(r);
-+        let full = (y0..=y1).any(|y| (x0..=x1).any(|x| counts[(y * cols + x) as usize] >= cap));
-+        if full {
-+            break;
-+        }
-+        for y in y0..=y1 {
-+            for x in x0..=x1 {
-+                counts[(y * cols + x) as usize] += 1;
-+            }
-+        }
-+        taken += 1;
-+    }
-+    let data = &mut lists.data;
-+    data.clear();
-+    let mut at = tiles as u32 + 1;
-+    for &c in counts.iter() {
-+        data.push(at);
-+        at += c;
-+    }
-+    data.push(at);
-+    data.resize(at as usize, 0);
-+    // counts become each tile's write position.
-+    counts.copy_from_slice(&data[..tiles]);
-+    for (k, &r) in regions[..taken].iter().enumerate() {
-+        let (x0, y0, x1, y1) = tile_span(r);
-+        for y in y0..=y1 {
-+            for x in x0..=x1 {
-+                let t = (y * cols + x) as usize;
-+                data[counts[t] as usize] = k as u32 + 1;
-+                counts[t] += 1;
-+            }
-+        }
-+    }
-+    taken
-+}
++mod bins;
++use super::cover_shape::CoverShape;
++pub(super) use bins::TileLists;
++#[cfg(test)]
++use bins::bin;
 +
 +impl DirectXRenderer {
 +    /// Whether composite `s` can join a pass: it has a retained image.
@@ -13579,6 +13770,7 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +    pub(super) fn draw_composite_tiles(&mut self, run: &[&PaintSurface]) -> Result<usize> {
 +        let mut quads = vec![BlurQuad::default()];
 +        let mut regions = Vec::new();
++        let mut shapes = Vec::new();
 +        type View = Option<Option<ID3D11ShaderResourceView>>;
 +        let mut first: Option<(usize, View)> = None;
 +        for s in run.iter().take(MAX_RUN) {
@@ -13598,11 +13790,17 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +            if *page != p || *pass_view != view {
 +                break;
 +            }
++            // A source-over composite leaves a pixel it does not colour
++            // exactly as it was, so it is listed only where its shape can
++            // colour; a blend mode mixes even a transparent source, so its
++            // whole region stays listed.
++            let (vw, vh) = (self.width as f32, self.height as f32);
++            shapes.push((quad.blend_mode == 0).then(|| CoverShape::of(&quad, vw, vh)).flatten());
 +            quads.push(quad);
 +            regions.push(self.composite_region(s));
 +        }
 +        let mut lists = std::mem::take(&mut self.blur.tile_lists);
-+        let taken = bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
++        let taken = bins::bin(&regions, &shapes, self.width, self.height, TILE_CAP, &mut lists);
 +        if taken == 0 {
 +            self.blur.tile_lists = lists;
 +            return Ok(0);
@@ -13614,12 +13812,14 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +        // no backdrop copy and no draw. A lone survivor stays in the pass:
 +        // drawn alone it would take another path than the whole frame.
 +        regions.truncate(taken);
++        shapes.truncate(taken);
 +        if let Some(w) = self.blur.frame_within {
 +            let keep: Vec<usize> = (0..taken).filter(|&k| w.meets(regions[k])).collect();
 +            if keep.len() < taken {
 +                regions = keep.iter().map(|&k| regions[k]).collect();
++                shapes = keep.iter().map(|&k| shapes[k]).collect();
 +                quads = std::iter::once(quads[0]).chain(keep.iter().map(|&k| quads[k + 1])).collect();
-+                bin(&regions, self.width, self.height, TILE_CAP, &mut lists);
++                bins::bin(&regions, &shapes, self.width, self.height, TILE_CAP, &mut lists);
 +            }
 +        }
 +        let result = match first {
@@ -13664,19 +13864,29 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +            width: x1 - x0,
 +            height: y1 - y0,
 +        };
++        // Only the tiles that list a composite are drawn; the spans follow
++        // the lists in the same buffer (`group_tiles_vertex`).
++        let spans = bins::spans(&lists.data, self.width, cover);
++        if spans.is_empty() {
++            lists.passes += 1;
++            return Ok(());
++        }
 +        quads.truncate(regions.len() + 1);
 +        quads[0].bounds = cover.floats();
 +        quads[0].poly_count = self.width.div_ceil(TILE);
++        quads[0].blend_mode = lists.data.len() as u32;
++        lists.data.extend(spans.iter().flat_map(|s| [s.x, s.y, s.width, s.height]));
 +        log::debug!(
 +            target: "gpui::frame",
-+            "tile pass {} composites cover {}x{} lists {} entries",
++            "tile pass {} composites cover {}x{} spans {} lists {} entries",
 +            regions.len(),
 +            cover.width,
 +            cover.height,
++            spans.len(),
 +            lists.data.len()
 +        );
-+        // One copy of the run's rectangle: every pixel starts from it.
-+        self.copy_level_backdrop(slice::from_ref(&cover))?;
++        // One copy of the drawn spans: every pixel starts from it.
++        self.copy_level_backdrop(&spans)?;
 +        let len = lists.data.len();
 +        if lists.buffer.as_ref().is_none_or(|b| b.2 < len) {
 +            let cap = len.next_power_of_two();
@@ -13695,6 +13905,7 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +        let target = self.current_target().to_vec();
 +        self.pipelines.group_tiles_pipeline.update_buffer(&device, &dc, quads)?;
 +        unsafe {
++            dc.VSSetShaderResources(4, Some(slice::from_ref(view)));
 +            dc.PSSetShaderResources(4, Some(slice::from_ref(view)));
 +            dc.OMSetRenderTargets(Some(&target), None);
 +        }
@@ -13704,11 +13915,12 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +            slice::from_ref(&self.res().viewport),
 +            &self.blur.globals,
 +            slice::from_ref(&self.globals.sampler),
-+            1,
++            spans.len() as u32,
 +            None,
 +        )?;
 +        unsafe {
 +            dc.PSSetShaderResources(2, Some(&[None]));
++            dc.VSSetShaderResources(4, Some(&[None]));
 +            dc.PSSetShaderResources(4, Some(&[None]));
 +        }
 +        lists.passes += 1;
@@ -13718,15 +13930,170 @@ index 0000000000000000000000000000000000000000..ece89e3caacc04e44f4926e740169bfb
 +
 +#[cfg(test)]
 +mod tests;
+diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/bins.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/bins.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..17d5bf69c779e55b23b38ba67af37d6cd44b72a5
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/bins.rs
+@@ -0,0 +1,148 @@
++//! KaminIDE patch: the tile lists of a pass of group composites and the
++//! spans of tiles it draws.
++//!
++//! A composite is listed in a tile only where its convex cover shape
++//! (`CoverShape`) meets the tile, and the pass draws only the row spans of
++//! tiles that list something: a pixel of an empty tile would start from the
++//! backdrop copy and end on it, so leaving it out changes no pixel. The
++//! work of a pass then follows the pixels its composites can colour, not the
++//! bounding box of the run (vello's coarse rasterizer: per-tile command
++//! lists, empty tiles never dispatched).
++
++use super::super::cover_shape::CoverShape;
++use super::super::group_region::Region;
++use super::TILE;
++
++/// Grow-only buffer of the tile lists and its scratch.
++#[derive(Default)]
++pub(in super::super) struct TileLists {
++    pub(super) buffer: Option<(
++        windows::Win32::Graphics::Direct3D11::ID3D11Buffer,
++        Option<windows::Win32::Graphics::Direct3D11::ID3D11ShaderResourceView>,
++        usize,
++    )>,
++    pub(super) counts: Vec<u32>,
++    pub(super) data: Vec<u32>,
++    /// Passes drawn since the renderer was made (tests).
++    pub(in super::super) passes: u32,
++}
++
++/// Tiles of `r` on a grid of `cols` columns: (first column, first row, last
++/// column, last row), inclusive.
++fn tile_span(r: Region) -> (u32, u32, u32, u32) {
++    let last = |o: u32, s: u32| (o + s.max(1) - 1) / TILE;
++    (r.x / TILE, r.y / TILE, last(r.x, r.width), last(r.y, r.height))
++}
++
++/// The tiles composite `k` is listed in: those of its region that its
++/// shape (if any) meets.
++fn each_tile(r: Region, shape: Option<&CoverShape>, mut f: impl FnMut(u32, u32)) {
++    let (x0, y0, x1, y1) = tile_span(r);
++    let tile = TILE as f32;
++    for y in y0..=y1 {
++        let (lo, hi) = match shape.map(|s| s.columns((y * TILE) as f32, ((y + 1) * TILE) as f32)) {
++            None => (x0, x1),
++            // A tile meets [lo, hi] when its left edge is at most hi and its
++            // right edge at least lo (touching counts).
++            Some(Some((lo, hi))) => {
++                let lo = ((lo / tile).ceil() - 1.0).max(x0 as f32);
++                let hi = (hi / tile).floor().min(x1 as f32);
++                if !(lo <= hi) {
++                    continue;
++                }
++                (lo as u32, hi as u32)
++            }
++            Some(None) => continue,
++        };
++        for x in lo..=hi {
++            f(x, y);
++        }
++    }
++}
++
++/// Bin the leading composites of `regions` (with their cover `shapes`,
++/// missing ones unbounded) on a target `width` x `height`: how many are
++/// taken (stopping before one that would put more than `cap` in a tile) and
++/// the lists: the first entry of every tile (one more than the tiles), then
++/// composite instance indices (k + 1), document order per tile.
++pub(in super::super) fn bin(
++    regions: &[Region],
++    shapes: &[Option<CoverShape>],
++    width: u32,
++    height: u32,
++    cap: u32,
++    lists: &mut TileLists,
++) -> usize {
++    let cols = width.div_ceil(TILE);
++    let tiles = (cols * height.div_ceil(TILE)) as usize;
++    let shape = |k: usize| shapes.get(k).and_then(Option::as_ref);
++    let counts = &mut lists.counts;
++    counts.clear();
++    counts.resize(tiles, 0);
++    let mut taken = 0;
++    for (k, &r) in regions.iter().enumerate() {
++        let mut full = false;
++        each_tile(r, shape(k), |x, y| full |= counts[(y * cols + x) as usize] >= cap);
++        if full {
++            break;
++        }
++        each_tile(r, shape(k), |x, y| counts[(y * cols + x) as usize] += 1);
++        taken += 1;
++    }
++    let data = &mut lists.data;
++    data.clear();
++    let mut at = tiles as u32 + 1;
++    for &c in counts.iter() {
++        data.push(at);
++        at += c;
++    }
++    data.push(at);
++    data.resize(at as usize, 0);
++    // counts become each tile's write position.
++    counts.copy_from_slice(&data[..tiles]);
++    for (k, &r) in regions[..taken].iter().enumerate() {
++        each_tile(r, shape(k), |x, y| {
++            let t = (y * cols + x) as usize;
++            data[counts[t] as usize] = k as u32 + 1;
++            counts[t] += 1;
++        });
++    }
++    taken
++}
++
++/// Row spans of the tiles that list a composite, on a target `width` wide,
++/// cut to `cover`: the rectangles a pass draws and copies the backdrop of.
++pub(in super::super) fn spans(data: &[u32], width: u32, cover: Region) -> Vec<Region> {
++    let cols = width.div_ceil(TILE);
++    let listed = |t: u32| data[t as usize + 1] > data[t as usize];
++    let (cx1, cy1) = (cover.x + cover.width, cover.y + cover.height);
++    let mut out = Vec::new();
++    if cover.width == 0 || cover.height == 0 {
++        return out;
++    }
++    let (x0, y0, x1, y1) = tile_span(cover);
++    for y in y0..=y1 {
++        let mut x = x0;
++        while x <= x1 {
++            if !listed(y * cols + x) {
++                x += 1;
++                continue;
++            }
++            let start = x;
++            while x <= x1 && listed(y * cols + x) {
++                x += 1;
++            }
++            let (left, top) = ((start * TILE).max(cover.x), (y * TILE).max(cover.y));
++            let (right, bottom) = ((x * TILE).min(cx1), ((y + 1) * TILE).min(cy1));
++            if right > left && bottom > top {
++                out.push(Region {
++                    x: left,
++                    y: top,
++                    width: right - left,
++                    height: bottom - top,
++                });
++            }
++        }
++    }
++    out
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_tiles/tests.rs b/vendor/gpui-windows/src/directx_renderer/group_tiles/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bfcbca2ae2edb8ed4c4bdcdc3bc096a1b70cd80c
+index 0000000000000000000000000000000000000000..82b3640fbef7098f7e0be0c50c726a0739293ac2
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_tiles/tests.rs
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,63 @@
 +//! KaminIDE patch: tests of the tile lists of `group_tiles`.
 +
-+use super::{Region, TILE_CAP, TileLists, bin};
++use super::bins::spans;
++use super::{BlurQuad, CoverShape, Region, TILE_CAP, TileLists, bin};
 +
 +fn r(x: u32, y: u32, width: u32, height: u32) -> Region {
 +    Region { x, y, width, height }
@@ -13736,7 +14103,7 @@ index 0000000000000000000000000000000000000000..bfcbca2ae2edb8ed4c4bdcdc3bc096a1
 +fn every_tile_lists_its_composites_in_document_order() {
 +    let mut l = TileLists::default();
 +    // 40 x 20 target: 3 x 2 tiles of 16 px.
-+    let n = bin(&[r(0, 0, 20, 10), r(10, 5, 30, 15), r(33, 17, 1, 1)], 40, 20, TILE_CAP, &mut l);
++    let n = bin(&[r(0, 0, 20, 10), r(10, 5, 30, 15), r(33, 17, 1, 1)], &[], 40, 20, TILE_CAP, &mut l);
 +    assert_eq!(n, 3);
 +    let tile = |t: usize| &l.data[l.data[t] as usize..l.data[t + 1] as usize];
 +    assert_eq!(tile(0), [1, 2]);
@@ -13752,12 +14119,41 @@ index 0000000000000000000000000000000000000000..bfcbca2ae2edb8ed4c4bdcdc3bc096a1
 +fn a_full_tile_ends_the_pass_before_the_composite_that_overflows_it() {
 +    let mut l = TileLists::default();
 +    let stack = vec![r(0, 0, 8, 8); 5];
-+    assert_eq!(bin(&stack, 32, 32, 3, &mut l), 3);
++    assert_eq!(bin(&stack, &[], 32, 32, 3, &mut l), 3);
 +    assert_eq!(&l.data[l.data[0] as usize..l.data[1] as usize], [1, 2, 3]);
 +    // Disjoint composites never split.
 +    let apart: Vec<Region> = (0..4).map(|i| r(i * 16, 0, 16, 16)).collect();
-+    assert_eq!(bin(&apart, 64, 16, 1, &mut l), 4);
++    assert_eq!(bin(&apart, &[], 64, 16, 1, &mut l), 4);
 +}
++
++#[test]
++fn a_turned_plane_is_listed_and_drawn_only_where_its_image_reaches() {
++    // Frame to raster x' = x - y: the raster square 0..100 lies on the
++    // parallelogram (0,0) (100,0) (200,100) (100,100) of a 208 x 112 target.
++    let mut q = BlurQuad::default();
++    q.proj = [[1.0, -1.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 1.0]];
++    q.source_rect = [0.0, 0.0, 100.0, 100.0];
++    let shape = CoverShape::of(&q, 208.0, 112.0);
++    let mut l = TileLists::default();
++    assert_eq!(bin(&[r(0, 0, 200, 100)], &[shape], 208, 112, TILE_CAP, &mut l), 1);
++    let listed = |x: usize, y: usize| l.data[y * 13 + x + 1] > l.data[y * 13 + x];
++    // Row 5 (y 80..96): the image spans x 80..196, the box 0..200.
++    assert!(!listed(0, 5) && !listed(3, 5));
++    assert!(listed(4, 5) && listed(12, 5));
++    // Row 0: x 0..116.
++    assert!(listed(0, 0) && listed(7, 0) && !listed(9, 0));
++    // The pass draws one span per row, cut to its cover.
++    let cover = r(0, 0, 200, 100);
++    let drawn = spans(&l.data, 208, cover);
++    assert_eq!(drawn.len(), 7);
++    assert_eq!(drawn[0], r(0, 0, 128, 16));
++    assert_eq!(drawn[5].x, 64);
++    assert_eq!(drawn[6], r(80, 96, 120, 4));
++    // Without a shape every tile of the box is listed.
++    bin(&[r(0, 0, 200, 100)], &[None], 208, 112, TILE_CAP, &mut l);
++    assert_eq!(spans(&l.data, 208, cover), (0..7).map(|y| r(0, y * 16, 200, if y == 6 { 4 } else { 16 })).collect::<Vec<_>>());
++}
+\ No newline at end of file
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_visible.rs b/vendor/gpui-windows/src/directx_renderer/group_visible.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..0a5cd9986ebf8fbc905d7c70cc9b7708d3331cce
@@ -18434,7 +18830,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..1417dd70bc858b2ee0d5b41cc7efb6cf67f22c22
+index ba89c6873354fb7449b8294878e080a68c3dd29b..9988297197342eef93bf30af47465ff306251581
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -18923,7 +19319,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..1417dd70bc858b2ee0d5b41cc7efb6cf
 +        sample = tile_texel(local_position, sprite.bounds, sprite.tile);
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1544,559 @@
+@@ -1268,0 +1544,572 @@
 +
 +/*
 +**
@@ -19169,6 +19565,11 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..1417dd70bc858b2ee0d5b41cc7efb6cf
 +    } else {
 +        src = group_texel(q, p);
 +    }
++    // A transparent texel stays transparent under every coverage below. Only
++    // in the loop (no gradient sampling follows a per-pixel branch there).
++    if (in_loop && !any(src)) {
++        return src;
++    }
 +    float distance = quad_sdf(p, q.bounds, q.corner_radii);
 +    float corner = saturate(0.5 - distance);
 +    // KaminIDE patch: rounded composite (clip-path `round`) — the same
@@ -19409,7 +19810,8 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..1417dd70bc858b2ee0d5b41cc7efb6cf
 +// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +//
 +// blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
-+// tile grid's corner, poly_count = tiles per row. Composites are
++// tile grid's corner, poly_count = tiles per row, blend_mode = where the
++// drawn spans start in tile_lists. Composites are
 +// blur_quads[1..]. tile_lists holds the first entry of every tile (one more
 +// than the tiles, the last is the end), then composite indices, each tile's in
 +// document order. Every pixel starts from the backdrop copy and applies the
@@ -19430,10 +19832,17 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..1417dd70bc858b2ee0d5b41cc7efb6cf
 +    return all(c >= lo) && all(c < hi) && all(c >= mlo) && all(c <= mhi);
 +}
 +
-+BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID) {
++// Instance i draws span i of the pass (`group_tiles::bins::spans`): a row of
++// tiles that list a composite, its x, y, width and height at
++// tile_lists[cover.blend_mode + 4i]. Tiles listing nothing are not drawn.
++BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID, uint span: SV_InstanceID) {
 +    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
++    uint at = blur_quads[0].blend_mode + 4u * span;
++    Bounds rect = blur_quads[0].bounds;
++    rect.origin = float2(float(tile_lists[at]), float(tile_lists[at + 1u]));
++    rect.size = float2(float(tile_lists[at + 2u]), float(tile_lists[at + 3u]));
 +    BlurVertexOutput output;
-+    output.position = to_device_position(unit_vertex, blur_quads[0].bounds);
++    output.position = to_device_position(unit_vertex, rect);
 +    output.uv = unit_vertex;
 +    output.quad_id = 0u;
 +    output.clip_distance = float4(1.0, 1.0, 1.0, 1.0);

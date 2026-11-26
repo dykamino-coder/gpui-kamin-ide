@@ -12726,7 +12726,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641dce1c307
+index 160587a4ad924f80c2dd01b90a8300febbc13105..58ecd271f0da7a569dbadcb9190281246b46ea7d
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,43 @@
@@ -13412,7 +13412,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +772,312 @@
+@@ -144,4 +772,318 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -13608,6 +13608,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +        self.surfaces.reserve_exact(other.surfaces.len());
 +    }
 +
++    /// KaminIDE patch: whether the scene draws anything: a command (a
++    /// primitive, a nested composite, a layer) or a hoisted backdrop.
++    pub(crate) fn paints(&self) -> bool {
++        !self.paint_operations.is_empty() || !self.hoisted_backdrops.is_empty()
++    }
++
 +    /// KaminIDE patch: count the clipped bounds of a primitive command added
 +    /// to this scene in `primitive_ink`; empty bounds paint nothing.
 +    fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
@@ -13729,7 +13735,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1092,8 @@
+@@ -156,6 +1098,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
@@ -13744,9 +13750,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
 +        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
 +        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
-@@ -162,0 +1101 @@
+@@ -162,0 +1107 @@
 +        self.finish_layers();
-@@ -190,2 +1129,97 @@
+@@ -190,2 +1135,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13846,7 +13852,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1246,5 @@
+@@ -212,2 +1252,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13854,13 +13860,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1253,4 @@
+@@ -216 +1259,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1258,12 @@
+@@ -217,0 +1264,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13873,13 +13879,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1277 @@
+@@ -224,0 +1283 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1292 @@
+@@ -238,0 +1298 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1306 @@
+@@ -251,0 +1312 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1315,72 @@
+@@ -259,0 +1321,72 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13952,20 +13958,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1413,2 @@
+@@ -285,0 +1419,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1448,4 @@
+@@ -318,0 +1454,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1597 @@
+@@ -463,0 +1603 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1630,2 @@
+@@ -495,0 +1636,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1664,6 @@
+@@ -528,5 +1670,6 @@
 -        }
 -    }
 -}
@@ -13977,7 +13983,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1681,10 @@
+@@ -543,0 +1687,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13988,25 +13994,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1699 @@
+@@ -552 +1705 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1718 @@
+@@ -571 +1724 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1728,5 @@
+@@ -580,0 +1734,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1755,5 @@
+@@ -602,0 +1761,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1807,12 @@
+@@ -649,0 +1813,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -14019,19 +14025,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1877 @@
+@@ -708 +1883 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1896 @@
+@@ -727 +1902 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1915 @@
+@@ -746 +1921 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1920 @@
+@@ -751 +1926 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1927,54 @@
+@@ -757,0 +1933,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -14086,7 +14092,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1997,23 @@
+@@ -773,0 +2003,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14110,19 +14116,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..98c9df47e74d2ac1a2a8a1136be95641
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2042,2 @@
+@@ -795,0 +2048,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2064 @@
+@@ -815,0 +2070 @@
 +            color_mapping: None,
-@@ -835,0 +2085,6 @@
+@@ -835,0 +2091,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2205,63 @@
+@@ -949,0 +2211,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -39661,10 +39667,10 @@ index 0000000000000000000000000000000000000000..d5b60cb6936ed95c837d990896502ddc
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/plane3d.rs b/vendor/gpui/src/window/plane3d.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..33eae9fcf97ba219476f48107ad17a978c750f53
+index 0000000000000000000000000000000000000000..04953403c6b51c7c1a78447d5561c0c4610d73f9
 --- /dev/null
 +++ b/vendor/gpui/src/window/plane3d.rs
-@@ -0,0 +1,380 @@
+@@ -0,0 +1,389 @@
 +//! KaminIDE patch: planes of CSS 3D rendering contexts, painted through buffers.
 +//!
 +//! css-transforms-2 §3d-transform-rendering: each plane is rendered flat and
@@ -39678,6 +39684,8 @@ index 0000000000000000000000000000000000000000..33eae9fcf97ba219476f48107ad17a97
 +
 +mod coverage;
 +mod group;
++#[cfg(test)]
++mod tests;
 +
 +use super::*;
 +use crate::plane_bsp::{PlanePoly, back_to_front};
@@ -39900,6 +39908,13 @@ index 0000000000000000000000000000000000000000..33eae9fcf97ba219476f48107ad17a97
 +        let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();
 +        let mut polys = Vec::new();
 +        for (i, rec) in records.iter().enumerate() {
++            // A plane that paints nothing draws no pixel: like an edge-on
++            // plane it takes no place in the order and splits no other (viz
++            // sorts the quads its layers draw, and a layer without content
++            // draws none). Its buffer would be the whole window, transparent.
++            if !rec.scene.paints() {
++                continue;
++            }
 +            if let Some((pts, _)) = near_clip(&rec.corners) {
 +                let poly = PlanePoly::new(pts, i);
 +                // Edge-on planes are invisible and must not split others.
@@ -40015,7 +40030,7 @@ index 0000000000000000000000000000000000000000..33eae9fcf97ba219476f48107ad17a97
 +                }
 +            }
 +            _ => {
-+                let Some((pts, clipped)) = near_clip(&record.corners) else {
++                let Some((pts, clipped)) = near_clip(&record.corners).filter(|_| record.scene.paints()) else {
 +                    return result;
 +                };
 +                let polygon = if clipped { to_points(&pts) } else { Vec::new() };
@@ -40169,6 +40184,69 @@ index 0000000000000000000000000000000000000000..774afefa91efaec41b8ffe91b40a8423
 +            self.content_mask_stack.len() == 1,
 +        );
 +    }
++}
+diff --git a/vendor/gpui/src/window/plane3d/tests.rs b/vendor/gpui/src/window/plane3d/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..72d1917ba8740a4903cd20ff25484f69e6f13d80
+--- /dev/null
++++ b/vendor/gpui/src/window/plane3d/tests.rs
+@@ -0,0 +1,57 @@
++use super::*;
++use crate::{TestAppContext, canvas, fill, prelude::*, px, red};
++
++/// A 3D context of two crossing planes: a turned one painting nothing (an
++/// empty `preserve-3d` container) and a flat painted one buffered under an
++/// identity homography.
++struct Crossing;
++
++const SIDE: f32 = 100.0;
++
++fn spec(full: [[f32; 4]; 4]) -> PlaneSpec {
++    PlaneSpec {
++        raster: TransformationMatrix::unit(),
++        projection: Some([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
++        full,
++        outer: TransformationMatrix::unit(),
++        rect: (0.0, 0.0, SIDE, SIDE),
++        masked: false,
++    }
++}
++
++impl Render for Crossing {
++    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++        canvas(
++            |_, _, _| {},
++            |_, _, window, _| {
++                window.paint_plane_context(|window| {
++                    // Turned about the vertical line x = 50 (z = x - 50, not
++                    // edge-on): it crosses the flat plane there.
++                    let turned = [[0.5, 0.0, 0.0, 25.0], [0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0, -50.0], [0.0, 0.0, 0.0, 1.0]];
++                    window.paint_plane(spec(turned), |_| {});
++                    let flat = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
++                    window.paint_plane(spec(flat), |window| {
++                        window.paint_quad(fill(Bounds::new(point(px(0.), px(0.)), size(px(SIDE), px(SIDE))), red()));
++                    });
++                });
++            },
++        )
++        .size(px(200.))
++    }
++}
++
++/// A plane that paints nothing gets no buffer and no composite, and does not
++/// split the plane it crosses: the painted plane stays one piece.
++#[crate::test]
++fn a_plane_painting_nothing_neither_composites_nor_splits_another(cx: &mut TestAppContext) {
++    let window = cx.add_window(|_, _| Crossing);
++    cx.run_until_parked();
++    window
++        .update(cx, |_, window, _| {
++            let scene = &window.rendered_frame.scene;
++            assert_eq!(scene.groups.len(), 1, "one buffer: the painted plane's");
++            assert_eq!(scene.surfaces.len(), 1, "one composite of one piece");
++            assert_eq!(scene.surfaces[0].fragment, 0);
++        })
++        .unwrap();
 +}
 diff --git a/vendor/gpui/src/window/raster_frame.rs b/vendor/gpui/src/window/raster_frame.rs
 new file mode 100644

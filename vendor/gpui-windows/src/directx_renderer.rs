@@ -41,6 +41,7 @@ pub(crate) struct FontInfo {
 
 mod scene_capture;
 mod canvas;
+mod cover_shape;
 mod frame_capture;
 mod cull;
 mod gpu_wait;
@@ -963,7 +964,7 @@ impl DirectXRenderer {
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
         let drawn = match within {
-            None => self.draw_scene(scene),
+            None => self.draw_scene_whole(scene),
             Some(rects) => self.draw_scene_within(scene, rects, clear_color),
         };
         self.timing_main = false;
@@ -979,6 +980,18 @@ impl DirectXRenderer {
     /// заново: проходы размытия предыдущей группы привязывали свои.
     fn draw_scene(&mut self, scene: &Scene) -> Result<()> {
         self.draw_scene_at(scene, None)
+    }
+
+    /// KaminIDE patch: a whole frame drawn under the scissor of the whole
+    /// target, the rasterizer state of the frames drawn within rectangles:
+    /// WARP builds its pipeline for each program and state the first time it
+    /// draws them, so a first edit frame drawn within a rectangle paid that
+    /// again for every program the whole frames had already drawn.
+    fn draw_scene_whole(&mut self, scene: &Scene) -> Result<()> {
+        let state = self.begin_scissor(group_region::Region::full(self.width, self.height))?;
+        let drawn = self.draw_scene(scene);
+        unsafe { self.dev().device_context.RSSetState(&state) };
+        drawn
     }
 
     /// KaminIDE patch: draw `scene`'s batches; with `base` its instances were

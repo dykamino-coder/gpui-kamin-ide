@@ -11,6 +11,8 @@
 
 mod coverage;
 mod group;
+#[cfg(test)]
+mod tests;
 
 use super::*;
 use crate::plane_bsp::{PlanePoly, back_to_front};
@@ -233,6 +235,13 @@ impl Window {
         let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();
         let mut polys = Vec::new();
         for (i, rec) in records.iter().enumerate() {
+            // A plane that paints nothing draws no pixel: like an edge-on
+            // plane it takes no place in the order and splits no other (viz
+            // sorts the quads its layers draw, and a layer without content
+            // draws none). Its buffer would be the whole window, transparent.
+            if !rec.scene.paints() {
+                continue;
+            }
             if let Some((pts, _)) = near_clip(&rec.corners) {
                 let poly = PlanePoly::new(pts, i);
                 // Edge-on planes are invisible and must not split others.
@@ -348,7 +357,7 @@ impl Window {
                 }
             }
             _ => {
-                let Some((pts, clipped)) = near_clip(&record.corners) else {
+                let Some((pts, clipped)) = near_clip(&record.corners).filter(|_| record.scene.paints()) else {
                     return result;
                 };
                 let polygon = if clipped { to_points(&pts) } else { Vec::new() };
