@@ -1930,6 +1930,11 @@ pub struct PolychromeSprite {
     pub content_mask: ContentMask<ScaledPixels>,
     pub corner_radii: Corners<ScaledPixels>,
     pub tile: AtlasTile,
+    /// KaminIDE patch: a repeated image (`Window::with_sprite_pattern`): the
+    /// image fills cells of this size laid from `bounds.origin` over all of
+    /// `bounds`, each cell exactly as a sprite of that cell would draw it.
+    /// Zero: one image stretched over `bounds`.
+    pub pattern: Size<ScaledPixels>,
     /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
     /// Поле последнее и обязано совпадать с концом структуры в шейдере.
     pub transformation: TransformationMatrix,

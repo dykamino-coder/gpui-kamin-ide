@@ -55,6 +55,7 @@ fn frame(r: &mut DirectXRenderer, tile: AtlasTile) -> Vec<u8> {
         (scaled(4.0, 40.0, W as f32, H as f32), TransformationMatrix::unit()),
     ] {
         scene.insert_primitive(PolychromeSprite {
+            pattern: gpui::Size::default(),
             order: 0,
             pad: 0,
             grayscale: false.into(),
