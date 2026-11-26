@@ -119,7 +119,6 @@ pub(in crate::layout::positioned::anchor) fn apply(
                 let second = &mut c.reset_flex.justify_self_last;
                 *second = first_value;
             }
-            c.reset_flex.align_self_decl = Some(c.reset_flex.align_self);
         } else {
             let y = map[0] == 2;
             let align = if y != cb.wm().vertical() {
@@ -132,7 +131,6 @@ pub(in crate::layout::positioned::anchor) fn apply(
                 Some(Align::End) => Some(Align::Start),
                 other => other,
             };
-            c.reset_flex.align_self_decl = Some(c.reset_flex.align_self);
         }
     }
 }

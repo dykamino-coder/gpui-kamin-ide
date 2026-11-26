@@ -184,3 +184,4 @@ mod floats;
 use collect::collect;
 
 mod positioned_float;
+mod self_align;
