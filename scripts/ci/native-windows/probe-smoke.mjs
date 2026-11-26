@@ -1,19 +1,18 @@
 // Exercise the existing native probe, CEF webview and host through their actual protocols.
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import { open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { promisify } from "node:util";
+import { probe } from "./native-probe.mjs";
 import { registerClient } from "./cef-input.mjs";
 import { checkEngineMenus } from "./engine-menus.mjs";
 import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs";
 
 const [scenario, capture, output] = process.argv.slice(2);
-const run = promisify(execFile);
 const manifest = JSON.parse(await readFile(path.join(capture, "manifest.json"), "utf8"));
+const installed = scenario === "installed-client";
 const report = { candidate: manifest.candidate_sha, exeSha256: manifest.source_exe_sha256,
-  scenario, class: "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
+  scenario, class: installed ? "hosted-windows-installed-release" : "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
 const origin = `http://127.0.0.1:${Number(process.env.CLAUDE_PROXY_PORT)}`;
 
 async function lastLogBytes(file) {
@@ -25,20 +24,6 @@ async function lastLogBytes(file) {
     const { bytesRead } = await handle.read(buf, 0, buf.length, size - buf.length);
     return buf.toString("utf8", 0, bytesRead);
   } finally { await handle.close(); }
-}
-
-async function probe(req) {
-  try {
-    const { stdout } = await run(process.execPath, ["scripts/probe.mjs", JSON.stringify(req)],
-      { timeout: 12500, windowsHide: true });
-    return JSON.parse(stdout);
-  } catch (error) {
-    const output = (error.stdout ?? "") + (error.stderr ?? "");
-    // Map only known public diagnostics. The raw response can contain profile data.
-    const reason = ["ECONNREFUSED", "view is not live", "probe: timeout", "ws not connected",
-      "event channel not ready", "unknown region", "timeout"].find(value => output.includes(value));
-    throw Object.assign(new Error("Probe call failed"), {reason: reason ?? "probe error"});
-  }
 }
 
 async function step(name, check, retry = false) {
@@ -67,10 +52,16 @@ async function step(name, check, retry = false) {
 const rpc = (method, params = []) => probe({ cmd: "rpc", method, params });
 const web = (body) => probe({ cmd: "wveval", id: "claudeBridgeChat", body, timeoutMs: 6000 });
 try {
-  await step("exact-debug-candidate", async () => {
+  await step(installed ? "exact-installed-candidate" : "exact-debug-candidate", async () => {
     assert.equal(manifest.candidate_sha, process.env.SMOKE_SHA);
-    assert.equal(manifest.with_host, true);
-    assert.equal((await probe({ cmd: "nativeAcceptance", action: "status" })).debug, true);
+    if (installed) {
+      const pong = await probe({ cmd: "ping" });
+      assert.equal(pong.app, "kaminide-gpui");
+      assert.equal(pong.version, manifest.version);
+    } else {
+      assert.equal(manifest.with_host, true);
+      assert.equal((await probe({ cmd: "nativeAcceptance", action: "status" })).debug, true);
+    }
   }, true);
   await step("gpui-window-layout", async () => {
     const { bounds } = await probe({ cmd: "metric", id: "status-bar" });
@@ -85,7 +76,7 @@ try {
     const { value } = await web("return document.readyState === 'complete' && typeof window.bridgeCmd?.raw === 'function'");
     assert.equal(value, true);
   }, true);
-  if (scenario !== "native-client") {
+  if (!installed && scenario !== "native-client") {
     const fixture = scenario === "workspace-link" ? await createWorkspaceFixture(capture) : null;
     await step("loopback-bridge-health", async () => {
       const reply = await fetch(`${origin}/health`, {signal: AbortSignal.timeout(3000)});
@@ -127,6 +118,11 @@ try {
     }, true);
     if (fixture) await checkWorkspaceLink({ fixture, ...driver });
     if (scenario === "engine-menus") await checkEngineMenus(driver, tab);
+  }
+  if (installed) {
+    await step("capture-version-shown-in-status-bar", async () => {
+      await probe({ cmd: "shotRegion", id: "status-version", path: path.join(output, "version.png") });
+    }, true);
   }
   report.status = "passed";
 } catch (error) {

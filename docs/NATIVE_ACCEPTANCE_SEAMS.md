@@ -28,6 +28,19 @@ Claude, повторно выбирает Opus и отдельно провер�
 инструментов рабочего пространства. Ввод мыши идёт через CEF host.
 Проверки не требуют подписки.
 
+Сценарий `installed-client` принимает отдельный `installer_source`: ID запуска
+PR checks, опубликовавшего `kaminide-release-<SHA>`, или тег опубликованной
+версии. Передать соответствующий `candidate` (для артефакта — SHA сборки из
+его имени). Штатный verifier связывает установщик с исходным деревом и
+проверяет SHA-256. Свежий профиль сначала получает предыдущую опубликованную версию. Её штатный
+updater скачивает проверенный пакет с loopback-канала после клика в статус-баре.
+Драйвер ждёт автоматического перезапуска, сверяет InstallDir, version.txt,
+DisplayVersion, обе регистрации команды Explorer, install log, ответ настоящего
+Extension Host и страницу CEF. Версия из UI сохраняется в version.png для
+чтения. Видимость контекстного меню в окне Explorer и полная installer-матрица
+остаются отдельными проверками.
+Report фиксирует класс `hosted-windows-installed-release`.
+
 ```bash
 commit=$(git rev-parse HEAD)
 gh workflow run native-windows-smoke.yml -f candidate="$commit" -f scenario=bridge-roundtrip
