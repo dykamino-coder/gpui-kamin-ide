@@ -146,18 +146,13 @@ impl FlowReuse {
         let clean = {
             let boxes = opts.cx.doc().boxes.borrow();
             let epoch = boxes.build_epoch(content.owner)?;
-            // Its width may follow a changed sibling (a table column): the
-            // replay would be refused after layout, and the frame built twice.
+            // A width following a changed sibling (a column) is refused after layout.
             epoch <= record.at
                 && record.at <= boxes.clock()
                 && !boxes.resized_by_siblings(content.owner, record.at)
         };
-        // A clipped item whose ink a clip cut is built before layout: its
-        // refusal after layout would build the frame twice.
-        if !clean
-            || !record.key.same(&content.key, record.widths)
-            || !record.items.iter().all(|item| item.replays_clipped())
-        {
+        let cut = !record.items.iter().all(|item| item.replays_clipped());
+        if !clean || cut || !record.key.same(&content.key, record.widths) {
             return None;
         }
         if record.widths {

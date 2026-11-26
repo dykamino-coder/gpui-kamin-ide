@@ -11,10 +11,10 @@ use gpui::{
 use std::cell::Cell;
 use std::rc::Rc;
 
-/// Prepaint блока с его неокруглённым началом и размером.
+/// A block's prepaint with its unrounded origin and size.
 type PlacedPrepaint = (RetainedPrepaint, Point<Pixels>, Size<Pixels>);
 
-/// Запись, которая завершится после краски кадра (`FlowReuse::finish`).
+/// A record finished after the frame's paint (`FlowReuse::finish`).
 pub(in crate::layout::reuse) struct PendingReplay {
     /// Reads of the outer widths by the build and the measures of the
     /// recording frame.
@@ -33,7 +33,7 @@ pub(in crate::layout::reuse) struct Captured {
     start: Counters,
     end: Counters,
     inert: bool,
-    /// Блок заполняет ширину потока (`plain::fills_width`).
+    /// The block fills its flow's width (`plain::fills_width`).
     fills: bool,
     paint_last: Option<u64>,
     pub(in crate::layout::reuse) env: Option<(f32, u64)>,
@@ -97,9 +97,9 @@ impl PendingReplay {
         }
     }
 
-    /// Готовая запись блока `source`, если его prepaint и краска переносимы
-    /// и он был у экрана `screen` (чернилами, а без них коробкой): дальний
-    /// блок пропускает запись пропуска (`recorder::far`), она дешевле повтора.
+    /// The finished record of block `source` if its prepaint and paint can
+    /// be replayed and it lay near screen `screen` (by its ink, else by its
+    /// box): a far block skips the record, its stand-in is cheaper (`recorder::far`).
     ///
     /// The next frame checks a replay before any clip of its ancestors is
     /// known (`ReplaySlot::refusal`): a block drawn under the frame's mask is
