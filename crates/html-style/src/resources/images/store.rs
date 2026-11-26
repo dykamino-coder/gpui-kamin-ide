@@ -68,8 +68,9 @@ struct Entry {
     subscribers: Vec<(ConsumerId, ImageUse)>,
     /// Logical квота документа на точки готового растра.
     admission: Option<super::admission::Admission>,
-    /// The last document revision that requested or replayed it (`keep`).
-    used: u32,
+    /// The last document revision that requested or replayed it (`keep`);
+    /// a replay marks it through a shared borrow of the store.
+    used: std::cell::Cell<u32>,
 }
 
 #[derive(Default)]
@@ -98,7 +99,7 @@ pub struct ImageStore {
     diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
     /// Document revisions seen (`keep::renew`) and the requests of this frame (`keep`).
     epoch: u32,
-    log: Vec<ImageId>,
+    log: std::cell::RefCell<Vec<ImageId>>,
 }
 
 impl Default for ImageStore {
@@ -125,7 +126,7 @@ impl ImageStore {
             cancel: Cancellation::default(),
             diagnostics: Default::default(),
             epoch: 0,
-            log: Vec::new(),
+            log: Default::default(),
         }
     }
 
@@ -175,9 +176,9 @@ impl ImageStore {
             attempt: self.attempts,
             subscribers: Vec::new(),
             admission: None,
-            used: self.epoch,
+            used: std::cell::Cell::new(self.epoch),
         });
-        self.log.push(id);
+        self.log.get_mut().push(id);
         self.by_request.insert(request, id);
         if allowed {
             self.enqueue(id);

@@ -26,7 +26,7 @@ impl ImageStore {
             .enumerate()
             .filter_map(|(slot, cell)| {
                 let entry = cell.entry.as_ref()?;
-                let fresh = self.epoch.wrapping_sub(entry.used) <= 1;
+                let fresh = self.epoch.wrapping_sub(entry.used.get()) <= 1;
                 (!fresh).then_some(ImageId {
                     slot: slot as u32,
                     generation: cell.generation,
@@ -42,11 +42,10 @@ impl ImageStore {
     }
 
     /// The request `id` is used in this revision.
-    pub(super) fn touch(&mut self, id: ImageId) {
-        let epoch = self.epoch;
-        if let Some(entry) = self.entry_mut(id) {
-            entry.used = epoch;
-            self.log.push(id);
+    pub(super) fn touch(&self, id: ImageId) {
+        if let Some(entry) = self.entry(id) {
+            entry.used.set(self.epoch);
+            self.log.borrow_mut().push(id);
         }
     }
 
@@ -65,12 +64,12 @@ impl ImageStore {
 
     /// Position in this frame's request log (`reads_since`).
     pub fn log_position(&self) -> usize {
-        self.log.len()
+        self.log.borrow().len()
     }
 
     /// The images requested or replayed since log position `at`, once each.
     pub fn reads_since(&self, at: usize) -> Box<[ImageRead]> {
-        let mut ids: Vec<ImageId> = self.log.get(at..).unwrap_or_default().to_vec();
+        let mut ids: Vec<ImageId> = self.log.borrow().get(at..).unwrap_or_default().to_vec();
         ids.sort_unstable_by_key(|id| (id.slot, id.generation));
         ids.dedup();
         ids.into_iter()
@@ -80,7 +79,7 @@ impl ImageStore {
 
     /// Every image of `reads` is in the state it was read in; each is used
     /// again in this revision, as the replay draws it.
-    pub fn replay_reads(&mut self, reads: &[ImageRead]) -> bool {
+    pub fn replay_reads(&self, reads: &[ImageRead]) -> bool {
         if !reads
             .iter()
             .all(|&(id, rev)| self.image_revision(id) == Some(rev))
@@ -94,7 +93,7 @@ impl ImageStore {
     }
 
     /// The frame is over: its request log starts empty in the next one.
-    pub fn end_frame_log(&mut self) {
-        self.log.clear();
+    pub fn end_frame_log(&self) {
+        self.log.borrow_mut().clear();
     }
 }

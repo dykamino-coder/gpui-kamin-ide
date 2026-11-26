@@ -120,12 +120,8 @@ impl FlowReuse {
         let follows = follows_width(inherited, outer);
         let env = KeyEnv::of(&self.store.inputs, inherited, outer, inner, fresh);
         // The log holds this build's reads only: the first content empties it.
-        let mut images = inner.cx.vcx().doc.images.borrow_mut();
-        if !self.images_log.replace(true) {
-            images.end_frame_log();
-        }
-        let images_at = images.log_position();
-        drop(images);
+        let first = !self.images_log.replace(true);
+        let images_at = inner.cx.vcx().doc.image_log_mark(first);
         Some(Content {
             images_at,
             follows,
@@ -169,14 +165,7 @@ impl FlowReuse {
             .items
             .iter()
             .all(|item| item.replays_clipped() && item.hovers_hold(&self.hover));
-        let images = || {
-            opts.cx
-                .vcx()
-                .doc
-                .images
-                .borrow_mut()
-                .replay_reads(&record.images)
-        };
+        let images = || opts.cx.vcx().doc.replay_image_reads(&record.images);
         if !clean || cut || !record.key.same(&content.key, record.widths) || !images() {
             return None;
         }
