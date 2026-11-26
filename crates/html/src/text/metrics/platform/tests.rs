@@ -182,7 +182,7 @@ fn backend_face_identity_is_native_document_scoped_and_revision_scoped() {
 #[test]
 fn generic_families_follow_the_platform_table_and_ui_generics_match_nothing() {
     let doc = document();
-    let used = |value: &str| family(&doc, value).inh.font.font_family;
+    let used = |value: &str| family(&doc, value).inh.font.font_family.clone();
     assert_eq!(used("sans-serif").as_deref(), Some("Arial"));
     assert_eq!(used("system-ui").as_deref(), Some("Segoe UI"));
     assert_eq!(used("Absent, serif").as_deref(), Some("Times New Roman"));
