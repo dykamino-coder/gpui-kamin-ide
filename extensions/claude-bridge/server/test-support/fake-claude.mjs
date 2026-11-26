@@ -11,6 +11,16 @@ if (!['development', 'test'].includes(process.env.NODE_ENV) || process.env.BRIDG
 const home = process.env.BRIDGE_FAKE_CLI_HOME
 if (!home || !path.isAbsolute(home)) throw new Error('Isolated fake CLI home required')
 const args = process.argv.slice(2)
+// Opt-in parity with the interactive provider's turn lifecycle. SessionStart
+// does not report a selected mode; later hooks report this process's launch mode.
+const permissionReceipts = process.env.BRIDGE_FAKE_CLI_PERMISSION_RECEIPTS === '1'
+const modeFlag = args.indexOf('--permission-mode')
+const explicitMode = modeFlag >= 0 ? args[modeFlag + 1] : undefined
+const launchMode = args.includes('--dangerously-skip-permissions')
+  ? 'bypassPermissions'
+  : ['default', 'acceptEdits', 'plan'].includes(explicitMode)
+    ? explicitMode
+    : undefined
 if (args.includes('--version')) {
   process.stdout.write('0.0.0-fake-cli\n')
   process.exit(0)
@@ -262,7 +272,9 @@ async function execute(command) {
     )
     return
   }
-  await hook('UserPromptSubmit', { prompt: command })
+  const receipt = permissionReceipts && launchMode ? { permission_mode: launchMode } : {}
+  if (permissionReceipts && !stream) osc('working')
+  await hook('UserPromptSubmit', { prompt: command, ...receipt })
   // Input content itself is synthetic control, never user prompt capture. A
   // queue acceptance run opts in to the real CLI's behaviour: the transcript
   // records what was typed, so the client can match its pending item to it.
@@ -305,10 +317,16 @@ async function execute(command) {
       )
       await hook('SessionStart', { source: 'compact' })
       break
-    case '/fake-note':
+    case '/fake-note': {
       // A synthetic fact the answer carries (user input itself is never captured).
-      emit(rec.assistant([{ type: 'text', text: `noted: ${parameter ?? ''}` }]))
+      const row = rec.assistant([{ type: 'text', text: `noted: ${parameter ?? ''}` }])
+      if (permissionReceipts) {
+        row.timestamp = new Date().toISOString()
+        row.message.stop_reason = 'end_turn'
+      }
+      emit(row)
       break
+    }
     case '/fake-recall': {
       // Lines of the appended system prompt holding the word (engine-switch handoff).
       // What this session knows: its system prompt, the messages it received
@@ -401,7 +419,8 @@ async function execute(command) {
         rec.assistant([{ type: 'text', text: 'Synthetic response. Use /fake-agents, /fake-mcp, /compact or /usage.' }]),
       )
   }
-  await hook('Stop', { last_assistant_message: 'Synthetic turn complete' })
+  await hook('Stop', { last_assistant_message: 'Synthetic turn complete', ...receipt })
+  if (permissionReceipts && !stream) osc('idle')
   if (stream)
     process.stdout.write(
       JSON.stringify({
