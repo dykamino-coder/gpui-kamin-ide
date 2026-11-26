@@ -33,13 +33,17 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
   await step("observe-numbered-output", async () => {
     tab = (await web("return window.bridgeCmd.state().activeTabId")).value;
     const active = JSON.stringify(tab);
-    const { value } = await terminal(`window.smokeScrollOutput={events:0,newlines:0,marker:false};
+    const { value } = await terminal(`window.smokeScrollOutput={events:0,newlines:0,marker:false,ended:false};
+      let tail='';
       window.kaminBridge.onOutput((id,data)=>{
         if (id!==${active}) return;
         const out=window.smokeScrollOutput;
         out.events++;
         out.newlines+=data.split(String.fromCharCode(10)).length-1;
-        if (data.includes('native-scroll')) out.marker=true;
+        const text=tail+data;
+        if (text.includes('native-scroll')) out.marker=true;
+        if (out.marker && text.includes('turn complete')) out.ended=true;
+        tail=text.slice(-80);
       }); return true`);
     assert.equal(value, true);
   });
@@ -54,7 +58,7 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
     bottomState = await state();
     report.scrollGeometry = { start: bottomState };
     report.consoleOutput = (await terminal("return window.smokeScrollOutput")).value;
-    assert.ok(report.consoleOutput.marker && report.consoleOutput.newlines >= 25);
+    assert.ok(report.consoleOutput.ended && report.consoleOutput.newlines >= 25);
     assert.ok(bottomState?.history && bottomState.travel>8 && bottomState.pos>0.9);
     assert.ok(bottomState.overflow<=1 && bottomState.width>16 && bottomState.height>16);
   }, true);
