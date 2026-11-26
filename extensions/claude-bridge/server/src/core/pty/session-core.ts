@@ -1304,6 +1304,8 @@ const CLAUDE_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'x
 export function engineSwitchLaunchContext(launch: SessionConfig | undefined): SessionConfig {
   if (!launch) return {}
   const keep: SessionConfig = {}
+  if (launch.hookSyncFailed) keep.hookSyncFailed = true
+  if (launch.codexHookProtocol) keep.codexHookProtocol = launch.codexHookProtocol
   if (launch.basePrompt !== undefined) keep.basePrompt = launch.basePrompt
   if (launch.thinkingDisplay !== undefined) keep.thinkingDisplay = launch.thinkingDisplay
   if (launch.transcriptMirrorDir !== undefined) keep.transcriptMirrorDir = launch.transcriptMirrorDir
