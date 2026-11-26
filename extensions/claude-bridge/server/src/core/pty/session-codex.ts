@@ -752,6 +752,16 @@ export class CodexSessionBinding {
     void this.deliver(text, submissionId, userText).finally(() => this.delivering--)
   }
 
+  showStatus(text: string, submissionId?: string): void {
+    const account = this.runtime.knownAccount()
+    const auth = !account || account.checkFailed ? 'unknown' : account.loggedIn ? 'signed in' : 'signed out'
+    this.receipt(text, submissionId, 'read')
+    this.appendSystem(
+      `ChatGPT status · account: ${auth} · model: ${this.agent.model ?? 'default'} · next-turn effort: ${this.agent.reasoningEffort ?? 'engine default'}`,
+      'info',
+    )
+  }
+
   /** Messages handed to the thread whose delivery has not settled yet. */
   private delivering = 0
 
@@ -938,7 +948,7 @@ export class CodexSessionBinding {
     }
   }
 
-  appendSystem(text: string, level: 'warning' | 'error'): void {
+  appendSystem(text: string, level: 'info' | 'warning' | 'error'): void {
     this.hooks?.console?.(consoleNotice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return

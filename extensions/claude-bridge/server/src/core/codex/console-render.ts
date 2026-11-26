@@ -68,8 +68,8 @@ export function consoleBanner(info: {
 }
 
 /** One message line for Bridge's own notices (restart, stall, sign-in). */
-export function consoleNotice(level: 'warning' | 'error', message: string, at = Date.now()): string {
-  const color = level === 'error' ? RED : YELLOW
+export function consoleNotice(level: 'info' | 'warning' | 'error', message: string, at = Date.now()): string {
+  const color = level === 'error' ? RED : level === 'warning' ? YELLOW : DIM
   return toTerminal(`${DIM}${clock(at)}${RESET} ${color}${level}${RESET} ${plainText(message)}\n`)
 }
 
