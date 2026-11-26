@@ -1027,6 +1027,51 @@ describe('engine switch inside one chat', () => {
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
 
+  it('publishes the external catalog before Codex discovery on create, resume and engine switch', async () => {
+    const file = path.join(state.home, 'first-tools.json')
+    const capture = { FAKE_CODEX_CAPTURE_INITIAL_TOOLS: file }
+    const previous = runtimeMod.codexRuntime()
+    runtimeMod.setCodexRuntimeForTests(newRuntime(capture))
+    let client = await Client.open(port)
+    const externalTools = (name: string) => [{ name, description: 'Synthetic tool', inputSchema: { type: 'object' } }]
+    const catalog = () => JSON.parse(fs.readFileSync(file, 'utf8')) as string[]
+    try {
+      expect(
+        await createChat(client, { engine: 'codex', cwd: state.home, externalTools: externalTools('first_tool') }),
+      ).toMatchObject({ type: 'session:created' })
+      expect(catalog()).toContain('first_tool')
+      await say(client, 'first turn', 'catalog-create')
+      await client.entry((e) => text(e).startsWith('echo: first turn'))
+      const conversationId = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+      client.send({ type: 'session:end' })
+      await client.next((f) => f.type === 'session:exit')
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime(capture))
+      client = await Client.open(port)
+      client.send({
+        type: 'session:resume',
+        token: 'tok-a',
+        conversationId,
+        cwd: state.home,
+        protocolVersion: 1,
+        externalTools: externalTools('resumed_tool'),
+      })
+      await client.next((f) => f.type === 'session:created')
+      expect(catalog()).toContain('resumed_tool')
+      expect(catalog()).not.toContain('first_tool')
+      expect((await switchTo(client, 'claude', 'claude-sonnet-5-5')).restarted.engine).toBe('claude')
+      fs.unlinkSync(file)
+      expect((await switchTo(client, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      expect(catalog()).toContain('resumed_tool')
+    } finally {
+      client.send({ type: 'session:end' })
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(previous)
+    }
+  }, 30_000)
+
   it.each(['claude', 'codex'] as const)(
     'preserves answers across an empty segment on return to %s',
     async (first) => {
