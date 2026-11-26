@@ -3,7 +3,7 @@
 use super::calc::Val;
 use super::calc_arguments::{Comparison, Homogeneous};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
 pub(super) enum Function {
     Compare(u8),
     Math(&'static str, &'static str),

@@ -93,6 +93,8 @@ pub struct DocumentValues {
     pub calc: Arena<Sum>,
     /// Функции `anchor()` (`Len::Anchor`).
     pub anchor: Arena<Rc<AnchorFn>>,
+    /// Отложенные математические функции (`Len::Math`).
+    pub math: Arena<crate::style::values::value::MathTree>,
     /// Номера областей арен: документа и текущего кадра (`arena`).
     owner: Cell<u32>,
     frame_owner: Cell<u32>,
@@ -166,6 +168,7 @@ impl DocumentValues {
             background_images: Default::default(),
             calc: Default::default(),
             anchor: Default::default(),
+            math: Default::default(),
             painted: Default::default(),
             documents: Default::default(),
             readiness: Default::default(),
@@ -194,6 +197,7 @@ impl DocumentValues {
             self.frame_owner.set(arena::new_owner());
             self.calc.clear_frame();
             self.anchor.clear_frame();
+            self.math.clear_frame();
         }
     }
 

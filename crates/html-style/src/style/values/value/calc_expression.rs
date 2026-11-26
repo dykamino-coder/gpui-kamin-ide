@@ -66,6 +66,14 @@ impl Calc<'_> {
     pub(super) fn record_value(&mut self, value: Val) -> Option<Val> {
         if let Some(nodes) = &mut self.recording {
             nodes.push(Node::Value(value));
+            if self.typing {
+                // Нулевая длина совместима с длиной любой природы: проверка
+                // идёт по типу, величина листа живёт в записанном узле.
+                return Some(match value {
+                    Val::Len(_) => Val::Len(Sum::default()),
+                    other => other,
+                });
+            }
             value.with_basis(1.0)
         } else {
             Some(value)

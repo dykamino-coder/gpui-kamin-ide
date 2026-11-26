@@ -55,8 +55,22 @@ impl Computed {
         } else {
             size
         };
+        // Дерево `clamp(2rem, 1rem + 5vw, 4rem)`: окно уже подставлено,
+        // шрифтовые листья кегля считаются от РОДИТЕЛЬСКОГО кегля.
+        let size = size.resolve_math(vcx, |s| {
+            s.fold_font(parent_px, || {
+                let (ch, ex) = metrics();
+                let cap = font.units.map_or_else(
+                    || crate::style::font_metrics::vertical(family, font.metric_px, vcx).2,
+                    |units| units[0],
+                );
+                [cap, ch, ex, ic()]
+            })
+        });
         Some(match size {
-            Len::Px(px) => px,
+            // Свёрнутое дерево может уйти ниже нуля: кегль прижимается к
+            // диапазону свойства (§10.12).
+            Len::Px(px) => px.max(0.0),
             Len::Em(k) | Len::Pct(k) => k * parent_px,
             Len::EmPx(k, add) => k * parent_px + add,
             Len::Ch(k) => k * metrics().0,

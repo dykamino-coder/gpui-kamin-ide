@@ -129,19 +129,18 @@ impl Computed {
                 // Без шрифтовых слагаемых складывать нечего — индекс остаётся
                 // прежним: арена append-only, а `resolve_em` идёт на каждом
                 // наследовании, и повторное хранение раздувало бы её впустую.
-                if s.em != 0.0 || s.ch != 0.0 || s.ex != 0.0 || s.ic != 0.0 || s.cap != 0.0 {
-                    s.px += s.em * base + s.ch * ch + s.ex * ex + s.ic * ic + s.cap * cap;
-                    s.em = 0.0;
-                    s.ch = 0.0;
-                    s.ex = 0.0;
-                    s.ic = 0.0;
-                    s.cap = 0.0;
+                if s.fold_font(base, || [cap, ch, ex, ic]) {
                     // Процентная смесь обязана ДОЖИТЬ: `collapse` вернул бы
                     // `None` и стёр `text-indent: calc(1em + 50%)`. Для всего,
                     // что пришло из `Len::parse`, `pct == 0`, и обе свёртки
                     // совпадают.
                     *l = s.collapse_mixed(vcx);
                 }
+            }
+            // Дерево функции сравнения: шрифтовые листья — в точки, узлы,
+            // ставшие однородными, сворачиваются (css-values-4 §10.10).
+            Some(m @ Len::Math(_)) => {
+                *l = Some(m.resolve_math(vcx, |s| s.fold_font(base, || [cap, ch, ex, ic])));
             }
             _ => {}
         };
@@ -182,6 +181,7 @@ impl Computed {
                         | Len::Ex(_)
                         | Len::Ic(_)
                         | Len::Calc(_)
+                        | Len::Math(_)
                 )
             )
         };

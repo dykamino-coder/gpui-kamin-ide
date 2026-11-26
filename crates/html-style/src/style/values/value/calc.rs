@@ -15,6 +15,9 @@ pub(super) enum Val {
 /// `expr := term (('+'|'-') term)*`, `term := factor (('*'|'/') factor)*`.
 pub(super) struct Calc<'a> {
     pub(super) recording: Option<Vec<super::calc_expression::Node>>,
+    /// Разбор отложенного дерева (`calc_tree`): длины-листья проверяются
+    /// только по ТИПУ, их природы сравнит свёртка, когда появятся базы.
+    pub(super) typing: bool,
     pub(super) rest: &'a str,
 }
 
@@ -23,6 +26,7 @@ impl<'a> Calc<'a> {
         Self {
             rest,
             recording: None,
+            typing: false,
         }
     }
 
@@ -30,6 +34,7 @@ impl<'a> Calc<'a> {
         Self {
             rest,
             recording: self.recording.take(),
+            typing: self.typing,
         }
     }
 
@@ -170,5 +175,10 @@ impl Calc<'_> {
 }
 
 pub(super) fn parse_calc(inner: &str, vcx: ValueCx<'_>) -> Option<Len> {
-    eval_calc(inner, vcx)?.collapse(vcx)
+    match eval_calc(inner, vcx) {
+        Some(sum) => sum.collapse(vcx),
+        // Сравнение природ, чьи базы ещё не известны (`min(3rem, 8vw)`),
+        // откладывается деревом до вычисленного значения (§10.10).
+        None => super::calc_tree::deferred(inner, vcx),
+    }
 }
