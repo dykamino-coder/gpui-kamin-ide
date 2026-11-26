@@ -404,7 +404,13 @@ export class ConnectionManager {
   getSettingsDir(): string | null {
     return this.settingsDir
   }
+  claudePermissions: TabInfo['claudePermissions']
   codexCollaboration: TabInfo['codexCollaboration']
+
+  changeClaudePermissionMode(mode: string, sessionId: string): void {
+    if (this.state.status !== 'authenticated' || this.getEngine() !== 'claude' || !sessionId || sessionId !== this.getSessionId()) return
+    if (this.claudePermissions?.available.includes(mode)) this.send({ type: 'session:change-claude-permission-mode', sessionId, mode })
+  }
 
   changeCodexCollaboration(mode: string, sessionId: string): void {
     if (this.getEngine() === 'codex' && sessionId === this.getSessionId() &&
@@ -1889,6 +1895,9 @@ export class ConnectionManager {
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
+      noteClaudePermissions: (value, id) => {
+        if (id === undefined || (id === this.getSessionId() && this.getEngine() === 'claude')) this.claudePermissions = value
+      },
       noteCollaboration: (value, id) => { if (!id || id === this.getSessionId()) this.codexCollaboration = value },
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
       settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),

@@ -8,7 +8,7 @@ const ipc = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) =
 vi.mock('@kaminide/host-compat', () => ({
   ipcMain: {
     handle: (channel: string, fn: (...args: unknown[]) => unknown) => ipc.handlers.set(channel, fn),
-    on: vi.fn(),
+    on: (channel: string, fn: (...args: unknown[]) => unknown) => ipc.handlers.set(channel, fn),
   },
 }))
 vi.mock('../ws/connection-manager', () => ({ ConnectionManager: class {} }))
@@ -25,7 +25,8 @@ function setup() {
     set: vi.fn((next: typeof stored) => { stored = next }),
     getDefaultEngine: () => 'claude',
   }
-  const tabs = { createTab: vi.fn(() => 'tab-1') }
+  const connection = { changeClaudePermissionMode: vi.fn(), setPermissionMode: vi.fn(), changeCodexCollaboration: vi.fn(), getSessionId: () => 'live' }
+  const tabs = { createTab: vi.fn(() => 'tab-1'), getActiveTabId: () => 'active', getConnection: vi.fn(() => connection) }
   registerSessionsIPC({
     configStore: configStore as never,
     getTabManager: () => tabs as never,
@@ -61,4 +62,21 @@ describe('tab:create', () => {
     expect(tabConfigProblem({ serverUrl: 'ws://x', token: 't' })).toBeNull()
     expect(tabConfigProblem({ serverUrl: 'ws://x', token: '' })).toBe('token is required')
   })
+})
+
+it('ignores all permission menu actions delivered after another tab becomes active', () => {
+  const { tabs } = setup()
+  for (const [channel, args] of [
+    ['change-permission-mode', ['ask', 'live']],
+    ['claude:change-permission-mode', ['live', 'plan']],
+    ['codex:change-collaboration', ['live', 'default']],
+  ] as const) {
+    ipc.handlers.get(channel)!({}, 'previous', ...args)
+    expect(tabs.getConnection).not.toHaveBeenCalled()
+  }
+  ipc.handlers.get('change-permission-mode')!({}, 'active', 'ask', 'old')
+  const conn = tabs.getConnection()
+  expect(conn.setPermissionMode).not.toHaveBeenCalled()
+  ipc.handlers.get('change-permission-mode')!({}, 'active', 'ask', 'live')
+  expect(conn.setPermissionMode).toHaveBeenCalledWith('ask')
 })
