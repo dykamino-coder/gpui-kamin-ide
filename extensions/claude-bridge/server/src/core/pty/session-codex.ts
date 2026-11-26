@@ -278,17 +278,12 @@ export function codexModel(model: string | null | undefined): string | undefined
  *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
  *  windows take the ids the Claude status line uses, so the row labels them
  *  alike; context fields stay null (codex reports its window per response). */
-export function codexPlanUsage(
-  limits: CodexRateLimits,
-  model: string | null,
-  effort: string | null,
-): SessionUsage | null {
-  const account = limits.buckets[0]
-  if (!account) return null
+export function codexPlanUsage(limits: CodexRateLimits, model: string | null, effort: string | null): SessionUsage {
+  const account = limits.buckets.find((b) => b.id === 'codex') ?? limits.buckets.find((b) => b.id === null)
   const windows: SessionUsageWindow[] = []
   for (const [slot, w] of [
-    ['primary', account.primary],
-    ['secondary', account.secondary],
+    ['primary', account?.primary],
+    ['secondary', account?.secondary],
   ] as const) {
     if (!w) continue
     const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
@@ -299,7 +294,6 @@ export function codexPlanUsage(
       resetsAt: w.resetsAt === null ? null : new Date(w.resetsAt).toISOString(),
     })
   }
-  if (windows.length === 0) return null
   const at = new Date(limits.readAt).toISOString()
   return {
     windows,
@@ -826,7 +820,7 @@ export class CodexSessionBinding {
       .then((limits) => {
         if (this.disposed) return
         const usage = codexPlanUsage(limits, this.session.model ?? null, this.session.effort ?? null)
-        if (usage) sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
+        sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
       })
       .catch(() => undefined)
   }
