@@ -98,18 +98,20 @@ try {
     const driver = { step, probe, web, report };
     await registerClient(driver, origin);
     let tab;
+    let previousTab;
     await step("create-synthetic-codex-chat", async () => {
-      // Keep the disposable Bridge credential inside the isolated renderer.
-      const { value } = await web(`const { serverUrl, token } = await window.bridgeCmd.raw('getConfig');
-        return await window.bridgeCmd.raw('createTab', { serverUrl, token, engine: 'codex',
-          cwd: ${JSON.stringify(fixture?.directory ?? "")} })`);
-      assert.equal(typeof value, "string");
-      tab = value;
+      // This is the native IDE session command. A bare extension tab can be
+      // rebound to the previous IDE session when its activation finishes.
+      previousTab = (await web("return window.bridgeCmd.state().activeTabId")).value;
+      await web("window.bridgeCmd.raw('newAgentSession','codex','gpt-fake'); return true");
     });
     await step("codex-chat-prompt-ready", async () => {
-      const { value } = await web("return window.bridgeCmd.state()");
-      assert.equal(value.activeTabId, tab);
-      assert.equal(value.promptReady, true);
+      const { value } = await web(`const s=window.bridgeCmd.state();
+        const row=(await window.bridgeCmd.raw('listTabs')).find(t=>t.id===s.activeTabId);
+        return {id:s.activeTabId, ready:s.promptReady, engine:row?.engine, connected:row?.status==='connected'}`);
+      report.activeEngine = ["claude","codex"].includes(value?.engine) ? value.engine : null;
+      assert.ok(value?.id && value.id !== previousTab && value.ready && value.connected && value.engine === "codex");
+      tab = value.id;
     }, true);
     const marker = "native smoke roundtrip";
     await step("submit-synthetic-turn", async () => {
