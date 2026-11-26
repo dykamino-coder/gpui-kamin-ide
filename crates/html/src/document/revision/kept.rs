@@ -16,9 +16,9 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(in crate::document) struct Kept {
     sheets: Option<Rc<Vec<String>>>,
-    /// The names those sheets mention with the agent sheet and the theme of
-    /// the index (kept_mentions).
-    mentions: Option<(Box<str>, Rc<Mentions>)>,
+    /// The names the agent sheet, a theme and `<style>` sheets mention, with
+    /// the theme and the sheets they were indexed from (kept_mentions).
+    mentions: Option<(Box<str>, Rc<Vec<String>>, Rc<Mentions>)>,
     pub(super) cache: crate::dom::restyle_probe::RestyleCache,
     boxes: Option<Rc<Boxes>>,
     ids: Option<Rc<SourceIndex>>,
@@ -95,7 +95,7 @@ impl Document {
     /// sheets (`rule_feature_set.cc`), not on each mutation, and the sheets
     /// of a document do not change in place. `sheets`: the texts of the
     /// `<style>` elements when already known (an update's markup), indexed
-    /// anew unless they are the kept ones.
+    /// anew only when they differ from those of the kept index.
     pub(super) fn kept_mentions(
         &self,
         root: &markup5ever_rcdom::Handle,
@@ -112,18 +112,27 @@ impl Document {
             Rc::new(Mentions::of(all))
         };
         let mut kept = self.restyle.take().unwrap_or_default();
-        let own = |s: &[String]| kept.sheets.as_deref().is_some_and(|k| k.as_slice() == s);
-        let mentions = match sheets {
-            Some(s) if !own(s) => index(s),
-            _ => match kept.mentions.as_ref().filter(|(t, _)| **t == *theme_css) {
-                Some((_, m)) => m.clone(),
-                None => {
-                    let collect = || Rc::new(super::shape::sheets(root));
-                    let m = index(kept.sheets.get_or_insert_with(collect));
-                    kept.mentions = Some((theme_css.into(), m.clone()));
-                    m
-                }
+        let indexed = kept.mentions.as_ref().map(|(_, s, _)| s.clone());
+        let sheets = match sheets {
+            Some(s) => match indexed.filter(|k| k.as_slice() == s) {
+                Some(k) => k,
+                None => Rc::new(s.to_vec()),
             },
+            None => (kept
+                .sheets
+                .get_or_insert_with(|| Rc::new(super::shape::sheets(root))))
+            .clone(),
+        };
+        let same = |(t, s, _): &&(Box<str>, Rc<Vec<String>>, Rc<Mentions>)| {
+            **t == *theme_css && (Rc::ptr_eq(s, &sheets) || **s == *sheets)
+        };
+        let mentions = match kept.mentions.as_ref().filter(same) {
+            Some((_, _, m)) => m.clone(),
+            None => {
+                let m = index(&sheets);
+                kept.mentions = Some((theme_css.into(), sheets, m.clone()));
+                m
+            }
         };
         self.restyle.set(Some(kept));
         mentions
@@ -144,12 +153,15 @@ mod tests {
         let first = doc.kept_mentions(&root, None, "");
         assert!(Rc::ptr_eq(&first, &doc.kept_mentions(&root, None, "")));
         assert!(first.any(&[], &["a".into()]) && !first.any(&[], &["b".into()]));
-        // Known sheets other than the kept ones, or another theme, index anew.
+        // Known sheets other than the kept ones, or another theme, index anew;
+        // the same known sheets again (each update's markup) do not.
         let other = [String::from(".b{color:red}")];
-        assert!(
-            doc.kept_mentions(&root, Some(&other), "")
-                .any(&[], &["b".into()])
-        );
+        let known = doc.kept_mentions(&root, Some(&other), "");
+        assert!(known.any(&[], &["b".into()]));
+        assert!(Rc::ptr_eq(
+            &known,
+            &doc.kept_mentions(&root, Some(&other), "")
+        ));
         let themed = doc.kept_mentions(&root, None, ".t{}");
         assert!(!Rc::ptr_eq(&first, &themed) && themed.any(&[], &["t".into()]));
     }
