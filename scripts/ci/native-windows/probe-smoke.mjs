@@ -1,9 +1,10 @@
 // Exercise the existing native probe, CEF webview and host through their actual protocols.
 import assert from "node:assert/strict";
-import { open, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { probe } from "./native-probe.mjs";
+import { readRuntimeDiagnostics } from "./runtime-diagnostics.mjs";
 import { registerClient } from "./cef-input.mjs";
 import { checkEngineMenus } from "./engine-menus.mjs";
 import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs";
@@ -14,17 +15,6 @@ const installed = scenario === "installed-client";
 const report = { candidate: manifest.candidate_sha, exeSha256: manifest.source_exe_sha256,
   scenario, class: installed ? "hosted-windows-installed-release" : "hosted-windows-debug", windows: process.env.ImageVersion, steps: [] };
 const origin = `http://127.0.0.1:${Number(process.env.CLAUDE_PROXY_PORT)}`;
-
-async function lastLogBytes(file) {
-  const handle = await open(file, "r").catch(() => null);
-  if (!handle) return "";
-  try {
-    const { size } = await handle.stat();
-    const buf = Buffer.alloc(Math.min(size, 128 * 1024));
-    const { bytesRead } = await handle.read(buf, 0, buf.length, size - buf.length);
-    return buf.toString("utf8", 0, bytesRead);
-  } finally { await handle.close(); }
-}
 
 async function step(name, check, retry = false) {
   const started = Date.now();
@@ -135,14 +125,7 @@ try {
     const shot = await probe({ cmd: "screenshot", path: path.join(output, "window.png") });
     report.window = { width: shot.w, height: shot.h };
   } catch { report.window = null; }
-  const diag = path.join(capture, "LOCALAPPDATA", "kaminide-gpui-dev", "cache", "diag.log");
-  const logs = (await Promise.all([diag, path.join(capture, "stderr.log"), path.join(capture, "stdout.log")].map(lastLogBytes))).join("\n");
-  report.runtime = {
-    cefInitialized: /\[cef\] initialize=1\b/.test(logs),
-    microsoftSoftwareAdapterObserved: /Microsoft Basic Render Driver/i.test(logs),
-    hostChildReadyLogged: /\bCHILD_READY\b/.test(logs),
-    rustPanicLogged: /\bpanicked at\b/.test(logs),
-  };
+  report.runtime = await readRuntimeDiagnostics(capture);
   await writeFile(path.join(output, "report.json"), JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify(report));
 }

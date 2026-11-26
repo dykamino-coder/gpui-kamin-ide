@@ -1,14 +1,15 @@
 // Drive the published baseline's built-in updater against a private loopback feed serving the verified candidate.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { createReadStream } from "node:fs";
+import { closeSync, createReadStream, openSync } from "node:fs";
 import { stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { probe } from "./native-probe.mjs";
+import { readRuntimeDiagnostics } from "./runtime-diagnostics.mjs";
 
-const [exe, installer, before, after, output] = process.argv.slice(2);
+const [exe, installer, before, after, output, capture] = process.argv.slice(2);
 const size = (await stat(installer)).size;
 const evidence = { before, after, feedRequests: 0, installerRequests: 0, checks: [] };
 const archivePath = "/" + path.basename(installer);
@@ -44,9 +45,12 @@ async function boundary(name, check, timeout = 60000) {
   }
 }
 try {
-  const old = spawn(exe, ["--do-not-de-elevate"], { cwd: path.dirname(exe), stdio: "ignore", detached: true,
+  const out = openSync(path.join(capture, "previous-stdout.log"), "w");
+  const err = openSync(path.join(capture, "previous-stderr.log"), "w");
+  const old = spawn(exe, ["--do-not-de-elevate"], { cwd: path.dirname(exe), stdio: ["ignore",out,err], detached: true,
     env: { ...process.env, KAMIN_GPUI_UPDATE_URL: origin + "/latest.json" } });
   await new Promise((resolve, reject) => { old.once("spawn", resolve); old.once("error", reject); });
+  closeSync(out); closeSync(err);
   old.unref();
   await boundary("baseline-running-and-checking-feed", async () => {
     assert.equal((await probe({cmd:"ping"})).version, before);
@@ -73,5 +77,6 @@ try {
 } finally {
   server.close();
   server.closeAllConnections();
+  evidence.runtime = await readRuntimeDiagnostics(capture);
   await writeFile(path.join(output, "upgrade.json"), JSON.stringify(evidence, null, 2) + "\n");
 }

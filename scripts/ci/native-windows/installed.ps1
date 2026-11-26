@@ -23,11 +23,13 @@ try {
     $stage = 'empty-runner-profile'
     $registry = 'HKCU:\Software\KaminIDE-GPUI'
     if (Test-Path $registry) { throw 'Installation already present in runner account' }
-    foreach ($name in @('LOCALAPPDATA','APPDATA','USERPROFILE','TEMP','TMP')) {
+    foreach ($name in @('LOCALAPPDATA','APPDATA','USERPROFILE','TEMP')) {
         $value = Join-Path $capture $name
         New-Item -ItemType Directory -Path $value | Out-Null
         [Environment]::SetEnvironmentVariable($name, $value, 'Process')
     }
+    # Rust GetTempPath and PowerShell must resolve the same disposable log directory.
+    $env:TMP = $env:TEMP
     $env:HOME = $env:USERPROFILE
     $stage = 'install-previous-release'
     $baselineDir = Join-Path $PackageDir 'baseline'
@@ -54,7 +56,7 @@ try {
     if ((Get-Content $versionFile -Raw).Trim() -ne $previous) { throw 'Previous release did not install' }
     $checks.previousVersion = $true
     $stage = 'in-app-update'
-    node (Join-Path $PSScriptRoot 'upgrade.mjs') $exe $package.FullName $previous $metadata.versions.app $evidence
+    node (Join-Path $PSScriptRoot 'upgrade.mjs') $exe $package.FullName $previous $metadata.versions.app $evidence $capture
     if ($LASTEXITCODE) { throw 'In-app update or automatic restart failed. See upgrade.json.' }
     $app = Get-Process -Name 'kaminide-gpui' | Where-Object { $_.Path -eq $exe } | Select-Object -First 1
     if (!$app) { throw 'Restarted executable was not found in the installation directory' }
@@ -91,6 +93,7 @@ try {
         source = $env:INSTALLER_SOURCE; version = $metadata.versions.app; previous = $previous
         checks = $checks; explorerUi = "registration only"; versionText = "inspect version.png when available"
         installerSha256 = $metadata.installer.sha256; runner = $env:ImageVersion
+        session = (Get-Process -Id $PID).SessionId; interactive = [Environment]::UserInteractive
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
     } | ConvertTo-Json | Set-Content (Join-Path $evidence 'pipeline.json')
     $owned = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($capture + '\', [StringComparison]::OrdinalIgnoreCase) })
