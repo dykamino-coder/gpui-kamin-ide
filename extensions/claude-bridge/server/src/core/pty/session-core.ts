@@ -684,7 +684,18 @@ async function createAdmittedSession(
         }
       }
     },
-    onConversationId: (conversationId) => usageRecorder.bind(conversationId),
+    onConversationId: (conversationId) => {
+      usageRecorder.bind(conversationId)
+      if (session.launchConfig?.pristineClaudeId && session.launchConfig.claudePermissionMode) {
+        // The first persisted turn makes this an ordinary resumable chat.
+        try {
+          retainClaudeMode(session, session.launchConfig.claudePermissionMode)
+          delete session.launchConfig.pristineClaudeId
+        } catch {
+          warnLog('Could not retain the selected permission mode on first transcript discovery')
+        }
+      }
+    },
   })
 
   // Live subscription limits + context fill pushed to the chat (statusLine).

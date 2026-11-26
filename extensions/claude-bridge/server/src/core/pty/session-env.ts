@@ -260,6 +260,8 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
   // Resume a previous conversation
   if (sessionConfig.resumeConversationId) {
     args.push('--resume', sessionConfig.resumeConversationId)
+  } else if (sessionConfig.pristineClaudeId && sessionConfig.claudePermissionMode) {
+    args.push('--session-id', sessionConfig.pristineClaudeId)
   }
 
   // Inject system prompt with working directory info and MCP instructions

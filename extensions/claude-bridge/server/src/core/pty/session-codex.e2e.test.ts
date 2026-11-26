@@ -1126,6 +1126,50 @@ describe('engine switch inside one chat', () => {
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
 
+  it('changes an untouched Claude chat before its first turn and keeps the native identity', async () => {
+    const { getSession } = await import('./session-manager')
+    const { pristineClaudeChatId } = await import('./claude-permissions')
+    const { listSession } = await import('../hooks/registry')
+    const launched = vi.spyOn(await import('./session-plugin-args'), 'buildSessionClaudeArgs')
+    const client = await Client.open(port)
+    try {
+      const created = await createChat(client, { engine: 'claude' })
+      const session = getSession(created.sessionId)!
+      // The fixture posts a real authenticated SessionStart without permission_mode.
+      // Supply that optional CLI field through the same registered hook.
+      await vi.waitFor(() => expect(pristineClaudeChatId(session)).toBeTruthy(), { timeout: 5000 })
+      const id = pristineClaudeChatId(session)!
+      const start = listSession(session.id).find((h) => h.event === 'SessionStart' && h.source.kind === 'bridge')!
+      const observation = await app.request('/api/hooks/' + session.id + '/SessionStart/' + start.id, {
+        method: 'POST',
+        headers: {
+          authorization: 'Bearer ' + session.mcpToken,
+          'X-Bridge-Hook-Relay': 'command',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          hook_event_name: 'SessionStart',
+          source: 'startup',
+          permission_mode: 'bypassPermissions',
+          session_id: id,
+        }),
+      })
+      expect(observation.status).toBe(200)
+      expect(session.cliConversationId).toBeNull()
+      client.send({ type: 'session:change-claude-permission-mode', mode: 'plan', sessionId: session.id })
+      const fresh = await client.next((f) => f.type === 'session:restarted', 15000)
+      const args = launched.mock.results.at(-1)!.value
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(args[args.indexOf('--session-id') + 1]).toBe(id)
+      expect(args).not.toContain('--resume')
+      expect(getSession(fresh.sessionId)!.settingsDir).toBe(session.settingsDir)
+    } finally {
+      launched.mockRestore()
+      client.send({ type: 'session:end' })
+      client.close()
+    }
+  }, 30000)
+
   it('resumes a native Claude PTY in the selected mode and retains it on cold restore', async () => {
     const { getSession } = await import('./session-manager')
     const { sessionCliControl } = await import('./session-cli-control')
@@ -1198,6 +1242,13 @@ describe('engine switch inside one chat', () => {
       expect(coldArgs[coldArgs.indexOf('--resume') + 1]).toBe(id)
       expect(coldArgs).not.toContain('--dangerously-skip-permissions')
       expect(getSession(cold.sessionId)!.launchConfig?.claudePermissionMode).toBe('plan')
+      expect((await switchTo(client, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      const back = (await switchTo(client, 'claude', 'claude-opus-5-5')).restarted
+      expect(back.engine).toBe('claude')
+      expect(getSession(back.sessionId)!.launchConfig?.claudePermissionMode).toBe('plan')
+      const returnedArgs = launched.mock.results.at(-1)!.value
+      expect(returnedArgs[returnedArgs.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(returnedArgs).not.toContain('--dangerously-skip-permissions')
     } finally {
       launched.mockRestore()
       client.send({ type: 'session:end' })

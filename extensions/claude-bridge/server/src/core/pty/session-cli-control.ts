@@ -1,7 +1,12 @@
 // Main-turn lifecycle and terminal status share one precedence decision.
 import type { PtySession } from './types'
 import { sendToClient } from './session-io'
-import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText } from './session-input-coordinator'
+import {
+  getSessionInputSnapshot,
+  isTerminalResponseInput,
+  setSessionPromptReady,
+  submitCoordinatedText,
+} from './session-input-coordinator'
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions, type CarriedSubmission } from './cli-submissions'
 import { replayTerminalCommandReceipts } from './terminal-command-receipts'
@@ -30,6 +35,7 @@ export class SessionCliControl {
   private modReady = false
   private lastPromptSubmission = 0
   private awaitingPrompt = false
+  private receivedUserInput = false
   private submissions?: CliSubmissions
 
   constructor(
@@ -155,7 +161,12 @@ export class SessionCliControl {
     return this.lastPromptSubmission
   }
 
+  pristinePrompt(): boolean {
+    return !this.receivedUserInput && !this.busy() && this.osc !== 'error'
+  }
+
   private markSubmission(): void {
+    this.receivedUserInput = true
     this.lastPromptSubmission = Date.now()
     this.awaitingPrompt = true
   }
@@ -206,6 +217,7 @@ export class SessionCliControl {
   rawInput(data: string): void {
     // Up can withdraw a native queued item without an addressed receipt. Stop
     // correlating this process rather than attach a later UUID to the wrong ID.
+    if (!isTerminalResponseInput(data)) this.receivedUserInput = true
     if (data.includes('\r') || data.includes('\n')) this.markSubmission()
     this.submissions?.rawInput(data)
   }

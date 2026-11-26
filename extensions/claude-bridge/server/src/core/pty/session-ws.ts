@@ -3,9 +3,11 @@
 // ============================================================================
 
 import {
+  flushedPristineTranscript,
   isClaudeMode,
   observedClaudeMode,
   permissionChangeBlocker,
+  pristineClaudeChatId,
   publishClaudePermissions,
   retainClaudeMode,
 } from './claude-permissions'
@@ -438,9 +440,15 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           if (!ownsStartup(operation)) return false
           // Another socket may have resumed this chat meanwhile (reconnect on
           // a new connection): never run two CLIs on one transcript.
-          if (old.cliConversationId && findSessionByConversation(old.tokenId, old.cliConversationId))
-            throw new Error('chat already running elsewhere')
           const launch = old.launchConfig ?? {}
+          const identity = old.cliConversationId ?? launch.pristineClaudeId
+          if (identity && findSessionByConversation(old.tokenId, identity))
+            throw new Error('chat already running elsewhere')
+          const resumeId =
+            old.cliConversationId ??
+            (launch.pristineClaudeId && flushedPristineTranscript(old.settingsDir, launch.pristineClaudeId)
+              ? launch.pristineClaudeId
+              : undefined)
           const fresh = await createSession(ws, authenticatedUser!, old.tokenId, {
             ...launch,
             cols: sleeping.cols,
@@ -452,12 +460,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             bearerHash: old.bearerHash,
             carryRegistrations: old,
             history: undefined,
-            noSpawnOnNotFound: launch.claudePermissionMode && old.cliConversationId ? true : undefined,
+            noSpawnOnNotFound: launch.claudePermissionMode && resumeId ? true : undefined,
             segmentStart: undefined,
             deferTranscript: undefined,
             // An empty chat had nothing to resume: it starts fresh, same cwd/model.
-            resumeConversationId: old.cliConversationId ?? undefined,
-            reuseSettingsDir: old.cliConversationId ? old.settingsDir : undefined,
+            resumeConversationId: resumeId,
+            reuseSettingsDir: old.cliConversationId || launch.pristineClaudeId ? old.settingsDir : undefined,
             conversation: old.conversation,
           })
           if (!ownsStartup(operation)) {
@@ -563,14 +571,19 @@ export function attachSessionWebSocket(_server: HttpServer): void {
           publishClaudePermissions(session, 'Select the requested mode in the native Console.')
           return
         }
-        const reason = permissionChangeBlocker(session)
+        const pristineId = pristineClaudeChatId(session)
+        const reason = permissionChangeBlocker(session, pristineId)
         if (reason) {
           publishClaudePermissions(session, reason)
           return
         }
         try {
           retainClaudeMode(session, msg.mode)
-          session.launchConfig = { ...session.launchConfig, claudePermissionMode: msg.mode }
+          session.launchConfig = {
+            ...session.launchConfig,
+            claudePermissionMode: msg.mode,
+            pristineClaudeId: pristineId,
+          }
           publishClaudePermissions(session)
           if (observedClaudeMode(session) === msg.mode) return
           // No await between admission and stopping the idle terminal. The normal

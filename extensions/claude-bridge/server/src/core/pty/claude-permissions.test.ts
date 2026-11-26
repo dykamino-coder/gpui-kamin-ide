@@ -7,11 +7,13 @@ import {
   observeClaudePermission,
   permissionChangeBlocker,
   publishClaudePermissions,
+  pristineClaudeChatId,
   restoredClaudeMode,
   retainClaudeMode,
 } from './claude-permissions'
 import { SessionCliControl } from './session-cli-control'
 import type { PtySession } from './types'
+import * as conversations from '../conversation/conversation'
 import * as database from '../stats/database/lifecycle'
 
 let dir: string
@@ -105,6 +107,35 @@ describe('native Claude permission selection', () => {
     expect(permissionChangeBlocker(a.session)).toContain('idle')
     a.session.pendingElicitations.clear()
     expect(permissionChangeBlocker(a.session)).toBeUndefined()
+  })
+  it('allows a confirmed untouched native prompt before its first turn and refuses a delayed transcript or user input', () => {
+    const id = '12345678-1234-1234-1234-123456789abc'
+    const a = fixture(id)
+    a.session.cliConversationId = null
+    a.session.inputCount = 0
+    a.session.mcpCallCount = 0
+    a.session.jsonlWatcher = { getFilePath: () => null } as any
+    vi.spyOn(conversations, 'slugDirOf').mockReturnValue(dir)
+    const startup = () =>
+      observeClaudePermission(a.session, {
+        hook_event_name: 'SessionStart',
+        source: 'startup',
+        permission_mode: 'bypassPermissions',
+        session_id: id,
+      })
+    startup()
+    a.status('idle')
+    expect(pristineClaudeChatId(a.session)).toBe(id)
+    expect(permissionChangeBlocker(a.session)).toBeUndefined()
+    a.record()
+    expect(pristineClaudeChatId(a.session)).toBeUndefined()
+    fs.unlinkSync(a.file)
+    observeClaudePermission(a.session, { hook_event_name: 'Notification', session_id: id })
+    expect(pristineClaudeChatId(a.session)).toBeUndefined()
+    startup()
+    a.control.rawInput('x')
+    expect(pristineClaudeChatId(a.session)).toBeUndefined()
+    expect(permissionChangeBlocker(a.session)).toBeTruthy()
   })
   it('preserves an explicit choice by owner and chat across a cold resume or directory replacement', () => {
     const a = fixture('first')
