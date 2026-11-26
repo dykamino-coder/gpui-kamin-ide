@@ -2,7 +2,7 @@
 //! и LRU — нейтральный `crate::cache`; здесь — путь, по которому его берут фазы, и вес
 //! `RenderImage`.
 
-pub(crate) use crate::cache::{BoundedCache, MIB};
+pub(crate) use crate::cache::{BoundedCache, MIB, held_elsewhere};
 use gpui::RenderImage;
 use std::sync::Arc;
 

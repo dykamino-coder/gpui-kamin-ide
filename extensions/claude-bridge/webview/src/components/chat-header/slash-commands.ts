@@ -72,7 +72,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: '/session', description: 'Show remote session URL and QR code' },
   { name: '/skills', description: 'List available skills' },
   { name: '/stats', description: 'Show your Claude Code usage statistics and activity' },
-  { name: '/status', description: 'Show Claude Code status including version, model, account, API connectivity, and tool statuses' },
+  { name: '/status', description: 'Show session status for the current engine' },
   { name: '/statusline', description: "Set up Claude Code's status line UI" },
   { name: '/tag', description: 'Toggle a searchable tag on the current session' },
   { name: '/teleport', description: 'Continue the current session on a remote environment' },

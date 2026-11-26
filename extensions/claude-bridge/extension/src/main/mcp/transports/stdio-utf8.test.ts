@@ -37,11 +37,11 @@ afterEach(() => {
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
 })
 
-it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
+async function fixture(scriptText: string) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'stdio-utf8-'))
   directories.push(directory)
   const script = path.join(directory, 'server.cjs')
-  fs.writeFileSync(script, SERVER)
+  fs.writeFileSync(script, scriptText)
   const state = {
     config: { id: 's', name: 's', type: 'stdio', command: process.execPath, args: [script], enabled: true },
     status: 'connecting',
@@ -70,8 +70,25 @@ it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
     },
   } as unknown as TransportContext
 
+  return { ctx, state, logs }
+}
+
+it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
+  const { ctx, state, logs } = await fixture(SERVER)
   await connectStdio(ctx, 's')
   expect(state.toolSchemas.get('echo')?.description).toBe(DESCRIPTION)
   expect(logs.join('\n')).toContain('server "Сервер Ж"')
   expect(logs.join('\n')).not.toContain('�')
+}, 30_000)
+
+it('keeps a healthy stdio server that reports progress to stderr', async () => {
+  const { ctx, state, logs } = await fixture("process.stderr.write(('INFO: loading tools\\n').repeat(30))\n" + SERVER)
+  await connectStdio(ctx, 's')
+  expect(state.toolSchemas.has('echo')).toBe(true)
+  expect(logs).toContain('INFO: loading tools')
+}, 30_000)
+
+it('stops a child that repeatedly reports a failed connection', async () => {
+  const { ctx } = await fixture("process.stderr.write(('Error: connect ECONNREFUSED\\n').repeat(30))\n" + SERVER)
+  await expect(connectStdio(ctx, 's')).rejects.toThrow('Circuit breaker')
 }, 30_000)

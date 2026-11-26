@@ -12,6 +12,8 @@ export interface SessionAgentInput {
   /** A whole user message; the engine sends receipts itself, carrying
    *  `userText` (what the user wrote, without Bridge's hidden context). */
   submit(text: string, submissionId?: string, userText?: string): void
+  /** Show cached engine status without submitting a model turn. */
+  showStatus?(text: string, submissionId?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
   /** Re-send the engine's live turn state to a newly attached client: an edge
@@ -311,12 +313,9 @@ export interface SessionConfig {
   segmentStart?: { settingsDir: string }
   /** Engine switch (server-set): attach the transcript later (attachTranscript). */
   deferTranscript?: boolean
-  /** Server-set on a respawn of the same chat (hibernation wake, effort/model
-   *  restart): the client's MCP registrations carry over before the CLI asks
-   *  for its tool list, so the respawned CLI sees the same tools. */
-  carryRegistrations?: Pick<
-    PtySession,
-    'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'
+  /** This chat's client catalog, available when the engine first connects. */
+  carryRegistrations?: Partial<
+    Pick<PtySession, 'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'>
   >
 }
 

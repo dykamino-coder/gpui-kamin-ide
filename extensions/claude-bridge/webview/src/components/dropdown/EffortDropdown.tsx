@@ -4,6 +4,7 @@ import { Dropdown } from './Dropdown'
 import { DropdownTrigger } from './DropdownTrigger'
 import { DropdownOption } from './DropdownOption'
 import { currentEffort } from '../../signals/ui'
+import { codexCatalog } from '../../signals/agent'
 import { useBridge } from '../../hooks/useBridge'
 import { activeTabId, tabs } from '../../signals/tabs'
 
@@ -25,7 +26,17 @@ const EFFORT_OPTIONS = [
  *  turns go without effort and the engine picks its own. */
 const ENGINE_DEFAULT = { value: 'default', icon: 'fa-circle-half-stroke', name: 'Default', description: "The engine's own level" } as const
 
-type EffortOption = (typeof EFFORT_OPTIONS)[number] | typeof ENGINE_DEFAULT
+interface EffortOption { value: string; icon: string; name: string; description: string }
+
+function codexOption(value: string): EffortOption {
+  return EFFORT_OPTIONS.find(option => option.value === value)
+    ?? { value, icon: 'fa-brain', name: value[0]!.toUpperCase() + value.slice(1), description: 'Model-supported reasoning effort' }
+}
+
+export function codexEffortOptions(levels: readonly string[] | undefined): readonly EffortOption[] {
+  if (!levels?.length) return EFFORT_OPTIONS.filter(option => option.value !== 'max')
+  return [...new Set(levels)].filter(value => /^[a-z0-9_-]{1,32}$/.test(value)).map(codexOption)
+}
 
 /** The level the selector shows for a tab. A Claude chat without a level runs
  *  on `--effort high` (server session-env.ts), so High is its truth. A ChatGPT
@@ -38,8 +49,8 @@ export function effortShown(
 ): EffortOption {
   const codex = tab?.engine === 'codex'
   const effort = codex ? tab?.effort : (tab?.effort ?? lastPicked)
-  return EFFORT_OPTIONS.find(o => o.value === effort)
-    ?? (codex ? ENGINE_DEFAULT : EFFORT_OPTIONS.find(o => o.value === 'high') ?? EFFORT_OPTIONS[2])
+  if (codex) return effort ? codexOption(effort) : ENGINE_DEFAULT
+  return EFFORT_OPTIONS.find(o => o.value === effort) ?? EFFORT_OPTIONS[2]
 }
 
 export function EffortDropdown(): JSX.Element {
@@ -49,9 +60,14 @@ export function EffortDropdown(): JSX.Element {
   const activeTab = tabId ? tabs.value.find(t => t.id === tabId) : undefined
   const current = effortShown(activeTab, currentEffort.value)
   const effort = current.value
+  const models = codexCatalog.value?.models
+  const model = activeTab?.model
+    ? models?.find(entry => entry.model === activeTab.model || entry.id === activeTab.model)
+    : models?.find(entry => entry.isDefault)
+  const options = activeTab?.engine === 'codex' ? codexEffortOptions(model?.reasoningEfforts) : EFFORT_OPTIONS
 
   function handleSelect(value: string): void {
-    currentEffort.value = value
+    if (activeTab?.engine !== 'codex') currentEffort.value = value
     setOpen(false)
     if (!tabId) return
     if (value === 'default') return
@@ -71,7 +87,7 @@ export function EffortDropdown(): JSX.Element {
         />
       }
     >
-      {EFFORT_OPTIONS.map(opt => (
+      {options.map(opt => (
         <DropdownOption
           key={opt.value}
           icon={opt.icon}

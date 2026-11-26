@@ -68,8 +68,8 @@ export function consoleBanner(info: {
 }
 
 /** One message line for Bridge's own notices (restart, stall, sign-in). */
-export function consoleNotice(level: 'warning' | 'error', message: string, at = Date.now()): string {
-  const color = level === 'error' ? RED : YELLOW
+export function consoleNotice(level: 'info' | 'warning' | 'error', message: string, at = Date.now()): string {
+  const color = level === 'error' ? RED : level === 'warning' ? YELLOW : DIM
   return toTerminal(`${DIM}${clock(at)}${RESET} ${color}${level}${RESET} ${plainText(message)}\n`)
 }
 
@@ -85,6 +85,13 @@ export class CodexConsoleRenderer {
         return ''
       case 'turn.started':
         return this.close() + toTerminal(`${t}${DIM}── turn started${RESET}\n`)
+      case 'turn.requestAccepted':
+        return (
+          this.close() +
+          toTerminal(
+            `${t}${DIM}turn/start accepted · requested effort ${plainText(event.requestedEffort ?? 'omitted')}${RESET}\n`,
+          )
+        )
       case 'turn.completed': {
         const took = event.durationMs !== undefined ? ` in ${(event.durationMs / 1000).toFixed(1)} s` : ''
         const color = event.status === 'completed' ? GREEN : event.status === 'interrupted' ? YELLOW : RED
