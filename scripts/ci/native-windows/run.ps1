@@ -19,6 +19,8 @@ try {
     $env:KAMIN_PROBE_TOKEN = [guid]::NewGuid().ToString('N')
     if ($Scenario -eq 'bridge-roundtrip') {
         $env:CLAUDE_PROXY_PORT = '13456'
+        $env:BRIDGE_CODEX_BIN = (Resolve-Path 'extensions/claude-bridge/server/test-support/fake-codex.mjs').Path
+        $env:FAKE_CODEX_LOGGED_IN = '1'
         $runner = Start-Process node -ArgumentList @('extensions/claude-bridge/server/test-support/run.mjs', ("`"$bridge`"")) -PassThru -WindowStyle Hidden
     }
     ./scripts/start_native_acceptance.ps1 -Exe $exe -EvidenceDir $client -WithHost -Warp -SoftwareCef -Port 19357

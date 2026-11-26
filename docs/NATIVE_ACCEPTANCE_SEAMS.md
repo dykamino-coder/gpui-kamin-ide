@@ -7,6 +7,40 @@
 CI компилирует настоящий config-модуль с `debug-assertions=no` и проверяет,
 что env-reader не вызывается. Версии, `vendor/` и `crates/html` не меняются.
 
+## Воспроизводимый запуск на GitHub Actions
+
+Workflow `Native Windows smoke` собирает указанный Git SHA на стандартной
+`windows-2025` VM. Сценарий `native-client` проверяет размер отрисованной области
+GPUI, активацию встроенного расширения в отдельном Extension Host и выполнение
+JavaScript штатной страницы чата в CEF. Сценарий `bridge-roundtrip` дополнительно
+поднимает настоящий Bridge на loopback той же VM в режиме синтетического CLI.
+Запрос `/health` проходит из CEF через штатный IPC расширения и возвращает
+версию сервера из проверяемого commit. Затем клиент открывает сессию Codex
+через WebSocket и отображает ответ синтетического app-server на тестовую
+фразу. Проверки не требуют подписки.
+
+```bash
+commit=$(git rev-parse HEAD)
+gh workflow run native-windows-smoke.yml -f candidate="$commit" -f scenario=bridge-roundtrip
+gh run list --workflow native-windows-smoke.yml --limit 3
+gh run watch "$run_id" --exit-status
+gh run download "$run_id" --dir "$capture_dir"
+```
+
+В командах `run_id` — ID нужного запуска из списка, `capture_dir` — отдельный
+каталог для отчёта. Сохранённый `candidate` сверяется с проверяемым commit.
+Прогон заканчивается ошибкой на первой обязательной границе, для которой
+истёк таймаут или получен неправильный ответ. Снимок относится к окну
+приложения. Срок хранения CI-артефакта — три дня.
+
+Это проверка debug-клиента на VM и Windows-реализации Bridge. Профиль
+клиента и данные сервера временные и раздельные. Результаты Linux Docker
+проверяет отдельный job. Сквозной тест Windows → Linux потребует доступного
+с этой же VM отдельного Linux guest в изолированном окружении и положительной
+пробы loopback до запуска клиента. Адреса отдельных GitHub jobs в этом
+сценарии не используются. Приёмка установленного release-кандидата, работа
+обычного GPU, мыши и клавиатуры остаются отдельными сценариями.
+
 ## Подготовка кандидата
 
 В собственной acceptance-ветке объединить нужный PR и shared seam commit,

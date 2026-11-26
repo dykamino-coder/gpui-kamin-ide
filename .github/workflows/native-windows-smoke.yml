@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-smoke-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: native-smoke-${{ inputs.candidate || github.event.pull_request.head.sha || github.sha }}-${{ inputs.scenario || 'bridge-roundtrip' }}
+  cancel-in-progress: false
 
 jobs:
   native:
@@ -57,24 +57,47 @@ jobs:
           key: windows-cargo-inputs-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: windows-cargo-inputs-v1-
       - name: Build debug shell and CEF helper
+        id: shell_build
         run: cargo build --locked -p kaminide-gpui -p kaminide-web-helper
       - name: Build the candidate Extension Host
+        id: host_build
         shell: bash
         run: |
           set -euo pipefail
           npm ci --no-audit --no-fund
           npm run build:host
       - name: Install isolated Bridge dependencies
+        id: bridge_deps
         if: env.SMOKE_SCENARIO == 'bridge-roundtrip'
         working-directory: extensions/claude-bridge/server
         run: npm ci --no-audit --no-fund
       - name: Exercise native client
+        id: native_test
         run: ./scripts/ci/native-windows/run.ps1 -Scenario $env:SMOKE_SCENARIO
+      - name: Record build and launch outcomes
+        if: always()
+        env:
+          BUILD_SHELL: ${{ steps.shell_build.outcome }}
+          BUILD_HOST: ${{ steps.host_build.outcome }}
+          INSTALL_BRIDGE: ${{ steps.bridge_deps.outcome }}
+          RUN_NATIVE: ${{ steps.native_test.outcome }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'native-smoke-report'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+          $wslFeature = Get-CimInstance Win32_OptionalFeature -Filter "Name='Microsoft-Windows-Subsystem-Linux'" -ErrorAction SilentlyContinue
+          [ordered]@{ candidate = $env:SMOKE_SHA; scenario = $env:SMOKE_SCENARIO; runner = $env:ImageVersion
+            shell = $env:BUILD_SHELL; host = $env:BUILD_HOST; bridge = $env:INSTALL_BRIDGE; native = $env:RUN_NATIVE
+            wslExecutable = [bool]$wsl; wslFeatureEnabled = $wslFeature.InstallState -eq 1
+          } | ConvertTo-Json | Set-Content (Join-Path $dir 'pipeline.json')
       - name: Upload synthetic report and window capture
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-windows-${{ env.SMOKE_SCENARIO }}-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/native-smoke-report/
+          path: |
+            ${{ runner.temp }}/native-smoke-report/pipeline.json
+            ${{ runner.temp }}/native-smoke-report/report.json
+            ${{ runner.temp }}/native-smoke-report/window.png
           retention-days: 3
           if-no-files-found: warn
