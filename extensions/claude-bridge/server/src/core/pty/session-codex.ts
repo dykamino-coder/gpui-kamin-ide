@@ -103,7 +103,7 @@ function lastUuid(file: string): string | null {
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const entry = JSON.parse(lines[i]!) as { uuid?: unknown; type?: unknown; subtype?: unknown; engine?: unknown }
-        if (isEngineUsageLine(entry)) continue
+        if (isEngineUsageLine(entry) || entry.subtype === 'codex_turn_request') continue
         const uuid = entry.uuid
         if (typeof uuid === 'string') return uuid
       } catch {
@@ -178,7 +178,7 @@ export function modelLine(model: string | null | undefined, effort: string | nul
     '## Model',
     `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
     level
-      ? 'When asked which model or reasoning effort you run on, answer with these exact values.'
+      ? 'These are the settings Bridge requested at this point in the conversation. A later Bridge model line updates them for subsequent turns.'
       : 'When asked which model you are, answer with this exact identifier.',
   ].join('\n')
 }

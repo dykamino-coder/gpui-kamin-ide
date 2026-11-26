@@ -47,6 +47,7 @@ export type AgentEvent = Base &
   (
     | { kind: 'session.started'; engine: AgentEngineId; model: string | null; resumed: boolean }
     | { kind: 'turn.started'; turnId: string }
+    | { kind: 'turn.requestAccepted'; turnId: string; requestedEffort: string | null }
     | {
         kind: 'turn.completed'
         turnId: string

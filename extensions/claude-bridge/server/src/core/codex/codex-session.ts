@@ -178,12 +178,13 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     const threadId = this.requireThread()
     // Only a new turn carries the context: a steer joins a turn that already has it.
     const extra = context?.() ?? null
+    const requestedEffort = this.effort
     const response = await this.options.host.rpc.request<TurnStartResponse>('turn/start', {
       threadId,
       input: extra ? [...textInput(extra.text), ...textInput(text)] : textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
-      ...(this.effort ? { effort: this.effort } : {}),
+      ...(requestedEffort ? { effort: requestedEffort } : {}),
       // The bundled catalog defaults every model to `none`, so without this the
       // app-server never streams a reasoning summary and the chat shows no
       // thinking at all (the CLI only shows it when its config asks).
@@ -192,6 +193,13 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     this.nextModel = undefined
     extra?.delivered()
     const turn = response.turn
+    this.events.emit({
+      kind: 'turn.requestAccepted',
+      threadId,
+      turnId: turn.id,
+      at: Date.now(),
+      requestedEffort: requestedEffort ?? null,
+    })
     if (turn.status === 'inProgress' && this.activeTurnId === null && !this.completed.has(turn.id)) {
       this.activeTurnId = turn.id
     }
