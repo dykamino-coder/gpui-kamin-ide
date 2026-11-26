@@ -66,6 +66,11 @@ try {
     Set-AppEnvironment 'KAMIN_DEBUG_NO_ACTIVATE' '1'
     Set-AppEnvironment 'KAMIN_DEBUG_REDUCED_ANIMATIONS' $(if ($ReducedAnimations) { '1' } else { '0' })
     Set-AppEnvironment 'KAMIN_DEBUG_SOFTWARE_POLICY' $(if ($Warp) { '1' } else { '0' })
+    if ($device) {
+        # The product defaults to minimum-power. GPUI requires the default adapter
+        # policy for the explicit WARP and D3D11On12 debug instrumentation.
+        Set-AppEnvironment 'KAMIN_GPU_ADAPTER' 'default'
+    }
     Set-AppEnvironment 'KAMIN_DEBUG_D3D_DEVICE' $device
     Set-AppEnvironment 'KAMIN_CEF_FORCE_SW' $(if ($SoftwareCef) { '1' } else { $null })
     Set-AppEnvironment 'KAMIN_DEV_REPO' $repo
