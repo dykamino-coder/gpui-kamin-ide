@@ -315,6 +315,10 @@ export function createSyncRoutes(): Hono {
 
     return withUserSyncLock(hash, async () => {
       try {
+        if (body.toolHookPlugins !== undefined) {
+          await fsp.mkdir(userDir, { recursive: true })
+          await fsp.writeFile(path.join(userDir, 'codex-tool-hooks.json'), JSON.stringify(body.toolHookPlugins), 'utf8')
+        }
         const skillsUpdate = await syncSkillsSnapshot(path.join(userDir, 'skills'), body.skills)
         if (skillsUpdate.present) {
           const telemetry = recordSkillsSnapshot(hash, 'user', undefined, body.skills!, skillsUpdate.changed)
@@ -387,6 +391,10 @@ export function createSyncRoutes(): Hono {
       try {
         await fsp.mkdir(projDir, { recursive: true })
 
+        if (body.toolHookPlugins !== undefined) {
+          await fsp.mkdir(projDir, { recursive: true })
+          await fsp.writeFile(path.join(projDir, 'codex-tool-hooks.json'), JSON.stringify(body.toolHookPlugins), 'utf8')
+        }
         const skillsUpdate = await syncSkillsSnapshot(path.join(projDir, 'skills'), body.skills)
         if (skillsUpdate.present) {
           const telemetry = recordSkillsSnapshot(hash, 'project', body.projectPath, body.skills!, skillsUpdate.changed)

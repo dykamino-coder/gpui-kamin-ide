@@ -241,6 +241,16 @@ export function filterApprovedHooks(pluginId: string, hooks: HookSettings): Hook
   return out
 }
 
+/** Complete effective plugin tool-hook declarations for one trusted tab root. */
+export async function scopedToolHookPlugins(cwd?: string) {
+  const installed = await listEnabledInstalledPlugins({cwd})
+  return Promise.all(installed.map(async plugin => {
+    const manifest = await readEffectivePluginManifest(plugin.installPath,plugin.name,plugin.marketplace)
+    const hooks = rewritePluginMcpMatchers(plugin.name,filterApprovedHooks(plugin.key,await collectPluginHooks(plugin.installPath,manifest)))
+    return {id:plugin.key,sourceRoot:plugin.installPath,hooks}
+  }))
+}
+
 export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings): HookSettings {
   const pluginPart = pluginName.replace(/[^a-zA-Z0-9_-]/g, '_')
   const officialPrefix = `mcp__plugin_${pluginPart}_`

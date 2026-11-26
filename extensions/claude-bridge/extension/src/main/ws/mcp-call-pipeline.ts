@@ -112,10 +112,11 @@ export function checkToolPermission(
  *  exitCode 1 + outcome:error. */
 export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void> {
   try {
+    let verifiedPluginRoot: string | undefined
     if (msg.codexToolHook) {
       const { verifyCodexToolHook } = await import('../hooks/verify-codex-tool-hook')
-      await verifyCodexToolHook(msg, msg.codexToolHook)
       const cwd = ctx.workingDirectory?.()
+      verifiedPluginRoot = await verifyCodexToolHook(msg, msg.codexToolHook,cwd)
       msg = { ...msg, cwd, payload: { ...msg.payload, cwd }, env: { CLAUDE_BRIDGE_HOOK: '1' } }
     }
     const { handleMonitorTriggerCommand } = await import('../plugin-monitors')
@@ -134,7 +135,7 @@ export async function handleHookExecute(ctx: McpCallCtx, msg: any): Promise<void
       return
     }
     const { executeHook } = await import('../hooks/executor')
-    const result = await executeHook(msg, ctx.workingDirectory?.())
+    const result = await executeHook(msg, ctx.workingDirectory?.(), {verifiedPluginRoot})
     ctx.send({ type: 'hook:response', requestId: msg.requestId, result })
   } catch (err) {
     ctx.send({

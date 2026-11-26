@@ -36,6 +36,8 @@ function guard(event: string, matcher: string) {
 beforeEach(() => {
   sessions = [chat('one', 'owner', 'a', 1), chat('two', 'owner', 'b'), chat('three', 'other', 'a')]
   paths.home = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-tool-hooks-'))
+  fs.mkdirSync(path.join(paths.home, 'owner', 'a'), { recursive: true })
+  fs.writeFileSync(path.join(paths.home, 'owner', 'a', 'codex-tool-hooks.json'), '[]')
   vi.mocked(dispatchHook).mockReset().mockResolvedValue(success)
 })
 afterEach(() => {
@@ -57,6 +59,26 @@ describe('workspace tool hook policy', () => {
     expect(await codexToolCall(a, 'Read', {})?.before()).toBeUndefined()
     expect(dispatchHook).toHaveBeenCalledOnce()
     expect(codexToolCall({ ...a, engine: 'claude' }, 'Read', {})).toBeUndefined()
+  })
+
+  it('uses the exact project plugin snapshot even when other projects and a legacy user index have the same plugin', async () => {
+    const [a, b] = sessions
+    b.launchConfig!.codexHookProtocol = 1
+    const declaration = (matcher: string) => [
+      { id: 'sample@local', sourceRoot: 'sample', ...guard('PreToolUse', matcher) },
+    ]
+    fs.writeFileSync(path.join(paths.home, 'owner', 'plugins.json'), JSON.stringify(declaration('Glob')))
+    fs.writeFileSync(path.join(paths.home, 'owner', 'a', 'codex-tool-hooks.json'), JSON.stringify(declaration('Read')))
+    fs.mkdirSync(path.join(paths.home, 'owner', 'b'), { recursive: true })
+    fs.writeFileSync(path.join(paths.home, 'owner', 'b', 'codex-tool-hooks.json'), '[]')
+    registerCodexToolHooks(a)
+    registerCodexToolHooks(b)
+    expect(codexToolCall(a, 'Read', {})).toBeDefined()
+    expect(codexToolCall(b, 'Read', {})).toBeUndefined()
+    expect(codexToolCall(a, 'Glob', {})).toBeUndefined()
+    expect(codexToolCall(b, 'Glob', {})).toBeUndefined()
+    fs.unlinkSync(path.join(paths.home, 'owner', 'b', 'codex-tool-hooks.json'))
+    expect(() => registerCodexToolHooks(b)).toThrow(HOOK_SYNC_ERROR)
   })
 
   it('honors a user policy when only the project disabled its hooks', async () => {

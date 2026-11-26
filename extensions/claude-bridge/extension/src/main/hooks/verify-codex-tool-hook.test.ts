@@ -3,14 +3,14 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { verifyCodexToolHook } from './verify-codex-tool-hook'
-import { hashPluginHook } from '../sync/plugin-snapshot'
+import { hashPluginHook,scopedToolHookPlugins } from '../sync/plugin-snapshot'
 import { executeHook, type HookExecuteRequest } from './executor'
 
 const profile = vi.hoisted(() => ({ home: '', enabled: true }))
 vi.mock('../bridge-state', () => ({ bridgeStatePath: (name: string) => path.join(profile.home, name) }))
 vi.mock('../plugin-helpers', () => ({
-  listEnabledInstalledPlugins: async () =>
-    profile.enabled ? [{ key: 'sample@local', installPath: profile.home, name: 'sample', marketplace: 'local' }] : [],
+  listEnabledInstalledPlugins: async ({cwd}:{cwd?:string}) =>
+    profile.enabled && cwd !== 'other' ? [{ key: 'sample@local', installPath: profile.home, name: 'sample', marketplace: 'local' }] : [],
   readEffectivePluginManifest: async () => ({}),
 }))
 vi.mock('../plugin-monitors', () => ({}))
@@ -94,7 +94,10 @@ describe('local Codex command hook verification', () => {
       approvals,
       JSON.stringify({ 'sample@local': [hashPluginHook(request.event, group.matcher, handler)] }),
     )
-    await expect(verifyCodexToolHook(pluginRequest, declaration)).resolves.toBeUndefined()
+    await expect(verifyCodexToolHook(pluginRequest, declaration,'allowed')).resolves.toBe(profile.home)
+    await expect(verifyCodexToolHook({...pluginRequest,cwd:'allowed'}, declaration,'other')).rejects.toThrow()
+    expect(await scopedToolHookPlugins('other')).toEqual([])
+    expect(await scopedToolHookPlugins('allowed')).toMatchObject([{id:'sample@local',hooks}])
     profile.enabled = false
     await expect(verifyCodexToolHook(pluginRequest, declaration)).rejects.toThrow()
     profile.enabled = true

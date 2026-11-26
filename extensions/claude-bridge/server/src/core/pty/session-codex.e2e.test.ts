@@ -405,7 +405,7 @@ describe('codex chat over the Bridge session WebSocket', () => {
       "process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: process.argv[2] === 'restricted.txt' ? 'deny' : 'allow' } }))",
     )
     const handler = { type: 'command', command: process.execPath, args: [fixture] }
-    const index = path.join(user, 'plugins.json')
+    const index = path.join(project, 'codex-tool-hooks.json')
     const previous = fs.existsSync(index) ? fs.readFileSync(index) : null
     fs.writeFileSync(
       index,
@@ -1267,8 +1267,12 @@ describe('engine switch inside one chat', () => {
   }
 
   it('registers the workspace policy before a tool call after reconnect, cold resume and both engine switches', async () => {
-    const { getUserSyncDir } = await import('../sync/storage')
+    const { getUserSyncDir, getProjectSyncDir } = await import('../sync/storage')
     const owner = createHash('sha256').update('tok-a').digest('hex').slice(0, 16)
+    const project = getProjectSyncDir(owner, '/work/project')
+    fs.mkdirSync(project, { recursive: true })
+    const pluginFile = path.join(project, 'codex-tool-hooks.json')
+    fs.writeFileSync(pluginFile, '[]')
     const directory = getUserSyncDir(owner)
     fs.mkdirSync(directory, { recursive: true })
     const settings = path.join(directory, 'settings.json')
@@ -1326,6 +1330,7 @@ describe('engine switch inside one chat', () => {
     } finally {
       client.send({ type: 'session:end' })
       client.close()
+      fs.rmSync(pluginFile, { force: true })
       if (old) fs.writeFileSync(settings, old)
       else fs.rmSync(settings, { force: true })
     }

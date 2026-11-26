@@ -14,7 +14,7 @@ interface Declaration {
   handler: { type: string; command: string; args?: string[]; shell?: string; timeout?: number }
 }
 
-export async function verifyCodexToolHook(req: HookExecuteRequest, declaration: Declaration): Promise<void> {
+export async function verifyCodexToolHook(req: HookExecuteRequest, declaration: Declaration, cwd?: string): Promise<string | undefined> {
   const settingsPath = path.join(os.homedir(), '.claude', 'settings.json')
   let settings
   try {
@@ -22,11 +22,13 @@ export async function verifyCodexToolHook(req: HookExecuteRequest, declaration: 
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error('Cannot verify the current hook settings')
   }
+  let verifiedPluginRoot: string | undefined
   let hooks: Record<string, unknown[]> | undefined
   if (!settings?.disableAllHooks && declaration.source === 'user' && !req.pluginId) hooks = settings?.hooks
   if (!settings?.disableAllHooks && declaration.source === 'plugin' && req.pluginId) {
-    const plugin = (await listEnabledInstalledPlugins()).find((p) => p.key === req.pluginId)
+    const plugin = (await listEnabledInstalledPlugins({cwd})).find((p) => p.key === req.pluginId)
     if (plugin) {
+      verifiedPluginRoot = plugin.installPath
       const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace)
       const actual = await collectPluginHooks(plugin.installPath, manifest)
       hooks = rewritePluginMcpMatchers(plugin.name, filterApprovedHooks(plugin.key, actual))
@@ -49,4 +51,5 @@ export async function verifyCodexToolHook(req: HookExecuteRequest, declaration: 
       'The local command hook is disabled, changed, or has not been approved in this profile. Resynchronize the session.',
     )
   }
+  return verifiedPluginRoot
 }

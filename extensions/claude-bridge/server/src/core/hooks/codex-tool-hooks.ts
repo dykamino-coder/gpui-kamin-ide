@@ -2,6 +2,7 @@
 // is the common execution boundary for workspace, external and Bridge tools.
 import { createHash, randomUUID } from 'node:crypto'
 import path from 'node:path'
+import fs from 'node:fs'
 import { withSyncSnapshotLock } from '../sync/lock'
 import { getProjectSyncDir, getUserSyncDir } from '../sync/storage'
 import { INTERACTIVE_TOOLS } from '../pty/interactive-tools'
@@ -25,10 +26,17 @@ export function registerCodexToolHooks(session: PtySession): void {
   if (!session.bearerHash) return
   const user = getUserSyncDir(session.bearerHash)
   const settings = [path.join(user, 'settings.json')]
-  if (session.cwd) settings.push(path.join(getProjectSyncDir(session.bearerHash, session.cwd), 'settings.json'))
+  const scope = session.cwd ? getProjectSyncDir(session.bearerHash, session.cwd) : user
+  if (session.cwd) settings.push(path.join(scope, 'settings.json'))
+  const scopedPlugins = path.join(scope, 'codex-tool-hooks.json')
   let merged
   try {
-    merged = mergeClientHooks(session.cwd, settings, path.join(user, 'plugins.json'))
+    if (session.launchConfig?.codexHookProtocol === 1 && !fs.existsSync(scopedPlugins)) throw new Error(HOOK_SYNC_ERROR)
+    merged = mergeClientHooks(
+      session.cwd,
+      settings,
+      fs.existsSync(scopedPlugins) ? scopedPlugins : path.join(user, 'plugins.json'),
+    )
   } catch (error) {
     snapshots.set(session, null)
     clearSession(session.id)

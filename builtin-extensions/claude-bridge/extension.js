@@ -13854,6 +13854,14 @@ function filterApprovedHooks(pluginId, hooks) {
   }
   return out;
 }
+async function scopedToolHookPlugins(cwd) {
+  const installed3 = await listEnabledInstalledPlugins({ cwd });
+  return Promise.all(installed3.map(async (plugin) => {
+    const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
+    const hooks = rewritePluginMcpMatchers(plugin.name, filterApprovedHooks(plugin.key, await collectPluginHooks(plugin.installPath, manifest)));
+    return { id: plugin.key, sourceRoot: plugin.installPath, hooks };
+  }));
+}
 function rewritePluginMcpMatchers(pluginName, hooks) {
   const pluginPart = pluginName.replace(/[^a-zA-Z0-9_-]/g, "_");
   const officialPrefix = `mcp__plugin_${pluginPart}_`;
@@ -13967,7 +13975,7 @@ var verify_codex_tool_hook_exports = {};
 __export(verify_codex_tool_hook_exports, {
   verifyCodexToolHook: () => verifyCodexToolHook
 });
-async function verifyCodexToolHook(req, declaration) {
+async function verifyCodexToolHook(req, declaration, cwd) {
   const settingsPath = import_node_path9.default.join(import_node_os7.default.homedir(), ".claude", "settings.json");
   let settings;
   try {
@@ -13975,11 +13983,13 @@ async function verifyCodexToolHook(req, declaration) {
   } catch (error) {
     if (error.code !== "ENOENT") throw new Error("Cannot verify the current hook settings");
   }
+  let verifiedPluginRoot;
   let hooks;
   if (!settings?.disableAllHooks && declaration.source === "user" && !req.pluginId) hooks = settings?.hooks;
   if (!settings?.disableAllHooks && declaration.source === "plugin" && req.pluginId) {
-    const plugin = (await listEnabledInstalledPlugins()).find((p) => p.key === req.pluginId);
+    const plugin = (await listEnabledInstalledPlugins({ cwd })).find((p) => p.key === req.pluginId);
     if (plugin) {
+      verifiedPluginRoot = plugin.installPath;
       const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
       const actual = await collectPluginHooks(plugin.installPath, manifest);
       hooks = rewritePluginMcpMatchers(plugin.name, filterApprovedHooks(plugin.key, actual));
@@ -13994,6 +14004,7 @@ async function verifyCodexToolHook(req, declaration) {
       "The local command hook is disabled, changed, or has not been approved in this profile. Resynchronize the session."
     );
   }
+  return verifiedPluginRoot;
 }
 var import_promises, import_node_path9, import_node_os7, import_node_util;
 var init_verify_codex_tool_hook = __esm({
@@ -14167,7 +14178,7 @@ function warmHookShell(shell2, scriptPath, cwd, env4) {
   const child = takeWarmShell(warmKey(shell2.bin, shell2.args, env4), shell2.bin, shell2.args, "bash-hook", env4);
   return child && startWarmShell(child, toPosixShellPath(cwd), toPosixShellPath(scriptPath), true);
 }
-async function executeHook(req, fallbackCwd, options = {}) {
+async function executeHook(req, fallbackCwd, execution = {}) {
   const start = Date.now();
   const timeoutMs = req.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const cwd = resolveHookCwd(req.cwd, fallbackCwd);
@@ -14196,8 +14207,7 @@ async function executeHook(req, fallbackCwd, options = {}) {
     command = powerShellEnvPlaceholders(command);
   }
   if (req.pluginId) {
-    const installed3 = await loadInstalledPluginsMap();
-    const pluginRoot = installed3.get(req.pluginId)?.installPath;
+    const pluginRoot = execution.verifiedPluginRoot ?? (await loadInstalledPluginsMap()).get(req.pluginId)?.installPath;
     if (!pluginRoot || !import_node_fs8.default.existsSync(pluginRoot)) {
       return {
         stdout: "",
@@ -14207,7 +14217,7 @@ async function executeHook(req, fallbackCwd, options = {}) {
         durationMs: Date.now() - start
       };
     }
-    const options2 = loadPluginOptions(req.pluginId);
+    const options = loadPluginOptions(req.pluginId);
     const dataDir = import_node_path10.default.join(import_node_os8.default.homedir(), ".claude", "plugins", "data", req.pluginId.replace(/[^a-zA-Z0-9\-_]/g, "-"));
     try {
       import_node_fs8.default.mkdirSync(dataDir, { recursive: true });
@@ -14223,10 +14233,10 @@ async function executeHook(req, fallbackCwd, options = {}) {
       };
     }
     if (execForm) {
-      command = substituteUserConfig(command, options2).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
-      args = args?.map((arg) => substituteUserConfig(arg, options2).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
+      command = substituteUserConfig(command, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd);
+      args = args?.map((arg) => substituteUserConfig(arg, options).replace(/\$\{CLAUDE_PLUGIN_ROOT\}/g, pluginRoot).replace(/\$\{CLAUDE_PLUGIN_DATA\}/g, dataDir).replace(/\$\{CLAUDE_PROJECT_DIR\}/g, cwd));
     }
-    for (const [key2, value] of Object.entries(options2)) {
+    for (const [key2, value] of Object.entries(options)) {
       pluginEnv[`CLAUDE_PLUGIN_OPTION_${key2.toUpperCase()}`] = String(value);
     }
     pluginEnv.CLAUDE_PLUGIN_ROOT = shell2 ? shellPluginEnvValue(pluginRoot, shell2) : pluginRoot;
@@ -14238,12 +14248,12 @@ async function executeHook(req, fallbackCwd, options = {}) {
   const hookEnv = { ...process.env, ...req.env ?? {}, ...pluginEnv, CLAUDE_BRIDGE_HOOK: "1" };
   let direct;
   const directWanted = process.env.KAMIN_HOOK_DIRECT_NODE === "1" || process.platform === "win32" && process.env.KAMIN_HOOK_DIRECT_NODE !== "0";
-  const nodeArgs = !execForm && !options.shellOnly && shell2.kind === "bash" && directWanted ? simpleNodeArgs(req.command) : null;
+  const nodeArgs = !execForm && !execution.shellOnly && shell2.kind === "bash" && directWanted ? simpleNodeArgs(req.command) : null;
   if (nodeArgs) {
     const key2 = JSON.stringify([warmKey(shell2.bin, shell2.args, hookEnv), cwd]);
     const env4 = capturedEnv(key2);
     if (env4) direct = { args: nodeArgs, env: env4 };
-    else captureEnv(key2, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { shellOnly: true }));
+    else captureEnv(key2, () => executeHook({ ...req, command: ENV_PROBE_COMMAND, payload: {} }, fallbackCwd, { ...execution, shellOnly: true }));
   }
   if (execForm) command = nativeNodeCommand(command);
   else command = shellNodeShim(shell2) + command;
@@ -44423,10 +44433,11 @@ function checkToolPermission(ctx, requestId, toolName, input) {
 }
 async function handleHookExecute(ctx, msg) {
   try {
+    let verifiedPluginRoot;
     if (msg.codexToolHook) {
       const { verifyCodexToolHook: verifyCodexToolHook2 } = await Promise.resolve().then(() => (init_verify_codex_tool_hook(), verify_codex_tool_hook_exports));
-      await verifyCodexToolHook2(msg, msg.codexToolHook);
       const cwd = ctx.workingDirectory?.();
+      verifiedPluginRoot = await verifyCodexToolHook2(msg, msg.codexToolHook, cwd);
       msg = { ...msg, cwd, payload: { ...msg.payload, cwd }, env: { CLAUDE_BRIDGE_HOOK: "1" } };
     }
     const { handleMonitorTriggerCommand: handleMonitorTriggerCommand2 } = await Promise.resolve().then(() => (init_plugin_monitors(), plugin_monitors_exports));
@@ -44445,7 +44456,7 @@ async function handleHookExecute(ctx, msg) {
       return;
     }
     const { executeHook: executeHook2 } = await Promise.resolve().then(() => (init_executor(), executor_exports));
-    const result = await executeHook2(msg, ctx.workingDirectory?.());
+    const result = await executeHook2(msg, ctx.workingDirectory?.(), { verifiedPluginRoot });
     ctx.send({ type: "hook:response", requestId: msg.requestId, result });
   } catch (err) {
     ctx.send({
@@ -47722,16 +47733,17 @@ async function syncUserDataOnce(serverUrl, token) {
   }
   const hash = tokenHash(token);
   const claudeDir = import_path9.default.join(import_os5.default.homedir(), ".claude");
-  const [skills, agents, commands7, plugins, settings, claudeMd, agentsMd] = await Promise.all([
+  const [skills, agents, commands7, plugins, settings, claudeMd, agentsMd, toolHookPlugins] = await Promise.all([
     readEntrypointMd(import_path9.default.join(claudeDir, "skills"), "skills"),
     readEntrypointMd(import_path9.default.join(claudeDir, "agents"), "agents"),
     readEntrypointMd(import_path9.default.join(claudeDir, "commands"), "commands"),
     buildPluginSnapshots(),
     safeReadFile(import_path9.default.join(claudeDir, "settings.json")),
     safeReadFile(import_path9.default.join(claudeDir, "CLAUDE.md")),
-    safeReadFile(import_path9.default.join(claudeDir, "AGENTS.md"))
+    safeReadFile(import_path9.default.join(claudeDir, "AGENTS.md")),
+    scopedToolHookPlugins()
   ]);
-  const data = { skills, agents, commands: commands7, plugins, settings, claudeMd, agentsMd };
+  const data = { skills, agents, commands: commands7, plugins, settings, claudeMd, agentsMd, toolHookPlugins };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/user`;
   try {
     const resp = await fetch(url, {
@@ -47774,7 +47786,7 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
   }
   const hash = tokenHash(token);
   const dotClaudeDir = import_path9.default.join(projectPath, ".claude");
-  const [skills, rules, agents, commands7, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd] = await Promise.all([
+  const [skills, rules, agents, commands7, settings, claudeMd, dotClaudeMd, claudeJson, agentsMd, dotAgentsMd, toolHookPlugins] = await Promise.all([
     readEntrypointMd(import_path9.default.join(dotClaudeDir, "skills"), "skills"),
     readEntrypointMd(import_path9.default.join(dotClaudeDir, "rules"), "commands"),
     // rules: flat .md, treat like commands
@@ -47785,7 +47797,8 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     safeReadFile(import_path9.default.join(dotClaudeDir, "CLAUDE.md")),
     safeReadFile(import_path9.default.join(projectPath, ".claude.json")),
     safeReadFile(import_path9.default.join(projectPath, "AGENTS.md")),
-    safeReadFile(import_path9.default.join(dotClaudeDir, "AGENTS.md"))
+    safeReadFile(import_path9.default.join(dotClaudeDir, "AGENTS.md")),
+    scopedToolHookPlugins(projectPath)
   ]);
   const data = {
     skills,
@@ -47798,7 +47811,8 @@ async function syncProjectDataOnce(serverUrl, token, projectPath) {
     claudeJson,
     agentsMd,
     dotAgentsMd,
-    projectPath
+    projectPath,
+    toolHookPlugins
   };
   const url = `${toHttpUrl(serverUrl)}/api/sync/${hash}/project`;
   try {
