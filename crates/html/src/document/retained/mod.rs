@@ -94,6 +94,7 @@ mod band_rerecord_tests;
 mod band_value_tests;
 mod record;
 pub(crate) use record::frame_miss_code;
+mod builder;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -115,7 +116,6 @@ mod used_style_tests;
 #[cfg(test)]
 mod why_tests;
 mod window_key;
-mod builder;
 use builder::Builder;
 
 use super::Document;
@@ -164,7 +164,6 @@ impl FrameKey {
         })
     }
 }
-
 
 impl Document {
     /// Собрать кадр документа в коробке области просмотра (`opts.viewport`)
