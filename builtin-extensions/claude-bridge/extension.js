@@ -39148,6 +39148,32 @@ function textResult5(text) {
 function errorResult5(message) {
   return { content: [{ type: "text", text: `Error: ${message}` }] };
 }
+function transportFailure(error) {
+  const codes = {
+    ENOTFOUND: "DNS lookup failed",
+    EAI_AGAIN: "DNS lookup failed",
+    ECONNREFUSED: "connection refused",
+    ECONNRESET: "connection reset",
+    ENETUNREACH: "network unreachable",
+    ETIMEDOUT: "request timed out",
+    UND_ERR_CONNECT_TIMEOUT: "connection timed out",
+    UND_ERR_HEADERS_TIMEOUT: "response headers timed out",
+    UND_ERR_BODY_TIMEOUT: "response body timed out",
+    CERT_HAS_EXPIRED: "TLS certificate expired",
+    ERR_TLS_CERT_ALTNAME_INVALID: "TLS certificate hostname mismatch",
+    DEPTH_ZERO_SELF_SIGNED_CERT: "TLS certificate validation failed",
+    SELF_SIGNED_CERT_IN_CHAIN: "TLS certificate validation failed",
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: "TLS certificate validation failed",
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: "TLS certificate validation failed"
+  };
+  if (!(error instanceof Error)) return null;
+  for (const entry of [error, error.cause]) {
+    if (!entry || typeof entry !== "object" || !("code" in entry)) continue;
+    const code = entry.code;
+    if (typeof code === "string" && Object.hasOwn(codes, code)) return codes[code] + " (" + code + ")";
+  }
+  return null;
+}
 function htmlToText(html) {
   let text = html;
   text = text.replace(/<script[\s\S]*?<\/script>/gi, "");
@@ -39364,8 +39390,10 @@ Prompt: ${prompt}
 ${content}`
     );
   } catch (err) {
+    const transport = transportFailure(err);
+    if (transport) return errorResult5(`Failed to fetch ${url}: ${transport}`);
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("AbortError") || msg.includes("timeout")) {
+    if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError") || msg.includes("timeout")) {
       return errorResult5(`Request timed out fetching ${url}`);
     }
     return errorResult5(`Failed to fetch ${url}: ${msg}`);

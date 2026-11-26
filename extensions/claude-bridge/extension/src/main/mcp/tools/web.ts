@@ -15,6 +15,27 @@ function errorResult(message: string): McpResult {
 const MAX_CONTENT_BYTES = 500 * 1024 // 500 KB — well under the CLI's ~720KB MCP-response budget
 const MAX_RAW_HTML_BYTES = 5 * 1024 * 1024 // 5 MB — cap input before regex to prevent ReDoS
 
+// Node fetch wraps transport errors in TypeError('fetch failed'). Expose only
+// known diagnostic codes, never arbitrary peer messages or nested request data.
+function transportFailure(error: unknown): string | null {
+  const codes: Record<string, string> = {
+    ENOTFOUND: 'DNS lookup failed', EAI_AGAIN: 'DNS lookup failed',
+    ECONNREFUSED: 'connection refused', ECONNRESET: 'connection reset', ENETUNREACH: 'network unreachable',
+    ETIMEDOUT: 'request timed out', UND_ERR_CONNECT_TIMEOUT: 'connection timed out',
+    UND_ERR_HEADERS_TIMEOUT: 'response headers timed out', UND_ERR_BODY_TIMEOUT: 'response body timed out',
+    CERT_HAS_EXPIRED: 'TLS certificate expired', ERR_TLS_CERT_ALTNAME_INVALID: 'TLS certificate hostname mismatch',
+    DEPTH_ZERO_SELF_SIGNED_CERT: 'TLS certificate validation failed', SELF_SIGNED_CERT_IN_CHAIN: 'TLS certificate validation failed',
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'TLS certificate validation failed', UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 'TLS certificate validation failed',
+  }
+  if (!(error instanceof Error)) return null
+  for (const entry of [error, error.cause]) {
+    if (!entry || typeof entry !== 'object' || !('code' in entry)) continue
+    const code = entry.code
+    if (typeof code === 'string' && Object.hasOwn(codes, code)) return codes[code] + ' (' + code + ')'
+  }
+  return null
+}
+
 /**
  * Strip HTML tags and convert to readable text.
  * Simple regex-based approach for when turndown isn't available.
@@ -310,8 +331,10 @@ export async function webFetch(input: Record<string, unknown>): Promise<McpResul
       `--- Content ---\n${content}`
     )
   } catch (err: unknown) {
+    const transport = transportFailure(err)
+    if (transport) return errorResult(`Failed to fetch ${url}: ${transport}`)
     const msg = err instanceof Error ? err.message : String(err)
-    if (msg.includes('AbortError') || msg.includes('timeout')) {
+    if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError') || msg.includes('timeout')) {
       return errorResult(`Request timed out fetching ${url}`)
     }
     return errorResult(`Failed to fetch ${url}: ${msg}`)
