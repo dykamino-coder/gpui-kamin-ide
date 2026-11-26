@@ -1,0 +1,24 @@
+name: Synthetic native Claude permission probe
+on:
+  push:
+    branches: [codex/verify-native-claude-permissions]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install the image-pinned CLI in runner temporary storage
+        run: |
+          version=$(sed -n 's/^ARG CLAUDE_CODE_VERSION=//p' extensions/claude-bridge/server/Dockerfile)
+          test "$version" = 2.1.328
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/fixture-bin" "@anthropic-ai/claude-code@$version"
+      - name: Test the native hooks with loopback-only network access
+        run: |
+          root=$(mktemp -d)
+          sudo unshare --net -- bash -c 'ip link set lo up && exec setpriv --reuid "$1" --regid "$2" --init-groups env -i PATH=/usr/bin:/bin HOME="$3" python3 "$4" "$3" "$5"' -- \
+            "$(id -u)" "$(id -g)" "$root" "$PWD/scripts/native-claude-permission-probe.py" "$RUNNER_TEMP/fixture-bin/node_modules/.bin/claude"
