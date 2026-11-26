@@ -43,6 +43,21 @@ pub(crate) fn leading_chain(
                 Node::Text(_) => return Some(s),
                 Node::Element(ch) => ch,
             };
+            // Floats and absolutely positioned boxes are not in flow and do not break
+            // adjoining (CSS 2.1 §8.3.1, §9.3.1). Checked BEFORE the inline branch: an
+            // out-of-flow inline tag with text or replaced atom creates no line box,
+            // yet the inline check broke the chain and the first block's margin did
+            // not collapse into `body`.
+            if crate::style::flow::out_of_flow(&ch.style.used()) {
+                let side = ch.style.used().reset_box_layout.float.unwrap_or(0);
+                if side != 0 {
+                    adjoining_left |= side < 0;
+                    adjoining_right |= side > 0;
+                    let w = px_margin_w(&ch.style.used()).unwrap_or(0.0);
+                    adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
+                }
+                continue;
+            }
             // Блочный псевдоэлемент (`::after { display: flow-root }`) —
             // блочный ребёнок, его поле примыкает; см. `inline_marked_block`.
             if ch.inline && !inline_marked_block(ch) {
@@ -61,30 +76,7 @@ pub(crate) fn leading_chain(
             if atomic_inline(&ch.style.used()) {
                 return Some(s);
             }
-            // Плавающий и абсолютный в потоке не участвуют и примыкания не рвут.
             if !in_flow(&ch.style.used()) {
-                if ch
-                    .style
-                    .used()
-                    .reset_box_layout
-                    .float
-                    .is_some_and(|f| f != 0)
-                {
-                    adjoining_left |= ch
-                        .style
-                        .used()
-                        .reset_box_layout
-                        .float
-                        .is_some_and(|f| f < 0);
-                    adjoining_right |= ch
-                        .style
-                        .used()
-                        .reset_box_layout
-                        .float
-                        .is_some_and(|f| f > 0);
-                    let w = px_margin_w(&ch.style.used()).unwrap_or(0.0);
-                    adjoining_floats = Some(adjoining_floats.map_or(w, |v| v.min(w)));
-                }
                 continue;
             }
             // Клиренс разделяет поля (§8.3.1): дальше по цепи примыкание не
