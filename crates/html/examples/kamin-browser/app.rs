@@ -18,6 +18,8 @@ pub struct Browser {
     pub current: Option<PathBuf>,
     pub folder: Option<PathBuf>,
     pub files: Vec<PathBuf>,
+    pub all_files: Vec<PathBuf>,
+    pub base_only: bool,
     pub selected: usize,
     pub list_focus: FocusHandle,
     pub list_scroll: ScrollHandle,
@@ -27,6 +29,8 @@ pub struct Browser {
     pub preset_width: Option<u32>,
     pub viewport: (f32, f32),
     pub stamp: Option<(SystemTime, u64)>,
+    #[cfg(feature = "viewer-timing")]
+    pub timing: Option<crate::timing::Timing>,
     _bounds: Subscription,
     _poll: Task<()>,
 }
@@ -68,6 +72,8 @@ impl Browser {
             current: None,
             folder: None,
             files: Vec::new(),
+            all_files: Vec::new(),
+            base_only: false,
             selected: 0,
             list_focus: cx.focus_handle(),
             list_scroll: ScrollHandle::new(),
@@ -77,6 +83,8 @@ impl Browser {
             preset_width: None,
             viewport: (0., 0.),
             stamp: None,
+            #[cfg(feature = "viewer-timing")]
+            timing: None,
             _bounds: bounds,
             _poll: poll,
         };
@@ -101,10 +109,16 @@ impl Browser {
         self.preset_width = None;
         self.folder = path.is_dir().then(|| path.clone());
         self.files.clear();
+        self.all_files.clear();
+        self.base_only = false;
         self.selected = 0;
         if self.folder.is_some() {
             match paths::list(&path) {
-                Ok(files) => self.files = files,
+                Ok(files) => {
+                    self.base_only = files.iter().any(|path| crate::folder::is_base(path));
+                    self.all_files = files;
+                    self.files = crate::folder::filtered(&self.all_files, self.base_only);
+                }
                 Err(error) => self.error = Some(format!("Cannot list {}: {error}", path.display())),
             }
             self.current = self.files.first().cloned();
@@ -163,6 +177,10 @@ impl Browser {
             ) {
                 self.viewport.0 = width as f32;
             }
+        }
+        #[cfg(feature = "viewer-timing")]
+        if let Some(timing) = &self.timing {
+            self.viewport = timing.viewport;
         }
         if let Some(page) = &self.page {
             let result = page.update(cx, |page, cx| {

@@ -71,6 +71,16 @@ impl Browser {
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_selector(window, cx))),
             )
             .child(
+                button(
+                    format!(
+                        "base.html only: {}",
+                        if self.base_only { "ON" } else { "OFF" }
+                    ),
+                    "base-only",
+                )
+                .on_click(cx.listener(|this, _, window, cx| this.toggle_base_only(window, cx))),
+            )
+            .child(
                 button("Previous", "previous")
                     .on_click(cx.listener(|this, _, window, cx| this.navigate(-1, window, cx))),
             )
@@ -110,7 +120,7 @@ impl Browser {
                     .child(
                         div()
                             .flex_shrink_0()
-                            .child(format!("{} x {}", self.viewport.0, self.viewport.1)),
+                            .child(format!("{:.0} x {:.0}", self.viewport.0, self.viewport.1)),
                     )
                     .child(controls),
             )

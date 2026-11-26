@@ -17,6 +17,7 @@ impl Browser {
             .h_full()
             .flex_shrink_0()
             .overflow_y_scroll()
+            .overflow_x_hidden()
             .track_scroll(&self.list_scroll)
             .on_mouse_down(
                 MouseButton::Left,
@@ -24,17 +25,16 @@ impl Browser {
             )
             .on_key_down(cx.listener(Self::list_key));
         for (index, path) in self.files.iter().enumerate() {
-            let label = self
-                .folder
-                .as_ref()
-                .and_then(|root| path.strip_prefix(root).ok())
-                .unwrap_or(path)
-                .display()
-                .to_string();
+            let label = self.page_label(path);
             let current = self.current.as_ref() == Some(path);
             let row = div()
                 .id(("page", index))
                 .flex_shrink_0()
+                .w_full()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis_middle()
                 .min_h(px(28.))
                 .px_2()
                 .py_1()

@@ -23,6 +23,8 @@ default = ["heap-report"]
 wpt-harness = []
 # Observational document timers for the standalone phase benchmark.
 engine-bench = []
+# Real-window viewer timings use existing engine timers and the GPUI foreground journal.
+viewer-timing = ["engine-bench", "gpui/profiler"]
 work-counters = ["kamin-style/work-counters"]
 # Отчёт памяти по владельцам для стенда (docs/memprof.md); обход только по запросу.
 heap-report = ["dep:kamin-heap", "kamin-style/heap-report"]

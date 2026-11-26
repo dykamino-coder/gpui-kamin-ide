@@ -38,17 +38,16 @@ impl Browser {
             popup = popup.child(div().p_2().child("Open a folder to select a page."));
         }
         for (index, path) in self.files.iter().enumerate() {
-            let label = self
-                .folder
-                .as_ref()
-                .and_then(|root| path.strip_prefix(root).ok())
-                .unwrap_or(path)
-                .display()
-                .to_string();
+            let label = self.page_label(path);
             popup = popup.child(
                 div()
                     .id(("selector-page", index))
                     .flex_shrink_0()
+                    .w_full()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_ellipsis_middle()
                     .px_2()
                     .py_1()
                     .bg(rgb(if self.current.as_ref() == Some(path) {

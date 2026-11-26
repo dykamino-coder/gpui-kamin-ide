@@ -13,19 +13,38 @@ impl Browser {
             return;
         };
         self.stamp = crate::paths::stamp(path);
-        let built = std::fs::read_to_string(path)
-            .map_err(|error| format!("Cannot read {}: {error}", path.display()))
-            .and_then(|html| {
-                DocumentView::open(
-                    Document::builder(&html, BROWSER_CSS)
-                        .fonts(&self.fonts)
-                        .path(path),
-                    size(px(self.viewport.0), px(self.viewport.1)),
-                    window,
-                    cx,
-                )
-                .map_err(|error| format!("Cannot build {}: {error}", path.display()))
-            });
+        #[cfg(feature = "viewer-timing")]
+        let read_at = std::time::Instant::now();
+        let source = std::fs::read_to_string(path)
+            .map_err(|error| format!("Cannot read {}: {error}", path.display()));
+        #[cfg(feature = "viewer-timing")]
+        let build_at = {
+            if let Some(timing) = &mut self.timing {
+                timing.io_ms = read_at.elapsed().as_secs_f64() * 1000.;
+            }
+            std::time::Instant::now()
+        };
+        let built = source.and_then(|html| {
+            DocumentView::open(
+                Document::builder(&html, BROWSER_CSS)
+                    .fonts(&self.fonts)
+                    .path(path),
+                size(px(self.viewport.0), px(self.viewport.1)),
+                window,
+                cx,
+            )
+            .map_err(|error| format!("Cannot build {}: {error}", path.display()))
+        });
+        #[cfg(feature = "viewer-timing")]
+        if let Some(timing) = &mut self.timing {
+            timing.document_ms = build_at.elapsed().as_secs_f64() * 1000.;
+            if let Ok(page) = &built {
+                let phases = page.read(cx).document().build_timings();
+                timing.parse_ms = phases.parse.as_secs_f64() * 1000.;
+                timing.style_ms = phases.style.as_secs_f64() * 1000.;
+            }
+            timing.built(window);
+        }
         match built {
             Ok(page) => {
                 if !self.list_focus.is_focused(window) {
