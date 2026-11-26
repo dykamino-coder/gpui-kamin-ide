@@ -29,11 +29,32 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
     assert.equal(result.delivery, "cef-host");
   }
   await step("live-normal-console", async () => assert.ok(await state()), true);
-  await step("write-numbered-normal-lines", () => web("return window.bridgeCmd.send('/fake-console')"));
+  let tab;
+  await step("observe-numbered-output", async () => {
+    tab = (await web("return window.bridgeCmd.state().activeTabId")).value;
+    const active = JSON.stringify(tab);
+    const { value } = await terminal(`window.smokeScrollOutput={events:0,newlines:0,marker:false};
+      window.kaminBridge.onOutput((id,data)=>{
+        if (id!==${active}) return;
+        const out=window.smokeScrollOutput;
+        out.events++;
+        out.newlines+=data.split(String.fromCharCode(10)).length-1;
+        if (data.includes('native-scroll')) out.marker=true;
+      }); return true`);
+    assert.equal(value, true);
+  });
+  // A single Windows ConPTY burst can repaint only the last screen. The
+  // existing streamed fixture emits a numbered line at each time interval.
+  await step("write-numbered-normal-lines", async () => {
+    const { value } = await web("return window.bridgeCmd.send('/fake-stream 80 80 native-scroll')");
+    assert.equal(value, tab);
+  });
   let bottomState;
   await step("history-and-visible-scrollbar", async () => {
     bottomState = await state();
     report.scrollGeometry = { start: bottomState };
+    report.consoleOutput = (await terminal("return window.smokeScrollOutput")).value;
+    assert.ok(report.consoleOutput.marker && report.consoleOutput.newlines >= 25);
     assert.ok(bottomState?.history && bottomState.travel>8 && bottomState.pos>0.9);
     assert.ok(bottomState.overflow<=1 && bottomState.width>16 && bottomState.height>16);
   }, true);
