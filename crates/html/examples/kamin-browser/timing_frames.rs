@@ -1,4 +1,4 @@
-//! Счётчики каждого кадра: шаг документа и draw измеряются одним интервалом.
+//! Per-frame counters cover the document step and the following draw together.
 
 use super::{counters::Counters, cpu::Cpu, sample::ms};
 use gpui::{App, Entity};
