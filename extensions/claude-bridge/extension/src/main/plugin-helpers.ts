@@ -13,9 +13,8 @@ import YAML from 'yaml'
 /** Load `~/.claude/settings.json:enabledPlugins` → Map<"name@marketplace", bool>.
  *  Missing entry defaults to enabled. Explicit `false` means user has
  *  toggled the plugin off — its commands/agents/skills must not show up. */
-export async function loadEnabledPluginsMap(): Promise<Map<string, boolean>> {
+export async function loadEnabledPluginsMap(settingsPath = path.join(os.homedir(), '.claude', 'settings.json')): Promise<Map<string, boolean>> {
   const out = new Map<string, boolean>()
-  const settingsPath = path.join(os.homedir(), '.claude', 'settings.json')
   let raw: string
   try { raw = await fs.promises.readFile(settingsPath, 'utf-8') } catch { return out }
   try {
@@ -325,6 +324,20 @@ export function readEffectivePluginManifestSync(
   return mergePluginDeclarations(pluginRoot, pluginName, entry, manifest)
 }
 
+export function pluginSkillRefs(root: string, manifest: Record<string, unknown>): string[] {
+  const defaultSkills = path.join(root, 'skills')
+  const marketplaceRootSource = fs.existsSync(path.join(root, '.claude-plugin', 'marketplace.json'))
+  const declared = typeof manifest.skills === 'string' ? [manifest.skills] : manifest.skills
+  const skillsRefs = [
+    ...(fs.existsSync(defaultSkills) && !(marketplaceRootSource && manifest.skills !== undefined) ? ['skills'] : []),
+    ...(Array.isArray(declared) ? declared.filter((ref): ref is string => typeof ref === 'string') : []),
+  ]
+  if (skillsRefs.length === 0 && fs.existsSync(path.join(root, 'SKILL.md'))) {
+    skillsRefs.push('SKILL.md')
+  }
+  return skillsRefs
+}
+
 /** A plugin entry from `~/.claude/plugins/installed_plugins.json` that is
  *  both installed (cache directory present) and enabled by the user's
  *  `~/.claude/settings.json:enabledPlugins` toggle. */
@@ -399,12 +412,20 @@ export function selectPluginNamespaceWinners(
  *  yourself — different CLI versions lay them out differently (cache/ vs
  *  marketplaces/external_plugins/ vs marketplaces/plugins/mcp/), and this
  *  helper normalises over all of them by trusting `installPath`. */
-export async function listEnabledInstalledPlugins(): Promise<InstalledPlugin[]> {
+export async function listEnabledInstalledPlugins(workspace?: { cwd?: string }): Promise<InstalledPlugin[]> {
   const [installedMap, enabled] = await Promise.all([
-    loadInstalledPluginsMap(),
+    loadInstalledPluginsMap(workspace),
     loadEnabledPluginsMap(),
   ])
 
+  if (workspace?.cwd) {
+    for (const file of ['settings.json', 'settings.local.json']) {
+      const overrides = await loadEnabledPluginsMap(path.join(workspace.cwd, '.claude', file))
+      for (const [id, value] of overrides) {
+        if (value === false || !enabled.has(id)) enabled.set(id, value)
+      }
+    }
+  }
   const out: InstalledPlugin[] = []
   for (const [key, entry] of installedMap) {
     if (enabled.get(key) === false) continue
@@ -544,7 +565,7 @@ export function substituteUserConfig(value: string, options: Record<string, unkn
 
 /** Raw map loader — exported for callers that need the unfiltered set
  *  (e.g. `plugins:list-installed`, which shows disabled plugins too). */
-export async function loadInstalledPluginsMap(): Promise<Map<string, { installPath: string }>> {
+export async function loadInstalledPluginsMap(workspace?: { cwd?: string }): Promise<Map<string, { installPath: string }>> {
   const out = new Map<string, { installPath: string }>()
   const filePath = path.join(os.homedir(), '.claude', 'plugins', 'installed_plugins.json')
   let raw: string
@@ -553,10 +574,15 @@ export async function loadInstalledPluginsMap(): Promise<Map<string, { installPa
     const data = JSON.parse(raw)
     if (data?.version !== 2 || !data?.plugins) return out
     for (const [key, entries] of Object.entries(data.plugins)) {
-      const arr = entries as Array<{ installPath: string }>
-      if (arr.length > 0 && arr[0]?.installPath) {
-        out.set(key, { installPath: arr[0].installPath })
+      if (!Array.isArray(entries)) continue
+      let installed = entries[0]
+      if (workspace) {
+        const projectInstall = entries.find(entry => entry?.installPath && workspace.cwd
+          && typeof entry.projectPath === 'string' && path.relative(workspace.cwd, entry.projectPath) === '')
+        installed = projectInstall ?? entries.find(entry => entry?.installPath && !entry.projectPath
+          && (!entry.scope || entry.scope === 'user' || entry.scope === 'managed'))
       }
+      if (typeof installed?.installPath === 'string') out.set(key, { installPath: installed.installPath })
     }
   } catch { /* malformed */ }
   return out

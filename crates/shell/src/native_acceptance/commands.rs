@@ -35,7 +35,7 @@ pub(crate) fn handle(cmd: &str, req: &Value) -> Option<Value> {
             let (sender, receiver) = std::sync::mpsc::channel();
             let action =
                 crate::host_link::ShellEvent::NativeAcceptance(Action::InspectEditor(sender));
-            if !crate::host_link::event_tx().is_some_and(|tx| tx.try_send(action).is_ok()) {
+            if crate::host_link::event_tx().is_none_or(|tx| tx.try_send(action).is_err()) {
                 return Some(json!({"ok": false, "err": "event channel not ready"}));
             }
             return Some(

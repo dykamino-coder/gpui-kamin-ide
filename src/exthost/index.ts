@@ -90,10 +90,11 @@ export async function startExtHost(opts: StartOptions): Promise<ExtHost> {
   }, { title: "Reload Window", category: "Developer" })
 
   registry.registerCommand("kaminide.openTextLocation", (location: unknown) => {
+    const MAX_EDITOR_COORDINATE = 0xffffffff
     if (!location || typeof location !== "object") return false
     const { path, line, column } = location as Record<string, unknown>
     if (typeof path !== "string" || !path || ![line, column].every(
-      value => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 0xffffffff,
+      value => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_EDITOR_COORDINATE,
     )) return false
     opts.broadcast("kamin:editor:openLocation", { path, line, column })
     return true
