@@ -42,6 +42,15 @@ fn page() -> String {
              transform:rotate(-36deg) scaleY(-1)'></div></div>"
         ));
     }
+    // 3D functions outside a 3D context, flattened to the screen (`Flat3d`).
+    for i in 0..5 {
+        let (x, y) = (90 + i * 113, 150 + i * 560);
+        let turn = ["rotateX(39deg) skewY(-15deg)", "rotate(15deg) rotateY(-32deg) scale(.95)", "rotateX(29deg) rotateY(-57deg)"][i % 3];
+        boxes.push_str(&format!(
+            "<div style='position:absolute;left:{x}px;top:{y}.5px;width:84px;height:52px;border-radius:9px;\
+             background:linear-gradient(30deg,#a63,#36a);transform:{turn}'></div>"
+        ));
+    }
     format!("<body style='margin:0;height:3200px;position:relative;background:#eee'>{boxes}</body>")
 }
 

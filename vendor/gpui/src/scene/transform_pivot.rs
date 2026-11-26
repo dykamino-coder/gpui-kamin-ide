@@ -15,7 +15,7 @@ use crate::{Bounds, Pixels};
 use std::rc::Rc;
 
 /// A flat transform around its origin, as the painter resolved it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct TransformPivot {
     linear: [[f32; 2]; 2],
     /// The translation part, in device pixels (percentages resolved).
@@ -35,6 +35,29 @@ pub struct TransformPivot {
     /// `outer · local` (`unit · local` with none), as primitives painted
     /// under it hold it (`Window::with_transformation_masked`).
     built: TransformationMatrix,
+    /// The painter's own function of where the box lies, when it builds the
+    /// matrix itself (`built_by`): the fields above then hold no inputs.
+    build: Option<Rc<dyn TransformBuild>>,
+}
+
+/// A matrix the painter builds by its own function of where the box lies (a
+/// 3D transform flattened to the screen): a scroll move builds it again from
+/// the moved inputs, as a fresh paint at the new offset does.
+pub trait TransformBuild: std::fmt::Debug {
+    /// The matrix painted under (an outer transform composes it).
+    fn matrix(&self) -> TransformationMatrix;
+    /// The same inputs for the box moved by `delta` (logical pixels).
+    fn moved(&self, delta: Point<Pixels>) -> Rc<dyn TransformBuild>;
+}
+
+impl PartialEq for TransformPivot {
+    /// Equal inputs (a painter's build by the matrix it builds).
+    fn eq(&self, other: &Self) -> bool {
+        (self.linear, self.translation, self.base, self.offset, self.scale_factor, self.snap)
+            == (other.linear, other.translation, other.base, other.offset, other.scale_factor, other.snap)
+            && (&self.outer, self.local, self.fill, self.built) == (&other.outer, other.local, other.fill, other.built)
+            && self.build.is_some() == other.build.is_some()
+    }
 }
 
 /// What a quarter turn (or reflection) snaps its edges from: an axis-aligned
@@ -69,7 +92,15 @@ impl TransformPivot {
             snap_quarter(&mut local, snap, scale_factor);
         }
         let built = outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.built).compose(local);
-        TransformPivot { linear, translation, base, offset, scale_factor, snap, outer, local, fill, built }
+        TransformPivot { linear, translation, base, offset, scale_factor, snap, outer, local, fill, built, build: None }
+    }
+
+    /// The pivot of a matrix `build` makes, painted under `outer`.
+    pub fn built_by(build: Rc<dyn TransformBuild>, scale_factor: f32, outer: Option<Rc<TransformPivot>>) -> Self {
+        let local = build.matrix();
+        let built = outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.built).compose(local);
+        let (linear, translation, base, offset) = ([[1.0, 0.0], [0.0, 1.0]], [0.0; 2], Point::default(), [0.0; 2]);
+        TransformPivot { linear, translation, base, offset, scale_factor, snap: None, outer, local, fill: None, built, build: Some(build) }
     }
 
     /// The matrix to paint under (an outer transform composes it).
@@ -102,6 +133,9 @@ impl TransformPivot {
             ..snap
         });
         let outer = self.outer.as_ref().map(|outer| Rc::new(outer.moved(offset)));
+        if let Some(build) = &self.build {
+            return Self::built_by(build.moved(delta), self.scale_factor, outer);
+        }
         Self::new(self.linear, self.translation, (shift(self.base), self.offset), self.scale_factor, (snap, outer))
     }
 }

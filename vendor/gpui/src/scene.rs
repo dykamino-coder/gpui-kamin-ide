@@ -19,7 +19,7 @@ pub(crate) mod affine_transform;
 pub(crate) mod segments;
 pub(crate) mod scroll_marks;
 mod transform_pivot;
-pub use transform_pivot::{QuarterSnap, TransformPivot};
+pub use transform_pivot::{QuarterSnap, TransformBuild, TransformPivot};
 impl Scene {
     /// KaminIDE patch: the display list's buffers for the engine bench's memory report
     /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
