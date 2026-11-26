@@ -83,7 +83,7 @@ export interface CodexPlacement {
   resumeNotFound: boolean
 }
 
-const REASONING_EFFORTS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const REASONING_EFFORTS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 const STREAM_THROTTLE_MS = 100
 
 export function projectsDir(deps?: { projectsDir?: string }): string {
@@ -138,7 +138,9 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
     const raw = JSON.parse(fs.readFileSync(choiceFile(settingsDir, threadId), 'utf8')) as Record<string, unknown>
     return {
       ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
-      ...(typeof raw.effort === 'string' && raw.effort ? { effort: raw.effort } : {}),
+      ...(typeof raw.effort === 'string' && raw.effort
+        ? { effort: raw.effort === 'max' && raw.nativeEffort !== true ? 'xhigh' : raw.effort }
+        : {}),
       ...(isContextRecord(raw.context) ? { context: raw.context } : {}),
     }
   } catch {
@@ -156,7 +158,11 @@ export function saveCodexChoice(session: PtySession, change: CodexChoice): void 
 function writeCodexChoice(settingsDir: string, threadId: string, choice: CodexChoice): void {
   try {
     fs.mkdirSync(settingsDir, { recursive: true })
-    fs.writeFileSync(choiceFile(settingsDir, threadId), JSON.stringify(choice), { mode: 0o600 })
+    fs.writeFileSync(
+      choiceFile(settingsDir, threadId),
+      JSON.stringify({ ...choice, ...(choice.effort === 'max' ? { nativeEffort: true } : {}) }),
+      { mode: 0o600 },
+    )
   } catch (error) {
     warnLog('codex choice not saved', { threadId, error: String(error) })
   }
@@ -173,7 +179,7 @@ const contextHash = (text: string): string => createHash('sha256').update(text).
  *  their family, not the identifier the chat runs ("Codex based on GPT-6"). */
 export function modelLine(model: string | null | undefined, effort: string | null | undefined): string {
   if (!model) return ''
-  const level = codexEffort(effort)
+  const level = effort
   return [
     '## Model',
     `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
@@ -189,9 +195,16 @@ export function modelLine(model: string | null | undefined, effort: string | nul
 export function effectiveEffort(
   model: string | null | undefined,
   effort: string | null | undefined,
-  catalog: { knownModel(model: string | null | undefined): { defaultReasoningEffort: string | null } | undefined },
+  catalog: {
+    knownModel(
+      model: string | null | undefined,
+    ): { defaultReasoningEffort: string | null; reasoningEfforts: string[] } | undefined
+  },
 ): string | undefined {
-  return codexEffort(effort) ?? codexEffort(catalog.knownModel(model)?.defaultReasoningEffort)
+  const entry = catalog.knownModel(model)
+  return (
+    codexEffort(effort, entry?.reasoningEfforts) ?? codexEffort(entry?.defaultReasoningEffort, entry?.reasoningEfforts)
+  )
 }
 
 /** The context record of what a thread was given at thread/start. */
@@ -301,10 +314,15 @@ export function isCompactCommand(text: string): boolean {
   return /^\s*\/compact(?:\s|$)/.test(text)
 }
 
-/** Bridge effort levels → codex ReasoningEffort; Claude's `max` is codex `xhigh`. */
-export function codexEffort(effort: string | null | undefined): string | undefined {
-  if (effort === 'max') return 'xhigh'
-  return effort && REASONING_EFFORTS.has(effort) ? effort : undefined
+/** The pinned app-server accepts model-advertised effort strings. */
+export function codexEffort(effort: unknown, supported?: readonly string[]): string | undefined {
+  if (typeof effort !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(effort)) return undefined
+  if (supported?.length) {
+    if (supported.includes(effort)) return effort
+    // Older clients offered a Claude-style Max alias even on xhigh-only models.
+    return effort === 'max' && supported.includes('xhigh') ? 'xhigh' : undefined
+  }
+  return REASONING_EFFORTS.has(effort) ? effort : undefined
 }
 
 function developerInstructions(config: SessionConfig): string {
@@ -365,7 +383,7 @@ export async function createCodexSession(
     id: sessionId,
     cwd: settingsDir,
     model: codexModel(saved?.model) ?? codexModel(config.model),
-    effort: codexEffort(effort),
+    effort: codexEffort(effort, deps.runtime.knownModel(lineModel)?.reasoningEfforts),
     threadConfig,
     developerInstructions: [instructions, startLine].filter(Boolean).join('\n\n'),
   }
@@ -425,7 +443,7 @@ export async function createCodexSession(
     pendingElicitations: new Map(),
     sessionTitle: null,
     isRestarting: false,
-    effort: effort || null,
+    effort: startOptions.effort ?? null,
     model: startOptions.model ?? null,
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
@@ -480,13 +498,9 @@ export async function createCodexSession(
   // app-server can answer thread/start with `reasoningEffort: null`, and a
   // turn without effort ran on a level nobody showed, REAL-121). With neither,
   // no level is sent and the chat shows none.
-  if (!session.effort) {
-    const resolved = agent.reasoningEffort ?? effectiveEffort(agent.model ?? lineModel, null, deps.runtime)
-    if (resolved) {
-      agent.setEffort(resolved)
-      session.effort = resolved
-    }
-  }
+  const resolved = effectiveEffort(agent.model ?? lineModel, agent.reasoningEffort, deps.runtime)
+  agent.setEffort(resolved)
+  session.effort = resolved ?? null
   session.cliConversationId = resumed ? threadId : null
   // A new thread's initial context holds the instructions and the start line;
   // a resumed one keeps what its record says it was given.
@@ -505,7 +519,7 @@ export async function createCodexSession(
         host: await deps.runtime.host(),
         resumeThreadId: threadId,
         model: model ?? undefined,
-        effort: codexEffort(session.effort),
+        effort: session.effort ?? undefined,
       }),
     onDead: (code) => vpty.markExited(code),
     console: (data) => vpty.emit(data),
@@ -924,7 +938,7 @@ export class CodexSessionBinding {
     }
   }
 
-  private appendSystem(text: string, level: 'warning' | 'error'): void {
+  appendSystem(text: string, level: 'warning' | 'error'): void {
     this.hooks?.console?.(consoleNotice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return

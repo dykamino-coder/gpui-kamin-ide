@@ -48,7 +48,7 @@ describe('codex plan windows for the chat status row', () => {
 
 describe('session context a codex thread has not seen', () => {
   const base = '# Session\n\n## User Instructions\n\nAnswer tersely.'
-  const line = modelLine('gpt-6.2-sol', 'max')
+  const line = modelLine('gpt-6.2-sol', 'xhigh')
 
   it('names the exact model and the codex effort', () => {
     expect(line).toContain('This chat runs on the model `gpt-6.2-sol` with reasoning effort `xhigh`.')

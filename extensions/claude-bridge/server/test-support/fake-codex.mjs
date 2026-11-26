@@ -182,6 +182,9 @@ const handlers = {
         { reasoningEffort: 'low', description: 'low' },
         { reasoningEffort: 'medium', description: 'medium' },
         { reasoningEffort: 'high', description: 'high' },
+        ...(m.is_default
+          ? []
+          : ['xhigh', 'max', 'ultra'].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort }))),
       ],
       // FAKE_CODEX_NO_DEFAULT_EFFORT=1: a catalog that names no default level.
       defaultReasoningEffort: process.env.FAKE_CODEX_NO_DEFAULT_EFFORT ? null : 'medium',
