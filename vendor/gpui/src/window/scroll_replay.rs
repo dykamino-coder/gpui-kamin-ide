@@ -135,6 +135,14 @@ impl Window {
                 let sites: Vec<String> = sites.into_iter().map(|(site, n)| format!("{n} x {site}")).collect();
                 format!("{} deferred draws in the record, refused: {}", draws.len(), sites.join("; "))
             }
+            ScrollRefusal::Transform => match refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) {
+                Some(node) => format!(
+                    "scroll node {:?} (frame node {}) moves a primitive drawn through a matrix a shift cannot move exactly, without the inputs of that matrix (painted under another transform, or copied from a record)",
+                    node.id,
+                    refused.unwrap_or_default()
+                ),
+                None => String::new(),
+            },
             ScrollRefusal::Node => {
                 // The node the plan refused, wherever it is (the record's, or a
                 // deferred draw's), and what decided it.
@@ -336,6 +344,10 @@ impl Window {
                     None => node.clip,
                 };
                 let shift = node.source.replay_shift(parent_shift, node.offset, new);
+                // A matrix without its pivot is drawn only where it was built.
+                if node.unpivoted && shift != Point::default() {
+                    return Err(at_node(ScrollRefusal::Transform, index));
+                }
                 // A node whose children painted nothing as it (hidden, or painted
                 // under the node open around them) is replayed only moving with its
                 // parent: whatever it shows then moves as its parent's commands.

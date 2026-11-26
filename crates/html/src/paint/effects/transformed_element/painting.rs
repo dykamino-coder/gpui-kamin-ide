@@ -120,7 +120,8 @@ pub(super) fn paint_body(
         // `transform-background-001/002`, `transform-fixed-bg-001/003`).
         let unit = window.current_transformation() == gpui::TransformationMatrix::unit();
         let geometry = (bounds, raw_origin, scaled_origin);
-        let (matrix, fill_matrix) = plane::matrix(group, geometry, exact, r, (scale_factor, unit));
+        let (matrix, fill_matrix, pivot) =
+            plane::matrix(group, geometry, exact, r, (scale_factor, unit));
         if let Some(all) =
             crate::layout::fragment::effect_fragment::pieces::active(paint.as_deref())
         {
@@ -134,11 +135,14 @@ pub(super) fn paint_body(
             );
         }
         let child = &mut group.child;
-        crate::layout::fragment::effect_fragment::paint(
+        let clip_ancestor = group.fragment_clip_ancestor;
+        // Primitives drawn through the matrix keep its inputs: a scrolled
+        // replay builds the moved matrix as this paint at the new offset would.
+        with_pivot(pivot, window, |window| crate::layout::fragment::effect_fragment::paint(
             paint.as_deref(),
             matrix,
             fill_matrix.unwrap_or(matrix),
-            group.fragment_clip_ancestor,
+            clip_ancestor,
             window,
             |window| {
                 if let Some(exact) = fill_matrix {
@@ -161,7 +165,7 @@ pub(super) fn paint_body(
                     );
                 }
             },
-        );
+        ));
         return;
     }
     // --- Объёмный путь: одна 4×4 ОДНОГО элемента, сплющенная на экран ---
@@ -178,4 +182,16 @@ pub(super) fn paint_body(
         window,
         cx,
     );
+}
+
+/// Run `f` under `pivot` (`Window::with_transform_pivot`), or as it is.
+fn with_pivot<R>(
+    pivot: Option<gpui::TransformPivot>,
+    window: &mut Window,
+    f: impl FnOnce(&mut Window) -> R,
+) -> R {
+    match pivot {
+        Some(pivot) => window.with_transform_pivot(pivot, f),
+        None => f(window),
+    }
 }

@@ -38,6 +38,11 @@ impl Frame {
                 self.scroll_nodes[index as usize].torn = true;
             }
         }
+        if std::mem::take(&mut self.scene.scroll.unpivoted) {
+            if let Some(index) = open {
+                self.scroll_nodes[index as usize].unpivoted = true;
+            }
+        }
         result
     }
 
@@ -92,7 +97,25 @@ impl Window {
     /// open paint node when there is one.
     pub(crate) fn insert_scene_primitive(&mut self, primitive: impl Into<Primitive>) {
         let scale = self.scale_factor();
-        self.next_frame.with_scene_node(scale, |scene| scene.insert_primitive(primitive));
+        // The flat transform painted now, for a mark's move (`TransformPivot`).
+        let pivot = self.transform_pivot.clone();
+        let transformed = !self.current_transformation().moves_exactly();
+        self.next_frame.with_scene_node(scale, |scene| {
+            (scene.scroll.pivot, scene.scroll.transformed) = (pivot, transformed);
+            scene.insert_primitive(primitive);
+            (scene.scroll.pivot, scene.scroll.transformed) = (None, false);
+        });
+    }
+
+    /// Run `f` painting under the flat transform `pivot` builds (its
+    /// `matrix()` the current transformation): primitives drawn through
+    /// that matrix keep its inputs, so a scrolled replay moves them as a
+    /// fresh paint there would build them.
+    pub fn with_transform_pivot<R>(&mut self, pivot: crate::TransformPivot, f: impl FnOnce(&mut Self) -> R) -> R {
+        let outer = self.transform_pivot.replace(std::rc::Rc::new(pivot));
+        let result = f(self);
+        self.transform_pivot = outer;
+        result
     }
 
     /// Run `f`, which copies a finished scene (a paint record) into the
@@ -115,6 +138,11 @@ impl Window {
         if std::mem::take(&mut frame.scene.scroll.lost) {
             if let Some(index) = open {
                 frame.scroll_nodes[index as usize].torn = true;
+            }
+        }
+        if std::mem::take(&mut frame.scene.scroll.unpivoted) {
+            if let Some(index) = open {
+                frame.scroll_nodes[index as usize].unpivoted = true;
             }
         }
         result

@@ -26,7 +26,7 @@ impl Carry {
 
     /// The mark of source command `index`, taken in order.
     pub(super) fn take(&mut self, index: usize) -> Option<ScrollMark> {
-        let mark = self.marks.get(self.next).filter(|mark| mark.op as usize == index).copied();
+        let mark = self.marks.get(self.next).filter(|mark| mark.op as usize == index).cloned();
         self.next += mark.is_some() as usize;
         mark
     }

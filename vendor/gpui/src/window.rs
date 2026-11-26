@@ -1432,6 +1432,9 @@ pub struct Window {
     /// текст и картинки. Раскладка её не видит — элемент занимает своё место,
     /// а рисуется преобразованным, ровно как в CSS.
     transformation_stack: Vec<TransformationMatrix>,
+    /// KaminIDE patch: the inputs of the flat transform painted now
+    /// (`Window::with_transform_pivot`).
+    transform_pivot: Option<std::rc::Rc<crate::TransformPivot>>,
     /// KaminIDE patch: подобие для масок содержимого — `(начало, коэффициент)`.
     /// Шейдер сравнивает маску с УЖЕ преобразованной позицией
     /// (`shaders.hlsl` `distance_from_clip_rect_transformed`), поэтому маска,
@@ -2435,6 +2438,7 @@ impl Window {
             exact_element_offset_depth: 0,
             raster_frame: RasterFrame::default(),
             transformation_stack: Vec::new(),
+            transform_pivot: None,
             mask_scale: None,
             mask_map: None,
             plane_contexts: Vec::new(),

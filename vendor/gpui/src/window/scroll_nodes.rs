@@ -87,6 +87,9 @@ pub(crate) struct ScrollNodeRecord {
     /// Deferred paint of the children landed in another scene than `paint`:
     /// a scrolled replay cannot move it.
     pub(crate) torn: bool,
+    /// Marked a primitive drawn through a matrix a shift cannot move exactly,
+    /// without its pivot (`Scene::pivot_of`): replayed only unmoved.
+    pub(crate) unpivoted: bool,
     /// Paired with a paint that has not ended yet.
     pub(crate) pending: bool,
 }
@@ -307,6 +310,7 @@ impl Window {
             painted_in: None,
             more: Vec::new(),
             torn: false,
+            unpivoted: false,
             pending: false,
         });
         self.next_frame.scroll_node_stack.push(index);

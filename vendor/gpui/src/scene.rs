@@ -18,6 +18,8 @@ pub use projected::homography_image;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
 pub(crate) mod scroll_marks;
+mod transform_pivot;
+pub use transform_pivot::{QuarterSnap, TransformPivot};
 impl Scene {
     /// KaminIDE patch: the display list's buffers for the engine bench's memory report
     /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
@@ -1047,12 +1049,18 @@ impl Scene {
                 // A dormant command was not placed: its mark carries the shift.
                 let dormant = matches!(operation, PaintOperation::Dormant(_));
                 let shift = if dormant { mark.moved + offset } else { mark.moved };
+                // A placed primitive holds moved geometry: so does its pivot.
+                let pivot = match &mark.pivot {
+                    Some(pivot) if !dormant && offset != Point::default() => Some(std::rc::Rc::new(pivot.moved(offset))),
+                    pivot => pivot.clone(),
+                };
                 let op = scene.paint_operations.len() as u32;
                 scene.scroll.marks.push(scroll_marks::ScrollMark {
                     op,
                     own: moved(mark.own),
                     placed: record::geometry::bounds(mark.placed, offset),
                     moved: shift,
+                    pivot,
                     ..*mark
                 });
             }
@@ -1368,6 +1376,18 @@ impl Primitive {
             Primitive::SubpixelSprite(p) => &mut p.order,
             Primitive::PolychromeSprite(p) => &mut p.order,
             Primitive::Surface(p) => &mut p.order,
+        }
+    }
+
+    /// KaminIDE patch: the matrix a primitive is drawn through, if it has one.
+    pub(crate) fn transformation(&self) -> Option<&TransformationMatrix> {
+        match self {
+            Primitive::Quad(p) => Some(&p.transformation),
+            Primitive::Gradient(p) => Some(&p.quad.transformation),
+            Primitive::MonochromeSprite(p) => Some(&p.transformation),
+            Primitive::SubpixelSprite(p) => Some(&p.transformation),
+            Primitive::PolychromeSprite(p) => Some(&p.transformation),
+            Primitive::Shadow(_) | Primitive::Path(_) | Primitive::Underline(_) | Primitive::Surface(_) => None,
         }
     }
 }

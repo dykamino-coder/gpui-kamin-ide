@@ -34,11 +34,14 @@ pub enum ScrollRefusal {
     RetainedLayer,
     /// A reservoir inside a layer, or one that draws past its node's range.
     LayerReservoir,
+    /// A node moves a primitive drawn through a matrix a shift cannot move
+    /// exactly, without the inputs a fresh paint builds it from (`TransformPivot`).
+    Transform,
 }
 
 impl ScrollRefusal {
     /// Every refusal, in counter order.
-    pub const ALL: [ScrollRefusal; 15] = [
+    pub const ALL: [ScrollRefusal; 16] = [
         Self::Environment,
         Self::DeferredDraws,
         Self::Node,
@@ -54,5 +57,6 @@ impl ScrollRefusal {
         Self::UnmarkedLayer,
         Self::RetainedLayer,
         Self::LayerReservoir,
+        Self::Transform,
     ];
 }
