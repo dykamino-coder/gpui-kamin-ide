@@ -39898,30 +39898,44 @@ function contained(root, target) {
   const rel = import_node_path20.default.relative(root, target);
   return !import_node_path20.default.isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + import_node_path20.default.sep);
 }
-async function skillFiles(root, refs, recursive) {
+async function skillFiles(root, refs, recursive, budget) {
   const realRoot = await import_promises8.default.realpath(root).catch(() => null);
   if (!realRoot) return [];
   const files = /* @__PURE__ */ new Set();
   const visited = /* @__PURE__ */ new Set();
   async function visit(location, depth) {
-    if (visited.has(location)) return;
+    if (visited.has(location) || budget.remaining <= 0) return;
+    if (depth > MAX_DEPTH) {
+      budget.incomplete = true;
+      return;
+    }
     visited.add(location);
-    const stat = await import_promises8.default.lstat(location).catch(() => null);
-    if (!stat || stat.isSymbolicLink()) return;
-    if (stat.isFile() && import_node_path20.default.basename(location).toLowerCase() === "skill.md") files.add(location);
-    if (!stat.isDirectory() || !recursive && depth > 1) return;
-    const entries2 = await import_promises8.default.readdir(location, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries2) {
-      if (entry.isDirectory() || entry.isFile() && entry.name.toLowerCase() === "skill.md") {
-        await visit(import_node_path20.default.join(location, entry.name), depth + 1);
+    const dir = await import_promises8.default.opendir(location).catch(() => null);
+    if (!dir) return;
+    for await (const entry of dir) {
+      if (--budget.remaining <= 0) {
+        budget.incomplete = true;
+        break;
+      }
+      const child = import_node_path20.default.join(location, entry.name);
+      if (entry.isFile() && entry.name.toLowerCase() === "skill.md") files.add(child);
+      if (entry.isDirectory() && (recursive || depth === 0) && entry.name !== ".git" && entry.name !== "node_modules") {
+        await visit(child, depth + 1);
       }
     }
   }
   for (const ref2 of refs) {
+    if (--budget.remaining <= 0) {
+      budget.incomplete = true;
+      break;
+    }
     const location = import_node_path20.default.resolve(root, ref2);
     if (!contained(root, location)) continue;
     const real = await import_promises8.default.realpath(location).catch(() => null);
-    if (real && contained(realRoot, real)) await visit(location, 0);
+    if (!real || !contained(realRoot, real)) continue;
+    const stat = await import_promises8.default.lstat(location).catch(() => null);
+    if (stat?.isFile() && import_node_path20.default.basename(location).toLowerCase() === "skill.md") files.add(location);
+    if (stat?.isDirectory()) await visit(location, 0);
   }
   return [...files].sort();
 }
@@ -39933,35 +39947,45 @@ async function describeSkill(file, source) {
   if (front === null && /^---/.test(text)) return null;
   const meta = (front ? import_yaml2.default.parse(front) : {}) ?? {};
   if (typeof meta !== "object" || Array.isArray(meta)) return null;
-  const requiresNativeRuntime = ["hooks", "allowed-tools", "disallowed-tools", "context", "agent", "paths", "shell", "model", "effort"];
-  if (requiresNativeRuntime.some((k) => k in meta) || /!`|^\s*```!/m.test(text)) return null;
-  const disable = meta["disable-model-invocation"] ?? meta.disableModelInvocation;
-  if (disable !== void 0 && parseYamlBool(String(disable)) !== false) return null;
   const name = typeof meta.name === "string" && meta.name.trim() ? meta.name : import_node_path20.default.basename(import_node_path20.default.dirname(file));
+  const requiresNativeRuntime = ["hooks", "allowed-tools", "disallowed-tools", "context", "agent", "paths", "shell", "model", "effort"];
+  if (requiresNativeRuntime.some((k) => k in meta) || /!`|^\s*```!/m.test(text)) return { name };
+  const disable = meta["disable-model-invocation"] ?? meta.disableModelInvocation;
+  if (disable !== void 0 && parseYamlBool(String(disable)) !== false) return { name };
   const description = typeof meta.description === "string" ? meta.description : name;
-  return { name, source, description: description.slice(0, 600), file_path: file };
+  return { name, row: { name, source, description: description.slice(0, 600), file_path: file } };
 }
 async function listWorkspaceSkills(input, context) {
   if (Object.keys(input).length) throw new Error("ListWorkspaceSkills takes no arguments");
   const cwd = context?.cwd;
   const skills = /* @__PURE__ */ new Map();
+  const claimedDirectories = /* @__PURE__ */ new Set();
+  const claimedNames = /* @__PURE__ */ new Set();
+  const budget = { remaining: MAX_ENTRIES, incomplete: false };
   async function add(root, refs, source, recursive) {
-    for (const file of await skillFiles(root, refs, recursive)) {
-      const key2 = (source.startsWith("plugin:") ? source + "/" : "") + import_node_path20.default.basename(import_node_path20.default.dirname(file));
-      const row = await describeSkill(file, source).catch(() => null);
-      if (row) skills.set(key2, row);
-      else skills.delete(key2);
+    const namespace = source.startsWith("plugin:") ? source + "/" : "";
+    for (const file of await skillFiles(root, refs, recursive, budget)) {
+      const directory = namespace + import_node_path20.default.basename(import_node_path20.default.dirname(file));
+      if (claimedDirectories.has(directory)) continue;
+      claimedDirectories.add(directory);
+      const entry = await describeSkill(file, source).catch(() => null);
+      if (!entry) continue;
+      const key2 = namespace + entry.name;
+      if (claimedNames.has(key2)) continue;
+      claimedNames.add(key2);
+      if (entry.row) skills.set(key2, entry.row);
     }
   }
-  await add(import_node_os9.default.homedir(), [".claude/skills"], "user", false);
   if (cwd) await add(cwd, [".claude/skills"], "project", false);
+  if (!budget.incomplete) await add(import_node_os9.default.homedir(), [".claude/skills"], "user", false);
   for (const plugin of await listEnabledInstalledPlugins({ cwd })) {
+    if (budget.remaining <= 0) break;
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace);
     await add(plugin.installPath, pluginSkillRefs(plugin.installPath, manifest), "plugin:" + plugin.key, true);
   }
-  return { content: [{ type: "text", text: JSON.stringify([...skills.values()]) }] };
+  return { content: [{ type: "text", text: JSON.stringify({ skills: [...skills.values()], incomplete: budget.incomplete }) }] };
 }
-var import_promises8, import_node_path20, import_node_os9, import_yaml2;
+var import_promises8, import_node_path20, import_node_os9, import_yaml2, MAX_DEPTH, MAX_ENTRIES;
 var init_workspace_skills = __esm({
   "src/main/mcp/tools/workspace-skills.ts"() {
     "use strict";
@@ -39970,6 +39994,8 @@ var init_workspace_skills = __esm({
     import_node_os9 = __toESM(require("node:os"), 1);
     import_yaml2 = __toESM(require_dist(), 1);
     init_plugin_helpers();
+    MAX_DEPTH = 16;
+    MAX_ENTRIES = 16384;
   }
 });
 

@@ -20,7 +20,7 @@ function skill(dir: string, name: string, extra = '') {
 }
 async function catalog(cwd?: string) {
   const result = await executeTool('ListWorkspaceSkills', {}, { cwd, tabId: 'test-tab' })
-  return JSON.parse(result.content[0]!.text!) as Array<{ name: string; source: string; description: string; file_path: string }>
+  return JSON.parse(result.content[0]!.text!).skills as Array<{ name: string; source: string; description: string; file_path: string }>
 }
 
 beforeEach(async () => {
@@ -40,6 +40,8 @@ describe('workspace skill discovery and ordinary Read', () => {
     const local = path.join(project, '.claude', 'skills')
     await skill(user, 'common')
     await skill(local, 'common')
+    await skill(user, 'old-slug', 'name: same-display-name\n')
+    await skill(local, 'new-slug', 'name: same-display-name\ndisable-model-invocation: true\n')
     await skill(user, 'hidden')
     await skill(local, 'hidden', 'disable-model-invocation: true\n')
     await skill(local, 'with-hook', 'hooks: {}\n')
@@ -50,9 +52,24 @@ describe('workspace skill discovery and ordinary Read', () => {
     expect(JSON.stringify(list)).not.toContain('sample-result')
     const read = await executeTool('Read', { file_path: list[0]!.file_path }, { cwd: project })
     expect(read.content[0]!.text).toContain('Return sample-result')
-    expect((await catalog()).map(s => s.name)).toEqual(['common', 'hidden'])
-    expect((await catalog(sibling)).map(s => s.name)).toEqual(['common', 'hidden', 'other'])
+    expect((await catalog()).map(s => s.name)).toEqual(['common', 'hidden', 'same-display-name'])
+    expect((await catalog(sibling)).map(s => s.name).sort()).toEqual(['common', 'hidden', 'other', 'same-display-name'])
     expect(new PermissionManager().getToolCategory('ListWorkspaceSkills')).toBe('read-only')
+  })
+
+  it('skips dependency trees under a root declaration and reports an incomplete deep scan', async () => {
+    const root = path.join(home, 'synthetic-plugin')
+    await write(path.join(home, '.claude/plugins/installed_plugins.json'), JSON.stringify({
+      version: 2, plugins: { 'sample@fixture': [{ scope: 'user', installPath: root }] },
+    }))
+    await write(path.join(root, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'sample', skills: '.' }))
+    await skill(path.join(root, 'node_modules'), 'dependency')
+    await skill(path.join(root, 'handbook'), 'visible')
+    await skill(path.join(root, ...Array(17).fill('nested')), 'deep')
+    const result = await executeTool('ListWorkspaceSkills', {}, { cwd: project })
+    const catalog = JSON.parse(result.content[0]!.text!)
+    expect(catalog.incomplete).toBe(true)
+    expect(catalog.skills.map((s: { name: string }) => s.name)).toEqual(['visible'])
   })
 
   it('follows enabled, current, project-scoped marketplace installations without consulting the focused tab', async () => {
