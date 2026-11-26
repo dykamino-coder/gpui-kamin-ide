@@ -264,6 +264,8 @@ export interface ExternalPromptDefinition {
 // ---------------------------------------------------------------------------
 
 export interface SessionConfig {
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
   /** Working directory for Claude CLI */
   cwd?: string
   /** Initial terminal dimensions */

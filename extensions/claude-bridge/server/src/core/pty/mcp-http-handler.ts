@@ -13,6 +13,7 @@
 
 import type { Context } from 'hono'
 import crypto from 'crypto'
+import { codexToolCall, hookToolError } from '../hooks/codex-tool-hooks'
 import { MODERN_MCP, TASK_EXTENSION, modernRequest, record, supportsTasks } from './mcp-modern'
 import { awaitMcpTask, cancelMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoint } from './mcp-tasks'
 import { cancelForegroundCalls, trackForegroundCall } from './mcp-foreground-calls'
@@ -449,6 +450,40 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     })
   }
 
+  async function beforeTool(hooks: NonNullable<ReturnType<typeof codexToolCall>>) {
+    const stopped = new AbortController()
+    const untrack = trackForegroundCall(sid, body.id, () => stopped.abort())
+    try {
+      const reason = await hooks.before()
+      if (reason) return reason
+      if (stopped.signal.aborted || c.req.raw.signal.aborted || session?.teardown)
+        return 'Tool cancelled before execution.'
+    } finally {
+      untrack()
+    }
+  }
+
+  // MCP resources and prompts have their own wire methods although Codex
+  // exposes resource reads as tools. Guard them before reaching the host too.
+  async function readClientData(name: string, wire: string, input: Record<string, unknown>) {
+    const hooks = codexToolCall(session!, name, input)
+    const denied = hooks && (await beforeTool(hooks))
+    if (denied) throw new Error(denied)
+    let result: unknown
+    try {
+      result = await sendMcpCall(sid, wire, input, requestSignal)
+    } catch (error) {
+      if (hooks) {
+        const failure = hookToolError('Client MCP request failed')
+        if ((await hooks.after(failure)) !== failure)
+          throw new Error('Hook withheld the client MCP error.', { cause: error })
+      }
+      throw error
+    }
+    if (hooks && (await hooks.after(result)) !== result) throw new Error('Hook withheld the client MCP result.')
+    return result
+  }
+
   switch (body.method) {
     case 'server/discover': {
       session.mcpInitialized = true
@@ -623,25 +658,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         return jsonResponse(jsonRpcError(body.id, -32602, 'Missing tool name'), 400)
       }
 
-      // Project session tools read Bridge-side transcripts, so they run here and
-      // never reach the client host. Same SSE envelope and size cap as forwarded
-      // tools; scope comes from the authenticated session, not the arguments.
-      if (isProjectSessionTool(toolName) && projectSessionToolsEnabled()) {
-        observeMcpCall(session, toolName)
-        return sseStreamResponse(body.id ?? null, async () => {
-          const result = await runForSession(session, toolName, toolInput)
-          logMcpRequest(
-            session,
-            `tools/call:${toolName}`,
-            result.isError ? 'error' : 'ok',
-            result.isError ? result.content[0]?.text : undefined,
-            Date.now() - reqStart,
-            false,
-          )
-          return jsonRpcResponse(body.id, truncateMcpResult(result as unknown as Record<string, unknown>, toolName))
-        })
-      }
-
+      const serverTool = isProjectSessionTool(toolName) && projectSessionToolsEnabled()
       // A built-in tool the client host did not declare is never forwarded: the
       // host has no executor for it, so the call ends here with the reason.
       if (session.host && isUndeclaredBuiltin(session.host, toolName)) {
@@ -653,10 +670,35 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // Check tool exists in built-in tools OR registered external tools
       const isBuiltin = MCP_TOOLS.some((t) => t.name === toolName)
       const isExternal = session.registeredTools.some((t) => t.name === toolName)
-      if (!isBuiltin && !isExternal) {
+      if (!isBuiltin && !isExternal && !serverTool) {
         logMcpRequest(session, `tools/call:${toolName}`, 'error', `Unknown tool: ${toolName}`)
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)
       }
+
+      const hooks = codexToolCall(session, toolName, toolInput)
+      const denied = hooks && (await beforeTool(hooks))
+      if (denied) return jsonResponse(jsonRpcResponse(body.id, hookToolError(denied)))
+      const finish = async (result: unknown) => jsonRpcResponse(body.id, hooks ? await hooks.after(result) : result)
+
+      // Project session tools read Bridge-side transcripts, so they run here and
+      // never reach the client host. Same SSE envelope and size cap as forwarded
+      // tools; scope comes from the authenticated session, not the arguments.
+      if (serverTool) {
+        observeMcpCall(session, toolName)
+        return sseStreamResponse(body.id ?? null, async () => {
+          const result = await runForSession(session, toolName, toolInput)
+          logMcpRequest(
+            session,
+            `tools/call:${toolName}`,
+            result.isError ? 'error' : 'ok',
+            result.isError ? result.content[0]?.text : undefined,
+            Date.now() - reqStart,
+            false,
+          )
+          return await finish(truncateMcpResult(result as unknown as Record<string, unknown>, toolName))
+        })
+      }
+
       observeMcpCall(session, toolName)
 
       // BashOutput/KillShell naming a background MCP task: the task lives here.
@@ -670,11 +712,16 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           Date.now() - reqStart,
           false,
         )
-        return jsonResponse(jsonRpcResponse(body.id, truncateMcpResult({ ...taskShell }, toolName)))
+        return jsonResponse(await finish(truncateMcpResult({ ...taskShell }, toolName)))
       }
 
       let releaseInline: (() => void) | undefined
-      if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {
+      if (
+        modern &&
+        !hooks?.mustFinishInline &&
+        supportsTasks(body.params) &&
+        ['Bash', 'PowerShell'].includes(toolName)
+      ) {
         const rejectAdmission = (error: unknown): Response => {
           const known = error instanceof TaskAdmissionError
           const reason = known
@@ -716,7 +763,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           warnLog('MCP foreground uses ordinary result under retention pressure', { sessionId, reason: error.reason })
         }
         if (handle) {
-          if (toolInput.run_in_background === true) return jsonResponse(jsonRpcResponse(body.id, handle))
+          if (toolInput.run_in_background === true) return jsonResponse(await finish(handle))
           traceStart(String(handle.taskId), reqStart)
           // The task keeps the run durable, but a command that finishes within the
           // grace window answers inline: returning a handle for every short command
@@ -740,7 +787,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                 requestSignal ? AbortSignal.any([requestSignal, interrupted.signal]) : interrupted.signal,
               )
               if (task?.status === 'completed' && task.result) {
-                const response = jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+                const response = await finish(truncateMcpResult(task.result, toolName))
                 void mcpTasks.release(owner, taskId).catch(() => {})
                 logMcpRequest(
                   session,
@@ -753,13 +800,14 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                 )
                 return response
               }
-              if (task?.status === 'failed' && task.error)
+              if (task?.status === 'failed' && task.error) {
                 return jsonRpcError(body.id, task.error.code, task.error.message)
+              }
               if (stopping) {
                 await stopping
                 const reason = new McpCallInterrupted().message
                 logMcpRequest(session, `tools/call:${toolName}`, 'error', reason, Date.now() - reqStart, false)
-                return jsonRpcResponse(body.id, {
+                return await finish({
                   content: [{ type: 'text', text: `Error: ${reason}` }],
                   isError: true,
                 })
@@ -772,7 +820,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                       record.background = true
                     })
                   : task
-              return jsonRpcResponse(body.id, background ? { ...taskView(background), resultType: 'task' } : handle)
+              return await finish(background ? { ...taskView(background), resultType: 'task' } : handle)
             } finally {
               traceEnd(taskId)
               release()
@@ -814,12 +862,11 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
             'content' in (result as Record<string, unknown>) &&
             Array.isArray((result as Record<string, unknown>).content)
           ) {
-            return jsonRpcResponse(body.id, truncateMcpResult(result as Record<string, unknown>, toolName))
+            return await finish(truncateMcpResult(result as Record<string, unknown>, toolName))
           }
 
           // Otherwise wrap raw result in text
-          return jsonRpcResponse(
-            body.id,
+          return await finish(
             truncateMcpResult(
               {
                 content: [
@@ -850,7 +897,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
           )
 
           // Return error as tool result (not JSON-RPC error) so Claude can see it
-          return jsonRpcResponse(body.id, {
+          return await finish({
             content: [{ type: 'text', text: `Error: ${errMsg}` }],
             isError: true,
           })
@@ -981,11 +1028,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         return jsonResponse(jsonRpcError(body.id, -32002, `Resource not found: ${params?.uri ?? '(no uri)'}`))
       }
       try {
-        const result = await sendMcpCall(
-          sessionId,
+        const result = await readClientData(
+          'read_mcp_resource',
           '__bridge_mcp_resource_read',
           resource ? { uri: resource.uri } : { uri: params!.uri!, serverId: template!.serverId },
-          requestSignal,
         )
         if (!result || typeof result !== 'object' || !Array.isArray((result as { contents?: unknown[] }).contents)) {
           throw new Error('External MCP server returned an invalid resources/read result')
@@ -1018,15 +1064,10 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       if (!prompt)
         return jsonResponse(jsonRpcError(body.id, -32602, `Prompt not found: ${params?.name ?? '(no name)'}`))
       try {
-        const result = await sendMcpCall(
-          sessionId,
-          '__bridge_mcp_prompt_get',
-          {
-            name: prompt.name,
-            arguments: params?.arguments ?? {},
-          },
-          requestSignal,
-        )
+        const result = await readClientData('prompts/get', '__bridge_mcp_prompt_get', {
+          name: prompt.name,
+          arguments: params?.arguments ?? {},
+        })
         if (!result || typeof result !== 'object' || !Array.isArray((result as { messages?: unknown[] }).messages)) {
           throw new Error('External MCP server returned an invalid prompts/get result')
         }

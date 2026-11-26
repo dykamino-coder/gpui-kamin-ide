@@ -217,7 +217,7 @@ export function hashPluginHook(event: string, matcher: string | undefined, handl
     .slice(0, 16)
 }
 
-function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSettings {
+export function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSettings {
   let approved: Set<string> | null = null
   try {
     const file = bridgeStatePath('plugin-hook-approvals.json')
@@ -245,17 +245,10 @@ export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings
   const pluginPart = pluginName.replace(/[^a-zA-Z0-9_-]/g, '_')
   const officialPrefix = `mcp__plugin_${pluginPart}_`
   const bridgePrefix = `mcp__user-tools__plugin_${pluginPart}_`
-  // Claude's built-in file/shell tools are disabled in bridge sessions and
-  // exposed through the user-tools MCP server. Plugin hooks are authored
-  // against the native names, so translate standalone matcher tokens too.
-  const bridgeNativeTools = [
-    'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'PowerShell',
-    'BashOutput', 'KillShell', 'NotebookEdit', 'WebFetch',
-    'EnterWorktree', 'ExitWorktree', 'AskUserQuestion',
-    'PushNotification', 'ShowWidget', 'TodoList', 'TodoWrite',
-    'LspDiagnostics', 'LspHover', 'LspDefinition', 'LspReferences',
-  ]
-  const bridgeNativeMatcher = new RegExp(`\\b(${bridgeNativeTools.join('|')})\\b`, 'g')
+  // Native names stay intact so the server can both match the replacement
+  // MCP tool and deliver Claude's original tool_name to the local command.
+  // These six tools exist only in Bridge and already use the MCP payload.
+  const bridgeOnlyMatcher = /\b(ShowWidget|TodoList|LspDiagnostics|LspHover|LspDefinition|LspReferences)\b/g
   const out: HookSettings = {}
   for (const [event, rawMatchers] of Object.entries(hooks)) {
     if (!Array.isArray(rawMatchers)) continue
@@ -281,7 +274,7 @@ export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings
         ...(typeof matcher.matcher === 'string' ? {
           matcher: matcher.matcher
             .split(officialPrefix).join(bridgePrefix)
-            .replace(bridgeNativeMatcher, 'mcp__user-tools__$1'),
+            .replace(bridgeOnlyMatcher, 'mcp__user-tools__$1'),
         } : {}),
         ...(rewrittenHandlers ? { hooks: rewrittenHandlers } : {}),
       }
