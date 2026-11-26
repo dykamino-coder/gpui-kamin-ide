@@ -758,19 +758,22 @@ mod tests {
         let window = cx.add_window(|_, _| Nested);
         let trace = trace::Trace::start();
         trace::take();
+        let (token, other) = (Rc::new(()), Rc::new(()));
+        let (id, unknown) = (ScrollNodeId::of_token(&token), ScrollNodeId::of_token(&other));
         window
             .update(cx, |_, window, _| {
-                let token = Rc::new(());
-                let id = ScrollNodeId::of_token(&token);
                 window.invalidator.set_phase(DrawPhase::Prepaint);
                 window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
                 window.invalidator.set_phase(DrawPhase::Paint);
-                window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
+                window.with_scroll_node_paint(unknown, |_| {});
                 window.with_scroll_node_paint(id, |_| {});
             })
             .unwrap();
         let (events, _) = trace::take();
         drop(trace);
+        // The trace is shared by the tests running at once: keep this test's ids.
+        let mine = |detail: &str| [id, unknown].iter().any(|id| detail.contains(&format!("id {} ", id.0)));
+        let events: Vec<_> = events.into_iter().filter(|e| mine(&e.detail)).collect();
         let kinds: Vec<_> = events.iter().map(|e| e.kind).filter(|k| k.starts_with("scroll_node.")).collect();
         assert_eq!(kinds, ["scroll_node.open_anchor", "scroll_node.paint_unpaired", "scroll_node.paint_paired"]);
         let unpaired = events.iter().find(|e| e.kind == "scroll_node.paint_unpaired").unwrap();

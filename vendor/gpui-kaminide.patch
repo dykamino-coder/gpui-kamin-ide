@@ -43861,10 +43861,10 @@ index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e23
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..75d7f493cfe5a035dfee327d36c349a25524d5f7
+index 0000000000000000000000000000000000000000..7ffd55427f42fb76bcf0e1bbaf11501cb1832b95
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,781 @@
+@@ -0,0 +1,784 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -44625,19 +44625,22 @@ index 0000000000000000000000000000000000000000..75d7f493cfe5a035dfee327d36c349a2
 +        let window = cx.add_window(|_, _| Nested);
 +        let trace = trace::Trace::start();
 +        trace::take();
++        let (token, other) = (Rc::new(()), Rc::new(()));
++        let (id, unknown) = (ScrollNodeId::of_token(&token), ScrollNodeId::of_token(&other));
 +        window
 +            .update(cx, |_, window, _| {
-+                let token = Rc::new(());
-+                let id = ScrollNodeId::of_token(&token);
 +                window.invalidator.set_phase(DrawPhase::Prepaint);
 +                window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
 +                window.invalidator.set_phase(DrawPhase::Paint);
-+                window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
++                window.with_scroll_node_paint(unknown, |_| {});
 +                window.with_scroll_node_paint(id, |_| {});
 +            })
 +            .unwrap();
 +        let (events, _) = trace::take();
 +        drop(trace);
++        // The trace is shared by the tests running at once: keep this test's ids.
++        let mine = |detail: &str| [id, unknown].iter().any(|id| detail.contains(&format!("id {} ", id.0)));
++        let events: Vec<_> = events.into_iter().filter(|e| mine(&e.detail)).collect();
 +        let kinds: Vec<_> = events.iter().map(|e| e.kind).filter(|k| k.starts_with("scroll_node.")).collect();
 +        assert_eq!(kinds, ["scroll_node.open_anchor", "scroll_node.paint_unpaired", "scroll_node.paint_paired"]);
 +        let unpaired = events.iter().find(|e| e.kind == "scroll_node.paint_unpaired").unwrap();
