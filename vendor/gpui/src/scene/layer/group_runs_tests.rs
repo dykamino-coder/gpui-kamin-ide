@@ -42,6 +42,11 @@ pub(super) const LABEL: Bounds<ScaledPixels> = Bounds {
 
 /// Boxes 1 and 2 inside group 0 (box 1 in `first`), its label, box 3 on top.
 pub(super) fn grouped(first: Hsla) -> SceneLayer {
+    grouped_under(first, rect(0., 0., 1000., 1000.))
+}
+
+/// `grouped` with its label drawn under the content mask `mask`.
+fn grouped_under(first: Hsla, mask: Bounds<ScaledPixels>) -> SceneLayer {
     let mut inner = Scene { in_group: true, ..Scene::default() };
     inner.book.group_runs = Some(Vec::new());
     let mut runs = vec![paint_box(&mut inner, 1, rect(0., 0., 100., 20.), first)];
@@ -53,7 +58,7 @@ pub(super) fn grouped(first: Hsla) -> SceneLayer {
         PaintSurface {
             order: 0,
             bounds: LABEL,
-            content_mask: ContentMask { bounds: rect(0., 0., 1000., 1000.) },
+            content_mask: ContentMask { bounds: mask },
             corner_radii: Default::default(),
             blur_radius: 0.,
             group: 1,
@@ -103,6 +108,16 @@ fn a_group_run_whose_ink_leaves_the_group_is_refused_and_the_layer_kept() {
     assert!(layer.replace_group_run(0, new, Vec::new()).is_none());
     assert_eq!(quads(&layer.scene.groups[0].scene), before);
     assert_eq!(layer.version(), 0);
+}
+
+#[test]
+fn a_run_in_a_group_whose_label_was_culled_lies_in_the_group_bounds() {
+    // The label met no content mask: no scene kept it, and the group showed
+    // nothing; its image can land only within the group's bounds.
+    let layer = grouped_under(hsla(0., 1., 0.5, 1.), rect(0., 500., 1000., 100.));
+    assert!(layer.scene.surfaces.is_empty(), "the label was culled");
+    assert_eq!(layer.run_area(0), Some(LABEL));
+    assert_eq!(grouped(hsla(0., 1., 0.5, 1.)).run_area(0), Some(LABEL));
 }
 
 #[test]

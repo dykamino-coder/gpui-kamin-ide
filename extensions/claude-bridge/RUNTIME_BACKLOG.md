@@ -1,5 +1,29 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Acceptance on the published server 6.3.206 — 2026-11-26
+
+Acceptance by the release executor `rel129` on the published
+`dykamino/open-claude-bridge:6.3.206` image (own container, no network, empty
+Codex home, no account or model). The details are in each card's dated
+section.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0129](runtime-issues/INC-2026-0129.md) | passed: Codex Interactive and Resume start in the browser terminal (`--no-daemon`); they exited with code 1 on 6.3.205 | deployment owner observation |
+| [INC-0130](runtime-issues/INC-2026-0130.md) | passed: output written before the PTY exit reaches the client before the exit frame | deployment owner observation |
+| [INC-0132](runtime-issues/INC-2026-0132.md) | passed: a Codex virtual PTY (PID 0) reports no metrics instead of the container tree | deployment owner observation |
+| [INC-0131](runtime-issues/INC-2026-0131.md) | not applicable: investigation, no fix | fresh capture of one synthetic first turn |
+
+## Acceptance on the published KaminIDE 1.0.127 — 2026-11-26
+
+Acceptance by the release executor `rel128` on the payload of the
+`kaminide-v1.0.127` release installer (own hidden copy, empty profile, in-app
+probe only). The details are in the card's dated section.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0128](runtime-issues/INC-2026-0128.md) | passed: 30 rounds of new session, two files, delete: 272.4 → 273.6 MB from round 10 to 30, 0.04 MB per round | done (accepted 2026-11-26) |
+
 ## Acceptance on the published KaminIDE 1.0.121 — 2026-11-20
 
 Acceptance by the executor `kacc26` on a private copy of the installed

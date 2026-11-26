@@ -3,9 +3,10 @@ export function codexTerminalArgs(command: string): string[] {
   switch (command) {
     case 'interactive':
     case 'usage':
-      return []
+      // Bridge owns this PTY and its CODEX_HOME lease; no background writer may outlive it.
+      return ['--no-daemon']
     case 'resume':
-      return ['resume', '--last']
+      return ['--no-daemon', 'resume', '--last']
     case 'status':
       return ['login', 'status']
     default:

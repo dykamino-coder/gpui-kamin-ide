@@ -31,11 +31,22 @@ impl SceneLayer {
 
     /// The area run `at` paints in the layer: its own for the layer's scene,
     /// its group's composite for a group's.
+    ///
+    /// A group whose label no scene kept had it culled (`insert_primitive`):
+    /// its bounds met no content mask, and the group showed no pixel. Its
+    /// image lands nowhere but within its bounds whatever mask a later frame
+    /// draws it under, so they bound the run. They are untransformed: under
+    /// a transformation or a 3D plane the run's area is unknown.
     pub(crate) fn run_area(&self, at: usize) -> Option<Bounds<ScaledPixels>> {
         let b = self.boxes.get(at)?;
         match b.group {
             None => Some(b.area),
-            Some(g) => self.composite_area(g),
+            Some(g) => self.composite_area(g).or_else(|| {
+                let group = self.scene.groups.get(g as usize)?;
+                (b.env.transformation == crate::TransformationMatrix::unit()
+                    && group.projection.is_none())
+                .then_some(group.bounds)
+            }),
         }
     }
 
