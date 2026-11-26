@@ -1266,6 +1266,71 @@ describe('engine switch inside one chat', () => {
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
 
+  it('registers the workspace policy before a tool call after reconnect, cold resume and both engine switches', async () => {
+    const { getUserSyncDir } = await import('../sync/storage')
+    const owner = createHash('sha256').update('tok-a').digest('hex').slice(0, 16)
+    const directory = getUserSyncDir(owner)
+    fs.mkdirSync(directory, { recursive: true })
+    const settings = path.join(directory, 'settings.json')
+    const old = fs.existsSync(settings) ? fs.readFileSync(settings) : null
+    const handler = { type: 'command', command: 'reviewed-fixture' }
+    fs.writeFileSync(settings, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Read', hooks: [handler] }] } }))
+    async function inspect(frame: Record<string, any>, engine: string) {
+      expect(frame.engine).toBe(engine)
+      const response = await app.request('/api/hooks/active/' + frame.sessionId, {
+        headers: { authorization: 'Bearer tok-a' },
+      })
+      expect(response.status).toBe(200)
+      expect((await response.json()).hooks).toContainEqual(
+        expect.objectContaining({
+          event: 'PreToolUse',
+          matcher: 'Read',
+          handler,
+          effectiveHost: 'local',
+          source: { kind: 'user', client: true },
+        }),
+      )
+    }
+    let client = await Client.open(port)
+    try {
+      const created = await createChat(client, { engine: 'codex', codexHookProtocol: 1 })
+      await inspect(created, 'codex')
+      await say(client, 'start sample', 'hook-reconnect')
+      const { conversationId } = await client.next((f) => f.type === 'session:conversation-id')
+      await client.entry((e) => text(e).startsWith('echo: start sample'))
+      client.close()
+      const resume = {
+        type: 'session:resume',
+        token: 'tok-a',
+        engine: 'codex',
+        conversationId,
+        protocolVersion: 1,
+        codexHookProtocol: 1,
+        cwd: '/work/project',
+      }
+      client = await Client.open(port)
+      client.send(resume)
+      const live = await client.next((f) => f.type === 'session:created')
+      expect(live).toMatchObject({ reattached: true, sessionId: created.sessionId })
+      await inspect(live, 'codex')
+      client.send({ type: 'session:end' })
+      await client.next((f) => f.type === 'session:exit')
+      client.close()
+      client = await Client.open(port)
+      client.send(resume)
+      const cold = await client.next((f) => f.type === 'session:created')
+      expect(cold.sessionId).not.toBe(created.sessionId)
+      await inspect(cold, 'codex')
+      await inspect((await switchTo(client, 'claude', 'claude-sonnet-5-5')).restarted, 'claude')
+      await inspect((await switchTo(client, 'codex', 'gpt-fake')).restarted, 'codex')
+    } finally {
+      client.send({ type: 'session:end' })
+      client.close()
+      if (old) fs.writeFileSync(settings, old)
+      else fs.rmSync(settings, { force: true })
+    }
+  }, 30_000)
+
   it('publishes the external catalog before Codex discovery on create, resume and engine switch', async () => {
     const file = path.join(state.home, 'first-tools.json')
     const capture = { FAKE_CODEX_CAPTURE_INITIAL_TOOLS: file }
