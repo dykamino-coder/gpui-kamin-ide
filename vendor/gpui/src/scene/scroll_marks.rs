@@ -424,7 +424,7 @@ impl Item {
 /// The primitives one node painted between other commands, in paint order,
 /// with a tile grid over where they land (CSR: `cells` offsets into `tiled`).
 #[derive(Clone)] pub(crate) struct Run {
-    pub(super) node: ScrollNodeId,
+    pub(crate) node: ScrollNodeId,
     pub(crate) items: Vec<Item>,
     origin: Point<ScaledPixels>,
     columns: usize,

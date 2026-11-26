@@ -290,6 +290,8 @@ impl Window {
         }
         plan.main = main.len();
         let mut slots = FxHashMap::<u32, usize>::default();
+        // Nodes replayed unmoved in a retained layer the parts draw.
+        let mut layered_ids = Vec::new();
         for (part, (indices, span, scene, groups)) in parts.iter().enumerate() {
             // A node painted inside one of the part's composition groups has
             // its ranges in the group's scene: the group's copy moves its
@@ -303,15 +305,25 @@ impl Window {
                 }
                 plan.deferred.push(plan.nodes.len()..plan.nodes.len() + indices.len());
             }
+            let mut drawn = None;
             for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
-                // Every paint range of the node in its part's scene, deferred ones too.
+                // Every paint range of the node in its part's scene, deferred ones too,
+                // or in the scene of a retained layer the part's commands draw: the copy
+                // draws the layer as it was, so the node replays there only unmoved, and
+                // the layer only when all it holds stays (`still_layers`).
                 let painted = node.paint.is_some();
                 let group = group_of(node);
-                if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
+                let foreign = painted && node.painted_in != Some(scene.scroll.space) && group.is_none();
+                let layered = foreign
+                    && node.painted_in.is_some_and(|space| {
+                        let drawn = drawn.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
+                        drawn.contains(&space)
+                    });
+                if (foreign && !layered) || node.torn {
                     return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
-                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
+                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
                     return Err(at(ScrollRefusal::NodeRange));
                 }
                 let new = node.source.offset();
@@ -329,12 +341,15 @@ impl Window {
                 // parent: whatever it shows then moves as its parent's commands.
                 // Moving apart, it shows nothing while its clip stays empty (an
                 // anchor past the viewport edge, whose children were never painted).
-                if !painted && shift != parent_shift && !clip.is_empty() {
+                if (!painted && shift != parent_shift && !clip.is_empty()) || (layered && (shift != Point::default() || clip != node.clip)) {
                     return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let interest = moved(node.interest, shift);
                 if !inside(clip, interest) {
                     return Err(at(ScrollRefusal::Interest));
+                }
+                if layered {
+                    layered_ids.push(node.id);
                 }
                 slots.insert(index as u32, plan.nodes.len());
                 plan.by_id.insert(node.id, plan.nodes.len());
@@ -374,6 +389,7 @@ impl Window {
                 }
             }
         }
+        let still = super::scroll_still::still_layers(&layered_ids, parts.iter().map(|(_, span, scene, _)| &scene.paint_operations[span.clone()]));
         for (part, (indices, span, scene, _)) in parts.iter().enumerate() {
             // Nodes painted in a group are checked with its scene (`groups_scrollable`).
             let nodes = self.rendered_frame.scroll_nodes[indices.clone()].iter();
@@ -381,7 +397,7 @@ impl Window {
             // A deferred draw's commands are all under its owner or its nodes.
             let whole = (part > 0).then(|| span.clone());
             // The scene's check (`scene::scroll_marks::check`) decided: its caller is the site.
-            scene.scroll_check(span, whole.into_iter().chain(nodes)).map_err(|refusal| at(refusal))?;
+            scene.scroll_check_still(span, whole.into_iter().chain(nodes), &|space| still.contains(&space)).map_err(|refusal| at(refusal))?;
         }
         Ok(plan)
     }
@@ -474,6 +490,7 @@ impl Window {
         edges.dedup();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        let from = self.next_frame.scene.paint_operations.len();
         self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
@@ -481,6 +498,26 @@ impl Window {
         for (index, paint, _, main) in mine {
             self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
         }
+        self.land_in_drawn_layers(from);
+    }
+
+    /// Ranges and dependents in the scene of a retained layer the copy from
+    /// command `from` on draws stay where they are: the layer holds them as
+    /// they were (`scroll_still`), as `land_scroll_paint` keeps them.
+    fn land_in_drawn_layers(&mut self, from: usize) {
+        let frame = &mut self.next_frame;
+        let drawn = super::scroll_nodes::layer_spaces(&frame.scene.paint_operations[from..]);
+        if drawn.is_empty() {
+            return;
+        }
+        let landing = std::mem::take(&mut frame.scroll_paint.landing);
+        let (held, rest): (Vec<_>, Vec<_>) = landing.into_iter().partition(|entry| drawn.contains(&entry.2));
+        frame.scroll_paint.landing = rest;
+        for (index, paint, space, main) in held {
+            frame.scroll_nodes[index as usize].land(paint, space, main);
+        }
+        let kept: Vec<_> = self.rendered_frame.scroll_dependents.iter().filter(|entry| drawn.contains(&entry.2)).copied().collect();
+        self.next_frame.scroll_dependents.extend(kept);
     }
 }
 

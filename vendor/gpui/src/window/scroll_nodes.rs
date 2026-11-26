@@ -18,7 +18,7 @@ use crate::ScrollHandle;
 use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
 
 /// The scenes of the layers `operations` draw (`scene::layer`).
-fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
+pub(crate) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
     operations
         .iter()
         .filter_map(|operation| match operation {

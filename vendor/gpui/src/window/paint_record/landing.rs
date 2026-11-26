@@ -28,8 +28,20 @@ impl Window {
             self.next_frame.scene.scroll.carry = Some(Carry::of(scene));
         }
         let done = self.replay_placed_carrying(scene, offset, clip);
-        let Some(carry) = self.next_frame.scene.scroll.carry.take() else { return done };
-        if done && carry.landed.len() == scene.paint_operations.len() {
+        let carry = self.next_frame.scene.scroll.carry.take();
+        let landed = carry.as_ref().is_some_and(|carry| done && carry.landed.len() == scene.paint_operations.len());
+        if painted && crate::dirty_sources::trace::enabled() && !landed {
+            // DevTools `why`: the nodes stay in the record's scene, and the frame builds.
+            let why = if offset != Point::default() {
+                format!("lands moved by {offset:?}")
+            } else if !done {
+                format!("copied, not placed ({} groups)", scene.groups.len())
+            } else {
+                "placed per primitive".to_string()
+            };
+            crate::dirty_sources::trace::push_with("scroll_node.record_unlanded", core::panic::Location::caller(), || why);
+        }
+        if let Some(carry) = carry.filter(|_| landed) {
             self.land_carried_nodes(from, &carry);
         }
         done
