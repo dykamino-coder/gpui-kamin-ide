@@ -29,7 +29,13 @@ import type { PtySession, ToolDefinition } from './types'
 import { getSessionWs } from './session-ws'
 import { sendToClient } from './session-io'
 import { MCP_TOOLS } from './mcp-tools-defs'
-import { isUndeclaredBuiltin, mcpToolsFor, undeclaredToolMessage } from './host-declaration'
+import {
+  hasWorkspaceSkills,
+  isUndeclaredBuiltin,
+  mcpToolsFor,
+  undeclaredToolMessage,
+  WORKSPACE_SKILLS_TOOL,
+} from './host-declaration'
 import { mcpInstructions } from './mcp-instructions'
 import { matchesResourceTemplate } from './resource-template'
 import { notifyTaskChanged, openToolNotificationStream } from './mcp-tool-notify'
@@ -617,7 +623,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // Merge built-in MCP_TOOLS, the server-side project session tools
       // (INC-2026-0072) and any external tools registered via WS.
       const serverTools = projectSessionToolsEnabled() ? PROJECT_SESSION_TOOLS : []
-      const builtinNames = new Set<string>([...MCP_TOOLS, ...serverTools].map((t) => t.name))
+      const builtinNames = new Set<string>([...MCP_TOOLS, ...serverTools, WORKSPACE_SKILLS_TOOL].map((t) => t.name))
       const externalTools = session.registeredTools
         .filter((t) => !builtinNames.has(t.name))
         .map((t) => ({
@@ -628,7 +634,8 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // Built-in tools are the ones the client host declared it can execute
       // (INC-2026-0097); a session without a declaration gets the full list.
       const builtinTools = mcpToolsFor(session.host)
-      const toolList = [...builtinTools, ...serverTools, ...externalTools].map(withResultSize)
+      const skillTools = hasWorkspaceSkills(session.engine, session.host) ? [WORKSPACE_SKILLS_TOOL] : []
+      const toolList = [...builtinTools, ...skillTools, ...serverTools, ...externalTools].map(withResultSize)
       observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
@@ -668,8 +675,11 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       }
 
       // Check tool exists in built-in tools OR registered external tools
-      const isBuiltin = MCP_TOOLS.some((t) => t.name === toolName)
-      const isExternal = session.registeredTools.some((t) => t.name === toolName)
+      const skillCatalog = toolName === WORKSPACE_SKILLS_TOOL.name
+      const isBuiltin = skillCatalog
+        ? hasWorkspaceSkills(session.engine, session.host)
+        : MCP_TOOLS.some((t) => t.name === toolName)
+      const isExternal = !skillCatalog && session.registeredTools.some((t) => t.name === toolName)
       if (!isBuiltin && !isExternal && !serverTool) {
         logMcpRequest(session, `tools/call:${toolName}`, 'error', `Unknown tool: ${toolName}`)
         return jsonResponse(jsonRpcError(body.id, -32602, `Unknown tool: ${toolName}`), 400)

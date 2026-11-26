@@ -13,6 +13,7 @@
 // codex's own rollout (CODEX_HOME) stays the source of truth for resume.
 // ============================================================================
 
+import { hasWorkspaceSkills } from './host-declaration'
 import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
@@ -339,6 +340,8 @@ function developerInstructions(config: SessionConfig): string {
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
+    hasWorkspaceSkills('codex', config.host) &&
+      'At the start of a task, use mcp__bridge__ListWorkspaceSkills to discover current user, project and enabled plugin skills on the client. For a matching skill, use mcp__bridge__Read on its file_path and follow the applicable instructions. Resolve references from that file on the client. All ordinary tool permissions continue to apply.',
     syncedInstructions(config.bearerHash, config.cwd),
   ]
     .filter(Boolean)
