@@ -100,5 +100,13 @@ try {
     foreach ($child in @($app, $setup) + $owned) {
         if ($child -and !$child.HasExited) { taskkill /PID $child.Id /T /F | Out-Null }
     }
-    Remove-Item -LiteralPath $capture -Recurse -Force
+    # Chromium can release its memory-mapped metrics file after the process tree exits.
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    while (Test-Path -LiteralPath $capture) {
+        try { Remove-Item -LiteralPath $capture -Recurse -Force -ErrorAction Stop }
+        catch {
+            if ([DateTime]::UtcNow -gt $deadline) { throw 'Disposable installer profile could not be removed' }
+            Start-Sleep -Milliseconds 500
+        }
+    }
 }

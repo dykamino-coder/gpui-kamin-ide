@@ -57,10 +57,18 @@ try {
     const { bounds } = await probe({ cmd: "metric", id: "status-bar" });
     assert.ok(bounds.w > 0 && bounds.h > 0);
   }, true);
+  if (installed) {
+    await step("capture-version-shown-in-status-bar", async () => {
+      await probe({ cmd: "shotRegion", id: "status-version", path: path.join(output, "version.png") });
+    }, true);
+  }
   await step("extension-host-bridge-activation", async () => {
     const { value } = await rpc("kamin:extensions:list");
     assert.ok(value.some(e => e.id === "dykamino-studio.claude-bridge" && e.active && !e.activationError));
   }, true);
+  // The welcome screen has no active IDE session and does not mount the chat view.
+  // Use the same host method as the native "Empty session" button.
+  await step("start-empty-ide-session", () => rpc("kamin:sessions:newNoFolderSession"));
   await step("show-bridge-view", () => rpc("kamin:command:execute", ["claude-bridge.openChat"]));
   await step("cef-chat-renderer", async () => {
     const { value } = await web("return document.readyState === 'complete' && typeof window.bridgeCmd?.raw === 'function'");
@@ -108,11 +116,6 @@ try {
     }, true);
     if (fixture) await checkWorkspaceLink({ fixture, ...driver });
     if (scenario === "engine-menus") await checkEngineMenus(driver, tab);
-  }
-  if (installed) {
-    await step("capture-version-shown-in-status-bar", async () => {
-      await probe({ cmd: "shotRegion", id: "status-version", path: path.join(output, "version.png") });
-    }, true);
   }
   report.status = "passed";
 } catch (error) {
