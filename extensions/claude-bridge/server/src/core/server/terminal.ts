@@ -99,7 +99,7 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
       clearOutputTimers()
       const data = outputBuffer
       outputBuffer = ''
-      if (data && ws.readyState === WS.OPEN) {
+      if (data && !disconnected && ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: 'output', data }))
       }
     }
@@ -119,11 +119,11 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
     pty.onExit(({ exitCode }: { exitCode: number }) => {
       if (exited) return
       exited = true
-      // Flush and cancel both debounce timers before the final frame closes the socket.
-      flushOutput()
       // kill() is asynchronous: keep the lease until the CLI actually exits.
       void release?.().catch((error) => warnLog('Codex terminal account refresh failed', { reason: String(error) }))
-      if (ws.readyState === WS.OPEN) {
+      // Flush and cancel both debounce timers before the final frame closes the socket.
+      flushOutput()
+      if (!disconnected && ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: 'exit', code: exitCode }))
         ws.close()
       }
