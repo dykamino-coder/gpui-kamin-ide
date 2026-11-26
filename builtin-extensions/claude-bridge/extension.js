@@ -43483,6 +43483,40 @@ var kaminide2 = __toESM(require("kaminide"), 1);
 var import_fs37 = __toESM(require("fs"), 1);
 var import_path37 = __toESM(require("path"), 1);
 
+// src/main/mcp/startup.ts
+function mcpStartup(initialize) {
+  let started2 = false;
+  let disposed = false;
+  let release;
+  const admission = new Promise((resolve) => {
+    release = resolve;
+  });
+  let deadline;
+  const fallback = setTimeout(start, 3e4);
+  function finish() {
+    clearTimeout(deadline);
+    release();
+  }
+  function start() {
+    if (started2 || disposed) return;
+    started2 = true;
+    clearTimeout(fallback);
+    deadline = setTimeout(finish, 1500);
+    void initialize().then(finish, finish);
+  }
+  return {
+    beforeAdmission() {
+      start();
+      return admission;
+    },
+    dispose() {
+      disposed = true;
+      clearTimeout(fallback);
+      finish();
+    }
+  };
+}
+
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
 var import_node_path25 = __toESM(require("node:path"), 1);
@@ -53067,7 +53101,9 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir) {
 }
 async function discoverPluginConfigs(pluginsDir) {
   const [plugins, marketplaceDescriptions] = await Promise.all([
-    listEnabledInstalledPlugins(),
+    // This manager serves every tab. Project-only installed servers require
+    // a catalog and executor bound to their owning project.
+    listEnabledInstalledPlugins({}),
     loadMarketplaceDescriptionsAsync(pluginsDir)
   ]);
   const nested = await Promise.all(plugins.map(async ({ name, marketplace, installPath }) => {
@@ -53181,6 +53217,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
     for (const [name, entry] of Object.entries(mcpServers)) {
       if (typeof entry !== "object" || entry === null) continue;
       const e = entry;
+      if (e.disabled === true) continue;
       const serverType = e.type === "sse" ? "sse" : e.type === "http" ? "http" : e.type === "ws" ? "ws" : "stdio";
       const config = {
         id: (0, import_crypto11.randomUUID)(),
@@ -53193,7 +53230,7 @@ async function discoverFromClaudeJsonAsync(claudeDir) {
         description: `From ${import_path33.default.basename(r.path)}`
       };
       if (serverType === "http" || serverType === "sse" || serverType === "ws") {
-        config.url = e.url;
+        config.url = typeof e.url === "string" ? resolveEnvVars(e.url) : e.url;
         if (e.headers && typeof e.headers === "object") {
           config.headers = {};
           for (const [k, v] of Object.entries(e.headers)) {
@@ -53646,6 +53683,21 @@ async function fetchDispatcher(deadline) {
 }
 
 // src/main/mcp/transports/http.ts
+var HttpStatusError = class extends Error {
+  constructor(status, detail) {
+    super(`HTTP ${status}: ${detail}`);
+    this.status = status;
+  }
+  status;
+};
+function retryableHttpHandshake(error) {
+  if (error instanceof HttpStatusError) return [502, 503, 504].includes(error.status);
+  const temporary = ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENETUNREACH", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"];
+  for (const candidate of [error, error instanceof Error ? error.cause : null]) {
+    if (candidate instanceof Error && temporary.includes(candidate.code ?? "")) return true;
+  }
+  return false;
+}
 async function connectHttp(ctx, id) {
   const state = ctx.servers.get(id);
   const url = state.config.url;
@@ -53737,7 +53789,7 @@ async function httpJsonRpcAuth(ctx, id, body) {
   }
   if (res.status === 202) return {};
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    throw new HttpStatusError(res.status, await res.text());
   }
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
@@ -54600,18 +54652,26 @@ var McpServerManager = class _McpServerManager {
     } catch (err) {
       console.error("[MCP OAuth] Legacy token migration failed:", err);
     }
-    const promises = [];
+    const network = [];
+    const coldStdio = [];
     for (const [id, state] of this.servers) {
       if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         if (LAZY_STDIO_MCP && isStdio(state.config) && state.status !== "connected" && this.lazySchemaCache[mcpConnectionFingerprint(state.config)]) {
           continue;
         }
-        promises.push(this.connectServer(id).catch((err) => {
-          console.error(`[MCP] Failed to connect "${state.config.name}":`, err instanceof Error ? err.message : err);
-        }));
+        if (isStdio(state.config)) coldStdio.push(id);
+        else network.push(this.connectServer(id));
       }
     }
-    await Promise.allSettled(promises);
+    const pending2 = coldStdio.values();
+    const startStdio = async () => {
+      for (const id of pending2) {
+        if (this.disposed) break;
+        const state = this.servers.get(id);
+        if (state?.config.enabled && state.status !== "connected") await this.connectServer(id);
+      }
+    };
+    await Promise.allSettled([...network, startStdio(), startStdio(), startStdio()]);
   }
   // ─── Auto-discovery ─────────────────────────────────
   // Discover MCP servers from three sources:
@@ -55176,6 +55236,9 @@ var McpServerManager = class _McpServerManager {
       }
       const fullMsg = extras.length ? `${baseMsg} [${extras.join(" \xB7 ")}]` : baseMsg;
       state.error = fullMsg;
+      if (state.config.type === "http" && !state.reconnectTimer && retryableHttpHandshake(err)) {
+        this.scheduleReconnect(id, baseMsg);
+      }
       this.appendLog(id, "error", `[connect] failed \u2014 ${fullMsg}`);
       if (hint) this.appendLog(id, "warn", `[connect] hint: ${hint}`);
       if (cause === void 0) console.error(`[MCP] Failed to connect to "${state.config.name}":`, fullMsg);
@@ -56027,8 +56090,7 @@ var BridgeHost = class {
   deferredReplies = new DeferredReplies();
   onResyncNeeded;
   disposed = false;
-  startupTimers = /* @__PURE__ */ new Set();
-  releaseMcpReady;
+  mcpStartup;
   cancelMarketplaceStartup;
   sink;
   event;
@@ -56128,50 +56190,10 @@ var BridgeHost = class {
     this.mcpManager = new McpServerManager(this.sink);
     setExternalMcpManager(this.mcpManager);
     setHookEmitConfigStore(this.configStore);
-    const READY_WAIT_MS = 6e3;
-    const MCP_AFTER_AUTH_MS = 2e3;
-    const MCP_FALLBACK_MS = 3e4;
-    let mcpSettled = false;
-    let mcpKicked = false;
-    let resolveReady;
-    const mcpReady = new Promise((r) => {
-      resolveReady = r;
+    this.mcpStartup = mcpStartup(async () => {
+      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP !== "1") await this.mcpManager.initAll();
     });
-    this.releaseMcpReady = resolveReady;
-    const scheduleStartup = (run2, delay) => {
-      const timer = setTimeout(() => {
-        this.startupTimers.delete(timer);
-        if (!this.disposed) run2();
-      }, delay);
-      this.startupTimers.add(timer);
-    };
-    const kickMcp = (delay) => {
-      if (mcpKicked || this.disposed) return;
-      mcpKicked = true;
-      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === "1") {
-        mcpSettled = true;
-        resolveReady();
-        return;
-      }
-      scheduleStartup(() => {
-        this.mcpManager.initAll().catch(() => {
-        }).finally(() => {
-          mcpSettled = true;
-          resolveReady();
-        });
-      }, delay);
-    };
-    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS);
-    ConnectionManager.whenExternalToolsReady = () => {
-      if (mcpSettled || !mcpKicked) return Promise.resolve();
-      return new Promise((resolve) => {
-        const t = setTimeout(resolve, READY_WAIT_MS);
-        void mcpReady.finally(() => {
-          clearTimeout(t);
-          resolve();
-        });
-      });
-    };
+    ConnectionManager.whenExternalToolsReady = this.mcpStartup.beforeAdmission;
     registerSessionsIPC(ctx);
     registerConfigIPC(ctx);
     registerTabsIPC({ configStore: this.configStore });
@@ -56267,7 +56289,6 @@ var BridgeHost = class {
         }
         break;
       }
-      kickMcp(MCP_AFTER_AUTH_MS);
       const schemas = buildPayload();
       if (schemas.length > 0) connection.sendRaw({ type: "mcp:register-external-tools", tools: schemas });
       sendMcpCatalog(connection);
@@ -56364,10 +56385,8 @@ var BridgeHost = class {
   dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    for (const timer of this.startupTimers) clearTimeout(timer);
-    this.startupTimers.clear();
     this.cancelMarketplaceStartup?.();
-    this.releaseMcpReady?.();
+    this.mcpStartup.dispose();
     for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id);
     this.tabManager.dispose();
     this.mcpManager.dispose();
