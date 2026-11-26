@@ -156,3 +156,38 @@ fn a_group_whose_label_its_node_dropped_is_hidden_and_copied_by_any_replay() {
     let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
     assert_eq!(found, vec![GroupLabel::Unmarked, GroupLabel::Under(crate::ScrollNodeId(7))]);
 }
+#[test]
+fn moving_nested_groups_into_the_frame_renumbers_their_dormant_labels() {
+    // A nested group's label kept dormant under a node in the enclosing
+    // group's scene names the nested group after the frame's list grew,
+    // as a drawn label does (`shift_group_ids`): the enclosing group then
+    // finds it under its node, and a scrolled replay moves both.
+    let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 100., 100.));
+    let mut nested = Scene { in_group: true, ..Scene::default() };
+    nested.scroll.open = Some((node, chain));
+    nested.insert_primitive(quad(200., 0.));
+    nested.scroll.open = None;
+    let mut outer = Scene { in_group: true, ..Scene::default() };
+    outer.scroll.open = Some((node, chain));
+    outer.insert_primitive(label(1, 200.));
+    outer.scroll.open = None;
+    assert!(matches!(outer.paint_operations[..], [PaintOperation::Dormant(_)]), "below the chain: kept dormant");
+    let base = 4;
+    outer.shift_group_ids(base);
+    let PaintOperation::Dormant(kept) = &outer.paint_operations[0] else { panic!("not dormant") };
+    assert!(matches!(&**kept, Primitive::Surface(s) if s.group == base + 1));
+    let mut frame = Scene::default();
+    for _ in 0..base {
+        frame.groups.push(group(Scene::default(), 900.));
+    }
+    frame.groups.push(group(finished(nested), 200.));
+    frame.groups.push(group(finished(outer), 0.));
+    frame.scroll.open = Some((node, chain));
+    frame.insert_group_surface(label(base + 2, 0.), false);
+    frame.scroll.open = None;
+    let frame = finished(frame);
+    let base = base as usize;
+    let found = frame.group_labels(0..frame.paint_operations.len(), base..base + 2);
+    assert_eq!(found, vec![GroupLabel::Under(node); 2]);
+    assert!(frame.groups_scrollable(base..base + 2, &found, |id| id == node));
+}

@@ -205,15 +205,23 @@ impl Window {
                                 nodes.truncate(4);
                                 // Where its label is: in the record's commands, in a group's, or neither.
                                 let number = (groups.start + at + 1) as u32;
-                                let label_of = |operations: &[crate::scene::PaintOperation]| {
-                                    operations.iter().position(|operation| {
-                                        matches!(operation, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Surface(s)) if s.group == number)
+                                use crate::scene::{PaintOperation as Op, Primitive as P};
+                                let label_of = |scene: &crate::scene::Scene| {
+                                    scene.paint_operations.iter().enumerate().find_map(|(op, operation)| {
+                                        let kind = match operation {
+                                            Op::Primitive(P::Surface(s)) if s.group == number => "drawn",
+                                            Op::Dormant(p) if matches!(&**p, P::Surface(s) if s.group == number) => "dormant",
+                                            Op::Reservoir(r) if r.run.items.iter().any(|item| matches!(&item.piece, crate::scene::scroll_marks::Piece::Primitive(P::Surface(s)) if s.group == number)) => "in a reservoir",
+                                            _ => return None,
+                                        };
+                                        let marked = scene.scroll.marks.iter().any(|mark| mark.op as usize == op);
+                                        Some(format!("{kind} label at command {op} (marked {marked})"))
                                     })
                                 };
-                                let found = match label_of(&source.paint_operations) {
-                                    Some(op) => format!("label at command {op} of the frame's scene (record {scenes:?})"),
-                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene.paint_operations).map(|op| format!("label at command {op} of group {k}")))
-                                        .unwrap_or_else(|| "label not found (dormant or in a reservoir)".into()),
+                                let found = match label_of(source) {
+                                    Some(op) => format!("{op} of the frame's scene (record {scenes:?})"),
+                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene).map(|op| format!("{op} of group {k} (its label {:?})", labels.get(k.wrapping_sub(groups.start)))))
+                                        .unwrap_or_else(|| "label in no command".into()),
                                 };
                                 format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
                             }

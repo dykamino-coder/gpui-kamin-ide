@@ -431,10 +431,15 @@ impl Scene {
             surface.group += base;
         }
         for operation in &mut self.paint_operations {
-            if let PaintOperation::Primitive(Primitive::Surface(surface)) = operation {
-                if surface.group > 0 {
-                    surface.group += base;
+            match operation {
+                PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0 => surface.group += base,
+                // KaminIDE patch: a dormant label names its group as a drawn one does.
+                PaintOperation::Dormant(primitive) if matches!(&**primitive, Primitive::Surface(s) if s.group > 0) => {
+                    if let Primitive::Surface(surface) = std::rc::Rc::make_mut(primitive) {
+                        surface.group += base;
+                    }
                 }
+                _ => {}
             }
         }
     }
