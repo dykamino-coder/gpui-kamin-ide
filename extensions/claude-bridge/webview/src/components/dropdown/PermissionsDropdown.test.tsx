@@ -89,6 +89,7 @@ it('switches the engine control on the same tab and keeps host approvals in thei
   const host = { workspacePermission: 'readOnly' } as const
   const claude = show(host)
   expect(claude.label).toBe('Bypass permissions')
+  expect(claude.options.get('Bypass permissions')).toMatchObject({ selected: true, disabled: true })
   const codex = show({ ...host, engine: 'codex', codexCollaboration: { available: ['default', 'plan'], selected: 'plan' } })
   expect(codex.label).toBe('Codex · Plan')
   expect(codex.options.has('Change mode in Console')).toBe(false)
@@ -111,4 +112,13 @@ it('offers only Claude-advertised modes and waits for a native mode receipt', ()
   expect(api.changeClaudePermissionMode).toHaveBeenCalledWith('tab', 'session', 'plan')
   expect(api.changePermissionMode).not.toHaveBeenCalled()
   expect(show({ engine: 'codex', claudePermissions: native }).options.has('Manual')).toBe(false)
+})
+
+it('shows a native-only Claude mode as the current selection when returning to Opus', () => {
+  const native = { available: ['default', 'plan'], selected: 'bypassPermissions' }
+  const menu = show({ claudePermissions: native })
+  expect(menu.options.get('Bypass permissions')).toMatchObject({ selected: true, disabled: true })
+  expect(menu.options.get('Plan')?.disabled).toBe(false)
+  const codex = show({ engine: 'codex', claudePermissions: native })
+  expect(codex.options.has('Bypass permissions')).toBe(false)
 })

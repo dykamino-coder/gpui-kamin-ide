@@ -57,6 +57,10 @@ export function PermissionsDropdown(): JSX.Element {
         )}
       </> : <>
         <div class={styles.groupLabel}>Claude Code permission mode</div>
+        {claude && !native?.available.some(mode => CLAUDE_MODES[mode] === claude) &&
+          <DropdownOption icon="fa-shield-halved" name={claude}
+            description="Reported by Claude Code. Use the native Console for this mode."
+            selected disabled onClick={close} />}
         {native?.available.filter(mode => Object.hasOwn(CLAUDE_MODES, mode)).map(mode =>
           <DropdownOption key={mode} icon="fa-shield-halved" name={CLAUDE_MODES[mode]!}
             description="Resume this idle Claude session with the selected permission mode."
