@@ -15,4 +15,5 @@ pub(crate) mod replaced_content;
 pub(crate) mod replaced_used_style;
 pub(crate) mod svg_document_image;
 pub(crate) mod svg_percentage_size;
+mod svg_raster_style;
 pub(crate) mod svg_size;
