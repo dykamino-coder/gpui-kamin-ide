@@ -201,6 +201,7 @@ const URGENT_WAKE = new Set([
   'session:submitText',
   'session:input',
   'session:change-effort',
+  'session:codex-collaboration',
   'session:change-model',
   'session:switch-engine',
 ])
@@ -477,6 +478,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               type: 'session:restarted',
               sessionId: fresh.id,
               mcpTaskOwner: fresh.mcpEndpoint?.id,
+              codexCollaboration: codexBinding(fresh)?.agent.collaboration,
               effort: fresh.effort,
               model: fresh.model,
             }),
@@ -653,6 +655,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: session.id,
                   mcpTaskOwner: session.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(session)?.agent.collaboration,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -928,6 +931,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: live.id,
                   mcpTaskOwner: live.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(live)?.agent.collaboration,
                   effort: live.effort,
                   model: live.model,
                   settingsDir: live.settingsDir,
@@ -1006,6 +1010,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: session.id,
                   mcpTaskOwner: session.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(session)?.agent.collaboration,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -1073,6 +1078,24 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (startup === operation) startup = undefined
           }
           break
+        }
+
+        case 'session:codex-collaboration': {
+          const session = authenticatedSessionId && getSession(authenticatedSessionId)
+          if (!session || session.id !== msg.sessionId) return
+          const binding = codexBinding(session)
+          if (!binding) return
+          if ((msg.mode === 'default' || msg.mode === 'plan') && binding.agent.chooseCollaboration(msg.mode)) {
+            saveCodexChoice(session, { collaborationMode: msg.mode })
+          } else {
+            binding.appendSystem('The selected Codex collaboration mode is unavailable.', 'warning')
+          }
+          sendToClient(ws, {
+            type: 'session:codex-collaboration',
+            sessionId: session.id,
+            codexCollaboration: binding.agent.collaboration,
+          })
+          return
         }
 
         case 'session:change-effort': {
@@ -1272,6 +1295,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 type: 'session:restarted',
                 sessionId: next.id,
                 mcpTaskOwner: next.mcpEndpoint?.id,
+                codexCollaboration: codexBinding(next)?.agent.collaboration,
                 effort: next.effort,
                 model: next.model || model,
                 engine: next.engine ?? 'claude',

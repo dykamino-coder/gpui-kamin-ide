@@ -226,3 +226,30 @@ describe('INC-2026-0077 MCP permission provenance and ownership', () => {
     expect(execute).not.toHaveBeenCalled()
   })
 })
+
+describe('per-tab workspace policy', () => {
+  it('denies shell in read-only mode even with a saved allow, without changing another tab', async () => {
+    const first = fixture(), second = fixture('other')
+    expect(first.manager.setPermissionMode('plan')).toBe(true)
+    expect(first.manager.getWorkspacePermission()).toBe('readOnly')
+    expect(second.manager.getWorkspacePermission()).toBe('ask')
+    first.permissions.checkPermission.mockReturnValue('allow')
+    first.call()
+    await vi.waitFor(() => expect(first.frames).toHaveLength(1))
+    expect(first.frames[0].reason).toContain('read-only')
+    expect(execute).not.toHaveBeenCalled()
+    expect(first.manager.setPermissionMode('unknown')).toBe(false)
+  })
+
+  it('denies a would-prompt tool silently in dontAsk and cancels an outstanding prompt on mode change', async () => {
+    const f = fixture()
+    f.call('before')
+    await vi.waitFor(() => expect(f.internal.pendingPermissions.has('before')).toBe(true))
+    f.manager.setPermissionMode('dontAsk')
+    f.call('after')
+    await vi.waitFor(() => expect(f.frames).toHaveLength(2))
+    expect(f.frames.find(frame => frame.requestId === 'after').reason).toContain('denied by policy')
+    expect(f.internal.pendingPermissions.size).toBe(0)
+    expect(execute).not.toHaveBeenCalled()
+  })
+})

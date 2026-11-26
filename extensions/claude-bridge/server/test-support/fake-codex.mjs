@@ -167,6 +167,7 @@ const handlers = {
     notify('account/updated', { authMode: null, planType: null })
     return {}
   },
+  'collaborationMode/list': () => ({ data: [{ mode: 'default' }, { mode: 'plan' }] }),
   'model/list': () => ({
     data: MODELS.map((m) => ({
       id: m.slug,
@@ -509,6 +510,7 @@ rl.on('line', (line) => {
   if (msg.method.startsWith('thread/') || msg.method.startsWith('turn/')) {
     const { model = null, effort = null, developerInstructions = null } = msg.params ?? {}
     const record = { method: msg.method, model, effort, instructions: developerInstructions }
+    if (msg.params?.collaborationMode) record.collaborationMode = msg.params.collaborationMode
     fs.appendFileSync(path.join(stateDir, 'rpc.jsonl'), JSON.stringify(record) + '\n')
   }
   if (!handler) {
