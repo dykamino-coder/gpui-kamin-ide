@@ -49,18 +49,10 @@ pub(super) struct Ranges {
     /// The output draws the same pixels moved with its block
     /// (`Window::retained_movable`), and nothing of it was clipped.
     movable: bool,
-    /// The layout parent's origin and size where a content under a clip
-    /// other than the frame's was recorded (`ClipFrame`); `None` under the
-    /// frame's mask.
-    container: Option<ClipFrame>,
-}
-
-/// The box a clipped content's mask is kept relative to: the record's
-/// layout parent, whose overflow clip it is or lies inside.
-#[derive(Clone, Copy, PartialEq)]
-pub(super) struct ClipFrame {
-    pub(super) origin: Point<Pixels>,
-    pub(super) size: Size<Pixels>,
+    /// A box's content drawn under a clip other than the frame's mask (a
+    /// container's `overflow`): it moves with its block's clip and replays
+    /// clipped by the mask it meets (`Replay`), while it is `movable`.
+    clipped: bool,
 }
 
 /// Запись повтора: вход сборки блока и диапазоны его последнего кадра.
@@ -89,6 +81,12 @@ pub(crate) struct ReplayRecord {
 }
 
 impl ReplayRecord {
+    /// A clipped record whose copy an ancestor's clip cut no longer replays:
+    /// its content is built (decided before layout, so no frame is refused).
+    pub(super) fn replays_clipped(&self) -> bool {
+        self.ranges(|r| !r.clipped || r.movable).unwrap_or(false)
+    }
+
     /// `f` над диапазонами последнего кадра.
     fn ranges<R>(&self, f: impl FnOnce(&mut Ranges) -> R) -> Option<R> {
         let mut ranges = self.ranges.take()?;

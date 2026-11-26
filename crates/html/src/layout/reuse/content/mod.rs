@@ -152,7 +152,12 @@ impl FlowReuse {
                 && record.at <= boxes.clock()
                 && !boxes.resized_by_siblings(content.owner, record.at)
         };
-        if !clean || !record.key.same(&content.key, record.widths) {
+        // A clipped item whose ink a clip cut is built before layout: its
+        // refusal after layout would build the frame twice.
+        if !clean
+            || !record.key.same(&content.key, record.widths)
+            || !record.items.iter().all(|item| item.replays_clipped())
+        {
             return None;
         }
         if record.widths {

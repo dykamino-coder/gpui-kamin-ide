@@ -1,8 +1,8 @@
 //! Место повтора блока в кадре и его проверка перед prepaint.
 
 use super::super::frame::{raster_phase_matches, scaled};
-use super::{Ranges, ReplayRecord, plain_environment};
-use gpui::{ContentMask, LayoutId, Pixels, Point, Window};
+use super::{ReplayRecord, plain_environment};
+use gpui::{LayoutId, Pixels, Point, Window};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -65,7 +65,8 @@ impl ReplaySlot {
                 _ if r.serial + 1 != serial => Some("serial"),
                 _ if !r.lines.complete() => Some("lines"),
                 _ if r.scale != scale => Some("scale"),
-                _ if !clip_holds(r, window, id, origin, &mask) => Some("mask"),
+                // A clipped copy meets its clip in prepaint (`Replay`).
+                _ if r.mask != mask && !r.clipped => Some("mask"),
                 _ if r.size != size => Some("size"),
                 _ if moved
                     && !(moves
@@ -91,35 +92,6 @@ impl ReplaySlot {
             None => Some("ranges"),
         }
     }
-}
-
-/// The record's mask still holds at `origin`: it is the frame's `mask`, or a
-/// container's clip (`Ranges::container`) whose layout parent lies the same
-/// size where the record moved with it, inside the frame's mask. The clip of
-/// an ancestor above the parent is not known here: `Replay` clips by it.
-fn clip_holds(
-    r: &Ranges,
-    window: &mut Window,
-    id: LayoutId,
-    origin: Point<Pixels>,
-    mask: &ContentMask<Pixels>,
-) -> bool {
-    if r.mask == *mask {
-        return true;
-    }
-    let (Some(container), Some(parent)) = (r.container, window.parent_layout_id(id)) else {
-        return false;
-    };
-    let offset = origin - r.origin;
-    let moved = gpui::Bounds {
-        origin: r.mask.bounds.origin + offset,
-        size: r.mask.bounds.size,
-    };
-    let shift = window.layout_origin_unrounded(parent) - container.origin;
-    window.layout_size_unrounded(parent) == container.size
-        && near(shift.x, offset.x)
-        && near(shift.y, offset.y)
-        && within(moved, mask.bounds)
 }
 
 /// Unrounded layout positions of one placement differ by float noise only;

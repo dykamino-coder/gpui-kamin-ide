@@ -2,7 +2,7 @@
 //! который повторяет его раскладку, prepaint и краску (`super`).
 
 use super::slot::{same, within};
-use super::{ClipFrame, PendingReplay, ReplaySlot, plain_environment};
+use super::{PendingReplay, ReplaySlot, plain_environment};
 use crate::hooks::{Hooks, Wrap, paint_capturing, replay_deferred_moved};
 use gpui::{AnyElement, App, Bounds, LayoutId, Pixels, Point, Window};
 use std::rc::Rc;
@@ -57,14 +57,10 @@ impl Wrap for ReplayRecorder {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
             let mask = window.content_mask();
-            let container = window.parent_layout_id(id).map(|parent| ClipFrame {
-                origin: window.layout_origin_unrounded(parent),
-                size: window.layout_size_unrounded(parent),
-            });
+
             self.pending.capture(|c| {
                 c.prepaint = Some((range, origin, size));
                 c.mask = Some(mask);
-                c.container = container;
             });
         }
     }
@@ -151,30 +147,25 @@ impl Hooks for Replay {
         let offset = self.slot.offset.get();
         let mask = window.content_mask();
         self.slot.record.ranges(|r| {
-            // The frame check saw no ancestor clip (`ReplaySlot::refusal`):
-            // one that changed while the record stayed clips its copy, and a
-            // copy whose ink it cut no longer moves. A record with listeners
-            // keeps the plain copy, as before clipped records were made.
-            // A container's clip moved with it; the frame's mask stays.
-            let moved = |b: Bounds<Pixels>, by: Point<Pixels>| Bounds {
-                origin: b.origin + by,
-                size: b.size,
+            // The frame check saw no clip but the frame's (`ReplaySlot`). A
+            // container's clip moves with its content, the frame's stays; a
+            // copy that meets another one (its container moved otherwise, an
+            // ancestor's clip changed) is clipped by it, which draws what a
+            // build under it draws: its ink lay inside its mask (`movable`).
+            // A copy whose ink the clip cut no longer moves, nor replays
+            // clipped (`ReplayRecord::replays_clipped`). A record with
+            // listeners keeps the plain copy.
+            let by = if r.clipped { offset } else { Point::default() };
+            let expected = Bounds {
+                origin: r.mask.bounds.origin + by,
+                size: r.mask.bounds.size,
             };
-            let by = if r.container.is_some() {
-                offset
-            } else {
-                Point::default()
-            };
-            let expected = moved(r.mask.bounds, by);
-            // Only a paint-only copy is clipped (`replay_retained_paint_clipped`).
             let cut = !same(mask.bounds, expected) && r.movable;
             if cut {
                 r.movable &= within(expected, mask.bounds);
+                r.clipped = true;
             }
             r.mask = mask;
-            if let Some(container) = &mut r.container {
-                container.origin += offset;
-            }
             self.slot.cut.set(cut);
             r.prepaint = window.replay_retained_prepaint_clipped(&r.prepaint, offset, cut);
         });

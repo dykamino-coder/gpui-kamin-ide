@@ -1,7 +1,7 @@
 //! A record in the making: what a recorded block captures in its frame and
 //! the replay record it becomes after paint (`PendingReplay::finish`).
 
-use super::{ClipFrame, Ranges, ReplayRecord};
+use super::{Ranges, ReplayRecord};
 use crate::hooks::LineCapture;
 use crate::layout::reuse::{Counters, FlowKey, Source};
 use gpui::{
@@ -43,8 +43,7 @@ pub(in crate::layout::reuse) struct Captured {
     pub(in crate::layout::reuse) prepaint: Option<PlacedPrepaint>,
     pub(in crate::layout::reuse) paint: Option<RetainedPaint>,
     pub(in crate::layout::reuse) mask: Option<ContentMask<Pixels>>,
-    /// The layout parent at prepaint (`Ranges::container`).
-    pub(in crate::layout::reuse) container: Option<ClipFrame>,
+
     pub(in crate::layout::reuse) lines: Option<Rc<LineCapture>>,
 }
 
@@ -92,7 +91,6 @@ impl PendingReplay {
                 prepaint: None,
                 paint: None,
                 mask: None,
-                container: None,
                 lines: None,
             }))),
             sink: (ink.clone(), ink.open()),
@@ -106,14 +104,13 @@ impl PendingReplay {
     /// The next frame checks a replay before any clip of its ancestors is
     /// known (`ReplaySlot::refusal`): a block drawn under the frame's mask is
     /// checked against it. A box's content drawn under a container's clip
-    /// keeps it relative to its layout parent (`ClipFrame`) and replays while
-    /// the parent lies the same size where the content moved with it, so the
-    /// clip moved with both; where an ancestor's clip changed without them,
-    /// the replay is clipped by the mask it meets (`Replay`), so only a
-    /// record whose ink lies inside its mask (`movable`) may be clipped. A
-    /// block of the root flow under another clip is not recorded, as its
-    /// replay could only be refused and the frame built twice (Blink compares
-    /// the clip node of a cached subsequence's property tree state).
+    /// (`Ranges::clipped`) is kept only if its ink lies inside that clip
+    /// (`movable`): its copy is clipped by the mask it meets in prepaint
+    /// (`Replay`), which draws what a build under that mask draws, so no
+    /// clip refuses it after layout. A block of the root flow under another
+    /// clip is not recorded, as its replay could only be refused and the
+    /// frame built twice (Blink compares the clip node of a cached
+    /// subsequence's property tree state; here the copy meets the clip).
     pub(in crate::layout::reuse) fn finish(
         &self,
         source: Source,
@@ -143,18 +140,10 @@ impl PendingReplay {
         // moved copy: only a record whose ink lies inside its mask moves.
         let clip = mask.bounds.scale(scale);
         let movable = captured.movable && bounds.is_none_or(|ink| clip.intersect(&ink) == ink);
-        let container = match frame_mask {
-            Some(frame) if frame != mask.bounds => {
-                let inside = frame.intersect(&mask.bounds) == mask.bounds;
-                let content = captured.key.is_none();
-                Some(
-                    captured
-                        .container
-                        .filter(|_| content && movable && inside)?,
-                )
-            }
-            _ => None,
-        };
+        let clipped = frame_mask.is_some_and(|frame| frame != mask.bounds);
+        if clipped && !(captured.key.is_none() && movable) {
+            return None;
+        }
         let lines = captured.lines.filter(|lines| lines.complete())?;
         Some(ReplayRecord {
             fills: captured.fills,
@@ -176,7 +165,7 @@ impl PendingReplay {
                 serial,
                 lines,
                 movable,
-                container,
+                clipped,
             })),
         })
     }
