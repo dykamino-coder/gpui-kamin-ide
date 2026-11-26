@@ -1129,32 +1129,17 @@ describe('engine switch inside one chat', () => {
   it('changes an untouched Claude chat before its first turn and keeps the native identity', async () => {
     const { getSession } = await import('./session-manager')
     const { pristineClaudeChatId } = await import('./claude-permissions')
-    const { listSession } = await import('../hooks/registry')
     const launched = vi.spyOn(await import('./session-plugin-args'), 'buildSessionClaudeArgs')
     const client = await Client.open(port)
     try {
       const created = await createChat(client, { engine: 'claude' })
       const session = getSession(created.sessionId)!
-      // The fixture posts a real authenticated SessionStart without permission_mode.
-      // Supply that optional CLI field through the same registered hook.
-      await vi.waitFor(() => expect(pristineClaudeChatId(session)).toBeTruthy(), { timeout: 5000 })
+      // Same shape as Claude Code 2.1.328: authenticated startup has the native
+      // identity, with no permission_mode until UserPromptSubmit or Stop.
+      const startup = await client.next((f) => f.type === 'session:claude-permissions' && f.available?.includes('plan'))
+      expect(startup.selected).toBeUndefined()
       const id = pristineClaudeChatId(session)!
-      const start = listSession(session.id).find((h) => h.event === 'SessionStart' && h.source.kind === 'bridge')!
-      const observation = await app.request('/api/hooks/' + session.id + '/SessionStart/' + start.id, {
-        method: 'POST',
-        headers: {
-          authorization: 'Bearer ' + session.mcpToken,
-          'X-Bridge-Hook-Relay': 'command',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          hook_event_name: 'SessionStart',
-          source: 'startup',
-          permission_mode: 'bypassPermissions',
-          session_id: id,
-        }),
-      })
-      expect(observation.status).toBe(200)
+      expect(id).toBeTruthy()
       expect(session.cliConversationId).toBeNull()
       client.send({ type: 'session:change-claude-permission-mode', mode: 'plan', sessionId: session.id })
       const fresh = await client.next((f) => f.type === 'session:restarted', 15000)

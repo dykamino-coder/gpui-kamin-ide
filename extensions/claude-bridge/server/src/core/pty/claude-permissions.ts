@@ -29,7 +29,8 @@ export function observedClaudeMode(session: PtySession): string | undefined {
 export function publishClaudePermissions(session: PtySession, reason?: string) {
   if (session.engine === 'codex') return
   const selected = observedClaudeMode(session)
-  const supported = selected !== undefined || sessionCliControl(session)?.pinnedModReady() === true
+  const supported =
+    selected !== undefined || pristineIds.has(session) || sessionCliControl(session)?.pinnedModReady() === true
   sendToClient(session.ws, {
     type: 'session:claude-permissions',
     sessionId: session.id,
@@ -48,9 +49,13 @@ export function observeClaudePermission(session: PtySession, payload: HookInputP
     !session.cliConversationId &&
     !session.launchConfig?.resumeConversationId &&
     /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(payload.session_id)
-  )
+  ) {
+    const first = pristineIds.get(session) !== payload.session_id
     pristineIds.set(session, payload.session_id)
-  else if (['Notification', 'UserPromptSubmit', 'SessionEnd'].includes(payload.hook_event_name))
+    // The pinned CLI omits permission_mode on startup. A registered native
+    // startup announces its basic interactive modes, never a selected value.
+    if (first && !payload.permission_mode) publishClaudePermissions(session)
+  } else if (['Notification', 'UserPromptSubmit', 'SessionEnd'].includes(payload.hook_event_name))
     pristineIds.delete(session)
   const mode = payload.permission_mode
   if (
@@ -171,7 +176,7 @@ export function permissionChangeBlocker(
   session: PtySession,
   pristineId = pristineClaudeChatId(session),
 ): string | undefined {
-  if (!observedClaudeMode(session) && !sessionCliControl(session)?.pinnedModReady())
+  if (!pristineId && !observedClaudeMode(session) && !sessionCliControl(session)?.pinnedModReady())
     return 'The active Claude runtime has not reported a permission mode. Use the native Console.'
   const idleSince = sessionCliControl(session)?.safeRestartSince()
   const input = getSessionInputSnapshot(session)

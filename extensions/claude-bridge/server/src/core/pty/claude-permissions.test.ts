@@ -120,7 +120,6 @@ describe('native Claude permission selection', () => {
       observeClaudePermission(a.session, {
         hook_event_name: 'SessionStart',
         source: 'startup',
-        permission_mode: 'bypassPermissions',
         session_id: id,
       })
     startup()
