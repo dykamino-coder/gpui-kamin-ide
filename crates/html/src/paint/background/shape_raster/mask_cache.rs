@@ -2,7 +2,7 @@
 
 use super::{Rrect, contour_coverage};
 use crate::cache::FloatKey;
-use crate::paint::cache::{BoundedCache, MIB, optional_image_bytes};
+use crate::paint::cache::{BoundedCache, MIB, held_elsewhere, optional_image_bytes};
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -15,7 +15,9 @@ struct Key {
 }
 
 static MASKS: BoundedCache<Key, Option<Arc<RenderImage>>> =
-    BoundedCache::new(32 * MIB, optional_image_bytes).named("rounded_masks");
+    BoundedCache::new(32 * MIB, optional_image_bytes)
+        .with_holders(held_elsewhere)
+        .named("rounded_masks");
 
 pub(super) fn raster(r: &Rrect, w: u32, h: u32) -> Option<Arc<RenderImage>> {
     let key = Key {
