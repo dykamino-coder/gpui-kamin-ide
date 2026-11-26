@@ -123,7 +123,9 @@ fn a_text_edit_off_the_plan_names_why(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_decoration_the_layer_cannot_take_names_its_reason(cx: &mut TestAppContext) {
-    // A filtered box off the device grid whose conic gradient (a decoration,
+    // A filtered box off the device grid (its own rotation starts it on a
+    // whole pixel, the translation in its transform moves it off) whose conic
+    // gradient (a decoration,
     // a child element) gives way to a fill: the layer has no write from its
     // recorded painter to that paint, and the refusal names the reason, the
     // box and the painter (`revision::layer_write`).
@@ -132,7 +134,7 @@ fn a_decoration_the_layer_cannot_take_names_its_reason(cx: &mut TestAppContext) 
             "<!doctype html><html><head><style>html{{background:white}}body{{margin:0}}\
              .g{{position:absolute;width:180px;height:140px;border-radius:25%;filter:blur(.6px);\
              background:repeating-conic-gradient(from 13deg,#e457,#37e8 10deg,#fc98 30deg);\
-             transform:rotate(7deg);mix-blend-mode:multiply}}[data-edit]{{background:#eee}}\
+             transform:translate(.3px,.4px) rotate(7deg);mix-blend-mode:multiply}}[data-edit]{{background:#eee}}\
              </style></head><body><div class=g style='left:0;top:0'></div>\
              <div class=g {attr} style='left:31.3px;top:47px'></div></body></html>"
         )

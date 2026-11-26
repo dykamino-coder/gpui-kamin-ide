@@ -10,8 +10,8 @@ pub(crate) use geometry::tile_size;
 mod area_corners;
 mod drawing;
 mod pattern;
-use pattern::pattern_grid;
 pub(super) use drawing::draw_tiles;
+use pattern::pattern_grid;
 
 use crate::paint::background::*;
 use crate::style::computed::{BgRepeat, Computed};
