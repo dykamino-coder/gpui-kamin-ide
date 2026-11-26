@@ -628,21 +628,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
+                carryRegistrations: Array.isArray(msg.externalTools)
+                  ? { registeredTools: msg.externalTools }
+                  : undefined,
               })
 
               if (!ownsStartup(operation)) {
                 releaseLateSession(session, operation)
                 return
-              }
-
-              // Register external MCP tools BEFORE CLI initializes
-              if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                session.registeredTools = msg.externalTools
-                debugLog('External tools registered at session create', {
-                  sessionId: session.id,
-                  count: msg.externalTools.length,
-                  tools: msg.externalTools.map((t) => t.name),
-                })
               }
 
               authenticatedSessionId = session.id
@@ -988,20 +981,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 bearerHash,
                 protocolVersion: msg.protocolVersion ?? 0,
                 history: msg.history,
+                carryRegistrations: Array.isArray(msg.externalTools)
+                  ? { registeredTools: msg.externalTools }
+                  : undefined,
               })
 
               if (!ownsStartup(operation)) {
                 releaseLateSession(session, operation)
                 return
-              }
-
-              // Register external MCP tools BEFORE CLI initializes
-              if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                session.registeredTools = msg.externalTools
-                debugLog('External tools registered at session resume', {
-                  sessionId: session.id,
-                  count: msg.externalTools.length,
-                })
               }
 
               authenticatedSessionId = session.id
