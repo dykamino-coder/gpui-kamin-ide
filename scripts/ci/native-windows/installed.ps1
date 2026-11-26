@@ -93,25 +93,20 @@ try {
     if ($LASTEXITCODE) { throw 'Installed-client boundary failed. See report.json.' }
     $stage = 'complete'
 } finally {
-    [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; stage = $stage
+    $pipeline = [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; stage = $stage
         source = $env:INSTALLER_SOURCE; version = $metadata.versions.app; previous = $previous
         checks = $checks; explorerUi = "registration only"; versionText = "inspect version.png when available"
         installerSha256 = $metadata.installer.sha256; runner = $env:ImageVersion
         session = (Get-Process -Id $PID).SessionId; interactive = [Environment]::UserInteractive
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
-    } | ConvertTo-Json | Set-Content (Join-Path $evidence 'pipeline.json')
-    $owned = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($capture + '\', [StringComparison]::OrdinalIgnoreCase) })
-    foreach ($child in @($app, $setup, $runner) + $owned) {
-        if ($child -and !$child.HasExited) { taskkill /PID $child.Id /T /F | Out-Null }
+        profileRemoved = $false
     }
-    # Chromium can release its memory-mapped metrics file after the process tree exits.
-    $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    while (Test-Path -LiteralPath $capture) {
-        try { Remove-Item -LiteralPath $capture -Recurse -Force -ErrorAction Stop }
-        catch {
-            if ([DateTime]::UtcNow -gt $deadline) { throw 'Disposable installer profile could not be removed' }
-            Start-Sleep -Milliseconds 500
-        }
+    try {
+        $owned = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($capture + '\', [StringComparison]::OrdinalIgnoreCase) })
+        & (Join-Path $PSScriptRoot 'remove-profile.ps1') -Directory $capture -Processes (@($app,$setup,$runner) + $owned)
+        $pipeline.profileRemoved = !(Test-Path -LiteralPath $capture)
+    } finally {
+        $pipeline | ConvertTo-Json | Set-Content (Join-Path $evidence 'pipeline.json')
     }
 }
 

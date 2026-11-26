@@ -34,7 +34,7 @@ try {
     $stage = 'complete'
 } finally {
     $bin = Split-Path -Parent $exe
-    [ordered]@{
+    $runtime = [ordered]@{
         stage = $stage
         session = (Get-Process -Id $PID).SessionId
         interactive = [Environment]::UserInteractive
@@ -44,12 +44,14 @@ try {
         clientExited = if ($app) { $app.HasExited } else { $null }
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
         bridgeExited = if ($runner) { $runner.HasExited } else { $null }
-    } | ConvertTo-Json | Set-Content (Join-Path $report 'runtime.json')
-    foreach ($child in @($app, $runner)) {
-        if ($child -and !$child.HasExited) { taskkill /PID $child.Id /T /F | Out-Null }
+        profileRemoved = $false
     }
-    # Never archive server state, probe tokens, logs or the browser profile.
-    Remove-Item -LiteralPath $capture -Recurse -Force
+    try {
+        & (Join-Path $PSScriptRoot 'remove-profile.ps1') -Directory $capture -Processes @($app,$runner)
+        $runtime.profileRemoved = !(Test-Path -LiteralPath $capture)
+    } finally {
+        $runtime | ConvertTo-Json | Set-Content (Join-Path $report 'runtime.json')
+    }
 }
 
 # A child may exit between enumeration and taskkill; all owned state has been removed.
