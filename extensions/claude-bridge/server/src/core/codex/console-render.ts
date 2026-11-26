@@ -85,6 +85,13 @@ export class CodexConsoleRenderer {
         return ''
       case 'turn.started':
         return this.close() + toTerminal(`${t}${DIM}── turn started${RESET}\n`)
+      case 'turn.requestAccepted':
+        return (
+          this.close() +
+          toTerminal(
+            `${t}${DIM}turn/start accepted · requested effort ${plainText(event.requestedEffort ?? 'omitted')}${RESET}\n`,
+          )
+        )
       case 'turn.completed': {
         const took = event.durationMs !== undefined ? ` in ${(event.durationMs / 1000).toFixed(1)} s` : ''
         const color = event.status === 'completed' ? GREEN : event.status === 'interrupted' ? YELLOW : RED

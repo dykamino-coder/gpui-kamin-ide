@@ -423,9 +423,25 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.send({ type: 'session:change-effort', effort: 'max' })
     await client.next((f) => f.type === 'session:model-changed' && f.effort === 'max')
     await say(client, 'after switch', 's1')
-    const switched = await client.entry((e) => text(e) === 'echo: after switch [model=gpt-fake-mini effort=xhigh]')
+    const switched = await client.entry((e) => text(e) === 'echo: after switch [model=gpt-fake-mini effort=max]')
     // The reply is labelled with the model that produced it, not the chat's first one.
     expect(switched.message.model).toBe('gpt-fake-mini')
+    client.send({ type: 'session:change-effort', effort: 'ultra' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'ultra')
+    await say(client, 'native level', 's-ultra')
+    await client.entry((e) => text(e) === 'echo: native level [model=gpt-fake-mini effort=ultra]')
+
+    // A restricted model picks its listed default when the old effort cannot carry over.
+    client.send({ type: 'session:change-model', model: 'gpt-fake' })
+    await client.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake' && f.effort === 'medium')
+    const rejectedFrom = client.frames.length
+    client.send({ type: 'session:change-effort', effort: 'xhigh' })
+    await client.next((f) => f.type === 'session:model-changed' && f.effort === 'medium', 5_000, rejectedFrom)
+    await say(client, 'restricted model', 's-restricted')
+    await client.entry((e) => text(e) === 'echo: restricted model [model=gpt-fake effort=medium]')
+    const restoredFrom = client.frames.length
+    client.send({ type: 'session:change-model', model: 'gpt-fake-mini' })
+    await client.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini', 5_000, restoredFrom)
 
     // A Claude id cannot move a codex chat to another engine.
     const before = client.frames.length
@@ -588,6 +604,25 @@ describe('codex chat over the Bridge session WebSocket', () => {
     })
     await say(again, 'after restart', 'k2')
     await again.entry((e) => text(e) === 'echo: after restart [model=gpt-fake-mini effort=low]')
+    const first = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'low')
+    again.send({ type: 'session:change-effort', effort: 'xhigh' })
+    await again.next((f) => f.type === 'session:model-changed' && f.effort === 'xhigh')
+    await say(again, 'next turn', 'k3')
+    const second = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'xhigh')
+    expect(second.turnId).not.toBe(first.turnId)
+    await again.entry((e) => text(e) === 'echo: next turn [model=gpt-fake-mini effort=xhigh]')
+    const rpcFile = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const requests = fs
+      .readFileSync(rpcFile, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(
+      requests
+        .filter((r) => r.method === 'turn/start')
+        .slice(-2)
+        .map((r) => r.effort),
+    ).toEqual([first.requestedEffort, second.requestedEffort])
     again.send({ type: 'session:end' })
     again.close()
   }, 30_000)
@@ -1032,6 +1067,79 @@ describe('engine switch inside one chat', () => {
     )
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
+
+  it('publishes the external catalog before Codex discovery on create, resume and engine switch', async () => {
+    const file = path.join(state.home, 'first-tools.json')
+    const capture = { FAKE_CODEX_CAPTURE_INITIAL_TOOLS: file }
+    const previous = runtimeMod.codexRuntime()
+    runtimeMod.setCodexRuntimeForTests(newRuntime(capture))
+    let client = await Client.open(port)
+    const externalTools = (name: string) => [{ name, description: 'Synthetic tool', inputSchema: { type: 'object' } }]
+    const catalog = () => JSON.parse(fs.readFileSync(file, 'utf8')) as string[]
+    try {
+      expect(
+        await createChat(client, { engine: 'codex', cwd: state.home, externalTools: externalTools('first_tool') }),
+      ).toMatchObject({ type: 'session:created' })
+      expect(catalog()).toContain('first_tool')
+      await say(client, 'first turn', 'catalog-create')
+      await client.entry((e) => text(e).startsWith('echo: first turn'))
+      const conversationId = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
+      client.send({ type: 'session:end' })
+      await client.next((f) => f.type === 'session:exit')
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime(capture))
+      client = await Client.open(port)
+      client.send({
+        type: 'session:resume',
+        token: 'tok-a',
+        conversationId,
+        cwd: state.home,
+        protocolVersion: 1,
+        externalTools: externalTools('resumed_tool'),
+      })
+      await client.next((f) => f.type === 'session:created')
+      expect(catalog()).toContain('resumed_tool')
+      expect(catalog()).not.toContain('first_tool')
+      expect((await switchTo(client, 'claude', 'claude-sonnet-5-5')).restarted.engine).toBe('claude')
+      fs.unlinkSync(file)
+      expect((await switchTo(client, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      expect(catalog()).toContain('resumed_tool')
+    } finally {
+      client.send({ type: 'session:end' })
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(previous)
+    }
+  }, 30_000)
+
+  it.each(['claude', 'codex'] as const)(
+    'preserves answers across an empty segment on return to %s',
+    async (first) => {
+      const client = await Client.open(port)
+      const other = first === 'codex' ? 'claude' : 'codex'
+      const model = { codex: 'gpt-fake', claude: 'claude-sonnet-5-5' }
+      try {
+        expect(await createChat(client, { engine: first, cwd: state.home })).toMatchObject({ engine: first })
+        await say(client, first === 'claude' ? '/fake-note 4217' : 'remember 4217', 'handoff-first')
+        const original = text(await client.entry((e) => e.type === 'assistant' && text(e).includes('4217')))
+        expect((await switchTo(client, other, model[other])).restarted.engine).toBe(other)
+        expect((await switchTo(client, first, model[first])).restarted.engine).toBe(first)
+        let from = client.frames.length
+        await say(client, '/fake-recall previously selected', 'handoff-selection')
+        expect(text(await answerAfter(client, from, 'recall:'))).toContain(
+          `previously selected: ${other === 'claude' ? 'Claude' : 'ChatGPT'}`,
+        )
+        from = client.frames.length
+        await say(client, '/fake-recall 4217', 'handoff-answer')
+        expect(text(await answerAfter(client, from, 'recall:'))).toContain(original)
+      } finally {
+        client.send({ type: 'session:end' })
+        client.close()
+      }
+    },
+    45_000,
+  )
 
   it('carries the conversation Claude → ChatGPT → Claude in the same chat and resumes it', async () => {
     const client = await Client.open(port)
