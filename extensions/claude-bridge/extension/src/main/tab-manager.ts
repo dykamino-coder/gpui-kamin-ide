@@ -570,6 +570,7 @@ export class TabManager {
       model: tab.model,
       engine: tab.connection.getEngine(),
       workspacePermission: tab.connection.getWorkspacePermission(),
+      claudePermissions: tab.connection.claudePermissions,
       codexCollaboration: tab.connection.codexCollaboration,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,

@@ -129,6 +129,7 @@ export type WorkspacePermissionMode = 'ask' | 'acceptEdits' | 'readOnly' | 'dont
 export interface TabInfo {
   /** Policy enforced by this tab's workspace host for incoming tool calls. */
   workspacePermission?: WorkspacePermissionMode
+  claudePermissions?: { available: string[]; selected?: string; requested?: string; reason?: string }
   codexCollaboration?: { selected: 'default' | 'plan'; available: ('default' | 'plan')[] }
   id: string
   cwd: string
@@ -778,6 +779,7 @@ export interface KaminBridgeApi {
 
   // ─── Permissions ────────────────────────────────────
   openPermissionConsole(tabId: string): void
+  changeClaudePermissionMode(tabId: string, sessionId: string, mode: string): void
   changeCodexCollaboration(tabId: string, sessionId: string, mode: 'default' | 'plan'): void
   changePermissionMode(tabId: string, mode: string): void
 

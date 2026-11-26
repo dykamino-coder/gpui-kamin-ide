@@ -207,6 +207,11 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
     if (conn) conn.setPermissionMode(mode)
   })
 
+  ipcMain.on('claude:change-permission-mode', (_event: IpcMainEvent, tabId: string, sessionId: string, mode: string) => {
+    const manager = tm()
+    if (manager?.getActiveTabId() === tabId) manager.getConnection(tabId)?.changeClaudePermissionMode(mode, sessionId)
+  })
+
   ipcMain.on('codex:change-collaboration', (_event: IpcMainEvent, tabId: string, sessionId: string, mode: string) => {
     tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId)
   })
