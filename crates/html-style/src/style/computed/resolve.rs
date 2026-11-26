@@ -25,6 +25,8 @@ mod logical;
 mod logical_sharing;
 pub use logical_sharing::LogicalSharing;
 #[cfg(test)]
+mod em_tests;
+#[cfg(test)]
 mod mask_tests;
 
 impl Computed {
