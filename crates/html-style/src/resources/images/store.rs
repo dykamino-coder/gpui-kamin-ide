@@ -13,6 +13,9 @@ mod access;
 #[cfg(test)]
 mod budget_tests;
 mod job;
+mod keep;
+#[cfg(test)]
+mod keep_tests;
 mod rasters;
 mod resolve;
 mod subscriptions;
@@ -22,6 +25,7 @@ mod view;
 
 pub use access::ResourcePolicy;
 pub use job::ImageServices;
+pub use keep::ImageRead;
 pub use subscriptions::{ConsumerId, ImageChange, ImageUse};
 
 use super::types::{DecodeOptions, DecodedImage, ImageError, ImageMetadata};
@@ -64,6 +68,8 @@ struct Entry {
     subscribers: Vec<(ConsumerId, ImageUse)>,
     /// Logical квота документа на точки готового растра.
     admission: Option<super::admission::Admission>,
+    /// The last document revision that requested or replayed it (`keep`).
+    used: u32,
 }
 
 #[derive(Default)]
@@ -90,6 +96,9 @@ pub struct ImageStore {
     cancel: Cancellation,
     /// Пределы и отмены заданий до выдачи в журнал документа.
     diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
+    /// Document revisions seen (`keep::renew`) and the requests of this frame (`keep`).
+    epoch: u32,
+    log: Vec<ImageId>,
 }
 
 impl Default for ImageStore {
@@ -115,6 +124,8 @@ impl ImageStore {
             budget: crate::budget::RevisionBudget::standalone(),
             cancel: Cancellation::default(),
             diagnostics: Default::default(),
+            epoch: 0,
+            log: Vec::new(),
         }
     }
 
@@ -139,6 +150,7 @@ impl ImageStore {
     /// Ручка запроса; одинаковый запрос документа не грузится дважды.
     pub fn request(&mut self, request: ImageRequest) -> ImageId {
         if let Some(&id) = self.by_request.get(&request) {
+            self.touch(id);
             return id;
         }
         let allowed = self.policy.allows(&request.url);
@@ -163,7 +175,9 @@ impl ImageStore {
             attempt: self.attempts,
             subscribers: Vec::new(),
             admission: None,
+            used: self.epoch,
         });
+        self.log.push(id);
         self.by_request.insert(request, id);
         if allowed {
             self.enqueue(id);

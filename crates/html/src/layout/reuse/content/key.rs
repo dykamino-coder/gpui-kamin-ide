@@ -122,7 +122,10 @@ pub(super) fn plain(
             inherited.reset_context.cq_size,
             inherited.reset_context.cq_box,
         )
-        && lists.all(nodes, |e| inert_node(e, vcx) && window_free(e))
+        // An image replays while its request keeps its state (`ImageStore::replay_reads`).
+        && lists.all(nodes, |e| {
+            (inert_node(e, vcx) || super::super::plain::store_image(e, vcx)) && window_free(e)
+        })
 }
 
 /// The style of `e` folded no viewport length at the cascade
