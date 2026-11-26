@@ -110,7 +110,7 @@ describe('plugin hook proxy', () => {
       ws,
     )
     expect(sent.pluginId).toBe('guard@corp')
-    handleLocalHookResponse(sent.requestId, {
+    handleLocalHookResponse(ws, sent.requestId, {
       stdout: '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"}}',
       stderr: '',
       exitCode: 0,
@@ -206,7 +206,7 @@ describe('plugin hook proxy', () => {
     const pendingB = dispatchHook('cancel-b', second.id, payload, wsB)
     cancelSessionLocalExecs('cancel-a')
     expect((await pendingA).outcome).toBe('cancelled')
-    handleLocalHookResponse(secondRequestId, {
+    handleLocalHookResponse(wsB, secondRequestId, {
       stdout: 'ok',
       stderr: '',
       exitCode: 0,

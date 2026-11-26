@@ -58,3 +58,18 @@ it('drops the refusal on an intentional disconnect', () => {
   expect(stickyRefusal('session-limit', { status: 'connecting' }, false)).toBe('session-limit')
   expect(stickyRefusal(undefined, { status: 'disconnected', closeCode: 4002 }, false)).toBe('session-limit')
 })
+
+it('uses the latest Bridge refusal and preserves a slot refusal through a transport retry', () => {
+  const { manager, internal } = fixture()
+  refusedClose(internal)
+  internal.setState({ status: 'disconnected', closeCode: 1006 })
+  internal.scheduleReconnect()
+  expect(manager.getState().refusal).toBe('session-limit')
+  internal.setState({ status: 'disconnected', closeCode: 4001, error: 'Invalid token' })
+  expect(manager.getState()).toMatchObject({ closeCode: 4001, error: 'Invalid token' })
+  expect(manager.getState().refusal).toBeUndefined()
+  internal.scheduleReconnect()
+  expect(manager.getState().refusal).toBeUndefined()
+  refusedClose(internal)
+  expect(manager.getState().refusal).toBe('session-limit')
+})
