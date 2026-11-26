@@ -112,6 +112,7 @@ impl Len {
         match self {
             Len::Lh(_) | Len::LhPx(..) => true,
             Len::Calc(id) => calc_get(id, vcx).lh != 0.0,
+            Len::Math(_) => self.math_any(vcx, |s| s.lh != 0.0),
             _ => false,
         }
     }
@@ -130,14 +131,13 @@ impl Len {
             }
             Len::Calc(id) => {
                 let mut sum = calc_get(id, vcx);
-                if sum.lh != 0.0 {
-                    sum.px += sum.lh * line;
-                    sum.lh = 0.0;
-                    if let Some(length) = sum.collapse_mixed(vcx) {
-                        *self = length;
-                    }
+                if sum.fold_line(line)
+                    && let Some(length) = sum.collapse_mixed(vcx)
+                {
+                    *self = length;
                 }
             }
+            Len::Math(_) => *self = self.resolve_math(vcx, |s| s.fold_line(line)),
             _ => {}
         }
     }
