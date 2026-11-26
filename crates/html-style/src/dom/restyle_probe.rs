@@ -98,15 +98,15 @@ impl RestyleCache {
         }
     }
 
-    /// Проба документа значений `values`: правила собираются при первой
-    /// правке и служат следующим, пока тема и носитель те же. Blink так же
-    /// строит признаки правил один раз на лист (`RuleInvalidationData`,
-    /// `rule_invalidation_data.cc:90`), а не на мутацию. Листы документа у
-    /// одних значений не меняются: текст `<style>` прочитан сборкой
-    /// (`TraversalState::read_source_text`), и его правка собирает документ
-    /// заново с новыми значениями.
-    /// The shadow trees of the light tree are described by the probe
-    /// (`ShadowFacts`), not refused.
+    /// The probe of the document of `values`: its rules are gathered on the
+    /// first edit and serve the next ones while the theme and the medium stay
+    /// the same. Blink likewise builds the rule features once per sheet
+    /// (`RuleInvalidationData`, `rule_invalidation_data.cc:90`), not per
+    /// mutation. The sheets of one set of values do not change: the build read
+    /// the text of each `<style>` (`TraversalState::read_source_text`), and an
+    /// edit of it builds the document again with new values. The shadow trees
+    /// of the light tree are described by the probe (`ShadowFacts`), not
+    /// refused.
     pub fn probe(
         &mut self,
         input: &Admitted,
