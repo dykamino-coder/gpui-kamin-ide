@@ -11,6 +11,7 @@ import { saveAttachment } from './attachments'
 import { transcribeAudio } from './transcription'
 import type { IpcMainInvokeEvent } from "@kaminide/host-compat"
 import { ipcMain } from "@kaminide/host-compat"
+import { workspaceLocation } from "./workspace-location"
 import type { TabManager } from "./main/tab-manager"
 import type { ConfigStore } from "./main/config/store"
 import { ConnectionManager } from "./main/ws/connection-manager"
@@ -25,7 +26,7 @@ const MIME: Record<string, string> = {
   ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml",
 }
 
-export function registerCoreIpc(context: vscode.ExtensionContext, configStore: Pick<ConfigStore, "get">): void {
+export function registerCoreIpc(context: vscode.ExtensionContext, configStore: Pick<ConfigStore, "get">, tabs: TabManager): void {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""))
   ipcMain.handle("vscode:is-available", () => false)
   ipcMain.handle('whisper:transcribe', (_e: IpcMainInvokeEvent, base64: string, mime: string) => transcribeAudio(configStore.get(), base64, mime))
@@ -52,6 +53,15 @@ export function registerCoreIpc(context: vscode.ExtensionContext, configStore: P
     if (!m) return
     const sev = severity === "error" ? "error" : severity === "warning" ? "warning" : "info"
     showTimedNotice(sev, m, typeof durationMs === "number" ? durationMs : undefined)
+  })
+
+  ipcMain.handle("open-workspace-location", async (_e, tabId: string, destination: string) => {
+    if (!tabId || tabs.getActiveTabId() !== tabId) return false
+    const root = tabs.getTab(tabId)?.config.cwd
+    if (!root) return false
+    const location = await workspaceLocation(root, destination)
+    if (!location || tabs.getActiveTabId() !== tabId || tabs.getTab(tabId)?.config.cwd !== root) return false
+    return await vscode.commands.executeCommand("kaminide.openTextLocation", location)
   })
 
   ipcMain.handle("open-external", async (_e: IpcMainInvokeEvent, url: string) => {

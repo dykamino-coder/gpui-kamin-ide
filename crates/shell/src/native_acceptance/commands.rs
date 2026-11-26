@@ -31,6 +31,19 @@ pub(crate) fn handle(cmd: &str, req: &Value) -> Option<Value> {
             }
             return Some(json!({"ok": ok, "wait": super::faults::status()}));
         }
+        Some("editorLocation") => {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let action =
+                crate::host_link::ShellEvent::NativeAcceptance(Action::InspectEditor(sender));
+            if !crate::host_link::event_tx().is_some_and(|tx| tx.try_send(action).is_ok()) {
+                return Some(json!({"ok": false, "err": "event channel not ready"}));
+            }
+            return Some(
+                receiver
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .unwrap_or_else(|_| json!({"ok": false, "err": "editor did not respond"})),
+            );
+        }
         Some("loaders") => Action::Loaders,
         Some("waiting") => Action::Waiting,
         Some("ready") => Action::Ready,

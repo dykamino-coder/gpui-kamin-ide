@@ -89,6 +89,16 @@ export async function startExtHost(opts: StartOptions): Promise<ExtHost> {
     opts.broadcast("kamin:window:reload", null)
   }, { title: "Reload Window", category: "Developer" })
 
+  registry.registerCommand("kaminide.openTextLocation", (location: unknown) => {
+    if (!location || typeof location !== "object") return false
+    const { path, line, column } = location as Record<string, unknown>
+    if (typeof path !== "string" || !path || ![line, column].every(
+      value => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 0xffffffff,
+    )) return false
+    opts.broadcast("kamin:editor:openLocation", { path, line, column })
+    return true
+  })
+
   // VS Code's built-in "Reveal in File Explorer/Finder". Extensions (incl. the
   // Bridge's "Show in Explorer" on Skills/Agents) call it with a Uri; without it
   // registered the executeCommand rejected → surfaced as an "Extension crashed"

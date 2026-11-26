@@ -393,7 +393,7 @@ export class BridgeHost {
         return [...this.tabManager.getDistinctCwds(), ...(cwd ? [cwd] : [])]
       },
     })
-    registerCoreIpc(context, this.configStore)
+    registerCoreIpc(context, this.configStore, this.tabManager)
 
     // Feed external MCP tool schemas into every session at create/auth, and
     // re-register on all authenticated connections when the server set changes.
