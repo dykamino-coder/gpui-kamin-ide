@@ -781,7 +781,7 @@ export interface KaminBridgeApi {
   openPermissionConsole(tabId: string): void
   changeClaudePermissionMode(tabId: string, sessionId: string, mode: string): void
   changeCodexCollaboration(tabId: string, sessionId: string, mode: 'default' | 'plan'): void
-  changePermissionMode(tabId: string, mode: string): void
+  changePermissionMode(tabId: string, mode: string, sessionId?: string): void
 
   // ─── Effort ────────────────────────────────────────
   changeEffort(tabId: string, effort: string): void

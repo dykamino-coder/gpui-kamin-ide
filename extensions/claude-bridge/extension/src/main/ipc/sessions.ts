@@ -202,18 +202,22 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   )
 
   // ─── Permission mode / effort / model ─────────────
-  ipcMain.on('change-permission-mode', (_event: IpcMainEvent, tabId: string, mode: string) => {
-    const conn = tm()?.getConnection(tabId)
-    if (conn) conn.setPermissionMode(mode)
+  function activeMenuConnection(tabId: string) {
+    const manager = tm()
+    return manager && manager.getActiveTabId() === tabId ? manager.getConnection(tabId) : undefined
+  }
+
+  ipcMain.on('change-permission-mode', (_event: IpcMainEvent, tabId: string, mode: string, sessionId?: string) => {
+    const conn = activeMenuConnection(tabId)
+    if (conn && (sessionId === undefined || sessionId === conn.getSessionId())) conn.setPermissionMode(mode)
   })
 
   ipcMain.on('claude:change-permission-mode', (_event: IpcMainEvent, tabId: string, sessionId: string, mode: string) => {
-    const manager = tm()
-    if (manager?.getActiveTabId() === tabId) manager.getConnection(tabId)?.changeClaudePermissionMode(mode, sessionId)
+    activeMenuConnection(tabId)?.changeClaudePermissionMode(mode, sessionId)
   })
 
   ipcMain.on('codex:change-collaboration', (_event: IpcMainEvent, tabId: string, sessionId: string, mode: string) => {
-    tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId)
+    activeMenuConnection(tabId)?.changeCodexCollaboration(mode, sessionId)
   })
 
   ipcMain.on('change-effort', (_event: IpcMainEvent, tabId: string, effort: string) => {

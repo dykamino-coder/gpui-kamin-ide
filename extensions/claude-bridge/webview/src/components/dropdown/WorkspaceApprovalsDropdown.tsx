@@ -31,7 +31,7 @@ export function WorkspaceApprovalsDropdown(): JSX.Element {
       {WORKSPACE_OPTIONS.map(opt =>
         <DropdownOption key={opt.value} icon={opt.icon} name={opt.name} description={opt.description}
           selected={workspace?.value === opt.value} disabled={!workspace}
-          onClick={() => { close(); if (tab && workspace) bridge.changePermissionMode(tab.id, opt.value) }} />
+          onClick={() => { close(); if (tab && workspace) bridge.changePermissionMode(tab.id, opt.value, tab.sessionId) }} />
       )}
     </Dropdown>
   )

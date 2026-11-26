@@ -68,7 +68,7 @@ it('offers exactly the advertised Codex presets and waits for the server selecti
 it('changes workspace approval independently and displays the acknowledged policy', () => {
   const { options } = show({ engine: 'codex' }, WorkspaceApprovalsDropdown)
   options.get('Read tools only')!.onClick()
-  expect(api.changePermissionMode).toHaveBeenCalledWith('tab', 'readOnly')
+  expect(api.changePermissionMode).toHaveBeenCalledWith('tab', 'readOnly', 'session')
   expect(show({ workspacePermission: 'readOnly' }, WorkspaceApprovalsDropdown).options.get('Read tools only')?.selected).toBe(true)
   expect(show({ workspacePermission: undefined }, WorkspaceApprovalsDropdown).options.get('Allow workspace tools')!.disabled).toBe(true)
   expect(show({ status: 'connecting' }).options.get('Change mode in Console')!.disabled).toBe(true)

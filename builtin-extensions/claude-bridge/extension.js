@@ -48630,16 +48630,19 @@ function registerSessionsIPC(ctx) {
       tm()?.respondElicitation(requestId, action, content);
     }
   );
-  ipcMain.on("change-permission-mode", (_event, tabId, mode) => {
-    const conn = tm()?.getConnection(tabId);
-    if (conn) conn.setPermissionMode(mode);
+  function activeMenuConnection(tabId) {
+    const manager = tm();
+    return manager && manager.getActiveTabId() === tabId ? manager.getConnection(tabId) : void 0;
+  }
+  ipcMain.on("change-permission-mode", (_event, tabId, mode, sessionId) => {
+    const conn = activeMenuConnection(tabId);
+    if (conn && (sessionId === void 0 || sessionId === conn.getSessionId())) conn.setPermissionMode(mode);
   });
   ipcMain.on("claude:change-permission-mode", (_event, tabId, sessionId, mode) => {
-    const manager = tm();
-    if (manager?.getActiveTabId() === tabId) manager.getConnection(tabId)?.changeClaudePermissionMode(mode, sessionId);
+    activeMenuConnection(tabId)?.changeClaudePermissionMode(mode, sessionId);
   });
   ipcMain.on("codex:change-collaboration", (_event, tabId, sessionId, mode) => {
-    tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId);
+    activeMenuConnection(tabId)?.changeCodexCollaboration(mode, sessionId);
   });
   ipcMain.on("change-effort", (_event, tabId, effort) => {
     const conn = tm()?.getConnection(tabId);
