@@ -83,7 +83,9 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
     let outputBuffer = ''
     let trailTimer: ReturnType<typeof setTimeout> | null = null
     let maxTimer: ReturnType<typeof setTimeout> | null = null
-    function flushOutput() {
+    let exited = false
+    let stopping = false
+    function clearOutputTimers() {
       if (trailTimer) {
         clearTimeout(trailTimer)
         trailTimer = null
@@ -92,12 +94,17 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
         clearTimeout(maxTimer)
         maxTimer = null
       }
-      if (outputBuffer && ws.readyState === WS.OPEN) {
-        ws.send(JSON.stringify({ type: 'output', data: outputBuffer }))
-        outputBuffer = ''
+    }
+    function flushOutput() {
+      clearOutputTimers()
+      const data = outputBuffer
+      outputBuffer = ''
+      if (data && !disconnected && ws.readyState === WS.OPEN) {
+        ws.send(JSON.stringify({ type: 'output', data }))
       }
     }
     pty.onData((data: string) => {
+      if (exited || disconnected) return
       outputBuffer += data
       // Reset trailing timer on each chunk — wait for gap in output
       if (trailTimer) clearTimeout(trailTimer)
@@ -110,9 +117,13 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
 
     // PTY exit
     pty.onExit(({ exitCode }: { exitCode: number }) => {
+      if (exited) return
+      exited = true
       // kill() is asynchronous: keep the lease until the CLI actually exits.
       void release?.().catch((error) => warnLog('Codex terminal account refresh failed', { reason: String(error) }))
-      if (ws.readyState === WS.OPEN) {
+      // Flush and cancel both debounce timers before the final frame closes the socket.
+      flushOutput()
+      if (!disconnected && ws.readyState === WS.OPEN) {
         ws.send(JSON.stringify({ type: 'exit', code: exitCode }))
         ws.close()
       }
@@ -138,17 +149,15 @@ export function attachTerminalWebSocket(_server: HttpServer): void {
     })
 
     function cleanup() {
-      if (trailTimer) {
-        clearTimeout(trailTimer)
-        trailTimer = null
+      disconnected = true
+      clearOutputTimers()
+      outputBuffer = ''
+      if (!exited && !stopping) {
+        stopping = true
+        try {
+          pty.kill()
+        } catch {}
       }
-      if (maxTimer) {
-        clearTimeout(maxTimer)
-        maxTimer = null
-      }
-      try {
-        pty.kill()
-      } catch {}
       sessions.delete(session)
       broadcastSessionCount()
     }
