@@ -30,6 +30,7 @@ import { CodexHost } from './codex-host'
 import { CodexAgentSession } from './codex-session'
 import { bridgeMcpThreadConfig, codexLockdownConfig, mergeTables, toConfigOverrides } from './config-toml'
 import { buildPatchedCatalog } from './model-catalog'
+import { codexTerminalArgs } from '../server/terminal-codex'
 
 const enabled = process.env.BRIDGE_CODEX_GATE === '1'
 const MODEL_HOST = 'model.codex-mock.test'
@@ -64,6 +65,28 @@ const NESTED_IN_EXEC = [
   'read_mcp_resource',
 ]
 const FORBIDDEN = /exec_command|write_stdin|^shell$|apply_patch|view_image|image_gen|spawn_agent|update_plan/
+
+// This file is also run explicitly by CI with the image-pinned Codex binary.
+describe.runIf(enabled)('Codex terminal CLI compatibility', () => {
+  it.each(['interactive', 'usage', 'resume', 'status'])(
+    'accepts the %s argv in the pinned CLI',
+    async (action) => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-terminal-args-'))
+      try {
+        const command = resolveCodexCommand()
+        const { stdout } = await promisify(execFile)(
+          command.command,
+          [...command.args, ...codexTerminalArgs(action), '--help'],
+          { env: buildCodexEnv({ home }), timeout: 10_000, windowsHide: true },
+        )
+        expect(stdout).toContain('Usage:')
+      } finally {
+        fs.rmSync(home, { recursive: true, force: true })
+      }
+    },
+    15_000,
+  )
+})
 
 const MCP_TOOLS = [
   { name: 'Read', description: 'synthetic', inputSchema: { type: 'object', properties: { path: { type: 'string' } } } },

@@ -44,6 +44,15 @@ async function connect(query = '') {
 }
 
 describe('terminal launch contract', () => {
+  it.each(['interactive', 'usage'])('launches Codex %s in the leased foreground process', async (command) => {
+    await connect(`?engine=codex&command=${command}`)
+    expect(mocks.acquire).toHaveBeenCalledOnce()
+    expect(mocks.spawn.mock.calls[0]![1]).toEqual(['--no-daemon'])
+  })
+  it('keeps the read-only Codex login status invocation unchanged', async () => {
+    await connect('?engine=codex&command=status')
+    expect(mocks.spawn.mock.calls[0]![1]).toEqual(['login', 'status'])
+  })
   it('passes the actual shared runtime CODEX_HOME to the shell, overriding inherited personal settings', async () => {
     vi.stubEnv('CODEX_HOME', '/personal/account')
     await connect()
@@ -52,7 +61,7 @@ describe('terminal launch contract', () => {
   it('launches resume directly under an exclusive lease, held past disconnect until process exit', async () => {
     const { ws, pty, process } = await connect('?engine=codex&command=resume')
     expect(mocks.acquire).toHaveBeenCalledOnce()
-    expect(mocks.spawn.mock.calls[0]![1].slice(-2)).toEqual(['resume', '--last'])
+    expect(mocks.spawn.mock.calls[0]![1]).toEqual(['--no-daemon', 'resume', '--last'])
     expect(mocks.spawn.mock.calls[0]![2].env.CODEX_HOME).toBe('/bridge/account')
     ws.emit('close')
     expect(pty.kill).toHaveBeenCalledOnce()
