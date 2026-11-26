@@ -1126,6 +1126,73 @@ describe('engine switch inside one chat', () => {
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
 
+  it('keeps instructions scoped to the active project on create, resume and engine switch', async () => {
+    const { tokenHash, getUserSyncDir, getProjectSyncDir } = await import('../sync/routes')
+    const owner = tokenHash('tok-a')
+    const projectA = '/work/instructions-a'
+    const projectB = '/work/instructions-b'
+    const markers = [
+      [getUserSyncDir(owner), 'CLAUDE.md', 'SHARED-INSTRUCTION'],
+      [getProjectSyncDir(owner, projectA), 'AGENTS.md', 'PROJECT-ALPHA'],
+      [getProjectSyncDir(owner, projectB), 'AGENTS.md', 'PROJECT-BETA'],
+    ] as const
+    const file = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const instructionsAfter = (offset: number, method: string) => {
+      const rows = fs
+        .readFileSync(file)
+        .subarray(offset)
+        .toString()
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const matching = rows.filter((row) => row.method === method)
+      expect(matching).toHaveLength(1)
+      return matching[0].instructions as string
+    }
+    const offset = () => (fs.existsSync(file) ? fs.statSync(file).size : 0)
+    const expectScope = (instructions: string, own: string, sibling: string) => {
+      expect(instructions.split('SHARED-INSTRUCTION')).toHaveLength(2)
+      expect(instructions.split(own)).toHaveLength(2)
+      expect(instructions).not.toContain(sibling)
+    }
+    let a = await Client.open(port)
+    const b = await Client.open(port)
+    try {
+      for (const [dir, name, value] of markers) {
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, name), value)
+      }
+      let start = offset()
+      expect(await createChat(a, { engine: 'codex', cwd: projectA })).toMatchObject({ engine: 'codex' })
+      expectScope(instructionsAfter(start, 'thread/start'), 'PROJECT-ALPHA', 'PROJECT-BETA')
+      await say(a, 'hello', 'scope-first')
+      await a.entry((e) => text(e).startsWith('echo: hello'))
+      const { conversationId } = await a.next((f) => f.type === 'session:conversation-id')
+
+      const created = await createChat(b, { engine: 'claude', cwd: projectB })
+      expect(created).toMatchObject({ engine: 'claude' })
+      expectScope(fs.readFileSync(path.join(created.settingsDir, 'CLAUDE.md'), 'utf8'), 'PROJECT-BETA', 'PROJECT-ALPHA')
+      start = offset()
+      expect((await switchTo(b, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      expectScope(instructionsAfter(start, 'thread/start'), 'PROJECT-BETA', 'PROJECT-ALPHA')
+
+      a.send({ type: 'session:end' })
+      await a.next((f) => f.type === 'session:exit')
+      a.close()
+      a = await Client.open(port)
+      start = offset()
+      a.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, cwd: projectA, conversationId })
+      expect(await a.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
+      expectScope(instructionsAfter(start, 'thread/resume'), 'PROJECT-ALPHA', 'PROJECT-BETA')
+    } finally {
+      for (const c of [a, b]) {
+        c.send({ type: 'session:end' })
+        c.close()
+      }
+      for (const [dir, name] of markers) fs.rmSync(path.join(dir, name), { force: true })
+    }
+  }, 40_000)
+
   it('publishes the external catalog before Codex discovery on create, resume and engine switch', async () => {
     const file = path.join(state.home, 'first-tools.json')
     const capture = { FAKE_CODEX_CAPTURE_INITIAL_TOOLS: file }
