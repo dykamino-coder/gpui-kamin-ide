@@ -21,6 +21,7 @@ import type { WebSocket as WS } from 'ws'
 import type { AgentEvent } from '../../shared/agent-events'
 import { config as bridgeConfig } from '../config'
 import { CodexAgentSession, type TurnContext } from '../codex/codex-session'
+import { collaborationModes, isCollaborationMode, type CollaborationMode } from '../codex/collaboration-modes'
 import { SESSION_CONTEXT_OPEN } from '../codex/normalize'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
@@ -121,6 +122,7 @@ function lastUuid(file: string): string | null {
  *  lost when the app-server or Bridge restarts; Bridge keeps it next to the
  *  session settings, per thread, and resumes the thread with it. */
 export interface CodexChoice {
+  collaborationMode?: CollaborationMode
   model?: string
   /** Bridge effort level (the selector's value). */
   effort?: string
@@ -137,6 +139,7 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
   try {
     const raw = JSON.parse(fs.readFileSync(choiceFile(settingsDir, threadId), 'utf8')) as Record<string, unknown>
     return {
+      ...(isCollaborationMode(raw.collaborationMode) ? { collaborationMode: raw.collaborationMode } : {}),
       ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
       ...(typeof raw.effort === 'string' && raw.effort
         ? { effort: raw.effort === 'max' && raw.nativeEffort !== true ? 'xhigh' : raw.effort }
@@ -374,7 +377,10 @@ export async function createCodexSession(
   const instructions = developerInstructions(config)
   // A chat on the default model still learns which model and effort that is
   // (the catalog names the default; no model call).
-  const catalog = await deps.runtime.recentModels().catch(() => [])
+  const [catalog, availableModes] = await Promise.all([
+    deps.runtime.recentModels().catch(() => []),
+    collaborationModes(host),
+  ])
   const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
   const configuredDefault = process.env.BRIDGE_CODEX_DEFAULT_EFFORT?.trim()
   // Only an explicitly advertised level may override the native default for a new chat.
@@ -390,6 +396,8 @@ export async function createCodexSession(
   const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
+    availableModes,
+    collaborationMode: saved?.collaborationMode,
     id: sessionId,
     cwd: settingsDir,
     model: codexModel(saved?.model) ?? codexModel(config.model),
@@ -527,14 +535,18 @@ export async function createCodexSession(
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
     // Same thread, same MCP endpoint and Bearer, on whichever app-server the
     // runtime has now (a crashed one is restarted within its restart limits).
-    reopen: async (threadId, model) =>
-      CodexAgentSession.start({
+    reopen: async (threadId, model) => {
+      const host = await deps.runtime.host()
+      return CodexAgentSession.start({
         ...startOptions,
-        host: await deps.runtime.host(),
+        host,
+        availableModes: await collaborationModes(host),
+        collaborationMode: loadCodexChoice(settingsDir, threadId)?.collaborationMode,
         resumeThreadId: threadId,
         model: model ?? undefined,
         effort: session.effort ?? undefined,
-      }),
+      })
+    },
     onDead: (code) => vpty.markExited(code),
     console: (data) => vpty.emit(data),
     stallMs: deps.stallMs,

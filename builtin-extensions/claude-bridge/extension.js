@@ -43535,7 +43535,7 @@ var PermissionManager = class {
    * Get the category for a tool.
    */
   getToolCategory(toolName) {
-    return TOOL_CATEGORIES[toolName] || "shell";
+    return Object.hasOwn(TOOL_CATEGORIES, toolName) ? TOOL_CATEGORIES[toolName] : "shell";
   }
   /**
    * Check if a tool invocation should be allowed, denied, or requires user approval.
@@ -43545,14 +43545,14 @@ var PermissionManager = class {
    * 2. Persisted rule (stored in the bridge JSON store)
    * 3. Category default
    */
-  checkPermission(toolName, _input) {
+  checkPermission(toolName, _input, acceptFileEdits = false) {
     const sessionDecision = this.sessionRules.get(toolName);
     if (sessionDecision) return sessionDecision;
     const rules = this.store.get("rules");
-    const persistedRule = rules[toolName];
+    const persistedRule = Object.hasOwn(rules, toolName) ? rules[toolName] : void 0;
     if (persistedRule) return persistedRule.decision;
     const category = this.getToolCategory(toolName);
-    return CATEGORY_DEFAULTS[category];
+    return acceptFileEdits && category === "write" ? "allow" : CATEGORY_DEFAULTS[category];
   }
   /**
    * Set a persistent permission rule for a tool.
@@ -43781,17 +43781,16 @@ function cancelMcpCall(ctx, requestId, taskOwner) {
   ctx.pendingPermissions.get(requestId)?.("cancelled");
 }
 function checkToolPermission(ctx, requestId, toolName, input) {
-  if (toolName.startsWith("__bridge_mcp_")) return { allowed: true };
+  if (toolName === "__bridge_mcp_resource_read" || toolName === "__bridge_mcp_prompt_get") return { allowed: true };
   const mode = ctx.permissionMode();
   if (mode === "bypassPermissions") return { allowed: true };
   const category = ctx.permissionManager.getToolCategory(toolName);
-  if (mode === "acceptEdits") {
-    if (category !== "shell" && category !== "git") return { allowed: true };
-  } else {
-    const decision = ctx.permissionManager.checkPermission(toolName, input);
-    if (decision === "allow") return { allowed: true };
-    if (decision === "deny") return { allowed: false, reason: "Permission denied by policy" };
+  if (mode === "readOnly" && category !== "read-only") {
+    return { allowed: false, reason: "Workspace tool blocked by read-only policy" };
   }
+  const decision = ctx.permissionManager.checkPermission(toolName, input, mode === "acceptEdits");
+  if (decision === "allow") return { allowed: true };
+  if (decision === "deny" || mode === "dontAsk") return { allowed: false, reason: "Permission denied by policy" };
   return new Promise((resolve) => {
     const settle = (outcome) => {
       if (ctx.pendingPermissions.get(requestId) !== respond) return false;
@@ -43803,10 +43802,10 @@ function checkToolPermission(ctx, requestId, toolName, input) {
       }
       return true;
     };
-    const respond = (decision) => {
-      const reason = decision === "deny" ? "User denied permission" : decision === "cancelled" ? "Permission request cancelled" : decision === "disconnected" ? "Permission request cancelled: connection disconnected" : void 0;
+    const respond = (decision2) => {
+      const reason = decision2 === "deny" ? "User denied permission" : decision2 === "cancelled" ? "Permission request cancelled" : decision2 === "disconnected" ? "Permission request cancelled: connection disconnected" : void 0;
       if (!settle(reason ? { allowed: false, reason } : { allowed: true })) return;
-      if (decision === "allow_session" || decision === "always") {
+      if (decision2 === "allow_session" || decision2 === "always") {
         ctx.permissionManager.setSessionPermission(toolName, "allow");
       }
     };
@@ -43876,6 +43875,7 @@ async function handleMcpCall(ctx, msg) {
     timestamp: Date.now(),
     status: "pending"
   });
+  const checkedMode = ctx.permissionMode();
   const permission = await checkToolPermission(ctx, msg.requestId, msg.toolName, msg.input);
   if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
   mcpDiagnostic(permission.allowed ? "permission-allowed" : "permission-denied", correlation);
@@ -43892,6 +43892,10 @@ async function handleMcpCall(ctx, msg) {
     if (ctx.pendingMcpCalls.get(msg.requestId) !== call) return;
     if (controller.signal.aborted) {
       ctx.denyMcp(msg.requestId, "Permission request cancelled");
+      return;
+    }
+    if (ctx.permissionMode() !== checkedMode) {
+      ctx.denyMcp(msg.requestId, "Workspace permission mode changed before execution");
       return;
     }
     result = await executeTool2(msg.toolName, msg.input, {
@@ -45093,6 +45097,7 @@ function handleServerMessage(msg, ctx) {
           ...engineNotice ? { engineNotice } : {}
         });
       }
+      ctx.noteCollaboration?.(msg.codexCollaboration);
       ctx.noteSessionEngine?.(engine, msg.model);
       ctx.notifySessionInfo(msg.effort, msg.model);
       ctx.notifyAuthenticated();
@@ -45326,6 +45331,10 @@ function handleServerMessage(msg, ctx) {
       ctx.notifyActivity(isWorking, hookDriven);
       break;
     }
+    case "session:codex-collaboration":
+      ctx.noteCollaboration?.(msg.codexCollaboration, msg.sessionId);
+      ctx.notifySessionInfo();
+      break;
     case "session:model-changed":
       ctx.window.webContents.send("session-restarted", ctx.tabId, {
         sessionId: msg.sessionId,
@@ -45349,6 +45358,7 @@ function handleServerMessage(msg, ctx) {
         model: msg.model,
         ...engine ? { engine } : {}
       });
+      ctx.noteCollaboration?.(msg.codexCollaboration);
       if (engine) ctx.noteSessionEngine?.(engine, msg.model);
       if (msg.engineSwitch) ctx.settleEngineSwitch?.(true);
       ctx.notifySessionInfo(msg.effort, msg.model);
@@ -45435,6 +45445,23 @@ function lingerForSessionEnd(sock, runHook, windowMs = SESSION_END_HOOK_WINDOW_M
 // src/main/ws/connection-manager.ts
 var MIRROR_PAINT_RECORDS = 200;
 var REPLAY_TAIL_MAX = 4500;
+function workspaceMode(value) {
+  switch (value) {
+    case "plan":
+      return "readOnly";
+    case "default":
+    case "auto":
+      return "ask";
+    case "ask":
+    case "readOnly":
+    case "acceptEdits":
+    case "dontAsk":
+    case "bypassPermissions":
+      return value;
+    default:
+      return void 0;
+  }
+}
 var CLIENT_STREAM_PROTOCOL = 1;
 var SESSION_LIMIT_CLOSE_CODE = 4002;
 function stickyRefusal(previous, next, intentional) {
@@ -45469,6 +45496,7 @@ var ConnectionManager = class _ConnectionManager {
   // Optional callback to enrich tree with tab metadata before sending to renderer
   static enrichTree = null;
   // Optional callback when session info (effort/model) arrives from server
+  static onWorkspacePermission = null;
   static onSessionInfo = null;
   // The server told this tab the user's main agent (agent:preferences).
   static onAgentPreferences = null;
@@ -45638,7 +45666,8 @@ var ConnectionManager = class _ConnectionManager {
   /** Fingerprint the server last reported for the transcript file. Stored with
    *  the mirror so a later run can prove its copy is still a prefix. */
   mirrorHead = null;
-  constructor(config, window10, tabId, conversationId) {
+  constructor(config, window10, tabId, conversationId, restoredPermission) {
+    if (restoredPermission !== void 0) this.permissionMode = workspaceMode(restoredPermission) ?? "ask";
     this.config = config;
     this.engine = config.engine;
     this.pendingModel = config.model ?? null;
@@ -45677,8 +45706,25 @@ var ConnectionManager = class _ConnectionManager {
   getSettingsDir() {
     return this.settingsDir;
   }
-  setPermissionMode(mode) {
-    this.permissionMode = mode;
+  codexCollaboration;
+  changeCodexCollaboration(mode, sessionId) {
+    if (this.getEngine() === "codex" && sessionId === this.getSessionId() && this.codexCollaboration && (mode === "default" || mode === "plan" && this.codexCollaboration.available.includes(mode))) {
+      this.send({ type: "session:codex-collaboration", mode, sessionId });
+    }
+  }
+  getWorkspacePermission() {
+    return this.permissionMode;
+  }
+  setPermissionMode(value) {
+    const mode = workspaceMode(value);
+    if (!mode) return false;
+    if (mode !== this.permissionMode) {
+      this.permissionMode = mode;
+      for (const respond of [...this.pendingPermissions.values()]) respond("cancelled");
+      _ConnectionManager.onWorkspacePermission?.(this.tabId, mode);
+      _ConnectionManager.onSessionInfo?.(this.tabId);
+    }
+    return true;
   }
   getSessionId() {
     return this.state.sessionId;
@@ -46822,6 +46868,9 @@ var ConnectionManager = class _ConnectionManager {
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
+      noteCollaboration: (value, id) => {
+        if (!id || id === this.getSessionId()) this.codexCollaboration = value;
+      },
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
       settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => _ConnectionManager.onAgentPreferences?.(this.tabId, engine),
@@ -47700,7 +47749,7 @@ var TabManager = class {
     const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
     const label = opts.restored?.label ?? `#${counter}`;
-    const connection = new ConnectionManager(config, this.window, tabId);
+    const connection = new ConnectionManager(config, this.window, tabId, void 0, opts.workspacePermission);
     const tab = {
       id: tabId,
       config,
@@ -47926,7 +47975,7 @@ var TabManager = class {
     const counter = opts.restored ? Math.max(this.folderCounters.get(folderName) ?? 0, Number(opts.restored.label.slice(1))) : (this.folderCounters.get(folderName) ?? 0) + 1;
     this.folderCounters.set(folderName, counter);
     const label = opts.restored?.label ?? `#${counter}`;
-    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId);
+    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId, opts.workspacePermission);
     const tab = {
       id: tabId,
       config,
@@ -48064,6 +48113,8 @@ var TabManager = class {
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),
+      workspacePermission: tab.connection.getWorkspacePermission(),
+      codexCollaboration: tab.connection.codexCollaboration,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
       sessionId: connection.sessionId,
@@ -48435,6 +48486,9 @@ function registerSessionsIPC(ctx) {
   ipcMain.on("change-permission-mode", (_event, tabId, mode) => {
     const conn = tm()?.getConnection(tabId);
     if (conn) conn.setPermissionMode(mode);
+  });
+  ipcMain.on("codex:change-collaboration", (_event, tabId, sessionId, mode) => {
+    tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId);
   });
   ipcMain.on("change-effort", (_event, tabId, effort) => {
     const conn = tm()?.getConnection(tabId);
@@ -55877,8 +55931,7 @@ var BridgeHost = class {
   cmdSetPermissionMode(mode) {
     const a = this.activeConn();
     if (!a?.conn) return false;
-    a.conn.setPermissionMode(mode);
-    return true;
+    return a.conn.setPermissionMode(mode);
   }
   cmdCloseSession() {
     const id = this.tabManager.getActiveTabId();
@@ -56085,6 +56138,11 @@ var BridgeHost = class {
       else this.cmdRegenerateTitle(tabId);
     });
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text));
+    if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id) => {
+      if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === "claude") {
+        opts.onOpenPermissionConsole?.();
+      }
+    });
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.());
   }
   getTabManager() {
@@ -56400,7 +56458,7 @@ var NativeRespawnState = class {
     for (const tab of saved.tabs) {
       if (tab.nativeId && !nativeSessions.get(tab.nativeId)?.open) continue;
       const config = { ...cfg, cwd: tab.cwd, engine: tab.engine, model: tab.model };
-      const opts = { background: true, restored: { id: tab.id, label: tab.label, createdAt: tab.createdAt } };
+      const opts = { background: true, workspacePermission: tab.workspacePermission, restored: { id: tab.id, label: tab.label, createdAt: tab.createdAt } };
       if (tab.conversationId) {
         this.tm.resumeSession({ ...config, conversationId: tab.conversationId, sessionLabel: tab.sessionTitle }, opts);
       } else {
@@ -56421,7 +56479,7 @@ var NativeRespawnState = class {
       parent: process.ppid,
       generation: this.generation,
       scope: this.scope(),
-      tabs: this.tm.listTabs().map(({ id, label, createdAt, cwd, conversationId, sessionTitle, engine, model }) => ({
+      tabs: this.tm.listTabs().map(({ id, label, createdAt, cwd, conversationId, sessionTitle, engine, model, workspacePermission }) => ({
         id,
         label,
         createdAt,
@@ -56429,6 +56487,7 @@ var NativeRespawnState = class {
         conversationId,
         sessionTitle,
         engine,
+        workspacePermission,
         model: model ?? this.tm.getTab(id)?.config.model,
         nativeId: this.tabToNative.get(id)
       })),
@@ -56481,6 +56540,11 @@ var SessionsBridge = class {
       const cwd = tm.getTab(tabId)?.config.cwd ?? null;
       const meta = bridgeMetaFor(conversationId, cwd, tm.getConnection(tabId)?.getEngine());
       void kaminide.sessions.updateSession(kid, { metadata: { bridge: meta }, ...conversationId === null ? { name: "New conversation" } : {} });
+    };
+    ConnectionManager.onWorkspacePermission = (tabId, mode) => {
+      const kid = this.tabToKamin.get(tabId);
+      if (kid) void kaminide.sessions.updateSession(kid, { metadata: { bridgeWorkspacePermission: mode } });
+      this.recovery?.save();
     };
     const prevTitle = ConnectionManager.onSessionTitle;
     ConnectionManager.onSessionTitle = (tabId, title) => {
@@ -56578,7 +56642,7 @@ var SessionsBridge = class {
         conversationId: meta.conversationId,
         sessionLabel: s.name,
         ...meta.engine ? { engine: meta.engine } : {}
-      }, { background: true });
+      }, { background: true, workspacePermission: s.metadata?.bridgeWorkspacePermission });
       if (tabId) {
         this.kaminToTab.set(s.id, tabId);
         this.tabToKamin.set(tabId, s.id);
@@ -56715,11 +56779,11 @@ var SessionsBridge = class {
         conversationId: meta.conversationId,
         sessionLabel: s.name,
         ...meta.engine ? { engine: meta.engine } : {}
-      });
+      }, { workspacePermission: s.metadata?.bridgeWorkspacePermission });
     } else {
       const choice = agentForNewChat(meta, this.pendingChoice, this.host.getConfigStore().getDefaultEngine());
       if (!meta?.engine) this.pendingChoice = null;
-      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice });
+      tabId = tm.createTab({ serverUrl: cfg.serverUrl, token: cfg.token, cwd, ...choice }, { workspacePermission: s.metadata?.bridgeWorkspacePermission });
     }
     if (tabId) {
       this.kaminToTab.set(s.id, tabId);
@@ -56745,6 +56809,7 @@ var SessionsBridge = class {
     this.pendingChoice = null;
   }
   dispose() {
+    ConnectionManager.onWorkspacePermission = null;
     if (this.resyncTimer) {
       clearTimeout(this.resyncTimer);
       this.resyncTimer = null;
@@ -56800,6 +56865,9 @@ function activate(context) {
   };
   const host = new BridgeHost(context, {
     onOpenChat: openChat,
+    onOpenPermissionConsole: () => {
+      void vscode9.commands.executeCommand("claudeBridgeConsoleView.focus");
+    },
     onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
   });
   const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath);

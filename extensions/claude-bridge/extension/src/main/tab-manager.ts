@@ -31,6 +31,7 @@ export interface Tab {
 /** Trusted host restoration metadata; never accepted directly from renderer IPC. */
 interface TabCreationOptions {
   background?: boolean
+  workspacePermission?: unknown
   restored?: Pick<Tab, 'id' | 'label' | 'createdAt'>
 }
 
@@ -108,7 +109,7 @@ export class TabManager {
     this.folderCounters.set(folderName, counter)
     const label = opts.restored?.label ?? `#${counter}`
 
-    const connection = new ConnectionManager(config, this.window, tabId)
+    const connection = new ConnectionManager(config, this.window, tabId, undefined, opts.workspacePermission)
 
     const tab: Tab = {
       id: tabId,
@@ -392,7 +393,7 @@ export class TabManager {
     this.folderCounters.set(folderName, counter)
     const label = opts.restored?.label ?? `#${counter}`
 
-    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId)
+    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId, opts.workspacePermission)
 
     const tab: Tab = {
       id: tabId,
@@ -568,6 +569,8 @@ export class TabManager {
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),
+      workspacePermission: tab.connection.getWorkspacePermission(),
+      codexCollaboration: tab.connection.codexCollaboration,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
       sessionId: connection.sessionId,
