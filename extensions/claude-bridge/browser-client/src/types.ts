@@ -40,7 +40,7 @@ export interface UserQuestion {
 }
 
 /** Host-side approval policy for the workspace tools (Bash, Write, …) the agent calls. */
-export type ToolPermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+export type ToolPermissionMode = 'ask' | 'acceptEdits' | 'readOnly' | 'plan' | 'dontAsk' | 'bypassPermissions'
 
 export interface SubagentEntries { tab: TabId; agentName: string; agentId?: string; entries: unknown[] }
 

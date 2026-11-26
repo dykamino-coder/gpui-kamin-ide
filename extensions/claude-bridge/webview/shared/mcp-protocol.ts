@@ -9,6 +9,7 @@ export type ClientMessage =
   | { type: 'mcp:denied'; sessionId?: string; requestId: string; reason: string }
   | { type: 'elicitation:response'; requestId: string; action: 'accept' | 'deny' | 'dismiss'; content?: Record<string, unknown> }
   | { type: 'session:resume'; token: string; conversationId: string; cwd?: string; cols?: number; rows?: number }
+  | { type: 'session:codex-collaboration'; sessionId: string; mode: 'default' | 'plan' }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
   | { type: 'session:delete-data'; conversationId: string }

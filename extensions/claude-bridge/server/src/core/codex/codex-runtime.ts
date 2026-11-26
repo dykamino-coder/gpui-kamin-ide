@@ -136,6 +136,7 @@ export class CodexRuntime {
   private catalog: Promise<ModelCatalog> | undefined
   private account: { value: CodexAccountStatus; at: number } | undefined
   private limits: CodexRateLimits | undefined
+  private readingLimits: Promise<CodexRateLimits> | undefined
   private pending: CodexDeviceLogin | null = null
   private lastError: CodexErrorInfo | null = null
   private readonly listening = new WeakSet<CodexHost>()
@@ -251,6 +252,8 @@ export class CodexRuntime {
     } else if (method !== 'account/updated') {
       return
     }
+    this.limits = undefined
+    this.readingLimits = undefined
     this.account = undefined
     // A failed login ("device code request failed with status 403") names no
     // cause; the probe tells the proxy from OpenAI before the card refreshes.
@@ -307,9 +310,21 @@ export class CodexRuntime {
   async rateLimits(options: { fresh?: boolean } = {}): Promise<CodexRateLimits> {
     const ttl = this.options.accountTtlMs ?? ACCOUNT_TTL_MS
     if (!options.fresh && this.limits && Date.now() - this.limits.readAt < ttl) return this.limits
-    const host = await this.host()
-    this.limits = parseCodexRateLimits(await host.rpc.request('account/rateLimits/read'))
-    return this.limits
+    if (this.readingLimits) return this.readingLimits
+    // Simultaneously restored tabs share one request. An account change
+    // invalidates the in-flight read as well as the previous snapshot.
+    const read = this.host()
+      .then((host) => host.rpc.request('account/rateLimits/read'))
+      .then((parse) => parseCodexRateLimits(parse))
+    this.readingLimits = read
+    try {
+      const limits = await read
+      if (this.readingLimits !== read) throw new Error('Codex account changed during the limits read')
+      this.limits = limits
+      return limits
+    } finally {
+      if (this.readingLimits === read) this.readingLimits = undefined
+    }
   }
 
   /** Probe of every host codex needs, through the codex env; asks within
@@ -379,6 +394,7 @@ export class CodexRuntime {
     this.pending = null
     this.lastError = null
     this.limits = undefined
+    this.readingLimits = undefined
     await this.accountStatus({ fresh: true })
   }
 
@@ -406,6 +422,7 @@ export class CodexRuntime {
       resume()
       this.account = undefined
       this.limits = undefined
+      this.readingLimits = undefined
       const status = await this.accountStatus({ fresh: true })
       for (const listener of this.accountListeners) listener(status)
     }
