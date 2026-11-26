@@ -51,14 +51,14 @@ impl Window {
         }
     }
 
-    /// The hitboxes of hover styles (`insert_hover_hitbox`) that `prepaint`,
+    /// The hitboxes of hover styles (`Frame::hover_hitboxes`) that `prepaint`,
     /// a range of this frame, inserted, each with whether its box shows its
     /// hover in this frame. Empty, without allocating, for a range without one.
     pub fn retained_hovers(&self, prepaint: &RetainedPrepaint, cx: &App) -> Box<[(HitboxId, bool)]> {
         let range = prepaint.range();
         let hitboxes = self.next_frame.hitboxes.get(range.start.hitboxes_index..range.end.hitboxes_index);
         let mut hovers: Vec<(HitboxId, bool)> = Vec::new();
-        for hitbox in hitboxes.into_iter().flatten().filter(|hitbox| hitbox.hover) {
+        for hitbox in hitboxes.into_iter().flatten().filter(|hitbox| self.next_frame.hover_hitboxes.contains(&hitbox.id)) {
             // A hitbox placed in several segments is one box.
             if hovers.last().is_none_or(|(id, _)| *id != hitbox.id) {
                 hovers.push((hitbox.id, self.hover_shown(hitbox.id, cx)));
