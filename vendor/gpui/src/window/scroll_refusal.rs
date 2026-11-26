@@ -37,11 +37,13 @@ pub enum ScrollRefusal {
     /// A node moves a primitive drawn through a matrix a shift cannot move
     /// exactly, without the inputs a fresh paint builds it from (`TransformPivot`).
     Transform,
+    /// A node moves by a fraction of a device pixel.
+    Fractional,
 }
 
 impl ScrollRefusal {
     /// Every refusal, in counter order.
-    pub const ALL: [ScrollRefusal; 16] = [
+    pub const ALL: [ScrollRefusal; 17] = [
         Self::Environment,
         Self::DeferredDraws,
         Self::Node,
@@ -58,5 +60,6 @@ impl ScrollRefusal {
         Self::RetainedLayer,
         Self::LayerReservoir,
         Self::Transform,
+        Self::Fractional,
     ];
 }

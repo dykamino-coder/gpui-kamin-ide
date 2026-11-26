@@ -143,6 +143,16 @@ impl Window {
                 ),
                 None => String::new(),
             },
+            ScrollRefusal::Fractional => match refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) {
+                Some(node) => format!(
+                    "scroll node {:?} (frame node {}) moves by a fraction of a device pixel: offset {:?} -> {:?}",
+                    node.id,
+                    refused.unwrap_or_default(),
+                    node.offset,
+                    node.source.offset()
+                ),
+                None => String::new(),
+            },
             ScrollRefusal::Node => {
                 // The node the plan refused, wherever it is (the record's, or a
                 // deferred draw's), and what decided it.
@@ -347,6 +357,12 @@ impl Window {
                 // A matrix without its pivot is drawn only where it was built.
                 if node.unpivoted && shift != Point::default() {
                     return Err(at_node(ScrollRefusal::Transform, index));
+                }
+                // A move by a fraction of a device pixel lands its paint between
+                // the pixels a fresh paint there snaps to: it is built.
+                let device = shift.scale(self.scale_factor());
+                if device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0 {
+                    return Err(at_node(ScrollRefusal::Fractional, index));
                 }
                 // A node whose children painted nothing as it (hidden, or painted
                 // under the node open around them) is replayed only moving with its

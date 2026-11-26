@@ -181,6 +181,18 @@ impl Window {
         self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
     }
 
+    /// Paint placed against the viewport inside the open paint nodes (a
+    /// `background-attachment: fixed` layer): it stays while they move, so a
+    /// scrolled replay of a record holding it while any of them moved needs a
+    /// build, as for `paint_scroll_dependent`.
+    pub fn paint_viewport_dependent(&mut self) {
+        let frame = &mut self.next_frame;
+        let (at, space) = (frame.scene.paint_operations.len(), frame.scene.scroll.space);
+        let nodes = &frame.scroll_nodes;
+        let open = frame.scroll_paint.open.iter().map(|&(index, _)| (nodes[index as usize].id, at, space));
+        frame.scroll_dependents.extend(open.collect::<Vec<_>>());
+    }
+
     /// Whether a dependent painted in `scenes` of the rendered frame belongs
     /// (in scene `space`) to a node `moved` says moved.
     pub(crate) fn scroll_dependents_moved(&self, space: SceneSpace, scenes: &Range<usize>, moved: impl Fn(ScrollNodeId) -> bool) -> bool {

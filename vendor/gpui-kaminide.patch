@@ -43505,10 +43505,10 @@ index 0000000000000000000000000000000000000000..6bdb8f7a22a111b7b077559814b8635e
 +}
 diff --git a/vendor/gpui/src/window/scroll_masks.rs b/vendor/gpui/src/window/scroll_masks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..866b58a37bce8cb8a778e2e57a6354067590999d
+index 0000000000000000000000000000000000000000..fb008e5a7619cd84d27cb9cc8fdd6f89f6897565
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_masks.rs
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,204 @@
 +//! KaminIDE patch: masks under scroll nodes (`scroll_nodes`).
 +//!
 +//! The children of a scroll node are prepainted and painted under the node's
@@ -43690,6 +43690,18 @@ index 0000000000000000000000000000000000000000..866b58a37bce8cb8a778e2e57a635406
 +        let at = self.next_frame.scene.paint_operations.len();
 +        let space = self.next_frame.scene.scroll.space;
 +        self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
++    }
++
++    /// Paint placed against the viewport inside the open paint nodes (a
++    /// `background-attachment: fixed` layer): it stays while they move, so a
++    /// scrolled replay of a record holding it while any of them moved needs a
++    /// build, as for `paint_scroll_dependent`.
++    pub fn paint_viewport_dependent(&mut self) {
++        let frame = &mut self.next_frame;
++        let (at, space) = (frame.scene.paint_operations.len(), frame.scene.scroll.space);
++        let nodes = &frame.scroll_nodes;
++        let open = frame.scroll_paint.open.iter().map(|&(index, _)| (nodes[index as usize].id, at, space));
++        frame.scroll_dependents.extend(open.collect::<Vec<_>>());
 +    }
 +
 +    /// Whether a dependent painted in `scenes` of the rendered frame belongs
@@ -44775,10 +44787,10 @@ index 0000000000000000000000000000000000000000..c3463351f421df4a5f75bc8b6becf8a3
 +}
 diff --git a/vendor/gpui/src/window/scroll_refusal.rs b/vendor/gpui/src/window/scroll_refusal.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..68eb3bf9215c78558d3e989c5d81308e9769523d
+index 0000000000000000000000000000000000000000..f79f1792eea18cee4f2a7ff008a6bd4a59a9ecc9
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_refusal.rs
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,65 @@
 +//! KaminIDE patch: why a retained record is built instead of replayed scrolled.
 +
 +/// Why a record cannot be replayed scrolled (`Window::scroll_replay_plan`).
@@ -44818,11 +44830,13 @@ index 0000000000000000000000000000000000000000..68eb3bf9215c78558d3e989c5d81308e
 +    /// A node moves a primitive drawn through a matrix a shift cannot move
 +    /// exactly, without the inputs a fresh paint builds it from (`TransformPivot`).
 +    Transform,
++    /// A node moves by a fraction of a device pixel.
++    Fractional,
 +}
 +
 +impl ScrollRefusal {
 +    /// Every refusal, in counter order.
-+    pub const ALL: [ScrollRefusal; 16] = [
++    pub const ALL: [ScrollRefusal; 17] = [
 +        Self::Environment,
 +        Self::DeferredDraws,
 +        Self::Node,
@@ -44839,14 +44853,15 @@ index 0000000000000000000000000000000000000000..68eb3bf9215c78558d3e989c5d81308e
 +        Self::RetainedLayer,
 +        Self::LayerReservoir,
 +        Self::Transform,
++        Self::Fractional,
 +    ];
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..031f5f42ba077655cb5c427713452d358fde3ed6
+index 0000000000000000000000000000000000000000..7bfdf95240d63a0206ac89d369fe63bb66cb1a26
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,539 @@
+@@ -0,0 +1,555 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -44989,6 +45004,16 @@ index 0000000000000000000000000000000000000000..031f5f42ba077655cb5c427713452d35
 +                    "scroll node {:?} (frame node {}) moves a primitive drawn through a matrix a shift cannot move exactly, without the inputs of that matrix (painted under another transform, or copied from a record)",
 +                    node.id,
 +                    refused.unwrap_or_default()
++                ),
++                None => String::new(),
++            },
++            ScrollRefusal::Fractional => match refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) {
++                Some(node) => format!(
++                    "scroll node {:?} (frame node {}) moves by a fraction of a device pixel: offset {:?} -> {:?}",
++                    node.id,
++                    refused.unwrap_or_default(),
++                    node.offset,
++                    node.source.offset()
 +                ),
 +                None => String::new(),
 +            },
@@ -45196,6 +45221,12 @@ index 0000000000000000000000000000000000000000..031f5f42ba077655cb5c427713452d35
 +                // A matrix without its pivot is drawn only where it was built.
 +                if node.unpivoted && shift != Point::default() {
 +                    return Err(at_node(ScrollRefusal::Transform, index));
++                }
++                // A move by a fraction of a device pixel lands its paint between
++                // the pixels a fresh paint there snaps to: it is built.
++                let device = shift.scale(self.scale_factor());
++                if device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0 {
++                    return Err(at_node(ScrollRefusal::Fractional, index));
 +                }
 +                // A node whose children painted nothing as it (hidden, or painted
 +                // under the node open around them) is replayed only moving with its
