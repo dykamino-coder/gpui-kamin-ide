@@ -5,7 +5,7 @@ import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText }
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions, type CarriedSubmission } from './cli-submissions'
 import { replayTerminalCommandReceipts } from './terminal-command-receipts'
-import type { CliModTransport } from './cli-mod-transport'
+import { CLI_MOD_VERSION, type CliModTransport } from './cli-mod-transport'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 
 const controls = new WeakMap<PtySession, SessionCliControl>()
@@ -40,12 +40,12 @@ export class SessionCliControl {
       () => session.pty.write('\x1b]7501;?\x1b\\'),
     )
     if (mod) {
+      // A replaced PTY can exit after its successor has taken over the same socket.
+      const ownsTerminal = () => session.state === 'running' && !session.isRestarting
       const timeout = setTimeout(() => {
-        if (session.state === 'running' && !mod?.healthy()) this.warnFallback()
+        if (ownsTerminal() && !mod.healthy()) this.warnFallback()
       }, 15_000)
       timeout.unref()
-    }
-    if (mod) {
       this.submissions = new CliSubmissions(
         session,
         mod,
@@ -53,6 +53,7 @@ export class SessionCliControl {
         () => this.interrupt(),
       )
       mod.onTurn = (turnId) => {
+        if (!ownsTerminal()) return
         const changed = !this.modReady || turnId !== this.turnId
         this.modReady = true
         this.turnId = turnId
@@ -64,6 +65,7 @@ export class SessionCliControl {
         }
       }
       mod.onUnavailable = () => {
+        if (!ownsTerminal()) return
         this.modReady = false
         this.turnId = null
         this.oscWorkingTurnId = null
@@ -73,6 +75,7 @@ export class SessionCliControl {
         this.warnFallback()
       }
       mod.onUncertain = () => {
+        if (!ownsTerminal()) return
         this.submissions?.uncertain()
         sendToClient(session.ws, {
           type: 'session:output',
@@ -87,7 +90,7 @@ export class SessionCliControl {
     sendToClient(this.session.ws, {
       type: 'session:output',
       sessionId: this.session.id,
-      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.322); using native terminal delivery and OSC status.]\r\n',
+      data: `\r\n[Bridge: CLI mod unavailable or incompatible (requires ${CLI_MOD_VERSION}); using native terminal delivery and OSC status.]\r\n`,
     })
   }
 
