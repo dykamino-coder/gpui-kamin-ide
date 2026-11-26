@@ -83,6 +83,8 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained; mod group_replay;
+mod hover_view;
+pub use hover_view::HoverView;
 mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
@@ -921,6 +923,8 @@ pub struct Hitbox {
     pub content_mask: ContentMask<Pixels>,
     /// Flags that specify hitbox behavior.
     pub behavior: HitboxBehavior,
+    /// KaminIDE patch: a box paints a hover style over it (`Window::retained_hovers`).
+    pub(crate) hover: bool,
 }
 
 impl Hitbox {
@@ -7018,6 +7022,11 @@ impl Window {
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
+        self.insert_hitbox_with(bounds, behavior, false)
+    }
+
+    /// KaminIDE patch: `insert_hitbox` noting whether a box paints a hover style over it.
+    pub(crate) fn insert_hitbox_with(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior, hover: bool) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
         // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
@@ -7029,6 +7038,7 @@ impl Window {
             bounds,
             content_mask,
             behavior,
+            hover,
         };
         if let Some(scope) = &self.hit_scope {
             self.next_frame.hitbox_scopes.insert(id, scope.clone());

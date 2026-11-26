@@ -35,6 +35,8 @@ mod content_resize_tests;
 mod counters;
 #[cfg(test)]
 mod hover_repaint_tests;
+#[cfg(test)]
+mod hover_replay_tests;
 mod snapshot;
 pub use snapshot::FrameCounters;
 #[cfg(test)]
@@ -183,7 +185,14 @@ impl Builder {
     /// Блоки корневого потока записываются для следующих кадров, а при
     /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
     /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
-    fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
+    /// `hover`: the hover the window shows, which replays check
+    /// (`layout::reuse::ReplayRecord::hovers_hold`).
+    fn build(
+        &self,
+        allow: bool,
+        drawn: bool,
+        hover: gpui::HoverView,
+    ) -> (AnyElement, Option<Rc<FlowReuse>>) {
         let (w, h) = self.opts.viewport;
         let again = self.counters.get().is_some();
         match self.counters.get() {
@@ -192,7 +201,7 @@ impl Builder {
                 .counters
                 .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
         }
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
+        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again, hover);
         let mut opts = self.opts.clone();
         opts.cx.contracts.reuse = flow.clone();
         let tree = div()

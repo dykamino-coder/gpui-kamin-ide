@@ -57,7 +57,6 @@ impl Wrap for ReplayRecorder {
             let origin = window.layout_origin_unrounded(id);
             let size = window.layout_size_unrounded(id);
             let mask = window.content_mask();
-
             self.pending.capture(|c| {
                 c.prepaint = Some((range, origin, size));
                 c.mask = Some(mask);
@@ -87,6 +86,12 @@ impl Wrap for ReplayRecorder {
                 .is_some_and(|prepaint| window.retained_movable(prepaint, &paint))
                 && crate::hooks::deferred_movable(&lines);
             self.pending.capture(|c| c.movable = movable);
+            // The hover its boxes painted: the window hit-tests the frame's
+            // hitboxes between prepaint and paint.
+            if let Some(prepaint) = &prepaint {
+                let hovers = window.retained_hovers(prepaint, cx);
+                self.pending.capture(|c| c.hovers = hovers);
+            }
             // A box's content keeps the measure functions of its leaves: a
             // replay laid out at new constraints measures as a build would,
             // and the frame check refuses only that replay (`ReplaySlot`).

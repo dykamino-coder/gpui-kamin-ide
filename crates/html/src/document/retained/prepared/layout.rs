@@ -55,7 +55,7 @@ impl Builder {
         let mut allow = bounds.origin == Default::default() && window.retained_root_environment();
         loop {
             let retry = self.counters.get().is_some();
-            let (mut tree, flow) = self.build(allow, true);
+            let (mut tree, flow) = self.build(allow, true, window.hover_view(cx));
             observe(UpdatePhase::Built);
             let (_, inputs) = window.record_layout_inputs(|window| {
                 window.with_layout_keys(self.layout_keys && !retry, |window| {

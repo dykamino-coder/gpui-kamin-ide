@@ -17,6 +17,9 @@ pub(super) enum CounterOrigin {
 pub(super) fn skip_origin(e: &Element, vcx: crate::values::ValueCx<'_>) -> Option<CounterOrigin> {
     let mut origin = CounterOrigin::Relative;
     all_elements(e, |node| {
+        if !hover_free(node) {
+            return false;
+        }
         if origin == CounterOrigin::Relative && super::content::inert_node(node, vcx) {
             return true;
         }
@@ -51,8 +54,8 @@ fn unlayered(e: &Element) -> bool {
 /// element (css-display-3 §2.4: its content is an outside resource or a nested
 /// document, whose loading publishes no epoch) and a natively drawn control
 /// (HTML §15.5); MathML and ruby with their own layout (a ruby annotation may
-/// overhang its box, css-ruby-1 §4.4); hover and animations (pointer and clock
-/// state); first-line and first-letter (taken from an ancestor's lines); a
+/// overhang its box, css-ruby-1 §4.4); animations (clock state); first-line
+/// and first-letter (taken from an ancestor's lines); a
 /// list item's marker (its number comes from siblings). The tag alone decides
 /// nothing: `<a>`, `<li>` without a marker or `<dd>` are flow boxes like `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
@@ -63,11 +66,19 @@ pub(super) fn flow_kind(e: &Element) -> bool {
 fn own_state_free(e: &Element) -> bool {
     !math_layout(e)
         && crate::text::ruby::ruby_role(e).is_none()
-        && e.hover.is_none()
         && e.anim.is_none()
         && e.first_letter.is_none()
         && e.first_line.is_none()
         && e.list_item.is_none()
+}
+
+/// No `:hover` style of `e`'s own (selectors-4 §10.2): the pointer is no
+/// input of its paint. A replay record (`replay::Ranges::hovers`) notes the
+/// hover its hover boxes show and is built only when one of them changed, so
+/// `flow_kind` admits them; the records that keep no such note (a skip
+/// record, a far stand-in, a kept paragraph) require this of every box.
+pub(super) fn hover_free(e: &Element) -> bool {
+    e.hover.is_none()
 }
 
 /// Поддерево `e` можно повторить на экране (`replay`): коробки потока без

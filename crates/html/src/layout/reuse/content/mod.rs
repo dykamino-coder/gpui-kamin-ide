@@ -165,7 +165,10 @@ impl FlowReuse {
                 && record.at <= boxes.clock()
                 && !boxes.resized_by_siblings(content.owner, record.at)
         };
-        let cut = !record.items.iter().all(|item| item.replays_clipped());
+        let cut = !record
+            .items
+            .iter()
+            .all(|item| item.replays_clipped() && item.hovers_hold(&self.hover));
         let images = || {
             opts.cx
                 .vcx()

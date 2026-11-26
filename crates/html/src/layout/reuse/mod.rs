@@ -122,6 +122,8 @@ pub(crate) struct FlowReuse {
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
+    /// The hover the window shows in this build (`ReplayRecord::hovers_hold`).
+    hover: gpui::HoverView,
 }
 
 fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Element> {
@@ -158,6 +160,7 @@ impl FlowReuse {
         allow: bool,
         drawn: bool,
         again: bool,
+        hover: gpui::HoverView,
     ) -> Option<Rc<Self>> {
         let root = match find(nodes.iter(), "html") {
             Some(html) => Root::Body {
@@ -201,6 +204,7 @@ impl FlowReuse {
             far_recorders: Cell::new(0),
             screen: Cell::new(None),
             mask: Cell::new(None),
+            hover,
         }))
     }
 

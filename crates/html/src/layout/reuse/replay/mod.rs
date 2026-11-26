@@ -53,6 +53,10 @@ pub(super) struct Ranges {
     /// container's `overflow`): it moves with its block's clip and replays
     /// clipped by the mask it meets (`Replay`), while it is `movable`.
     clipped: bool,
+    /// The hitboxes of its hover boxes, each with the hover it painted
+    /// (`gpui::Window::retained_hovers`): the pointer is an input of the
+    /// record only through them (`ReplayRecord::hovers_hold`).
+    hovers: Box<[(gpui::HitboxId, bool)]>,
 }
 
 /// Запись повтора: вход сборки блока и диапазоны его последнего кадра.
@@ -85,6 +89,15 @@ impl ReplayRecord {
     /// its content is built (decided before layout, so no frame is refused).
     pub(super) fn replays_clipped(&self) -> bool {
         self.ranges(|r| !r.clipped || r.movable).unwrap_or(false)
+    }
+
+    /// Every hover box of the record shows the hover it painted
+    /// (`gpui::HoverView::holds`), decided before layout: a record over a
+    /// box the pointer entered or left is built, the others replay. So
+    /// Blink invalidates the style of only the elements whose hover state
+    /// changed and whose style is affected by it, and repaints them.
+    pub(super) fn hovers_hold(&self, view: &gpui::HoverView) -> bool {
+        self.ranges(|r| view.holds(&r.hovers)).unwrap_or(false)
     }
 
     /// `f` над диапазонами последнего кадра.

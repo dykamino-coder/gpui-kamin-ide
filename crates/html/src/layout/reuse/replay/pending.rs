@@ -43,7 +43,8 @@ pub(in crate::layout::reuse) struct Captured {
     pub(in crate::layout::reuse) prepaint: Option<PlacedPrepaint>,
     pub(in crate::layout::reuse) paint: Option<RetainedPaint>,
     pub(in crate::layout::reuse) mask: Option<ContentMask<Pixels>>,
-
+    /// The hover its hover boxes painted (`Ranges::hovers`).
+    pub(in crate::layout::reuse) hovers: Box<[(gpui::HitboxId, bool)]>,
     pub(in crate::layout::reuse) lines: Option<Rc<LineCapture>>,
 }
 
@@ -91,6 +92,7 @@ impl PendingReplay {
                 prepaint: None,
                 paint: None,
                 mask: None,
+                hovers: Box::default(),
                 lines: None,
             }))),
             sink: (ink.clone(), ink.open()),
@@ -166,6 +168,7 @@ impl PendingReplay {
                 lines,
                 movable,
                 clipped,
+                hovers: captured.hovers,
             })),
         })
     }
