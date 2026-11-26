@@ -35,13 +35,32 @@ fn page() -> String {
     format!("<body style='margin:0;height:3200px;position:relative;background:#eee'>{boxes}</body>")
 }
 
+/// Rotated boxes around their centres, most below the first viewport: they
+/// first show from a dormant command, steps after the frame that kept it.
+fn below() -> String {
+    let mut boxes = String::new();
+    for i in 0..60 {
+        let (x, y, deg) = (73 + (i * 53) % 583, 45 + i * 45, 7.3 * (i + 1) as f32 % 90.0);
+        boxes.push_str(&format!(
+            "<div style='position:absolute;left:{x}px;top:{y}px;width:90px;height:60px;\
+             background:linear-gradient(45deg,#c96,#369);border-radius:12px;transform:rotate({deg}deg)'></div>"
+        ));
+    }
+    format!("<body style='margin:0;height:3200px;position:relative;background:#eee'>{boxes}</body>")
+}
+
 #[gpui::test]
 fn wheel_steps_over_rotated_boxes_replay_the_fresh_bits(cx: &mut TestAppContext) {
-    let html = page();
+    for html in [page(), below()] {
+        wheel_over(cx, html);
+    }
+}
+
+fn wheel_over(cx: &mut TestAppContext, html: String) {
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &html);
     frame(vcx);
-    for (i, dy) in [-120., -40., -120., 80., -360.].into_iter().enumerate() {
+    for (i, dy) in [-120., -40., -120., 80., -360., -120., -120.].into_iter().enumerate() {
         let (b0, r0) = frames(&view, vcx);
         wheel_by(vcx, dy);
         frame(vcx);

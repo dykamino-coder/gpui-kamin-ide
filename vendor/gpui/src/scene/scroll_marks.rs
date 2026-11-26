@@ -14,6 +14,7 @@
 
 pub(crate) mod carry;
 mod check;
+pub(crate) mod pivots;
 use super::*;
 use crate::ScrollNodeId;
 
@@ -83,6 +84,13 @@ pub(crate) struct ScrollBook {
     /// shift cannot move exactly, without its pivot: the node cannot be
     /// replayed moved (`Window::note_unpivoted`).
     pub(crate) unpivoted: bool,
+    /// Of a paint record's scene: the pivots of the unmarked primitives it
+    /// holds (painted under the nodes open before it began), by command, so
+    /// a copy marked where it lands keeps them (`copying`).
+    pub(crate) pivots: Vec<(u32, std::rc::Rc<TransformPivot>)>,
+    /// While a finished scene is copied under the open node: the pivots of
+    /// its commands and the offset the copy lands at (`mark_copied`).
+    pub(crate) copying: Option<Box<pivots::Copying>>,
 }
 
 impl ScrollBook {
@@ -91,6 +99,8 @@ impl ScrollBook {
         self.open = None;
         self.carry = None;
         (self.pivot, self.transformed, self.unpivoted) = (None, false, false);
+        self.pivots.clear();
+        self.copying = None;
     }
 
     /// Marks of the commands in `range`.
@@ -159,18 +169,18 @@ impl Scene {
     /// `replay_shifted` of a copy under the open node: mark a primitive (its
     /// mask now is its own: the order came from it) and draw it with own ∩
     /// chain, or turn it dormant (`true`, raised by `raise`: the caller keeps
-    /// it as it is); mark a layer.
-    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder) -> bool {
+    /// it as it is); mark a layer. `index`: the command copied, in its source.
+    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder, index: usize) -> bool {
         let Some((node, chain)) = self.scroll.open else { return false };
         let op = self.paint_operations.len() as u32;
         match operation {
             PaintOperation::Primitive(primitive) => {
+                // The pivot of source command `index` (`copying_pivots`) builds its matrix.
+                let pivot = self.copied_pivot(primitive, index, true);
                 let own = primitive.content_mask().bounds;
                 primitive.content_mask_mut().bounds = own.intersect(&chain);
                 let placed = placed_bounds(primitive);
-                // A copy has no pivot open: a matrix a shift cannot move exactly notes its node.
-                self.scroll.unpivoted |= primitive.transformation().is_some_and(|matrix| !matrix.moves_exactly());
-                self.scroll.marks.push(ScrollMark { op, node, own, placed, moved: Point::default(), raised: 0, pivot: None });
+                self.scroll.marks.push(ScrollMark { op, node, own, placed, moved: Point::default(), raised: 0, pivot });
                 if !placed.intersect(&primitive.content_mask().bounds).is_empty() {
                     return false;
                 }
