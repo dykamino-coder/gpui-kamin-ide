@@ -148,6 +148,8 @@ mod columns;
 mod culled;
 #[path = "offscreen_tests/decorated.rs"]
 mod decorated;
+#[path = "offscreen_tests/grouped.rs"]
+mod grouped;
 
 /// The path of the element with `id` in `nodes`.
 fn path_of(nodes: &[Node], id: &str) -> Option<Vec<usize>> {
