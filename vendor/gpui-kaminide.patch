@@ -32192,7 +32192,7 @@ index f5210052e2b73d03521c35207b0e05550aba3e48..eaed2ee43954b52722799b2815bd983f
 +                background_owner: 0,
 +                background_border: None,
 diff --git a/vendor/gpui/src/text_system/line_layout.rs b/vendor/gpui/src/text_system/line_layout.rs
-index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744de6d775b
+index f0bf1211114e4522a5310067e2549ba2727a4c1d..137ae82d9e51c55aefa30a0e167c4d1b1a7e2060
 --- a/vendor/gpui/src/text_system/line_layout.rs
 +++ b/vendor/gpui/src/text_system/line_layout.rs
 @@ -40,0 +41,5 @@
@@ -32456,9 +32456,11 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            .sum()
 +    }
 +
-@@ -590,0 +766 @@
+@@ -590,0 +766,3 @@
 +        super::composed::PIECES.finish_frame();
-@@ -602 +778,7 @@
++        // KaminIDE patch: the text frame advances the min-content word widths.
++        super::line_wrapper::finish_word_widths_frame();
+@@ -602 +780,7 @@
 -    pub fn layout_wrapped_line<Text>(
 +    /// KaminIDE patch: раскладка строки с переносом и трекингом (вместо
 +    /// upstream `layout_wrapped_line`). Трекинг применяется
@@ -32467,17 +32469,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +    /// строка порвалась бы не там. Все наши цели трекинга (заголовки секций,
 +    /// подписи табов, чипы) — однострочные `nowrap` (план 99).
 +    pub fn layout_wrapped_line_spaced<Text>(
-@@ -608,0 +791 @@
+@@ -608,0 +793 @@
 +        letter_spacing: Pixels,
-@@ -613,0 +797,5 @@
+@@ -613,0 +799,5 @@
 +        let letter_spacing = if wrap_width.is_some() {
 +            px(0.)
 +        } else {
 +            letter_spacing
 +        };
-@@ -620,0 +809 @@
+@@ -620,0 +811 @@
 +            letter_spacing,
-@@ -624,0 +814,10 @@
+@@ -624,0 +816,10 @@
 +            let layout = layout.clone();
 +            if layouts_released() {
 +                RwLockUpgradableReadGuard::upgrade(current_frame).wrapped_lines.remove(key);
@@ -32488,13 +32490,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        if layouts_sealed()
 +            && let Some(layout) = self.previous_frame.lock().wrapped_lines.get(key)
 +        {
-@@ -627 +825,0 @@
+@@ -627 +827,0 @@
 -
-@@ -629,0 +828,3 @@
+@@ -629,0 +830,3 @@
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -639 +840,7 @@
+@@ -639 +842,7 @@
 -            let unwrapped_layout = self.layout_line::<&SharedString>(&text, font_size, runs, None);
 +            let unwrapped_layout = self.layout_line_spaced::<&SharedString>(
 +                &text,
@@ -32503,13 +32505,13 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +                None,
 +                letter_spacing,
 +            );
-@@ -649,0 +857,3 @@
+@@ -649,0 +859,3 @@
 +            if layouts_released() || layouts_sealed() {
 +                return layout;
 +            }
-@@ -655,0 +866 @@
+@@ -655,0 +868 @@
 +                letter_spacing,
-@@ -678,0 +890,63 @@
+@@ -678,0 +892,63 @@
 +        self.layout_line_spaced(text, font_size, runs, force_width, px(0.))
 +    }
 +
@@ -32573,12 +32575,12 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +        Text: AsRef<str>,
 +        SharedString: From<Text>,
 +    {
-@@ -684 +958 @@
+@@ -684 +960 @@
 -            wrap_width: None,
 +            wrap_width,
-@@ -685,0 +960 @@
+@@ -685,0 +962 @@
 +            letter_spacing,
-@@ -689,0 +965,13 @@
+@@ -689,0 +967,13 @@
 +            // KaminIDE patch (#76): счётчики кэша шейпинга.
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            let layout = layout.clone();
@@ -32592,18 +32594,18 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            && let Some(layout) = self.previous_frame.lock().lines.get(key)
 +        {
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -692 +979,0 @@
+@@ -692 +981,0 @@
 -
-@@ -694,0 +982,4 @@
+@@ -694,0 +984,4 @@
 +            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 +            if layouts_released() {
 +                return layout;
 +            }
-@@ -698,0 +990,3 @@
+@@ -698,0 +992,3 @@
 +            // KaminIDE patch (#76): промах кэша = реальный шейпинг.
 +            let shape_started = std::time::Instant::now();
 +            crate::frame_perf::SHAPED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-@@ -700,8 +994,9 @@
+@@ -700,8 +996,9 @@
 -            let mut layout = self
 -                .platform_text_system
 -                .layout_line(&text, font_size, runs);
@@ -32621,12 +32623,12 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            if layouts_released() || layouts_sealed() {
 +                return Arc::new(layout);
 +            }
-@@ -712 +1007 @@
+@@ -712 +1009 @@
 -                wrap_width: None,
 +                wrap_width,
-@@ -713,0 +1009 @@
+@@ -713,0 +1011 @@
 +                letter_spacing,
-@@ -841 +1137,7 @@
+@@ -841 +1139,7 @@
 -            if let Some((key, layout)) = previous_frame.lines_by_hash.remove_entry(&existing_key) {
 +            if layouts_sealed() {
 +                if let Some(layout) = previous_frame.lines_by_hash.get(&existing_key) {
@@ -32635,17 +32637,17 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +            } else if let Some((key, layout)) =
 +                previous_frame.lines_by_hash.remove_entry(&existing_key)
 +            {
-@@ -856,0 +1159,3 @@
+@@ -856,0 +1161,3 @@
 +        }
 +        if layouts_sealed() {
 +            return Arc::new(layout);
-@@ -887,0 +1193 @@
+@@ -887,0 +1195 @@
 +        super::composed::PIECES.clear();
-@@ -927,0 +1234,3 @@
+@@ -927,0 +1236,3 @@
 +    /// Break ligatures at style boundaries (the normal GPUI text policy).
 +    /// Included in layout cache keys so browser shaping cannot reuse IDE layouts.
 +    pub break_ligatures: bool,
-@@ -929,0 +1239,7 @@
+@@ -929,0 +1241,7 @@
 +    /// KaminIDE patch: свой кегль прогона.
 +    ///
 +    /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
@@ -32653,16 +32655,16 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +    /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
 +    /// Ноль означает «кегль строки».
 +    pub font_size: Pixels,
-@@ -942,0 +1259,3 @@
+@@ -942,0 +1261,3 @@
 +    /// KaminIDE patch: трекинг (`letter-spacing`). В ключе ОБЯЗАТЕЛЕН — без
 +    /// него строка с другим трекингом придёт из кэша со старыми позициями.
 +    letter_spacing: Pixels,
-@@ -951,0 +1271,2 @@
+@@ -951,0 +1273,2 @@
 +    /// KaminIDE patch: см. `CacheKey::letter_spacing`.
 +    letter_spacing: Pixels,
-@@ -1043,0 +1365 @@
+@@ -1043,0 +1367 @@
 +            letter_spacing: self.letter_spacing,
-@@ -1070,0 +1393,96 @@
+@@ -1070,0 +1395,96 @@
 +
 +/// KaminIDE patch: characters of cursive (joining) scripts, which take no
 +/// letter-spacing (css-text-3 §8.2.1).
@@ -32759,7 +32761,7 @@ index f0bf1211114e4522a5310067e2549ba2727a4c1d..c7a00ecd83b23308a4053226c6a1e744
 +
 +#[cfg(test)]
 +mod reuse_tests;
-@@ -1094,0 +1513 @@
+@@ -1094,0 +1515 @@
 +                font_size: px(16.),
 diff --git a/vendor/gpui/src/text_system/line_layout/reuse_tests.rs b/vendor/gpui/src/text_system/line_layout/reuse_tests.rs
 new file mode 100644
@@ -32908,19 +32910,35 @@ index 0000000000000000000000000000000000000000..7fa3775e0d00017e9038623d384ae60c
 +    assert_eq!(cached(&cache.previous_frame.lock()), ["b"]);
 +}
 diff --git a/vendor/gpui/src/text_system/line_wrapper.rs b/vendor/gpui/src/text_system/line_wrapper.rs
-index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb6bd59522
+index ca821bbbb43a6fd17dd363b15f45165f86289b10..948c9c83343954a9b614fe2e071a93c6eaa0ab1c
 --- a/vendor/gpui/src/text_system/line_wrapper.rs
 +++ b/vendor/gpui/src/text_system/line_wrapper.rs
-@@ -1 +1,5 @@
+@@ -1 +1,6 @@
 -use crate::{FontId, Pixels, SharedString, TextRun, TextSystem, px};
 +//! Text wrapping and truncation with separate editor and CSS policies.
 +mod break_classes;
++mod word_widths;
 +mod wrap_modes;
 +
 +use crate::{FontId, FontRun, Pixels, SharedString, TextRun, TextSystem, px};
-@@ -51,2 +55,70 @@
+@@ -3 +8,3 @@
+-use std::{borrow::Cow, iter, sync::Arc};
++use std::{borrow::Cow, iter, sync::Arc, sync::atomic::Ordering};
++use word_widths::WordWidths;
++pub(crate) use word_widths::finish_frame as finish_word_widths_frame;
+@@ -34,0 +42,2 @@
++    /// KaminIDE patch: piece widths of `min_content_width` (`word_widths`).
++    word_widths: WordWidths,
+@@ -48,5 +57,78 @@
+-        }
+-    }
+-
 -    /// Wrap a line of text to the given width with this wrapper's font and font size.
 -    pub fn wrap_line<'a>(
++            word_widths: WordWidths::default(),
++        }
++    }
++
 +    /// KaminIDE patch: минимальная ширина строки — самый длинный кусок,
 +    /// который нельзя разорвать.
 +    ///
@@ -32947,11 +32965,15 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +                font_id: this.font_id,
 +                font_size: this.font_size,
 +            };
-+            let width = this
-+                .text_system
-+                .platform_text_system
-+                .layout_line(&text[from..to], this.font_size, &[run])
-+                .width;
++            // A repeated piece takes the width of its earlier shaping (`word_widths`).
++            let generation = this.text_system.font_generation.load(Ordering::Acquire);
++            let (platform, font_size) = (&this.text_system.platform_text_system, this.font_size);
++            let frame = word_widths::text_frame();
++            let width = this.word_widths.width(generation, frame, &text[from..to], || {
++                platform
++                    .layout_line(&text[from..to], font_size, &[run])
++                    .width
++            });
 +            *longest = (*longest).max(width);
 +        };
 +        for (ix, c) in text.char_indices() {
@@ -32991,9 +33013,9 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +    }
 +
 +    fn wrap_line_policy<'a>(
-@@ -56,0 +129 @@
+@@ -56,0 +139 @@
 +        css: bool,
-@@ -81 +154,6 @@
+@@ -81 +164,6 @@
 -                        if Self::is_word_char(c) {
 +                        let word = if css {
 +                            Self::is_css_word_char(c)
@@ -33001,7 +33023,7 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +                            Self::is_word_char(c)
 +                        };
 +                        if word {
-@@ -88 +166,7 @@
+@@ -88 +176,7 @@
 -                            if c != ' ' && first_non_whitespace_ix.is_some() {
 +                            // KaminIDE patch: `!is_no_break_after` keeps an
 +                            // opening bracket glued to what follows — it may
@@ -33010,7 +33032,7 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +                                && first_non_whitespace_ix.is_some()
 +                                && (!css || !Self::is_no_break_after(prev_c))
 +                            {
-@@ -118,0 +203,8 @@
+@@ -118,0 +213,8 @@
 +                // KaminIDE patch: для CSS prev_c коммитится ДО ветки переноса — иначе
 +                // на строке-границе символ после переноса видит фантомный
 +                // пробел и рождает ложный кандидат (слово ровно в ширину
@@ -33019,7 +33041,7 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +                if css {
 +                    prev_c = new_prev_c;
 +                }
-@@ -120 +212,23 @@
+@@ -120 +222,23 @@
 -                if width > wrap_width && ix > last_wrap_ix {
 +                // KaminIDE patch: пробел за краем строки висит (css-text §3:
 +                // trailing spaces hang) и сам перенос не вызывает — иначе он
@@ -33044,9 +33066,9 @@ index ca821bbbb43a6fd17dd363b15f45165f86289b10..b89beac96442ac576bbe100c895f53fb
 +                            if Self::is_glue_before(c)
 +                    );
 +                if width > wrap_width && ix > last_wrap_ix && !hanging_space && !glue_ahead {
-@@ -181 +294,0 @@
+@@ -181 +304,0 @@
 -
-@@ -762,0 +876 @@
+@@ -762,0 +886 @@
 +                    stretch: Default::default(),
 diff --git a/vendor/gpui/src/text_system/line_wrapper/break_classes.rs b/vendor/gpui/src/text_system/line_wrapper/break_classes.rs
 new file mode 100644
@@ -33097,6 +33119,213 @@ index 0000000000000000000000000000000000000000..3321559cce2df0b883953171bb951010
 +                | NonBreakingGlue
 +                | WordJoiner
 +        )
++    }
++}
+diff --git a/vendor/gpui/src/text_system/line_wrapper/word_widths.rs b/vendor/gpui/src/text_system/line_wrapper/word_widths.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2157824b70a648d8d95eb8e1fdf6d3d53b749e7f
+--- /dev/null
++++ b/vendor/gpui/src/text_system/line_wrapper/word_widths.rs
+@@ -0,0 +1,201 @@
++//! KaminIDE patch: widths of unbreakable text pieces for `min_content_width`.
++//!
++//! The min-content width of a text is its widest piece between break
++//! opportunities, and each piece is measured by the platform shaper
++//! (`layout_line`), as wrapping later places it. A piece's shaping depends
++//! only on the font, the size and its characters (one run, ligatures break),
++//! so the same word under the same font has the same width. Without a memory
++//! every min-content query shaped every word again (DirectWrite builds a text
++//! layout per word), a tenth of a long article's cold load.
++//!
++//! The key is the piece's text; font and size belong to the owner (the
++//! `LineWrapper` of a pool per font and size). A word's width does not depend
++//! on layout, so the memory outlives a frame: a text frame takes the widths
++//! the previous frame read (as `LineLayoutCache` keeps the previous frame's
++//! lines), and an edit or a new window width shapes no word again. A word no
++//! frame read leaves in the next one: the memory is the last frame's working
++//! set, with no timer and no growth over time; a frame the wrapper skipped
++//! clears it. A frame that reads no width costs nothing here: the text frame
++//! is a counter, and a wrapper turns its generations over only at its next
++//! read (`WordWidths::width`). Blink keeps shaped words in its
++//! `FrameShapeCache` (evicted by frames, per font), Gecko in the word cache of
++//! `gfxFont`, evicted by the `gfxFontCache` timer; here eviction is
++//! deterministic by frames, and the lookup key is the text slice itself, with
++//! no allocation (only a new word allocates). The font generation resets the
++//! memory: an added font may change glyph fallback. Within a frame the memory
++//! is bounded by two generations of `GENERATION_WORDS` entries; frequent
++//! words move into the current one. Pieces longer than `LONGEST_WORD` bytes
++//! (addresses, long numbers) are measured without memory: they rarely repeat
++//! and are costly to keep.
++
++use crate::Pixels;
++use collections::HashMap;
++use std::sync::atomic::{AtomicUsize, Ordering};
++
++/// Entries in one generation. A text's frequent words (function words,
++/// repeated terms) fit in it; rare ones leave when the generation turns over.
++const GENERATION_WORDS: usize = 8192;
++
++/// The longest piece kept, in bytes.
++const LONGEST_WORD: usize = 64;
++
++/// The text frame number: `LineLayoutCache::finish_frame` of any window advances it.
++static TEXT_FRAME: AtomicUsize = AtomicUsize::new(0);
++
++/// End of a text frame: the width memory of every wrapper turns over at its
++/// next read. One counter step, whatever the wrappers hold.
++pub(crate) fn finish_frame() {
++    TEXT_FRAME.fetch_add(1, Ordering::Relaxed);
++}
++
++/// The current text frame.
++pub(crate) fn text_frame() -> usize {
++    TEXT_FRAME.load(Ordering::Relaxed)
++}
++
++#[derive(Default)]
++pub(crate) struct WordWidths {
++    /// (font generation, text frame) the widths were recorded under.
++    stamp: (usize, usize),
++    current: HashMap<Box<str>, Pixels>,
++    previous: HashMap<Box<str>, Pixels>,
++}
++
++impl WordWidths {
++    /// The width of piece `word` in frame `frame`, from memory or from
++    /// `measure` (the platform shaper).
++    pub(crate) fn width(
++        &mut self,
++        font_generation: usize,
++        frame: usize,
++        word: &str,
++        measure: impl FnOnce() -> Pixels,
++    ) -> Pixels {
++        if word.len() > LONGEST_WORD {
++            return measure();
++        }
++        let stamp = (font_generation, frame);
++        if self.stamp != stamp {
++            let next = font_generation == self.stamp.0 && frame == self.stamp.1.wrapping_add(1);
++            // What the last frame read stays; anything older leaves. New
++            // tables rather than `clear`: an old generation keeps no capacity.
++            self.previous = if next {
++                std::mem::take(&mut self.current)
++            } else {
++                self.current = HashMap::default();
++                HashMap::default()
++            };
++            self.stamp = stamp;
++        }
++        if let Some(width) = self.current.get(word) {
++            return *width;
++        }
++        let (key, width) = match self.previous.remove_entry(word) {
++            Some(entry) => entry,
++            None => (Box::from(word), measure()),
++        };
++        if self.current.len() >= GENERATION_WORDS {
++            self.previous = std::mem::take(&mut self.current);
++        }
++        self.current.insert(key, width);
++        width
++    }
++
++    #[cfg(test)]
++    fn len(&self) -> usize {
++        self.current.len() + self.previous.len()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::px;
++
++    #[test]
++    fn a_repeated_word_is_measured_once_per_frame_and_font_generation() {
++        let mut widths = WordWidths::default();
++        let mut calls = 0;
++        let mut width = |widths: &mut WordWidths, generation, frame| {
++            widths.width(generation, frame, "word", || {
++                calls += 1;
++                px(12.5 + generation as f32)
++            })
++        };
++        for _ in 0..3 {
++            assert_eq!(width(&mut widths, 0, 0), px(12.5));
++        }
++        // A new font in the system: the old widths do not hold.
++        assert_eq!(width(&mut widths, 1, 0), px(13.5));
++        // The next frame takes the width the last one read.
++        assert_eq!(width(&mut widths, 1, 1), px(13.5));
++        assert_eq!(width(&mut widths, 1, 2), px(13.5));
++        assert_eq!(widths.len(), 1);
++        // A frame the wrapper skipped clears its memory.
++        assert_eq!(width(&mut widths, 1, 4), px(13.5));
++        drop(width);
++        assert_eq!(calls, 3);
++    }
++
++    #[test]
++    fn a_word_unread_by_a_frame_leaves_in_the_next() {
++        let mut widths = WordWidths::default();
++        let mut measured = Vec::new();
++        let mut read = |widths: &mut WordWidths, frame, word: &'static str| {
++            widths.width(0, frame, word, || {
++                measured.push(word);
++                px(1.)
++            });
++        };
++        read(&mut widths, 0, "kept");
++        read(&mut widths, 0, "dropped");
++        read(&mut widths, 1, "kept");
++        assert_eq!(widths.len(), 2, "the last frame's words are still there");
++        read(&mut widths, 2, "kept");
++        assert_eq!(widths.len(), 1);
++        read(&mut widths, 2, "dropped");
++        let long = "x".repeat(LONGEST_WORD + 1);
++        widths.width(0, 2, &long, || px(3.));
++        widths.width(0, 2, &long, || px(3.));
++        assert_eq!(widths.len(), 2, "a long piece is not kept");
++        drop(read);
++        assert_eq!(measured, ["kept", "dropped", "dropped"]);
++    }
++
++    #[test]
++    fn frames_that_read_no_width_leave_the_memory_untouched() {
++        let mut widths = WordWidths::default();
++        for i in 0..100 {
++            widths.width(0, 0, &format!("w{i}"), || px(1.));
++        }
++        // Frames without layout only advance the counter: the tables stay
++        // as they are until a read, and the turn-over then drops them.
++        let before = text_frame();
++        for _ in 0..1000 {
++            finish_frame();
++        }
++        assert!(text_frame() >= before + 1000);
++        assert_eq!(widths.len(), 100);
++        widths.width(0, 1000, "w0", || px(1.));
++        assert_eq!(widths.len(), 1);
++    }
++
++    #[test]
++    fn memory_is_bounded_by_two_generations_and_keeps_frequent_words() {
++        let mut widths = WordWidths::default();
++        let mut measured = 0;
++        for i in 0..(GENERATION_WORDS * 5) {
++            widths.width(0, 0, &format!("w{i}"), || {
++                measured += 1;
++                px(1.)
++            });
++            // A frequent word between rare ones is not shaped again.
++            widths.width(0, 0, "the", || {
++                measured += 1;
++                px(2.)
++            });
++            assert!(widths.len() <= 2 * GENERATION_WORDS);
++        }
++        assert_eq!(measured, GENERATION_WORDS * 5 + 1);
 +    }
 +}
 diff --git a/vendor/gpui/src/text_system/line_wrapper/wrap_modes.rs b/vendor/gpui/src/text_system/line_wrapper/wrap_modes.rs

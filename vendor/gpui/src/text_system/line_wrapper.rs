@@ -1,10 +1,13 @@
 //! Text wrapping and truncation with separate editor and CSS policies.
 mod break_classes;
+mod word_widths;
 mod wrap_modes;
 
 use crate::{FontId, FontRun, Pixels, SharedString, TextRun, TextSystem, px};
 use collections::HashMap;
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, iter, sync::Arc, sync::atomic::Ordering};
+use word_widths::WordWidths;
+pub(crate) use word_widths::finish_frame as finish_word_widths_frame;
 
 /// Determines whether to truncate text from the start or end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -36,6 +39,8 @@ pub struct LineWrapper {
     pub(crate) font_size: Pixels,
     cached_ascii_char_widths: [Option<Pixels>; 128],
     cached_other_char_widths: HashMap<char, Pixels>,
+    /// KaminIDE patch: piece widths of `min_content_width` (`word_widths`).
+    word_widths: WordWidths,
 }
 
 impl LineWrapper {
@@ -49,6 +54,7 @@ impl LineWrapper {
             font_size,
             cached_ascii_char_widths: [None; 128],
             cached_other_char_widths: HashMap::default(),
+            word_widths: WordWidths::default(),
         }
     }
 
@@ -78,11 +84,15 @@ impl LineWrapper {
                 font_id: this.font_id,
                 font_size: this.font_size,
             };
-            let width = this
-                .text_system
-                .platform_text_system
-                .layout_line(&text[from..to], this.font_size, &[run])
-                .width;
+            // A repeated piece takes the width of its earlier shaping (`word_widths`).
+            let generation = this.text_system.font_generation.load(Ordering::Acquire);
+            let (platform, font_size) = (&this.text_system.platform_text_system, this.font_size);
+            let frame = word_widths::text_frame();
+            let width = this.word_widths.width(generation, frame, &text[from..to], || {
+                platform
+                    .layout_line(&text[from..to], font_size, &[run])
+                    .width
+            });
             *longest = (*longest).max(width);
         };
         for (ix, c) in text.char_indices() {

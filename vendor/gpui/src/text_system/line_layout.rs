@@ -764,6 +764,8 @@ impl LineLayoutCache {
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
         super::composed::PIECES.finish_frame();
+        // KaminIDE patch: the text frame advances the min-content word widths.
+        super::line_wrapper::finish_word_widths_frame();
         curr_frame.lines.clear();
         curr_frame.wrapped_lines.clear();
         curr_frame.used_lines.clear();
