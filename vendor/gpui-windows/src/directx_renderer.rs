@@ -1004,7 +1004,18 @@ impl DirectXRenderer {
                 self.draw_layer(scene, index)?;
                 continue;
             }
-            let cost = self.timing_main.then(|| batch_area(scene, &batch));
+            // A composite writes only its frame region (`composite_region`:
+            // the projected footprint within the clip), not its whole mask.
+            let cost = self.timing_main.then(|| match &batch {
+                PrimitiveBatch::Surfaces(r) => {
+                    let written = scene.surfaces[r.clone()].iter().map(|s| {
+                        let g = self.composite_region(s);
+                        f64::from(g.width) * f64::from(g.height)
+                    });
+                    (7, r.len(), written.sum())
+                }
+                _ => batch_area(scene, &batch),
+            });
             let _annotation = annotation
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
@@ -1566,7 +1577,7 @@ impl DirectXRenderer {
         recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
     ) -> Result<()> {
         // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
-        self.forget_frames();
+        self.forget_target();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;

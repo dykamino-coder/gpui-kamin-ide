@@ -56,6 +56,12 @@ pub(super) struct Retained {
     /// This frame continues the last one: `Some(true)` the same scene again,
     /// `Some(false)` compared with it (`Scene::group_base`).
     pub(super) chain: Option<(bool, u64)>,
+    /// The same for the group images (`group_cache`): they hold no pixel of
+    /// the target, so another target size, background or backdrop keeps them;
+    /// only the atlas tiles they sample (`epoch`) and the scene comparison count.
+    pub(super) group_chain: Option<(bool, u64)>,
+    /// Atlas epoch and number of the last scene planned.
+    group_last: Option<(u64, u64)>,
     /// Why the last planned frame would be drawn whole.
     pub(super) full_by: FullBy,
     /// Frames the swap chain took (`present`): which buffer comes next.
@@ -118,6 +124,13 @@ impl DirectXRenderer {
             Some((last, t)) if comparable && t == target && last == base => Some((false, base)),
             _ => None,
         };
+        let known = id != 0 && external != SceneDamage::Unknown;
+        self.retained.group_chain = match self.retained.group_last {
+            Some((epoch, last)) if known && epoch == target.epoch && last == id => Some((true, id)),
+            Some((epoch, last)) if known && epoch == target.epoch && last == base => Some((false, base)),
+            _ => None,
+        };
+        self.retained.group_last = Some((target.epoch, id));
         let frame = match self.retained.last {
             Some((last, t)) if comparable && t == target && last == id => SceneDamage::Unchanged,
             Some((last, t)) if comparable && t == target && last == base => damage,
@@ -181,9 +194,17 @@ impl DirectXRenderer {
 
     /// No buffer holds a known frame (resize, device loss, a failed or foreign draw).
     pub(super) fn forget_frames(&mut self) {
+        self.forget_target();
+        self.retained.group_last = None;
+        self.retained.group_chain = None;
+        self.retained.groups.valid.clear();
+    }
+
+    /// The target holds no known frame (resize); the group atlas keeps its
+    /// images, which hold no pixel of the target (`group_chain`).
+    pub(super) fn forget_target(&mut self) {
         self.retained.last = None;
         self.retained.chain = None;
-        self.retained.groups.valid.clear();
         self.retained.canvas = SceneDamage::Unknown;
         self.forget_buffers();
     }
