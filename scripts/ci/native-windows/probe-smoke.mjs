@@ -67,6 +67,11 @@ try {
     const { value } = await rpc("kamin:extensions:list");
     assert.ok(value.some(e => e.id === "dykamino-studio.claude-bridge" && e.active && !e.activationError));
   }, true);
+  if (behavior !== "native-client") {
+    // Hosted monitors can start at 1024x768. Use the real shell resize so panels
+    // and modals have enough space for visible, hit-tested CEF mouse input.
+    await step("size-workspace-for-interaction", () => probe({ cmd: "resize", w: 1800, h: 1050 }));
+  }
   // The welcome screen has no active IDE session and does not mount the chat view.
   // Use the same host method as the native "Empty session" button.
   await step("start-empty-ide-session", () => rpc("kamin:sessions:newNoFolderSession"));

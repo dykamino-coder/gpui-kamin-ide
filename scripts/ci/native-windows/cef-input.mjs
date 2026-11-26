@@ -7,8 +7,11 @@ export async function clickElement({ step, web, probe }, name, expression) {
     const { value } = await web(`const el = (${expression});
       if (!el || el.disabled || el.closest('[aria-disabled="true"]')) return null;
       el.scrollIntoView({block:'nearest',inline:'nearest'});
-      const b = el.getBoundingClientRect(), x = b.left + b.width / 2, y = b.top + b.height / 2;
-      return b.width > 0 && b.height > 0 && el.contains(document.elementFromPoint(x,y)) ? {x,y} : null`);
+      const b = el.getBoundingClientRect();
+      const left = Math.max(0,b.left), right = Math.min(innerWidth,b.right);
+      const top = Math.max(0,b.top), bottom = Math.min(innerHeight,b.bottom);
+      const x = (left + right) / 2, y = (top + bottom) / 2;
+      return right > left && bottom > top && el.contains(document.elementFromPoint(x,y)) ? {x,y} : null`);
     assert.ok(value && Number.isFinite(value.x) && Number.isFinite(value.y));
     point = value;
   }, true);
