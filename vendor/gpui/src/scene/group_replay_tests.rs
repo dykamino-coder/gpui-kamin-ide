@@ -113,8 +113,9 @@ fn renumbering_reaches_dormant_labels_without_touching_the_shared_command() {
 }
 
 /// Groups 1 (nested, labelled in group 2's scene) and 2 (labelled in the
-/// frame with mask `mask`), each holding a command under a scroll node.
-fn labelled(mask: Bounds<ScaledPixels>) -> Scene {
+/// frame with mask `mask`, under the node when `marked`), each holding a
+/// command under a scroll node.
+fn labelled(mask: Bounds<ScaledPixels>, marked: bool) -> Scene {
     let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 1000., 1000.));
     let mut frame = Scene::default();
     let mut nested = Scene { in_group: true, ..Scene::default() };
@@ -128,23 +129,30 @@ fn labelled(mask: Bounds<ScaledPixels>) -> Scene {
     outer.scroll.open = None;
     outer.insert_primitive(label(1, 20.));
     frame.groups.push(group(finished(outer), 0.));
-    frame.insert_primitive(PaintSurface { content_mask: ContentMask { bounds: mask }, ..label(2, 0.) });
+    frame.scroll.open = marked.then_some((node, chain));
+    frame.insert_group_surface(PaintSurface { content_mask: ContentMask { bounds: mask }, ..label(2, 0.) }, false);
+    frame.scroll.open = None;
     frame.insert_primitive(quad(40., 0.));
     finished(frame)
 }
 
 #[test]
-fn a_group_whose_label_no_offset_shows_is_hidden_and_copied_by_any_replay() {
-    // Outside its own mask the label is dropped; the group it labels is
-    // composited by no replay of the frame, nor is the group nested in it.
-    let frame = labelled(rect(300., 300., 10., 10.));
+fn a_group_whose_label_its_node_dropped_is_hidden_and_copied_by_any_replay() {
+    // Outside its own mask under its node, the label shows at no offset: the
+    // group it labels is composited by no replay, nor is the group nested in it.
+    let frame = labelled(rect(300., 300., 10., 10.), true);
     assert!(labels(&frame).is_empty());
     let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
     assert_eq!(found, vec![GroupLabel::Hidden; 2]);
     assert!(frame.groups_scrollable(0..2, &found, |_| false));
-    // Drawn under no node, its commands under a node would not follow it.
-    let frame = labelled(rect(0., 0., 10., 10.));
+    // Dropped under no node (a record's, marked where its copy lands), a
+    // later offset may show it: its commands under a node must not be copied.
+    let frame = labelled(rect(300., 300., 10., 10.), false);
     let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
     assert_eq!(found, vec![GroupLabel::Unmarked; 2]);
     assert!(!frame.groups_scrollable(0..2, &found, |_| true));
+    // Drawn under its node, the group moves with it.
+    let frame = labelled(rect(0., 0., 10., 10.), true);
+    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
+    assert_eq!(found, vec![GroupLabel::Unmarked, GroupLabel::Under(crate::ScrollNodeId(7))]);
 }

@@ -22,19 +22,16 @@ use crate::ScrollNodeId;
 pub(crate) enum GroupLabel {
     /// Under a scroll node, drawn, dormant or held by its reservoir.
     Under(ScrollNodeId),
-    /// Drawn under no node.
+    /// Drawn under no node, or in no command for an unknown reason.
     Unmarked,
-    /// In no command (dropped outside its own mask, so at every scroll offset,
-    /// or in a hidden group): no replay of them composites the group.
+    /// Dropped under its node (`PaintGroup::label_dropped`) or in a hidden
+    /// group's scene: no replay a plan accepts composites the group.
     Hidden,
 }
 
 impl GroupLabel {
     pub(crate) fn node(&self) -> Option<ScrollNodeId> {
-        match self {
-            GroupLabel::Under(node) => Some(*node),
-            _ => None,
-        }
+        if let GroupLabel::Under(node) = self { Some(*node) } else { None }
     }
 }
 
@@ -79,34 +76,39 @@ impl Scene {
         operation
     }
 
-    /// Where each group of `groups` (an index range of this scene's list)
-    /// has its label: in `ops` of this scene, or in the scene of a group whose
-    /// own label is there (nested groups). `ops` made the groups, and
-    /// `Window::paint_group` labels a group next to its scene, in that range.
+    /// Where each group of `groups` (an index range of this scene's list) has its label:
+    /// in `ops`, which made the groups (`Window::paint_group` labels a group next to its
+    /// scene), or in the scene of a group whose own label is there (nested groups).
     pub(crate) fn group_labels(&self, ops: Range<usize>, groups: Range<usize>) -> Vec<GroupLabel> {
-        if ops.end > self.paint_operations.len() {
-            return vec![GroupLabel::Unmarked; groups.len()];
-        }
-        let mut labels = vec![GroupLabel::Hidden; groups.len()];
-        let first = groups.start;
-        self.note_labels(ops, first, &mut labels);
-        // A hidden group's scene is never composited: its labels are hidden too.
+        let (first, mut labels) = (groups.start, vec![None; groups.len()]);
+        let Some(all) = self.groups.get(groups).filter(|_| ops.end <= self.paint_operations.len()) else {
+            return vec![GroupLabel::Unmarked; labels.len()];
+        };
+        self.note_labels(ops, first, &mut labels, false);
         let mut scanned = vec![false; labels.len()];
-        while let Some(at) = (0..labels.len()).find(|&at| !scanned[at] && labels[at] != GroupLabel::Hidden) {
-            scanned[at] = true;
-            if let Some(group) = self.groups.get(first + at) {
-                group.scene.note_labels(0..group.scene.paint_operations.len(), first, &mut labels);
+        loop {
+            // The labels in the scene of each group whose own label was found.
+            if let Some(at) = (0..labels.len()).find(|&at| !scanned[at] && labels[at].is_some()) {
+                scanned[at] = true;
+                let (scene, hidden) = (&all[at].scene, labels[at] == Some(GroupLabel::Hidden));
+                scene.note_labels(0..scene.paint_operations.len(), first, &mut labels, hidden);
+                continue;
+            }
+            match (0..labels.len()).find(|&at| labels[at].is_none() && all[at].label_dropped) {
+                Some(at) => labels[at] = Some(GroupLabel::Hidden),
+                None => break,
             }
         }
-        labels
+        labels.into_iter().map(|label| label.unwrap_or(GroupLabel::Unmarked)).collect()
     }
 
-    fn note_labels(&self, ops: Range<usize>, first: usize, labels: &mut [GroupLabel]) {
+    /// Note the labels in `ops` (`hidden`: of a hidden group's scene).
+    fn note_labels(&self, ops: Range<usize>, first: usize, labels: &mut [Option<GroupLabel>], hidden: bool) {
         let mut note = |group: u32, label: GroupLabel| {
             if let Some(slot) = (group as usize).checked_sub(first + 1).and_then(|at| labels.get_mut(at))
-                && !matches!(slot, GroupLabel::Under(_))
+                && !matches!(slot, Some(GroupLabel::Under(_)))
             {
-                *slot = label;
+                *slot = Some(if hidden { GroupLabel::Hidden } else { label });
             }
         };
         let surface = |operation: &PaintOperation| match operation {
@@ -134,7 +136,6 @@ impl Scene {
             }
         }
     }
-
     /// Whether the groups `groups` of this finished scene can be copied by a
     /// scrolled replay whose plan knows the nodes `known` accepts: a group
     /// whose label is under a node (`labels`, `group_labels`) holds only

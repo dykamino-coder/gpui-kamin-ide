@@ -138,6 +138,9 @@ pub struct PaintGroup {
     /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
     /// многоугольник на каждую метку (`PaintSurface::fragment`).
     pub fragments: Vec<Vec<Point<ScaledPixels>>>,
+    /// KaminIDE patch: its label, painted under a scroll node, fell outside its own
+    /// mask there, so it shows at no offset a scrolled replay accepts (Scene::group_labels).
+    pub label_dropped: bool,
 }
 
 impl PaintGroup {

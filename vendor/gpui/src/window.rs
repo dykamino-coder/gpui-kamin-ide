@@ -6436,6 +6436,7 @@ impl Window {
             mask_clip,
             projection: None,
             fragments: Vec::new(),
+            label_dropped: false,
         });
         self.adopt_group_runs(runs, index, base);
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки

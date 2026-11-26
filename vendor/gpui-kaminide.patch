@@ -12726,7 +12726,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04ef17460df
+index 160587a4ad924f80c2dd01b90a8300febbc13105..72dc6015d6a1f31fdf378ecd6d0dbc451b383f3e
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,43 @@
@@ -12773,7 +12773,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +
 +#[cfg(test)]
 +mod replay_tests;
-@@ -38,0 +82,80 @@
+@@ -38,0 +82,83 @@
 +/// KaminIDE patch: overlap orders from the bounds tree are spaced by this
 +/// step, leaving room below each level for per-primitive bottom-layer orders
 +/// (`push_bottom_layer`): equal orders are batched by primitive kind (quads
@@ -12833,6 +12833,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
 +    /// многоугольник на каждую метку (`PaintSurface::fragment`).
 +    pub fragments: Vec<Vec<Point<ScaledPixels>>>,
++    /// KaminIDE patch: its label, painted under a scroll node, fell outside its own
++    /// mask there, so it shows at no offset a scrolled replay accepts (Scene::group_labels).
++    pub label_dropped: bool,
 +}
 +
 +impl PaintGroup {
@@ -12854,9 +12857,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    }
 +}
 +
-@@ -41,0 +165 @@
+@@ -41,0 +168 @@
 +    pub(crate) segment_capture: Option<Box<segments::Capture>>,
-@@ -43 +167,16 @@
+@@ -43 +170,16 @@
 -    primitive_bounds: BoundsTree<ScaledPixels>,
 +    /// KaminIDE patch: commands painted under scroll nodes (`scroll_marks`).
 +    pub(crate) scroll: scroll_marks::ScrollBook,
@@ -12874,10 +12877,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// tree indexing each, with the offset of the ops' orders above it, so a
 +    /// later frame replaying the same range grafts it again.
 +    blocks: Vec<ReplayedBlock>,
-@@ -44,0 +184,2 @@
+@@ -44,0 +187,2 @@
 +    /// KaminIDE patch: bottom-layer primitives painted so far this frame.
 +    bottom_seq: DrawOrder,
-@@ -52,0 +194,101 @@
+@@ -52,0 +197,101 @@
 +    /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
 +    pub(crate) in_group: bool,
 +    /// KaminIDE patch: renumber copied group labels by this (group_replay).
@@ -12979,7 +12982,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    outer_plane: Option<u32>,
 +    plane_depth: usize,
 +    union: Option<Bounds<ScaledPixels>>,
-@@ -56,0 +299,140 @@
+@@ -56,0 +302,140 @@
 +    /// KaminIDE patch: начать объёмный контекст.
 +    pub fn push_depth_context(&mut self) {
 +        self.paint_operations.push(PaintOperation::StartDepthContext);
@@ -13120,10 +13123,10 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +        }
 +    }
 +
-@@ -57,0 +440,2 @@
+@@ -57,0 +443,2 @@
 +        self.book.images.clear();
 +        self.segment_capture = None;
-@@ -59 +443,7 @@
+@@ -59 +446,7 @@
 -        self.primitive_bounds.clear();
 +        self.scroll.clear();
 +        self.groups.clear();
@@ -13132,12 +13135,12 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +            None => self.primitive_bounds = Default::default(),
 +        }
 +        self.blocks.clear();
-@@ -60,0 +451 @@
+@@ -60,0 +454 @@
 +        self.bottom_seq = 0;
-@@ -63,0 +455,2 @@
+@@ -63,0 +458,2 @@
 +        self.book.gradients.clear();
 +        self.book.gradient_values.clear();
-@@ -68,0 +462,15 @@
+@@ -68,0 +465,15 @@
 +        self.book.layers.clear();
 +        self.book.layer_order.clear();
 +        self.book.layer_sources.clear();
@@ -13153,16 +13156,16 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +        self.ink_allowed = (0, 0);
 +        self.clear_damage_index();
 +        crate::window::reset_ink_scopes();
-@@ -76 +484 @@
+@@ -76 +487 @@
 -        let order = self.primitive_bounds.insert(bounds);
 +        let order = self.tree_mut().insert(bounds) * ORDER_STEP;
-@@ -77,0 +486,2 @@
+@@ -77,0 +489,2 @@
 +        // KaminIDE patch: a layer opened under a scroll node moves with it.
 +        self.mark_layer(bounds);
-@@ -79 +489 @@
+@@ -79 +492 @@
 -            .push(PaintOperation::StartLayer(bounds));
 +            .push(PaintOperation::StartLayer(bounds, order));
-@@ -86,0 +497,15 @@
+@@ -86,0 +500,15 @@
 +    /// KaminIDE patch: слой ПОД содержимым кадра, но НАД фоном страницы.
 +    ///
 +    /// Порядок примитива берётся из дерева границ с шагом `ORDER_STEP`:
@@ -13178,9 +13181,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +        self.paint_operations.push(PaintOperation::StartBottomLayer);
 +    }
 +
-@@ -87,0 +513 @@
+@@ -87,0 +516 @@
 +        self.book.fresh += 1;
-@@ -89,3 +515,13 @@
+@@ -89,3 +518,13 @@
 -        let clipped_bounds = primitive
 -            .bounds()
 -            .intersect(&primitive.content_mask().bounds);
@@ -13197,7 +13200,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +            None => None,
 +        };
 +        let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
-@@ -96,6 +532,12 @@
+@@ -96,6 +535,12 @@
 -
 -        let order = self
 -            .layer_stack
@@ -13216,13 +13219,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +            Some(o) => o,
 +            None =>self.tree_mut().insert(ordered.unwrap_or(clipped_bounds)) * ORDER_STEP,
 +        };
-@@ -106,0 +549,5 @@
+@@ -106,0 +552,5 @@
 +            Primitive::Gradient(p) => {
 +                p.quad.order = order;
 +                self.register_gradient(p);
 +                self.quads.push(p.quad);
 +            }
-@@ -136,0 +584,16 @@
+@@ -136,0 +587,16 @@
 +        if let Some(&plane) = self.depth.plane_stack.last() {
 +            let (kind, index) = match &primitive {
 +                Primitive::Shadow(_) => (0, self.shadows.len() - 1),
@@ -13239,7 +13242,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +                ctx.union = Some(ctx.union.map_or(clipped_bounds, |u| u.union(&clipped_bounds)));
 +            }
 +        }
-@@ -139,2 +602,40 @@
+@@ -139,2 +605,40 @@
 -    }
 -
 +        if let Some(capture) = self.segment_capture.as_mut() {
@@ -13282,7 +13285,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// KaminIDE patch: a range copied the same way into that scene grafts the
 +    /// frozen tree it was indexed with; another range is indexed once by a
 +    /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
-@@ -142 +643,128 @@
+@@ -142 +646,128 @@
 -        for operation in &prev_scene.paint_operations[range] {
 +        let landed = self.paint_operations.len();
 +        self.scroll.raise = 0;
@@ -13412,7 +13415,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +772,312 @@
+@@ -144,4 +775,312 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -13729,7 +13732,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1092,8 @@
+@@ -156,6 +1095,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
@@ -13744,9 +13747,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
 +        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
 +        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
-@@ -162,0 +1101 @@
+@@ -162,0 +1104 @@
 +        self.finish_layers();
-@@ -190,2 +1129,97 @@
+@@ -190,2 +1132,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13846,7 +13849,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1246,5 @@
+@@ -212,2 +1249,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13854,13 +13857,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1253,4 @@
+@@ -216 +1256,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1258,12 @@
+@@ -217,0 +1261,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13873,13 +13876,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1277 @@
+@@ -224,0 +1280 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1292 @@
+@@ -238,0 +1295 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1306 @@
+@@ -251,0 +1309 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1315,72 @@
+@@ -259,0 +1318,72 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -13952,20 +13955,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1413,2 @@
+@@ -285,0 +1416,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1448,4 @@
+@@ -318,0 +1451,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1597 @@
+@@ -463,0 +1600 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1630,2 @@
+@@ -495,0 +1633,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1664,6 @@
+@@ -528,5 +1667,6 @@
 -        }
 -    }
 -}
@@ -13977,7 +13980,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1681,10 @@
+@@ -543,0 +1684,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -13988,25 +13991,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1699 @@
+@@ -552 +1702 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1718 @@
+@@ -571 +1721 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1728,5 @@
+@@ -580,0 +1731,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1755,5 @@
+@@ -602,0 +1758,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1807,12 @@
+@@ -649,0 +1810,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -14019,19 +14022,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1877 @@
+@@ -708 +1880 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1896 @@
+@@ -727 +1899 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1915 @@
+@@ -746 +1918 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1920 @@
+@@ -751 +1923 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1927,54 @@
+@@ -757,0 +1930,54 @@
 +    /// KaminIDE patch: преобразование картинки — см. `Quad::transformation`.
 +    /// Поле последнее и обязано совпадать с концом структуры в шейдере.
 +    pub transformation: TransformationMatrix,
@@ -14086,7 +14089,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +1997,23 @@
+@@ -773,0 +2000,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14110,19 +14113,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..70611ce2b4fc2f5c6b558e217a8de04e
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2042,2 @@
+@@ -795,0 +2045,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2064 @@
+@@ -815,0 +2067 @@
 +            color_mapping: None,
-@@ -835,0 +2085,6 @@
+@@ -835,0 +2088,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2205,63 @@
+@@ -949,0 +2208,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -17345,10 +17348,10 @@ index 0000000000000000000000000000000000000000..ba4a997ad94474a16ba9dcec4e9d8488
 +}
 diff --git a/vendor/gpui/src/scene/group_replay.rs b/vendor/gpui/src/scene/group_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..a5a51be6662d515d9952d433ed30619c04c817e4
+index 0000000000000000000000000000000000000000..b8f2cef0c012ee1a60b08c06ba4cacf4e9bbe563
 --- /dev/null
 +++ b/vendor/gpui/src/scene/group_replay.rs
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,250 @@
 +//! KaminIDE patch: composition groups carried by a replayed command range.
 +//!
 +//! A group paints into a scene of its own (`Window::paint_group`), kept in
@@ -17373,19 +17376,16 @@ index 0000000000000000000000000000000000000000..a5a51be6662d515d9952d433ed30619c
 +pub(crate) enum GroupLabel {
 +    /// Under a scroll node, drawn, dormant or held by its reservoir.
 +    Under(ScrollNodeId),
-+    /// Drawn under no node.
++    /// Drawn under no node, or in no command for an unknown reason.
 +    Unmarked,
-+    /// In no command (dropped outside its own mask, so at every scroll offset,
-+    /// or in a hidden group): no replay of them composites the group.
++    /// Dropped under its node (`PaintGroup::label_dropped`) or in a hidden
++    /// group's scene: no replay a plan accepts composites the group.
 +    Hidden,
 +}
 +
 +impl GroupLabel {
 +    pub(crate) fn node(&self) -> Option<ScrollNodeId> {
-+        match self {
-+            GroupLabel::Under(node) => Some(*node),
-+            _ => None,
-+        }
++        if let GroupLabel::Under(node) = self { Some(*node) } else { None }
 +    }
 +}
 +
@@ -17430,34 +17430,39 @@ index 0000000000000000000000000000000000000000..a5a51be6662d515d9952d433ed30619c
 +        operation
 +    }
 +
-+    /// Where each group of `groups` (an index range of this scene's list)
-+    /// has its label: in `ops` of this scene, or in the scene of a group whose
-+    /// own label is there (nested groups). `ops` made the groups, and
-+    /// `Window::paint_group` labels a group next to its scene, in that range.
++    /// Where each group of `groups` (an index range of this scene's list) has its label:
++    /// in `ops`, which made the groups (`Window::paint_group` labels a group next to its
++    /// scene), or in the scene of a group whose own label is there (nested groups).
 +    pub(crate) fn group_labels(&self, ops: Range<usize>, groups: Range<usize>) -> Vec<GroupLabel> {
-+        if ops.end > self.paint_operations.len() {
-+            return vec![GroupLabel::Unmarked; groups.len()];
-+        }
-+        let mut labels = vec![GroupLabel::Hidden; groups.len()];
-+        let first = groups.start;
-+        self.note_labels(ops, first, &mut labels);
-+        // A hidden group's scene is never composited: its labels are hidden too.
++        let (first, mut labels) = (groups.start, vec![None; groups.len()]);
++        let Some(all) = self.groups.get(groups).filter(|_| ops.end <= self.paint_operations.len()) else {
++            return vec![GroupLabel::Unmarked; labels.len()];
++        };
++        self.note_labels(ops, first, &mut labels, false);
 +        let mut scanned = vec![false; labels.len()];
-+        while let Some(at) = (0..labels.len()).find(|&at| !scanned[at] && labels[at] != GroupLabel::Hidden) {
-+            scanned[at] = true;
-+            if let Some(group) = self.groups.get(first + at) {
-+                group.scene.note_labels(0..group.scene.paint_operations.len(), first, &mut labels);
++        loop {
++            // The labels in the scene of each group whose own label was found.
++            if let Some(at) = (0..labels.len()).find(|&at| !scanned[at] && labels[at].is_some()) {
++                scanned[at] = true;
++                let (scene, hidden) = (&all[at].scene, labels[at] == Some(GroupLabel::Hidden));
++                scene.note_labels(0..scene.paint_operations.len(), first, &mut labels, hidden);
++                continue;
++            }
++            match (0..labels.len()).find(|&at| labels[at].is_none() && all[at].label_dropped) {
++                Some(at) => labels[at] = Some(GroupLabel::Hidden),
++                None => break,
 +            }
 +        }
-+        labels
++        labels.into_iter().map(|label| label.unwrap_or(GroupLabel::Unmarked)).collect()
 +    }
 +
-+    fn note_labels(&self, ops: Range<usize>, first: usize, labels: &mut [GroupLabel]) {
++    /// Note the labels in `ops` (`hidden`: of a hidden group's scene).
++    fn note_labels(&self, ops: Range<usize>, first: usize, labels: &mut [Option<GroupLabel>], hidden: bool) {
 +        let mut note = |group: u32, label: GroupLabel| {
 +            if let Some(slot) = (group as usize).checked_sub(first + 1).and_then(|at| labels.get_mut(at))
-+                && !matches!(slot, GroupLabel::Under(_))
++                && !matches!(slot, Some(GroupLabel::Under(_)))
 +            {
-+                *slot = label;
++                *slot = Some(if hidden { GroupLabel::Hidden } else { label });
 +            }
 +        };
 +        let surface = |operation: &PaintOperation| match operation {
@@ -17485,7 +17490,6 @@ index 0000000000000000000000000000000000000000..a5a51be6662d515d9952d433ed30619c
 +            }
 +        }
 +    }
-+
 +    /// Whether the groups `groups` of this finished scene can be copied by a
 +    /// scrolled replay whose plan knows the nodes `known` accepts: a group
 +    /// whose label is under a node (`labels`, `group_labels`) holds only
@@ -17600,10 +17604,10 @@ index 0000000000000000000000000000000000000000..a5a51be6662d515d9952d433ed30619c
 +mod tests;
 diff --git a/vendor/gpui/src/scene/group_replay_tests.rs b/vendor/gpui/src/scene/group_replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..09bd07c53cad1b8350bb7dc700d5be5b9024841b
+index 0000000000000000000000000000000000000000..b93d73a56b8ec6bc43f6b3232e2d260d8a08b6b3
 --- /dev/null
 +++ b/vendor/gpui/src/scene/group_replay_tests.rs
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,158 @@
 +//! KaminIDE patch: a replay carries the groups of its range and renumbers labels.
 +
 +use super::*;
@@ -17719,8 +17723,9 @@ index 0000000000000000000000000000000000000000..09bd07c53cad1b8350bb7dc700d5be5b
 +}
 +
 +/// Groups 1 (nested, labelled in group 2's scene) and 2 (labelled in the
-+/// frame with mask `mask`), each holding a command under a scroll node.
-+fn labelled(mask: Bounds<ScaledPixels>) -> Scene {
++/// frame with mask `mask`, under the node when `marked`), each holding a
++/// command under a scroll node.
++fn labelled(mask: Bounds<ScaledPixels>, marked: bool) -> Scene {
 +    let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 1000., 1000.));
 +    let mut frame = Scene::default();
 +    let mut nested = Scene { in_group: true, ..Scene::default() };
@@ -17734,25 +17739,32 @@ index 0000000000000000000000000000000000000000..09bd07c53cad1b8350bb7dc700d5be5b
 +    outer.scroll.open = None;
 +    outer.insert_primitive(label(1, 20.));
 +    frame.groups.push(group(finished(outer), 0.));
-+    frame.insert_primitive(PaintSurface { content_mask: ContentMask { bounds: mask }, ..label(2, 0.) });
++    frame.scroll.open = marked.then_some((node, chain));
++    frame.insert_group_surface(PaintSurface { content_mask: ContentMask { bounds: mask }, ..label(2, 0.) }, false);
++    frame.scroll.open = None;
 +    frame.insert_primitive(quad(40., 0.));
 +    finished(frame)
 +}
 +
 +#[test]
-+fn a_group_whose_label_no_offset_shows_is_hidden_and_copied_by_any_replay() {
-+    // Outside its own mask the label is dropped; the group it labels is
-+    // composited by no replay of the frame, nor is the group nested in it.
-+    let frame = labelled(rect(300., 300., 10., 10.));
++fn a_group_whose_label_its_node_dropped_is_hidden_and_copied_by_any_replay() {
++    // Outside its own mask under its node, the label shows at no offset: the
++    // group it labels is composited by no replay, nor is the group nested in it.
++    let frame = labelled(rect(300., 300., 10., 10.), true);
 +    assert!(labels(&frame).is_empty());
 +    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
 +    assert_eq!(found, vec![GroupLabel::Hidden; 2]);
 +    assert!(frame.groups_scrollable(0..2, &found, |_| false));
-+    // Drawn under no node, its commands under a node would not follow it.
-+    let frame = labelled(rect(0., 0., 10., 10.));
++    // Dropped under no node (a record's, marked where its copy lands), a
++    // later offset may show it: its commands under a node must not be copied.
++    let frame = labelled(rect(300., 300., 10., 10.), false);
 +    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
 +    assert_eq!(found, vec![GroupLabel::Unmarked; 2]);
 +    assert!(!frame.groups_scrollable(0..2, &found, |_| true));
++    // Drawn under its node, the group moves with it.
++    let frame = labelled(rect(0., 0., 10., 10.), true);
++    let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
++    assert_eq!(found, vec![GroupLabel::Unmarked, GroupLabel::Under(crate::ScrollNodeId(7))]);
 +}
 \ No newline at end of file
 diff --git a/vendor/gpui/src/scene/image_resources.rs b/vendor/gpui/src/scene/image_resources.rs
@@ -22025,10 +22037,10 @@ index 0000000000000000000000000000000000000000..b3208888afc19f80c6c34119975b3b61
 +}
 diff --git a/vendor/gpui/src/scene/record.rs b/vendor/gpui/src/scene/record.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a54c776c0d0f0480c20efdd7eb899f8d907aebb
+index 0000000000000000000000000000000000000000..831ec6abc4b4504a306ed84c223b364e71d1f6df
 --- /dev/null
 +++ b/vendor/gpui/src/scene/record.rs
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,65 @@
 +//! Копирование неизменяемых команд с явным переносом и выходным clip.
 +
 +use super::*;
@@ -22067,6 +22079,7 @@ index 0000000000000000000000000000000000000000..9a54c776c0d0f0480c20efdd7eb899f8
 +            fragments: group.fragments.iter().map(|fragment| {
 +                fragment.iter().map(|p| *p + offset).collect()
 +            }).collect(),
++            label_dropped: group.label_dropped,
 +        }
 +    }
 +
@@ -22284,10 +22297,10 @@ index 0000000000000000000000000000000000000000..0383bd78d456d75b1844df6cc09d2ef2
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e67d42c178d4027fb19de96ac427cbc2d8948e2c
+index 0000000000000000000000000000000000000000..3e00ae506e6205060d83e33cedc7e0b11b882e24
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,218 @@
+@@ -0,0 +1,219 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -22405,6 +22418,7 @@ index 0000000000000000000000000000000000000000..e67d42c178d4027fb19de96ac427cbc2
 +        mask_clip: None,
 +        projection: None,
 +        fragments: Vec::new(),
++        label_dropped: false,
 +    });
 +    let mut scene = destination();
 +    let before = scene.paint_operations.len();
@@ -23240,10 +23254,10 @@ index 0000000000000000000000000000000000000000..44e7ad4c877cd0557c9e6c69cad6b586
 +}
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..49d9e5702baa7a06367b52bace74a47dddcdbbee
+index 0000000000000000000000000000000000000000..82c97b06b57255f84f59934d65e9ace3f30edcb3
 --- /dev/null
 +++ b/vendor/gpui/src/scene/segments.rs
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,107 @@
 +//! Разветвление некомпозированных команд по явным сегментам перед заморозкой.
 +
 +use super::*;
@@ -23319,7 +23333,15 @@ index 0000000000000000000000000000000000000000..49d9e5702baa7a06367b52bace74a47d
 +
 +    pub(crate) fn insert_group_surface(&mut self, surface: PaintSurface, unbounded: bool) {
 +        let before = self.paint_operations.len();
++        let (group, marked) = (surface.group as usize, self.scroll.open.is_some());
 +        self.insert_primitive(surface);
++        // KaminIDE patch: under a node a label is dropped only outside its own
++        // mask (`mark_scrolled`), which moves with it: it shows at no offset.
++        if marked && !self.scroll.lost && self.paint_operations.len() == before {
++            if let Some(dropped) = group.checked_sub(1).and_then(|at| self.groups.get_mut(at)) {
++                dropped.label_dropped = true;
++            }
++        }
 +        if unbounded && self.paint_operations.len() > before {
 +            if let Some(capture) = &mut self.segment_capture {
 +                capture.unclipped_groups.push(capture.primitives.len() - 1);
@@ -33443,7 +33465,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551de03e64f
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..329501f213a529c489e669e76e692329da5d9588
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -35239,7 +35261,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        if self.next_frame.scene.len() > before {
 +            self.next_frame.scene.keep_image(tile, lease);
 +        }
-@@ -5018,0 +6243,218 @@
+@@ -5018,0 +6243,219 @@
 +    /// KaminIDE patch: размытие подложки под областью (backdrop blur, как
 +    /// CSS `backdrop-filter: blur`). Рисует в бэкбуфер уже отрисованное ПОД
 +    /// текущим z-порядком содержимое, размытое каскадом даунсемплов, с маской
@@ -35436,6 +35458,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            mask_clip,
 +            projection: None,
 +            fragments: Vec::new(),
++            label_dropped: false,
 +        });
 +        self.adopt_group_runs(runs, index, base);
 +        // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
@@ -35458,10 +35481,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        result
 +    }
 +
-@@ -5028 +6470 @@
+@@ -5028 +6471 @@
 -        self.next_frame.scene.insert_primitive(PaintSurface {
 +        self.insert_scene_primitive(PaintSurface {
-@@ -5076,0 +6519,24 @@
+@@ -5076,0 +6520,24 @@
 +        self.request_layout_ref(&style, children, cx)
 +    }
 +
@@ -35486,7 +35509,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        children: impl IntoIterator<Item = LayoutId>,
 +        cx: &mut App,
 +    ) -> LayoutId {
-@@ -5082,0 +6549,26 @@
+@@ -5082,0 +6550,26 @@
 +        self.reserve_layout_nodes();
 +
 +        self.layout_engine.as_mut().unwrap().request_layout_refined(
@@ -35513,7 +35536,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        let rem_size = self.rem_size();
 +        let scale_factor = self.scale_factor();
 +        self.reserve_layout_nodes();
-@@ -5089,0 +6582,66 @@
+@@ -5089,0 +6583,66 @@
 +    }
 +
 +    /// KaminIDE patch: key the next measured leaf request of the frame tree.
@@ -35580,10 +35603,10 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            engine.set_layout_keys(previous);
 +        }
 +        result
-@@ -5108,0 +6667,2 @@
+@@ -5108,0 +6668,2 @@
 +        let scope = self.measure_scope();
 +        self.reserve_layout_nodes();
-@@ -5112 +6672,252 @@
+@@ -5112 +6673,252 @@
 -            .request_measured_layout(style, rem_size, scale_factor, measure)
 +            .request_measured_layout(style, rem_size, scale_factor, move |known, available, window, cx| {
 +                scope.enter(window, |window| measure(known, available, window, cx))
@@ -35837,7 +35860,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            .as_mut()?
 +            .grid_tracks(grid, scale_factor)?;
 +        Some((point(Pixels(x), Pixels(y)) + self.element_offset(), cols, rows))
-@@ -5132,0 +6944,48 @@
+@@ -5132,0 +6945,48 @@
 +    /// KaminIDE patch: дробное абсолютное место корня отдельного дерева
 +    /// (см. `TaffyLayoutEngine::set_root_origin`); готовить такой элемент
 +    /// надо с нулевым смещением — его границы уже абсолютные.
@@ -35886,7 +35909,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            .layout_exact(layout_id, scale_factor)
 +    }
 +
-@@ -5147,2 +7006,6 @@
+@@ -5147,2 +7007,6 @@
 -        let snapped_offset = self.pixel_snap_point(self.element_offset());
 -        bounds.origin += snapped_offset;
 +        let offset = if self.exact_element_offset_depth > 0 {
@@ -35895,11 +35918,11 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            self.pixel_snap_point(self.element_offset())
 +        };
 +        bounds.origin += offset;
-@@ -5160 +7023,2 @@
+@@ -5160 +7024,2 @@
 -        let content_mask = self.content_mask();
 +        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
 +        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
-@@ -5169 +7033,10 @@
+@@ -5169 +7034,10 @@
 -        self.next_frame.hitboxes.push(hitbox.clone());
 +        if let Some(scope) = &self.hit_scope {
 +            self.next_frame.hitbox_scopes.insert(id, scope.clone());
@@ -35911,7 +35934,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            }
 +            self.next_frame.hitboxes.push(hitbox.clone());
 +        }
-@@ -5211,0 +7085,16 @@
+@@ -5211,0 +7086,16 @@
 +    /// KaminIDE patch: the rendering view, if any. Layout of a detached
 +    /// root (a measure taken outside the view's render, e.g. by the HTML
 +    /// engine's probes) has none, and `current_view()` panicked there
@@ -35928,21 +35951,21 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            .or_else(|| self.root.as_ref().map(|root| root.entity_id()))
 +    }
 +
-@@ -5223,0 +7113 @@
+@@ -5223,0 +7114 @@
 +        let depth = self.rendered_entity_stack.len();
-@@ -5225,3 +7115 @@
+@@ -5225,3 +7116 @@
 -        let result = f(self);
 -        self.rendered_entity_stack.pop();
 -        result
 +        self.with_restore(depth, |window, depth| window.rendered_entity_stack.truncate(*depth), f).0
-@@ -5235,0 +7124 @@
+@@ -5235,0 +7125 @@
 +            let depth = self.image_cache_stack.len();
-@@ -5237,3 +7126 @@
+@@ -5237,3 +7127 @@
 -            let result = f(self);
 -            self.image_cache_stack.pop();
 -            result
 +            self.with_restore(depth, |window, depth| window.image_cache_stack.truncate(*depth), f).0
-@@ -5458,0 +7346,7 @@
+@@ -5458,0 +7347,7 @@
 +        // KaminIDE patch: any input may change element state of retained subtrees.
 +        // A wheel step moves scroll offsets, which retained records replay
 +        // through their scroll nodes (`retained_scrolled`); a listener that
@@ -35950,44 +35973,44 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        if !matches!(event, PlatformInput::ScrollWheel(_)) {
 +            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
 +        }
-@@ -5792,0 +7687,5 @@
+@@ -5792,0 +7688,5 @@
 +        // KaminIDE patch: нажатие мышью гасит `:focus-visible` — как в браузере,
 +        // где клик даёт `:focus`, но НЕ `:focus-visible`.
 +        if self.focus_visible && event.downcast_ref::<crate::MouseDownEvent>().is_some() {
 +            self.focus_visible = false;
 +        }
-@@ -5872,0 +7772,6 @@
+@@ -5872,0 +7773,6 @@
 +            // KaminIDE patch: this frame shows the state before the key's
 +            // handlers run, so it is drawn at the epoch before this input
 +            // (`dispatch_event` counted it): a retained subtree replays here
 +            // and judges the input once its handlers ran.
 +            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
 +            self.interaction_epoch = before;
-@@ -5873,0 +7779,2 @@
+@@ -5873,0 +7780,2 @@
 +            // Inputs the draw itself counted (a focus change) stay counted.
 +            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
-@@ -6132 +8039 @@
+@@ -6132 +8040 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6144 +8051 @@
+@@ -6144 +8052 @@
 -            for key_listener in node.key_listeners.clone() {
 +            for key_listener in node.key_listeners().to_vec() {
-@@ -6164 +8071 @@
+@@ -6164 +8072 @@
 -            for listener in node.modifiers_changed_listeners.clone() {
 +            for listener in node.modifiers_changed_listeners().to_vec() {
-@@ -6396 +8303 @@
+@@ -6396 +8304 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6419 +8326 @@
+@@ -6419 +8327 @@
 -            } in node.action_listeners.clone()
 +            } in node.action_listeners().to_vec()
-@@ -6598 +8505 @@
+@@ -6598 +8506 @@
 -            .filter_map(move |&node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(move |&node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6701 +8608 @@
+@@ -6701 +8609 @@
 -            .filter_map(|node_id| dispatch_tree.node(node_id).context.clone())
 +            .filter_map(|node_id| dispatch_tree.node(node_id).context().cloned())
-@@ -6789,0 +8697,7 @@
+@@ -6789,0 +8698,7 @@
 +    }
 +
 +    /// KaminIDE patch: GPU memory the window's renderer holds, one call per texture: owner path
@@ -35995,7 +36018,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +    /// report it.
 +    pub fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
 +        self.platform_window.gpu_memory(sink)
-@@ -7181,0 +9096,11 @@
+@@ -7181,0 +9097,11 @@
 +        // KaminIDE patch: a read sets states aside for the next frame, which
 +        // takes them before those of the drawn frame (`update_rendering`).
 +        if self.read_states.active {
@@ -36007,13 +36030,13 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +                .or_else(|| self.rendered_frame.element_states.remove(&key));
 +            return (key, state);
 +        }
-@@ -7186,0 +9112 @@
+@@ -7186,0 +9113 @@
 +            .or_else(|| self.read_states.states.remove(&key))
-@@ -7196,0 +9123,3 @@
+@@ -7196,0 +9124,3 @@
 +        if self.read_states.active {
 +            return self.read_states.states.insert(key, state);
 +        }
-@@ -7733,0 +9663,44 @@
+@@ -7733,0 +9664,44 @@
 +impl Frame {
 +    /// KaminIDE patch: the frame's buffers and tables for the engine bench's memory report
 +    /// (`crate::heap_report`). What listeners and element states own is not walked.
@@ -36058,7 +36081,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +    }
 +}
 +
-@@ -7752,0 +9726,31 @@
+@@ -7752,0 +9727,31 @@
 +
 +    #[test]
 +    fn temporary_elements_release_storage_and_restore_outer_arena_on_unwind() {
@@ -36090,7 +36113,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +        drop(scope.exit(&outer));
 +        outer.borrow_mut().clear();
 +    }
-@@ -7913,0 +9918,36 @@
+@@ -7913,0 +9919,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -36127,7 +36150,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..bba2e6cdce0889f477cfaed8da7ba551
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +10075,67 @@
+@@ -8034,0 +10076,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
@@ -42829,10 +42852,10 @@ index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e23
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa111574541fbdd36
+index 0000000000000000000000000000000000000000..17e80ea617d186c87fd874cc989eb0826b69c2dc
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
-@@ -0,0 +1,777 @@
+@@ -0,0 +1,796 @@
 +//! KaminIDE patch: scroll nodes of a frame, the spatial tree of scroll
 +//! containers a retained record can be replayed through.
 +//!
@@ -42853,7 +42876,7 @@ index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa1115745
 +use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
 +
 +/// The scenes of the layers `operations` draw (`scene::layer`).
-+fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
++pub(super) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
 +    operations
 +        .iter()
 +        .filter_map(|operation| match operation {
@@ -43337,6 +43360,25 @@ index 0000000000000000000000000000000000000000..0c4863fbc2b1d89afb227c1fa1115745
 +            .collect();
 +        frame.scroll_dependents.extend(landed);
 +    }
++    /// After a copy of commands from `from` of this frame's scene: copied
++    /// nodes painted in a retained layer the copy draws land where they were,
++    /// as the layer holds them (`plan_scrolled_replay`). `copied` is the
++    /// copy's source scene, whose entries it landed itself.
++    pub(crate) fn land_in_drawn_layers(&mut self, from: usize, copied: SceneSpace) {
++        let frame = &mut self.next_frame;
++        if frame.scroll_paint.landing.iter().all(|entry| entry.2 == copied) {
++            return;
++        }
++        let layers = layer_spaces(&frame.scene.paint_operations[from..]);
++        let nodes = &mut frame.scroll_nodes;
++        frame.scroll_paint.landing.retain(|(index, paint, space, main)| {
++            let drawn = layers.contains(space);
++            if drawn {
++                nodes[*index as usize].land(paint.clone(), *space, *main);
++            }
++            !drawn
++        });
++    }
 +    /// The scroll nodes of the rendered frame inside a record made in it:
 +    /// both ranges of each node lie within the record's, outermost first, each
 +    /// with the position of its enclosing segment when that one is inside too.
@@ -43797,10 +43839,10 @@ index 0000000000000000000000000000000000000000..e0123837d8b308f5f6eff68f6ffaec89
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57fbcecf72c
+index 0000000000000000000000000000000000000000..3a9389e4151e85c3f64ff935be6958131f0d4a1d
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,482 @@
+@@ -0,0 +1,481 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -44006,19 +44048,7 @@ index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57f
 +                                let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
 +                                nodes.dedup();
 +                                nodes.truncate(4);
-+                                // Where its label is: in the record's commands, in a group's, or neither.
-+                                let number = (groups.start + at + 1) as u32;
-+                                let label_of = |operations: &[crate::scene::PaintOperation]| {
-+                                    operations.iter().position(|operation| {
-+                                        matches!(operation, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Surface(s)) if s.group == number)
-+                                    })
-+                                };
-+                                let found = match label_of(&source.paint_operations) {
-+                                    Some(op) => format!("label at command {op} of the frame's scene (record {scenes:?})"),
-+                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene.paint_operations).map(|op| format!("label at command {op} of group {k}")))
-+                                        .unwrap_or_else(|| "label not found (dormant or in a reservoir)".into()),
-+                                };
-+                                format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
++                                format!("its label is drawn under no node, its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
 +                            }
 +                            crate::scene::GroupLabel::Unmarked | crate::scene::GroupLabel::Hidden => return None,
 +                            crate::scene::GroupLabel::Under(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
@@ -44098,15 +44128,24 @@ index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57f
 +                }
 +                plan.deferred.push(plan.nodes.len()..plan.nodes.len() + indices.len());
 +            }
++            let mut layers = None;
 +            for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
-+                // Every paint range of the node in its part's scene, deferred ones too.
++                // Every paint range of the node in its part's scene, deferred ones too,
++                // or in the scene of a retained layer the part's commands draw: the copy
++                // draws the layer as it was, so the node replays there unmoved.
 +                let painted = node.paint.is_some();
 +                let group = group_of(node);
-+                if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
++                let foreign = painted && node.painted_in != Some(scene.scroll.space) && group.is_none();
++                let layered = foreign
++                    && node.painted_in.is_some_and(|space| {
++                        let drawn = layers.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
++                        drawn.contains(&space)
++                    });
++                if (foreign && !layered) || node.torn {
 +                    return Err(at_node(ScrollRefusal::Node, index));
 +                }
 +                let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
-+                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
++                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
 +                    return Err(at(ScrollRefusal::NodeRange));
 +                }
 +                let new = node.source.offset();
@@ -44124,7 +44163,7 @@ index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57f
 +                // parent: whatever it shows then moves as its parent's commands.
 +                // Moving apart, it shows nothing while its clip stays empty (an
 +                // anchor past the viewport edge, whose children were never painted).
-+                if !painted && shift != parent_shift && !clip.is_empty() {
++                if (!painted && shift != parent_shift && !clip.is_empty()) || (layered && (shift != Point::default() || clip != node.clip)) {
 +                    return Err(at_node(ScrollRefusal::Node, index));
 +                }
 +                let interest = moved(node.interest, shift);
@@ -44269,6 +44308,7 @@ index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57f
 +        edges.dedup();
 +        let node = |id: ScrollNodeId| plan.scaled(id, scale);
 +        let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
++        let from = self.next_frame.scene.paint_operations.len();
 +        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
 +        let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
 +        let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
@@ -44276,6 +44316,7 @@ index 0000000000000000000000000000000000000000..bb03939b4c11872469764efc3a2ec57f
 +        for (index, paint, _, main) in mine {
 +            self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
 +        }
++        self.land_in_drawn_layers(from, space);
 +    }
 +}
 +

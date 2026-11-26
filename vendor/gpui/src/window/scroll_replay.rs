@@ -203,19 +203,7 @@ impl Window {
                                 let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
                                 nodes.dedup();
                                 nodes.truncate(4);
-                                // Where its label is: in the record's commands, in a group's, or neither.
-                                let number = (groups.start + at + 1) as u32;
-                                let label_of = |operations: &[crate::scene::PaintOperation]| {
-                                    operations.iter().position(|operation| {
-                                        matches!(operation, crate::scene::PaintOperation::Primitive(crate::scene::Primitive::Surface(s)) if s.group == number)
-                                    })
-                                };
-                                let found = match label_of(&source.paint_operations) {
-                                    Some(op) => format!("label at command {op} of the frame's scene (record {scenes:?})"),
-                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene.paint_operations).map(|op| format!("label at command {op} of group {k}")))
-                                        .unwrap_or_else(|| "label not found (dormant or in a reservoir)".into()),
-                                };
-                                format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
+                                format!("its label is drawn under no node, its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
                             }
                             crate::scene::GroupLabel::Unmarked | crate::scene::GroupLabel::Hidden => return None,
                             crate::scene::GroupLabel::Under(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
@@ -295,15 +283,24 @@ impl Window {
                 }
                 plan.deferred.push(plan.nodes.len()..plan.nodes.len() + indices.len());
             }
+            let mut layers = None;
             for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
-                // Every paint range of the node in its part's scene, deferred ones too.
+                // Every paint range of the node in its part's scene, deferred ones too,
+                // or in the scene of a retained layer the part's commands draw: the copy
+                // draws the layer as it was, so the node replays there unmoved.
                 let painted = node.paint.is_some();
                 let group = group_of(node);
-                if (painted && node.painted_in != Some(scene.scroll.space) && group.is_none()) || node.torn {
+                let foreign = painted && node.painted_in != Some(scene.scroll.space) && group.is_none();
+                let layered = foreign
+                    && node.painted_in.is_some_and(|space| {
+                        let drawn = layers.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
+                        drawn.contains(&space)
+                    });
+                if (foreign && !layered) || node.torn {
                     return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
-                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
+                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
                     return Err(at(ScrollRefusal::NodeRange));
                 }
                 let new = node.source.offset();
@@ -321,7 +318,7 @@ impl Window {
                 // parent: whatever it shows then moves as its parent's commands.
                 // Moving apart, it shows nothing while its clip stays empty (an
                 // anchor past the viewport edge, whose children were never painted).
-                if !painted && shift != parent_shift && !clip.is_empty() {
+                if (!painted && shift != parent_shift && !clip.is_empty()) || (layered && (shift != Point::default() || clip != node.clip)) {
                     return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let interest = moved(node.interest, shift);
@@ -466,6 +463,7 @@ impl Window {
         edges.dedup();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        let from = self.next_frame.scene.paint_operations.len();
         self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
@@ -473,6 +471,7 @@ impl Window {
         for (index, paint, _, main) in mine {
             self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
         }
+        self.land_in_drawn_layers(from, space);
     }
 }
 
