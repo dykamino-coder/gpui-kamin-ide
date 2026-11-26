@@ -13,9 +13,12 @@ export async function checkEngineMenus(driver, tab) {
     const { value } = await web(`const t=(await window.bridgeCmd.raw('listTabs')).find(t => t.id ===
         window.bridgeCmd.state().activeTabId);
       return {sameTab:t?.id === ${JSON.stringify(tab)}, engine:t?.engine, connected:t?.status === 'connected',
-        model:t?.model, native:t?.claudePermissions?.selected ?? null, codex:t?.codexCollaboration?.selected,
+        model:t?.model, native:t?.claudePermissions?.selected ?? null,
+        nativeAvailable:t?.claudePermissions?.available ?? null, codex:t?.codexCollaboration?.selected,
         controls:Array.from(document.querySelectorAll('button.perm-trigger'), el=>el.textContent.trim()),
-        options:Array.from(document.querySelectorAll('.perm-option-name'), el=>el.textContent.trim())}`);
+        options:Array.from(document.querySelectorAll('.perm-option-name'), el=>el.textContent.trim()),
+        currentOptions:Array.from(document.querySelectorAll('.perm-option[aria-disabled="true"]'), el=>
+          el.querySelector('.perm-option-check i') && el.querySelector('.perm-option-name')?.textContent.trim()).filter(Boolean)}`);
     return value;
   }
   async function inspect(engine, name) {
@@ -35,11 +38,12 @@ export async function checkEngineMenus(driver, tab) {
         assert.ok(["Claude permissions", ...Object.values(modeNames)].includes(label));
       }
       report.engineMenus.push({ engine, label, source: engine === "codex" ? "codex-collaboration" :
-        row.native ? "claude-receipt" : "claude-history-or-empty" });
+        row.native ? "claude-receipt" : label === "Claude permissions" ? "no-observed-mode" : "claude-history" });
     }, true);
     await clickElement(driver, name + "-engine-open", trigger(label));
     await step(name + "-engine-options", async () => {
-      const { options } = await state();
+      const { options, currentOptions, native, nativeAvailable } = await state();
+      if (engine === "claude" && native && !nativeAvailable?.includes(native)) assert.ok(currentOptions.includes(modeNames[native]));
       assert.ok(options.includes(engine === "codex" ? "Default" : "Change mode in Console"));
       assert.ok(!options.includes("Use approval rules"));
       if (engine === "claude") assert.ok(!options.includes("Default"));
