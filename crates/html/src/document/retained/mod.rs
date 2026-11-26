@@ -68,6 +68,7 @@ mod moved_rows_tests;
 mod paint_damage_tests;
 #[cfg(all(test, windows))]
 mod paint_pixels_tests;
+mod placement;
 mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;

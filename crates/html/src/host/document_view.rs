@@ -135,6 +135,8 @@ impl Render for DocumentView {
 }
 
 #[cfg(test)]
+mod embedding_tests;
+#[cfg(test)]
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;

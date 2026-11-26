@@ -74,15 +74,23 @@ impl Document {
             return;
         };
         let (w, h) = key.viewport;
-        let bounds = gpui::Bounds::new(Default::default(), size(px(w), px(h)));
         window.with_layout_outside_draw(parent, cx, |window, cx| {
             let id = document_id(&self.reuse);
             window.with_global_id(id, |id, window| {
-                let environment =
-                    super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
-                let (epoch, replay) =
-                    window.with_element_state::<super::record::Record, _>(id, |record, window| {
-                        let mut record = record.unwrap_or_default();
+                window.with_element_state::<super::record::Record, _>(id, |record, window| {
+                    let mut record = record.unwrap_or_default();
+                    // This state belongs to the actual embedding, not the host's root.
+                    // Keep it across DOM generations, but never beyond element eviction.
+                    let placement = record.placement.take();
+                    let bounds = gpui::Bounds::new(
+                        placement
+                            .as_ref()
+                            .map_or(Default::default(), |p| p.bounds.origin),
+                        size(px(w), px(h)),
+                    );
+                    let mut prepare = |window: &mut Window| {
+                        let environment =
+                            super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
                         let epoch = record.begin(&self.reuse, window);
                         let replay = match self.state.values.resources_unchanged() {
                             true => {
@@ -94,32 +102,38 @@ impl Document {
                         let replay = replay
                             .inspect_err(|miss| self.retained.missed(*miss))
                             .is_ok();
-                        ((epoch, replay), record)
-                    });
-                if replay {
-                    return;
-                }
-                let builder = self.frame_builder(opts, &Some(key.clone()));
-                let before = window.next_frame_callback_count();
-                let (tree, flow, layout_inputs) =
-                    builder.layout_checked(bounds, window, cx, |phase| {
-                        if phase == UpdatePhase::Built {
-                            self.retained.builds.set(self.retained.builds.get() + 1);
+                        if replay {
+                            return;
                         }
-                        observe(phase);
-                    });
-                let checked = CheckedRoot::new(epoch, environment, window);
-                let scheduled = window.next_frame_callback_count().saturating_sub(before);
-                self.retained.prepared.replace(Some(Prepared {
-                    key,
-                    counters: builder.counters.get(),
-                    tree,
-                    flow,
-                    checked,
-                    layout_inputs,
-                    scheduled,
-                    parent: parent.clone(),
-                }));
+                        let builder = self.frame_builder(opts, &Some(key.clone()));
+                        let before = window.next_frame_callback_count();
+                        let (tree, flow, layout_inputs) =
+                            builder.layout_checked(bounds, window, cx, |phase| {
+                                if phase == UpdatePhase::Built {
+                                    self.retained.builds.set(self.retained.builds.get() + 1);
+                                }
+                                observe(phase);
+                            });
+                        let checked = CheckedRoot::new(epoch, environment, window);
+                        let scheduled = window.next_frame_callback_count().saturating_sub(before);
+                        self.retained.prepared.replace(Some(Prepared {
+                            key: key.clone(),
+                            counters: builder.counters.get(),
+                            tree,
+                            flow,
+                            checked,
+                            layout_inputs,
+                            scheduled,
+                            parent: parent.clone(),
+                        }));
+                    };
+                    match &placement {
+                        Some(placement) => placement.enter(window, prepare),
+                        None => prepare(window),
+                    }
+                    record.placement = placement;
+                    ((), record)
+                });
             })
         });
     }

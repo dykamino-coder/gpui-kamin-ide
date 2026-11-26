@@ -28,6 +28,8 @@ impl Retained {
             window.with_element_state::<Record, _>(id, |record, window| {
                 let before = window.next_frame_callback_count();
                 let mut record = record.unwrap_or_default();
+                record.placement =
+                    Some(super::super::placement::Placement::capture(bounds, window));
                 let epoch = record.begin(&self.builder.store, window);
                 // A tree the document step built already counted its reason.
                 let replay = self.tree.is_none().then(|| {

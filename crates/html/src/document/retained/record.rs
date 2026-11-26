@@ -45,6 +45,8 @@ impl Inputs {
 
 #[derive(Default)]
 pub(super) struct Record {
+    /// One embedding snapshot per live element, preserved across DOM generations.
+    pub(super) placement: Option<super::placement::Placement>,
     pub(super) inputs: Option<Rc<Inputs>>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,
