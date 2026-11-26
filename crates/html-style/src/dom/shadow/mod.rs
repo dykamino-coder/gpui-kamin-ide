@@ -127,3 +127,6 @@ pub(super) fn has_declarative_shadow(
 
 mod walk;
 pub(super) use walk::scan_shadows;
+mod facts;
+pub use facts::ShadowFacts;
+pub(super) use facts::shadow_facts;

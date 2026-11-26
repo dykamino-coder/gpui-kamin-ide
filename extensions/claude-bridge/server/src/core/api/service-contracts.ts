@@ -9,7 +9,19 @@ const health = z.object({
   mode: s.str,
   sessions: s.sessionCounts,
   statsWrite: z.object({ depth: s.num, oldestWaitMs: s.num, headRunningMs: s.num }),
+  codexNetwork: z
+    .object({
+      checkedAt: s.num,
+      viaProxy: s.bool,
+      customCa: s.bool,
+      hosts: z.array(z.object({ host: s.str, kind: s.str, status: s.num.nullable(), detail: s.str })),
+      problem: z.object({ kind: s.str, message: s.str, detail: s.str }).nullable(),
+    })
+    .optional(),
 })
+const healthQuery = z.object({ probe: z.enum(['codex']).optional() })
+const healthDescription =
+  "`probe=codex` adds `codexNetwork`: codex's hosts probed through the codex proxy and CA, naming a refusing proxy, an untrusted certificate or OpenAI's region refusal."
 const publicRoute = { security: [] }
 const sync = { tag: 'File sync', security: ['apiBearer'] }
 const hooks = { tag: 'Hooks', security: ['apiBearer'] }
@@ -34,7 +46,12 @@ const syncBody = z.looseObject({
 
 export const serviceContracts: Contract[] = [
   op('GET', '/', 'Bridge health', health, { ...publicRoute, tag: 'Health' }),
-  op('GET', '/health', 'Bridge health', health, { ...publicRoute, tag: 'Health' }),
+  op('GET', '/health', 'Bridge health', health, {
+    ...publicRoute,
+    tag: 'Health',
+    query: healthQuery,
+    description: healthDescription,
+  }),
   ...['GET', 'POST', 'DELETE'].map((method) =>
     op(method, '/mcp/:sessionId', 'MCP Streamable HTTP transport', method === 'GET' ? undefined : s.json, {
       tag: 'MCP transport',

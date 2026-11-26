@@ -120,7 +120,7 @@ impl Document {
         }
         let media = self.state.media();
         let values = &self.state.values;
-        let Ok(Some(probe)) = kept.cache.probe(input, theme_css, media, values) else {
+        let Ok(probe) = kept.cache.probe(input, theme_css, media, values) else {
             return Err("probe");
         };
         let address = |h: &markup5ever_rcdom::Handle| std::rc::Rc::as_ptr(h) as usize;
@@ -157,6 +157,11 @@ impl Document {
             }
         };
         let mut pending: Vec<Handle> = roots.iter().map(|r| top(r, walks.restyled)).collect();
+        // A rebuilt subtree with a host takes a shadow tree (`shadow_scope`).
+        if super::shadow_scope::holds_host(walks.probe, &pending) {
+            traversal.abandon_rebuild();
+            return Err("shadow_host");
+        }
         let mut units: Vec<Unit> = Vec::new();
         while let Some(root) = pending.pop() {
             if units.iter().any(|u| within(&root, &u.handle)) {

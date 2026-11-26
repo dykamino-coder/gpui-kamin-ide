@@ -1,36 +1,65 @@
 // ============================================================================
 // Why codex cannot reach OpenAI, when codex itself does not say.
 //
-// Field lesson (acceptance 2026-11-12): behind a corporate proxy that answers
-// 407, and behind a TLS-intercepting proxy whose CA Bridge does not trust,
-// codex 0.160.1 reports both as "workspace routing discovery failed" — no
-// status, no certificate error. Bridge then showed "ChatGPT is not signed in"
-// and opened new GPT chats on Claude. This probe repeats the connection codex
-// makes (same proxy and extra CA from the codex environment, certificate
-// verification on) and names the cause in the words of classifyCodexError.
+// Field lessons: behind a proxy that answers 407, and behind a TLS-intercepting
+// proxy whose CA Bridge does not trust, codex 0.160.1 reports both as
+// "workspace routing discovery failed"; a proxy that refuses OpenAI's domains
+// and OpenAI refusing the exit region both reach the user as a bare 403. This
+// probe repeats the connections codex makes — same proxy, NO_PROXY and extra
+// CA from the codex environment, certificate verification on — to every host
+// codex needs, and network-verdict.ts names who answered.
 // ============================================================================
 
 import fs from 'node:fs'
 import tls from 'node:tls'
-import { Agent, ProxyAgent, request, type Dispatcher } from 'undici'
+import { EnvHttpProxyAgent, request, type Dispatcher } from 'undici'
 import { CODEX_CA_ENV } from './codex-home'
-import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
+import type { CodexErrorInfo } from './codex-errors'
+import {
+  CODEX_HOSTS,
+  summarizeVerdicts,
+  verdictFromAnswer,
+  verdictFromError,
+  type HostVerdict,
+} from './network-verdict'
 
-export const CODEX_PROBE_URL = 'https://chatgpt.com/'
 const PROBE_TIMEOUT_MS = 5_000
+/** Enough for a proxy error page title or OpenAI's JSON error code. */
+const BODY_CAP = 16 * 1024
+
+/** api.openai.com checks the region before the key: /v1/models answers 401, or 403 with the region code. */
+export function codexProbeUrl(host: string): string {
+  return host === 'api.openai.com' ? `https://${host}/v1/models` : `https://${host}/`
+}
 
 export interface NetworkProbeOptions {
-  url?: string
+  hosts?: readonly string[]
+  /** Replaces codexProbeUrl (tests point every host at a local server). */
+  urlFor?: (host: string) => string
   timeoutMs?: number
+}
+
+export interface CodexNetworkReport {
+  checkedAt: number
+  viaProxy: boolean
+  /** An extra CA (CODEX_CA_CERTIFICATE / SSL_CERT_FILE) was given to codex. */
+  customCa: boolean
+  hosts: HostVerdict[]
+  /** The cause to show the user; null when every host answered. */
+  problem: CodexErrorInfo | null
 }
 
 function proxyFor(env: NodeJS.ProcessEnv): string | undefined {
   return env.HTTPS_PROXY || env.https_proxy || env.ALL_PROXY || env.all_proxy || undefined
 }
 
+function caFile(env: NodeJS.ProcessEnv): string | undefined {
+  return env[CODEX_CA_ENV] || env.SSL_CERT_FILE || undefined
+}
+
 /** Native roots plus codex's extra CA (CODEX_CA_CERTIFICATE, fallback SSL_CERT_FILE). */
 function trustRoots(env: NodeJS.ProcessEnv): string[] {
-  const file = env[CODEX_CA_ENV] || env.SSL_CERT_FILE
+  const file = caFile(env)
   const roots = [...tls.rootCertificates]
   if (file) {
     try {
@@ -52,26 +81,60 @@ function errorText(error: unknown): string {
   return parts.join(' ← ')
 }
 
-/** The proxy/TLS/network problem between this server and OpenAI, or null when
- *  the connection works (or fails for a reason this probe cannot name). */
+async function readCapped(body: AsyncIterable<Buffer>): Promise<string> {
+  const chunks: Buffer[] = []
+  let size = 0
+  for await (const chunk of body) {
+    chunks.push(chunk)
+    size += chunk.length
+    if (size >= BODY_CAP) break
+  }
+  return Buffer.concat(chunks).subarray(0, BODY_CAP).toString('utf8')
+}
+
+async function probeHost(host: string, url: string, dispatcher: Dispatcher, timeoutMs: number): Promise<HostVerdict> {
+  try {
+    const res = await request(url, {
+      method: 'GET',
+      dispatcher,
+      headers: { 'user-agent': 'open-claude-bridge-codex-probe', accept: '*/*' },
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+    const body = await readCapped(res.body)
+    return verdictFromAnswer(host, { status: res.statusCode, headers: res.headers, body })
+  } catch (error) {
+    return verdictFromError(host, errorText(error))
+  }
+}
+
+/** Checks every host codex needs, in parallel, the way codex connects. */
 export async function probeCodexNetwork(
   env: NodeJS.ProcessEnv,
   options: NetworkProbeOptions = {},
-): Promise<CodexErrorInfo | null> {
+): Promise<CodexNetworkReport> {
   const proxy = proxyFor(env)
   const connect = { ca: trustRoots(env), rejectUnauthorized: true }
-  const dispatcher: Dispatcher = proxy ? new ProxyAgent({ uri: proxy, requestTls: connect }) : new Agent({ connect })
+  // Empty strings, not undefined: undici would fall back to this server's own env.
+  const dispatcher = new EnvHttpProxyAgent({
+    httpProxy: '',
+    httpsProxy: proxy ?? '',
+    noProxy: env.NO_PROXY ?? env.no_proxy ?? '',
+    connect,
+    requestTls: connect,
+  })
+  const urlFor = options.urlFor ?? codexProbeUrl
+  const timeoutMs = options.timeoutMs ?? PROBE_TIMEOUT_MS
   try {
-    const res = await request(options.url ?? CODEX_PROBE_URL, {
-      method: 'HEAD',
-      dispatcher,
-      signal: AbortSignal.timeout(options.timeoutMs ?? PROBE_TIMEOUT_MS),
-    })
-    await res.body.dump()
-    return null
-  } catch (error) {
-    const info = classifyCodexError(errorText(error))
-    return info.kind === 'proxy-auth' || info.kind === 'tls' || info.kind === 'network' ? info : null
+    const hosts = await Promise.all(
+      (options.hosts ?? CODEX_HOSTS).map((host) => probeHost(host, urlFor(host), dispatcher, timeoutMs)),
+    )
+    return {
+      checkedAt: Date.now(),
+      viaProxy: Boolean(proxy),
+      customCa: Boolean(caFile(env)),
+      hosts,
+      problem: summarizeVerdicts(hosts, Boolean(proxy)),
+    }
   } finally {
     void dispatcher.close().catch(() => undefined)
   }
