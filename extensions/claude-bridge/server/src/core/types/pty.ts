@@ -264,6 +264,8 @@ export interface ExternalPromptDefinition {
 // ---------------------------------------------------------------------------
 
 export interface SessionConfig {
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
   /** Working directory for Claude CLI */
   cwd?: string
   /** Initial terminal dimensions */
@@ -378,6 +380,7 @@ export interface SyncPluginFile {
 }
 
 export interface SyncUserData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string> // relativePath → fileContent
   agents: Record<string, string>
   commands: Record<string, string> // ~/.claude/commands/*.md — custom slash commands
@@ -388,6 +391,7 @@ export interface SyncUserData {
 }
 
 export interface SyncProjectData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string>
   rules: Record<string, string>
   agents: Record<string, string>
