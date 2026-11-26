@@ -214,11 +214,9 @@ jobs:
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'native-smoke-report'
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
-          $wslFeature = Get-CimInstance Win32_OptionalFeature -Filter "Name='Microsoft-Windows-Subsystem-Linux'" -ErrorAction SilentlyContinue
           [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; scenario = $env:SMOKE_SCENARIO; runner = $env:ImageVersion
             shell = $env:BUILD_SHELL; host = $env:BUILD_HOST; bridge = $env:INSTALL_BRIDGE; native = $env:RUN_NATIVE
-            wslExecutable = [bool]$wsl; wslFeatureEnabled = $wslFeature.InstallState -eq 1
+            linuxCapability = & ./.native-smoke-harness/scripts/ci/native-windows/linux-capability.ps1
           } | ConvertTo-Json | Set-Content (Join-Path $dir 'pipeline.json')
       - name: Upload synthetic report and window capture
         if: always()

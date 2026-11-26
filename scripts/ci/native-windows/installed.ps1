@@ -100,6 +100,7 @@ try {
         installerSha256 = $metadata.installer.sha256; runner = $env:ImageVersion
         session = (Get-Process -Id $PID).SessionId; interactive = [Environment]::UserInteractive
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
+        linuxCapability = & (Join-Path $PSScriptRoot 'linux-capability.ps1')
         profileRemoved = $false
     }
     try {

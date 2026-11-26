@@ -23,7 +23,7 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
       width:innerWidth, height:innerHeight, overflow:document.documentElement.scrollWidth-innerWidth,
       x:s.left+s.width/2, y:s.top+s.height/2, thumbX:b.left+b.width/2, thumbY:b.top+b.height/2,
       top:a.top+b.height/2, bottom:a.bottom-b.height/2,
-      thumbHit:slider.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)) }`)).value;
+      thumbHit:track.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)) }`)).value;
   async function mouse(action, x, y, extras = {}) {
     const result = await probe({ cmd: "webmouse", id, action, x, y, ...extras });
     assert.equal(result.delivery, "cef-host");
@@ -33,13 +33,15 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
   let bottomState;
   await step("history-and-visible-scrollbar", async () => {
     bottomState = await state();
-    assert.ok(bottomState?.history && bottomState.travel>8 && bottomState.pos>0.9 && bottomState.thumbHit);
+    report.scrollGeometry = { start: bottomState };
+    assert.ok(bottomState?.history && bottomState.travel>8 && bottomState.pos>0.9);
     assert.ok(bottomState.overflow<=1 && bottomState.width>16 && bottomState.height>16);
   }, true);
   await step("wheel-towards-older-lines", () => mouse("wheel", bottomState.x, bottomState.y, { dy: 720 }));
   let priorState;
   await step("wheel-moves-towards-history", async () => {
     priorState = await state();
+    report.scrollGeometry.afterWheel = priorState?.pos;
     assert.ok(priorState?.pos < bottomState.pos-0.01);
   }, true);
   async function dragTo(edge, start) {
@@ -54,11 +56,13 @@ export async function checkConsoleScroll({ step, web, probe, rpc, report }) {
   let atTop;
   await step("thumb-reaches-top", async () => {
     atTop = await state();
+    report.scrollGeometry.afterUpDrag = atTop?.pos;
     assert.ok(atTop?.pos <= 0.02);
   }, true);
   await step("drag-terminal-thumb-to-bottom", () => dragTo("bottom", atTop));
   await step("thumb-reaches-bottom", async () => {
     const actual = await state();
+    report.scrollGeometry.afterDownDrag = actual?.pos;
     assert.ok(actual?.history && actual.pos >= 0.98);
     report.console = { screen: "normal", wheelMoved: true, thumbReachedTop: true, thumbReachedBottom: true,
       outsideHorizontalOverflow: actual.overflow };
