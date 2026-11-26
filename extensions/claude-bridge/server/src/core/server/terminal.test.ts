@@ -21,8 +21,77 @@ import { attachTerminalWebSocket, cleanupTerminal } from './terminal'
 
 afterEach(() => {
   cleanupTerminal()
+  vi.clearAllTimers()
+  vi.useRealTimers()
   vi.unstubAllEnvs()
   vi.clearAllMocks()
+})
+
+describe('terminal output at process exit', () => {
+  it.each(['', '?engine=codex'])('delivers the PTY tail once before exit for %s', async (query) => {
+    const { ws, pty, process } = await connect(query)
+    vi.useFakeTimers()
+    process.emit('data', 'last diagnostic: ')
+    process.emit('data', 'startup failed\r\n')
+    expect(ws.send).not.toHaveBeenCalled()
+    process.emit('exit', { exitCode: 1 })
+    expect(ws.send.mock.calls.map(([frame]) => JSON.parse(frame))).toEqual([
+      { type: 'output', data: 'last diagnostic: startup failed\r\n' },
+      { type: 'exit', code: 1 },
+    ])
+    expect(ws.send.mock.invocationCallOrder.at(-1)).toBeLessThan(ws.close.mock.invocationCallOrder[0]!)
+    expect(vi.getTimerCount()).toBe(0)
+    vi.runAllTimers()
+    process.emit('data', 'late event')
+    expect(ws.send).toHaveBeenCalledTimes(2)
+    ws.emit('close')
+    expect(pty.kill).not.toHaveBeenCalled()
+    if (query) expect(mocks.release).toHaveBeenCalledOnce()
+    else expect(mocks.acquire).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat output already sent by the debounce timer', async () => {
+    const { ws, process } = await connect()
+    vi.useFakeTimers()
+    process.emit('data', 'already delivered')
+    vi.advanceTimersByTime(8)
+    process.emit('exit', { exitCode: 0 })
+    vi.runAllTimers()
+    expect(ws.send.mock.calls.map(([frame]) => JSON.parse(frame))).toEqual([
+      { type: 'output', data: 'already delivered' },
+      { type: 'exit', code: 0 },
+    ])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('discards a disconnected client tail and keeps the lease until the process actually exits', async () => {
+    const { ws, pty, process } = await connect('?engine=codex')
+    vi.useFakeTimers()
+    process.emit('data', 'undelivered')
+    ws.readyState = 3
+    ws.emit('error', new Error('client gone'))
+    ws.emit('close')
+    process.emit('data', 'late output')
+    expect(pty.kill).toHaveBeenCalledOnce()
+    expect(mocks.release).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+    process.emit('exit', { exitCode: 1 })
+    process.emit('exit', { exitCode: 1 })
+    vi.runAllTimers()
+    expect(mocks.release).toHaveBeenCalledOnce()
+    expect(ws.send).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('clears pending timers even if the socket closed before its close handler', async () => {
+    const { ws, process } = await connect()
+    vi.useFakeTimers()
+    process.emit('data', 'unsendable')
+    ws.readyState = 3
+    process.emit('exit', { exitCode: 1 })
+    expect(vi.getTimerCount()).toBe(0)
+    expect(ws.send).not.toHaveBeenCalled()
+  })
 })
 
 async function connect(query = '') {
