@@ -6,7 +6,7 @@ import type { TabManager } from './main/tab-manager'
 import { hostGeneration } from './main/host-generation'
 import type { ConnectionConfig, TabInfo } from './shared/types'
 
-type RestoredTab = Pick<TabInfo, 'id' | 'label' | 'createdAt' | 'cwd' | 'conversationId' | 'sessionTitle' | 'engine' | 'model'> & { nativeId?: string }
+type RestoredTab = Pick<TabInfo, 'id' | 'label' | 'createdAt' | 'cwd' | 'conversationId' | 'sessionTitle' | 'engine' | 'model' | 'workspacePermission'> & { nativeId?: string }
 interface Snapshot {
   parent: number
   generation: number
@@ -49,7 +49,7 @@ export class NativeRespawnState {
       // A native disconnect/delete during the outage takes precedence.
       if (tab.nativeId && !nativeSessions.get(tab.nativeId)?.open) continue
       const config = { ...cfg, cwd: tab.cwd, engine: tab.engine, model: tab.model }
-      const opts = { background: true, restored: { id: tab.id, label: tab.label, createdAt: tab.createdAt } }
+      const opts = { background: true, workspacePermission: tab.workspacePermission, restored: { id: tab.id, label: tab.label, createdAt: tab.createdAt } }
       if (tab.conversationId) {
         this.tm.resumeSession({ ...config, conversationId: tab.conversationId, sessionLabel: tab.sessionTitle }, opts)
       } else {
@@ -72,8 +72,8 @@ export class NativeRespawnState {
     if (this.generation === 0) return // not the supervised native runtime
     const snapshot: Snapshot = {
       parent: process.ppid, generation: this.generation, scope: this.scope(),
-      tabs: this.tm.listTabs().map(({ id, label, createdAt, cwd, conversationId, sessionTitle, engine, model }) => ({
-        id, label, createdAt, cwd, conversationId, sessionTitle, engine,
+      tabs: this.tm.listTabs().map(({ id, label, createdAt, cwd, conversationId, sessionTitle, engine, model, workspacePermission }) => ({
+        id, label, createdAt, cwd, conversationId, sessionTitle, engine, workspacePermission,
         model: model ?? this.tm.getTab(id)?.config.model, nativeId: this.tabToNative.get(id),
       })),
       activeTabId: this.tm.getActiveTabId(),

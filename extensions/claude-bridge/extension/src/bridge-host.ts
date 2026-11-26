@@ -181,8 +181,7 @@ export class BridgeHost {
   cmdSetPermissionMode(mode: string): boolean {
     const a = this.activeConn()
     if (!a?.conn) return false
-    a.conn.setPermissionMode(mode as Parameters<typeof a.conn.setPermissionMode>[0])
-    return true
+    return a.conn.setPermissionMode(mode)
   }
   cmdCloseSession(): boolean {
     const id = this.tabManager.getActiveTabId()
@@ -195,6 +194,7 @@ export class BridgeHost {
 
   constructor(context: vscode.ExtensionContext, opts?: {
     onOpenChat?: () => void
+    onOpenPermissionConsole?: () => void
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
     sessionInstructions?: (cwd?: string) => string
@@ -464,6 +464,11 @@ export class BridgeHost {
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text))
 
     // The sidebar asks to reveal the center chat panel when a session activates.
+    if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id: string) => {
+      if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === 'claude') {
+        opts.onOpenPermissionConsole?.()
+      }
+    })
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.())
   }
 

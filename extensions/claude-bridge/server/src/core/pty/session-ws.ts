@@ -201,6 +201,7 @@ const URGENT_WAKE = new Set([
   'session:submitText',
   'session:input',
   'session:change-effort',
+  'session:codex-collaboration',
   'session:change-model',
   'session:switch-engine',
 ])
@@ -477,10 +478,12 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               type: 'session:restarted',
               sessionId: fresh.id,
               mcpTaskOwner: fresh.mcpEndpoint?.id,
+              codexCollaboration: codexBinding(fresh)?.agent.collaboration,
               effort: fresh.effort,
               model: fresh.model,
             }),
           )
+          codexBinding(fresh)?.pushPlanLimits()
           sendHibernationState(fresh.id, 'awake')
           const now = Date.now()
           // Phases: pool wait, server-side start (teardown wait, settings,
@@ -653,6 +656,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: session.id,
                   mcpTaskOwner: session.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(session)?.agent.collaboration,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -660,6 +664,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
+              codexBinding(session)?.pushPlanLimits()
               void sendAgentPreferences(ws, resolved.tokenId)
 
               // Send initial tree to this client
@@ -920,6 +925,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: live.id,
                   mcpTaskOwner: live.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(live)?.agent.collaboration,
                   effort: live.effort,
                   model: live.model,
                   settingsDir: live.settingsDir,
@@ -1008,6 +1014,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   type: 'session:created',
                   sessionId: session.id,
                   mcpTaskOwner: session.mcpEndpoint?.id,
+                  codexCollaboration: codexBinding(session)?.agent.collaboration,
                   effort: session.effort,
                   model: session.model,
                   settingsDir: session.settingsDir,
@@ -1016,6 +1023,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }),
               )
 
+              codexBinding(session)?.pushPlanLimits()
               // The requested conversation is not on this server — a fresh one
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
@@ -1075,6 +1083,24 @@ export function attachSessionWebSocket(_server: HttpServer): void {
             if (startup === operation) startup = undefined
           }
           break
+        }
+
+        case 'session:codex-collaboration': {
+          const session = authenticatedSessionId && getSession(authenticatedSessionId)
+          if (!session || session.id !== msg.sessionId) return
+          const binding = codexBinding(session)
+          if (!binding) return
+          if ((msg.mode === 'default' || msg.mode === 'plan') && binding.agent.chooseCollaboration(msg.mode)) {
+            saveCodexChoice(session, { collaborationMode: msg.mode })
+          } else {
+            binding.appendSystem('The selected Codex collaboration mode is unavailable.', 'warning')
+          }
+          sendToClient(ws, {
+            type: 'session:codex-collaboration',
+            sessionId: session.id,
+            codexCollaboration: binding.agent.collaboration,
+          })
+          return
         }
 
         case 'session:change-effort': {
@@ -1274,12 +1300,14 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 type: 'session:restarted',
                 sessionId: next.id,
                 mcpTaskOwner: next.mcpEndpoint?.id,
+                codexCollaboration: codexBinding(next)?.agent.collaboration,
                 effort: next.effort,
                 model: next.model || model,
                 engine: next.engine ?? 'claude',
                 engineSwitch: { ...timings, contextBytes },
               }),
             )
+            codexBinding(next)?.pushPlanLimits()
             // The leaving CLI's queue, after the client knows the new session
             // and before the gate lets later prompts through (their order).
             for (const item of carried.returned)

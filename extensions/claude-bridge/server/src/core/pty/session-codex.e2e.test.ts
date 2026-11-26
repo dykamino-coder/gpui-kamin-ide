@@ -269,6 +269,39 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   }, 30_000)
 
+  it('publishes the account window on admission before any model turn', async () => {
+    const client = await Client.open(port)
+    const created = await createChat(client, { engine: 'codex' })
+    const frame = await client.next((f) => f.type === 'session:usage' && f.usage.engine === 'codex')
+    expect(client.frames.indexOf(created)).toBeLessThan(client.frames.indexOf(frame))
+    expect(frame.usage.windows).toEqual([expect.objectContaining({ percent: 17 })])
+    client.send({ type: 'session:end' })
+    client.close()
+  })
+
+  it('applies a model-supported deployment default to a fresh chat and its first turn', async () => {
+    vi.stubEnv('BRIDGE_CODEX_DEFAULT_EFFORT', 'xhigh')
+    try {
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_EXTENDED_DEFAULT_EFFORTS: '1' }))
+      const client = await Client.open(port)
+      const created = await createChat(client, { engine: 'codex' })
+      expect(created).toMatchObject({ model: 'gpt-fake', effort: 'xhigh' })
+      await say(client, 'first request', 'configured-default')
+      await client.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'xhigh')
+      client.send({ type: 'session:end' })
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime())
+      const limited = await Client.open(port)
+      expect(await createChat(limited, { engine: 'codex' })).toMatchObject({ effort: 'medium' })
+      limited.send({ type: 'session:end' })
+      limited.close()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 30_000)
+
   it('feeds Bridge Console a live log of the thread and replays it to a reattached client', async () => {
     const consoleText = (c: Client) =>
       c.frames
@@ -515,6 +548,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
     })
     expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
     await again.entry((e) => e.uuid === first.uuid) // history replayed
+    const history = await again.next((f) => f.type === 'session:output' && String(f.data).includes('Recent messages'))
+    expect(history.data).toContain('remember 42')
+    expect(history.data).toContain('echo: remember 42')
     await say(again, 'still there?', 'r2')
     const next = await again.entry((e) => text(e).startsWith('echo: still there?'))
     expect(next.sessionId).toBe(conv)
@@ -578,7 +614,8 @@ describe('codex chat over the Bridge session WebSocket', () => {
 
   it('resumes a codex chat on the model and effort chosen after its last turn', async () => {
     const client = await Client.open(port)
-    await createChat(client, { engine: 'codex' })
+    const created = await createChat(client, { engine: 'codex' })
+    expect(created.codexCollaboration).toEqual({ selected: 'default', available: ['default', 'plan'] })
     await say(client, 'first turn', 'k1')
     await client.entry((e) => text(e).startsWith('echo: first turn [model=gpt-fake effort=medium]'))
     const conv = (await client.next((f) => f.type === 'session:conversation-id')).conversationId
@@ -587,6 +624,8 @@ describe('codex chat over the Bridge session WebSocket', () => {
     await client.next((f) => f.type === 'session:model-changed' && f.model === 'gpt-fake-mini')
     client.send({ type: 'session:change-effort', effort: 'low' })
     await client.next((f) => f.type === 'session:model-changed' && f.effort === 'low')
+    client.send({ type: 'session:codex-collaboration', sessionId: created.sessionId, mode: 'plan' })
+    await client.next((f) => f.type === 'session:codex-collaboration' && f.codexCollaboration.selected === 'plan')
     client.send({ type: 'session:end' })
     client.close()
     await runtimeMod.codexRuntime().close()
@@ -600,7 +639,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
       protocolVersion: 1,
       cwd: '/work/project',
     })
-    expect(await again.next((f) => f.type === 'session:created')).toMatchObject({
+    const resumed = await again.next((f) => f.type === 'session:created')
+    expect(resumed).toMatchObject({
+      codexCollaboration: { selected: 'plan', available: ['default', 'plan'] },
       engine: 'codex',
       model: 'gpt-fake-mini',
       effort: 'low',
@@ -610,6 +651,8 @@ describe('codex chat over the Bridge session WebSocket', () => {
     const first = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'low')
     again.send({ type: 'session:change-effort', effort: 'xhigh' })
     await again.next((f) => f.type === 'session:model-changed' && f.effort === 'xhigh')
+    again.send({ type: 'session:codex-collaboration', sessionId: resumed.sessionId, mode: 'default' })
+    await again.next((f) => f.type === 'session:codex-collaboration' && f.codexCollaboration.selected === 'default')
     await say(again, 'next turn', 'k3')
     const second = await again.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'xhigh')
     expect(second.turnId).not.toBe(first.turnId)
@@ -626,6 +669,18 @@ describe('codex chat over the Bridge session WebSocket', () => {
         .slice(-2)
         .map((r) => r.effort),
     ).toEqual([first.requestedEffort, second.requestedEffort])
+    expect(
+      requests
+        .filter((r) => r.method === 'turn/start')
+        .slice(-2)
+        .map((r) => r.collaborationMode),
+    ).toEqual([
+      { mode: 'plan', settings: { model: 'gpt-fake-mini', reasoning_effort: 'low', developer_instructions: null } },
+      {
+        mode: 'default',
+        settings: { model: 'gpt-fake-mini', reasoning_effort: 'xhigh', developer_instructions: null },
+      },
+    ])
     again.send({ type: 'session:end' })
     again.close()
   }, 30_000)

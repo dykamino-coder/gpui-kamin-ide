@@ -204,7 +204,11 @@ export function registerSessionsIPC(ctx: SessionsIpcContext): void {
   // ─── Permission mode / effort / model ─────────────
   ipcMain.on('change-permission-mode', (_event: IpcMainEvent, tabId: string, mode: string) => {
     const conn = tm()?.getConnection(tabId)
-    if (conn) conn.setPermissionMode(mode as any)
+    if (conn) conn.setPermissionMode(mode)
+  })
+
+  ipcMain.on('codex:change-collaboration', (_event: IpcMainEvent, tabId: string, sessionId: string, mode: string) => {
+    tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId)
   })
 
   ipcMain.on('change-effort', (_event: IpcMainEvent, tabId: string, effort: string) => {

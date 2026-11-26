@@ -3,6 +3,8 @@ import { useEffect } from 'preact/hooks'
 import { useTerminal } from '../../hooks/useTerminal'
 import { useTerminalResize } from '../../hooks/useTerminalResize'
 import styles from './TerminalPanel.module.css'
+import { tabs } from '../../signals/tabs'
+import { SESSION_LIMIT_NOTICE, waitingForSessionSlot } from '../../lib/session-admission'
 import { LoadingCue } from '../common/LoadingCue'
 
 interface TerminalContainerProps {
@@ -15,6 +17,10 @@ interface TerminalContainerProps {
 
 export function TerminalContainer({ tabId, active, fill = false }: TerminalContainerProps): JSX.Element {
   const { containerRef, terminalRef, fitAddonRef, hasOutput } = useTerminal(tabId)
+
+  const tab = tabs.value.find(item => item.id === tabId)
+  const atSessionLimit = waitingForSessionSlot(tab)
+  const waitingForOutput = tab?.engine === 'codex' && tab.status === 'connected'
 
   useTerminalResize({ containerRef, terminalRef, fitAddonRef, tabId })
 
@@ -48,9 +54,13 @@ export function TerminalContainer({ tabId, active, fill = false }: TerminalConta
         class={styles.xtermContainer}
         style={fill ? 'inset:8px 14px 10px 14px' : undefined}
       />
-      {!hasOutput && (
+      {(atSessionLimit || !hasOutput) && (
         <div class={styles.connecting} role="status">
-          <LoadingCue compact title="Connecting to session…" />
+          {atSessionLimit ? (
+            <><strong>Session limit reached</strong><span>{SESSION_LIMIT_NOTICE}</span></>
+          ) : waitingForOutput ? (
+            <span>Codex is connected. Waiting for console output.</span>
+          ) : <LoadingCue compact title="Connecting to session…" />}
         </div>
       )}
     </div>

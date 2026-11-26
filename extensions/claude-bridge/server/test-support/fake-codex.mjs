@@ -125,6 +125,9 @@ class RpcError extends Error {
 
 const handlers = {
   initialize: () => ({ userAgent: 'fake-codex/0.160.1', codexHome: home, platformFamily: 'unix', platformOs: 'linux' }),
+  'account/rateLimits/read': () => ({
+    rateLimits: { limitId: 'codex', secondary: { usedPercent: 17, windowDurationMins: 10080, resetsAt: null } },
+  }),
   'account/read': () => {
     const a = readAccount()
     return {
@@ -167,6 +170,7 @@ const handlers = {
     notify('account/updated', { authMode: null, planType: null })
     return {}
   },
+  'collaborationMode/list': () => ({ data: [{ mode: 'default' }, { mode: 'plan' }] }),
   'model/list': () => ({
     data: MODELS.map((m) => ({
       id: m.slug,
@@ -182,7 +186,7 @@ const handlers = {
         { reasoningEffort: 'low', description: 'low' },
         { reasoningEffort: 'medium', description: 'medium' },
         { reasoningEffort: 'high', description: 'high' },
-        ...(m.is_default
+        ...(m.is_default && !process.env.FAKE_CODEX_EXTENDED_DEFAULT_EFFORTS
           ? []
           : ['xhigh', 'max', 'ultra'].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort }))),
       ],
@@ -509,6 +513,7 @@ rl.on('line', (line) => {
   if (msg.method.startsWith('thread/') || msg.method.startsWith('turn/')) {
     const { model = null, effort = null, developerInstructions = null } = msg.params ?? {}
     const record = { method: msg.method, model, effort, instructions: developerInstructions }
+    if (msg.params?.collaborationMode) record.collaborationMode = msg.params.collaborationMode
     fs.appendFileSync(path.join(stateDir, 'rpc.jsonl'), JSON.stringify(record) + '\n')
   }
   if (!handler) {

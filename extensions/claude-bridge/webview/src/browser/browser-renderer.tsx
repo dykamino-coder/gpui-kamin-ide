@@ -16,9 +16,14 @@ import { installHljsThemeSwapper } from '../theme/highlight-theme'
 import { notifyHostReady } from '../lib/host-ready'
 import { installExternalLinkHandler } from '../lib/external-links'
 import { installCommandApi } from '../lib/command-api'
+import { updateShell } from './shell/state'
+import { activeTabId } from '../signals/tabs'
 import { connectDrafts } from './drafts'
 
 export function mount(root: HTMLElement): void {
+  window.kaminBridge.openPermissionConsole = tabId => {
+    if (tabId === activeTabId.value) updateShell({ type: 'activate', panel: 'console' })
+  }
   connectDrafts()
   applyInitialTheme()
   installHljsThemeSwapper()

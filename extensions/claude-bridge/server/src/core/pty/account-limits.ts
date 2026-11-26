@@ -105,7 +105,7 @@ export function currentAccountLimits(now: number = Date.now()): AccountLimits | 
 
 /** Record windows a CLI just reported. Older observations never replace a
  *  newer one. Returns true when the stored snapshot changed. */
-export function recordAccountLimits(windows: LimitWindow[], observedAt: string): boolean {
+export function recordAccountLimits(windows: readonly unknown[], observedAt: string): boolean {
   const fresh = windows.filter(valid)
   if (fresh.length === 0 || !Number.isFinite(Date.parse(observedAt))) return false
   const current = load()
