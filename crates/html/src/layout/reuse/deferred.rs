@@ -170,14 +170,22 @@ impl Store {
     }
 
     /// Keep edits off the screen that the layer cannot record: a replay
-    /// that shows any builds the frame (`due_frames`).
+    /// that shows any builds the frame (`due_frames`). One frame takes them
+    /// all, so the edits of one reason wait as the union of their areas: the
+    /// list stays one entry per reason however many edits stay off the
+    /// screen.
     pub(crate) fn defer_frames(&self, waits: Vec<(Bounds<ScaledPixels>, Wait)>) {
         if waits.is_empty() {
             return;
         }
         let deferred = self.layer.deferred();
         let mut kept = deferred.frames.take();
-        kept.extend(waits);
+        for (area, wait) in waits {
+            match kept.iter_mut().find(|(_, w)| *w == wait) {
+                Some((kept, _)) => *kept = kept.union(&area),
+                None => kept.push((area, wait)),
+            }
+        }
         deferred.frames.set(kept);
     }
 
