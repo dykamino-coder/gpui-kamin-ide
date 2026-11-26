@@ -41,6 +41,7 @@ pub(crate) struct FontInfo {
 
 mod scene_capture;
 mod canvas;
+mod cover_shape;
 mod frame_capture;
 mod cull;
 mod gpu_wait;
