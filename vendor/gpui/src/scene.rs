@@ -960,6 +960,12 @@ impl Scene {
         self.surfaces.reserve_exact(other.surfaces.len());
     }
 
+    /// KaminIDE patch: whether the scene draws anything: a command (a
+    /// primitive, a nested composite, a layer) or a hoisted backdrop.
+    pub(crate) fn paints(&self) -> bool {
+        !self.paint_operations.is_empty() || !self.hoisted_backdrops.is_empty()
+    }
+
     /// KaminIDE patch: count the clipped bounds of a primitive command added
     /// to this scene in `primitive_ink`; empty bounds paint nothing.
     fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
