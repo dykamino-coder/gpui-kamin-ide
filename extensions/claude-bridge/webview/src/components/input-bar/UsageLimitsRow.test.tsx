@@ -59,6 +59,14 @@ describe('status row under the chat input', () => {
     expect(container.querySelector('[data-testid="usage-plan-no-data"]')?.textContent).toBe('planno data')
   })
 
+  it('shows the remaining percentage even when the account omits the reset time', () => {
+    setTabUsage('t1', { ...claudeUsage(), engine: 'codex', windows: [{ id: 'seven_day', label: 'Weekly limit', percent: 17, resetsAt: null }] })
+    show('codex')
+    expect(row().textContent).toContain('17%')
+    expect(row().querySelector('[title*="83% remaining"]')).not.toBeNull()
+    expect(row().textContent).not.toContain('Invalid Date')
+  })
+
   it('shows ChatGPT plan windows once the server reports them for the codex agent', () => {
     setTabUsage('t1', { ...claudeUsage(), engine: 'codex', windows: [{ id: 'primary', label: '5 hours', percent: 20, resetsAt: new Date(Date.now() + 3_600_000).toISOString() }] })
     show('codex')

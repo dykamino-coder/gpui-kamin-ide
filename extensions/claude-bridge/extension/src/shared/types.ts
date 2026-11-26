@@ -5,7 +5,7 @@ export interface SessionUsageWindow {
   label: string
   percent: number
   /** ISO reset time */
-  resetsAt: string
+  resetsAt: string | null
 }
 /** Live subscription limits + context fill from the CLI status line. */
 export interface SessionUsage {
