@@ -53413,6 +53413,13 @@ function withProgressToken(method, requestId, params) {
   const meta = params._meta && typeof params._meta === "object" ? params._meta : {};
   return { ...params, _meta: { ...meta, progressToken: requestId } };
 }
+function rejectPendingMcpRequests(state, error) {
+  for (const pending2 of state.pendingRequests.values()) {
+    if (pending2.timer) clearTimeout(pending2.timer);
+    pending2.reject(error);
+  }
+  state.pendingRequests.clear();
+}
 function duration(ms) {
   return ms % 6e4 === 0 ? `${ms / 6e4} min` : `${ms / 1e3}s`;
 }
@@ -54112,6 +54119,14 @@ async function connectStdio(ctx, id) {
     });
     state.process = proc;
     state.inputBuffer = "";
+    proc.stdin.on("error", (err) => {
+      if (state.process !== proc) return;
+      const failure = new Error(`[stdio] stdin write failed: ${err.message}`);
+      ctx.appendLog(id, "error", failure.message);
+      rejectPendingMcpRequests(state, failure);
+      finish(false, failure);
+      proc.kill();
+    });
     proc.stdout?.setEncoding("utf8");
     proc.stderr?.setEncoding("utf8");
     ctx.appendLog(id, "info", `[stdio] spawned pid=${proc.pid ?? "n/a"}`);
@@ -54205,12 +54220,15 @@ async function connectStdio(ctx, id) {
       finish(false, err);
     });
     proc.on("exit", (code, signal) => {
+      const failure = new Error(`Process exited early (code=${code ?? "null"})`);
+      finish(false, failure);
+      if (state.process !== proc) return;
+      rejectPendingMcpRequests(state, failure);
       ctx.appendLog(id, code === 0 ? "info" : "warn", `[stdio] process exited code=${code} signal=${signal ?? "none"}`);
       state.status = "disconnected";
       state.tools = [];
       ctx.notifyChanged();
       ctx.onToolsChanged?.();
-      finish(false, new Error(`Process exited early (code=${code ?? "null"})`));
       if (state.permanentFailure) {
         state.status = "error";
         state.error = `Server file is broken (fix or remove the entry): ${state.permanentFailure}`;
@@ -54296,6 +54314,7 @@ async function stdioJsonRpc(ctx, id, method, params) {
   return msg.result;
 }
 function stdioRequest(ctx, state, method, params) {
+  if (!state.process?.stdin?.writable) return Promise.reject(new Error("MCP server stdin is closed"));
   const reqId = state.nextRequestId++;
   const reply = awaitMcpReply(state, reqId, {
     method,
@@ -54332,11 +54351,7 @@ function teardownServer(state) {
     state.sseAbort = void 0;
     state.sseMessageEndpoint = void 0;
   }
-  for (const pending2 of state.pendingRequests.values()) {
-    if (pending2.timer) clearTimeout(pending2.timer);
-    pending2.reject(new Error("Server disconnected"));
-  }
-  state.pendingRequests.clear();
+  rejectPendingMcpRequests(state, new Error("Server disconnected"));
   state.status = "disconnected";
   state.tools = [];
   state.toolSchemas.clear();
