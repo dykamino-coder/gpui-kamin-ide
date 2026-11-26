@@ -48,6 +48,8 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 
 ## Целевая пачка `RC-2026-11-26-BRIDGE-INTEGRATION`
 
+Published in [kaminide-v1.0.130](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.130). Deployment observations remain with the owner.
+
 Срез `9add363b0e8957d63488f8af09905700a5757305`, релиз 1.0.129 / 6.3.206.
 Владелец поручил автору регистрации подготовить исправления интеграции и один релиз. Рендеринг и прежние пачки ведутся отдельно. В момент сверки открытые публичные PR касались HTML, GPUI и производительности. У приватных PR #141, #147 и #150 другой scope.
 
