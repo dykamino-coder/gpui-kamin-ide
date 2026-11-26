@@ -194,6 +194,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "CSS root compositing: accept a typed computed opacity before resolving explicit inheritance, then leave only the root group to its external paint owner; nested SVG resources retain their own context.",
         "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",

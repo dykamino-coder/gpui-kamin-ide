@@ -2,6 +2,7 @@
 
 use super::DENSITY;
 use crate::paint::cache::{BoundedCache, MIB, optional_image_bytes};
+use crate::resources::images::svg_raster::{RasterRequest, RootPaint};
 use gpui::RenderImage;
 use std::sync::Arc;
 
@@ -20,11 +21,14 @@ pub fn rasterize(
     h: f32,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    let cpu = vcx.doc.images.borrow().rasterize_svg(
-        markup,
-        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, 0.0),
-    )?;
-    crate::paint::background::image_adapter::upload(&cpu)
+    rasterize_request(markup, request(w, h, RootPaint::Svg), vcx)
+}
+
+pub(super) fn request(w: f32, h: f32, root_paint: RootPaint) -> RasterRequest {
+    RasterRequest {
+        root_paint,
+        ..RasterRequest::new(w, h, DENSITY, 0.0)
+    }
 }
 
 /// SVG как CSS/HTML-картинка: secure static mode запрещает внешние файлы.
@@ -78,19 +82,13 @@ pub(super) fn cached(
     CACHE.get_or_insert_with(key, create)
 }
 
-/// `rasterize` with `pad` logical pixels of extra canvas on the right and
-/// bottom at the same user-space scale (`gpui::svg_markup_to_image_padded`).
-pub(super) fn rasterize_padded(
+/// Rasterize with explicit source-root ownership and viewport.
+pub(super) fn rasterize_request(
     markup: &str,
-    w: f32,
-    h: f32,
-    pad: f32,
+    request: RasterRequest,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<Arc<RenderImage>> {
-    let cpu = vcx.doc.images.borrow().rasterize_svg(
-        markup,
-        crate::resources::images::svg_raster::RasterRequest::new(w, h, DENSITY, pad),
-    )?;
+    let cpu = vcx.doc.images.borrow().rasterize_svg(markup, request)?;
     crate::paint::background::image_adapter::upload(&cpu)
 }
 

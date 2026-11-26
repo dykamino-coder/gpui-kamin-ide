@@ -144,8 +144,8 @@ pub(crate) fn svg_replaced(
     merged: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
-    let content = super::svg_raster_style::content(sized);
-    let raster = opts.cx.contracts.build.svg(&content, opts);
+    let content = crate::layout::build_contracts::SvgContent::replaced(sized);
+    let raster = opts.cx.contracts.build.svg(content, opts);
     let px_of = px_lossy_zero;
     let (w, h) = crate::layout::replaced::svg_size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.

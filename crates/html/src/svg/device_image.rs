@@ -10,14 +10,23 @@ pub(super) fn element(
     markup: String,
     w: f32,
     h: f32,
+    root_paint: super::RootPaint,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<Div> {
     // One logical pixel of canvas past the viewport keeps the content that
     // reaches beyond its edge, so the clip below can end on the snapped box
     // edge.
     const PAD: f32 = 1.0;
-    let image = super::raster::rasterize(&markup, w, h, vcx)?;
-    let padded = super::raster::rasterize_padded(&markup, w, h, PAD, vcx);
+    let request = super::raster::request(w, h, root_paint);
+    let image = super::raster::rasterize_request(&markup, request, vcx)?;
+    let padded = super::raster::rasterize_request(
+        &markup,
+        crate::resources::images::svg_raster::RasterRequest {
+            pad: (PAD * super::DENSITY).round() as u32,
+            ..request
+        },
+        vcx,
+    );
     let base = |v: f32| super::raster::device_extent(v) as f32;
     let pad_px = (PAD * super::DENSITY).round();
     let (dw, dh) = (
