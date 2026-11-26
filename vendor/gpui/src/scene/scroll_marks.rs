@@ -12,6 +12,7 @@
 //! order raise still to apply, so a step costs a rectangle test per dormant
 //! command, not a copy of it.
 
+pub(crate) mod carry;
 mod check;
 use super::*;
 use crate::ScrollNodeId;
@@ -66,12 +67,16 @@ pub(crate) struct ScrollBook {
     /// where it lands (`Window::with_copies_marked`); a node opened inside
     /// the record marks its commands as usual.
     pub(crate) record_base: Option<usize>,
+    /// While a paint record lands: the marks of the nodes it opened inside
+    /// itself, carried to its copy (carry).
+    pub(crate) carry: Option<Box<carry::Carry>>,
 }
 
 impl ScrollBook {
     pub(crate) fn clear(&mut self) {
         self.marks.clear();
         self.open = None;
+        self.carry = None;
     }
 
     /// Marks of the commands in `range`.

@@ -878,18 +878,22 @@ impl Scene {
         // clipped record copies only what is visible), and a frame keeps its
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
-        for operation in operations {
+        for (index, operation) in operations.iter().enumerate() {
             let mut operation = self.relabeled(operation);
+            // KaminIDE patch: the mark of a node the record opened inside itself.
+            let carried = self.carried(index);
             if !place(&mut operation) {
                 layer::PlacedMap::skip(&mut self.book.placed_map);
+                self.land_carried(None, None, shift);
                 continue;
             }
             // KaminIDE patch: a copy landing under a scroll node is marked
             // there, ordered by its own mask, dormant where the chain hides it.
-            if self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
+            if carried.is_none() && self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
                 let at = self.paint_operations.len();
                 layer::PlacedMap::land(&mut self.book.placed_map, at, None);
                 self.paint_operations.push(operation);
+                self.land_carried(Some(at), None, shift);
                 continue;
             }
             let mut quad = None;
@@ -921,6 +925,7 @@ impl Scene {
                     layer.order += shift;
                     if !self.push_layer_slot(layer) {
                         layer::PlacedMap::skip(&mut self.book.placed_map);
+                        self.land_carried(None, None, shift);
                         continue;
                     }
                 }
@@ -929,6 +934,7 @@ impl Scene {
             let at = self.paint_operations.len();
             layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
             self.paint_operations.push(operation);
+            self.land_carried(Some(at), carried, shift);
         }
         Self::count_copied(copied);
         if let Some(ink) = ink {
