@@ -22,7 +22,10 @@ const events = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'] as const
 type ToolEvent = (typeof events)[number]
 
 const snapshots = new WeakMap<PtySession, string | null>()
-export function registerCodexToolHooks(session: PtySession): void {
+// A live chat which has used the project snapshot must not fall back to a
+// different project's legacy index when an older client reconnects.
+const scopedSessions = new WeakSet<PtySession>()
+export function registerCodexToolHooks(session: PtySession, incomingProtocol?: number): void {
   if (!session.bearerHash) return
   const user = getUserSyncDir(session.bearerHash)
   const settings = [path.join(user, 'settings.json')]
@@ -31,7 +34,8 @@ export function registerCodexToolHooks(session: PtySession): void {
   const scopedPlugins = path.join(scope, 'codex-tool-hooks.json')
   let merged
   try {
-    if (session.launchConfig?.codexHookProtocol === 1 && !fs.existsSync(scopedPlugins)) throw new Error(HOOK_SYNC_ERROR)
+    if (incomingProtocol === 1 || session.launchConfig?.codexHookProtocol === 1) scopedSessions.add(session)
+    if (scopedSessions.has(session) && !fs.existsSync(scopedPlugins)) throw new Error(HOOK_SYNC_ERROR)
     merged = mergeClientHooks(
       session.cwd,
       settings,
@@ -57,11 +61,11 @@ export function registerCodexToolHooks(session: PtySession): void {
   for (const hook of registered.values()) hook.codexToolHook = true
 }
 
-export async function refreshCodexToolHooks(session: PtySession, signal?: AbortSignal) {
+export async function refreshCodexToolHooks(session: PtySession, signal?: AbortSignal, incomingProtocol?: number) {
   if (session.bearerHash)
     await withSyncSnapshotLock(session.bearerHash, () => {
       signal?.throwIfAborted()
-      registerCodexToolHooks(session)
+      registerCodexToolHooks(session, incomingProtocol)
     })
 }
 

@@ -893,7 +893,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               if (live.engine === 'codex') {
                 try {
                   if (msg.hookSyncFailed) throw new Error(HOOK_SYNC_ERROR)
-                  await refreshCodexToolHooks(live)
+                  await refreshCodexToolHooks(live, undefined, msg.codexHookProtocol)
                 } catch {
                   if (ownsStartup(operation)) sendError(ws, HOOK_SYNC_ERROR)
                   return

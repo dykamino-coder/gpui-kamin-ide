@@ -1297,7 +1297,7 @@ describe('engine switch inside one chat', () => {
     }
     let client = await Client.open(port)
     try {
-      const created = await createChat(client, { engine: 'codex', codexHookProtocol: 1 })
+      const created = await createChat(client, { engine: 'codex' })
       await inspect(created, 'codex')
       await say(client, 'start sample', 'hook-reconnect')
       const { conversationId } = await client.next((f) => f.type === 'session:conversation-id')
@@ -1313,10 +1313,38 @@ describe('engine switch inside one chat', () => {
         cwd: '/work/project',
       }
       client = await Client.open(port)
+      fs.unlinkSync(pluginFile)
+      client.send(resume)
+      expect(await client.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+        type: 'session:error',
+        error: expect.stringContaining('synchronized'),
+      })
+      client.close()
+      client = await Client.open(port)
+      fs.writeFileSync(pluginFile, '[]')
       client.send(resume)
       const live = await client.next((f) => f.type === 'session:created')
       expect(live).toMatchObject({ reattached: true, sessionId: created.sessionId })
       await inspect(live, 'codex')
+      let older = await Client.open(port)
+      try {
+        older.send({ ...resume, codexHookProtocol: undefined, hookSyncFailed: true })
+        expect(await older.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+          type: 'session:error',
+          error: expect.stringContaining('synchronized'),
+        })
+        older.close()
+        older = await Client.open(port)
+        fs.unlinkSync(pluginFile)
+        older.send({ ...resume, codexHookProtocol: undefined })
+        expect(await older.next((f) => f.type === 'session:error' || f.type === 'session:created')).toMatchObject({
+          type: 'session:error',
+          error: expect.stringContaining('synchronized'),
+        })
+        fs.writeFileSync(pluginFile, '[]')
+      } finally {
+        older.close()
+      }
       client.send({ type: 'session:end' })
       await client.next((f) => f.type === 'session:exit')
       client.close()
