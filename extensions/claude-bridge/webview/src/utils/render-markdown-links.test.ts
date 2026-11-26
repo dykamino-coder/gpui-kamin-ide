@@ -68,6 +68,11 @@ describe('Windows project links', () => {
     expect(html).toContain('>Example</a>')
     expect(html).toContain('data-ext-link href="https://example.test/"')
   })
+  it('keeps an example inside inline code literal', () => {
+    const html = renderMarkdown('`[Example](C:/Fixture/sample.ts)`', { workspaceLinks: true })
+    expect(html).toContain('[Example](C:/Fixture/sample.ts)</code>')
+    expect(html).not.toContain('data-workspace-location')
+  })
   it('accepts a local file URL and leaves network shares without workspace navigation', () => {
     expect(renderMarkdown('[Sample](file:///C:/Fixture/test.ts#L2)', { workspaceLinks: true })).toContain('data-workspace-location="file:///C:/Fixture/test.ts#L2"')
     expect(renderMarkdown('[Sample](file:///C:/Fixture/test.ts#L2)')).not.toContain('data-workspace-location')

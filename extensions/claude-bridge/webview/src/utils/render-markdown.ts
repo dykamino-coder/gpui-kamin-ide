@@ -195,6 +195,7 @@ function renderBlocks(text: string, quoteDepth: number, workspaceLinks: boolean)
 
   const CODE_STYLE =
     'font-family:var(--font-mono);font-size:13px;color:var(--markdown-inline-code);background:var(--bg-surface);padding:2px 10px;border-radius:var(--radius-xs);'
+  const inlineCode: string[] = []
   text = text.replace(/`([^`]+)`/g, (_m, inner: string) => {
     // A URL sealed in a backtick — `http://localhost:3094/...` — is the ONE code
     // span worth making clickable: the model wraps action URLs this way, and the
@@ -207,7 +208,8 @@ function renderBlocks(text: string, quoteDepth: number, workspaceLinks: boolean)
       const href = /^www\./i.test(inner) ? `https://${inner}` : inner
       return `<a data-ext-link href="${href}" title="${href}" style="${CODE_STYLE}text-decoration:underline;cursor:pointer;">${inner}</a>`
     }
-    return `<code style="${CODE_STYLE}">${inner}</code>`
+    inlineCode.push(`<code style="${CODE_STYLE}">${inner}</code>`)
+    return `\x00INLINE${inlineCode.length - 1}\x00`
   })
 
   // Links: markdown [text](url) + bare URLs → external anchors (data-ext-link).
@@ -370,5 +372,5 @@ function renderBlocks(text: string, quoteDepth: number, workspaceLinks: boolean)
   // Восстановить контейнеры одним проходом, не разбирая их содержимое повторно.
   text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_m, idx) => codeBlocks[Number(idx)] ?? '')
 
-  return text
+  return text.replace(/\x00INLINE(\d+)\x00/g, (_m, i: string) => inlineCode[Number(i)] ?? '')
 }
