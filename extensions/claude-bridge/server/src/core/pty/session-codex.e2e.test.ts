@@ -1008,6 +1008,34 @@ describe('engine switch inside one chat', () => {
     return after(client, from)((e) => e.type === 'assistant' && text(e).startsWith(prefix) && !old.has(e.uuid))
   }
 
+  it.each(['claude', 'codex'] as const)(
+    'preserves answers across an empty segment on return to %s',
+    async (first) => {
+      const client = await Client.open(port)
+      const other = first === 'codex' ? 'claude' : 'codex'
+      const model = { codex: 'gpt-fake', claude: 'claude-sonnet-5-5' }
+      try {
+        expect(await createChat(client, { engine: first, cwd: state.home })).toMatchObject({ engine: first })
+        await say(client, first === 'claude' ? '/fake-note 4217' : 'remember 4217', 'handoff-first')
+        const original = text(await client.entry((e) => e.type === 'assistant' && text(e).includes('4217')))
+        expect((await switchTo(client, other, model[other])).restarted.engine).toBe(other)
+        expect((await switchTo(client, first, model[first])).restarted.engine).toBe(first)
+        let from = client.frames.length
+        await say(client, '/fake-recall previously selected', 'handoff-selection')
+        expect(text(await answerAfter(client, from, 'recall:'))).toContain(
+          `previously selected: ${other === 'claude' ? 'Claude' : 'ChatGPT'}`,
+        )
+        from = client.frames.length
+        await say(client, '/fake-recall 4217', 'handoff-answer')
+        expect(text(await answerAfter(client, from, 'recall:'))).toContain(original)
+      } finally {
+        client.send({ type: 'session:end' })
+        client.close()
+      }
+    },
+    45_000,
+  )
+
   it('carries the conversation Claude → ChatGPT → Claude in the same chat and resumes it', async () => {
     const client = await Client.open(port)
     expect(await createChat(client, { engine: 'claude' })).toMatchObject({ type: 'session:created', engine: 'claude' })
