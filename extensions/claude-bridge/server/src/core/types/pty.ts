@@ -266,6 +266,10 @@ export interface ExternalPromptDefinition {
 export interface SessionConfig {
   hookSyncFailed?: boolean
   codexHookProtocol?: 1
+  /** Preserve an untouched CLI session's native identity during the first mode change. */
+  pristineClaudeId?: string
+  /** Explicit, per-conversation selection accepted by Bridge for the native CLI launch. */
+  claudePermissionMode?: import('../pty/claude-permissions').ClaudeMode
   /** Working directory for Claude CLI */
   cwd?: string
   /** Initial terminal dimensions */
