@@ -44,8 +44,8 @@ pub(crate) fn len_to_gpui(l: Len, vcx: ValueCx<'_>) -> gpui::DefiniteLength {
         | Len::Ex(_)
         | Len::Lh(_)
         | Len::LhPx(..)
-        // Дерево функции сравнения, не свёрнутое каскадом (узел вне
-        // наследования): те же запасные базы шрифта.
+        // A math function tree the cascade did not fold (a node outside
+        // inheritance): the same fallback font bases.
         | Len::Math(_)) => px(l.to_px(None, FontCx::FALLBACK, vcx).unwrap_or(0.0)).into(),
         // Единицы окна разрешает сборщик дерева; сюда они доходят только у
         // узлов вне его — доля родителя ближе всего по смыслу.

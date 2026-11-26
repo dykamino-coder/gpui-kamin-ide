@@ -10,6 +10,7 @@
 //! совпадают (`style::values::value::units`).
 
 use super::len_px::FontCx;
+use super::math_lengths::fold_math;
 use crate::style::computed::Computed;
 use crate::style::values::value::{Len, Sum, calc_get};
 use crate::values::ValueCx;
@@ -95,25 +96,8 @@ impl<'a> LenCx<'a> {
                 };
                 if k == 0.0 { add } else { pct(k)? + add }
             }
-            // Дерево, не свёрнутое каскадом (узел вне наследования): окно и
-            // шрифт контекста подставляются без записи в арену.
             Len::Math(_) => {
-                let mut viewport = false;
-                let sum = l.math_sum(vcx, |s| {
-                    let folded = self
-                        .viewport
-                        .is_some_and(|vp| s.fold_viewport(vp.size, vp.vertical, vp.container));
-                    viewport |= folded;
-                    let font = self.font.is_some_and(|f| {
-                        s.fold_font(f.font_px, || font_glyph_units(f, vcx))
-                            | f.line_px.is_some_and(|line| s.fold_line(line))
-                    });
-                    folded | font
-                });
-                if viewport {
-                    crate::values::viewport_reads::note(vcx);
-                }
-                let (k, add) = sum?.length_percentage()?;
+                let (k, add) = self.math_terms(l, vcx)?;
                 if k == 0.0 { add } else { pct(k)? + add }
             }
             Len::Vw(k) => {
@@ -147,19 +131,6 @@ impl<'a> LenCx<'a> {
     pub fn px_lossy_zero(self, l: Option<Len>, vcx: ValueCx<'_>) -> f32 {
         self.px_strict(l, vcx).unwrap_or(0.0)
     }
-}
-
-/// Метрики глифов контекста `[cap, ch, ex, ic]` — порядок `glyph_units`.
-fn font_glyph_units(font: FontCx<'_>, vcx: ValueCx<'_>) -> [f32; 4] {
-    font.units.unwrap_or_else(|| {
-        let (ch, ex) = crate::style::font_metrics::horizontal(font.family, font.metric_px, vcx);
-        [
-            crate::style::font_metrics::vertical(font.family, font.metric_px, vcx).2,
-            ch,
-            ex,
-            crate::style::font_metrics::ideographic(font.family, font.metric_px, vcx),
-        ]
-    })
 }
 
 /// Шрифтовые единицы по контексту шрифта.
@@ -205,16 +176,7 @@ impl Len {
         }
         if let Len::Math(_) = self {
             let container = vp.container.unwrap_or(vp.size);
-            let mut folded = false;
-            let resolved = self.resolve_math(vcx, |s| {
-                let one = s.fold_container(container, vp.vertical);
-                folded |= one;
-                one
-            });
-            if folded {
-                crate::values::viewport_reads::note(vcx);
-            }
-            return resolved;
+            return fold_math(self, vcx, |s| s.fold_container(container, vp.vertical));
         }
         self
     }
@@ -242,18 +204,9 @@ impl Len {
                     self
                 }
             }
-            Len::Math(_) => {
-                let mut folded = false;
-                let resolved = self.resolve_math(vcx, |s| {
-                    let one = s.fold_viewport(vp.size, vp.vertical, vp.container);
-                    folded |= one;
-                    one
-                });
-                if folded {
-                    crate::values::viewport_reads::note(vcx);
-                }
-                resolved
-            }
+            Len::Math(_) => fold_math(self, vcx, |s| {
+                s.fold_viewport(vp.size, vp.vertical, vp.container)
+            }),
             other => other,
         }
     }

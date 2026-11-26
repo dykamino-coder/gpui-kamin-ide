@@ -89,11 +89,9 @@ pub struct DocumentValues {
     pub images: RefCell<crate::resources::images::store::ImageStore>,
     /// Неизменяемые факты CSS-картинок для прохода стиля, подготовленные оркестратором.
     pub background_images: RefCell<Rc<crate::resources::css_images::facts::BackgroundImages>>,
-    /// Смешанные суммы `calc()` (`Len::Calc`).
+    /// Expression arenas of `Len::Calc`, `Len::Anchor` and `Len::Math` (`arena`).
     pub calc: Arena<Sum>,
-    /// Функции `anchor()` (`Len::Anchor`).
     pub anchor: Arena<Rc<AnchorFn>>,
-    /// Отложенные математические функции (`Len::Math`).
     pub math: Arena<crate::style::values::value::MathTree>,
     /// Номера областей арен: документа и текущего кадра (`arena`).
     owner: Cell<u32>,
@@ -195,9 +193,7 @@ impl DocumentValues {
     pub fn reset_painted_frame(&self) {
         if self.painted.replace(false) {
             self.frame_owner.set(arena::new_owner());
-            self.calc.clear_frame();
-            self.anchor.clear_frame();
-            self.math.clear_frame();
+            self.clear_frame_arenas();
         }
     }
 

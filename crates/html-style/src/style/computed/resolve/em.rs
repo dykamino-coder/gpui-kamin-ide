@@ -137,8 +137,8 @@ impl Computed {
                     *l = s.collapse_mixed(vcx);
                 }
             }
-            // Дерево функции сравнения: шрифтовые листья — в точки, узлы,
-            // ставшие однородными, сворачиваются (css-values-4 §10.10).
+            // Math function tree: font leaves become pixels, and nodes whose
+            // arguments now share one unit fold (css-values-4 §10.10).
             Some(m @ Len::Math(_)) => {
                 *l = Some(m.resolve_math(vcx, |s| s.fold_font(base, || [cap, ch, ex, ic])));
             }

@@ -209,7 +209,7 @@ impl Len {
     /// радиусы градиента) базы не знают — для них такая длина как прежде
     /// не разобрана, а не молча равна нулю.
     pub fn needs_unit_context(self, vcx: ValueCx<'_>) -> bool {
-        // Дерево функции сравнения такие потребители не вычисляют вовсе.
+        // These consumers do not evaluate math function trees at all.
         matches!(self, Len::Calc(i) if super::calc_get(i, vcx).ext.iter().any(|v| *v != 0.0))
             || matches!(self, Len::Math(_))
     }

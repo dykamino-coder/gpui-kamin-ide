@@ -1,20 +1,20 @@
-//! Отложенные математические функции (css-values-4 §10.10): `min()`/`max()`/
-//! `clamp()` и прочие функции над природами, базы которых ещё не известны
+//! Deferred math functions (css-values-4 §10.10): `min()`/`max()`/`clamp()`
+//! and the other functions over units whose bases are not known yet
 //! (`clamp(2rem, 1rem + 5vw, 4rem)`, `min(3em, 8vw)`).
 //!
-//! Линейная сумма (`Sum`) такую запись не держит: сравнить `5vw` с `2rem`
-//! можно только при известных окне и кегле. Поэтому разбор записывает дерево
-//! выражения, листья которого — суммы любых природ, и кладёт его в арену
-//! документа (`Len::Math`, ручка как у `Len::Calc`). Каскад подставляет базы в
-//! листья в тех же шагах, что и для `Len::Calc` (шрифт — `resolve_em`, строка —
-//! `resolve_line_height`, окно и контейнер — `fold_viewport`/`fold_container`),
-//! и упрощает дерево: узел, все доводы которого стали одной природы,
-//! вычисляется, а дерево из одного листа становится обычной длиной. Так и
-//! в Blink (`CSSMathExpressionNode` → `CalculationExpressionNode`) и Gecko
-//! (`GenericCalcNode`): к вычисленному значению остаются лишь доли.
+//! A linear sum (`Sum`) cannot hold such a value: `5vw` compares with `2rem`
+//! only once the viewport and the font size are known. The parser records
+//! an expression tree whose leaves are sums of any units and stores it in
+//! the document arena (`Len::Math`, a handle like `Len::Calc`). The cascade
+//! substitutes bases in the same steps as for `Len::Calc` (font: `resolve_em`,
+//! line: `resolve_line_height`, viewport and container: `fold_viewport`/`fold_container`)
+//! and simplifies the tree: a node whose arguments now share one unit is
+//! evaluated, and a tree of one leaf becomes an ordinary length. Blink
+//! (`CSSMathExpressionNode` -> `CalculationExpressionNode`) and Gecko
+//! (`GenericCalcNode`) do the same: only percentages survive the computed value.
 //!
-//! Доли внутри дерева здесь пока не принимаются: их база известна только
-//! раскладке, и такая запись по-прежнему отбрасывается.
+//! Percentages inside a tree are not accepted yet: only layout knows their
+//! basis, so such a value is still dropped.
 
 use super::calc::{Calc, Val};
 use super::calc_expression::Node;
@@ -23,16 +23,16 @@ use super::{Len, Sum};
 use crate::values::ValueCx;
 use std::hash::{Hash, Hasher};
 
-/// Ручка дерева математической функции (`Len::Math`) в арене документа.
+/// Handle of a math function tree (`Len::Math`) in the document arena.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MathId(crate::values::ArenaKey);
 
-/// Тело `Len::Math`: дерево выражения с листьями-суммами.
+/// Body of `Len::Math`: an expression tree whose leaves are sums.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MathTree(Node);
 
-/// Разбор записи, которую `eval_calc` не свернул: дерево с проверкой типов.
-/// `None` — запись негодна или держит долю (её база — только у раскладки).
+/// Parses a value `eval_calc` could not fold, as a type-checked tree.
+/// `None`: the value is invalid or holds a percentage (only layout has its basis).
 pub(super) fn deferred(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
     let mut calc = Calc::new(raw);
     calc.recording = Some(Vec::new());
@@ -50,7 +50,7 @@ pub(super) fn deferred(raw: &str, vcx: ValueCx<'_>) -> Option<Len> {
 
 fn finish(node: Node, vcx: ValueCx<'_>) -> Len {
     match node {
-        // Верхний уровень: NaN -> 0, ±∞ -> предел (§10.13).
+        // Top level: NaN -> 0, ±infinity -> the limit (§10.13).
         Node::Value(Val::Len(sum)) => sum.censored().collapse_mixed(vcx).unwrap_or(Len::Px(0.0)),
         tree => {
             let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -71,8 +71,8 @@ fn load(id: MathId, vcx: ValueCx<'_>) -> Option<Node> {
 }
 
 impl Node {
-    /// Упрощение §10.10: линейные действия над листьями и функции, доводы
-    /// которых сравнимы (одна природа), вычисляются; остальное остаётся узлом.
+    /// Simplification (§10.10): linear operations on leaves and functions
+    /// whose arguments are comparable (one unit) are evaluated; the rest stays a node.
     pub(super) fn simplified(self) -> Node {
         match self {
             Node::Value(v) => Node::Value(v),
@@ -142,10 +142,10 @@ impl Node {
 }
 
 impl Len {
-    /// Шаг каскада над деревом: `f` подставляет известные базы в лист и
-    /// отвечает, менял ли его. Дерево упрощается и, если свелось к одному
-    /// листу, становится длиной. Без перемен ручка остаётся прежней: арена
-    /// append-only, а шаги идут на каждом наследовании.
+    /// A cascade step over the tree: `f` substitutes known bases into a leaf
+    /// and reports whether it changed it. The tree is simplified and becomes
+    /// a length when one leaf remains. Without changes the handle is kept: the
+    /// arena is append-only and the steps run on every inheritance.
     pub fn resolve_math(self, vcx: ValueCx<'_>, mut f: impl FnMut(&mut Sum) -> bool) -> Len {
         let Len::Math(id) = self else {
             return self;
@@ -159,8 +159,8 @@ impl Len {
         finish(node.simplified(), vcx)
     }
 
-    /// Сумма, к которой дерево сводится после подстановки баз `f`, — без
-    /// записи в арену (для потребителей на раскладке и отрисовке).
+    /// The sum the tree reduces to after `f` substitutes bases, without an
+    /// arena write (for layout and paint consumers).
     pub fn math_sum(self, vcx: ValueCx<'_>, mut f: impl FnMut(&mut Sum) -> bool) -> Option<Sum> {
         let Len::Math(id) = self else {
             return None;
@@ -173,15 +173,15 @@ impl Len {
         }
     }
 
-    /// Есть ли в дереве лист, для которого `f` истинно.
+    /// Whether a leaf of the tree satisfies `f`.
     pub fn math_any(self, vcx: ValueCx<'_>, f: impl Fn(&Sum) -> bool) -> bool {
         matches!(self, Len::Math(id) if load(id, vcx).is_some_and(|n| n.any_leaf(&f)))
     }
 }
 
 impl Sum {
-    /// Шрифтовые слагаемые в точки по кеглю `em` и метрикам глифов.
-    /// `false` — шрифтовых слагаемых не было.
+    /// Folds font-relative terms into pixels by the `em` size and glyph metrics.
+    /// `false`: there were no font-relative terms.
     pub fn fold_font(&mut self, em: f32, glyphs: impl FnOnce() -> [f32; 4]) -> bool {
         if self.em == 0.0 && self.ch == 0.0 && self.ex == 0.0 && self.ic == 0.0 && self.cap == 0.0 {
             return false;
@@ -201,7 +201,7 @@ impl Sum {
         true
     }
 
-    /// Слагаемое `lh` в точки по высоте строки; `false` — его не было.
+    /// Folds the `lh` term by the line height; `false`: there was none.
     pub fn fold_line(&mut self, line: f32) -> bool {
         if self.lh == 0.0 {
             return false;

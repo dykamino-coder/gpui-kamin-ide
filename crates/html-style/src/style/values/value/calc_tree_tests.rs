@@ -1,4 +1,4 @@
-//! Тесты отложенных математических функций: разбор дерева, свёртка по базам, отказы.
+//! Tests of deferred math functions: tree parsing, folding by bases, rejections.
 
 use super::super::{Len, Sum};
 

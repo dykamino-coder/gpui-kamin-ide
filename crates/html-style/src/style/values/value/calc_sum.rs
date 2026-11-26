@@ -57,7 +57,7 @@ impl Sum {
             Len::Calc(i) => s = calc_get(i, vcx),
             // Якорная вставка в арифметику не входит: её довесок уже внутри
             // `AnchorFn::add`, а сама она решается на подготовке кадра.
-            // Дерево функции сравнения линейной суммой не выражается.
+            // A math function tree is not a linear sum.
             Len::Auto
             | Len::MinContent
             | Len::MaxContent

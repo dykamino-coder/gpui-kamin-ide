@@ -31,10 +31,10 @@ pub enum Len {
     /// сумма внутри варианта раздувала `Len` с 12 до 40 байт, и рекурсивный
     /// рендер вложенного документа переполнял стек (vh-support-transform-*).
     Calc(CalcId),
-    /// Математическая функция над природами, которые сравнимы только после
-    /// появления баз (`clamp(2rem, 1rem + 5vw, 4rem)`, css-values-4 §10.10):
-    /// ИНДЕКС дерева в арене (`calc_tree`). Сворачивается в тех же шагах
-    /// каскада, что `Calc`, и к вычисленному значению становится длиной.
+    /// A math function over units that are comparable only once their bases
+    /// exist (`clamp(2rem, 1rem + 5vw, 4rem)`, css-values-4 §10.10): an INDEX
+    /// of the tree in the arena (`calc_tree`). It folds in the same cascade
+    /// steps as `Calc` and is a plain length by the computed value.
     Math(MathId),
     /// `1.5vh`, `50vw` — доля высоты и ширины окна. Размер окна известен
     /// только сборщику дерева, поэтому единица доживает до него как есть.

@@ -55,8 +55,8 @@ impl Computed {
         } else {
             size
         };
-        // Дерево `clamp(2rem, 1rem + 5vw, 4rem)`: окно уже подставлено,
-        // шрифтовые листья кегля считаются от РОДИТЕЛЬСКОГО кегля.
+        // A `clamp(2rem, 1rem + 5vw, 4rem)` tree: the viewport is folded above,
+        // font leaves of `font-size` resolve against the PARENT font size.
         let size = size.resolve_math(vcx, |s| {
             s.fold_font(parent_px, || {
                 let (ch, ex) = metrics();
@@ -68,8 +68,8 @@ impl Computed {
             })
         });
         Some(match size {
-            // Свёрнутое дерево может уйти ниже нуля: кегль прижимается к
-            // диапазону свойства (§10.12).
+            // A folded tree may go below zero: the font size is clamped to the
+            // property range (§10.12).
             Len::Px(px) => px.max(0.0),
             Len::Em(k) | Len::Pct(k) => k * parent_px,
             Len::EmPx(k, add) => k * parent_px + add,

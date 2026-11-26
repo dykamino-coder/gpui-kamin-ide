@@ -67,8 +67,8 @@ impl Calc<'_> {
         if let Some(nodes) = &mut self.recording {
             nodes.push(Node::Value(value));
             if self.typing {
-                // Нулевая длина совместима с длиной любой природы: проверка
-                // идёт по типу, величина листа живёт в записанном узле.
+                // A zero length is compatible with a length of any unit: the check
+                // is by type, and the leaf value lives in the recorded node.
                 return Some(match value {
                     Val::Len(_) => Val::Len(Sum::default()),
                     other => other,
