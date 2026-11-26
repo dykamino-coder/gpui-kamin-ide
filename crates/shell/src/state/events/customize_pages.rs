@@ -147,7 +147,8 @@ impl RootView {
                 }
                 self.cz.customize_pages = pages;
             }
-            ShellEvent::Tree(TreeEvent::RevealView(container, view)) => {
+            ShellEvent::Tree(TreeEvent::RevealView(container, view, keyboard_focus)) => {
+                self.pending_keyboard_view = view.clone().filter(|_| keyboard_focus);
                 // `ipc.ts:290-317`: у customize-контейнера reveal = открыть
                 // Customize на КОНКРЕТНОЙ странице (`p.view ?? container`),
                 // у остальных — пин/активация слота

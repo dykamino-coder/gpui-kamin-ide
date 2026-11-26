@@ -3,7 +3,9 @@ import { useEffect } from 'preact/hooks'
 import { useTerminal } from '../../hooks/useTerminal'
 import { useTerminalResize } from '../../hooks/useTerminalResize'
 import styles from './TerminalPanel.module.css'
-import { tabs } from '../../signals/tabs'
+import { activeTabId, tabs } from '../../signals/tabs'
+import { snd, sub } from '../../lib/bridge-transport'
+import { isBrowserHost } from '../../lib/webview-api'
 import { SESSION_LIMIT_NOTICE, waitingForSessionSlot } from '../../lib/session-admission'
 import { LoadingCue } from '../common/LoadingCue'
 
@@ -23,6 +25,22 @@ export function TerminalContainer({ tabId, active, fill = false }: TerminalConta
   const waitingForOutput = tab?.engine === 'codex' && tab.status === 'connected'
 
   useTerminalResize({ containerRef, terminalRef, fitAddonRef, tabId })
+
+  useEffect(() => {
+    // Only the standalone native Console hosts the explicit permission action.
+    if (!fill || !active || isBrowserHost() || tab?.engine !== 'claude' || !terminalRef.current) return
+    const ready = () => {
+      if (activeTabId.value === tabId) snd('permission-console:ready', tabId)
+    }
+    const offered = sub('permission-console:requested', id => { if (id === tabId) ready() })
+    const focus = sub('permission-console:focus', id => {
+      if (id === tabId && activeTabId.value === tabId && tabs.value.find(t => t.id === id)?.engine === 'claude') {
+        terminalRef.current?.focus()
+      }
+    })
+    ready()
+    return () => { offered(); focus() }
+  }, [active, fill, tabId, tab?.engine])
 
   // Repaint immediately when this terminal becomes active (session switch). While
   // display:none, xterm skips rendering and its size is stale; without this the

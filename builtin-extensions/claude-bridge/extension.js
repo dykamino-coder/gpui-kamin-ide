@@ -43961,6 +43961,65 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 var vscode9 = __toESM(require("vscode"), 1);
+
+// src/permission-console-focus.ts
+var PermissionConsoleFocus = class {
+  constructor(activeClaudeTab, reveal, focus) {
+    this.activeClaudeTab = activeClaudeTab;
+    this.reveal = reveal;
+    this.focus = focus;
+  }
+  activeClaudeTab;
+  reveal;
+  focus;
+  pending;
+  view;
+  request(tabId) {
+    if (!this.activeClaudeTab(tabId)) return;
+    this.pending = tabId;
+    this.reveal();
+    this.offer();
+  }
+  offer() {
+    if (!this.pending || !this.view?.visible) return;
+    if (!this.activeClaudeTab(this.pending)) {
+      this.pending = void 0;
+      return;
+    }
+    void this.view.webview.postMessage({ kind: "event", channel: "permission-console:requested", args: [this.pending] });
+  }
+  attach(view) {
+    this.view = view;
+    const visibility = view.onDidChangeVisibility(() => {
+      if (this.view !== view) return;
+      if (view.visible) this.offer();
+      else this.pending = void 0;
+    });
+    const ready = view.webview.onDidReceiveMessage((message) => {
+      if (message?.kind !== "send" || message.channel !== "permission-console:ready" || this.view !== view || !view.visible) return;
+      const id = message.args?.[0];
+      if (!this.pending || !this.activeClaudeTab(this.pending)) {
+        this.pending = void 0;
+        return;
+      }
+      if (id !== this.pending) return;
+      this.pending = void 0;
+      this.focus();
+      void view.webview.postMessage({ kind: "event", channel: "permission-console:focus", args: [id] });
+    });
+    view.onDidDispose(() => {
+      visibility.dispose();
+      ready.dispose();
+      if (this.view === view) {
+        this.view = void 0;
+        this.pending = void 0;
+      }
+    });
+    this.offer();
+  }
+};
+
+// src/index.ts
 var kaminide2 = __toESM(require("kaminide"), 1);
 var import_fs37 = __toESM(require("fs"), 1);
 var import_path37 = __toESM(require("path"), 1);
@@ -56417,7 +56476,7 @@ var BridgeHost = class {
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text));
     if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id) => {
       if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === "claude") {
-        opts.onOpenPermissionConsole?.();
+        opts.onOpenPermissionConsole?.(id);
       }
     });
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.());
@@ -57140,11 +57199,18 @@ function activate(context) {
   };
   const host = new BridgeHost(context, {
     onOpenChat: openChat,
-    onOpenPermissionConsole: () => {
-      void vscode9.commands.executeCommand("claudeBridgeConsoleView.focus");
-    },
+    onOpenPermissionConsole: (id) => permissionConsole.request(id),
     onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
   });
+  const permissionConsole = new PermissionConsoleFocus(
+    (id) => host.getTabManager().getActiveTabId() === id && host.getTabManager().getConnection(id)?.getEngine() === "claude",
+    () => {
+      void vscode9.commands.executeCommand("workbench.view.extension.claudeBridgeConsole");
+    },
+    () => {
+      void vscode9.commands.executeCommand("claudeBridgeConsoleView.focus", { keyboardFocus: true });
+    }
+  );
   const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath);
   sessionsBridge.install();
   context.subscriptions.push({ dispose: () => {
@@ -57160,6 +57226,7 @@ function activate(context) {
         view.webview.options = { enableScripts: true, localResourceRoots: [] };
         view.webview.html = loadWebviewHtml(context, htmlFile);
         const attached = host.attach(view.webview, role);
+        if (viewId === "claudeBridgeConsoleView") permissionConsole.attach(view);
         view.onDidDispose(() => attached.dispose());
         context.subscriptions.push(attached);
         if (trackVisibility) {
