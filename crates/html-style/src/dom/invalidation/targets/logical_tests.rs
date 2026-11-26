@@ -59,11 +59,11 @@ fn cached_logical_ancestor_features_follow_each_mutated_root() {
     let (html, section, inside, outside) = nodes();
     let rules = crate::style::css::parse_stylesheet(":not([class]) p{background:red}").unwrap();
     let features = features(&rules, &changed());
-    let all = features.targets(std::slice::from_ref(&html));
+    let all = features.targets(std::slice::from_ref(&html), &[]);
     assert_eq!(all.len(), 3);
     assert!(all.iter().any(|h| Rc::ptr_eq(h, &inside)));
     assert!(all.iter().any(|h| Rc::ptr_eq(h, &outside)));
-    let local = features.targets(std::slice::from_ref(&section));
+    let local = features.targets(std::slice::from_ref(&section), &[]);
     assert_eq!(local.len(), 2);
     assert!(local.iter().any(|h| Rc::ptr_eq(h, &inside)));
     assert!(!local.iter().any(|h| Rc::ptr_eq(h, &outside)));
@@ -206,5 +206,29 @@ fn a_compound_the_mutated_element_cannot_match_reaches_nothing() {
         let mut want: Vec<String> = want.into_iter().map(String::from).collect();
         want.sort();
         assert_eq!(got, want, "{css}");
+    }
+}
+
+#[test]
+fn a_changed_attribute_condition_is_tested_in_both_states_of_the_batch() {
+    // `html` gains `class="alt"`: a condition on `class` the old and the new
+    // value both fail reaches nothing; one either value passes still follows.
+    let (html, _, _, _) = nodes();
+    let class = html5ever::QualName::new(None, html5ever::ns!(), "class".into());
+    let after = [html5ever::Attribute {
+        name: class,
+        value: "alt".into(),
+    }];
+    let cases = [
+        (r#"[class*="cuboid"] p{margin:0}"#, 1),
+        ("html.alt.other p{margin:0}", 1),
+        (r#"[class*="al"] p{margin:0}"#, 3),
+        ("html.alt p{margin:0}", 3),
+        ("html:not(.alt) p{margin:0}", 3),
+    ];
+    for (css, want) in cases {
+        let rules = crate::style::css::parse_stylesheet(css).unwrap();
+        let found = features(&rules, &changed()).targets(std::slice::from_ref(&html), &[&after]);
+        assert_eq!(found.len(), want, "{css}");
     }
 }

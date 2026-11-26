@@ -27,7 +27,7 @@
 
 use super::{Changed, Kind, kind, mentions, name};
 use crate::style::css::{PseudoKind, Rule, Selector};
-use admits::Admits;
+use admits::{Admits, Attrs};
 use markup5ever_rcdom::Handle;
 
 /// One step from a set of elements to the elements a selector may reach.
@@ -87,20 +87,25 @@ pub fn features(rules: &[Rule], changed: &Changed) -> Features {
 /// The elements `mutated` and those a rule of `rules` may restyle after the
 /// names of `changed` changed on them.
 pub fn targets(rules: &[Rule], changed: &Changed, mutated: &[Handle]) -> Vec<Handle> {
-    features(rules, changed).targets(mutated)
+    features(rules, changed).targets(mutated, &[])
 }
 
 impl Features {
     /// The elements `mutated` and those each path reaches from the ones its
     /// test admits, with the subject feature of its rule, in that order, each once.
-    pub fn targets(&self, mutated: &[Handle]) -> Vec<Handle> {
+    /// `after`: the attributes of each mutated element after the batch; an
+    /// element past its end passes the parts that read a changed name.
+    pub fn targets(&self, mutated: &[Handle], after: &[Attrs<'_>]) -> Vec<Handle> {
         let mut out = Targets::default();
         for m in mutated {
             out.add(m);
         }
         for (test, path, feature) in &self.0 {
-            let admitted = |m: &&Handle| test.as_ref().is_none_or(|t| t.admits(m));
-            let mut set: Vec<Handle> = mutated.iter().filter(admitted).cloned().collect();
+            let admitted = |(i, m): &(usize, &Handle)| {
+                (test.as_ref()).is_none_or(|t| t.admits(m, after.get(*i).copied()))
+            };
+            let reached = mutated.iter().enumerate().filter(admitted);
+            let mut set: Vec<Handle> = reached.map(|(_, m)| m.clone()).collect();
             let Some((&last, steps)) = path.split_last() else {
                 continue;
             };

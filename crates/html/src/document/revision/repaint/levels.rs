@@ -38,8 +38,10 @@ pub(super) struct Levels {
 
 impl Levels {
     fn deeper(&mut self, handle: &Handle, why: &'static str) {
-        let handle = handle.clone();
-        self.deeper.push(Deeper { handle, why });
+        self.deeper.push(Deeper {
+            handle: handle.clone(),
+            why,
+        });
     }
 
     /// The whole document restyles: its rules or its cascades did not resolve.
@@ -67,7 +69,8 @@ impl Document {
             return Levels::document(document, "probe");
         };
         let mutated: Vec<_> = batch.elements.iter().map(|c| c.element.clone()).collect();
-        let mut targets = cache.targets(&probe, changed, &mutated);
+        let after: Vec<&[_]> = batch.elements.iter().map(|c| &c.new[..]).collect();
+        let mut targets = cache.targets(&probe, changed, (&mutated, &after));
         // `attr()` reads an attribute of the element its declaration applies
         // to (css-values-5 §7.7): a changed name the sheets or a mutated
         // element's own `style=""` read restyles the mutated elements.
