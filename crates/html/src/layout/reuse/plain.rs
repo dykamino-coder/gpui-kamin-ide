@@ -17,14 +17,11 @@ pub(super) enum CounterOrigin {
 pub(super) fn skip_origin(e: &Element, vcx: crate::values::ValueCx<'_>) -> Option<CounterOrigin> {
     let mut origin = CounterOrigin::Relative;
     all_elements(e, |node| {
-        if !hover_free(node) {
-            return false;
-        }
         if origin == CounterOrigin::Relative && super::content::inert_node(node, vcx) {
-            return true;
+            return hover_free(node);
         }
         origin = CounterOrigin::Fixed;
-        inert(node)
+        inert(node) && hover_free(node)
     })
     .then_some(origin)
 }
@@ -72,11 +69,9 @@ fn own_state_free(e: &Element) -> bool {
         && e.list_item.is_none()
 }
 
-/// No `:hover` style of `e`'s own (selectors-4 §10.2): the pointer is no
-/// input of its paint. A replay record (`replay::Ranges::hovers`) notes the
-/// hover its hover boxes show and is built only when one of them changed, so
-/// `flow_kind` admits them; the records that keep no such note (a skip
-/// record, a far stand-in, a kept paragraph) require this of every box.
+/// No `:hover` style of `e`'s own (selectors-4 §10.2). A replay record notes
+/// the hover its boxes paint (`replay::Ranges::hovers`), so `flow_kind` admits
+/// them; records without that note (skip, far, kept paragraph) require this.
 pub(super) fn hover_free(e: &Element) -> bool {
     e.hover.is_none()
 }
