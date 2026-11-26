@@ -125,6 +125,9 @@ class RpcError extends Error {
 
 const handlers = {
   initialize: () => ({ userAgent: 'fake-codex/0.160.1', codexHome: home, platformFamily: 'unix', platformOs: 'linux' }),
+  'account/rateLimits/read': () => ({
+    rateLimits: { limitId: 'codex', secondary: { usedPercent: 17, windowDurationMins: 10080, resetsAt: null } },
+  }),
   'account/read': () => {
     const a = readAccount()
     return {
@@ -183,7 +186,7 @@ const handlers = {
         { reasoningEffort: 'low', description: 'low' },
         { reasoningEffort: 'medium', description: 'medium' },
         { reasoningEffort: 'high', description: 'high' },
-        ...(m.is_default
+        ...(m.is_default && !process.env.FAKE_CODEX_EXTENDED_DEFAULT_EFFORTS
           ? []
           : ['xhigh', 'max', 'ultra'].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort }))),
       ],

@@ -28,7 +28,7 @@ import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtim
 import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
-import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
+import { CodexConsoleRenderer, consoleBanner } from '../codex/console-render'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
@@ -288,13 +288,13 @@ export function codexPlanUsage(
     ['primary', account.primary],
     ['secondary', account.secondary],
   ] as const) {
-    if (!w || w.resetsAt === null) continue
+    if (!w) continue
     const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
     windows.push({
       id,
       label: limitWindowLabel(w.windowMinutes, 'Plan limit'),
       percent: w.usedPercent,
-      resetsAt: new Date(w.resetsAt).toISOString(),
+      resetsAt: w.resetsAt === null ? null : new Date(w.resetsAt).toISOString(),
     })
   }
   if (windows.length === 0) return null
@@ -374,7 +374,6 @@ export async function createCodexSession(
   })
   // A resumed thread continues on the model and effort last chosen in it.
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
-  const effort = saved?.effort ?? config.effort
   const instructions = developerInstructions(config)
   // A chat on the default model still learns which model and effort that is
   // (the catalog names the default; no model call).
@@ -383,6 +382,17 @@ export async function createCodexSession(
     collaborationModes(host),
   ])
   const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
+  const configuredDefault = process.env.BRIDGE_CODEX_DEFAULT_EFFORT?.trim()
+  // Only an explicitly advertised level may override the native default for a new chat.
+  const defaultEffort =
+    !placement.resumeThreadId &&
+    !config.conversation &&
+    !config.resumeConversationId &&
+    configuredDefault &&
+    deps.runtime.knownModel(lineModel)?.reasoningEfforts.includes(configuredDefault)
+      ? configuredDefault
+      : undefined
+  const effort = saved?.effort ?? config.effort ?? defaultEffort
   const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
@@ -514,7 +524,11 @@ export async function createCodexSession(
   // a resumed one keeps what its record says it was given.
   if (!resumed) {
     const choice = loadCodexChoice(settingsDir, threadId)
-    writeCodexChoice(settingsDir, threadId, { ...choice, context: startedContext(instructions, startLine) })
+    writeCodexChoice(settingsDir, threadId, {
+      ...choice,
+      ...(defaultEffort && resolved ? { effort: resolved } : {}),
+      context: startedContext(instructions, startLine),
+    })
   }
   session.resumeNotFound = resumeNotFound
   if (freshThread) session.resumedOnFreshThread = true
@@ -788,13 +802,14 @@ export class CodexSessionBinding {
   /** A turn that ended while no client was attached must not stay `working`. */
   replay(): void {
     this.activity(this.turnOpen)
+    this.pushPlanLimits()
   }
 
   /** The ChatGPT plan windows for the status row under the chat input, tagged
    *  as codex usage (the webview never shows them in a Claude chat). Read
    *  through the runtime's account cache; an unreadable account sends nothing
    *  and the row says it has no plan data. */
-  private pushPlanLimits(): void {
+  pushPlanLimits(): void {
     void this.runtime
       .rateLimits()
       .then((limits) => {
@@ -961,7 +976,7 @@ export class CodexSessionBinding {
   }
 
   appendSystem(text: string, level: 'info' | 'warning' | 'error'): void {
-    this.hooks?.console?.(consoleNotice(level, text))
+    this.hooks?.console?.(this.console.notice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return
     this.append(this.projector.project({ kind: 'notice', threadId, at: Date.now(), level, message: text }))

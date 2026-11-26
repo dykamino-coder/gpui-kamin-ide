@@ -483,6 +483,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               model: fresh.model,
             }),
           )
+          codexBinding(fresh)?.pushPlanLimits()
           sendHibernationState(fresh.id, 'awake')
           const now = Date.now()
           // Phases: pool wait, server-side start (teardown wait, settings,
@@ -663,6 +664,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
+              codexBinding(session)?.pushPlanLimits()
               void sendAgentPreferences(ws, resolved.tokenId)
 
               // Send initial tree to this client
@@ -899,7 +901,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }
               }
 
-              reattachSession(live, ws)
               authenticatedSessionId = live.id
               authenticatedUser = resolved.userName
               authenticatedTokenId = resolved.tokenId
@@ -919,13 +920,6 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               const hostChanged = !sameHostDeclaration(live.host, declared)
               live.host = declared
 
-              if (msg.externalTools && Array.isArray(msg.externalTools)) {
-                // The reused CLI keeps its MCP connection: announce a changed
-                // catalog instead of silently swapping the snapshot.
-                replaceRegisteredTools(live, msg.externalTools, 'reattach')
-              }
-              if (hostChanged && live.mcpInitialized) notifyToolListChanged(live.id)
-
               ws.send(
                 JSON.stringify({
                   type: 'session:created',
@@ -939,6 +933,16 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   engine: live.engine ?? 'claude',
                 }),
               )
+              // The client accepts terminal bytes only after session:created.
+              // Reattach synchronously replays the live PTY buffer to this socket.
+              reattachSession(live, ws)
+              if (msg.externalTools && Array.isArray(msg.externalTools)) {
+                // The reused CLI keeps its MCP connection: announce a changed
+                // catalog instead of silently swapping the snapshot.
+                replaceRegisteredTools(live, msg.externalTools, 'reattach')
+              }
+              if (hostChanged && live.mcpInitialized) notifyToolListChanged(live.id)
+
               if (live.cliConversationId) {
                 lifecycleLog('conversation_id', {
                   sessionId: live.id,
@@ -1019,6 +1023,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }),
               )
 
+              codexBinding(session)?.pushPlanLimits()
               // The requested conversation is not on this server — a fresh one
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
@@ -1302,6 +1307,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 engineSwitch: { ...timings, contextBytes },
               }),
             )
+            codexBinding(next)?.pushPlanLimits()
             // The leaving CLI's queue, after the client knows the new session
             // and before the gate lets later prompts through (their order).
             for (const item of carried.returned)

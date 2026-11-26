@@ -269,6 +269,39 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   }, 30_000)
 
+  it('publishes the account window on admission before any model turn', async () => {
+    const client = await Client.open(port)
+    const created = await createChat(client, { engine: 'codex' })
+    const frame = await client.next((f) => f.type === 'session:usage' && f.usage.engine === 'codex')
+    expect(client.frames.indexOf(created)).toBeLessThan(client.frames.indexOf(frame))
+    expect(frame.usage.windows).toEqual([expect.objectContaining({ percent: 17 })])
+    client.send({ type: 'session:end' })
+    client.close()
+  })
+
+  it('applies a model-supported deployment default to a fresh chat and its first turn', async () => {
+    vi.stubEnv('BRIDGE_CODEX_DEFAULT_EFFORT', 'xhigh')
+    try {
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime({ FAKE_CODEX_EXTENDED_DEFAULT_EFFORTS: '1' }))
+      const client = await Client.open(port)
+      const created = await createChat(client, { engine: 'codex' })
+      expect(created).toMatchObject({ model: 'gpt-fake', effort: 'xhigh' })
+      await say(client, 'first request', 'configured-default')
+      await client.entry((e) => e.subtype === 'codex_turn_request' && e.requestedEffort === 'xhigh')
+      client.send({ type: 'session:end' })
+      client.close()
+      await runtimeMod.codexRuntime().close()
+      runtimeMod.setCodexRuntimeForTests(newRuntime())
+      const limited = await Client.open(port)
+      expect(await createChat(limited, { engine: 'codex' })).toMatchObject({ effort: 'medium' })
+      limited.send({ type: 'session:end' })
+      limited.close()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  }, 30_000)
+
   it('feeds Bridge Console a live log of the thread and replays it to a reattached client', async () => {
     const consoleText = (c: Client) =>
       c.frames
@@ -294,6 +327,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
     const again = await Client.open(port)
     again.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, conversationId: conv.conversationId })
     const replay = await again.next((f) => f.type === 'session:output')
+    const attached = await again.next((f) => f.type === 'session:created' && f.reattached === true)
+    // The client drops terminal bytes until this handshake authenticates the tab.
+    expect(again.frames.indexOf(attached)).toBeLessThan(again.frames.indexOf(replay))
     // Byte-exact: the reply streamed mid-line, and the replay must not split it.
     expect(replay.data).toBe(consoleText(client))
     again.send({ type: 'session:end' })

@@ -66,7 +66,7 @@ export interface SessionUsageWindow {
   id: string
   label: string
   percent: number
-  resetsAt: string
+  resetsAt: string | null
 }
 
 /** Wire payload of `session:usage` (server → VSIX host → webview). */
