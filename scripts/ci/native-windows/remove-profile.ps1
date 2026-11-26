@@ -3,7 +3,8 @@
 param([Parameter(Mandatory)][string]$Directory, [object[]]$Processes)
 $ErrorActionPreference = 'Stop'
 $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP).TrimEnd('\') + '\'
-if (![IO.Path]::GetFullPath($Directory).StartsWith($temp, [StringComparison]::OrdinalIgnoreCase)) {
+$Directory = [IO.Path]::GetFullPath($Directory).TrimEnd('\')
+if (!$Directory.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase)) {
     throw 'Expected a disposable runner profile'
 }
 foreach ($child in $Processes) {
