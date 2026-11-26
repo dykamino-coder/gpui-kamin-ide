@@ -1,5 +1,15 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Acceptance on the published KaminIDE 1.0.127 — 2026-11-26
+
+Acceptance by the release executor `rel128` on the payload of the
+`kaminide-v1.0.127` release installer (own hidden copy, empty profile, in-app
+probe only). The details are in the card's dated section.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0128](runtime-issues/INC-2026-0128.md) | passed: 30 rounds of new session, two files, delete: 272.4 → 273.6 MB from round 10 to 30, 0.04 MB per round | done (accepted 2026-11-26) |
+
 ## Acceptance on the published KaminIDE 1.0.121 — 2026-11-20
 
 Acceptance by the executor `kacc26` on a private copy of the installed

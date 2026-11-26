@@ -59,7 +59,11 @@ export function getSystemStats(): SystemStats {
 }
 
 // ─── Per-process tree (Linux /proc) ─────────────────────────────────
-interface PidInfo { cpuPercent: number; rssBytes: number; ppid: number }
+interface PidInfo {
+  cpuPercent: number
+  rssBytes: number
+  ppid: number
+}
 let latestByPid = new Map<number, PidInfo>()
 let latestAt = 0
 let prevTicks = new Map<number, number>() // pid → cumulative utime+stime
@@ -75,23 +79,32 @@ async function sampleProc(): Promise<Map<number, { ticks: number; ppid: number; 
   } catch {
     return out // not Linux / no /proc
   }
-  await Promise.all(entries.filter((n) => /^\d+$/.test(n)).map(async (name) => {
-    try {
-      const raw = await readFile(`/proc/${name}/stat`, 'utf8')
-      // `comm` (field 2) can contain spaces and parens — parse after the LAST ')'.
-      const rp = raw.lastIndexOf(')')
-      if (rp < 0) return
-      const rest = raw.slice(rp + 2).trim().split(/\s+/)
-      // rest indices are 0-based from field 3: state(0) ppid(1) … utime(11)
-      // stime(12) … rss(21). See proc(5).
-      const ppid = Number.parseInt(rest[1] ?? '', 10)
-      const utime = Number.parseInt(rest[11] ?? '', 10)
-      const stime = Number.parseInt(rest[12] ?? '', 10)
-      const rss = Number.parseInt(rest[21] ?? '', 10)
-      if (Number.isNaN(ppid) || Number.isNaN(utime) || Number.isNaN(rss)) return
-      out.set(Number.parseInt(name, 10), { ticks: utime + stime, ppid, rss })
-    } catch { /* pid vanished mid-read */ }
-  }))
+  await Promise.all(
+    entries
+      .filter((n) => /^\d+$/.test(n))
+      .map(async (name) => {
+        try {
+          const raw = await readFile(`/proc/${name}/stat`, 'utf8')
+          // `comm` (field 2) can contain spaces and parens — parse after the LAST ')'.
+          const rp = raw.lastIndexOf(')')
+          if (rp < 0) return
+          const rest = raw
+            .slice(rp + 2)
+            .trim()
+            .split(/\s+/)
+          // rest indices are 0-based from field 3: state(0) ppid(1) … utime(11)
+          // stime(12) … rss(21). See proc(5).
+          const ppid = Number.parseInt(rest[1] ?? '', 10)
+          const utime = Number.parseInt(rest[11] ?? '', 10)
+          const stime = Number.parseInt(rest[12] ?? '', 10)
+          const rss = Number.parseInt(rest[21] ?? '', 10)
+          if (Number.isNaN(ppid) || Number.isNaN(utime) || Number.isNaN(rss)) return
+          out.set(Number.parseInt(name, 10), { ticks: utime + stime, ppid, rss })
+        } catch {
+          /* pid vanished mid-read */
+        }
+      }),
+  )
   return out
 }
 
@@ -102,9 +115,7 @@ async function sampleProcTree(): Promise<void> {
   const byPid = new Map<number, PidInfo>()
   for (const [pid, s] of sample) {
     const prev = prevTicks.get(pid)
-    const cpuPercent = dt > 0 && prev !== undefined
-      ? Math.max(0, ((s.ticks - prev) / (CLK_TCK * dt)) * 100)
-      : 0
+    const cpuPercent = dt > 0 && prev !== undefined ? Math.max(0, ((s.ticks - prev) / (CLK_TCK * dt)) * 100) : 0
     byPid.set(pid, { cpuPercent, rssBytes: s.rss * PAGE_SIZE, ppid: s.ppid })
   }
   prevTicks = new Map([...sample].map(([pid, s]) => [pid, s.ticks]))
@@ -112,13 +123,17 @@ async function sampleProcTree(): Promise<void> {
   latestAt = now
 }
 
-export interface ProcTreeStats { cpuPercent: number; memBytes: number }
+export interface ProcTreeStats {
+  cpuPercent: number
+  memBytes: number
+}
 
 /** Sum CPU% + RSS over the process tree rooted at `rootPid`. CPU% is per-core
  *  (like top: a process pinning one core reads ~100%). Null when /proc hasn't
  *  been sampled (non-Linux) or the pid isn't present. */
 export function getProcessTreeStats(rootPid: number | undefined): ProcTreeStats | null {
-  if (rootPid === undefined || latestByPid.size === 0) return null
+  // A virtual PTY has pid 0: following its children would charge the whole container to one chat.
+  if (rootPid === undefined || !Number.isSafeInteger(rootPid) || rootPid <= 0 || !latestByPid.has(rootPid)) return null
   // Adjacency: ppid → children, built from the latest sample.
   const children = new Map<number, number[]>()
   for (const [pid, info] of latestByPid) {
@@ -136,7 +151,11 @@ export function getProcessTreeStats(rootPid: number | undefined): ProcTreeStats 
     if (seen.has(pid)) continue
     seen.add(pid)
     const info = latestByPid.get(pid)
-    if (info) { cpuPercent += info.cpuPercent; memBytes += info.rssBytes; found = true }
+    if (info) {
+      cpuPercent += info.cpuPercent
+      memBytes += info.rssBytes
+      found = true
+    }
     for (const ch of children.get(pid) ?? []) stack.push(ch)
   }
   if (!found) return null
@@ -155,7 +174,11 @@ export function startSystemStatsSampler(): void {
     // Guard the sampler: a synchronous throw in sampleSystemCpu (os/proc read)
     // on a bare setInterval would surface as an uncaughtException. Sampling is
     // best-effort; skip this tick on error rather than take the process down.
-    try { sampleSystemCpu() } catch { /* skip this CPU sample */ }
+    try {
+      sampleSystemCpu()
+    } catch {
+      /* skip this CPU sample */
+    }
     void sampleProcTree()
   }, SAMPLE_INTERVAL_MS)
   timer.unref?.() // never keep the process alive for sampling

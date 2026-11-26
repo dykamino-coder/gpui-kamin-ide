@@ -21,7 +21,8 @@ pub(super) struct GroupCache {
     /// The device and atlas pages the images were drawn on: a kept image is
     /// valid only on the same objects (font gamma and contrast are fixed per
     /// process, `get_font_info`; atlas tiles change only with the epoch in
-    /// `retained::Target`, which `chain` requires).
+    /// `retained::Target`, which `group_chain` requires; the target's size
+    /// does not count, a group image holds no pixel of it).
     pub(super) objects: Vec<usize>,
     pub(super) places: Vec<group_atlas::Place>,
     pub(super) regions: Vec<Region>,
@@ -48,7 +49,7 @@ impl DirectXRenderer {
     /// whether its image is already there. None: pack the atlas again.
     pub(super) fn keep_group_places(&self, scene: &Scene) -> Option<(Vec<group_atlas::Place>, Vec<bool>)> {
         let c = &self.retained.groups;
-        let (same, base) = self.retained.chain?;
+        let (same, base) = self.retained.group_chain?;
         let (shelves, pages) = c.layout.as_ref()?;
         if c.id != base || *pages != self.blur.groups.len() || c.objects != self.group_objects() {
             return None;
