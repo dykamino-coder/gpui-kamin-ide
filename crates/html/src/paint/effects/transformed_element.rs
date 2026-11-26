@@ -183,36 +183,4 @@ impl Transformed {
         let sy = self.tr[1][0] + w * self.tr[1][1] + h * self.tr[1][2];
         (id && sx.is_finite() && sy.is_finite()).then_some((sx, sy))
     }
-
-    /// Axes on which the box's own transform cannot carry a subpixel offset
-    /// of its subtree, so the subtree starts on a whole device pixel there.
-    ///
-    /// A translation moves the rasterized subtree as is, a scale of 1 along
-    /// an axis keeps that axis; any other map (rotation, skew, scale,
-    /// perspective, 3D) would turn the fraction into a different raster, and
-    /// a box moving by half a pixel would change every pixel of its subtree.
-    /// Blink drops the subpixel accumulation on the same axes
-    /// (`PaintPropertyTreeBuilder::CanPropagateSubpixelAccumulation`:
-    /// identity or translation keeps it, `IsScaleOrTranslation` keeps the
-    /// axes of unit scale).
-    pub(crate) fn whole_pixel_axes(&self) -> (bool, bool) {
-        let near = |v: f32, t: f32| (v - t).abs() < 1e-5;
-        let (sx, sy) = if self.has_3d {
-            let m = &self.m4;
-            let off = [
-                m[0][1], m[0][2], m[1][0], m[1][2], m[2][0], m[2][1], m[3][0], m[3][1], m[3][2],
-            ];
-            if !off.iter().all(|&v| near(v, 0.0)) || !near(m[3][3], 1.0) {
-                return (true, true);
-            }
-            (m[0][0], m[1][1])
-        } else {
-            let [[a, b], [c, d]] = self.lin;
-            if !near(b, 0.0) || !near(c, 0.0) {
-                return (true, true);
-            }
-            (a, d)
-        };
-        (!near(sx, 1.0), !near(sy, 1.0))
-    }
 }

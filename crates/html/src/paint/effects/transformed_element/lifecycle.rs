@@ -52,33 +52,6 @@ impl Hooks for Transformed {
                 .prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
             return;
         }
-        // A map that is not a translation (`whole_pixel_axes`) starts its
-        // subtree on a whole device pixel: the subtree is moved there before
-        // its edges are rounded, as a pure shift is above, and the matrix
-        // resolves its origin from the same place. A box moving by a fraction
-        // of a pixel then moves its transformed raster by 0 or 1 pixel instead
-        // of rasterizing it anew at another phase (Blink rounds the paint
-        // offset of such a layer and drops the fraction).
-        let (wx, wy) = self.whole_pixel_axes();
-        // Placed: the subtree's origin is absolute, prepaint it at zero offset.
-        let mut moved = false;
-        if wx || wy {
-            let sf = window.scale_factor();
-            let exact = window.layout_origin_unrounded(*layout_id);
-            let snap = |v: Pixels, on: bool| {
-                if on {
-                    px((f32::from(v) * sf).round() / sf)
-                } else {
-                    v
-                }
-            };
-            let whole = gpui::point(snap(exact.x, wx), snap(exact.y, wy));
-            if whole != exact {
-                window.set_layout_placed_origin(*layout_id, whole);
-                moved = true;
-            }
-            self.exact_origin = Some(whole);
-        }
         if let Some(r) = self.ref_box.as_ref() {
             let own = gpui::Bounds {
                 origin: window.layout_origin_unrounded(*layout_id),
@@ -122,17 +95,13 @@ impl Hooks for Transformed {
                 translation,
             });
         }
-        let child = &mut self.child;
-        let mut prepaint = |window: &mut Window| {
-            if moved {
-                child.prepaint_at(gpui::point(px(0.0), px(0.0)), window, cx);
-            } else {
-                child.prepaint(window, cx);
-            }
-        };
         match hit {
-            Some(matrix) => window.with_hitbox_transform(matrix, prepaint),
-            None => prepaint(window),
+            Some(matrix) => window.with_hitbox_transform(matrix, |window| {
+                self.child.prepaint(window, cx);
+            }),
+            None => {
+                self.child.prepaint(window, cx);
+            }
         }
         if flat {
             crate::layout::positioned::anchor::tf_pop(&self.layout.anchors);
