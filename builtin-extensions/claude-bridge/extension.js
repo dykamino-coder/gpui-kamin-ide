@@ -53073,7 +53073,9 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir) {
 }
 async function discoverPluginConfigs(pluginsDir) {
   const [plugins, marketplaceDescriptions] = await Promise.all([
-    listEnabledInstalledPlugins(),
+    // This manager serves every tab. Project-only installed servers require
+    // a catalog and executor bound to their owning project.
+    listEnabledInstalledPlugins({}),
     loadMarketplaceDescriptionsAsync(pluginsDir)
   ]);
   const nested = await Promise.all(plugins.map(async ({ name, marketplace, installPath }) => {

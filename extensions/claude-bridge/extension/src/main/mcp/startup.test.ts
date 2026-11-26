@@ -101,7 +101,9 @@ describe('cold MCP startup', () => {
     } })
     await json('.claude/plugins/installed_plugins.json', { version: 2, plugins: {
       'sample@fixture': [{ scope: 'user', installPath: path.join(home, 'installed') }],
+      'other@fixture': [{ scope: 'project', projectPath: path.join(home, 'other-project'), installPath: path.join(home, 'other-plugin') }],
     } })
+    await json('other-plugin/.mcp.json', { mcpServers: { other: { type: 'http', url: 'https://fixture.invalid/hidden' } } })
     await json('installed/.mcp.json', { mcpServers: { lookup: { type: 'http', url: '${MCP_FIXTURE_ORIGIN}/plugin' } } })
     const frames: Array<{ type: string; engine: string; externalTools: { name: string }[] }> = []
     const socket = { readyState: 1, bufferedAmount: 0, send: (f: string) => frames.push(JSON.parse(f)),

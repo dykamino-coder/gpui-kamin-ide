@@ -175,7 +175,9 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir: string): Promise<Map
 //   2. `<installPath>/.claude-plugin/plugin.json:mcpServers` (inline, 3 shapes)
 export async function discoverPluginConfigs(pluginsDir: string): Promise<ExternalMcpServerConfig[]> {
   const [plugins, marketplaceDescriptions] = await Promise.all([
-    listEnabledInstalledPlugins(),
+    // This manager serves every tab. Project-only installed servers require
+    // a catalog and executor bound to their owning project.
+    listEnabledInstalledPlugins({}),
     loadMarketplaceDescriptionsAsync(pluginsDir),
   ])
 
