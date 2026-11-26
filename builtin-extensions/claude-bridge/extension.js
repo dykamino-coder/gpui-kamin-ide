@@ -43964,29 +43964,31 @@ var vscode9 = __toESM(require("vscode"), 1);
 
 // src/permission-console-focus.ts
 var PermissionConsoleFocus = class {
-  constructor(activeClaudeTab, reveal, focus) {
-    this.activeClaudeTab = activeClaudeTab;
+  constructor(activeClaudeSession, reveal, focus) {
+    this.activeClaudeSession = activeClaudeSession;
     this.reveal = reveal;
     this.focus = focus;
   }
-  activeClaudeTab;
+  activeClaudeSession;
   reveal;
   focus;
   pending;
   view;
   request(tabId) {
-    if (!this.activeClaudeTab(tabId)) return;
-    this.pending = tabId;
+    const sessionId = this.activeClaudeSession(tabId);
+    if (!sessionId) return;
+    this.pending = { tabId, sessionId };
     this.reveal();
     this.offer();
   }
+  currentRequest() {
+    if (this.pending && this.activeClaudeSession(this.pending.tabId) !== this.pending.sessionId) this.pending = void 0;
+    return this.pending;
+  }
   offer() {
-    if (!this.pending || !this.view?.visible) return;
-    if (!this.activeClaudeTab(this.pending)) {
-      this.pending = void 0;
-      return;
-    }
-    void this.view.webview.postMessage({ kind: "event", channel: "permission-console:requested", args: [this.pending] });
+    const request = this.currentRequest();
+    if (!request || !this.view?.visible) return;
+    void this.view.webview.postMessage({ kind: "event", channel: "permission-console:requested", args: [request.tabId, request.sessionId] });
   }
   attach(view) {
     this.view = view;
@@ -43997,15 +43999,11 @@ var PermissionConsoleFocus = class {
     });
     const ready = view.webview.onDidReceiveMessage((message) => {
       if (message?.kind !== "send" || message.channel !== "permission-console:ready" || this.view !== view || !view.visible) return;
-      const id = message.args?.[0];
-      if (!this.pending || !this.activeClaudeTab(this.pending)) {
-        this.pending = void 0;
-        return;
-      }
-      if (id !== this.pending) return;
+      const request = this.currentRequest();
+      if (!request || message.args?.[0] !== request.tabId || message.args?.[1] !== request.sessionId) return;
       this.pending = void 0;
       this.focus();
-      void view.webview.postMessage({ kind: "event", channel: "permission-console:focus", args: [id] });
+      void view.webview.postMessage({ kind: "event", channel: "permission-console:focus", args: [request.tabId, request.sessionId] });
     });
     view.onDidDispose(() => {
       visibility.dispose();
@@ -57173,7 +57171,11 @@ function activate(context) {
     onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
   });
   const permissionConsole = new PermissionConsoleFocus(
-    (id) => host.getTabManager().getActiveTabId() === id && host.getTabManager().getConnection(id)?.getEngine() === "claude",
+    (id) => {
+      const tabs = host.getTabManager();
+      const connection = tabs.getConnection(id);
+      return tabs.getActiveTabId() === id && connection?.getEngine() === "claude" ? connection.getSessionId() : void 0;
+    },
     () => {
       void vscode9.commands.executeCommand("workbench.view.extension.claudeBridgeConsole");
     },

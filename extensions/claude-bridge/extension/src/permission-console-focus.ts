@@ -3,26 +3,32 @@ import type { WebviewView } from 'vscode'
 /** A reveal may create the Console after the menu action. Only its active xterm
  * can acknowledge readiness and consume the pending keyboard focus request. */
 export class PermissionConsoleFocus {
-  private pending?: string
+  private pending?: { tabId: string; sessionId: string }
   private view?: WebviewView
 
   constructor(
-    private readonly activeClaudeTab: (id: string) => boolean,
+    private readonly activeClaudeSession: (tabId: string) => string | undefined,
     private readonly reveal: () => void,
     private readonly focus: () => void,
   ) {}
 
   request(tabId: string): void {
-    if (!this.activeClaudeTab(tabId)) return
-    this.pending = tabId
+    const sessionId = this.activeClaudeSession(tabId)
+    if (!sessionId) return
+    this.pending = { tabId, sessionId }
     this.reveal()
     this.offer()
   }
 
+  private currentRequest() {
+    if (this.pending && this.activeClaudeSession(this.pending.tabId) !== this.pending.sessionId) this.pending = undefined
+    return this.pending
+  }
+
   private offer(): void {
-    if (!this.pending || !this.view?.visible) return
-    if (!this.activeClaudeTab(this.pending)) { this.pending = undefined; return }
-    void this.view.webview.postMessage({ kind: 'event', channel: 'permission-console:requested', args: [this.pending] })
+    const request = this.currentRequest()
+    if (!request || !this.view?.visible) return
+    void this.view.webview.postMessage({ kind: 'event', channel: 'permission-console:requested', args: [request.tabId, request.sessionId] })
   }
 
   attach(view: WebviewView): void {
@@ -34,12 +40,11 @@ export class PermissionConsoleFocus {
     })
     const ready = view.webview.onDidReceiveMessage(message => {
       if (message?.kind !== 'send' || message.channel !== 'permission-console:ready' || this.view !== view || !view.visible) return
-      const id = message.args?.[0]
-      if (!this.pending || !this.activeClaudeTab(this.pending)) { this.pending = undefined; return }
-      if (id !== this.pending) return
+      const request = this.currentRequest()
+      if (!request || message.args?.[0] !== request.tabId || message.args?.[1] !== request.sessionId) return
       this.pending = undefined
       this.focus()
-      void view.webview.postMessage({ kind: 'event', channel: 'permission-console:focus', args: [id] })
+      void view.webview.postMessage({ kind: 'event', channel: 'permission-console:focus', args: [request.tabId, request.sessionId] })
     })
     view.onDidDispose(() => {
       visibility.dispose()

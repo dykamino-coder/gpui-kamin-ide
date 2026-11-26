@@ -28,19 +28,18 @@ export function TerminalContainer({ tabId, active, fill = false }: TerminalConta
 
   useEffect(() => {
     // Only the standalone native Console hosts the explicit permission action.
-    if (!fill || !active || isBrowserHost() || tab?.engine !== 'claude' || !terminalRef.current) return
-    const ready = () => {
-      if (activeTabId.value === tabId) snd('permission-console:ready', tabId)
+    if (!fill || !active || isBrowserHost() || tab?.engine !== 'claude' || !tab.sessionId || !terminalRef.current) return
+    const sessionId = tab.sessionId
+    const current = (id: unknown, runtime: unknown) => {
+      const live = tabs.value.find(t => t.id === id)
+      return id === tabId && runtime === sessionId && activeTabId.value === tabId && live?.engine === 'claude' && live.sessionId === runtime
     }
-    const offered = sub('permission-console:requested', id => { if (id === tabId) ready() })
-    const focus = sub('permission-console:focus', id => {
-      if (id === tabId && activeTabId.value === tabId && tabs.value.find(t => t.id === id)?.engine === 'claude') {
-        terminalRef.current?.focus()
-      }
-    })
-    ready()
+    const ready = (id: unknown, runtime: unknown) => { if (current(id, runtime)) snd('permission-console:ready', tabId, sessionId) }
+    const offered = sub('permission-console:requested', ready)
+    const focus = sub('permission-console:focus', (id, runtime) => { if (current(id, runtime)) terminalRef.current?.focus() })
+    ready(tabId, sessionId)
     return () => { offered(); focus() }
-  }, [active, fill, tabId, tab?.engine])
+  }, [active, fill, tabId, tab?.engine, tab?.sessionId])
 
   // Repaint immediately when this terminal becomes active (session switch). While
   // display:none, xterm skips rendering and its size is stale; without this the

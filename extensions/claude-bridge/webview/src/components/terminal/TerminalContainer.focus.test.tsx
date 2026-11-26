@@ -7,13 +7,13 @@ import { activeTabId, tabs } from '../../signals/tabs'
 import { TerminalContainer } from './TerminalContainer'
 
 const messages = vi.hoisted(() => ({
-  listeners: new Map<string, (id: string) => void>(),
+  listeners: new Map<string, (id: string, runtime: string) => void>(),
   ready: vi.fn(),
   focus: vi.fn(),
 }))
 vi.mock('../../lib/bridge-transport', () => ({
   snd: messages.ready,
-  sub(channel: string, fn: (id: string) => void) {
+  sub(channel: string, fn: (id: string, runtime: string) => void) {
     messages.listeners.set(channel, fn)
     return () => messages.listeners.delete(channel)
   },
@@ -34,19 +34,24 @@ it('keeps keyboard focus on normal mount and gives it only to the requested acti
   messages.focus.mockImplementation(() => terminalInput.focus())
   composer.focus()
   activeTabId.value = 'ours'
-  tabs.value = [{ id: 'ours', engine: 'claude', status: 'connected' } as TabInfo]
+  tabs.value = [{ id: 'ours', sessionId: 'runtime', engine: 'claude', status: 'connected' } as TabInfo]
   try {
     await act(() => render(<TerminalContainer tabId="ours" active fill />, root))
-    expect(messages.ready).toHaveBeenCalledWith('permission-console:ready', 'ours')
+    expect(messages.ready).toHaveBeenCalledWith('permission-console:ready', 'ours', 'runtime')
     expect(document.activeElement).toBe(composer)
     const focus = messages.listeners.get('permission-console:focus')!
-    focus('sibling')
+    focus('sibling', 'runtime')
     expect(document.activeElement).toBe(composer)
-    focus('ours')
+    focus('ours', 'old-runtime')
+    expect(document.activeElement).toBe(composer)
+    focus('ours', 'runtime')
     expect(document.activeElement).toBe(terminalInput)
     composer.focus()
+    tabs.value = [{ ...tabs.value[0]!, sessionId: 'returned' }]
+    focus('ours', 'runtime')
+    expect(document.activeElement).toBe(composer)
     activeTabId.value = 'sibling'
-    focus('ours')
+    focus('ours', 'returned')
     expect(document.activeElement).toBe(composer)
   } finally {
     await act(() => render(null, root))

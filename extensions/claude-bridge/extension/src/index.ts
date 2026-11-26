@@ -61,7 +61,11 @@ export function activate(context: vscode.ExtensionContext): void {
     onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
   })
   const permissionConsole = new PermissionConsoleFocus(
-    id => host.getTabManager().getActiveTabId() === id && host.getTabManager().getConnection(id)?.getEngine() === 'claude',
+    id => {
+      const tabs = host.getTabManager()
+      const connection = tabs.getConnection(id)
+      return tabs.getActiveTabId() === id && connection?.getEngine() === 'claude' ? connection.getSessionId() : undefined
+    },
     () => { void vscode.commands.executeCommand('workbench.view.extension.claudeBridgeConsole') },
     () => { void vscode.commands.executeCommand('claudeBridgeConsoleView.focus', { keyboardFocus: true }) },
   )
