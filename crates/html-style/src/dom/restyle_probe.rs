@@ -34,6 +34,8 @@ pub struct RestyleProbe {
     extra_css: Box<str>,
     /// Лист документа или тема читают атрибуты вне селекторов (`attr()`).
     reads_attr: crate::dom::attr_reads::AttrReads,
+    /// The shadow trees of the light tree: their hosts and sheets.
+    shadows: Rc<crate::dom::shadow::ShadowFacts>,
 }
 
 /// Проба документа между правками его ревизии: правила и контексты входа в

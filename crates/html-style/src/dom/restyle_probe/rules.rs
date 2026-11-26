@@ -20,22 +20,22 @@ impl RestyleProbe {
         let mut media = asked;
         let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
         let document = &input.dom.document;
-        if crate::dom::shadow::has_declarative_shadow(document, &admission)? {
-            return Ok(None);
-        }
+        let shadows = Rc::new(crate::dom::shadow::shadow_facts(document, &admission)?);
         if let Some(dark) = crate::dom::page_scheme::preference(document, media.dark, &admission)? {
             media.dark = dark;
         }
         let vcx = values.values().with_scheme(scheme(media));
         let rules =
             crate::dom::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
-        Ok(Some(Self::built(
+        let mut probe = Self::built(
             rules.doc,
             rules.has_args,
             rules.reads_attr,
             (media, asked),
             extra_css,
-        )))
+        );
+        probe.shadows = shadows;
+        Ok(Some(probe))
     }
 
     /// Проба из правил сборки документа без теней (`convert_restyling`):
@@ -55,7 +55,13 @@ impl RestyleProbe {
             asked,
             extra_css: extra_css.into(),
             reads_attr,
+            shadows: Default::default(),
         }
+    }
+
+    /// The shadow trees of the document's light tree (`ShadowFacts`).
+    pub fn shadows(&self) -> &crate::dom::shadow::ShadowFacts {
+        &self.shadows
     }
 
     /// Лист документа или тема читают атрибуты элементов вне селекторов.
