@@ -21,6 +21,7 @@ mod levels;
 mod paths;
 mod rebox;
 pub(in crate::document) mod roots;
+mod shadow_scope;
 mod why_value;
 
 use super::boxes::Boxes;

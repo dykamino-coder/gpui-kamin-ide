@@ -63,7 +63,7 @@ impl Document {
         let values = &self.state.values;
         let document = &input.dom.document;
         let media = self.state.media();
-        let Ok(Some(probe)) = cache.probe(input, theme_css, media, values) else {
+        let Ok(probe) = cache.probe(input, theme_css, media, values) else {
             return Levels::document(document, "probe");
         };
         let (mutated, after): (Vec<_>, Vec<&[_]>) = (batch.elements.iter())
@@ -109,12 +109,14 @@ impl Document {
             }
         }
         crate::paint_path::add(&crate::paint_path::RESTYLED_ELEMENTS, targets.len() as u64);
-        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their
-        // values into the cascades of their children's boxes: the probe
-        // folds them the same way.
+        // Unwrapped `html`/`body` (`document::unwrap_document`) fold their values into
+        // the cascades of their children's boxes: the probe folds them the same way.
         let Some(unwrapped) = fold::Unwrapped::add(&self.nodes, document, &mut targets) else {
             return Levels::document(document, "unwrapped");
         };
+        if let Some(why) = super::shadow_scope::refused(&probe, changed, &targets) {
+            return Levels::document(document, why);
+        }
         // The styles before the batch are those the last probe of each
         // target left (Blink and Stylo keep the old style on the element);
         // only targets no edit has probed yet are cascaded.
@@ -136,8 +138,7 @@ impl Document {
             },
             None => None,
         };
-        let entries = targets
-            .iter()
+        let entries = (targets.iter())
             .zip(before.into_iter().zip(after))
             .enumerate();
         for (i, (target, (old, new))) in entries {
