@@ -161,6 +161,7 @@ pub(crate) async fn generic_children(
         crate::layout::positioned::layer_scope::LayerScope::cb(
             &opts.cx.position.state,
             fixed_cb_layer_box(&merged),
+            opts.cx.scroll.node.clone(),
         )
     });
     // Линейки промежутков (css-gaps-1). Слой заводится ТОЛЬКО когда
@@ -176,9 +177,21 @@ pub(crate) async fn generic_children(
     // The viewport scroll tree is built after the outer document ICB
     // closes. Its padding box still owns the initial containing block
     // (CSS 2.1 §10.1), including absolute descendants below body margins.
+    // Fixed boxes of this layer hang on the viewport: they cancel the offset
+    // of this scrollport (`viewport_anchor`).
     let viewport = e.tag == "html-viewport";
-    let viewport_scope = viewport
-        .then(|| crate::layout::positioned::layer_scope::LayerScope::icb(&opts.cx.position.state));
+    let viewport_scope = viewport.then(|| {
+        let anchor = opts
+            .cx
+            .scroll
+            .target
+            .as_ref()
+            .and_then(|t| t.handle_of(e.node_id).cloned());
+        crate::layout::positioned::layer_scope::LayerScope::viewport(
+            &opts.cx.position.state,
+            anchor,
+        )
+    });
     let (mut decorated, decorated_opts) = prepare_children(e, &merged, opts);
     {
         let opts = &decorated_opts;

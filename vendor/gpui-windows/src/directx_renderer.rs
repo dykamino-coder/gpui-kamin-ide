@@ -40,18 +40,31 @@ pub(crate) struct FontInfo {
 }
 
 mod scene_capture;
+mod canvas;
+mod cover_shape;
 mod frame_capture;
+mod cull;
+mod gpu_wait;
 mod group_region;
 mod group_stage;
 mod gaussian;
 mod group_atlas;
 mod group_batch;
+mod group_tiles;
 mod texture_pool;
 mod gpu_memory;
 pub(crate) use gpu_memory::texture_bytes;
 mod shader_identity;
+#[cfg(debug_assertions)]
+mod shader_compilation;
 mod present_gate;
 mod quad_clear;
+mod retained;
+mod group_cache;
+mod group_scrub;
+pub use group_scrub::group_scrub_mismatches;
+mod damage_audit;
+pub use damage_audit::{damage_audit_mismatches, set_damage_audit};
 use group_region::Region;
 
 pub(crate) struct DirectXRenderer {
@@ -86,6 +99,9 @@ pub(crate) struct DirectXRenderer {
     /// KaminIDE patch: блендер «писать поверх» — для групп, у которых
     /// смешивание с кадром посчитано в шейдере.
     blend_replace: Option<ID3D11BlendState>,
+    /// KaminIDE patch: composite runs drawn in one pass (`group_tiles`;
+    /// `GPUI_GROUP_TILES=0` keeps the composite levels, for comparison runs).
+    group_tiles: bool,
 
     width: u32,
     height: u32,
@@ -103,9 +119,16 @@ pub(crate) struct DirectXRenderer {
     capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
     /// Идёт основная сцена кадра (не буфер группы) — её пачки и меряются.
     timing_main: bool,
+    /// KaminIDE patch: instance buffers of retained scene layers (`layer_cache`).
+    layer_cache: layer_cache::LayerCache,
+    /// KaminIDE patch: the window background quad (`backdrop`) is still to be
+    /// skipped: the first quad batch of the frame, possibly inside a layer.
+    backdrop_pending: bool,
     /// KaminIDE patch (BR-31A): the last frame was not handed to the
     /// compositor, so the next paint must present (`present_gate`).
     unpresented: bool,
+    /// KaminIDE patch: the frame the target keeps and the damage of each buffer (`retained`).
+    retained: retained::Retained,
 }
 
 /// KaminIDE patch: ресурсы backdrop blur. Копия бэкбуфера (сэмплить
@@ -139,6 +162,11 @@ struct BlurScratch {
     groups: Vec<BlurTexture>,
     group_place: Vec<group_atlas::Place>,
     group_regions: Vec<Region>,
+    /// KaminIDE patch: tile lists of the composite run in one pass (`group_tiles`).
+    tile_lists: group_tiles::TileLists,
+    /// KaminIDE patch: the scissor of the frame scene being drawn
+    /// (`retained::Plan::Within`); group composites outside it are skipped.
+    frame_within: Option<Region>,
     pool: texture_pool::Pool,
     /// Готовый буфер каждой группы: сырой или размытый.
     group_slots: Vec<usize>,
@@ -408,8 +436,13 @@ struct DirectXResources {
     swap_chain: Option<IDXGISwapChain1>,
     /// KaminIDE patch (#76): см. FrameLatencyGate.
     frame_gate: Option<FrameLatencyGate>,
+    /// KaminIDE patch: the frame's canvas (`canvas`): with a swap chain a
+    /// texture of its own, offscreen the target itself.
     render_target: Option<ID3D11Texture2D>,
     render_target_view: Option<ID3D11RenderTargetView>,
+    /// KaminIDE patch: the swap chain's back buffer, which receives the
+    /// canvas's changes before each present (`canvas`).
+    back_buffer: Option<ID3D11Texture2D>,
 
     // Path intermediate textures (with MSAA)
     path_intermediate_texture: ID3D11Texture2D,
@@ -424,6 +457,7 @@ struct DirectXResources {
 struct DirectXRenderPipelines {
     shadow_pipeline: PipelineState<Shadow>,
     quad_pipeline: PipelineState<Quad>,
+    quad_gradient: analytic_gradient::GradientProgram,
     path_rasterization_pipeline: PipelineState<PathRasterizationSprite>,
     path_sprite_pipeline: PipelineState<PathSprite>,
     underline_pipeline: PipelineState<Underline>,
@@ -434,6 +468,8 @@ struct DirectXRenderPipelines {
     blur_pipeline: PipelineState<BlurQuad>,
     /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
     clear_pipeline: PipelineState<quad_clear::ClearColor>,
+    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
+    group_tiles_pipeline: PipelineState<BlurQuad>,
 }
 
 struct DirectXGlobalElements {
@@ -510,6 +546,12 @@ impl DirectXRenderer {
         Self::build(hwnd, directx_devices, disable_direct_composition, false)
     }
 
+    /// KaminIDE patch: on WARP, the CPU time a frame comparison may take
+    /// (microseconds). A comparison of a few hundred cells of text costs
+    /// 0.4–1 ms; one of thousands of boxes that ends in a whole redraw costs
+    /// 4 ms and more, more than the strips it could leave unrastered.
+    const SOFTWARE_SHIFT_BUDGET_US: u32 = 2000;
+
     /// KaminIDE patch: the same device, pipelines and render target format
     /// as a window renderer, drawing into a texture instead of a swap chain
     /// back buffer; `present` does nothing.
@@ -529,6 +571,14 @@ impl DirectXRenderer {
 
         let devices = DirectXRendererDevices::new(directx_devices, disable_direct_composition)
             .context("Creating DirectX devices")?;
+        // KaminIDE patch: a frame comparison pays only when it costs less
+        // than the raster it saves. A hardware adapter rasters the window in
+        // less CPU than reading its primitives, so frames keep the damage of
+        // the layer bookkeeping there; WARP rasters on the CPU, so a frame is
+        // compared within a budget and drawn whole past it.
+        let software = unsafe { devices.adapter.GetDesc1() }
+            .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
+        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
         let resources = if offscreen {
@@ -568,15 +618,19 @@ impl DirectXRenderer {
             gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
             capture: None,
             timing_main: false,
+            layer_cache: Default::default(),
+            backdrop_pending: false,
             group_target: None,
             group_target_tex: None,
             blend_premultiplied: None,
             blend_replace: None,
+            group_tiles: group_tiles::enabled(),
             width: 1,
             height: 1,
             backdrop: None,
             skip_draws: false,
             unpresented: false,
+            retained: Default::default(),
         })
     }
 
@@ -610,6 +664,11 @@ impl DirectXRenderer {
     }
 
     /// KaminIDE patch: забыть чужую текстуру.
+    /// KaminIDE patch: see `DirectXAtlas::damage_external`.
+    pub fn damage_external_texture(&self, id: AtlasTextureId, rect: Bounds<DevicePixels>) {
+        self.atlas.damage_external(id, rect);
+    }
+
     pub fn unregister_external_texture(&self, id: AtlasTextureId) {
         self.atlas.unregister_external(id);
     }
@@ -618,7 +677,7 @@ impl DirectXRenderer {
         self.atlas.clone()
     }
 
-    fn pre_draw(&mut self, clear_color: &[f32; 4]) -> Result<()> {
+    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
         let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
         let resources = self.resources.as_ref().expect("resources missing");
         let device_context = &self
@@ -652,6 +711,11 @@ impl DirectXRenderer {
             device_context
                 .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
         }
+        // KaminIDE patch: a frame drawn within a rectangle clears it later,
+        // under the scissor (`render`).
+        if !clear {
+            return Ok(());
+        }
         self.clear_frame(clear_color)
     }
 
@@ -665,20 +729,29 @@ impl DirectXRenderer {
         // (замер diag.log юзера: «презент 397-911 мс»/с) — корень задержки
         // ввода ~1.5с на слабой машине.
         // KaminIDE patch: an offscreen target is complete once drawn.
-        let Some(swap_chain) = &self.resources.as_ref().expect("resources missing").swap_chain
+        let Some(swap_chain) = self.resources.as_ref().expect("resources missing").swap_chain.clone()
         else {
             self.unpresented = false;
             return Ok(());
         };
+        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
+        let copied = self.copy_to_back_buffer()?;
         // KaminIDE patch (BR-31A): never wait inside Present. While the GPU
         // or the compositor is behind, a plain Present blocked the UI thread
         // for about 1 s per frame and webview pulls waited behind it. A frame
         // that cannot be queued now is dropped, and the next paint presents.
         let started = std::time::Instant::now();
-        let result = unsafe { swap_chain.Present(0, DXGI_PRESENT_DO_NOT_WAIT) };
+        let result = present_gate::present_dirty(&swap_chain, copied, (self.width, self.height));
         present_gate::count_present_call(started.elapsed());
         let shown = present_gate::frame_shown(result)?;
+        if result == windows::Win32::Foundation::DXGI_STATUS_OCCLUDED {
+            // KaminIDE patch: whether the chain took a buffer is unknown; the
+            // canvas still holds the frame.
+            self.forget_buffers();
+        }
         if shown {
+            // KaminIDE patch (retained.rs): the next frame draws into the next buffer.
+            self.retained.presents = self.retained.presents.wrapping_add(1);
             // The queued frame will signal the gate again; a dropped one
             // keeps the count it took for the next attempt.
             if let Some(gate) = &self.res().frame_gate {
@@ -710,6 +783,8 @@ impl DirectXRenderer {
     }
 
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
+        // KaminIDE patch: layer buffers die with the device.
+        self.layer_cache.clear();
         try_to_recover_from_device_lost(|| {
             self.handle_device_lost_impl(directx_devices)
                 .context("DirectXRenderer handling device lost")
@@ -762,6 +837,26 @@ impl DirectXRenderer {
             return Ok(());
         }
         self.ensure_drawable_resources()?;
+        // KaminIDE patch (retained.rs): unite this frame's damage into every
+        // buffer first, so a skipped frame still leaves what the buffers lack.
+        // A frame the target and the screen already show is neither drawn nor
+        // presented, and takes nothing from the latency gate.
+        let plan = self.plan_frame(scene, background_appearance);
+        self.count_plan(&plan, scene.frame_shift_miss(), scene.frame_shift_stats());
+        let keep = matches!(plan, retained::Plan::Keep);
+        if keep {
+            // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.
+            self.carry_kept_groups(scene);
+        }
+        if keep && !self.unpresented {
+            self.frame_drawn(&plan);
+            if self.capture.is_some()
+                && let Err(e) = self.capture_frame()
+            {
+                log::warn!("frame capture failed: {e}");
+            }
+            return Ok(());
+        }
         // KaminIDE patch (#76): буфер свапчейна занят компоузером (DWM/RDP
         // ещё кодирует прошлый кадр) — НЕ рисовать и НЕ блокироваться:
         // пропускаем кадр и просим низкоприоритетный WM_PAINT — он придёт
@@ -779,7 +874,28 @@ impl DirectXRenderer {
             self.drop_frame();
             return Ok(());
         }
-        self.render(scene, background_appearance)?;
+        let drawn = match &plan {
+            retained::Plan::Keep => Ok(()),
+            retained::Plan::Full => self.render(scene, background_appearance, None),
+            retained::Plan::Within(region) => {
+                self.render(scene, background_appearance, Some(slice::from_ref(region)))
+            }
+            // KaminIDE patch (canvas.rs): the last frame moved, then the rest.
+            retained::Plan::Shift { delta, copy, redraw } => self
+                .move_canvas(*delta, *copy)
+                .and_then(|()| self.render(scene, background_appearance, Some(redraw))),
+        };
+        if let Err(e) = drawn {
+            self.forget_frames();
+            return Err(e);
+        }
+        // KaminIDE patch: stand-only check against a whole redraw (`damage_audit`).
+        if damage_audit::enabled() && !keep {
+            if let Err(e) = self.audit_frame(scene, background_appearance, &plan) {
+                log::warn!("damage audit failed: {e}");
+            }
+        }
+        self.frame_drawn(&plan);
         if self.capture.is_some() {
             if let Err(e) = self.capture_frame() {
                 log::warn!("frame capture failed: {e}");
@@ -793,26 +909,47 @@ impl DirectXRenderer {
     /// [`draw`](Self::draw) (which then presents) and
     /// [`render_to_image`](Self::render_to_image) (which reads the target back
     /// instead), so the two cannot drift.
+    ///
+    /// KaminIDE patch: with `within`, the target keeps the last frame and only
+    /// those rectangles are cleared and drawn (scissor, `retained.rs`), one
+    /// after another from the instances uploaded once; groups whose composite
+    /// cannot reach their bounds are not drawn.
     fn render(
         &mut self,
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
+        within: Option<&[Region]>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
-        self.pre_draw(&match background_appearance {
+        self.backdrop_pending = self.backdrop.is_some();
+        self.layer_cache.begin_frame();
+        let clear_color = match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
-        })?;
+        };
+        self.pre_draw(&clear_color, within.is_none())?;
         // KaminIDE patch: pre_draw wrote the frame parameters for the viewport size.
         let viewport = self.res().viewport;
         self.blur.frame_globals = Some([viewport.Width, viewport.Height]);
         let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
         self.gpu_timer.begin(&device, &ctx);
+        let bounds = within.and_then(|rects| rects.iter().copied().reduce(|a, b| a.union(b)));
+        let needed = within.map(|_| match bounds {
+            Some(r) => scene.groups_needed([r.x, r.y, r.width, r.height]),
+            None => vec![false; scene.groups.len()],
+        });
+        log::debug!(
+            target: "gpui::frame",
+            "plan within {within:?} groups {} needed {:?}",
+            scene.groups.len(),
+            needed.as_ref().map(|n| n.iter().filter(|&&v| v).count())
+        );
         // KaminIDE patch: группы рисуются в свои буферы ДО кадра — в кадре
         // от них остаётся метка, по которой готовый буфер и композитится.
-        if let Err(e) = self.render_groups(scene) {
+        if let Err(e) = self.render_groups(scene, needed.as_deref()) {
             log::warn!("paint group failed: {e}");
+            self.retained.failed = true;
         }
         if !scene.groups.is_empty() {
             self.gpu_timer.instrumentation.batches.count(8, scene.groups.len(), 0.0);
@@ -826,7 +963,10 @@ impl DirectXRenderer {
         }
         self.gpu_timer.instrumentation.batches.quad_detail(&scene.quads);
         self.timing_main = true;
-        let drawn = self.draw_scene(scene);
+        let drawn = match within {
+            None => self.draw_scene(scene),
+            Some(rects) => self.draw_scene_within(scene, rects, clear_color),
+        };
         self.timing_main = false;
         self.gpu_timer.end(&ctx);
         drawn
@@ -859,13 +999,20 @@ impl DirectXRenderer {
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
         for batch in scene.batches() {
+            // KaminIDE patch: a layer draws its own batches from its buffers.
+            if let PrimitiveBatch::Layer(index) = batch {
+                self.draw_layer(scene, index)?;
+                continue;
+            }
             let cost = self.timing_main.then(|| batch_area(scene, &batch));
             let _annotation = annotation
                 .as_ref()
                 .map(|annotation| Annotation::new(annotation, HSTRING::from(batch.label())));
             match batch {
                 PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
-                PrimitiveBatch::Quads(range) => self.draw_quads(b[1] + range.start, range.len()),
+                PrimitiveBatch::Quads(range) => {
+                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
+                }
                 PrimitiveBatch::Paths(range) => {
                     let paths = &scene.paths[range];
                     self.draw_paths_to_intermediate(paths)?;
@@ -882,6 +1029,7 @@ impl DirectXRenderer {
                     self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
                 }
                 PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
+                PrimitiveBatch::Layer(_) => Ok(()),
             }
             .with_context(|| {
                 format!(
@@ -911,7 +1059,7 @@ impl DirectXRenderer {
     /// Эффектам вроде размытия поддерева нужна готовая картинка целиком,
     /// поэтому дети группы идут в текстуру её области с полем размытия.
     /// Общий staging сохраняет viewport и точность интерполяции исходного кадра.
-    fn render_groups(&mut self, scene: &Scene) -> Result<()> {
+    fn render_groups(&mut self, scene: &Scene, needed: Option<&[bool]>) -> Result<()> {
         if scene.groups.is_empty() {
             self.blur.groups.clear();
             self.blur.group_place.clear();
@@ -928,7 +1076,11 @@ impl DirectXRenderer {
         }
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
-        self.prepare_group_targets(scene)?;
+        // KaminIDE patch: images kept from the last frame (`group_cache`).
+        let reuse = self.prepare_group_targets(scene)?;
+        let kept = reuse.iter().filter(|&&k| k).count();
+        let mut valid = reuse.clone();
+        self.retained.groups.valid.clear();
         // A pass that failed last frame may have left its rectangles in the stage.
         self.clear_group_stage()?;
         self.blur.group_slots.clear();
@@ -1003,27 +1155,32 @@ impl DirectXRenderer {
         // layer by layer (`group_batch::draw_group_layers`); any other group ends
         // the segment, so its nested groups are in the atlas before it is drawn.
         self.blur.layer.clear();
+        log::debug!(
+            target: "gpui::frame",
+            "groups {} reused {}",
+            scene.groups.len(),
+            reuse.iter().filter(|&&r| r).count()
+        );
         let mut segment = Vec::new();
         for (i, group) in scene.groups.iter().enumerate() {
+            // KaminIDE patch: a frame drawn within a rectangle skips groups no
+            // composite in it needs (`Scene::groups_needed`).
+            if reuse[i] || needed.is_some_and(|n| !n.get(i).copied().unwrap_or(true)) {
+                continue;
+            }
+            valid[i] = true;
             if group_batch::joins_layer(group) {
                 segment.push(i);
                 continue;
             }
             self.draw_group_layers(&scene.groups, &mut segment)?;
-            self.draw_group_content(group, Region::for_group(group, self.width, self.height)[0], None)?;
             // KaminIDE patch: a direct Gaussian writes the atlas rectangle itself.
-            match gaussian::direct_radius(group.blur_radius) {
-                Some(r) => self.gaussian_group(i, group.blur_radius, r)?,
-                None => {
-                    if group.blur_radius > 0.0 {
-                        self.blur_group(i, group)?;
-                    }
-                    self.save_group_stage(i);
-                }
-            }
-            self.clear_group_stage()?;
+            self.draw_group_alone(i, group)?;
         }
         self.draw_group_layers(&scene.groups, &mut segment)?;
+        // KaminIDE patch: one kept image per frame is drawn again (group_scrub).
+        self.scrub_kept_group(scene, &reuse)?;
+        self.groups_kept(scene, valid, kept);
 
         // Вернуть состояние кадра: цель и вьюпорт меняли проходы групп.
         unsafe {
@@ -1313,7 +1470,10 @@ impl DirectXRenderer {
             !self.skip_draws,
             "render_to_image unavailable while recovering from a lost device"
         );
-        self.render(scene, background_appearance)?;
+        // KaminIDE patch: the target now holds a frame outside the window's
+        // sequence of compared scenes (`retained.rs`).
+        self.forget_frames();
+        self.render(scene, background_appearance, None)?;
 
         let devices = self.devices.as_ref().context("devices missing")?;
         let device = &devices.device;
@@ -1405,11 +1565,15 @@ impl DirectXRenderer {
         &mut self,
         recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
     ) -> Result<()> {
+        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
+        self.forget_frames();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
         resources.render_target.take();
         resources.render_target_view.take();
+        // KaminIDE patch: ResizeBuffers needs every reference to the buffers released.
+        resources.back_buffer.take();
         recreate(resources, devices)?;
 
         unsafe {
@@ -1432,6 +1596,8 @@ impl DirectXRenderer {
             )?;
         }
 
+        self.pipelines.quad_pipeline.upload_gradients(
+            &devices.device, &devices.device_context, &scene.gradient_data())?;
         if !scene.quads.is_empty() {
             self.pipelines.quad_pipeline.update_buffer(
                 &devices.device,
@@ -1491,27 +1657,37 @@ impl DirectXRenderer {
         )
     }
 
-    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
+    /// `quads` are the batch's instances, uploaded at `start` of the quad buffer.
+    fn draw_quads(&mut self, quads: &[Quad], start: usize) -> Result<()> {
         // KaminIDE patch: фон окна уже лёг очисткой кадра (`backdrop`). Буферы
         // групп очищаются прозрачным — там первый квад рисуется как есть.
-        let (start, len) = if start == 0 && self.backdrop.is_some() && self.group_target.is_none() {
-            (1, len.saturating_sub(1))
-        } else {
-            (start, len)
-        };
-        if len == 0 {
-            return Ok(());
+        let skip = start == 0 && self.backdrop_pending && self.group_target.is_none();
+        if self.group_target.is_none() {
+            self.backdrop_pending = false;
         }
+        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
         let devices = self.devices.as_ref().context("devices missing")?;
-        self.pipelines.quad_pipeline.draw_range(
-            &devices.device_context,
-            self.globals
-                .batch_params_buffer
-                .as_ref()
-                .context("batch params buffer missing")?,
-            start as u32,
-            len as u32,
-        )
+        let params = self
+            .globals
+            .batch_params_buffer
+            .as_ref()
+            .context("batch params buffer missing")?;
+        let pipeline = &self.pipelines.quad_pipeline;
+        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
+            if analytic {
+                pipeline.bind_gradients(&devices.device_context);
+                pipeline.draw_range_with_program(
+                    &devices.device_context,
+                    params,
+                    first as u32,
+                    len as u32,
+                    self.pipelines.quad_gradient.fragment(&devices.device)?,
+                )?;
+            } else {
+                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
+            }
+        }
+        Ok(())
     }
 
     fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
@@ -1744,6 +1920,7 @@ impl DirectXRenderer {
             }
             if let Err(e) = self.draw_composite_run(&run) {
                 log::warn!("surface pass failed: {e}");
+                self.retained.failed = true;
             }
             run.clear();
             // KaminIDE patch: метка группы (`Window::paint_group`) — не
@@ -1757,10 +1934,12 @@ impl DirectXRenderer {
             };
             if let Err(e) = drawn {
                 log::warn!("surface pass failed: {e}");
+                self.retained.failed = true;
             }
         }
         if let Err(e) = self.draw_composite_run(&run) {
             log::warn!("surface pass failed: {e}");
+            self.retained.failed = true;
         }
         // Вернуть состояние кадра (проходы меняли RTV/вьюпорт/globals).
         self.restore_frame_globals()?;
@@ -2102,7 +2281,7 @@ impl DirectXRenderer {
         }
         let mask_clip = self.blur.group_clip.get(g).copied().unwrap_or([0.0; 4]);
         let (vw, vh) = (self.width as f32, self.height as f32);
-        let quad = BlurQuad {
+        let mut quad = BlurQuad {
             bounds: [
                 s.bounds.origin.x.0,
                 s.bounds.origin.y.0,
@@ -2137,6 +2316,7 @@ impl DirectXRenderer {
             source_rect: self.blur.group_regions[slot].floats(),
             backdrop_rect: [0.0; 4],
         };
+        group_region::narrow_composite(&mut quad, vw, vh);
         Some((quad, place.page))
     }
     pub(crate) fn gpu_specs(&self) -> Result<GpuSpecs> {
@@ -2221,7 +2401,7 @@ impl DirectXResources {
         };
 
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2236,6 +2416,7 @@ impl DirectXResources {
             frame_gate,
             render_target: Some(render_target),
             render_target_view,
+            back_buffer,
             path_intermediate_texture,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
@@ -2248,7 +2429,7 @@ impl DirectXResources {
     /// buffer: same format, size and single sample, no frame latency gate.
     pub fn new_offscreen(devices: &DirectXRendererDevices, width: u32, height: u32) -> Result<Self> {
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2262,6 +2443,7 @@ impl DirectXResources {
             frame_gate: None,
             render_target: Some(render_target),
             render_target_view,
+            back_buffer,
             path_intermediate_texture,
             path_intermediate_msaa_texture,
             path_intermediate_msaa_view,
@@ -2283,7 +2465,7 @@ impl DirectXResources {
         height: u32,
     ) -> Result<()> {
         let (
-            render_target,
+            (render_target, back_buffer),
             render_target_view,
             path_intermediate_texture,
             path_intermediate_srv,
@@ -2293,6 +2475,7 @@ impl DirectXResources {
         ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
         self.render_target = Some(render_target);
         self.render_target_view = render_target_view;
+        self.back_buffer = back_buffer;
         self.path_intermediate_texture = path_intermediate_texture;
         self.path_intermediate_msaa_texture = path_intermediate_msaa_texture;
         self.path_intermediate_msaa_view = path_intermediate_msaa_view;
@@ -2318,6 +2501,7 @@ impl DirectXRenderPipelines {
             64,
             create_blend_state(device)?,
         )?;
+        let quad_gradient = analytic_gradient::GradientProgram::new()?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
             "path_rasterization_pipeline",
@@ -2375,10 +2559,19 @@ impl DirectXRenderPipelines {
             1,
             create_blend_state_replace(device)?,
         )?;
+        let group_tiles_pipeline = PipelineState::new(
+            device,
+            "group_tiles_pipeline",
+            ShaderModule::GroupTiles,
+            4,
+            create_blend_state_replace(device)?,
+        )?;
 
         Ok(Self {
+            group_tiles_pipeline,
             shadow_pipeline,
             quad_pipeline,
+            quad_gradient,
             path_rasterization_pipeline,
             path_sprite_pipeline,
             underline_pipeline,
@@ -2489,6 +2682,7 @@ const _: () = assert!(std::mem::size_of::<BatchParams>() == 16);
 
 struct PipelineState<T> {
     label: &'static str,
+    gradients: Option<analytic_gradient::GradientBuffers>,
     // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
     shader_executables: [String; 2],
     vertex: ID3D11VertexShader,
@@ -2632,6 +2826,25 @@ impl<T> PipelineState<T> {
         first_instance: u32,
         instance_count: u32,
     ) -> Result<()> {
+        self.draw_range_with_program(
+            device_context,
+            batch_params_buffer,
+            first_instance,
+            instance_count,
+            &self.fragment,
+        )
+    }
+
+    /// KaminIDE patch: the instance range drawn by another pixel program over
+    /// the same instance buffer (analytic-gradient quads).
+    fn draw_range_with_program(
+        &self,
+        device_context: &ID3D11DeviceContext,
+        batch_params_buffer: &ID3D11Buffer,
+        first_instance: u32,
+        instance_count: u32,
+        fragment: &ID3D11PixelShader,
+    ) -> Result<()> {
         anyhow::ensure!(
             first_instance as usize + instance_count as usize <= self.buffer_size,
             "DirectX instance range exceeds the {} buffer",
@@ -2643,7 +2856,7 @@ impl<T> PipelineState<T> {
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             &self.vertex,
-            &self.fragment,
+            fragment,
             &self.blend_state,
         );
         unsafe {
@@ -2782,7 +2995,7 @@ fn create_resources(
     width: u32,
     height: u32,
 ) -> Result<(
-    ID3D11Texture2D,
+    (ID3D11Texture2D, Option<ID3D11Texture2D>),
     Option<ID3D11RenderTargetView>,
     ID3D11Texture2D,
     Option<ID3D11ShaderResourceView>,
@@ -2790,10 +3003,14 @@ fn create_resources(
     Option<ID3D11RenderTargetView>,
     D3D11_VIEWPORT,
 )> {
-    let (render_target, render_target_view) = match swap_chain {
-        Some(swap_chain) => create_render_target_and_its_view(swap_chain, &devices.device)?,
-        None => create_offscreen_target_and_its_view(&devices.device, width, height)?,
+    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
+    // into the back buffer before present (`canvas`).
+    let (render_target, render_target_view) = create_offscreen_target_and_its_view(&devices.device, width, height)?;
+    let back_buffer = match swap_chain {
+        Some(swap_chain) => Some(unsafe { swap_chain.GetBuffer::<ID3D11Texture2D>(0) }?),
+        None => None,
     };
+    let render_target = (render_target, back_buffer);
     let (path_intermediate_texture, path_intermediate_srv) =
         create_path_intermediate_texture(&devices.device, width, height)?;
     let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
@@ -2815,17 +3032,6 @@ fn create_resources(
         path_intermediate_msaa_view,
         viewport,
     ))
-}
-
-#[inline]
-fn create_render_target_and_its_view(
-    swap_chain: &IDXGISwapChain1,
-    device: &ID3D11Device,
-) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
-    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
-    let mut render_target_view = None;
-    unsafe { device.CreateRenderTargetView(&render_target, None, Some(&mut render_target_view))? };
-    Ok((render_target, render_target_view))
 }
 
 /// KaminIDE patch: the offscreen counterpart of a swap chain back buffer
@@ -3192,17 +3398,13 @@ pub(crate) mod shader_resources {
     use anyhow::Result;
 
     #[cfg(debug_assertions)]
-    use windows::{
-        Win32::Graphics::Direct3D::{
-            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
-            ID3DBlob,
-        },
-        core::{HSTRING, PCSTR},
-    };
+    use windows::Win32::Graphics::Direct3D::ID3DBlob;
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
         Quad,
+        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
+        QuadGradient,
         Shadow,
         Underline,
         PathRasterization,
@@ -3215,6 +3417,8 @@ pub(crate) mod shader_resources {
         Blur,
         /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
         Clear,
+        /// KaminIDE patch: group composites blended by the output merger.
+        GroupTiles,
     }
 
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -3260,6 +3464,10 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => QUAD_VERTEX_BYTES,
                     ShaderTarget::Fragment => QUAD_FRAGMENT_BYTES,
                 },
+                ShaderModule::QuadGradient => match target {
+                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
+                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
+                },
                 ShaderModule::Shadow => match target {
                     ShaderTarget::Vertex => SHADOW_VERTEX_BYTES,
                     ShaderTarget::Fragment => SHADOW_FRAGMENT_BYTES,
@@ -3300,76 +3508,18 @@ pub(crate) mod shader_resources {
                     ShaderTarget::Vertex => CLEAR_VERTEX_BYTES,
                     ShaderTarget::Fragment => CLEAR_FRAGMENT_BYTES,
                 },
+                ShaderModule::GroupTiles => match target {
+                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
+                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
+                },
             };
             Self { inner: bytes }
         }
     }
 
+    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
     #[cfg(debug_assertions)]
-    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
-        unsafe {
-            use windows::Win32::Graphics::{
-                Direct3D::ID3DInclude, Hlsl::D3D_COMPILE_STANDARD_FILE_INCLUDE,
-            };
-
-            let shader_name = if matches!(entry, ShaderModule::EmojiRasterization) {
-                "color_text_raster.hlsl"
-            } else {
-                "shaders.hlsl"
-            };
-
-            let entry = format!(
-                "{}_{}\0",
-                entry.as_str(),
-                match target {
-                    ShaderTarget::Vertex => "vertex",
-                    ShaderTarget::Fragment => "fragment",
-                }
-            );
-            let target = match target {
-                ShaderTarget::Vertex => "vs_4_1\0",
-                ShaderTarget::Fragment => "ps_4_1\0",
-            };
-
-            let mut compile_blob = None;
-            let mut error_blob = None;
-            let shader_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join(&format!("src/{}", shader_name))
-                .canonicalize()?;
-
-            let entry_point = PCSTR::from_raw(entry.as_ptr());
-            let target_cstr = PCSTR::from_raw(target.as_ptr());
-
-            // really dirty trick because winapi bindings are unhappy otherwise
-            let include_handler = &std::mem::transmute::<usize, ID3DInclude>(
-                D3D_COMPILE_STANDARD_FILE_INCLUDE as usize,
-            );
-
-            let ret = D3DCompileFromFile(
-                &HSTRING::from(shader_path.to_str().unwrap()),
-                None,
-                include_handler,
-                entry_point,
-                target_cstr,
-                D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
-                0,
-                &mut compile_blob,
-                Some(&mut error_blob),
-            );
-            if ret.is_err() {
-                let Some(error_blob) = error_blob else {
-                    return Err(anyhow::anyhow!("{ret:?}"));
-                };
-
-                let error_string =
-                    std::ffi::CStr::from_ptr(error_blob.GetBufferPointer() as *const i8)
-                        .to_string_lossy();
-                log::error!("Shader compile error: {}", error_string);
-                return Err(anyhow::anyhow!("Compile error: {}", error_string));
-            }
-            Ok(compile_blob.unwrap())
-        }
-    }
+    use super::shader_compilation::build_shader_blob;
 
     #[cfg(not(debug_assertions))]
     include!(concat!(env!("OUT_DIR"), "/shaders_bytes.rs"));
@@ -3379,6 +3529,7 @@ pub(crate) mod shader_resources {
         pub fn as_str(self) -> &'static str {
             match self {
                 ShaderModule::Quad => "quad",
+                ShaderModule::QuadGradient => "quad_gradient",
                 ShaderModule::Shadow => "shadow",
                 ShaderModule::Underline => "underline",
                 ShaderModule::PathRasterization => "path_rasterization",
@@ -3389,6 +3540,7 @@ pub(crate) mod shader_resources {
                 ShaderModule::EmojiRasterization => "emoji_rasterization",
                 ShaderModule::Blur => "blur",
                 ShaderModule::Clear => "clear",
+                ShaderModule::GroupTiles => "group_tiles",
             }
         }
     }
@@ -3561,6 +3713,8 @@ mod amd {
 
 
 mod backdrop;
+mod analytic_gradient;
+mod layer_cache;
 mod recovery;
 mod batch_cost;
 
@@ -3587,8 +3741,13 @@ fn batch_area(scene: &Scene, batch: &PrimitiveBatch) -> (usize, usize, f64) {
         PrimitiveBatch::SubpixelSprites { range: r, .. } => (5, r.len(), sum(&scene.subpixel_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
         PrimitiveBatch::PolychromeSprites { range: r, .. } => (6, r.len(), sum(&scene.polychrome_sprites[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
         PrimitiveBatch::Surfaces(r) => (7, r.len(), sum(&scene.surfaces[r.clone()], |s| area(&s.bounds, &s.content_mask, 0.0))),
+        PrimitiveBatch::Layer(_) => (8, 0, 0.0),
     }
 }
 
 #[cfg(test)]
 mod recovery_tests;
+
+// KaminIDE patch: debug shader artifacts do not retain their source directory.
+#[cfg(all(test, debug_assertions))]
+mod shader_tests;

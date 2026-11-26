@@ -65,13 +65,31 @@ need not sum to the total's median or p90.
 | `first_frame_total` | Budget total, not an additional phase: from host loading (cold) or unchanged-frame request (warm), through completed first GPU readback and return to the async task. Excludes application/window startup, statistics, fingerprinting and PNG encoding. |
 
 `modes.<mode>.diagnostic_scopes` retains inclusive `document_build_total`,
-`cpu_draw_total`, `gpu_readback` and `taffy_inclusive`, with raw samples and
+`cpu_draw_total`, `gpu_readback` (with `raster_submit`, `gpu_wait`, `capture` and
+`capture_copy`) and `taffy_inclusive`, with raw samples and
 statistics. The existing `TAFFY_US` counter includes nested layout calls and may
 count the same wall interval more than once; it is diagnostic only, never used
 to derive the additive layout phase. Its resolution is one microsecond per
 increment. These diagnostics **do overlap**
 (`diagnostic_intervals_overlap: true`) and must not be added to the phase budget.
 Readback is contained in `raster_gpu_readback`; draw contains the root lifecycle.
+
+`raster_gpu_readback` is split exactly (checked, the sample fails otherwise) into three
+diagnostics: `raster_submit` (`window.present` minus the capture: CPU encoding,
+flush and the platform present, which is `DXGI_PRESENT_DO_NOT_WAIT` and never waits
+for the GPU), `gpu_wait` (the capture's wait until the GPU has executed the frame:
+a fence or an event query) and `capture` (the rest of the capture: staging texture,
+copy, `Map` and the row copy; `capture_copy` is its copy part). On a hardware adapter
+`gpu_wait` is GPU execution the window path does not wait for; on WARP (`--gpu
+software`) it is the frame's CPU raster on WARP's threads. The comparison tool
+(`tools/engine-compare`) subtracts `capture` always and `gpu_wait` on a hardware
+adapter only, and reports `gpu_wait` apart.
+
+With `--why`, every captured frame also reports its raster plan (`keep`, `full` and
+why, `within`, or `shift`: the kept canvas moved by a scroll step, with the moved
+area), the rectangles rasterized and their pixels, and the capture's wait for the
+GPU (`gpu_wait`) on a line of its own: that wait is part of `raster_gpu_readback`,
+it is the GPU's time, not CPU work of the frame. A production present never waits.
 No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
 
 The root adapter forwards the same element layout ID and introduces no layout
@@ -126,22 +144,35 @@ attribute edits) is applied as DOM mutation records (`edit_input: "mutation_reco
 changes the shape (a node inserted or removed) enters the engine the only way it has today,
 `Document::update` with the new markup, parse included (`edit_input: "document_update"`). `--edit` picks
 the second markup: `text` (one letter of a text node after the middle of the document), `attr`
-(a `data-edit` attribute on an element there), `class` (`class="alt"` on the root), `insert`
+(a `data-edit` attribute on the middle eligible element in parsed DOM preorder), `class` (`class="alt"` on the root), `insert`
 (a copy of the first leaf element after the middle, placed right after it: one node more) and
 `remove` (that leaf element deleted: one node less). A leaf element has no child elements, so its
 copy is valid in any parent and the edit changes one node, not how the surroundings parse.
 `--edit-markup FILE` gives the second markup itself, for any other mutation; the mode's `edit`
 field is then `{"markup": FILE}`.
 
-In `relayout` and `edit` modes, `fresh_checks` also records
-`incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`, using the same RGB-only BGR
-fingerprint as the measured sequence. `--fresh-check-dir DIR` retains both frames
-for every check, including matching checks: `relayout-N-incremental.png` and
-`relayout-N-fresh.png` for each viewport group, or `edit-N-*.png` for each variant.
-Paths are recorded in each check's `artifacts`. An edit mismatch's second fresh
-control also gets hashes and optional PNGs in `second_fresh`. Use a new directory
-for each invocation. These checks and PNG writes occur after the measured samples;
-they do not change the exact RGB verdict or discard timing samples.
+In `edit` mode, `matches_fresh` is true only when at least one comparison was
+performed and every required measured frame was captured and matched. The
+`fresh_validation` object reports `required`, `compared`, `skipped` and a status
+of `not_checked`, `incomplete`, `matched` or `mismatched`. With
+`ENGINE_BENCH_PRESENT_SKIP=1`, a skipped presentation has no pixels to compare;
+it remains unverified and prevents a passing verdict. Timing samples are retained.
+
+Two reference images are captured from fresh Documents before edit sampling, then
+the base Document is restored. Each actual measured capture is compared after its
+own timing and counters close, so a later matching frame cannot erase an earlier
+mismatch. Only the two references and current image need to remain live. Reference
+Documents have independent DOM/style/layout state; platform font and GPU resources
+are shared, so this is not an independent-process test of shared caches.
+
+In `relayout` and `edit` modes, `fresh_checks` records `different_rgb_pixels`,
+`incremental_bgr_fnv1a64` and `fresh_bgr_fnv1a64`. Edit checks also carry the
+`sample_index` and `variant`. `--fresh-check-dir DIR` retains both images for every
+comparison, including matches: `relayout-N-*.png` per viewport group or
+`edit-SAMPLE-variant-VARIANT-*.png` per measured edit. Paths appear in `artifacts`.
+Use a new directory for each invocation. Comparisons and PNG writes are outside
+sample timing. `--edit-markup` belongs to the parsed session configuration, so
+separate sessions can select different files in the same process.
 
 Known platform limitation: Intel Iris Xe with driver 32.0.101.7085 can produce
 rare single-pixel changes on the native D3D11 hardware backend, setting

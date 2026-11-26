@@ -20,6 +20,7 @@ fn box_input_round_trip_preserves_decoration_and_shared_css() {
         border_stroke: Some((Color::default(), [2.0; 4])),
         physical_padding: Some([1.0, 2.0, 3.0, 4.0]),
         corner_radius: Some(5.0),
+        band_owner: 9,
     };
     let borrowed = BoxStyle::shared(BoxStyleInput::from(&original));
     let moved = BoxStyle::shared(BoxStyleInput::from(original.clone()));

@@ -35,7 +35,19 @@ const slugDir = path.join(home, '.claude', 'projects', projectSlug(process.cwd()
 const file = path.join(slugDir, `${conversation}.jsonl`)
 fs.mkdirSync(slugDir, { recursive: true })
 if (resumed >= 0 && !fs.existsSync(file)) throw new Error('No conversation found')
-const prior = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).length : 0
+// Continue after the highest record number already used: the transcript a resume
+// reads can hold fewer lines than earlier processes numbered, and a reused UUID
+// makes the client drop the new row as a duplicate.
+const prior = fs.existsSync(file)
+  ? fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .reduce((max, line, i) => {
+        const seq = Number(line.split(`"uuid":"${conversation}-`)[1]?.match(/^(\d+)"/)?.[1] ?? 0)
+        return Math.max(max, i + 1, seq)
+      }, 0)
+  : 0
 const rec = records(conversation, prior)
 const emit = (...entries) => {
   fs.appendFileSync(file, entries.map((e) => JSON.stringify(e) + '\n').join(''))
@@ -152,8 +164,93 @@ async function agents(count = 800, team) {
   fs.appendFileSync(childFile, rows.map((row) => JSON.stringify(row) + '\n').join(''))
   await hook('SubagentStart', { agent_id: agentId, agent_type: agentName })
 }
+// Load mode (BRIDGE_FAKE_LOAD_K > 0): an ordinary prompt runs a turn shaped
+// like a real coding turn — K tool calls through the Bridge MCP endpoint
+// (Read, Grep, Bash in turn) with model "think" time between them, transcript
+// records and console output, framed by the CLI's OSC 7501 status. Used to
+// load-test the server's main thread with many chats without paying ~200 MB
+// per real CLI. No API traffic, no prompt content: synthetic only.
+const LOAD_K = Number(process.env.BRIDGE_FAKE_LOAD_K ?? 0)
+const LOAD_THINK_MS = Number(process.env.BRIDGE_FAKE_LOAD_THINK_MS ?? 2000)
+// CPU a real CLI spends per step (rendering, parsing the stream); calibrated
+// so the container's CPU contention matches real CLIs at the same load.
+const LOAD_BURN_MS = Number(process.env.BRIDGE_FAKE_LOAD_BURN_MS ?? 0)
+const burn = () => {
+  const end = Date.now() + LOAD_BURN_MS
+  while (Date.now() < end);
+}
+const LOAD_TOOLS = [
+  ['Read', { file_path: process.env.BRIDGE_FAKE_LOAD_FILE ?? '/tmp/work/f1.txt' }],
+  ['Grep', { pattern: 'needle', path: process.env.BRIDGE_FAKE_LOAD_DIR ?? '/tmp/work' }],
+  ['Bash', { command: 'ls | head -5', description: 'List files' }],
+]
+const osc = (state) => process.stdout.write(`\x1b]7501;app=claude-code:state=${state}\x07`)
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+let loadMcpReady = false
+async function loadTurn() {
+  osc('working')
+  if (!loadMcpReady) {
+    await rpc('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'fake-claude', version: '0.0.0' },
+    })
+    await rpc('notifications/initialized', {})
+    loadMcpReady = true
+  }
+  for (let i = 0; i < LOAD_K; i++) {
+    await pause(LOAD_THINK_MS)
+    const [name, input] = LOAD_TOOLS[i % LOAD_TOOLS.length]
+    const call = rec.tool(`mcp__user-tools__${name}`, input)
+    emit(call)
+    process.stdout.write(`\r\n\x1b[32m\u25cf ${name}\x1b[0m(${JSON.stringify(input)})\r\n`)
+    const response = await rpc('tools/call', { name, arguments: input })
+    const text = String(response?.result?.content?.[0]?.text ?? '')
+    emit(rec.result(call.message.content[0].id, text.slice(0, 4000)))
+    process.stdout.write(text.slice(0, 1500).replace(/\n/g, '\r\n'))
+    burn()
+  }
+  await pause(LOAD_THINK_MS)
+  emit(rec.assistant([{ type: 'text', text: 'Synthetic load turn complete' }]))
+  osc('idle')
+}
 /** Messages this process received (in memory only, for /fake-recall). */
 const received = []
+// `/fake-stream <blocks> <intervalMs> <tag>`: a measured load turn. Timed
+// assistant blocks around one client tool round trip; each block carries its
+// tag, sequence and emit time, so the client measures first-block latency,
+// gaps, loss and duplicates without trusting server-side bookkeeping.
+async function streamTurn([blocksArg = '20', intervalArg = '50', tag = 'turn']) {
+  const blocks = Number(blocksArg)
+  const interval = Number(intervalArg)
+  if (!Number.isInteger(blocks) || blocks < 1 || blocks > 500) throw new Error('Block count must be 1..500')
+  if (!Number.isInteger(interval) || interval < 0 || interval > 5000) throw new Error('Interval must be 0..5000ms')
+  if (!/^[a-zA-Z0-9-]{1,64}$/.test(tag)) throw new Error('Invalid stream tag')
+  osc('working')
+  if (!loadMcpReady) {
+    await rpc('initialize', {
+      protocolVersion: '2024-11-05',
+      capabilities: {},
+      clientInfo: { name: 'fake-claude', version: '0.0.0' },
+    })
+    await rpc('notifications/initialized', {})
+    loadMcpReady = true
+  }
+  const filler = 'synthetic streamed text '.repeat(16)
+  for (let seq = 0; seq < blocks; seq++) {
+    if (seq === Math.floor(blocks / 2)) {
+      const input = { command: `echo ${tag}`, description: 'Synthetic load tool' }
+      const call = rec.tool('mcp__user-tools__Bash', input)
+      emit(call)
+      const response = await rpc('tools/call', { name: 'Bash', arguments: input })
+      emit(rec.result(call.message.content[0].id, JSON.stringify(response?.result ?? response?.error ?? null)))
+    }
+    emit(rec.assistant([{ type: 'text', text: `[load ${tag} seq=${seq} t=${Date.now()}] ${filler}` }]))
+    process.stdout.write(`\r\n${tag} block ${seq}`)
+    if (interval) await pause(interval)
+  }
+  osc('idle')
+}
 async function execute(command) {
   if (command === '/exit') {
     await hook('SessionEnd')
@@ -166,8 +263,10 @@ async function execute(command) {
     return
   }
   await hook('UserPromptSubmit', { prompt: command })
-  // Input content itself is synthetic control, never user prompt capture.
-  emit(rec.user('Synthetic harness command'))
+  // Input content itself is synthetic control, never user prompt capture. A
+  // queue acceptance run opts in to the real CLI's behaviour: the transcript
+  // records what was typed, so the client can match its pending item to it.
+  emit(rec.user(process.env.BRIDGE_FAKE_CLI_RECORD_INPUT === '1' ? command : 'Synthetic harness command'))
   received.push(command)
   const [action, parameter] = command.split(/\s+/)
   switch (action) {
@@ -269,7 +368,35 @@ async function execute(command) {
       )
       break
     }
+    case '/fake-tool': {
+      // `/fake-tool <name> <json-args>`: one call of a Bridge MCP tool, its
+      // result in the transcript and as the answer (how a model reads it).
+      const args = command.slice(action.length + parameter.length + 2).trim()
+      await rpc('initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'fake-claude', version: '0.0.0' },
+      })
+      await rpc('notifications/initialized', {})
+      const input = args ? JSON.parse(args) : {}
+      const call = rec.tool(`mcp__user-tools__${parameter}`, input)
+      emit(call)
+      const response = await rpc('tools/call', { name: parameter, arguments: input })
+      const text = (response.result?.content ?? []).map((c) => c.text ?? '').join('\n')
+      emit(
+        rec.result(call.message.content[0].id, text || JSON.stringify(response.error), Boolean(response.error)),
+        rec.assistant([{ type: 'text', text: `tool said: ${text}` }]),
+      )
+      break
+    }
+    case '/fake-stream':
+      await streamTurn(command.split(/\s+/).slice(1))
+      break
     default:
+      if (LOAD_K > 0) {
+        await loadTurn()
+        break
+      }
       emit(
         rec.assistant([{ type: 'text', text: 'Synthetic response. Use /fake-agents, /fake-mcp, /compact or /usage.' }]),
       )
@@ -342,7 +469,12 @@ process.stdin.on('data', (chunk) => {
           screen('Synthetic scenario failed')
         })
     } else if (ch === '\x7f' || ch === '\b') buffer = buffer.slice(0, -1)
-    else if (ch >= ' ') buffer += ch
+    else if (ch >= ' ') {
+      buffer += ch
+      // A TUI echoes typed/pasted text; the server's terminal submit path waits
+      // for that echo before Enter, so a silent CLI would stall it to its cap.
+      if (!stream) process.stdout.write(ch)
+    }
   }
 })
 if (args.includes('/usage')) await execute('/usage')
@@ -361,5 +493,6 @@ else {
       }) + '\n',
     )
   screen('Credential-free dev harness')
+  if (LOAD_K > 0) osc('idle')
   await hook('SessionStart', { source: resumed >= 0 ? 'resume' : 'startup' })
 }

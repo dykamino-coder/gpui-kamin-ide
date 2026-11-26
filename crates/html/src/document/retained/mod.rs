@@ -13,22 +13,81 @@
 //! том числе краска отложенных отрисовок (`Window::retained_replayable`).
 //! Иначе кадр собирается заново, как `Document::render`.
 
+#[cfg(test)]
+mod animation_tests;
+mod box_repaint;
+#[cfg(test)]
+mod box_repaint_tests;
+#[cfg(test)]
+mod child_removal_tests;
+#[cfg(test)]
+mod column_repaint_tests;
+#[cfg(test)]
+mod column_unseen_tests;
+#[cfg(test)]
+mod content_replay_tests;
+#[cfg(test)]
+mod content_resize_tests;
+mod counters;
+#[cfg(test)]
+mod hover_repaint_tests;
+mod snapshot;
+pub use snapshot::FrameCounters;
+#[cfg(test)]
+mod decorated_fill_tests;
+#[cfg(test)]
+mod effects_repaint_tests;
 mod element;
 #[cfg(test)]
 mod escaped_replay_tests;
 #[cfg(test)]
 mod far_tests;
 #[cfg(test)]
+mod float_root_replay_tests;
+#[cfg(test)]
+mod framed_layer_tests;
+#[cfg(test)]
 mod invalidation_tests;
+#[cfg(test)]
+mod kept_paragraph_tests;
+#[cfg(test)]
+mod key_reuse_tests;
+#[cfg(test)]
+mod l0_memory_tests;
+#[cfg(test)]
+mod l0_resource_tests;
+#[cfg(test)]
+mod l0_tests;
+#[cfg(test)]
+mod layer_order_tests;
 #[cfg(test)]
 mod layered_replay_tests;
 #[cfg(test)]
+mod moved_rows_tests;
+#[cfg(test)]
 mod paint_damage_tests;
+#[cfg(all(test, windows))]
+mod paint_pixels_tests;
+mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;
 #[cfg(test)]
 mod recolour_layout_tests;
+#[cfg(test)]
+mod record_release_tests;
+#[cfg(test)]
+mod replaced_max_width_tests;
+#[cfg(test)]
+mod slot_display_tests;
+pub use prepared::UpdatePhase;
+#[cfg(test)]
+mod attr_scope_tests;
+#[cfg(test)]
+mod band_rerecord_tests;
+#[cfg(test)]
+mod band_value_tests;
 mod record;
+pub(crate) use record::frame_miss_code;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -38,9 +97,17 @@ mod restyle_run_tests;
 #[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
+mod svg_paint_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod unread_color_tests;
+#[cfg(test)]
+mod unseen_tests;
+#[cfg(test)]
+mod used_style_tests;
+#[cfg(test)]
+mod why_tests;
 mod window_key;
 
 use super::Document;
@@ -55,13 +122,18 @@ use std::rc::Rc;
 #[derive(Default)]
 pub(super) struct Slot {
     /// Опции хоста последнего записанного устоявшегося кадра.
-    recorded: std::cell::RefCell<Option<FrameKey>>,
-    /// Отложенные отрисовки дерева рисовали группу композиции после записи
-    /// его кадра: такое дерево больше не повторяется.
-    unreplayable: Cell<bool>,
+    recorded: std::cell::RefCell<std::rc::Weak<record::Inputs>>,
     /// Сборки и повторы кадра — наблюдение для тестов и стенда.
     builds: Cell<u64>,
     replays: Cell<u64>,
+    /// Кадр, собранный и разложенный шагом документа (`prepared`).
+    prepared: std::cell::RefCell<Option<prepared::Prepared>>,
+    /// Сборки внутри `Window::draw` — наблюдение для тестов и стенда.
+    inside_draw: Cell<u64>,
+    /// Why the frame record was built instead of replayed (`record::FrameMiss`).
+    misses: Cell<[u64; record::MISSES]>,
+    /// Why the last painted record was not published for replay.
+    unsettled: Cell<Option<record::FrameMiss>>,
 }
 
 /// Опции хоста, от которых зависит кадр. Остальные поля `RenderOpts` хосту
@@ -89,6 +161,8 @@ impl FrameKey {
 struct Builder {
     state: Rc<DocState>,
     nodes: Rc<Vec<Node>>,
+    /// Номер дерева `nodes` (`Document::tree`).
+    tree: u64,
     opts: crate::RenderOpts,
     store: Rc<crate::layout::reuse::Store>,
     /// Счётчики сборки до первой сборки кадра: повторная (после отказа
@@ -123,7 +197,11 @@ impl Builder {
             .bg(rgb(0xffffff))
             .text_size(self.opts.text.font_size)
             .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(&self.state, &self.nodes, &opts))
+            .children(super::scope::render(
+                &self.state,
+                (&self.nodes, self.tree),
+                &opts,
+            ))
             .into_any_element();
         (tree, flow)
     }
@@ -134,65 +212,34 @@ impl Document {
     /// либо повторить прошлый, если ни один его вход не изменился.
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
         let key = FrameKey::of(opts);
-        let candidate = key.is_some()
-            && *self.retained.recorded.borrow() == key
-            && self.state.values.resources_unchanged();
-        let builder = Builder {
-            state: self.state.clone(),
-            nodes: self.nodes.clone(),
-            // The frame builds into this document: the host's empty one is never made.
-            opts: opts.with_doc(self.state.clone()),
-            store: self.reuse.clone(),
-            counters: Cell::new(None),
-            layout_keys: key.is_some() && self.state.values.resources_unchanged(),
-        };
-        element::Retained::new(self.retained.clone(), key, builder, candidate).into_any_element()
+        let candidate =
+            self.retained.inputs(key.as_ref()).is_ok() && self.state.values.resources_unchanged();
+        let prepared = self.retained.take_prepared(&key);
+        let builder = self.frame_builder(opts, &key);
+        element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
+            .into_any_element()
     }
 
-    /// Сколько раз кадр собран и сколько раз повторён (`render_viewport`).
-    pub fn retained_frames(&self) -> (u64, u64) {
-        (self.retained.builds.get(), self.retained.replays.get())
+    /// Есть записанный устоявшийся кадр этого дерева: следующий кадр с теми же
+    /// опциями хоста может его повторить.
+    pub(super) fn frame_recorded(&self) -> bool {
+        self.retained.recorded.borrow().strong_count() != 0
     }
 
-    /// Блоки корневого потока: записано, пропущено вне экрана, кадров
-    /// собрано заново после промаха проверки экрана (`layout::reuse`).
-    pub fn reused_blocks(&self) -> (u64, u64, u64) {
-        let stats = self.reuse.stats.get();
-        (stats.recorded, stats.skipped, stats.rebuilt_frames)
-    }
-
-    /// Blocks wrapped for recording so far (`layout::reuse::recorder`).
-    #[cfg(test)]
-    pub(crate) fn tracked_blocks(&self) -> u64 {
-        self.reuse.stats.get().tracked
-    }
-
-    /// Blocks of the root flow replayed on screen without a build.
-    pub fn replayed_blocks(&self) -> u64 {
-        self.reuse.stats.get().replayed
-    }
-
-    /// Blocks wrapped for a subtree replay record so far (`layout::reuse::replay`).
-    #[cfg(test)]
-    pub(crate) fn replay_tracked_blocks(&self) -> u64 {
-        self.reuse.stats.get().replay_tracked
-    }
-
-    /// Of `replayed_blocks`, those whose layout subtree was claimed whole.
-    #[cfg(test)]
-    pub(crate) fn replayed_subtrees(&self) -> u64 {
-        self.reuse.stats.get().subtrees
-    }
-
-    /// Far blocks laid out from their kept layout subtree (`layout::reuse::far`).
-    #[cfg(test)]
-    pub(crate) fn far_blocks(&self) -> u64 {
-        self.reuse.stats.get().far
-    }
-
-    /// Far records kept for the next build.
-    #[cfg(test)]
-    pub(crate) fn far_records(&self) -> usize {
-        self.reuse.far_records()
+    /// Why the last recorded frame of this revision was kept from replay (DevTools `why`).
+    pub(in crate::document) fn unpublished_reason(&self) -> Option<&'static str> {
+        self.retained.unsettled.get().map(record::FrameMiss::code)
     }
 }
+
+#[cfg(test)]
+mod extent_settle_tests;
+#[cfg(test)]
+mod moved_glyph_tests;
+
+#[cfg(test)]
+mod deferred_group_tests;
+#[cfg(test)]
+mod lifted_tests;
+#[cfg(test)]
+mod outline_scroll_tests;

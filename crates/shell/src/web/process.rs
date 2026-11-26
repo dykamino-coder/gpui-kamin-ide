@@ -2,6 +2,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+pub(super) mod exit;
+
 use cef::rc::*;
 use cef::*;
 
@@ -45,6 +47,15 @@ cef::wrap_app! {
                 // Второй источник того же — «внешние» расширения из папок
                 // установки: гасим и его, иначе запрет обходится каталогом.
                 cl.append_switch(Some(&"disable-default-apps".into()));
+                // Обновлятор компонентов Chrome за первые ~30 минут простоя
+                // качал в профиль ~25 компонентов (Widevine, WasmTtsEngine,
+                // списки ActorSafetyLists, CRLSet, hyphen, Zxcvbn…, 62 МБ) и
+                // грузил их в браузерный процесс — две ступени +11 и +25 МиБ
+                // приватной памяти оболочки на 16-й и 21-й минуте (стенд l2,
+                // 20.11). Нашим страницам `kamin.localhost` они не нужны.
+                // Цена: CRLSet и PKIMetadata не обновляются для чужих сайтов
+                // во встроенных вью.
+                cl.append_switch(Some(&"disable-component-update".into()));
                 // Эмуляция RDP/WARP для стендов: без GPU-композитинга
                 // Chromium шлёт кадры только `on_paint` — так проверяется
                 // software-путь отрисовки.
@@ -112,6 +123,7 @@ pub fn exit_if_child_process() {
 /// Поднять CEF в браузерном процессе. Зовётся ПОСЛЕ
 /// [`exit_if_child_process`], один раз.
 pub fn init() {
+    super::diag_sink::install_logger();
     if LIVE.load(Ordering::Relaxed) {
         return;
     }
@@ -241,6 +253,6 @@ pub(crate) fn is_live() -> bool {
 /// Погасить CEF при выходе.
 pub fn shutdown() {
     if LIVE.swap(false, Ordering::Relaxed) {
-        cef::shutdown();
+        exit::stop_cef();
     }
 }

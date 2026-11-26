@@ -42,6 +42,20 @@ pub(crate) fn stationary(
         _ => child,
     }
 }
+/// A canvas background layer positioned from the root element's box, not
+/// `background-attachment: fixed`: it scrolls with the document
+/// (CSS Backgrounds 3 §2.11.2, §3.5), while the canvas layer around it stays
+/// in the viewport (`canvas`).
+pub(crate) fn canvas_scrolling(
+    target: Option<&Target>,
+    fixed: Option<bool>,
+    child: gpui::AnyElement,
+) -> gpui::AnyElement {
+    match target.filter(|_| fixed != Some(true)) {
+        Some(target) => stationary::follow(child, target.handle.clone()),
+        None => child,
+    }
+}
 // CSS Backgrounds 3 §2.11: the canvas covers the viewport, including gutters.
 pub(crate) fn canvas(
     frame: Option<&super::scroll_extent::Frame>,
@@ -54,18 +68,37 @@ pub(crate) fn canvas(
     let Some(handle) = target.map(|t| t.handle.clone()) else {
         return child;
     };
-    let layer = gpui::div()
+    let mut layer = gpui::div()
         .absolute()
         .top(gpui::px(-gutter[1]))
         .left(gpui::px(-gutter[0]))
         .right(gpui::px(-gutter[2]))
         .bottom(gpui::px(-gutter[3]))
-        .child(child)
-        .into_any_element();
+        .child(child);
+    // Built over the guessed gutters: it covers the ones layout decides. It
+    // paints under the bars and is no content: it adds no scrollable overflow
+    // that would decide them (CSS Overflow 3 §2.2 counts boxes, not the canvas).
+    layer.style().kamin_scrollbars = Some(gpui::KaminScrollbars {
+        root_gutter: Some(gutter),
+        root_gutter_grow: true,
+        proxy: true,
+        ..Default::default()
+    });
+    let layer = layer.into_any_element();
     stationary::wrap(layer, handle, clip)
 }
 
 impl Target {
+    /// The scroll handle of this scrollport.
+    pub(crate) fn handle(&self) -> &ScrollHandle {
+        &self.handle
+    }
+
+    /// The scroll handle of this scrollport when it is the box `node`.
+    pub(crate) fn handle_of(&self, node: u64) -> Option<&ScrollHandle> {
+        (self.node == node).then_some(&self.handle)
+    }
+
     pub(crate) fn claim(&self, node: u64, style_node: u64) -> Option<AppliedTarget> {
         if self.applied.get() || self.node != node || self.node != style_node {
             return None;

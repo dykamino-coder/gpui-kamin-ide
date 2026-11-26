@@ -23,6 +23,7 @@ pub mod traversal;
 pub use traversal::MAX_DEPTH;
 mod style_storage;
 mod value_cx;
+pub mod viewport_reads;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
 use crate::style::generated::counter_style_rules::CounterStyles;
@@ -32,7 +33,7 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 pub use arena::ArenaKey;
-pub use arena::{Arena, load, store};
+pub use arena::{Arena, load, store, store_once};
 pub use value_cx::{ValueCx, ValueDoc};
 
 /// Профили `@color-profile` документа: имя → байты ICC.

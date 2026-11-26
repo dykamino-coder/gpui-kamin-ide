@@ -386,7 +386,24 @@ impl Element for Img {
                         } else {
                             1.0
                         };
-                        return window.request_measured_layout(style, move |known, _, _, _| {
+                        // KaminIDE patch: a side the style sizes is never the natural one.
+                        // A final layout passes no known size, only the definite content
+                        // size there: the picture is that size, so its natural size does
+                        // not count as overflow past the box (a `width: 100%` picture of
+                        // a 900px source in a 511px box overflowed it by 389px).
+                        let sized = (
+                            !matches!(style.size.width, Length::Auto),
+                            !matches!(style.size.height, Length::Auto),
+                        );
+                        return window.request_measured_layout(style, move |known, available, _, _| {
+                            let definite = |space| match space {
+                                crate::AvailableSpace::Definite(v) => Some(v),
+                                _ => None,
+                            };
+                            let known = crate::Size {
+                                width: known.width.or(sized.0.then(|| definite(available.width)).flatten()),
+                                height: known.height.or(sized.1.then(|| definite(available.height)).flatten()),
+                            };
                             match (known.width, known.height) {
                                 (Some(w), Some(h)) => crate::Size { width: w, height: h },
                                 (None, Some(h)) => crate::Size { width: px(h.0 * ratio), height: h },

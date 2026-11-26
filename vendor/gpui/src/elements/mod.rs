@@ -6,6 +6,8 @@ mod deferred;
 mod div;
 mod image_cache;
 mod img;
+// KaminIDE patch: views redrawn alone in a box their parent reserves.
+mod isolated;
 mod list;
 // KaminIDE patch: equal div base styles share one allocation.
 pub(crate) mod refinement_share;
@@ -25,6 +27,7 @@ pub use deferred::*;
 pub use div::*;
 pub use image_cache::*;
 pub use img::*;
+pub use isolated::*;
 pub use list::*;
 pub use context_scope::{ContextScope, ScopeEnter, ScopePhase};
 pub use surface::*;

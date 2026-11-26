@@ -24,6 +24,8 @@ mod sample;
 mod sink;
 mod window;
 
+pub(super) use sample::pointer_table_range;
+
 use line::{emit, head};
 #[cfg(feature = "heap-report")]
 pub(crate) use line::{gpu, owned};
@@ -163,6 +165,7 @@ fn rearm() {
                 String::new()
             };
             sink::trailer(&format!("# end frame={frame} after={name}{counter}\n"));
+            super::retain::checkpoint(frame, until);
             return;
         }
         *window = next;

@@ -1,64 +1,29 @@
 //! Инертное поддерево: обычный поток текста и блоков без собственных слоёв.
 //!
-//! Позиционированные потомки уходят в слой содержащего блока, флоаты — в
-//! полосы контейнера, а трансформация, прозрачность и смешение открывают
-//! контекст наложения с отложенной краской. Замещаемые элементы, формы и
-//! ссылки держат ресурсы, состояние или ввод. Такое поддерево не пропускается.
+//! Positioned and floating descendants, deferred paint, and interactive or
+//! replaced elements can affect state outside a skipped block.
 
 use crate::dom::{Element, Node};
 use crate::style::computed::Position;
 
-/// Теги обычного потока, чья коробка — только блок или строка текста.
-const TAGS: &[&str] = &[
-    "div",
-    "p",
-    "span",
-    "b",
-    "i",
-    "em",
-    "strong",
-    "u",
-    "s",
-    "small",
-    "code",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "section",
-    "article",
-    "header",
-    "footer",
-    "main",
-    "nav",
-    "aside",
-    "blockquote",
-];
-
-/// Таблица раскладывается внутри своей коробки (CSS 2.1 §17.4): её ячейки —
-/// обычный поток, а сетка — только геометрия.
-const TABLE: &[&str] = &[
-    "table", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "td", "th",
-];
-
-/// Вердикт `plain` одного блочного ребёнка на время его сборки: решение о
-/// записи повтора (`FlowCx::mark`) и запись пропуска (`FlowCx::record`)
-/// спрашивают его оба, а обход поддерева выполняется один раз.
-#[derive(Default)]
-pub(super) struct Inert(std::cell::OnceCell<bool>);
-
-impl Inert {
-    /// `plain(e)` для ребёнка, ради которого создан вердикт.
-    pub(super) fn of(&self, e: &Element) -> bool {
-        *self.0.get_or_init(|| plain(e))
-    }
+/// A skip record may use another counter origin only when none of its
+/// paint keys or anchors escape the subtree. Both recorders use this result.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum CounterOrigin {
+    Fixed,
+    Relative,
 }
 
-/// Каждый элемент поддерева `e` инертен (см. модуль).
-pub(super) fn plain(e: &Element) -> bool {
-    all_elements(e, inert)
+pub(super) fn skip_origin(e: &Element, vcx: crate::values::ValueCx<'_>) -> Option<CounterOrigin> {
+    let mut origin = CounterOrigin::Relative;
+    all_elements(e, |node| {
+        if origin == CounterOrigin::Relative && super::content::inert_node(node, vcx) {
+            return true;
+        }
+        origin = CounterOrigin::Fixed;
+        inert(node)
+    })
+    .then_some(origin)
 }
 
 /// Элемент `e` сам инертен: обычный поток или таблица, без собственного слоя.
@@ -77,11 +42,20 @@ fn inert(e: &Element) -> bool {
         && style.reset_effects.blend.is_none_or(|b| b == 0)
 }
 
-/// Элемент — коробка обычного потока или таблицы без наведения, анимации,
-/// псевдоэлементов первой строки и буквы и маркера.
+/// The element's box is made by its computed style and its subtree alone
+/// (css-display-3 §2), and the state it shows lives in the DOM and style,
+/// whose changes publish the box's epoch. So these do not qualify: a replaced
+/// element (css-display-3 §2.4: its content is an outside resource or a nested
+/// document, whose loading publishes no epoch) and a natively drawn control
+/// (HTML §15.5); MathML and ruby with their own layout (a ruby annotation may
+/// overhang its box, css-ruby-1 §4.4); hover and animations (pointer and clock
+/// state); first-line and first-letter (taken from an ancestor's lines); a
+/// list item's marker (its number comes from siblings). The tag alone decides
+/// nothing: `<a>`, `<li>` without a marker or `<dd>` are flow boxes like `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
-    let tag = e.tag.as_str();
-    (TAGS.contains(&tag) || TABLE.contains(&tag))
+    !embedded(e)
+        && !math_layout(e)
+        && crate::text::ruby::ruby_role(e).is_none()
         && e.hover.is_none()
         && e.anim.is_none()
         && e.first_letter.is_none()
@@ -90,16 +64,65 @@ pub(super) fn flow_kind(e: &Element) -> bool {
 }
 
 /// Поддерево `e` можно повторить на экране (`replay`): коробки потока без
-/// флоатов, единиц области просмотра, вертикального письма, гибких и
-/// сеточных коробок (их сборка читает размеры окна напрямую, а не через
-/// ограничения, чьи чтения записываются). Позиционирование и свои слои —
-/// только оставаясь внутри поддерева (`layered::contained`).
+/// единиц области просмотра, вертикального письма, гибких и сеточных коробок
+/// (их сборка читает размеры окна напрямую, а не через ограничения, чьи
+/// чтения записываются). Флоаты — только внутри корня своего контекста
+/// форматирования в поддереве (`escaping_floats`). Позиционирование и свои
+/// слои — только оставаясь внутри поддерева (`layered::contained`).
 pub(super) fn replayable(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
-    let node = |e: &Element| {
-        let float = e.style.used().reset_box_layout.float;
-        flow_kind(e) && float.is_none_or(|f| f == 0) && layout_reads_outside_nothing(e, vcx)
-    };
-    all_elements(e, node) && super::layered::contained(e)
+    let node = |e: &Element| flow_kind(e) && layout_reads_outside_nothing(e, vcx);
+    all_elements(e, node) && !escaping_floats(e) && super::layered::contained(e)
+}
+
+fn floating(e: &Element) -> bool {
+    e.style
+        .used()
+        .reset_box_layout
+        .float
+        .is_some_and(|f| f != 0)
+}
+
+/// В поддереве `e` есть флоат, который выходит за его край: сам `e` или
+/// флоат, у которого между ним и `e` (включая `e`) нет коробки со своим
+/// контекстом форматирования. Флоат внутри такой коробки остаётся в ней: ни
+/// строки, ни блоки снаружи его не обходят, а коробка вмещает его по высоте
+/// (CSS 2.1 §9.4.1, §10.6.7; css-multicol-1 §2: многоколоночник — корень
+/// контекста). Так Blink держит exclusion space внутри результата корня BFC
+/// (`LayoutResult`, layout_box_hot.cc:152), а снаружи его не видно.
+pub(super) fn escaping_floats(e: &Element) -> bool {
+    use crate::layout::box_kind::own_context;
+    if floating(e) {
+        return true;
+    }
+    if own_context(e) {
+        return false;
+    }
+    // As `all_elements`: the children of `e` in place, a level per open
+    // descendant, so a block of text and empty boxes allocates nothing.
+    let mut top = e.children.iter();
+    let mut open: Vec<std::slice::Iter<'_, Node>> = Vec::new();
+    loop {
+        let next = match open.last_mut() {
+            Some(level) => level.next(),
+            None => top.next(),
+        };
+        match next {
+            Some(Node::Element(c)) => {
+                if floating(c) {
+                    return true;
+                }
+                if !c.children.is_empty() && !own_context(c) {
+                    open.push(c.children.iter());
+                }
+            }
+            Some(_) => {}
+            None => {
+                if open.pop().is_none() {
+                    return false;
+                }
+            }
+        }
+    }
 }
 
 /// Элемент `e` сам по себе не мешает повтору поддерева (`replayable`), а
@@ -120,9 +143,35 @@ fn layout_reads_outside_nothing(e: &Element, vcx: crate::values::ValueCx<'_>) ->
         )
 }
 
-/// A table element (`far::replayable` admits none).
+/// The element's content does not come from its subtree: a replaced element or
+/// a native control (`<br>` is only a forced line break, css-text-3 §5.1).
+fn embedded(e: &Element) -> bool {
+    let tag = e.tag.as_str();
+    (crate::layout::box_kind::replaced_inline(tag) && tag != "br")
+        || crate::layout::box_kind::native_control(tag)
+}
+
+/// A MathML element laid out by the math layout (`layout::mathml`).
+fn math_layout(e: &Element) -> bool {
+    let math = &e.style.used().reset_svg_math;
+    math.mathml && math.math_layout.is_some()
+}
+
+/// A table box or a box of a table's internal display, laid out by the
+/// table (`far::replayable` admits none).
 pub(super) fn table(e: &Element) -> bool {
-    TABLE.contains(&e.tag.as_str())
+    use crate::style::computed::Display;
+    e.tag == "table"
+        || matches!(
+            e.style.used().reset_box_layout.display,
+            Some(
+                Display::Table
+                    | Display::InlineTable
+                    | Display::TableRowGroup
+                    | Display::TableRow
+                    | Display::TableCell
+            )
+        )
 }
 
 /// Блок `e` заполняет доступную ширину (CSS 2.1 §10.3.3): `width: auto` без
@@ -139,13 +188,6 @@ pub(super) fn fills_width(e: &Element) -> bool {
             .as_ref()
             .is_none_or(|w| matches!(w, crate::style::values::value::Len::Auto))
         && layout.max_width.is_none()
-}
-
-/// В поддереве `e` есть флоат.
-pub(super) fn floats(e: &Element) -> bool {
-    !all_elements(e, |e| {
-        e.style.used().reset_box_layout.float.is_none_or(|f| f == 0)
-    })
 }
 
 /// Every element of the subtree of `e`, in document order, passes `f`; the
@@ -185,41 +227,7 @@ pub(super) fn all_elements(e: &Element, mut f: impl FnMut(&Element) -> bool) -> 
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dom::{Marks, Text};
-    use crate::style::computed::Computed;
-
-    fn el(tag: &str, children: Vec<Node>) -> Element {
-        Element::synthetic(tag, Computed::default(), Marks::default(), children)
-    }
-
-    #[test]
-    fn text_blocks_are_plain_and_replaced_or_positioned_descendants_are_not() {
-        let text = Node::Text(Text::from_source("a".into(), None));
-        assert!(plain(&el(
-            "p",
-            vec![text.clone(), Node::Element(el("b", vec![]))]
-        )));
-        assert!(!plain(&el("div", vec![Node::Element(el("img", vec![]))])));
-        let mut moved = el("span", vec![text]);
-        moved.style.used_mut().reset_positioned.position = Some(Position::Absolute);
-        assert!(!plain(&el("div", vec![Node::Element(moved.clone())])));
-        assert!(!floats(&el("div", vec![Node::Element(moved)])));
-        let mut floated = el("span", vec![]);
-        floated.style.used_mut().reset_box_layout.float = Some(1);
-        assert!(floats(&el("div", vec![Node::Element(floated)])));
-    }
-
-    #[test]
-    fn inert_verdict_is_computed_once_per_child_build() {
-        let inert = Inert::default();
-        assert!(inert.of(&el("p", vec![])));
-        // The second question is answered from the first walk, not a new one.
-        assert!(inert.of(&el("img", vec![])));
-        assert!(!Inert::default().of(&el("img", vec![])));
-    }
-}
+mod tests;
 
 /// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
 /// строк крайних детей потока: блочная коробка без псевдоэлементов первой

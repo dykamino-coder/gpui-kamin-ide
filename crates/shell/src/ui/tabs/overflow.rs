@@ -49,8 +49,7 @@ pub fn tabs_overflow_menu(
         .flex()
         .flex_col()
         .gap(px(1.0))
-        .overflow_hidden()
-        .child(crate::overlay::hit_area());
+        .overflow_hidden();
     for s in items {
         let (id, name) = (&s.id, &s.name);
         let dot = parse_hex(s.color.as_deref().unwrap_or("#89b4fa"), rgba(p.accent_blue));

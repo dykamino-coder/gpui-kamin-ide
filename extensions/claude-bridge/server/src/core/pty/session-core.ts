@@ -14,7 +14,9 @@ import type { WebSocket as WS } from 'ws'
 import type { PtySession, SessionConfig } from './types'
 import { DEFAULT_SESSION_MODEL } from '../config'
 import { eventBus } from '../events/bus'
+import { makeRoomForOneMore } from './session-hibernation'
 import { debugLog, warnLog, infoLog } from '../logging'
+import { forgetDigest } from '../engine/transcript-digest'
 import { lifecycleLog, type DestroyReason } from '../logging/lifecycle'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import { codexTranscriptPath, createCodexSession, transcriptEngine } from './session-codex'
@@ -43,6 +45,7 @@ import { clearSession as clearHookSession, cancelSessionLocalExecs, HOOK_RELAY_T
 import { buildSessionEnv as buildEnv, modelForResume } from './session-env'
 import { resendSessionUsage, watchSessionStatusLine } from './session-statusline'
 import { buildSessionClaudeArgs } from './session-plugin-args'
+import { forgetEffortChange } from './effort-note'
 import {
   SESSIONS_BASE,
   sanitizeDirName,
@@ -77,6 +80,7 @@ import { createCliModTransport, CLI_MOD_PLUGIN } from './cli-mod-transport'
 import { CliHandlerConditions, hasCliHandlerConditions } from '../hooks/cli-handler-conditions'
 import { BASH_HOME_ENV } from '../hooks/hook-environment'
 import { SessionCliControl, sessionCliControl } from './session-cli-control'
+import type { CarriedSubmission } from './cli-submissions'
 
 // Re-export the per-session MCP-call helpers so callers that historically
 // imported them from session-core/session-manager keep working.
@@ -116,6 +120,8 @@ export async function createSession(
   config: SessionConfig = {},
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  // Over the running-CLI bound: the least recently used idle chat sleeps first.
+  if (!config.isSubAgent) makeRoomForOneMore()
   const release = admission.reserve(tokenId)
   let registered: PtySession | undefined
   try {
@@ -257,7 +263,7 @@ async function createAdmittedSession(
     // A swept Claude transcript comes back from the archive; without one the
     // segment continues in a new session that gets the whole conversation.
     if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
-      segment = restartSegmentFresh(manifest)
+      segment = await restartSegmentFresh(manifest)
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
@@ -301,7 +307,7 @@ async function createAdmittedSession(
     if (manifest && (codex.resumedOnFreshThread || codex.resumeNotFound)) {
       // The new thread has none of the segment's context: it gets the whole
       // conversation with its first turn, and the client keeps the chat.
-      restartSegmentFresh(manifest)
+      await restartSegmentFresh(manifest)
       codex.resumeNotFound = false
       codex.resumedOnFreshThread = false
     }
@@ -564,7 +570,7 @@ async function createAdmittedSession(
   try {
     fs.writeFileSync(cliSettingsFile, cliSettings, { mode: 0o600, flag: 'wx' })
     const args = buildSessionClaudeArgs(config, settingsDir, cliSettingsFile)
-    if (cliMod) args.push('--plugin-dir', CLI_MOD_PLUGIN)
+    if (cliMod) args.push('--plugin-dir', cliMod.hookConditions ? cliMod.conditionsPlugin() : CLI_MOD_PLUGIN)
     pty = nodePty.spawn(claudeCmd, [...(developmentCli?.prefix ?? []), ...args], {
       name: 'xterm-256color',
       cols: config.cols ?? 120,
@@ -617,10 +623,10 @@ async function createAdmittedSession(
     lastResizeAt: Date.now(),
     consoleShrunk: false,
     host: config.host,
-    registeredTools: [],
-    registeredResources: [],
-    registeredResourceTemplates: [],
-    registeredPrompts: [],
+    registeredTools: config.carryRegistrations?.registeredTools ?? [],
+    registeredResources: config.carryRegistrations?.registeredResources ?? [],
+    registeredResourceTemplates: config.carryRegistrations?.registeredResourceTemplates ?? [],
+    registeredPrompts: config.carryRegistrations?.registeredPrompts ?? [],
     cliConversationId: config.resumeConversationId || null,
     isSubAgent: config.isSubAgent || false,
     parentSessionId: config.parentSessionId || null,
@@ -635,6 +641,7 @@ async function createAdmittedSession(
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
     ...(config.conversation ? { conversation: config.conversation } : {}),
+    launchConfig: { ...config, carryRegistrations: undefined },
   }
 
   sessions.set(sessionId, session)
@@ -674,7 +681,8 @@ async function createAdmittedSession(
     lifecycleLog('pty_exit', { sessionId, exitCode, suppressed: false })
     debugLog('PTY exited', { sessionId, exitCode })
     session.state = 'exited'
-    sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
+    // A hibernating chat stays open in the client: it is woken, not ended.
+    if (!session.hibernating) sendToClient(session.ws, { type: 'session:exit', code: exitCode, sessionId })
     // Also closes an open teardown window: once the CLI is gone its SessionEnd
     // can no longer arrive, so there is nothing left to keep the relay alive.
     finalizeSessionTeardown(sessionId, 'pty-exit', exitCode)
@@ -814,6 +822,7 @@ export function reattachSession(session: PtySession, ws: WS): void {
   session.detachedAt = null
   session.ws = ws
   sessionCliControl(session)?.replay()
+  session.agentInput?.replay?.()
   session.lastActivityAt = new Date()
   notifySessionAttachmentChanged(session)
   resendSessionUsage(session)
@@ -996,6 +1005,35 @@ export function destroySession(sessionId: string, reason: DestroyReason = 'unspe
   session.teardown.timer = setTimeout(() => finalizeTeardownFor(session, 'timeout', -1), TEARDOWN_GRACE_MS)
 }
 
+/** A closed stand-in for the client socket of a hibernating session: late
+ *  sends from the exiting CLI (activity, receipts, MCP rejections) carry the
+ *  old session id and must not reach the chat that is about to be woken. */
+const HIBERNATED_WS = { readyState: 3, bufferedAmount: 0, send() {}, close() {}, terminate() {} } as unknown as WS
+
+/**
+ * Stop an idle session's CLI on purpose. The teardown is the ordinary one
+ * (transcript archived, MCP endpoint and hooks released), but the client is
+ * neither told the session exited nor detached: the WS layer keeps the chat
+ * and respawns it with `--resume` on the next message. Resolves once the
+ * session is finalized, so a wake never runs two writers on one transcript.
+ */
+export function hibernateSession(sessionId: string): Promise<void> {
+  const session = sessions.get(sessionId)
+  if (!session || session.teardown) return Promise.resolve()
+  session.hibernating = true
+  session.ws = HIBERNATED_WS
+  const done = new Promise<void>((resolve) => {
+    const off = eventBus.on('session:destroyed', (event) => {
+      const data = (event?.data ?? event) as { sessionId?: string }
+      if (data?.sessionId !== sessionId) return
+      off()
+      resolve()
+    })
+  })
+  destroySession(sessionId, 'hibernate')
+  return done
+}
+
 /** True between `destroySession()` and the finalizer. Callers use it to refuse
  *  work an exiting session must no longer accept. */
 export function isSessionTearingDown(sessionId: string): boolean {
@@ -1092,6 +1130,8 @@ export async function restartWithEffort(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
@@ -1135,6 +1175,8 @@ export async function restartWithEffort(
     ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
+    // The client registered its MCP tools once, at create; a respawn keeps them.
+    carryRegistrations: session,
   })
 }
 
@@ -1162,6 +1204,8 @@ export async function restartWithModel(
 
   // Mark as restarting so onExit handler doesn't send session:exit
   session.isRestarting = true
+  // The respawned CLI's system prompt names the current effort.
+  forgetEffortChange(session)
   session.outputDebounce?.dispose()
 
   // Stop JSONL watcher before killing PTY
@@ -1209,6 +1253,8 @@ export async function restartWithModel(
     ...(session.conversation ? { conversation: session.conversation } : {}),
     bearerHash: session.bearerHash,
     host: session.host,
+    // The client registered its MCP tools once, at create; a respawn keeps them.
+    carryRegistrations: session,
   })
 }
 
@@ -1220,6 +1266,9 @@ export interface EngineSwitchResult {
   timings: { prepareMs: number; startMs: number }
   /** History the joining engine gets with its first turn (UTF-8 bytes). */
   contextBytes: number
+  /** The leaving CLI's queue: `moved` goes to the joining engine, `returned`
+   *  back to the user (CliSubmissions.retire). */
+  carried: { moved: CarriedSubmission[]; returned: CarriedSubmission[] }
 }
 
 /** Stop a session the engine switch replaced. Its transcript is copied up to
@@ -1235,6 +1284,33 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
     else if (old.cliConversationId) void archiveTranscriptForSession(old.settingsDir, old.cliConversationId)
     debugLog('Switched-away engine stopped', { sessionId: old.id, ms: Math.round(performance.now() - t0) })
   }
+}
+
+/** The chat's effort as the joining engine takes it. Both engines read the
+ *  selector's levels (codex maps `max` to `xhigh`); a codex-only level such as
+ *  `minimal` has no Claude `--effort`, so Claude starts on its default then. */
+export function switchedEffort(effort: string | null | undefined, engine: AgentEngineId): string | undefined {
+  if (!effort) return undefined
+  if (engine === 'codex') return effort
+  return CLAUDE_EFFORTS.has(effort) ? effort : undefined
+}
+/** Claude Code's `--effort` scale (live-switch.ts EFFORT_LEVELS). */
+const CLAUDE_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
+
+/** What an engine switch keeps from the chat's launch: the client-supplied
+ *  context of the chat. Not the engine's own choices (model, effort), the
+ *  resume/segment placement the switch plans itself, the terminal size, nor a
+ *  new chat's one-shot history cursor. */
+export function engineSwitchLaunchContext(launch: SessionConfig | undefined): SessionConfig {
+  if (!launch) return {}
+  const keep: SessionConfig = {}
+  if (launch.basePrompt !== undefined) keep.basePrompt = launch.basePrompt
+  if (launch.thinkingDisplay !== undefined) keep.thinkingDisplay = launch.thinkingDisplay
+  if (launch.transcriptMirrorDir !== undefined) keep.transcriptMirrorDir = launch.transcriptMirrorDir
+  if (launch.extraArgs !== undefined) keep.extraArgs = launch.extraArgs
+  if (launch.isSubAgent !== undefined) keep.isSubAgent = launch.isSubAgent
+  if (launch.parentSessionId !== undefined) keep.parentSessionId = launch.parentSessionId
+  return keep
 }
 
 /**
@@ -1264,7 +1340,7 @@ export async function switchSessionEngine(
   old.segmentPump?.flush()
   const folderSuffix = old.cwd ? '-' + sanitizeDirName(old.cwd) : ''
   const sessionsDir = path.join(SESSIONS_BASE, tokenId + folderSuffix)
-  const plan = planSwitch({
+  const plan = await planSwitch({
     manifest: known,
     sessionsDir,
     from: {
@@ -1277,13 +1353,19 @@ export async function switchSessionEngine(
   })
   const t1 = performance.now()
 
+  const effort = switchedEffort(old.effort, target.engine)
   const session = await createSession(ws, userName, tokenId, {
+    // The chat's launch context (the user's standing instructions, thinking
+    // display, transcript mirror, sub-agent placement) belongs to the chat, not
+    // to the engine: the joining engine starts with it, like a wake or restart.
+    ...engineSwitchLaunchContext(old.launchConfig),
     cwd: old.cwd,
     cols: 120,
     rows: 40,
     engine: target.engine,
     ...(target.model ? { model: target.model } : {}),
-    // Effort levels differ per engine: the joining one starts on its own default.
+    // The chat keeps the effort the user sees: the joining engine runs on it.
+    ...(effort ? { effort } : {}),
     ...(plan
       ? { conversation: plan.ref, segmentStart: { settingsDir: plan.segment.settingsDir }, deferTranscript: true }
       : {}),
@@ -1304,7 +1386,9 @@ export async function switchSessionEngine(
     throw err
   }
   // The leaving engine stops talking to the client; the client replays the
-  // unified log.
+  // unified log. Its queue goes with it: what it never got moves on, what it
+  // got unconfirmed goes back to the user (session-ws reports both).
+  const carried = sessionCliControl(old)?.retire() ?? { moved: [], returned: [] }
   old.isRestarting = true
   old.outputDebounce?.dispose()
   old.jsonlWatcher?.stop()
@@ -1336,7 +1420,7 @@ export async function switchSessionEngine(
     contextBytes,
     ...timings,
   })
-  return { session, timings, contextBytes }
+  return { session, timings, contextBytes, carried }
 }
 /**
  * Get a session by ID (for MCP routing).
@@ -1649,7 +1733,10 @@ export async function deleteSessionByConversationId(
   forgetEffortSelection(conversationId)
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
-  if (isPlainDirectory(path.dirname(target.jsonlPath))) fs.rmSync(target.jsonlPath, { force: true })
+  if (isPlainDirectory(path.dirname(target.jsonlPath))) {
+    fs.rmSync(target.jsonlPath, { force: true })
+    forgetDigest(target.jsonlPath)
+  }
 }
 
 /**

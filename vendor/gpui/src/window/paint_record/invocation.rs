@@ -75,6 +75,7 @@ impl Window {
             // его собственные эффекты разрешены до привязки к сегментам.
             let _recording = self.render_contexts.enter::<segments::Recording>(None);
             self.record_scene(extent, true, |window| {
+                window.begin_record_runs();
                 let id = window.paint_scope_id();
                 plan.paint(window, presentation);
                 id
@@ -82,11 +83,15 @@ impl Window {
         };
         // No destination writes occur until the complete invocation has succeeded.
         paint_scope::Identity::capture(self).check_pass(self)?;
-        if !self.next_frame.scene.replay_placed(&scene, scaled, Some(clip)) {
-            let scene = scene.copy_record(scaled, Some(clip));
-            let scene = self.adopt_scene(scene);
-            self.next_frame.scene.replay_record(&scene);
-        }
+        let mut scene = scene;
+        scene.end_record_runs();
+        // A copy under a scroll node is marked under it (`with_copies_marked`).
+        self.with_copies_marked(|window| {
+            if !window.replay_placed_carrying(&scene, scaled, Some(clip)) {
+                // A record with groups: their runs follow the copy (`placed_groups`).
+                window.place_record_copy(&scene, scaled, clip);
+            }
+        });
         Ok(invocation)
     }
 
@@ -112,7 +117,12 @@ impl Window {
                 window.mask_scale = None;
                 window.element_opacity = 1.0;
             }
-            window.with_isolated_scene(paint)
+            window.with_isolated_scene(|window| {
+                // Its copy is marked where it lands (`ScrollBook::record_base`).
+                let base = window.next_frame.scroll_paint.open.len();
+                window.next_frame.scene.scroll.record_base = Some(base);
+                paint(window)
+            })
         }).0
     }
 }

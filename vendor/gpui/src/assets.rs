@@ -1,3 +1,10 @@
+//! Application assets and immutable render images, owned or shared with a CPU consumer.
+
+// KaminIDE patch: share immutable CPU backing with the renderer and its consumers.
+mod shared;
+pub use shared::LazyBgra;
+use shared::SharedImage;
+
 use crate::{DevicePixels, Pixels, Result, SharedString, Size, size};
 use smallvec::SmallVec;
 
@@ -46,6 +53,7 @@ pub struct RenderImage {
     /// The scale factor of this image on render.
     pub(crate) scale_factor: f32,
     data: SmallVec<[Frame; 1]>,
+    shared: Option<SharedImage>,
 }
 
 impl PartialEq for RenderImage {
@@ -65,11 +73,51 @@ impl RenderImage {
             id: ImageId(NEXT_ID.fetch_add(1, SeqCst)),
             scale_factor: 1.0,
             data: data.into(),
+            shared: None,
         }
+    }
+
+    /// Share a dense, straight BGRA frame without copying its pixels. The owner
+    /// remains alive with the image, including any resource quota it owns.
+    pub fn from_shared_bgra<T>(width: u32, height: u32, owner: std::sync::Arc<T>) -> Option<Self>
+    where
+        T: AsRef<[u8]> + Send + Sync + 'static,
+    {
+        let shared = SharedImage::new(width, height, owner)?;
+        let mut image = Self::new(SmallVec::new());
+        image.shared = Some(shared);
+        Some(image)
+    }
+
+    /// KaminIDE patch: a dense straight BGRA frame of known size whose pixels the owner
+    /// produces for each upload ([`LazyBgra`]); the image keeps no CPU copy.
+    pub fn from_lazy_bgra<T: LazyBgra>(width: u32, height: u32, owner: std::sync::Arc<T>) -> Option<Self> {
+        let shared = SharedImage::lazy(width, height, owner)?;
+        let mut image = Self::new(SmallVec::new());
+        image.shared = Some(shared);
+        Some(image)
+    }
+
+    /// KaminIDE patch: the frame for one upload into a texture: borrowed when resident,
+    /// produced on demand (and dropped after the upload) for a lazy image.
+    pub fn upload_bytes(&self, frame_index: usize) -> Option<Cow<'_, [u8]>> {
+        if let Some(shared) = &self.shared {
+            return (frame_index == 0).then(|| shared.upload()).flatten();
+        }
+        self.as_bytes(frame_index).map(Cow::Borrowed)
+    }
+
+    /// Recover a shared CPU owner for a consumer that understands its format.
+    /// Owned/animated images have no shared owner.
+    pub fn shared_bgra_owner<T: Send + Sync + 'static>(&self) -> Option<std::sync::Arc<T>> {
+        self.shared.as_ref()?.owner()
     }
 
     /// Convert this image into a byte slice.
     pub fn as_bytes(&self, frame_index: usize) -> Option<&[u8]> {
+        if let Some(shared) = &self.shared {
+            return (frame_index == 0).then(|| shared.bytes()).flatten();
+        }
         self.data
             .get(frame_index)
             .map(|frame| frame.buffer().as_raw().as_slice())
@@ -77,6 +125,13 @@ impl RenderImage {
 
     /// Get the size of this image, in pixels.
     pub fn size(&self, frame_index: usize) -> Size<DevicePixels> {
+        if let Some(shared) = &self.shared {
+            return if frame_index == 0 {
+                size(shared.width.into(), shared.height.into())
+            } else {
+                Size::default()
+            };
+        }
         self.data
             .get(frame_index)
             .map(|frame| {
@@ -102,7 +157,7 @@ impl RenderImage {
 
     /// Get the number of frames for this image.
     pub fn frame_count(&self) -> usize {
-        self.data.len()
+        self.shared.as_ref().map_or(self.data.len(), |_| 1)
     }
 }
 
@@ -110,7 +165,7 @@ impl fmt::Debug for RenderImage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageData")
             .field("id", &self.id)
-            .field("size", &self.data.first().map(|f| f.buffer().dimensions()))
+            .field("size", &self.size(0))
             .finish()
     }
 }

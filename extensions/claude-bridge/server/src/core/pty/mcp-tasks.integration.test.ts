@@ -203,6 +203,49 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
     expect(result).toMatchObject({ resultType: 'complete', content: [{ text: 'quick output' }] })
     expect(result.taskId).toBeUndefined()
   })
+  it('never writes a foreground command that settles within the grace window to disk', async () => {
+    const open = vi.spyOn(fs, 'open')
+    const rename = vi.spyOn(fs, 'rename')
+    try {
+      const pending = request('tools/call', { name: 'Bash', arguments: { command: 'quick-memory' } })
+      let frame: { requestId: string } | undefined
+      await vi.waitFor(() => {
+        frame = mock.send.mock.calls
+          .map(([, f]) => f)
+          .find((f) => f.type === 'mcp:call' && f.input?.command === 'quick-memory')
+        expect(frame).toBeDefined()
+      })
+      await tasks.settleMcpTask(session, {
+        type: 'mcp:response',
+        requestId: frame!.requestId,
+        taskOwner: session.mcpEndpoint!.id,
+        result: 'memory output',
+      })
+      expect(rpcResult(await (await pending).text())).toMatchObject({ content: [{ text: 'memory output' }] })
+      expect(open).not.toHaveBeenCalled()
+      expect(rename).not.toHaveBeenCalled()
+      expect(tasks.mcpTasks.isDurable(frame!.requestId)).toBe(false)
+      await expect(
+        fs.stat(path.join(mock.home, '.claude', 'bridge-mcp', 'tasks', `${frame!.requestId}.json`)),
+      ).rejects.toThrow()
+    } finally {
+      open.mockRestore()
+      rename.mockRestore()
+    }
+  })
+  it('writes a foreground command to disk when it turns into a background task, so a restarted server resumes it', async () => {
+    const id = await create('outlives grace')
+    expect(tasks.mcpTasks.isDurable(id)).toBe(true)
+    const { McpTaskStore } = await import('./mcp-task-store')
+    const restarted = new McpTaskStore(path.join(mock.home, '.claude', 'bridge-mcp', 'tasks'))
+    const owner = session.mcpEndpoint!.id
+    expect(await restarted.get(owner, id)).toMatchObject({ status: 'working', background: true })
+    expect((await restarted.working()).some((task) => task.taskId === id)).toBe(true)
+    expect(await restarted.settle(owner, id, 'after restart')).toMatchObject({
+      status: 'completed',
+      result: { content: [{ text: 'after restart' }] },
+    })
+  })
   it('preserves synchronous calls when the client omits task opt-in', async () => {
     const response = await request('tools/call', { name: 'Bash', arguments: { command: 'short' } }, false)
     expect(await response.text()).toContain('ordinary result')
@@ -234,6 +277,69 @@ describe('MCP Tasks HTTP / WS lifecycle', () => {
       result: 'too late',
     })
     expect((await (await request('tasks/get', { taskId: id })).json()).result).toMatchObject({ status: 'cancelled' })
+  })
+  it('answers BashOutput and KillShell for a background task id here, never as a client shell id', async () => {
+    const id = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, expect.objectContaining({ type: 'mcp:call', requestId: id })),
+    )
+    mock.call.mockClear()
+
+    const output = rpcResult(
+      await (await request('tools/call', { name: 'BashOutput', arguments: { bash_id: id } })).text(),
+    )
+    expect(output.content[0].text).toContain(`Bash task ${id} is still running`)
+    const kill = rpcResult(
+      await (await request('tools/call', { name: 'KillShell', arguments: { bash_id: id } })).text(),
+    )
+    expect(kill.content[0].text).toBe(`Stopped Bash task ${id}.`)
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(session.ws, {
+        type: 'mcp:cancel',
+        requestId: id,
+        taskOwner: session.mcpEndpoint!.id,
+      }),
+    )
+    expect(mock.call).not.toHaveBeenCalled()
+    // A numeric id is a client shell and still goes to the client.
+    await request('tools/call', { name: 'KillShell', arguments: { bash_id: '3' } })
+    expect(mock.call).toHaveBeenCalled()
+  })
+  it('settles the tasks of an explicitly ended session so the resumed session can sleep', async () => {
+    const delivered = await create()
+    await vi.waitFor(() =>
+      expect(mock.send).toHaveBeenCalledWith(
+        session.ws,
+        expect.objectContaining({ type: 'mcp:call', requestId: delivered }),
+      ),
+    )
+    session.ws = { readyState: 0 } as PtySession['ws']
+    const undelivered = await create()
+    const other = await tasks.mcpIdentity('synthetic-user', '/synthetic/other-conversation')
+    const foreign = await tasks.mcpTasks.create(other.id, 'Bash', { command: 'other session' })
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(true)
+
+    await tasks.cancelEndedSessionTasks(session)
+
+    expect(tasks.mcpTasks.hasWorkingOwner(session.mcpEndpoint!.id)).toBe(false)
+    for (const id of [delivered, undelivered])
+      expect(await tasks.mcpTasks.get(session.mcpEndpoint!.id, id)).toMatchObject({ status: 'cancelled', input: {} })
+    expect((await tasks.mcpTasks.get(other.id, foreign.taskId))?.status).toBe('working')
+    // The ended client dropped its result; a late one cannot revive the task.
+    await tasks.settleMcpTask(session, {
+      type: 'mcp:response',
+      requestId: delivered,
+      taskOwner: session.mcpEndpoint!.id,
+      result: 'too late',
+    })
+    expect((await tasks.mcpTasks.get(session.mcpEndpoint!.id, delivered))?.status).toBe('cancelled')
+    expect(mock.send.mock.calls.some(([, frame]) => frame.type === 'mcp:call' && frame.requestId === undelivered)).toBe(
+      false,
+    )
+    await tasks.mcpTasks.update(other.id, foreign.taskId, (t) => {
+      t.status = 'cancelled'
+    })
+    session.ws = { readyState: 1 } as PtySession['ws']
   })
   it('cancels an undelivered task without ever executing it', async () => {
     session.ws = { readyState: 0 } as PtySession['ws']
@@ -395,7 +501,12 @@ describe('retention overload through the actual HTTP handler', () => {
       TASK_LIMITS.perOwner++
       vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('synthetic disk failure with a private path'))
     }
-    const response = await request('tools/call', { name: 'Bash', arguments: {} })
+    // A foreground call is admitted in memory, so a disk failure only refuses
+    // the tasks that are written at admission: explicit background ones.
+    const response = await request('tools/call', {
+      name: 'Bash',
+      arguments: kind === 'write' ? { run_in_background: true } : {},
+    })
     expect(response.status).toBe(503)
     const body = await response.json()
     expect(body.error.data).toEqual({

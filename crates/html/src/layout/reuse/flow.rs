@@ -164,11 +164,20 @@ impl FlowReuse {
 }
 
 impl FlowCx {
-    /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить его флоаты.
+    /// Block `e` is built in a run of restyles (`Store::restyled`) or was
+    /// itself restyled by the last rebuild (`Store::restyled_blocks`): it is
+    /// recorded only for a recolour.
+    fn restyled(&self, e: &Element) -> bool {
+        self.restyled || self.reuse.store.restyled_block(e.node_id)
+    }
+
+    /// Ребёнок `n` собран (или ушёл в анонимный абзац): запомнить флоаты,
+    /// выходящие за его край (`plain::escaping_floats`); флоаты внутри корня
+    /// контекста форматирования следующих детей не трогают.
     pub(crate) fn built(&self, n: &crate::dom::Node) {
         if let crate::dom::Node::Element(e) = n
             && !self.floats.get()
-            && super::plain::floats(e)
+            && super::plain::escaping_floats(e)
         {
             self.floats.set(true);
         }
@@ -183,7 +192,7 @@ impl FlowCx {
         &self,
         e: &Element,
         edge: bool,
-        mark: Mark,
+        mut mark: Mark,
         opts: &RenderOpts,
         out: &mut Vec<AnyElement>,
     ) {
@@ -199,15 +208,18 @@ impl FlowCx {
         if !single {
             return;
         }
-        if self.restyled {
+        if self.restyled(e) {
             // A run of restyles records only the replays of blocks that paint
             // nothing in their colour: a recolour replays them (`unread_color`).
             self.record_replay(e, mark, now.start, opts, out);
             return;
         }
-        let skip_at = ((self.settled || self.resized) && (!edge || self.edges) && mark.inert.of(e))
-            .then(|| self.record_skip(e, &mark, now.start, opts, out))
-            .flatten();
+        if (self.settled || self.resized) && (!edge || self.edges) {
+            mark.skip_origin = super::plain::skip_origin(e, opts.cx.vcx());
+        }
+        let skip_at = mark
+            .skip_origin
+            .and_then(|origin| self.record_skip(e, &mark, now.start, origin, opts, out));
         let skip = skip_at.is_some();
         // Блок, обёрнутый для пропуска, не пишется для повтора:
         // - первой устоявшейся сборкой: она собирает весь поток, а ближние

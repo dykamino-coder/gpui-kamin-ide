@@ -6,6 +6,9 @@ use markup5ever_rcdom::{Handle, NodeData};
 use super::source_walk::{SourceWalk, Templates};
 use crate::budget::admission::{Admission, Buffer, Error, Text};
 
+/// The medium a `<style>`'s `media` list is evaluated against.
+pub type Medium<'a> = (&'a crate::style::css::Media, crate::values::ValueCx<'a>);
+
 /// Ресурсные источники: тема и активные style; ownership резервов остаётся у строк.
 pub fn collect(input: &super::input::Admitted, theme: &str) -> Result<Buffer<Text>, Error> {
     let admission = Admission::new(input.context().budget().clone());
@@ -16,15 +19,20 @@ pub fn collect(input: &super::input::Admitted, theme: &str) -> Result<Buffer<Tex
         Templates::Active,
         &admission,
         None,
+        None,
         &mut sheets,
     )?;
     Ok(sheets)
 }
 
 /// Один и тот же сборщик обслуживает document и shadow sheet без склейки EOF.
-pub fn try_collect_style_tags(root: &Handle, admission: &Admission) -> Result<Buffer<Text>, Error> {
+pub fn try_collect_style_tags(
+    root: &Handle,
+    admission: &Admission,
+    media: Option<Medium<'_>>,
+) -> Result<Buffer<Text>, Error> {
     let mut sheets = Buffer::default();
-    collect_into(root, Templates::None, admission, None, &mut sheets)?;
+    collect_into(root, Templates::None, admission, None, media, &mut sheets)?;
     Ok(sheets)
 }
 
@@ -34,6 +42,7 @@ pub fn document_style_tags(
     root: &Handle,
     admission: &Admission,
     traversal: &crate::values::traversal::TraversalState,
+    media: Medium<'_>,
 ) -> Result<Buffer<Text>, Error> {
     let mut sheets = Buffer::default();
     collect_into(
@@ -41,6 +50,7 @@ pub fn document_style_tags(
         Templates::None,
         admission,
         Some(traversal),
+        Some(media),
         &mut sheets,
     )?;
     Ok(sheets)
@@ -51,13 +61,26 @@ fn collect_into(
     templates: Templates,
     admission: &Admission,
     traversal: Option<&crate::values::traversal::TraversalState>,
+    media: Option<Medium<'_>>,
     out: &mut Buffer<Text>,
 ) -> Result<(), Error> {
     let mut walk = SourceWalk::new(root, templates, admission.clone())?;
     while let Some(node) = walk.try_next()? {
-        if let NodeData::Element { name, .. } = &node.data {
+        if let NodeData::Element { name, attrs, .. } = &node.data {
             admission.work(name.local.len())?;
             if &*name.local != "style" {
+                continue;
+            }
+            // A `<style>` whose `media` list does not match the medium is not
+            // applied (HTML §4.2.6, CSSOM §6.1 `media`); an absent or empty
+            // list is `all`. Its evaluation reads the viewport like `@media`
+            // does, so a resize that flips it restyles (`MediaReads`).
+            if let Some((medium, vcx)) = media
+                && let Some(list) = (attrs.borrow().iter())
+                    .find(|a| &*a.name.local == "media")
+                    .map(|a| a.value.to_string())
+                && !medium.matches(&list, vcx)
+            {
                 continue;
             }
             let mut sheet = Text::default();
@@ -151,7 +174,7 @@ mod tests {
         let root = &input.dom.document;
         let run = |admission: &Admission| {
             let mut out = Buffer::default();
-            collect_into(root, Templates::Active, admission, None, &mut out)?;
+            collect_into(root, Templates::Active, admission, None, None, &mut out)?;
             Ok::<_, Error>(out)
         };
         let (admission, revision) = policy(TraversalVisits, 1_000_000);
@@ -215,8 +238,8 @@ mod tests {
         assert_eq!(revision.used(TraversalVisits), used);
         let (first, first_revision) = policy(LiveBytes, 65_536);
         let (second, second_revision) = policy(LiveBytes, 65_536);
-        let a = try_collect_style_tags(&input.dom.document, &first).unwrap();
-        let b = try_collect_style_tags(&input.dom.document, &second).unwrap();
+        let a = try_collect_style_tags(&input.dom.document, &first, None).unwrap();
+        let b = try_collect_style_tags(&input.dom.document, &second, None).unwrap();
         drop(a);
         assert_eq!(first_revision.document().used(LiveBytes), 0);
         assert!(second_revision.document().used(LiveBytes) > 0);

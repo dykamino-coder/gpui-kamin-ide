@@ -24,6 +24,10 @@ mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
 mod final_geometry;
+// KaminIDE patch: the descendants carrying a box's scrollable overflow (DevTools `why`).
+mod overflow_reach;
+mod overflow_contribution;
+mod subtree_bounds;
 pub use final_geometry::{FinalLayout, LayoutEpoch, LayoutSpace, LayoutTreeId};
 pub use measured_box::MeasuredBox;
 pub use measured_content::{MeasuredContent, MeasuredStaticPosition};
@@ -173,8 +177,10 @@ struct NodeContext {
     // KaminIDE patch: intrinsic callbacks cannot overwrite performed static rects.
     static_positions: Vec<MeasuredStaticPosition>,
     measure: std::rc::Rc<std::cell::RefCell<NodeMeasureFn>>,
-    layout_lines: Option<Vec<Pixels>>,
-    layout_lines_x: Option<Vec<Pixels>>,
+    // KaminIDE patch: boxed slices, not vectors: the room of the capacities
+    // holds `performed_size`.
+    layout_lines: Option<Box<[Pixels]>>,
+    layout_lines_x: Option<Box<[Pixels]>>,
     layout_lines_x_from_right: bool,
     /// KaminIDE patch: index of this keyed leaf in its key's candidate list
     /// (`retained::NO_SLOT` outside it). Lives in the struct's padding.
@@ -182,12 +188,20 @@ struct NodeContext {
     /// KaminIDE patch: the next pass keeps this leaf's measure function
     /// (`TaffyLayoutEngine::keep_measures`). Lives in the struct's padding.
     keep_measure: bool,
+    /// KaminIDE patch: this pass measures the leaf with the function an
+    /// earlier pass kept (`keep_measures`), not with one of its requests.
+    kept: bool,
+    /// KaminIDE patch: the kept function laid the leaf out otherwise in this
+    /// pass than in the last full layout (`TaffyLayoutEngine::remeasured`).
+    remeasured: bool,
+    /// KaminIDE patch: the size of the leaf's last full layout.
+    performed_size: taffy::Size<f32>,
 }
 
 // The retained-tree fields above fill padding: every node of the frame tree has
 // a context slot (a dense secondary map), so a larger context costs every node.
 const _: () = assert!(
-    std::mem::size_of::<NodeContext>() == 11 * std::mem::size_of::<usize>()
+    std::mem::size_of::<NodeContext>() == 10 * std::mem::size_of::<usize>()
         || std::mem::size_of::<usize>() != 8
 );
 
@@ -656,6 +670,17 @@ impl TaffyLayoutEngine {
         )
     }
 
+    /// KaminIDE patch: the bars (horizontal, vertical) the last layout gave a node whose
+    /// bars layout decides (`KaminScrollbars`); `None` for any other node.
+    pub fn layout_scrollbars(&self, id: LayoutId) -> Option<[bool; 2]> {
+        let style = self.taffy.style(id.into()).ok()?;
+        let scroll = |overflow| overflow == taffy::style::Overflow::Scroll;
+        style
+            .kamin_scrollbars
+            .decides()
+            .then(|| [scroll(style.overflow.x), scroll(style.overflow.y)])
+    }
+
     /// KaminIDE patch: протяжённость СОДЕРЖИМОГО узла (taffy `scrollable_overflow_rect`,
     /// видимое переполнение потомков) без округления к физической точке.
     pub fn layout_content_size_unrounded(&self, id: LayoutId, scale_factor: f32) -> Size<Pixels> {
@@ -1122,6 +1147,7 @@ impl ToTaffy<taffy::style::Style> for Style {
             }),
             overflow: self.overflow.into(),
             scrollbar_width: self.scrollbar_width.to_taffy(rem_size, scale_factor),
+            kamin_scrollbars: kamin_scrollbars(self.kamin_scrollbars),
             position: self.position.into(),
             inset: self.inset.to_taffy(rem_size, scale_factor),
             size: self.size.to_taffy(rem_size, scale_factor),
@@ -1691,4 +1717,17 @@ impl Drop for MeasureTimer {
             std::sync::atomic::Ordering::Relaxed,
         );
     }
+}
+
+/// KaminIDE patch: the bars layout decides (`KaminScrollbars`) in Taffy's terms.
+fn kamin_scrollbars(s: crate::KaminScrollbars) -> taffy::style::ScrollbarLayout {
+    taffy::style::ScrollbarLayout::new(
+        taffy::geometry::Point { x: s.auto[0], y: s.auto[1] },
+        s.viewport,
+        s.proxy,
+        s.root_gutter.map(|[left, top, right, bottom]| taffy::style::RootGutter {
+            assumed: taffy::style::RootGutter::sides(taffy::geometry::Rect { left, right, top, bottom }),
+            grow: s.root_gutter_grow,
+        }),
+    )
 }

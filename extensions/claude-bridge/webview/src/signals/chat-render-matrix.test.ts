@@ -11,11 +11,11 @@
 // the case starts passing and vitest reports it — flip it to `it` then.
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  appendJsonlEntries, clearJsonlEntries, getJsonlEntries, prependJsonlEntries, trimTabToWindow,
+  appendJsonlEntries, clearJsonlEntries, getJsonlEntries, getJsonlGeneration, prependJsonlEntries, trimTabToWindow,
   replaceWindowWithSegment, setArchivedView, tabNeedsRefill, STORE_WINDOW, STORE_SLACK,
 } from './jsonl'
 import { activeTabId } from './tabs'
-import { TranscriptBuilder, conversation, asPaged, asLive, rng, chunk, type Rec } from './chat-audit/transcript'
+import { TranscriptBuilder, conversation, asPaged, asLive, asTaggedLive, rng, chunk, type Rec } from './chat-audit/transcript'
 import { cliView, chatView, isSuffix } from './chat-audit/views'
 import type { JsonlEntryData } from '../types/jsonl'
 
@@ -44,6 +44,7 @@ describe('delivery order and duplication', () => {
 
   it('one paged replay', () => { deliver(asPaged(b.recs)); expectCli(b.recs) })
   it('live tail in random chunks (untagged rows)', () => { deliver(asLive(b.recs), rng(1)); expectCli(b.recs) })
+  it('live tail in random chunks (tagged rows)', () => { deliver(asTaggedLive(b.recs), rng(14)); expectCli(b.recs) })
   it('legacy reverse replay (newest batch first, replay-local _ord)', () => { legacyReverse(b.recs, 5_000, 7); expectCli(b.recs) })
 
   it('out-of-order paged batches', () => {
@@ -115,12 +116,11 @@ describe('long sessions over the store cap', () => {
   })
 
   // Scroll-up asks for the page before `store[0]._pos` and gives up when the
-  // oldest resident row has none (JsonlViewer onNearTop → reachedStart). Live
-  // tail rows arrive untagged (server jsonl-watcher.ts), so after a bottom trim
-  // of a session that arrived live there is no cursor and history above the
-  // window cannot be paged back.
-  it.fails('after a bottom trim of a live session the oldest resident row still has a page cursor (expected-fail: chat-pipeline.md D7)', () => {
-    deliver(asLive(b.recs), rng(12))
+  // oldest resident row has none (JsonlViewer onNearTop → reachedStart). The
+  // live tail now tags its rows (server jsonl-tail.ts), so after a bottom trim
+  // of a session that arrived live the history above the window still pages back.
+  it('after a bottom trim of a live session the oldest resident row still has a page cursor (chat-pipeline.md D7)', () => {
+    deliver(asTaggedLive(b.recs), rng(12))
     trimTabToWindow(TAB, STORE_WINDOW)
     expect(typeof getJsonlEntries(TAB)[0]?._pos).toBe('number')
   })
@@ -161,6 +161,17 @@ describe('compaction', () => {
     expect(chatView(TAB).all).toEqual(cliView(b.recs.slice(0, first))) // snapshot untouched
     setArchivedView(TAB, null)
     expectCli(b.recs)
+  })
+
+  it('a transcript replaced in the same tab is a new paging generation', () => {
+    deliver(asPaged(b.recs))
+    const before = getJsonlGeneration(TAB)
+    // The CLI switched files: the held rows go, the new file replays in.
+    clearJsonlEntries(TAB)
+    expect(getJsonlGeneration(TAB)).toBe(before + 1)
+    deliver(asPaged(b.recs))
+    expect(getJsonlGeneration(TAB)).toBe(before + 1) // ingest alone keeps it
+    expect(getJsonlGeneration(`${TAB}-other`)).toBe(0)
   })
 })
 

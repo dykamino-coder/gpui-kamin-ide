@@ -83,6 +83,18 @@ impl ImageFilter {
 }
 
 impl ImageSource {
+    /// Whether the image names a URL, which the build loads as a resource of
+    /// the document; a generated image (a gradient, a colour, their filters
+    /// and cross-fades) is rasterized by paint alone.
+    pub fn loads_url(&self) -> bool {
+        match self {
+            Self::Url(_) | Self::Fallback { .. } => true,
+            Self::CrossFade(items) => items.iter().any(|(image, _)| image.loads_url()),
+            Self::Filter { image, .. } => image.loads_url(),
+            Self::Gradient { .. } | Self::Conic(_) | Self::Color(_) | Self::Invalid => false,
+        }
+    }
+
     /// Может ли `resolve_colors` что-то записать: операнд без цветовых выражений группу не трогает.
     pub fn has_color_expressions(&self) -> bool {
         match self {

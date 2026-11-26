@@ -31,6 +31,8 @@ mod shader_compilation {
         // Define all modules
         let modules = [
             "quad",
+            // KaminIDE patch: analytic-gradient quads, a program of their own
+            "quad_gradient",
             "shadow",
             "path_rasterization",
             "path_sprite",
@@ -42,6 +44,8 @@ mod shader_compilation {
             "blur",
             // KaminIDE patch: frame clear drawn with blending off (Intel)
             "clear",
+            // KaminIDE patch: group composites blended by the output merger
+            "group_tiles",
         ];
 
         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);

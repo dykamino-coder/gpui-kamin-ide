@@ -17,6 +17,9 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
         layout_lines_x_from_right: false,
         key_slot: crate::taffy::retained::NO_SLOT,
         keep_measure: false,
+        kept: false,
+        remeasured: false,
+        performed_size: taffy::Size::ZERO,
     };
     let empty = tree
         .new_leaf(taffy::Style {
@@ -77,6 +80,7 @@ fn first_content_uses_later_line_without_remeasurement_and_rejects_dirty_tree() 
                     baseline_x: measured.then_some(4.),
                     last_baseline_x: measured.then_some(4.),
                     baseline_x_from_right: false,
+                    overflow: None,
                 }
             })
         },

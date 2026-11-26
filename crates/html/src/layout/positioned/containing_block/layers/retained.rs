@@ -3,13 +3,14 @@
 use super::super::SpotCell;
 use super::super::oof::{Destination, OofKid};
 use super::{ABS, CbLayer, FIX, Positioning};
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(crate) struct Retained {
-    cb: Vec<(u8, Option<u16>, Destination)>,
+    cb: Vec<(u8, Option<u16>, Destination, Option<gpui::ScrollHandle>)>,
     pending: Vec<super::Pending>,
-    icb: Vec<Destination>,
+    /// ICB destinations with the root scroll handle of each layer (`anchors`).
+    icb: Vec<(Destination, Option<gpui::ScrollHandle>)>,
     late: Vec<Destination>,
     flex_content: crate::layout::probe::Sink<(u64, gpui::Bounds<gpui::Pixels>)>,
 }
@@ -22,9 +23,15 @@ impl Positioning {
                 .cb
                 .borrow()
                 .iter()
-                .map(|l| (l.takes, l.strict, l.taken.retain()))
+                .map(|l| (l.takes, l.strict, l.taken.retain(), l.node.clone()))
                 .collect(),
-            icb: self.icb.borrow().iter().map(|l| l.retain()).collect(),
+            icb: self
+                .icb
+                .borrow()
+                .iter()
+                .zip(self.anchors.borrow().iter())
+                .map(|(l, anchor)| (l.retain(), anchor.clone()))
+                .collect(),
             late: self.late.borrow().iter().map(|l| l.retain()).collect(),
             flex_content: self.flex_content.clone(),
         }
@@ -90,20 +97,26 @@ impl Retained {
         let cb = self
             .cb
             .iter()
-            .filter_map(|(takes, strict, dest)| {
+            .filter_map(|(takes, strict, dest, node)| {
                 Some(CbLayer {
                     takes: *takes,
                     strict: *strict,
                     taken: local(dest)?,
+                    node: node.clone(),
                 })
             })
             .collect();
-        let icb = self.icb.iter().filter_map(&mut local).collect();
+        let (icb, anchors) = self
+            .icb
+            .iter()
+            .filter_map(|(dest, anchor)| Some((local(dest)?, anchor.clone())))
+            .unzip();
         let late = self.late.iter().filter_map(&mut local).collect();
         let positioning = Rc::new(Positioning {
             cb: RefCell::new(cb),
             pending: RefCell::new(self.pending.clone()),
             icb: RefCell::new(icb),
+            anchors: RefCell::new(anchors),
             late: RefCell::new(late),
             flex_content: self.flex_content.fork(),
         });
@@ -113,21 +126,28 @@ impl Retained {
     /// Закрытый стек не открывается заново глобально: у поддерева свой стек,
     /// а назначения старых предков разделяются с их живыми хостами.
     pub(crate) fn resume(&self) -> Rc<Positioning> {
+        let (icb, anchors) = self
+            .icb
+            .iter()
+            .filter_map(|(dest, anchor)| Some((dest.upgrade()?, anchor.clone())))
+            .unzip();
         Rc::new(Positioning {
             pending: RefCell::new(self.pending.clone()),
             cb: RefCell::new(
                 self.cb
                     .iter()
-                    .filter_map(|(takes, strict, dest)| {
+                    .filter_map(|(takes, strict, dest, node)| {
                         Some(CbLayer {
                             takes: *takes,
                             strict: *strict,
                             taken: dest.upgrade()?,
+                            node: node.clone(),
                         })
                     })
                     .collect(),
             ),
-            icb: RefCell::new(self.icb.iter().filter_map(Destination::upgrade).collect()),
+            icb: RefCell::new(icb),
+            anchors: RefCell::new(anchors),
             late: RefCell::new(self.late.iter().filter_map(Destination::upgrade).collect()),
             flex_content: self.flex_content.clone(),
         })
@@ -140,22 +160,7 @@ impl Escaped {
     /// Измерительные деревья не публикуют выпавших потомков: только дерево,
     /// дошедшее до prepaint, присоединяет их к назначениям исходных предков.
     pub(crate) fn wrap(self, child: gpui::AnyElement) -> gpui::AnyElement {
-        use gpui::IntoElement;
-        let escaped = Cell::new(Some(self));
-        // ContextScope сохраняет фазу PaintLast даже без открытого собирателя.
-        // Произвольная Hooks-обёртка скрыла бы эту метку от родительского Div.
-        gpui::ContextScope::new(
-            Rc::new(move |phase| {
-                if phase == gpui::ScopePhase::Prepaint
-                    && let Some(escaped) = escaped.take()
-                {
-                    escaped.commit();
-                }
-                Box::new(())
-            }),
-            child,
-        )
-        .into_any_element()
+        publication::Publication::wrap(self, child)
     }
 
     pub(crate) fn commit(self) {
@@ -164,6 +169,8 @@ impl Escaped {
         }
     }
 }
+
+mod publication;
 
 #[cfg(test)]
 mod tests;

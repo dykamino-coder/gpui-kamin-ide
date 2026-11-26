@@ -104,6 +104,8 @@ impl Paragraph {
             hyphen_w: std::cell::RefCell::new(Vec::new()),
             overlays: Vec::new(),
             overlay_hidden: Vec::new(),
+            kept: Default::default(),
+            fragments: None,
         }
     }
 }

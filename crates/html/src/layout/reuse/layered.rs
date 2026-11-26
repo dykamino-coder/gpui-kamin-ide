@@ -12,7 +12,7 @@
 //! every out-of-flow box must be inside the block, so its geometry and paint
 //! are the block's own:
 //! - the block itself is in flow or relatively positioned (its place is
-//!   checked by `ReplaySlot::valid`);
+//!   checked by `ReplaySlot::refusal`);
 //! - an absolutely positioned box has an ancestor inside the block that
 //!   establishes its containing block (`box_predicates::establishes_cb`, the
 //!   predicate the positioning layers follow);

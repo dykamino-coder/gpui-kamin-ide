@@ -1,0 +1,30 @@
+[package]
+name = "kamin-search"
+version.workspace = true
+edition.workspace = true
+
+# A long-lived search process for the Bridge extension host: the Grep and
+# Glob tools send it the ripgrep arguments they would run, and it answers with
+# what that ripgrep would print, without starting a process per call.
+[[bin]]
+name = "kamin-search"
+path = "src/main.rs"
+
+[dependencies]
+# ripgrep 15.2.0's own crates at the versions of its Cargo.lock: the output
+# must be that ripgrep's, and the differential test runs that binary.
+ignore = "=0.4.29"
+globset = "=0.4.19"
+grep-matcher = "=0.1.9"
+grep-printer = { version = "=0.3.1", default-features = false }
+grep-regex = "=0.1.14"
+grep-searcher = "=0.1.17"
+termcolor = "1.4.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_System_Threading"] }
+
+[lints]
+workspace = true

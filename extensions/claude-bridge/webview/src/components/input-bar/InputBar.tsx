@@ -6,7 +6,7 @@ import { useInputHistory } from '../../hooks/useInputHistory'
 import { useClipboardPaste } from '../../hooks/useClipboardPaste'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
 import { mcpLoading, tabPromptReady } from '../../signals/connection'
-import { tabWorking } from '../../signals/ui'
+import { tabWorking, tabHibernation, setTabHibernation } from '../../signals/ui'
 import { activeTabId, tabs } from '../../signals/tabs'
 import { sessionBindingPending } from '../../signals/session-binding'
 import { replayProgressByTab } from '../../signals/replay-progress'
@@ -24,6 +24,8 @@ import { ScrollDownPill } from './ScrollDownPill'
 import { ActiveFileStatusBar } from './ActiveFileStatusBar'
 import { UsageLimitsRow } from './UsageLimitsRow'
 import { useTabSend } from './useTabSend'
+import { NOT_CONNECTED_WARNING, sendGate } from './send-gate'
+import { showToast } from '../../signals/toasts'
 import { useAutoFocusOnTabSwitch } from './useAutoFocusOnTabSwitch'
 import { useAppendToInputBridge } from './useAppendToInputBridge'
 import { useInputDraft } from './useInputDraft'
@@ -107,9 +109,15 @@ export function InputBar(): JSX.Element {
     const message = send.buildMessage(textareaRef.current)
     if (!message) return
     // Never send into the gap between "session selected" and "session shown", or
-    // while its transcript is still downloading. While the bridge is not
-    // connected the text stays in the box (the textarea remains editable).
-    if (isNotReady || isDisconnected) return
+    // while its transcript is still downloading. A reconnecting chat takes the
+    // message (the host holds it for the chat's conversation); a disconnected
+    // one keeps it in the box and says so.
+    const gate = sendGate(connStatus, isNotReady)
+    if (gate === 'wait') return
+    if (gate === 'not-connected') {
+      showToast({ type: 'info', title: 'Message delivery', message: NOT_CONNECTED_WARNING })
+      return
+    }
 
     history.push(tabId, message)
     history.reset(tabId)
@@ -185,6 +193,13 @@ export function InputBar(): JSX.Element {
   function handleInput(value: string): void {
     slashHandlers.onInput(value)
     setHasText(!!value.trim())
+    // Typing into a chat whose CLI the server stopped: start it now, so the
+    // message finds it (nearly) ready. Once per sleep; the server ignores it
+    // for a chat that is awake.
+    if (tabId && value.trim() && tabHibernation.peek().get(tabId) === 'asleep') {
+      setTabHibernation(tabId, 'waking')
+      bridge.warmSession(tabId)
+    }
   }
 
   function handleSlashSelect(cmd: string): void {
@@ -197,7 +212,7 @@ export function InputBar(): JSX.Element {
   }
 
   return (
-    <div class={`input-bar${(isDisconnected || isNotReady) && sendMode !== 'stop' ? ' disabled' : ''}`} id="input-bar" title={isNotReady && sendMode !== 'stop' ? 'Loading the session…' : undefined} style={{ position: 'relative' }}>
+    <div class={`input-bar${sendGate(connStatus, isNotReady) !== 'send' && sendMode !== 'stop' ? ' disabled' : ''}`} id="input-bar" title={isNotReady && sendMode !== 'stop' ? 'Loading the session…' : undefined} style={{ position: 'relative' }}>
       {tab?.resumeNotFound && tabId && <ResumeNotFoundNotice
         onNew={() => bridge.chooseNewConversation(tabId)}
         onRetry={() => bridge.retryStoredConversation(tabId)}

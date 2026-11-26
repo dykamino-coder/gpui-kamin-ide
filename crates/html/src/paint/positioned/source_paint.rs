@@ -12,10 +12,24 @@ use std::{cell::RefCell, rc::Rc};
 
 /// CSS 2 Appendix E orders painting independently of the containing block.
 /// Only the layout half belongs to the CB; the source half owns prepaint/paint.
-pub(crate) fn split(spot: SpotCell, child: AnyElement) -> (AnyElement, AnyElement) {
+///
+/// `node` is the scroll node of the containing block's layer (`layer_node`):
+/// the source half prepaints the box in that node's coordinates, not in
+/// those of its tree position, so the box scrolls with its containing block
+/// whatever the offset the frame is built at.
+pub(crate) fn split(
+    spot: SpotCell,
+    child: AnyElement,
+    node: Option<gpui::ScrollHandle>,
+) -> (AnyElement, AnyElement) {
+    // The layer only lays the box out; the source half places it.
+    let mut state = spot.get();
+    state.layout_only = true;
+    spot.set(state);
     let child = Rc::new(RefCell::new(PlacedChild {
         element: LatePlace { child, spot }.hooked(),
         layout: None,
+        node,
     }));
     let layout = SourcePaint {
         child: child.clone(),
@@ -36,6 +50,7 @@ struct SourcePaint {
 struct PlacedChild {
     element: AnyElement,
     layout: Option<gpui::RetainedLayout>,
+    node: Option<gpui::ScrollHandle>,
 }
 
 impl Hooks for SourcePaint {
@@ -57,11 +72,21 @@ impl Hooks for SourcePaint {
     fn prepaint(&mut self, _: Bounds<Pixels>, _: &mut (), window: &mut Window, cx: &mut App) {
         if self.placeholder.is_some() {
             let mut child = self.child.borrow_mut();
-            let PlacedChild { element, layout } = &mut *child;
+            let PlacedChild {
+                element,
+                layout,
+                node,
+            } = &mut *child;
+            // The layer's space: the element offset of its scroll node's
+            // children, or the window's outside any scroll node.
+            let origin = node
+                .as_ref()
+                .and_then(|node| window.scroll_node_children_offset(node))
+                .unwrap_or(point(px(0.0), px(0.0)));
             window.with_retained_layout(
                 layout.as_mut().expect("positioned child layout"),
                 |window| {
-                    element.prepaint_at(point(px(0.0), px(0.0)), window, cx);
+                    element.prepaint_at(origin, window, cx);
                 },
             );
         }
@@ -77,7 +102,9 @@ impl Hooks for SourcePaint {
     ) {
         if self.placeholder.is_some() {
             let mut child = self.child.borrow_mut();
-            let PlacedChild { element, layout } = &mut *child;
+            let PlacedChild {
+                element, layout, ..
+            } = &mut *child;
             window.with_retained_layout(
                 layout.as_mut().expect("positioned child layout"),
                 |window| {

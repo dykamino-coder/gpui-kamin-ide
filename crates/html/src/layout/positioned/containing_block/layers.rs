@@ -11,12 +11,13 @@
 //! `LayoutCx`, поэтому вложенный документ никогда не видит внешний слой.
 
 use super::SpotCell;
-use super::late::{LatePlace, spot_place};
-use crate::hooks::IntoHooked;
+use super::late::spot_place;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use std::cell::RefCell;
 
+mod initial;
+pub(super) use initial::icb_place;
 mod scope;
 pub(crate) use scope::LayerScope;
 
@@ -37,6 +38,9 @@ struct CbLayer {
     /// index of the owner (`Computed::cb_depth` + 1).
     strict: Option<u16>,
     taken: OofQueue,
+    /// Scroll node whose content the layer's owner lays its boxes out in
+    /// (`ScrollContext::node`), given when the layer opens.
+    node: Option<gpui::ScrollHandle>,
 }
 
 #[derive(Default)]
@@ -49,6 +53,11 @@ pub struct Positioning {
     /// positioned ancestor is placed against the viewport, so it becomes one
     /// of the last children of the document.
     icb: RefCell<Vec<OofQueue>>,
+    /// For each ICB layer: the scroll handle of the root scrollport whose
+    /// padding box is this initial containing block (`html-viewport`), or
+    /// `None`. A fixed box of that layer hangs on the viewport, not on the
+    /// scrolled content (`viewport_anchor`).
+    anchors: RefCell<Vec<Option<gpui::ScrollHandle>>>,
     /// Top paint layers: one per block container being built. A positioned
     /// box at its static position puts itself into the top layer, and the
     /// container appends the layer as its last children.
@@ -77,16 +86,20 @@ impl Positioning {
     /// `contain: layout|paint`, css-transforms-1 §transform-rendering). Such a
     /// layer takes fixed descendants past intermediate positioned ancestors
     /// (`cb_push_fixed`).
-    pub fn cb_open_with(&self, fixed_cb: bool) {
-        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, None);
+    pub fn cb_open_with(&self, fixed_cb: bool, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, None, node);
     }
 
     /// Open a strict layer around the children of a box whose own style is
     /// `own`: an absolute descendant whose nearest containing block is a box
     /// without a layer below it (a table part, a positioned inline) passes
     /// this layer by and keeps its previous route.
-    pub fn cb_open_strict(&self, own: &BoxStyle, fixed_cb: bool) {
-        self.open_cb(ABS | if fixed_cb { FIX } else { 0 }, Some(own.cb_depth + 1));
+    pub fn cb_open_strict(&self, own: &BoxStyle, fixed_cb: bool, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(
+            ABS | if fixed_cb { FIX } else { 0 },
+            Some(own.cb_depth + 1),
+            node,
+        );
     }
 
     /// Open a layer that takes ONLY `position: fixed`: a multicol box with a
@@ -94,18 +107,43 @@ impl Positioning {
     /// (css-transforms-1 §transform-rendering), but absolute descendants of
     /// the column copies stay in their copies and are cut by the columns
     /// (css-position-3 §abspos-breaking).
-    pub fn cb_open_fixed_only(&self) {
-        self.open_cb(FIX, None);
+    pub fn cb_open_fixed_only(&self, node: Option<gpui::ScrollHandle>) {
+        self.open_cb(FIX, None, node);
     }
 
-    fn open_cb(&self, takes: u8, strict: Option<u16>) {
+    /// `node`: the scroll node whose content the layer's owner lays its
+    /// boxes out in (`ScrollContext::node`).
+    fn open_cb(&self, takes: u8, strict: Option<u16>, node: Option<gpui::ScrollHandle>) {
         self.cb.borrow_mut().push(CbLayer {
             takes,
             strict,
             taken: OofQueue::with_pending(
                 self.pending.borrow().last().cloned().unwrap_or_default(),
             ),
+            node,
         });
+    }
+
+    /// The scroll node of the layer a box goes to (`icb_push`, `cb_push_fixed`
+    /// or `cb_push` for the box's nearest containing block): the space its layout half is placed in.
+    pub(crate) fn layer_node(
+        &self,
+        to_icb: bool,
+        far_fixed: bool,
+        inherited: &BoxStyle,
+    ) -> Option<gpui::ScrollHandle> {
+        if to_icb {
+            return self.viewport_anchor();
+        }
+        let nearest = super::nearest_cb_index(inherited);
+        let layers = self.cb.borrow();
+        let mut open = layers.iter().rev();
+        let layer = if far_fixed {
+            open.find(|l| l.takes & FIX != 0)
+        } else {
+            open.find(|l| l.takes & ABS != 0 && l.strict.is_none_or(|d| d == nearest))
+        };
+        layer.and_then(|l| l.node.clone())
     }
 
     /// Is a containing-block layer available for this positioned box?
@@ -152,41 +190,6 @@ impl Positioning {
         layer.map(|l| l.taken).unwrap_or_default().place(icb_place)
     }
 
-    /// Open an initial-containing-block layer: the document, a strip block or
-    /// a nested document.
-    pub fn icb_open(&self) {
-        let queue = OofQueue::initial();
-        self.pending.borrow_mut().push(queue.pending());
-        self.icb.borrow_mut().push(queue);
-    }
-
-    /// Take what the top ICB layer collected and close it.
-    pub fn icb_close(&self) -> Vec<AnyElement> {
-        self.pending.borrow_mut().pop();
-        let layer = self.icb.borrow_mut().pop();
-        layer.unwrap_or_default().place(icb_place)
-    }
-
-    /// Is an ICB layer open?
-    ///
-    /// A scroll strip builds its subtree in a closure that
-    /// `ScrollArea::request_layout` calls AFTER `icb_close()`: candidates can
-    /// be hoisted only while the layer still exists.
-    pub fn icb_active(&self) -> bool {
-        !self.icb.borrow().is_empty()
-    }
-
-    /// Hand an element to the top ICB layer. No layer — it comes back.
-    pub fn icb_push(&self, spot: SpotCell, el: AnyElement) -> Option<AnyElement> {
-        match self.icb.borrow_mut().last_mut() {
-            Some(layer) => {
-                layer.push(spot, el);
-                None
-            }
-            None => Some(el),
-        }
-    }
-
     /// Open the top paint layer for the children of a container.
     pub fn late_open(&self) {
         self.late.borrow_mut().push(OofQueue::with_pending(
@@ -231,18 +234,4 @@ impl Positioning {
             None => Some(el),
         }
     }
-}
-
-/// Заместитель слоя ICB — БЕЗ обёртки, в отличие от `spot_place`.
-///
-/// Любая коробка вокруг стала бы для раскладки содержащим блоком абсолютного
-/// ребёнка (понятия «позиционированный предок» у раскладки нет), и края
-/// считались бы от неё, а не от области просмотра — то есть ровно то, ради
-/// чего затеян вынос. `LatePlace` своей коробки не заводит: он отдаёт
-/// `layout_id` ребёнка.
-pub(super) fn icb_place(spot: SpotCell, child: AnyElement) -> AnyElement {
-    if spot.get().layout_only {
-        return child;
-    }
-    LatePlace { child, spot }.hooked()
 }

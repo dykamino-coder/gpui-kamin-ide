@@ -46,7 +46,9 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   if (item.state === 'read' && !item.uuid && modCapabilities.peek().get(tabId) !== true) item.committed = true
   item.fallbackQueue = mergeFallbackQueue(existing?.fallbackQueue, data.fallbackQueue)
   if (item.state === 'fallback') {
-    if (item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
+    // `committed`: the server saw the CLI complete this terminal command
+    // (SessionStart after /resume, /clear, /compact), which no row can show.
+    if (item.committed || item.fallbackQueue?.consumed || item.fallbackQueue?.dismissed) removeLocalQueueItem(tabId, item.id)
     else if (item.text && existing?.state !== 'fallback') {
       enqueueLocal(tabId, item.text, { id: item.id, ...item.fallbackQueue, hostOwned: !!item.fallbackQueue })
       // Старый host без метаданных использует desktop matcher. Browser host
@@ -58,6 +60,14 @@ export function receiveSubmission(tabId: string, data: SubmissionUpdate): void {
   const next = existing ? current.map(old => old.id === item.id ? item : old) : [...current, item]
   // Receipt retention is bounded independently of the transcript window.
   submissions.value = new Map(submissions.value).set(tabId, settleFromTranscript(tabId, next.slice(-256)))
+}
+
+/** A delivery toast is for the view that sent the message, once per warning.
+ *  A receipt this view never held (replayed after a reload, or sent from
+ *  another view) or one repeating the warning already shown stays on its badge. */
+export function shouldToastDelivery(data: SubmissionUpdate, shown: Submission | undefined): boolean {
+  if (!data.id) return true
+  return !!shown && shown.warning !== data.warning
 }
 
 export function optimisticSubmission(tabId: string, text: string): string {

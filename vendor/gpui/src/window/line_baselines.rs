@@ -16,13 +16,13 @@ impl Window {
     }
 
     /// Measure content with the actual containing block and native resolved padding/border.
-    /// The callback returns content size; native layout adds the supplied edges exactly once.
-    pub fn request_measured_layout_with_box(
+    /// The callback returns content geometry; native layout adds the supplied edges exactly once.
+    pub fn request_measured_layout_with_box<M: Into<crate::MeasuredContent>>(
         &mut self,
         style: Style,
         mut measure: impl FnMut(
             Size<Option<Pixels>>, Size<AvailableSpace>, crate::MeasuredBox, &mut Window, &mut App,
-        ) -> Size<Pixels> + 'static,
+        ) -> M + 'static,
     ) -> LayoutId {
         self.invalidator.debug_assert_prepaint();
         let rem_size = self.rem_size();
@@ -31,7 +31,7 @@ impl Window {
         self.layout_engine.as_mut().unwrap().request_measured_layout_with_box(
             style, rem_size, scale_factor,
             move |known, available, geometry, window, cx| scope.enter(window, |window| {
-                crate::MeasuredContent::new(measure(known, available, geometry, window, cx))
+                measure(known, available, geometry, window, cx).into()
             }),
         )
     }
@@ -46,6 +46,13 @@ impl Window {
         self.layout_engine.as_mut().unwrap().request_measured_layout_with_measure(
             style, rem_size, scale_factor, Scoped { scope, inner: measure },
         )
+    }
+
+    /// The completed child contribution, relative to its normal border-box origin.
+    /// Clipping and containment follow native layout; relative positioning is retained.
+    pub fn layout_overflow_contribution(&self, layout: LayoutId) -> Bounds<Pixels> {
+        self.layout_engine.as_ref().unwrap()
+            .overflow_contribution(layout, self.scale_factor())
     }
 
     /// Copy a subtree for independent measurement during the current layout phase.

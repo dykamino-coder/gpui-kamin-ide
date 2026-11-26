@@ -24,6 +24,9 @@ export interface SessionUsage {
   /** When a CLI reported the shown 5h/7d windows (may predate this
    *  session's CLI, which has none before its first model response). */
   limitsObservedAt?: string | null
+  /** The agent this snapshot describes; servers that omit it only report
+   *  the Claude CLI status line. */
+  engine?: AgentEngine
 }
 
 /** The agent behind a chat: Claude Code or ChatGPT through Codex CLI. */
@@ -439,6 +442,8 @@ export interface KaminBridgeApi {
   sendInput(tabId: string, data: string): void
   /** Abort upstream + SIGINT CLI; optional host queue IDs only dismiss restored display rows. */
   interruptSession(tabId: string, dismissedQueueIds?: string[]): void
+  /** The user is typing in a chat its server put to sleep: start the CLI now. */
+  warmSession(tabId: string): void
   /** Submit a full user message via server-side paste + quiet-window Enter gate. */
   submitText(tabId: string, text: string, submissionId?: string): void
   submissionAction(tabId: string, id: string, action: 'cancel' | 'push' | 'interrupt'): void

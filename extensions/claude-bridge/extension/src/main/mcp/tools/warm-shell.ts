@@ -9,6 +9,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import os from 'node:os'
 import { windowsJobRunner } from './windows-job-runner'
+import { POWERSHELL_OUTPUT_SETUP } from './powershell-output'
 
 /** A started shell has not proven anything until it is used, so it is kept
  *  only briefly: after this idle time it is ended and the next call starts cold. */
@@ -28,7 +29,10 @@ const MAX_WAITING_HOOKS = 4
  *  that is a process's current directory). */
 export function acceptorCommand(kind: WarmKind): string {
   const start = 'IFS= read -r __ocb_d && IFS= read -r REPLY || exit 0; '
-  const enter = '__ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; OLDPWD=$__ocb_o; unset __ocb_d __ocb_o; . "$REPLY"'
+  // `cd` sets OLDPWD; the script sees it as a shell started in its directory
+  // would: unchanged when it was set, absent when it was not.
+  const enter = '__ocb_s=${OLDPWD+x}; __ocb_o=${OLDPWD-}; cd -- "$__ocb_d" || exit 1; ' +
+    'if [ -n "$__ocb_s" ]; then OLDPWD=$__ocb_o; else unset OLDPWD; fi; unset __ocb_d __ocb_o __ocb_s; . "$REPLY"'
   // bash reads a pipe byte by byte for `read`, so the hook input that follows
   // the two lines is still unread when the script starts.
   if (kind === 'bash-hook') return start + enter
@@ -38,6 +42,8 @@ export function acceptorCommand(kind: WarmKind): string {
       // are the slow first-use part of every PowerShell command script.
       '[Console]::OutputEncoding = $OutputEncoding = New-Object System.Text.UTF8Encoding $false; ' +
         "Invoke-Expression '$null = Get-Location'; " +
+        // So is the output writer of the command runner (bufferedOutputRunner).
+        POWERSHELL_OUTPUT_SETUP +
         '$__ocb_d = [Console]::In.ReadLine(); if ($null -eq $__ocb_d) { exit 0 }; Set-Location -LiteralPath $__ocb_d; ' +
         '[System.IO.Directory]::SetCurrentDirectory($__ocb_d); Remove-Variable __ocb_d; ' +
         'Invoke-Expression ([System.IO.File]::ReadAllText([Console]::In.ReadLine()))'

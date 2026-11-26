@@ -1,6 +1,7 @@
-//! Локальная правка разметки для режима `edit` (ширину меняет режим `relayout`).
-//! Правка детерминирована и не зависит от страницы, кроме места: первый
-//! подходящий узел после середины разметки.
+//! Deterministic markup edits for the benchmark edit mode.
+//! Attribute and class edits use DOM identity; text and leaf edits use source positions.
+
+mod class;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -8,7 +9,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub(crate) enum Edit {
     /// Одна буква текстового узла после середины документа.
     Text,
-    /// Новый атрибут `data-edit` у элемента после середины документа.
+    /// Toggle `data-edit` on the middle eligible element in DOM preorder.
     Attr,
     /// Класс `alt` у корневого `html` (так переключают стиль пробы браузеров).
     Class,
@@ -16,21 +17,6 @@ pub(crate) enum Edit {
     Insert,
     /// Удаление первого листового элемента после середины документа.
     Remove,
-}
-
-/// Готовая вторая разметка (`--edit-markup FILE`) вместо правки `Edit`. Хранится
-/// вне `Args`: их размер входит в кучу стенда (замыкание и задача цикла событий),
-/// а аудит сравнивает живые байты кандидата и базы точно.
-static MARKUP_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-
-pub(crate) fn set_markup_file(path: std::path::PathBuf) -> Result<()> {
-    MARKUP_FILE
-        .set(path)
-        .map_err(|_| "--edit-markup is given twice".into())
-}
-
-pub(crate) fn markup_file() -> Option<&'static std::path::Path> {
-    MARKUP_FILE.get().map(std::path::PathBuf::as_path)
 }
 
 impl Edit {
@@ -50,7 +36,7 @@ impl Edit {
         let edited = match self {
             Self::Text => text(html),
             Self::Attr => attr(html),
-            Self::Class => class(html),
+            Self::Class => class::toggle(html),
             Self::Insert => leaf(html).map(|leaf| {
                 let mut out = html.to_owned();
                 out.insert_str(leaf.end, &html[leaf.start..leaf.end]);
@@ -104,22 +90,53 @@ fn text(html: &str) -> Option<String> {
     None
 }
 
+/// Change an attribute on a parsed element, preserving HTML tag and tree identity.
 fn attr(html: &str) -> Option<String> {
-    let bytes = html.as_bytes();
-    let mut at = middle(html);
-    while let Some(offset) = html[at..].find('<') {
-        let open = at + offset + 1;
-        if bytes.get(open).is_some_and(u8::is_ascii_alphabetic) && !in_raw_text(html, open) {
-            let name = (open..html.len())
-                .find(|&i| !bytes[i].is_ascii_alphanumeric())
-                .unwrap_or(html.len());
-            let mut out = html.to_owned();
-            out.insert_str(name, " data-edit=\"1\"");
-            return Some(out);
+    use html5ever::tendril::TendrilSink;
+    use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
+
+    let dom = html5ever::parse_document(RcDom::default(), Default::default()).one(html);
+    let mut pending = vec![dom.document.clone()];
+    let mut elements = Vec::new();
+    while let Some(node) = pending.pop() {
+        if let NodeData::Element { name, .. } = &node.data {
+            if matches!(
+                &*name.local,
+                "head" | "script" | "style" | "template" | "title"
+            ) {
+                continue;
+            }
+            if !matches!(&*name.local, "html" | "body") {
+                elements.push(node.clone());
+            }
         }
-        at = open;
+        pending.extend(node.children.borrow().iter().rev().cloned());
     }
-    None
+    let target = elements.get(elements.len() / 2)?;
+    let NodeData::Element { attrs, .. } = &target.data else {
+        return None;
+    };
+    let mut attrs = attrs.borrow_mut();
+    if let Some(attribute) = attrs
+        .iter_mut()
+        .find(|a| a.name.ns.is_empty() && &*a.name.local == "data-edit")
+    {
+        attribute.value = if &*attribute.value == "1" { "2" } else { "1" }.into();
+    } else {
+        attrs.push(html5ever::Attribute {
+            name: html5ever::QualName::new(None, Default::default(), "data-edit".into()),
+            value: "1".into(),
+        });
+    }
+    drop(attrs);
+    let mut bytes = Vec::new();
+    html5ever::serialize(
+        &mut bytes,
+        &SerializableHandle::from(dom.document),
+        Default::default(),
+    )
+    .ok()?;
+    String::from_utf8(bytes).ok()
 }
 
 /// Первый листовой элемент после середины: `<имя ...>текст</имя>` без вложенных
@@ -168,90 +185,5 @@ fn leaf(html: &str) -> Option<std::ops::Range<usize>> {
     None
 }
 
-fn class(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
-    let open = lower.find("<html")? + "<html".len();
-    let tag_end = open + lower[open..].find('>')?;
-    if lower[open..tag_end].contains("class") {
-        return None;
-    }
-    let mut out = html.to_owned();
-    out.insert_str(open, " class=\"alt\"");
-    Some(out)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::Edit;
-
-    fn page() -> String {
-        let body = "<p>alpha</p>".repeat(10);
-        format!(
-            "<html><head><style>p{{a:b}}</style></head><body>{body}<script>var a</script></body></html>"
-        )
-    }
-
-    #[test]
-    fn text_edit_changes_one_letter_of_rendered_text_after_the_middle() {
-        let page = page();
-        let edited = Edit::Text.markup(&page).unwrap();
-        assert_eq!(edited.len(), page.len());
-        assert_eq!(edited.matches("<p>olpha</p>").count(), 1, "{edited}");
-        assert!(edited.contains("var a"));
-    }
-
-    #[test]
-    fn attribute_and_class_edits_add_one_attribute() {
-        let page = page();
-        let edited = Edit::Attr.markup(&page).unwrap();
-        assert_eq!(
-            edited.matches("<p data-edit=\"1\">alpha").count(),
-            1,
-            "{edited}"
-        );
-        let edited = Edit::Class.markup(&page).unwrap();
-        assert!(edited.starts_with("<html class=\"alt\">"), "{edited}");
-        assert!(Edit::Class.markup("<html class=x>").is_err());
-    }
-
-    #[test]
-    fn insert_and_remove_change_one_leaf_element_after_the_middle() {
-        let page = page();
-        let inserted = Edit::Insert.markup(&page).unwrap();
-        assert_eq!(inserted.matches("<p>alpha</p>").count(), 11, "{inserted}");
-        assert_eq!(inserted.len(), page.len() + "<p>alpha</p>".len());
-        let removed = Edit::Remove.markup(&page).unwrap();
-        assert_eq!(removed.matches("<p>alpha</p>").count(), 9, "{removed}");
-        assert!(removed.contains("<script>var a</script>"));
-        assert_eq!(Edit::Remove.markup(&inserted).unwrap(), page);
-    }
-
-    #[test]
-    fn a_leaf_is_an_element_without_child_elements_outside_raw_text() {
-        // The padding puts the middle of the document before every candidate.
-        let tail = "<div><br><IMG src=x><em/><span>x</SPAN><b>y</b></div><script>a<b></b></script>";
-        let page = format!("<body>{}{tail}</body>", " ".repeat(200));
-        let removed = Edit::Remove.markup(&page).unwrap();
-        assert_eq!(
-            removed.trim_start_matches("<body>").trim_start(),
-            tail.replace("<span>x</SPAN>", "") + "</body>"
-        );
-        let inserted = Edit::Insert.markup(&page).unwrap();
-        assert!(
-            inserted.contains("<span>x</SPAN><span>x</SPAN><b>y</b>"),
-            "{inserted}"
-        );
-        assert!(
-            Edit::Insert
-                .markup("<body><br><script>x</script></body>")
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn unknown_edits_are_rejected() {
-        assert!(Edit::parse("resize").is_err());
-        assert!(Edit::parse("nope").is_err());
-        assert_eq!(Edit::parse("attr").unwrap(), Edit::Attr);
-    }
-}
+mod tests;

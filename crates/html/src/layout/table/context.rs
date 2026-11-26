@@ -56,6 +56,8 @@ pub(super) struct TableLayers<'a> {
 pub(super) struct RowCursor {
     pub row_ix: usize,
     pub col_ix: usize,
+    /// Порядок ячеек в сетке, независимо от стабильного ключа DOM.
+    pub cell_order: u32,
     pub group_refs: HashMap<u64, RefBox>,
     pub group_bands: HashMap<u64, RowRects>,
 }

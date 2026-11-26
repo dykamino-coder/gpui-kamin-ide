@@ -67,6 +67,8 @@ impl DirectXRenderer {
         // Failed allocation must leave drawing disabled, including after retry exhaustion.
         self.skip_draws = true;
         self.clear_effect_resources();
+        // KaminIDE patch: the kept frame and its device objects die with the device.
+        self.reset_retained();
         unsafe {
             #[cfg(debug_assertions)]
             if let Some(devices) = &self.devices {

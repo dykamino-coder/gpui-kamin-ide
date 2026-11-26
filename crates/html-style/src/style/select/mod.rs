@@ -19,7 +19,7 @@ pub mod rule_index;
 /// Цепочка предков для сопоставления `.card .title`: тег + классы + id.
 #[derive(Clone)]
 pub struct Ancestor {
-    pub key: crate::dom::tree_index::NodeKey,
+    pub key: crate::dom::tree_index::HandleKey,
     pub matching: Rc<cache::MatchCaches>,
     pub ancestor_bloom: Option<bloom::Bloom>,
     /// Computed counter directives follow DOM inheritance, even without a box.
@@ -66,6 +66,9 @@ pub struct Ancestor {
     pub target_group: Option<Rc<std::cell::Cell<bool>>>,
     /// This link is the current scroll marker of its group (`:target-current`).
     pub target_current: bool,
+    /// The control is checked or the option selected (`:checked`,
+    /// `dom::form_state`).
+    pub checked: bool,
     /// Нет детей-элементов и текста (`:empty`, selectors-4 §14.2).
     pub empty: bool,
     /// Элемент вне пространства имён XHTML (SVG, MathML): для `@namespace`

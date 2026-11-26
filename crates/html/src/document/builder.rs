@@ -16,6 +16,7 @@ pub struct DocumentBuilder<'a> {
     source: Option<super::source::Source<'a>>,
     xml: bool,
     media: Media,
+    viewport: Option<(f32, f32)>,
     fonts: crate::text::metrics::FontContext,
     limits: crate::budget::DocumentLimits,
     governor: crate::budget::ResourceGovernor,
@@ -29,6 +30,7 @@ impl<'a> DocumentBuilder<'a> {
             source: None,
             xml: false,
             media: Media::default(),
+            viewport: None,
             fonts: Default::default(),
             limits: Default::default(),
             governor: Default::default(),
@@ -59,6 +61,14 @@ impl<'a> DocumentBuilder<'a> {
         self
     }
 
+    /// The size of the viewport the document is first shown in (CSS px): the
+    /// size of its screen medium (`Document::set_viewport`). Without it the
+    /// medium starts at its default size.
+    pub fn viewport(&mut self, viewport: (f32, f32)) -> &mut Self {
+        self.viewport = Some(viewport);
+        self
+    }
+
     /// Задать URL источника HTML. Невалидный URL оставляет документ без базы.
     pub fn base_uri(&mut self, base_uri: &'a str) -> &mut Self {
         self.source = Some(super::source::Source::Uri(base_uri));
@@ -80,6 +90,20 @@ impl<'a> DocumentBuilder<'a> {
     /// Исходный DOM сохраняется целиком; предел обхода даёт Degraded в report().
     /// Source admission предшествует разбору и ранним проходам документа.
     pub fn build(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(false)
+    }
+
+    /// `build` with the root scroll state of the standalone browser view
+    /// (`host::DocumentView`): the root scroller takes wheel input and keeps
+    /// its offset in `DocState::root_scroll`. Benches of scrolling use it.
+    pub fn build_root_scroller(&self) -> Result<Document, super::DocumentFailure> {
+        self.build_for_view(true)
+    }
+
+    pub(crate) fn build_for_view(
+        &self,
+        viewport: bool,
+    ) -> Result<Document, super::DocumentFailure> {
         let budget = crate::budget::DocumentBudget::new(self.limits.clone(), self.governor.clone())
             .map_err(|e| super::DocumentFailure::new(super::FailureReason::Budget(e)))?;
         let revision = budget.revision();
@@ -96,10 +120,22 @@ impl<'a> DocumentBuilder<'a> {
                 .transpose()?
                 .flatten(),
             self.xml,
-            super::state::DocState::new(self.media),
+            super::state::DocState::for_view(self.medium(), viewport),
             &self.fonts,
             revision,
         )
+    }
+
+    /// The medium with the size of the first viewport, if the host gave it.
+    fn medium(&self) -> Media {
+        match self.viewport {
+            Some((width, height)) if !self.media.print => Media {
+                width,
+                height,
+                ..self.media
+            },
+            _ => self.media,
+        }
     }
 }
 
@@ -113,10 +149,9 @@ mod tests {
         assert_eq!(a.xml, b.xml);
         assert_eq!(a.salt(), b.salt());
         assert_eq!(a.is_print(), b.is_print());
-        assert_eq!(format!("{:?}", a.nodes()), format!("{:?}", b.nodes()));
         assert_eq!(
-            format!("{:?}", a.root_style()),
-            format!("{:?}", b.root_style())
+            super::super::test_tree::tree(a),
+            super::super::test_tree::tree(b)
         );
     }
 

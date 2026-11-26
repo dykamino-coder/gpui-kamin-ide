@@ -29,7 +29,7 @@ def validate(report, runs):
                 if mode == "warm" and phase in PHASES[:4]:
                     if counts is not None:
                         raise ValueError("warm parse/style must be absent")
-                elif not isinstance(counts, dict) or set(counts) != set(COUNTERS) \
+                elif not isinstance(counts, dict) or not set(COUNTERS).issubset(counts) \
                         or any(type(v) is not int or not 0 <= v < 2**64 for v in counts.values()):
                     raise ValueError("incomplete/non-u64 counters")
         for sample in data["samples_ms"]:
@@ -59,7 +59,7 @@ def validate(report, runs):
                 total += usage["process_cpu_100ns"]
             if total != sample["process_cpu_100ns"]:
                 raise ValueError("phase CPU does not conserve process CPU")
-        if not any(s["build_elements"]["rebuilt_nodes"] for s in samples):
+        if mode == "cold" and not any(s["build_elements"]["rebuilt_nodes"] for s in samples):
             raise ValueError("no observed render construction")
 
 
@@ -70,6 +70,13 @@ def write_table(path, reports):
               "end_rss_bytes", "end_private_commit_bytes", "sampled_peak_gpu_local_bytes",
               "sampled_peak_gpu_non_local_bytes", "end_gpu_local_bytes",
               "end_gpu_non_local_bytes", "gpu_error", *COUNTERS]
+    # Schema 3 counters are additive; preserve producer extensions in exports.
+    additional = {name for report in reports.values() for data in report["modes"].values()
+                  for sample in data["work_counters"]["samples"] for counts in sample.values()
+                  if counts is not None for name in counts} - set(COUNTERS)
+    if additional.intersection(fields):
+        raise ValueError("counter name collides with a resource column")
+    fields.extend(sorted(additional))
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields, delimiter="\t")
         writer.writeheader()
@@ -147,6 +154,63 @@ if __name__ == "__main__":
     import unittest
 
     class BoundsTests(unittest.TestCase):
+        def producer_report(self, *, replay=False):
+            # Include a current producer extension and a future schema-compatible counter.
+            counters = (*COUNTERS, "gradient_rasters", "future_counter")
+            report = dict(schema_version=3, work_counters_enabled=True, runs_per_mode=1, modes={})
+            for mode in ("cold", "warm"):
+                sample = {p: dict.fromkeys(counters, 0) for p in PHASES}
+                sample["build_elements"]["rebuilt_nodes"] = int(mode == "cold" or not replay)
+                sample["build_elements"]["future_counter"] = int(mode == "warm" and replay)
+                times = dict.fromkeys((*PHASES, "first_frame_total"), 1.0)
+                if mode == "warm":
+                    for phase in PHASES[:4]:
+                        sample[phase] = times[phase] = None
+                usage = {p: (None if sample[p] is None else
+                         dict(process_cpu_100ns=0, sampled_peak_rss_bytes=1,
+                              sampled_peak_private_commit_bytes=1, sampled_peak_gpu=None, end_gpu=None,
+                              end=dict(rss_bytes=1, private_commit_bytes=1))) for p in PHASES}
+                report["modes"][mode] = dict(work_counters=dict(samples=[sample]), samples_ms=[times],
+                    process_resources=dict(samples=[dict(phases=usage, error=None, gpu_error=None, process_cpu_100ns=0)]))
+            return report
+
+        def test_additive_producer_counters_are_valid(self):
+            validate(self.producer_report(), 1)
+
+        def test_a_warm_replay_does_not_require_rebuilding_nodes(self):
+            report = self.producer_report(replay=True)
+            for data in report["modes"].values():
+                for sample in data["work_counters"]["samples"]:
+                    for counts in sample.values():
+                        if counts is not None:
+                            for name in ("gradient_rasters", "future_counter"):
+                                counts.pop(name)
+            validate(report, 1)
+
+        def test_counter_extensions_are_exported_and_remain_u64(self):
+            import tempfile
+            from pathlib import Path
+            report = self.producer_report()
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "counters.tsv"
+                write_table(output, {"page": report})
+                with output.open(encoding="utf-8", newline="") as stream:
+                    rows = list(csv.DictReader(stream, delimiter="\t"))
+                self.assertEqual(len(rows), 2 * len(PHASES))
+                self.assertEqual(rows[0]["gradient_rasters"], "0")
+                self.assertEqual(rows[0]["future_counter"], "0")
+            counts = report["modes"]["cold"]["work_counters"]["samples"][0]["paint"]
+            for invalid in (-1, 2**64, True, None, 0.5):
+                counts["future_counter"] = invalid
+                with self.assertRaises(ValueError):
+                    validate(report, 1)
+
+        def test_cold_still_requires_construction(self):
+            report = self.producer_report(replay=True)
+            report["modes"]["cold"]["work_counters"]["samples"][0]["build_elements"]["rebuilt_nodes"] = 0
+            with self.assertRaisesRegex(ValueError, "construction"):
+                validate(report, 1)
+
         def test_missing_or_disabled_observation_cannot_pass(self):
             import copy
             counts = {p: dict.fromkeys(COUNTERS, 0) for p in PHASES}

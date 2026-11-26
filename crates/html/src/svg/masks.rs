@@ -10,7 +10,7 @@ use units::non_rendering;
 use units::user_to_css;
 
 use super::raster::rasterize;
-use super::serialize::serialize_sized;
+use super::serialize::serialize_viewport;
 use crate::dom::{Element, Node};
 use gpui::{AnyElement, ImageSource, IntoElement};
 
@@ -88,8 +88,12 @@ pub(super) fn masked_layers(
         let keep = run.clone();
         run.clear();
         let part = filtered(e, &|u| keep.contains(&u));
-        let Some(img) = rasterize(&serialize_sized(&part, rw, rh, 0.0, 0.0, vcx), rw, rh, vcx)
-        else {
+        let Some(img) = rasterize(
+            &serialize_viewport(&part, (w, h), rw, rh, 0.0, 0.0, vcx),
+            rw,
+            rh,
+            vcx,
+        ) else {
             return root;
         };
         root.child(
@@ -156,7 +160,7 @@ pub(super) fn masked_layers(
         let part = filtered(e, &|m| m == u);
         let markup = format!(
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}" viewBox="{bx} {by} {bw} {bh}">{}</svg>"#,
-            serialize_sized(&part, rw, rh, 0.0, 0.0, vcx)
+            serialize_viewport(&part, (w, h), rw, rh, 0.0, 0.0, vcx)
         );
         let Some(img) = rasterize(&markup, *bw, *bh, vcx) else {
             continue;

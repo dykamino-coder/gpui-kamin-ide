@@ -18,6 +18,7 @@ import { awaitMcpTask, cancelMcpTask, createMcpTask, mcpTasks, resolveMcpEndpoin
 import { cancelForegroundCalls, trackForegroundCall } from './mcp-foreground-calls'
 import { McpCallInterrupted } from './session-mcp-call'
 import { TASK_LIMITS, taskView } from './mcp-task-store'
+import { runTaskShellTool } from './mcp-task-shell-tools'
 import { TaskAdmissionError, TaskPersistenceQueueError, isTaskRetentionPressure } from './mcp-task-admission'
 import { debugLog, warnLog, errorLog } from '../logging'
 import { getSession, sendMcpCall } from './session-manager'
@@ -39,24 +40,26 @@ export { MCP_TOOLS } from './mcp-tools-defs'
 
 const MCP_LOG_MAX = 50 // keep last N entries per session
 
-// Claude CLI's MAX_MCP_OUTPUT_TOKENS is set to 200k in session-manager.ts.
-// We truncate ~10% below that (≈180k tokens ≈ 720 KB, 4 chars/token) so the
-// CLI never triggers its spill-to-file behavior. The spill file is written
-// inside the CLI's process (our container) using the container's cwd — the
-// model would then Read() it, which runs on the *client* VSIX bridge host and
-// can't see /home/bridge/... paths. Truncating on our side keeps the whole
-// result inline and preserves client-server separation.
-const MCP_RESULT_HARD_CAP_BYTES = 720_000
+// Claude CLI writes any MCP result longer than the tool's result size limit
+// (50,000 characters by default in 2.1.322) to a tool-results file next to its
+// transcript and hands the model a 2 KB preview. That file lives in this
+// container; the model's Read runs on the client host and cannot open it, so
+// the rest of the result is lost. Every tool in tools/list therefore declares
+// `_meta["anthropic/maxResultSizeChars"]` at the CLI's 500K ceiling (see
+// withResultSize), and results are truncated below that same ceiling here, so
+// no result is ever spilled.
+const MCP_PER_RESULT_CEILING = 500_000
 // Reserve space for the [Output truncated…] marker so the notice itself
 // never pushes us past the cap. Budget is generous — marker lines are ~400
 // chars, 2 KB leaves headroom for tool-name formatting and future notes.
 const TRUNCATION_NOTICE_RESERVE = 2_048
-const DEFAULT_TRUNCATION_BUDGET = MCP_RESULT_HARD_CAP_BYTES - TRUNCATION_NOTICE_RESERVE
-// Per MCP 2.1.91 a tool can opt into a higher per-result cap by attaching
-// `_meta["anthropic/maxResultSizeChars"]` (max 500K) to the result. We honor
-// it up to MCP_PER_RESULT_CEILING (matching CLI's 500K limit) for tools like
-// DB-schema dumps that want to pass full output through.
-const MCP_PER_RESULT_CEILING = 500_000
+const DEFAULT_TRUNCATION_BUDGET = MCP_PER_RESULT_CEILING - TRUNCATION_NOTICE_RESERVE
+
+/** A tools/list entry that lets the CLI keep results up to the ceiling inline. */
+export function withResultSize<T extends object>(tool: T): T & { _meta: Record<string, unknown> } {
+  const meta = (tool as { _meta?: Record<string, unknown> })._meta
+  return { ...tool, _meta: { ...meta, 'anthropic/maxResultSizeChars': MCP_PER_RESULT_CEILING } }
+}
 export function truncateMcpResult(result: Record<string, unknown>, toolName: string): Record<string, unknown> {
   const content = result.content as Array<Record<string, unknown>> | undefined
   if (!Array.isArray(content)) return result
@@ -590,7 +593,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       // Built-in tools are the ones the client host declared it can execute
       // (INC-2026-0097); a session without a declaration gets the full list.
       const builtinTools = mcpToolsFor(session.host)
-      const toolList = [...builtinTools, ...serverTools, ...externalTools]
+      const toolList = [...builtinTools, ...serverTools, ...externalTools].map(withResultSize)
       observeMcpCatalog(session, toolList)
 
       logMcpRequest(session, 'tools/list', 'ok', undefined, Date.now() - reqStart)
@@ -607,6 +610,8 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
     }
 
     case 'tools/call': {
+      // The CLI records the tool_use in its transcript before calling the tool.
+      session.jsonlWatcher?.poke?.()
       const params = body.params as { name?: string; arguments?: Record<string, unknown> } | undefined
       const toolName = params?.name
       if (params?.arguments !== undefined && !record(params.arguments))
@@ -654,6 +659,20 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
       }
       observeMcpCall(session, toolName)
 
+      // BashOutput/KillShell naming a background MCP task: the task lives here.
+      const taskShell = await runTaskShellTool(session, toolName, toolInput).catch(() => null)
+      if (taskShell) {
+        logMcpRequest(
+          session,
+          `tools/call:${toolName}`,
+          taskShell.isError ? 'error' : 'ok',
+          undefined,
+          Date.now() - reqStart,
+          false,
+        )
+        return jsonResponse(jsonRpcResponse(body.id, truncateMcpResult({ ...taskShell }, toolName)))
+      }
+
       let releaseInline: (() => void) | undefined
       if (modern && supportsTasks(body.params) && ['Bash', 'PowerShell'].includes(toolName)) {
         const rejectAdmission = (error: unknown): Response => {
@@ -678,7 +697,13 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
         }
         let handle: Record<string, unknown> | undefined
         try {
-          handle = await createMcpTask(session, toolName, toolInput)
+          // A foreground command stays in memory: most settle within the grace
+          // window, and writing (and fsyncing) their records cost more than the
+          // command itself. It is written to disk only when it turns into a
+          // background task below.
+          handle = await createMcpTask(session, toolName, toolInput, {
+            durable: toolInput.run_in_background === true,
+          })
         } catch (error) {
           // A negotiated client accepts either a Task or an ordinary result.
           // Never fall back after uncertain persistence or an active-limit refusal.
@@ -716,6 +741,7 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
               )
               if (task?.status === 'completed' && task.result) {
                 const response = jsonRpcResponse(body.id, truncateMcpResult(task.result, toolName))
+                void mcpTasks.release(owner, taskId).catch(() => {})
                 logMcpRequest(
                   session,
                   `tools/call:${toolName}`,
@@ -738,11 +764,15 @@ export async function handleMcpRequest(c: Context): Promise<Response> {
                   isError: true,
                 })
               }
-              if (task?.status === 'working')
-                await mcpTasks.update(owner, task.taskId, (record) => {
-                  record.background = true
-                })
-              return jsonRpcResponse(body.id, task ? { ...taskView(task), resultType: 'task' } : handle)
+              // From here the CLI holds a task handle, so the record must
+              // survive a server restart like any background task.
+              const background =
+                task?.status === 'working'
+                  ? await mcpTasks.persist(owner, task.taskId, (record) => {
+                      record.background = true
+                    })
+                  : task
+              return jsonRpcResponse(body.id, background ? { ...taskView(background), resultType: 'task' } : handle)
             } finally {
               traceEnd(taskId)
               release()

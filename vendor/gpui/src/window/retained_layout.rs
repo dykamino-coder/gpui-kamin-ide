@@ -6,8 +6,8 @@ use std::{cell::RefCell, rc::Rc};
 /// Цепочка идентификаторов независимо измеренного поддерева в текущем кадре.
 /// Геометрией, клипами, стилем текста и rendered view владеет вызывающий код.
 /// Снимок хранит только живых предков; копии разделяют неизменяемый срез.
-#[derive(Clone)]
-pub struct ElementIdContext(Rc<[crate::ElementId]>);
+#[derive(Clone, PartialEq, Debug, Default)]
+pub struct ElementIdContext(pub(super) Rc<[crate::ElementId]>);
 
 /// Inputs inherited by an element constructed during deferred measurement.
 /// Paint geometry, clips and effects remain owned by the current traversal.
@@ -24,12 +24,44 @@ pub struct ElementLayoutContext {
 #[derive(Clone)]
 pub struct RetainedLayout(Rc<RefCell<Option<TaffyLayoutEngine>>>);
 
+thread_local! {
+    /// KaminIDE patch: the engines of the layouts made during the current
+    /// frame (`release_frame_layouts`).
+    static FRAME_LAYOUTS: RefCell<Vec<std::rc::Weak<RefCell<Option<TaffyLayoutEngine>>>>> =
+        const { RefCell::new(Vec::new()) };
+}
+
 impl Default for RetainedLayout {
     fn default() -> Self {
-        Self(Rc::new(RefCell::new(Some(TaffyLayoutEngine::new_for_subtree()))))
+        let engine = Rc::new(RefCell::new(Some(TaffyLayoutEngine::new_for_subtree())));
+        FRAME_LAYOUTS.with(|layouts| layouts.borrow_mut().push(Rc::downgrade(&engine)));
+        Self(engine)
     }
 }
 
+/// KaminIDE patch: drop the engine of every layout made during the frame
+/// that is still alive when the frame ends. A retained layout is frame
+/// scoped (see `RetainedLayout`), yet its owner can be reachable from the
+/// engine itself: a measure function in its nodes captures state that holds
+/// the layout (a prepared float child and the plans that keep it), a cycle
+/// of `Rc`s that would keep the engine, its nodes and the elements behind
+/// them for the life of the process. Dropping the engines at the frame
+/// boundary ends every such cycle, as an arena reset does.
+pub(super) fn release_frame_layouts() {
+    let layouts = FRAME_LAYOUTS.with(|layouts| std::mem::take(&mut *layouts.borrow_mut()));
+    for layout in layouts {
+        let Some(engine) = layout.upgrade() else {
+            continue;
+        };
+        // Taken out first: dropping it runs the destructors of its measure
+        // functions, which may drop other layouts.
+        let taken = engine
+            .try_borrow_mut()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        drop(taken);
+    }
+}
 impl RetainedLayout {
     /// KaminIDE patch: the same layout owner.
     pub(super) fn same(&self, other: &Self) -> bool {

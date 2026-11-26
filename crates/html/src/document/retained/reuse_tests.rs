@@ -6,7 +6,7 @@
 use super::tests::{View, frame, open};
 use gpui::{TestAppContext, VisualTestContext};
 
-fn rows(edit: usize, text: &str) -> String {
+pub(super) fn rows(edit: usize, text: &str) -> String {
     let rows: String = (0..600)
         .map(|i| {
             let body = if i == edit {
@@ -65,38 +65,51 @@ fn an_offscreen_edit_skips_the_unchanged_offscreen_blocks(cx: &mut TestAppContex
 fn a_skipped_block_that_reaches_the_screen_rebuilds_the_frame(cx: &mut TestAppContext) {
     let tall = |end: &str| format!("{}{end}", "x ".repeat(6000));
     let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
+    let page = |text: &str| page(text).replace("height:20px'", "height:20px;background:#abc'");
+    let short = page("x");
+    let expected = super::box_repaint_tests::fresh(cx, &short);
     let (view, cx) = settled(cx, &page(&tall("x")), &page(&tall("y")));
-    update(&view, cx, &page("x"));
-    frame(cx);
-    let (_, _, rebuilt) = reused(&view, cx);
+    update(&view, cx, &short);
+    let (_, skipped, rebuilt) = reused(&view, cx);
     assert_eq!(rebuilt, 1, "blocks pulled into view were left skipped");
+    assert!(
+        skipped > 300,
+        "unaffected blocks lost their reuse: {skipped}"
+    );
+    assert_eq!(super::l0_tests::builds(&view, cx).1, 0);
+    assert_eq!(super::box_repaint_tests::quads(cx), expected);
 }
 
 #[gpui::test]
 fn blocks_below_a_grown_block_are_skipped_at_their_new_place(cx: &mut TestAppContext) {
     let grown = format!("{}x", "x ".repeat(300));
-    let page = |text: &str| rows(5, text).replace("<div style='height:20px'>x", "<div>x");
+    // Only integral movement can replay rasterized glyphs unchanged.
+    let page = |text: &str| {
+        rows(5, text)
+            .replace("margin:0", "margin:0;line-height:20px")
+            .replace("<div style='height:20px'>x", "<div>x")
+    };
     let (view, cx) = settled(cx, &page("x"), &page("xy"));
-    // The grown block moves the visible blocks below it: their replay is
-    // refused, and one more build of the same frame builds just them.
+    // The grown block moves the visible blocks below it: they replay their
+    // output at the new place (`placeholder`), and no frame is built twice.
     update(&view, cx, &page("x"));
     update(&view, cx, &page(&grown));
-    assert_eq!(reused(&view, cx).2, 1, "moved visible blocks were replayed");
+    assert_eq!(reused(&view, cx).2, 0, "moved visible blocks were refused");
     // An update adopts a new tree, and its frame counters start anew.
     let builds = cx.update(|_, cx| view.read(cx).doc.retained_frames().0);
-    assert_eq!(builds, 2, "the refused frame was built more than twice");
-    // The refused blocks are built from then on while the flow key stays
-    // (`Store::banned`): moving them again builds no frame twice.
+    assert_eq!(builds, 1, "the moved frame was built twice");
+    // The shrink brings blocks onto the screen, which are built.
     update(&view, cx, &page("x"));
+    let before = reused(&view, cx).2;
     update(&view, cx, &page(&grown));
     let (_, skipped, rebuilt) = reused(&view, cx);
+    let rebuilt = rebuilt - before;
     assert!(
         skipped > 300,
         "shifted offscreen blocks were rebuilt: {skipped}"
     );
-    assert_eq!(rebuilt, 1, "a refused block was replayed again");
+    assert_eq!(rebuilt, 0, "a moved block was refused");
 }
-
 #[gpui::test]
 fn blocks_after_a_float_are_always_built(cx: &mut TestAppContext) {
     let float = "<div style='height:20px'><span style='float:left;height:9000px'>f</span></div>";
@@ -212,30 +225,4 @@ fn right_to_left_blocks_are_skipped_too(cx: &mut TestAppContext) {
 
 fn replayed(view: &gpui::Entity<View>, cx: &mut VisualTestContext) -> u64 {
     cx.update(|_, cx| view.read(cx).doc.replayed_blocks())
-}
-
-#[gpui::test]
-fn a_changed_block_releases_its_record_before_it_is_built(cx: &mut TestAppContext) {
-    let (view, cx) = settled(cx, &rows(300, "row 300"), &rows(300, "row edited"));
-    let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
-    let recorded = store.recorded();
-    assert!(recorded.len() > 400, "settled blocks were not recorded");
-    let block = recorded.into_iter().find(|e| e.tag == "div").unwrap();
-    assert!(
-        store.same_tree(&block).is_some(),
-        "an unchanged block lost its record"
-    );
-    // The same block after `Document::update` lost its text: the record can
-    // never fit it, so it must not keep the previous subtree alive while the
-    // new one is built.
-    let mut changed = block.clone();
-    changed.children = Vec::new().into();
-    assert!(
-        store.same_tree(&changed).is_none(),
-        "a changed block fit its record"
-    );
-    assert!(
-        store.same_tree(&block).is_none(),
-        "the record of a changed block stayed in the store"
-    );
 }

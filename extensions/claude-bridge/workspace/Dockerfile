@@ -15,6 +15,7 @@ COPY extensions/claude-bridge/extension/ extensions/claude-bridge/extension/
 COPY extensions/claude-bridge/workspace/ extensions/claude-bridge/workspace/
 COPY extensions/claude-bridge/webview/ extensions/claude-bridge/webview/
 COPY extensions/claude-bridge/browser-client/src/ extensions/claude-bridge/browser-client/src/
+COPY extensions/claude-bridge/server/src/shared/ extensions/claude-bridge/server/src/shared/
 COPY extensions/claude-bridge/server/src/ui/src/lib/terminal-console/ extensions/claude-bridge/server/src/ui/src/lib/terminal-console/
 RUN npm --prefix extensions/claude-bridge/workspace run build \
     && npm --prefix extensions/claude-bridge/webview run build:browser \

@@ -11,6 +11,11 @@ impl Document {
     /// or, if those are unknown, of both trees (`Store::rebase`), so the
     /// previous frame tree goes with this document.
     pub(super) fn hand_over_reuse(&self, next: &mut Document, restyled: Option<&[u64]>) {
+        crate::document::boxes::BoxTree::edit(&next.state.boxes).publish_document(
+            &next.nodes,
+            Some(&self.nodes),
+            &next.state.values,
+        );
         self.reuse.rebase(&self.nodes, &next.nodes, restyled);
         next.reuse = self.reuse.clone();
     }
@@ -19,8 +24,8 @@ impl Document {
     /// of this document's source DOM under the same theme to find the
     /// elements they restyle (`dom::invalidation`); `None`: the batch changes
     /// texts or attributes that the engine reads outside selectors and
-    /// `attr()` (only `class` and `data-*` are not), or an element it cannot
-    /// address.
+    /// `attr()` (only `class` and `data-*` are not); an element without a box
+    /// is numbered `UNADDRESSED`.
     pub(super) fn invalidation(&self, batch: &Batch, theme_css: &str) -> Option<Changed> {
         let values = &self.state.values;
         let root = values.source_dom()?;
@@ -30,14 +35,18 @@ impl Document {
         {
             return None;
         }
-        let handles = batch.elements.iter().map(|change| &change.element);
-        let ids = super::adopt::source_ids(&values.traversal.elements(), handles);
+        let index = self.source_index()?;
         let mut changed = Changed::default();
-        for (change, id) in batch.elements.iter().zip(ids) {
+        for change in &batch.elements {
             if !open(&change.element, &root) {
                 return None;
             }
-            changed.elements.push(id?);
+            // An element the build did not enter (under `display: none`, a
+            // dropped tag) has no box (css-display-3 §2.5): it is still a
+            // mutated element of the restyle, numbered `UNADDRESSED`, whose
+            // probe decides whether it gains one.
+            let id = index.id(&change.element);
+            changed.elements.push(id.unwrap_or(UNADDRESSED));
             let mut seen = Vec::new();
             for attr in change.old.iter().chain(&change.new) {
                 let (was, is) = (
@@ -55,16 +64,9 @@ impl Document {
                     return None;
                 }
                 if local == "class" {
-                    let tokens = |v: Option<&str>| -> Vec<String> {
-                        let v = v.unwrap_or("").split_ascii_whitespace();
-                        v.map(str::to_ascii_lowercase).collect()
-                    };
-                    let (a, b) = (tokens(was), tokens(is));
-                    let moved = a
-                        .iter()
-                        .filter(|t| !b.contains(t))
-                        .chain(b.iter().filter(|t| !a.contains(t)));
-                    changed.classes.extend(moved.cloned());
+                    changed
+                        .classes
+                        .extend(crate::dom::class_tokens::changed(was, is));
                 }
                 if !changed.attrs.contains(&local) {
                     changed.attrs.push(local);
@@ -74,6 +76,10 @@ impl Document {
         Some(changed)
     }
 }
+
+/// The number of a mutated element without a box: box numbers start at one
+/// (`SourceIndex`), and the box index keeps no box of number zero (`Boxes`).
+const UNADDRESSED: u64 = 0;
 
 /// The value of the attribute `name` in `list`.
 fn value<'a>(list: &'a [html5ever::Attribute], name: &html5ever::QualName) -> Option<&'a str> {

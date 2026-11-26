@@ -8,6 +8,19 @@ pub(crate) fn handle(cmd: &str, req: &Value) -> Option<Value> {
             crate::host_link::client().map(|client| move || client.disconnect()),
         )),
         "keystroke" => Some(crate::probe::keyboard::keystroke(req)),
+        "filedrop" => Some(crate::probe::file_drop::file_drop(req)),
+        // {"cmd":"damageAudit","on":true,"trace":true}: every partially drawn
+        // frame is compared with a whole redraw, mismatches are logged as
+        // errors; `trace` also logs the damaged tiles of every frame.
+        "damageAudit" => {
+            if let Some(on) = req.get("on").and_then(Value::as_bool) {
+                gpui_windows::set_damage_audit(on);
+            }
+            if let Some(on) = req.get("trace").and_then(Value::as_bool) {
+                crate::web::trace_frames(on);
+            }
+            Some(json!({"ok": true, "mismatches": gpui_windows::damage_audit_mismatches()}))
+        }
         _ => None,
     }
 }

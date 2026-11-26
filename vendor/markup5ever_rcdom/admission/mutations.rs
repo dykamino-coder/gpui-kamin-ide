@@ -1,7 +1,7 @@
 //! Canonical DOM mutations share one fallible implementation with TreeSink.
 
 use super::{parent_index, remove, reserve, Admission};
-use crate::{append, Attribute, Handle, Node, NodeData, QualName, RcDom};
+use crate::{append, Attribute, Handle, NodeData, QualName, RcDom};
 use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText};
 use std::{cell::RefCell, mem, rc::Rc};
 use tendril::StrTendril;
@@ -37,11 +37,11 @@ impl RcDom {
         policy.work(attrs.len())?;
         owned_attrs.extend(attrs);
         let template = if flags.template {
-            Some(Node::try_new(NodeData::Document, None, policy)?)
+            Some(self.try_new_node(NodeData::Document, None, policy)?)
         } else {
             None
         };
-        Node::try_new(
+        self.try_new_node(
             NodeData::Element {
                 name,
                 attrs: RefCell::new(owned_attrs),
@@ -54,12 +54,26 @@ impl RcDom {
         )
     }
 
+    pub fn try_create_text<A: Admission>(
+        &self,
+        text: StrTendril,
+        policy: &A,
+    ) -> Result<Handle, A::Error> {
+        self.try_new_node(
+            NodeData::Text {
+                contents: RefCell::new(text),
+            },
+            None,
+            policy,
+        )
+    }
+
     pub fn try_create_comment<A: Admission>(
         &self,
         contents: StrTendril,
         policy: &A,
     ) -> Result<Handle, A::Error> {
-        Node::try_new(NodeData::Comment { contents }, None, policy)
+        self.try_new_node(NodeData::Comment { contents }, None, policy)
     }
 
     pub fn try_create_pi<A: Admission>(
@@ -68,7 +82,7 @@ impl RcDom {
         contents: StrTendril,
         policy: &A,
     ) -> Result<Handle, A::Error> {
-        Node::try_new(
+        self.try_new_node(
             NodeData::ProcessingInstruction { target, contents },
             None,
             policy,
@@ -89,7 +103,7 @@ impl RcDom {
             }
         }
         let child = match child {
-            NodeOrText::AppendText(text) => Node::try_new(
+            NodeOrText::AppendText(text) => self.try_new_node(
                 NodeData::Text {
                     contents: RefCell::new(text),
                 },
@@ -116,7 +130,7 @@ impl RcDom {
             }
         }
         let child = match child {
-            NodeOrText::AppendText(text) => Node::try_new(
+            NodeOrText::AppendText(text) => self.try_new_node(
                 NodeData::Text {
                     contents: RefCell::new(text),
                 },
@@ -154,7 +168,7 @@ impl RcDom {
         system_id: StrTendril,
         policy: &A,
     ) -> Result<(), A::Error> {
-        let node = Node::try_new(
+        let node = self.try_new_node(
             NodeData::Doctype {
                 name,
                 public_id,

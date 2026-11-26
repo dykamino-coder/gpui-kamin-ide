@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import http from 'node:http'
 import fs from 'node:fs'
-import { CliModTransport, createCliModTransport } from './cli-mod-transport'
+import { CliModTransport, POLL_HOLD_MS, createCliModTransport, resetCliVersionProbes } from './cli-mod-transport'
 import type { CliHandlerConditions } from '../hooks/cli-handler-conditions'
 
 const transports: CliModTransport[] = []
@@ -13,6 +13,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.unstubAllGlobals()
   versionProbe.mockReset()
+  resetCliVersionProbes()
 })
 async function setup() {
   const transport = new CliModTransport('session-a')
@@ -33,7 +34,7 @@ async function setup() {
           protocol: 1,
           session: 'session-a',
           instance: 'one',
-          version: '2.1.322',
+          version: '2.1.328',
           turnId: null,
           ...extra,
         }),
@@ -60,7 +61,7 @@ describe('private mod transport', () => {
   socketIt('enables the pinned CLI by default, using the session invocation and environment', async () => {
     vi.stubEnv('BRIDGE_CLI_MOD', undefined)
     vi.stubGlobal('process', { ...process, platform: 'linux' })
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)\n'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.328 (Claude Code)\n'))
     const cli = { command: '/cli/claude', prefix: ['--custom'], env: { PATH: '/cli' } }
     const transport = await createCliModTransport('default', cli)
     expect(transport).toBeDefined()
@@ -72,7 +73,7 @@ describe('private mod transport', () => {
       expect.any(Function),
     )
   })
-  it.each(['2.1.312 (Claude Code)', '2.1.323 (Claude Code)', 'unknown', ''])(
+  it.each(['2.1.312 (Claude Code)', '2.1.329 (Claude Code)', 'unknown', ''])(
     'falls back cleanly for CLI %j',
     async (version) => {
       vi.stubEnv('BRIDGE_CLI_MOD', undefined)
@@ -91,7 +92,7 @@ describe('private mod transport', () => {
     expect(await createCliModTransport('unused')).toBeUndefined()
   })
   socketIt('disposes a transport whose socket cannot listen', async () => {
-    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.322 (Claude Code)'))
+    versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.328 (Claude Code)'))
     vi.spyOn(CliModTransport.prototype, 'listen').mockRejectedValue(new Error('socket unavailable'))
     const dispose = vi.spyOn(CliModTransport.prototype, 'dispose')
     expect(await createCliModTransport('unused')).toBeUndefined()
@@ -200,7 +201,7 @@ describe('private mod transport', () => {
     await call('/hello')
     const req = http.request({ socketPath: transport.socketPath, path: '/hooks/prepare', method: 'POST' })
     req.on('error', () => {})
-    req.end(JSON.stringify({ protocol: 1, session: 'session-a', version: '2.1.322', instance: 'one', generation: 'a' }))
+    req.end(JSON.stringify({ protocol: 1, session: 'session-a', version: '2.1.328', instance: 'one', generation: 'a' }))
     await ready
     const cancelled = new Promise<void>((resolve) =>
       observed.addEventListener('abort', () => resolve(), { once: true }),
@@ -208,5 +209,44 @@ describe('private mod transport', () => {
     req.destroy()
     await cancelled
     expect(observed.aborted).toBe(true)
+  })
+  socketIt('holds an idle poll open and answers it as soon as a command arrives', async () => {
+    const { transport, call } = await setup()
+    await call('/hello')
+    let answered: any
+    const held = call('/poll', { wait: true }).then((r) => (answered = r))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(answered).toBeUndefined()
+    // The held request is the heartbeat: the lease stays valid past 3 s of silence.
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 10_000)
+    expect(transport.healthy()).toBe(true)
+    vi.mocked(Date.now).mockRestore()
+    expect(transport.submit('hello', vi.fn(), 'sub-1')).toBe(true)
+    await held
+    expect(answered).toMatchObject({
+      status: 200,
+      commands: [{ kind: 'submit', text: 'hello', submissionId: 'sub-1' }],
+    })
+    // A report without `wait` is answered immediately, as before.
+    expect(await call('/poll', { acks: [{ id: 1 }] })).toMatchObject({ status: 200, commands: [] })
+  })
+  socketIt('answers a held poll empty after the hold window and keeps the lease', async () => {
+    const { transport, call } = await setup()
+    await call('/hello')
+    const started = Date.now()
+    expect(await call('/poll', { wait: true })).toMatchObject({ status: 200, commands: [] })
+    expect(Date.now() - started).toBeGreaterThanOrEqual(POLL_HOLD_MS - 50)
+    expect(transport.healthy()).toBe(true)
+  })
+  socketIt('teardown answers a held poll without handing out a pending command', async () => {
+    const { transport, call } = await setup()
+    await call('/hello')
+    const held = call('/poll', { wait: true })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const fallback = vi.fn()
+    // Queue a command without waking the poll, as a racing teardown would see it.
+    ;(transport as any).pending.set(99, { command: { id: 99, kind: 'submit', text: 'x' }, claimed: false, fallback })
+    transport.dispose()
+    expect(await held).toMatchObject({ status: 200, commands: [] })
   })
 })

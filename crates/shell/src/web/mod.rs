@@ -14,7 +14,7 @@ pub(crate) use acceptance::{acceptance_log, reset_fixture};
 pub(crate) use pump::rhythm as frame_rhythm;
 pub(crate) use {
     diag_sink::emit_line as startup_log, diag_sink::flush as flush_startup_log,
-    gpu_mode::software_render,
+    diag_sink::trace_frames, gpu_mode::software_render,
 };
 mod context_menu;
 mod copy_frame;
@@ -32,7 +32,9 @@ mod diag_outbox;
 mod diag_sink;
 pub(crate) mod diag_views;
 pub(crate) mod diag_why;
+mod drag;
 mod element;
+mod focus;
 mod frame_size;
 mod frames;
 mod gpu_mode;
@@ -48,6 +50,7 @@ mod keyed_mutex;
 mod motion_css;
 mod open_shared;
 mod outbox;
+mod page_frame;
 mod popup;
 mod process;
 mod profile;
@@ -126,7 +129,7 @@ pub(crate) fn mark_pull_pending(id: &str) {
 static WAKE: std::sync::OnceLock<smol::channel::Sender<()>> = std::sync::OnceLock::new();
 
 /// Отдать каналу пробуждения отправителя (зовётся один раз при старте).
-pub use pump::{set_repaint_target, start_pump};
+pub use pump::{attach_window, start_pump};
 
 /// Стендовая клавиша в вью (probe `webkey`): нажатие и отпускание разом.
 pub(crate) fn probe_key(id: &str, key: &str, ch: Option<&str>, ctrl: bool, shift: bool, alt: bool) {
@@ -187,7 +190,7 @@ pub(crate) fn probe_key_code(
 
 /// Стендовый фокус клавиатуры в вью (probe `webfocus`).
 pub(crate) fn probe_focus(id: &str) {
-    input::focus_view(id);
+    focus::focus_view(id);
 }
 
 /// SOFTWARE-режим CEF (RDP/WARP/нет GPU): браузеры создаются БЕЗ общих
@@ -224,13 +227,7 @@ pub(crate) fn execute_menu_command(id: &str, cmd: i32) {
     context_menu::execute(id, cmd);
 }
 
-/// Клик мимо всех веб-вью: забрать у страницы фокус клавиатуры, иначе каретка
-/// в ней продолжает мигать и ловить ввод, когда пользователь ушёл в наш UI.
-pub(crate) fn blur_if_outside(x: f32, y: f32) {
-    if !element::hit_any_view(x, y) {
-        input::blur_all();
-    }
-}
+pub(crate) use focus::blur_if_outside;
 
 pub fn set_wake(tx: smol::channel::Sender<()>) {
     let _ = WAKE.set(tx);

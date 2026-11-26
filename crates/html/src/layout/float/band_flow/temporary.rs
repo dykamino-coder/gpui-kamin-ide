@@ -15,10 +15,11 @@ impl Probe<'_> {
             positioning,
             last_geometry,
             last_clamp,
+            last_overflow,
             engine: _,
             last_prepared: _,
         } = self;
-        let (result, geometry, clamped) = gpui::with_temporary_element_arena(|| {
+        let (result, geometry, clamped, overflow) = gpui::with_temporary_element_arena(|| {
             window.with_nested_layout(|window| {
                 let mut probe = Probe::new(
                     window,
@@ -33,11 +34,17 @@ impl Probe<'_> {
                     *build,
                 );
                 let result = run(&mut probe);
-                (result, probe.last_geometry, probe.last_clamp)
+                (
+                    result,
+                    probe.last_geometry,
+                    probe.last_clamp,
+                    probe.last_overflow,
+                )
             })
         });
         *last_geometry = geometry;
         *last_clamp = clamped;
+        *last_overflow = overflow;
         result
     }
 }

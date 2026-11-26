@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { localQueue, enqueueLocal, clearLocalQueue, reconcileQueueWithEntries } from './queue'
+import { localQueue, enqueueLocal, clearLocalQueue, reconcileQueueWithEntries, dropQueueOnEngineSwitch } from './queue'
 import { jsonlEntriesByTab } from './jsonl'
 import type { JsonlEntryData } from '../types/jsonl'
 
@@ -62,6 +62,26 @@ describe('reconcileQueueWithEntries', () => {
     setEntries([row({ type: 'system', content: '<command-name>/compact</command-name>' })])
     reconcileQueueWithEntries(TAB)
     expect(queued()).toBe(0)
+  })
+
+  it('never lets an empty command-output row consume a queued slash command', () => {
+    enqueueLocal(TAB, '/clear')
+    enqueueLocal(TAB, '/resume 0b6e1f1c-5a8a-4c4e-9d43-3f6a3c1f2b10')
+    setEntries([row({ type: 'user', message: { content: '<local-command-stdout></local-command-stdout>' } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(2)
+  })
+
+  it('confirms a typed command by the command and arguments the CLI recorded', () => {
+    enqueueLocal(TAB, '/model opus')
+    enqueueLocal(TAB, '/effort high')
+    setEntries([
+      row({ type: 'user', message: { content: '<command-name>/effort</command-name>\n<command-message>effort</command-message>\n<command-args>low</command-args>' } }),
+      row({ type: 'user', message: { content: '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>' } }),
+      row({ type: 'user', message: { content: '<local-command-stdout>Set model to opus</local-command-stdout>' } }),
+    ])
+    reconcileQueueWithEntries(TAB)
+    expect(localQueue.value.get(TAB)?.map(item => item.content)).toEqual(['/effort high'])
   })
 
   it('clears an image-only message via the FIFO fallback', () => {
@@ -154,5 +174,32 @@ describe('reconcileQueueWithEntries', () => {
     ] } })])
     reconcileQueueWithEntries(TAB)
     expect(queued()).toBe(1)
+  })
+})
+
+describe('dropQueueOnEngineSwitch', () => {
+  beforeEach(() => {
+    clearLocalQueue(TAB)
+    jsonlEntriesByTab.value = new Map()
+  })
+
+  it('an engine switch takes the previous agent\'s queue off the widget, host-owned items stay', () => {
+    setEntries([row({ type: 'user', message: { content: 'first' } })])
+    enqueueLocal(TAB, 'answered under positions the replay no longer has')
+    enqueueLocal(TAB, 'browser host decides', { hostOwned: true })
+    // The server replays the transcript after the switch: positions start over.
+    ord = 0
+    setEntries([row({ type: 'user', message: { content: 'answered under positions the replay no longer has' } })])
+    reconcileQueueWithEntries(TAB)
+    expect(queued()).toBe(2)
+    dropQueueOnEngineSwitch(TAB)
+    expect(localQueue.value.get(TAB)?.map(item => item.content)).toEqual(['browser host decides'])
+  })
+
+  it('leaves other tabs alone', () => {
+    enqueueLocal('other', 'still queued elsewhere')
+    dropQueueOnEngineSwitch(TAB)
+    expect(localQueue.value.get('other')?.length).toBe(1)
+    clearLocalQueue('other')
   })
 })

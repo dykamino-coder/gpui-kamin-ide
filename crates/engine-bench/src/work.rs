@@ -6,6 +6,8 @@
 
 use serde_json::Value;
 
+mod paint;
+
 pub(super) struct Capture {
     #[cfg(feature = "work-counters")]
     session: kamin_html::work::Session,
@@ -24,12 +26,30 @@ pub(super) struct Sample {
     style_storage: [u64; 6],
 }
 
-impl Capture {
-    pub(super) fn begin(luid: (i32, u32)) -> Result<Self, Box<dyn std::error::Error>> {
-        #[cfg(feature = "work-counters")]
-        let usage = super::usage::Capture::begin(luid)?;
+/// Адаптер GPU процесса для счётчиков: открывается один раз до первого замера, чтобы
+/// фабрика DXGI не попадала в окно кадра и в CPU его фаз.
+pub(super) struct Adapter {
+    #[cfg(feature = "work-counters")]
+    gpu: super::usage::Adapter,
+}
+
+impl Adapter {
+    pub(super) fn open(luid: (i32, u32)) -> Self {
         #[cfg(not(feature = "work-counters"))]
         let _ = luid;
+        Self {
+            #[cfg(feature = "work-counters")]
+            gpu: super::usage::Adapter::open(luid),
+        }
+    }
+}
+
+impl Capture {
+    pub(super) fn begin(adapter: &Adapter) -> Result<Self, Box<dyn std::error::Error>> {
+        #[cfg(feature = "work-counters")]
+        let usage = super::usage::Capture::begin(&adapter.gpu)?;
+        #[cfg(not(feature = "work-counters"))]
+        let _ = adapter;
         Ok(Self {
             #[cfg(feature = "work-counters")]
             session: kamin_html::work::Session::begin_measured(
@@ -132,7 +152,7 @@ mod tests {
     #[test]
     fn warm_absence_is_distinct_from_zero_work_and_integers_are_exact() {
         let doc = kamin_html::Document::builder("", "").build().unwrap();
-        let capture = Capture::begin((0, 0)).unwrap();
+        let capture = Capture::begin(&Adapter::open((0, 0))).unwrap();
         kamin_html::work::add!(RebuiltNodes, 9_007_199_254_740_993u64);
         let (out, usage) = capture.finish(false, &doc).json();
         assert!(usage["phases"]["parse"].is_null());
@@ -167,7 +187,9 @@ mod tests {
             .unwrap();
         let sample = || {
             kamin_html::work::add!(RebuiltNodes, 1);
-            Capture::begin((0, 0)).unwrap().finish(true, &doc)
+            Capture::begin(&Adapter::open((0, 0)))
+                .unwrap()
+                .finish(true, &doc)
         };
         drop(sample());
         let mut kept = Vec::with_capacity(EDITS);

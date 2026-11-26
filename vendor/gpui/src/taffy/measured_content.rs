@@ -34,6 +34,9 @@ pub struct MeasuredContent {
     pub lines_y: Option<Vec<Pixels>>,
     /// Every vertical-text line offset in content order, using the selected X origin.
     pub lines_x: Option<Vec<Pixels>>,
+    /// KaminIDE patch: the content's extent from the content start where it overflows
+    /// `size` (lines or floated descendants), for the scrollable overflow only.
+    pub overflow: Option<Size<Pixels>>,
 }
 
 impl MeasuredContent {
@@ -41,7 +44,7 @@ impl MeasuredContent {
     pub fn new(size: Size<Pixels>) -> Self {
         Self {
             static_positions: Vec::new(), size, first_y: None, last_y: None, first_x: None, last_x: None,
-            x_from_right: false, lines_y: None, lines_x: None,
+            x_from_right: false, lines_y: None, lines_x: None, overflow: None,
         }
     }
 
@@ -56,7 +59,17 @@ impl MeasuredContent {
             baseline_x: self.first_x.map(|value| f32::from(value) * scale),
             last_baseline_x: self.last_x.map(|value| f32::from(value) * scale),
             baseline_x_from_right: self.x_from_right,
+            overflow: self.overflow.map(|o| taffy::Size {
+                width: f32::from(o.width) * scale,
+                height: f32::from(o.height) * scale,
+            }),
         }
+    }
+}
+
+impl From<Size<Pixels>> for MeasuredContent {
+    fn from(size: Size<Pixels>) -> Self {
+        Self::new(size)
     }
 }
 

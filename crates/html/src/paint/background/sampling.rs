@@ -1,9 +1,6 @@
-//! Покраска одной плитки фона: выбор пути (однотонный SVG, аналитический градиент шейдером,
-//! SVG в конечной ориентации, растр) и режима выборки — без интерполяции для немасштабированного
-//! растра, `pixelated` ближайшей точкой, иначе линейно с совместной привязкой обоих краёв
-//! (CSS Backgrounds 3 §3.8; Blink `background_image_geometry.cc:756`) и пересэмплированием в
-//! премультиплицированной альфе. Градиенты с расширенными стопами, радиальные, повторяющиеся и
-//! вне sRGB/Oklab квантуются в растр на сетке устройства; обрезка привязывается как края коробки.
+//! Background tile sampling and analytic gradient dispatch. sRGB radial, repeating and
+//! arbitrary-stop gradients draw directly; unsupported color spaces retain bitmap sampling.
+//! Destination edges follow the device grid (CSS Backgrounds 3 section 3.8).
 
 use crate::resources::css_images::Source as CpuSource;
 use crate::resources::css_images::{gradient_geometry::Geometry, gradient_raster::resolved_stops};
@@ -15,7 +12,7 @@ pub(super) fn paint_tile(
     window: &mut Window,
     bounds: Bounds<Pixels>,
     corners: Corners<Pixels>,
-    image: Arc<RenderImage>,
+    image: &mut dyn FnMut() -> Option<Arc<RenderImage>>,
     source_kind: &super::Source,
     pixelated: bool,
     vcx: ValueCx<'_>,
@@ -29,6 +26,10 @@ pub(super) fn paint_tile(
     if super::oriented_vector::paint(window, bounds, corners, source_kind, vcx) {
         return;
     }
+    // Native gradients and vectors draw without the fallback bitmap.
+    let Some(image) = image() else {
+        return;
+    };
     let source = image.size(0);
     let sampling = sampling_mode(
         (source.width.0 as f32, source.height.0 as f32),
@@ -141,6 +142,11 @@ pub(crate) fn paint_gradient(
         // absolute stop/center lengths accompany them (Blink background
         // geometry). Only the destination bitmap follows the device grid.
         let bounds = snapped_clip(bounds, window);
+        #[cfg(windows)]
+        if super::sampling_analytic::paint(window, bounds, corners, &gradient, repeating, css, vcx)
+        {
+            return true;
+        }
         let (w, h) = (
             (f32::from(bounds.size.width) * scale)
                 .round()
@@ -210,40 +216,5 @@ fn sampling_mode(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resizing_either_axis_or_transforming_retains_interpolation() {
-        let identity = [[1.0, 0.0], [0.0, 1.0]];
-        assert_eq!(
-            sampling_mode((320.0, 320.0), (320.0, 320.0), identity, true),
-            ImageSampling::Nearest
-        );
-        for target in [
-            (400.0, 320.0),
-            (320.0, 400.0),
-            (160.0, 160.0),
-            (320.25, 320.0),
-        ] {
-            assert_eq!(
-                sampling_mode((320.0, 320.0), target, identity, true),
-                ImageSampling::Linear
-            );
-        }
-        for matrix in [
-            [[2.0, 0.0], [0.0, 2.0]],
-            [[0.0, -1.0], [1.0, 0.0]],
-            [[1.0, 0.5], [0.0, 1.0]],
-        ] {
-            assert_eq!(
-                sampling_mode((320.0, 320.0), (320.0, 320.0), matrix, true),
-                ImageSampling::Linear
-            );
-        }
-        assert_eq!(
-            sampling_mode((320.0, 320.0), (320.0, 320.0), identity, false),
-            ImageSampling::Linear
-        );
-    }
-}
+#[path = "sampling_tests.rs"]
+mod tests;

@@ -13,6 +13,7 @@ fn metrics(last_only: bool) -> MeasureOutput {
         baseline_x: (!last_only).then_some(55.0),
         last_baseline_x: Some(-3.0),
         baseline_x_from_right: false,
+        overflow: None,
     }
 }
 

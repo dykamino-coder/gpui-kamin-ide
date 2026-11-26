@@ -23,6 +23,11 @@ pub(super) fn opaque_backdrop(scene: &Scene, width: u32, height: u32) -> Option<
     // нарисовано, и очистка это стёрла бы.
     match scene.batches().next() {
         Some(PrimitiveBatch::Quads(range)) if range.start == 0 && !range.is_empty() => {}
+        // KaminIDE patch: a frame that starts with a retained layer starts
+        // with the layer's first batch (the renderer skips that quad there).
+        Some(PrimitiveBatch::Layer(index)) if scene.groups.is_empty() => {
+            return opaque_backdrop(scene.layer(index)?.scene(), width, height);
+        }
         _ => return None,
     }
     // Буферы групп рисуются ДО кадра, и backdrop-проход внутри группы
@@ -160,7 +165,7 @@ mod tests {
             inner.insert_primitive(surface(group));
             inner.finish();
             scene.groups.push(PaintGroup {
-                scene: inner,
+                scene: std::rc::Rc::new(inner),
                 ..Default::default()
             });
             scene

@@ -1,26 +1,62 @@
-// Client IDs follow native queue deliveries without changing the transcript watcher.
+// Client IDs follow native queue deliveries; the stored prompt row in the transcript is the read receipt.
 import type { PtySession } from './types'
 import type { CliModTransport } from './cli-mod-transport'
 import { getSessionInputSnapshot, isTerminalResponseInput, submitCoordinatedText } from './session-input-coordinator'
 import { sendToClient } from './session-io'
+import { normalizePrompt, promptRow, storesPrompt } from './transcript-prompts'
+import type { JsonlEntry } from '../../shared/jsonl-types'
 
 type State = 'queued' | 'sending' | 'native' | 'read' | 'cancelled' | 'uncertain' | 'fallback'
 interface Submission {
   id: string
+  /** What the CLI gets and stores in its prompt row (may carry a context block). */
   text: string
+  /** What the user wrote: the receipt text, the client's submission identity. */
+  userText: string
   state: State
   uuid?: string
   warning?: string
   interrupt?: boolean
   /** Server time of acceptance: lets a client settle a lost receipt from the transcript. */
   createdAt: number
+  /** Server time the mod reported the CLI accepted an idle submit. */
+  acceptedAt?: number
 }
+
+/** A submission an engine switch takes from the leaving CLI. */
+export interface CarriedSubmission {
+  id: string
+  /** What the user wrote (the joining engine adds its own context). */
+  text: string
+  createdAt: number
+}
+
+/** A text handed to the CLI whose stored prompt row is not seen yet. */
+interface Awaiting {
+  item: Submission
+  normalized: string
+  /** Server time the text went to the CLI; an older row cannot store it. */
+  since: number
+}
+
+/** Rows written up to this long before hand-off still count: the CLI and the
+ * server round the same instant independently (the clients use the same margin). */
+const CLOCK_MARGIN_MS = 2000
+/** An accepted idle submit whose prompt row has not appeared this long after
+ * the CLI went idle again is reported unconfirmed instead of blocking the queue. */
+const UNMATCHED_MS = 5000
 
 export class CliSubmissions {
   capable = true
   private items = new Map<string, Submission>()
   private dispatching: string | undefined
   private timer: ReturnType<typeof setInterval>
+  /** In hand-off order, which is the order the CLI stores them in. */
+  private awaiting: Awaiting[] = []
+  /** Rows already matched: a range the watcher re-reads must not match twice. */
+  private matchedRows = new Set<string>()
+  /** The chat moved to another engine (retire). */
+  private retired = false
 
   constructor(
     private session: PtySession,
@@ -28,14 +64,6 @@ export class CliSubmissions {
     private busy: () => boolean,
     private abort: () => boolean,
   ) {
-    mod.onRead = (id, uuid) => {
-      const item = this.items.get(id)
-      if (!this.capable || !item || item.state === 'cancelled') return
-      item.state = 'read'
-      item.uuid = uuid
-      if (this.dispatching === id) this.dispatching = undefined
-      this.emit(item)
-    }
     this.timer = setInterval(() => {
       if (session.state !== 'running') {
         clearInterval(this.timer)
@@ -47,11 +75,12 @@ export class CliSubmissions {
   }
 
   private emit(item: Submission): void {
+    if (this.retired) return
     sendToClient(this.session.ws, {
       type: 'session:submission',
       sessionId: this.session.id,
       id: item.id,
-      text: item.text,
+      text: item.userText,
       state: item.state,
       uuid: item.uuid,
       cancelable: item.state === 'queued',
@@ -62,6 +91,47 @@ export class CliSubmissions {
 
   replay(): void {
     for (const item of this.items.values()) this.emit(item)
+  }
+
+  /** The text is now the CLI's: its next stored prompt row with that text is its receipt. */
+  private handedOff(item: Submission): void {
+    if (this.awaiting.length >= 256) this.awaiting.shift()
+    this.awaiting.push({ item, normalized: normalizePrompt(item.text), since: Date.now() })
+  }
+
+  /** Newly appended transcript records. Each prompt row is the receipt of the
+   * earliest handed-off text it stores; rows typed in the console store none
+   * and are skipped. Console edits of the native queue disable receipts
+   * (rawInput) before they could reorder rows. */
+  transcript(entries: readonly JsonlEntry[]): void {
+    if (!this.awaiting.length) return
+    for (const entry of entries) {
+      const row = promptRow(entry)
+      if (!row || this.matchedRows.has(row.uuid)) continue
+      const index = this.awaiting.findIndex(
+        (wait) => !(row.at < wait.since - CLOCK_MARGIN_MS) && storesPrompt(row, wait.normalized),
+      )
+      if (index < 0) continue
+      const [{ item }] = this.awaiting.splice(index, 1) as [Awaiting]
+      if (this.matchedRows.size >= 512) this.matchedRows.clear()
+      this.matchedRows.add(row.uuid)
+      this.read(item, row.uuid)
+      if (!this.awaiting.length) return
+    }
+  }
+
+  private read(item: Submission, uuid: string): void {
+    if (!this.capable || item.state === 'cancelled' || this.items.get(item.id) !== item) return
+    item.state = 'read'
+    item.uuid = uuid
+    if (this.dispatching === item.id) this.dispatching = undefined
+    this.emit(item)
+  }
+
+  /** A submission the CLI has not read yet: the session still owes it a turn. */
+  pending(): boolean {
+    for (const item of this.items.values()) if (item.state === 'queued' || item.state === 'sending') return true
+    return false
   }
 
   /** Every id still tracked; a client drops pending receipts missing from it. */
@@ -85,7 +155,28 @@ export class CliSubmissions {
     return safe
   }
 
-  submit(id: string, text: string): boolean {
+  /** Engine switch: this CLI goes away with whatever it holds. Messages it
+   * never got move to the joining engine (in order); messages it got but did
+   * not confirm go back to the user. From here on this queue reports nothing:
+   * the joining session owns these ids, and a late ack of this CLI (its mod
+   * accepting an armed submit, its exit marking items uncertain) would
+   * contradict what the joining one reports. */
+  retire(): { moved: CarriedSubmission[]; returned: CarriedSubmission[] } {
+    const moved = new Set(this.handoff())
+    const out = { moved: [] as CarriedSubmission[], returned: [] as CarriedSubmission[] }
+    for (const item of this.items.values()) {
+      const carried = { id: item.id, text: item.userText, createdAt: item.createdAt }
+      if (moved.has(item.id)) out.moved.push(carried)
+      else if (item.state === 'native' || item.state === 'sending') out.returned.push(carried)
+    }
+    this.retired = true
+    this.items.clear()
+    this.awaiting = []
+    this.matchedRows.clear()
+    return out
+  }
+
+  submit(id: string, text: string, userText = text): boolean {
     if (!id || id.length > 128 || Buffer.byteLength(text) > 131_072) return false
     const existing = this.items.get(id)
     if (existing) {
@@ -108,7 +199,7 @@ export class CliSubmissions {
       }
       if (this.items.size >= 256) return false
     }
-    const item: Submission = { id, text, state: 'queued', createdAt: Date.now() }
+    const item: Submission = { id, text, userText, state: 'queued', createdAt: Date.now() }
     this.items.set(id, item)
     this.emit(item)
     this.drain()
@@ -165,6 +256,18 @@ export class CliSubmissions {
   }
 
   private drain(): void {
+    const sent = this.dispatching === undefined ? undefined : this.items.get(this.dispatching)
+    if (
+      sent?.state === 'sending' &&
+      sent.acceptedAt !== undefined &&
+      Date.now() - sent.acceptedAt > UNMATCHED_MS &&
+      !this.busy()
+    ) {
+      sent.state = 'uncertain'
+      sent.warning = 'Delivery could not be confirmed. Check the transcript before resending.'
+      this.dispatching = undefined
+      this.emit(sent)
+    }
     const item = [...this.items.values()].find((i) => i.state === 'queued')
     if (!item) return
     const wait = (warning: string) => {
@@ -200,7 +303,11 @@ export class CliSubmissions {
     item.warning = undefined
     this.emit(item)
     if (!this.busy()) {
-      if (!this.mod.submit(item.text, () => this.fallback(item), item.id)) this.fallback(item)
+      this.handedOff(item)
+      const accepted = () => {
+        item.acceptedAt = Date.now()
+      }
+      if (!this.mod.submit(item.text, () => this.fallback(item), item.id, accepted)) this.fallback(item)
     } else if (
       !this.mod.arm(
         item.id,
@@ -229,6 +336,7 @@ export class CliSubmissions {
           }
           item.state = 'native'
           this.emit(item)
+          this.handedOff(item)
           submitCoordinatedText(this.session, item.text)
           this.dispatching = undefined
         },

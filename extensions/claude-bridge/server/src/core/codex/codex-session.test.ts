@@ -60,6 +60,23 @@ describe('CodexAgentSession', () => {
     expect(session.conversationId()).toBe('old')
   })
 
+  it('compacts with thread/compact/start, after a running turn ends, never as a text turn', async () => {
+    const { proc, session } = await started({ 'thread/compact/start': () => ({}) })
+    await session.send('work')
+    expect(proc.requests('turn/start')).toHaveLength(1)
+    proc.notify('turn/started', { threadId: 't1', turn: { id: 'u1' } })
+    await flush()
+    const compacting = session.compact()
+    await flush()
+    // The turn is still running: nothing is sent yet.
+    expect(proc.requests('thread/compact/start')).toEqual([])
+    proc.notify('turn/completed', { threadId: 't1', turn: { id: 'u1', status: 'completed', error: null, items: [] } })
+    await compacting
+    expect(proc.requests('thread/compact/start')).toEqual([{ threadId: 't1' }])
+    expect(proc.requests('turn/start')).toHaveLength(1)
+    expect(proc.requests('turn/steer')).toEqual([])
+  })
+
   it('emits session.started, then the thread notifications it owns', async () => {
     const { proc, events } = await started()
     proc.notify('turn/started', { threadId: 'other', turn: { id: 'x' } })
@@ -82,6 +99,7 @@ describe('CodexAgentSession', () => {
         clientUserMessageId: 'sub-1',
         model: 'gpt-6-sol',
         effort: 'high',
+        summary: 'auto',
       },
     ])
     expect(session.running).toBe(true)

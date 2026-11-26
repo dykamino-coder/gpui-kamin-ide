@@ -22,6 +22,15 @@ pub(super) fn build_one(
     cx: &mut App,
 ) -> (AnyElement, Option<super::DeferredPaint>) {
     let (spot, mut kid) = item;
+    if let OofKid::Prepared(mut root, at) = kid {
+        // Prepared without the offsets of the host's ancestors: a host
+        // inside a scrolled scrollport prepaints its kids where that offset
+        // puts it, and a prepared kid moves there with it.
+        if at.origin != bounds.origin {
+            root.layout_as_root_at(bounds.origin, definite(bounds), window, cx);
+        }
+        return (root, None);
+    }
     while let OofKid::Waiting(_, inner) = kid {
         kid = *inner;
     }
@@ -39,16 +48,15 @@ pub(super) fn build_one(
         .h(bounds.size.height)
         .child(place(spot, child))
         .into_any_element();
-    root.layout_as_root_at(
-        bounds.origin,
-        size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::Definite(bounds.size.height),
-        ),
-        window,
-        cx,
-    );
+    root.layout_as_root_at(bounds.origin, definite(bounds), window, cx);
     (root, paint)
+}
+
+fn definite(bounds: Bounds<Pixels>) -> gpui::Size<AvailableSpace> {
+    size(
+        AvailableSpace::Definite(bounds.size.width),
+        AvailableSpace::Definite(bounds.size.height),
+    )
 }
 
 impl Hooks for OofHost {
@@ -67,7 +75,16 @@ impl Hooks for OofHost {
         style.inset.left = px(0.).into();
         style.size.width = gpui::relative(1.).into();
         style.size.height = gpui::relative(1.).into();
-        (window.request_layout(style, [], cx), ())
+        let id = window.request_layout(style, [], cx);
+        self.queue
+            .state
+            .preparation
+            .replace(Some(super::prepare::HostLayout {
+                id,
+                owner: window.retained_layout(),
+                place: self.place,
+            }));
+        (id, ())
     }
 
     fn prepaint(
@@ -90,7 +107,7 @@ impl Hooks for OofHost {
         let built = Rc::new(RefCell::new(Vec::new()));
         let context = self.queue.pending.context(window);
         loop {
-            let item = self.queue.items.borrow_mut().pop_front();
+            let item = self.queue.state.items.borrow_mut().pop_front();
             let Some(item) = item else { break };
             if matches!(&item.1, OofKid::Waiting(deps, _) if !deps.ready()) {
                 self.queue
@@ -98,7 +115,7 @@ impl Hooks for OofHost {
                     .push(item, bounds, self.place, context.clone(), built.clone());
                 continue;
             }
-            let siblings = self.queue.items.take();
+            let siblings = self.queue.state.items.take();
             let (mut root, paint) = build_one(item, bounds, self.place, window, cx);
             root.prepaint_at(point(px(0.), px(0.)), window, cx);
             match paint {
@@ -107,7 +124,7 @@ impl Hooks for OofHost {
                     .borrow_mut()
                     .push(super::pending::Painted(root, window.content_mask())),
             }
-            self.queue.items.borrow_mut().extend(siblings);
+            self.queue.state.items.borrow_mut().extend(siblings);
         }
         self.queue
             .pending

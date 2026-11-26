@@ -1,8 +1,7 @@
 //! KaminIDE patch: GPU memory the renderer holds, by owner, for the engine bench's memory
 //! report (`Window::gpu_memory`). Sizes come from the texture descriptions: what the pixels
 //! take, not what the driver reserved around them. Not walked: the swap chain's other
-//! buffers, DirectWrite's glyph rasterization targets (they live for one glyph), buffers and
-//! shaders.
+//! buffers, DirectWrite's glyph rasterization targets (they live for one glyph), buffers except analytic gradient descriptors/stops, and shaders.
 
 use super::*;
 
@@ -37,16 +36,25 @@ impl DirectXRenderer {
     /// One call per texture the renderer holds: owner path, bytes, bytes in use.
     pub(crate) fn gpu_memory(&self, sink: &mut dyn FnMut(&'static str, u64, u64)) {
         self.atlas.gpu_memory(sink);
+        if let Some(gradients) = &self.pipelines.quad_pipeline.gradients { gradients.gpu_memory(sink); }
+        self.layer_cache.gradient_memory(sink);
         let mut whole = |path: &'static str, texture: &ID3D11Texture2D| {
             let bytes = texture_bytes(texture);
             sink(path, bytes, bytes);
         };
         if let Some(resources) = &self.resources {
+            // The frame's canvas (`canvas`), and the back buffer it is copied to.
             if let Some(target) = &resources.render_target {
                 whole("gpu/target/frame", target);
             }
+            if let Some(back) = &resources.back_buffer {
+                whole("gpu/target/back-buffer", back);
+            }
             whole("gpu/target/path", &resources.path_intermediate_texture);
             whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
+        }
+        if let Some((_, _, scratch)) = &self.retained.scratch {
+            whole("gpu/target/shift-scratch", scratch);
         }
         let blur = &self.blur;
         let single = [

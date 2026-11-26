@@ -4,7 +4,6 @@
 //! `outline-offset` (Blink `AdjustedOutlineOffset`), угол контура от угла коробки, `double`
 //! двумя кольцами и узоры `dotted`/`dashed`; слой уходит в отложенную фазу контуров.
 
-use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::layout::cx::FrameCx;
 use crate::style::computed::{BoxStyle, OUTLINE_DOUBLE};
 use crate::style::values::value::Len;
@@ -23,15 +22,8 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
         })
     {
         // Шрифтовые единицы ширины и сдвига решаются своим кеглем.
-        let em = match c.inh.font.font_size {
-            Some(Len::Px(v)) => v,
-            _ => MEDIUM_FONT_SIZE_PX,
-        };
-        let px_of = |l: Option<Len>| match l {
-            Some(Len::Px(v)) => v,
-            Some(Len::Em(k)) => k * em,
-            _ => 0.0,
-        };
+        let em = super::outset::em_size(c);
+        let px_of = |len| super::outset::length(len, 0., em).unwrap_or(0.);
         // Незаданная толщина — `medium` (css-ui-4, начальное значение):
         // длинная запись `outline-style: auto` без толщины давала ноль, и
         // контур молча пропадал (`outline-offset-inset-005` зелёна впустую).
@@ -103,6 +95,13 @@ pub(super) fn decorations(c: &BoxStyle, frame: FrameCx<'_>) -> Vec<AnyElement> {
                     .border(px(width))
                     .border_color(colour.to_hsla())
                     .rounded(px(radius));
+                // Outline ink is excluded from scrollable overflow (CSS Overflow 3, section 2).
+                // This absolute paint box must not expand the content geometry used
+                // to decide an ancestor's scrollbars.
+                ring.style().kamin_scrollbars = Some(gpui::KaminScrollbars {
+                    proxy: true,
+                    ..Default::default()
+                });
                 // Outlines and CSS borders share the device-pixel edge grid
                 // (CSS UI 4 outline-style refers to border-style). Keeping
                 // a fractional inner outline edge can expose a border that

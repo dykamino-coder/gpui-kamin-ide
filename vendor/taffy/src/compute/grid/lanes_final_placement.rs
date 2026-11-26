@@ -11,6 +11,7 @@ pub(super) fn position(
     stack_content: f32,
     stack_start_inset: f32,
     border: Rect<f32>,
+    inflow: (&[GridTrack], usize, f32),
     #[cfg(feature = "content_size")] is_scroll_container: bool,
 ) -> Rect<f32> {
     if if rows { flow.width } else { flow.height } {
@@ -24,8 +25,21 @@ pub(super) fn position(
             item.stack_pos = stack_content - item.stack_pos - outer_size;
         }
     }
-    #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
-    let mut item_content_size_contribution = Rect::ZERO;
+    #[cfg(feature = "content_size")]
+    let mut item_content_size_contribution = super::super::lanes_geometry::inflow_bounds(
+        inflow.0,
+        inflow.1,
+        if rows { flow.height } else { flow.width },
+        rows,
+        stack_start_inset,
+        inflow.2,
+        border,
+    );
+    #[cfg(not(feature = "content_size"))]
+    let item_content_size_contribution = {
+        let _ = inflow;
+        Rect::ZERO
+    };
     for (order, p) in placed.iter().enumerate() {
         let (m_start, _) = if rows {
             (p.margin.left, p.margin.right)
@@ -50,9 +64,15 @@ pub(super) fn position(
                 order: order as u32,
                 location,
                 relative_offset: if rows {
-                    Point { x: p.stack_relative, y: p.grid_relative }
+                    Point {
+                        x: p.stack_relative,
+                        y: p.grid_relative,
+                    }
                 } else {
-                    Point { x: p.grid_relative, y: p.stack_relative }
+                    Point {
+                        x: p.grid_relative,
+                        y: p.stack_relative,
+                    }
                 },
                 size: p.size,
                 #[cfg(feature = "content_size")]

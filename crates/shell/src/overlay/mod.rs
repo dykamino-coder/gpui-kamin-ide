@@ -1,5 +1,5 @@
-//! Оверлеи главного окна: слои (`layers/*`), hit-регионы (`region`) и
-//! win32-хелперы титлбара (`subclass`).
+//! Оверлеи главного окна: слои (`layers/*`) и win32-хелперы титлбара
+//! (`subclass`).
 //!
 //! Раньше здесь жило ВТОРОЕ прозрачное окно поверх главного — оверлеи иначе
 //! накрывались child-окнами WebView2. С CEF страницы рисуются в кадр, и стек
@@ -7,14 +7,15 @@
 
 pub(crate) mod diag_states;
 pub(crate) mod layers;
-mod region;
 mod subclass;
 mod tool_menu;
 mod tool_submenu;
 
-pub use region::{
-    dropdown_shadow, hit_area, hit_rects_snapshot, input_area, region_area, tooltip_region,
-};
+/// Тень дропдаунов (--shadow-dropdown); слой живёт в главном окне, где
+/// альфа есть всегда.
+pub fn dropdown_shadow() -> Vec<gpui::BoxShadow> {
+    crate::ui::shadows::dropdown()
+}
 pub use subclass::{start_native_window_drag, toggle_main_maximize};
 
 use std::sync::atomic::{AtomicIsize, Ordering};

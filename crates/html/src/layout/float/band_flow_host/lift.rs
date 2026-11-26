@@ -2,20 +2,16 @@
 
 use super::{band_flow_block, inline_run};
 use crate::dom::{Element, Node};
-use crate::layout::box_kind::{
-    block_level_in_flow, inline_level, is_blank, out_of_flow, own_context,
-};
+use crate::layout::box_kind::{block_level_in_flow, inline_level, is_blank, out_of_flow};
 use crate::layout::float::band_measured::{band_nest_ok, band_piece_m};
 use crate::style::computed::Computed;
 use crate::style::computed::writing_mode::WritingMode;
 use crate::style::values::value::Len;
 
-/// Внутри блока потока нет ни флоатов, ни блоков своего контекста — на
-/// любой глубине обычного потока. Блок хоста раскладывается своим корнем, и
-/// полосы доходят только до ЕГО строк (`flow_shapes`); вложенный флоат или
-/// коробка своего контекста внешних флоатов не увидели бы вовсе — им нужен
-/// один `FloatBands` на весь БФК (шаг F7: `floats-rule7-outside-left-001`,
-/// `floats-wrap-bfc-with-margin-008`, `second-float-inside-empty-cleared-block`).
+/// The measured flow root applies `flow_shapes` to its own inline formatting
+/// context. A descendant block has its own lines: ordinary blocks must use
+/// the shared `FloatBands` through `Kind::Nest`, while independent contexts
+/// are placed as pieces. Neither may hide inside a measured flow root.
 pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
     c.children.iter().all(|n| match n {
         Node::Text(_) => true,
@@ -41,13 +37,7 @@ pub(in crate::layout::float) fn flow_interior_plain(c: &Element) -> bool {
                 return false;
             }
             if block_level_in_flow(k) {
-                // Вложенный `clear` тоже упирается во ВНЕШНИЕ флоаты
-                // (`clear-applies-to-009`: `<div><span display:block;
-                // clear:both>`).
-                !own_context(k)
-                    && k.tag != "table"
-                    && k.style.used().reset_box_layout.clear.is_none()
-                    && flow_interior_plain(k)
+                false
             } else {
                 // Строчный: атом в строке (инлайн-блок) режется вырезом как
                 // целое; флоат внутри строчного всплывает к блоку (§10.1).

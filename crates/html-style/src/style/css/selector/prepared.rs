@@ -10,6 +10,8 @@ pub struct Prepared {
     pub list: Vec<Selector>,
     pub nth: Option<String>,
     pub anb: Option<AnB>,
+    /// The argument is one selector that parsed; for `:not()`, every selector
+    /// of its list parsed.
     pub single: bool,
     pub specificity: (u32, u32, u32),
     /// What matching evaluates, decided here once.
@@ -81,11 +83,12 @@ impl Selector {
                         _ => {}
                     }
                 }
-                let single = raw
-                    .strip_prefix("not(")
-                    .and_then(|s| s.strip_suffix(")"))
-                    .is_none_or(|arg| split_selector_list(arg).len() == 1)
-                    && list.len() == 1;
+                // `:not()` takes a selector list that is not forgiving (selectors-4
+                // §4.3): it holds when every selector of it parsed.
+                let single = match raw.strip_prefix("not(").and_then(|s| s.strip_suffix(")")) {
+                    Some(arg) => !list.is_empty() && split_selector_list(arg).len() == list.len(),
+                    None => list.len() == 1,
+                };
                 let maximum = list
                     .iter()
                     .map(Selector::specificity)

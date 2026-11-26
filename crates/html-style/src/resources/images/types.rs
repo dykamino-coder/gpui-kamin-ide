@@ -2,6 +2,7 @@
 //! точек, неизменяемый рисунок SVG, метаданные и типизированные ошибки. Ни GPUI, ни
 //! фаз конвейера: эти значения читают и раскладка (размер, альфа), и покраска (точки).
 
+pub use super::encoded::{EncodedRaster, RasterImage};
 use super::natural::Intrinsic;
 use super::vector::VectorImage;
 use std::sync::Arc;
@@ -22,6 +23,9 @@ pub enum ColourPolicy {
     ConvertToSrgb,
     /// Оставить точки в пространстве файла (профиль описан в метаданных).
     Preserve,
+    /// CSS compatibility pixels, ready for the renderer: straight BGRA in sRGB.
+    /// Applies the historical CSS alpha/ICC rounding before publishing the raster.
+    CssBgra,
 }
 
 /// Параметры декодирования: всё, кроме байт, от чего зависят полученные точки.
@@ -82,6 +86,12 @@ pub struct CpuRaster {
     pub retention: super::admission::Retention,
 }
 
+impl AsRef<[u8]> for CpuRaster {
+    fn as_ref(&self) -> &[u8] {
+        &self.bytes
+    }
+}
+
 impl CpuRaster {
     /// Альфа ориентированной точки, независимо от порядка RGB и шага строки.
     pub fn alpha_at(&self, x: u32, y: u32) -> Option<u8> {
@@ -98,11 +108,11 @@ impl CpuRaster {
     }
 }
 
-/// Результат декодирования: точки растра или разметка рисунка, которую растрируют под
+/// The decoded value: a raster or the markup of a picture rasterised at the size of
 /// размер места (у рисунка своих точек нет).
 #[derive(Clone, Debug)]
 pub enum DecodedImage {
-    Raster(Arc<CpuRaster>),
+    Raster(RasterImage),
     Vector(Arc<VectorImage>),
 }
 
@@ -111,8 +121,9 @@ impl DecodedImage {
     pub fn natural(&self) -> Intrinsic {
         match self {
             DecodedImage::Raster(r) => {
+                let (w, h) = r.size();
                 // Как у покраски фона: сторона растра не меньше точки.
-                let (w, h) = ((r.width as f32).max(1.0), (r.height as f32).max(1.0));
+                let (w, h) = ((w as f32).max(1.0), (h as f32).max(1.0));
                 Intrinsic {
                     w: Some(w),
                     h: Some(h),
@@ -123,10 +134,11 @@ impl DecodedImage {
         }
     }
 
-    /// Байты, которые держит значение (точки или разметка).
+    /// Bytes the value holds (pixels, the file or markup).
     pub fn held_bytes(&self) -> usize {
         match self {
-            DecodedImage::Raster(r) => r.bytes.len(),
+            DecodedImage::Raster(RasterImage::Ready(r)) => r.bytes.len(),
+            DecodedImage::Raster(RasterImage::Encoded(e)) => e.encoded_len(),
             DecodedImage::Vector(v) => v.markup.len(),
         }
     }

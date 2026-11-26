@@ -20,7 +20,9 @@ use std::rc::Rc;
 
 mod container_input;
 mod inherited;
-pub(crate) use inherited::inherits_reset;
+mod materialized;
+pub(crate) use inherited::{inherits_reset, reads_reset_of};
+use materialized::{Inputs, Materialized, inputs, stored};
 mod recompute;
 mod sharing;
 mod used;
@@ -36,23 +38,6 @@ pub struct ComputedSlot(
     Rc<Cell<(Option<f32>, Option<f32>)>>,
     gpui::LayoutInputId,
 );
-
-type Inputs = (u64, [u32; 2]);
-
-fn inputs(vcx: ValueCx<'_>) -> Inputs {
-    (
-        vcx.doc.font_generation(),
-        [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()],
-    )
-}
-
-struct Materialized {
-    /// Вычисленный стиль родителя, под которым он посчитан.
-    parent: Rc<Computed>,
-    /// Поколение шрифтовых входов и размеры viewport для относительных единиц.
-    generation: Inputs,
-    computed: Published,
-}
 
 impl Clone for ComputedSlot {
     fn clone(&self) -> Self {
@@ -71,17 +56,6 @@ impl std::fmt::Debug for ComputedSlot {
         } else {
             "ComputedSlot(empty)"
         })
-    }
-}
-
-impl Materialized {
-    /// Годится ли стиль под родителем `parent`: те же унаследованные данные. Стиль с
-    /// каскадным `inherit` ненаследуемого свойства (`explicit`) зависит и от
-    /// ненаследуемых значений родителя (css-cascade-5 §7.3.1): ему годен только тот же
-    /// родитель или равный во всём (Blink `MatchedPropertiesCache`: explicit inheritance
-    /// сверяет и non-inherited данные родителя).
-    fn fits(&self, parent: &Computed, generation: Inputs, own: &Computed) -> bool {
-        self.generation == generation && inherited::parent_eq(&self.parent, parent, own)
     }
 }
 
@@ -108,6 +82,11 @@ impl ComputedSlot {
             .borrow()
             .as_ref()
             .map(|m| (m.computed.legacy.clone(), m.parent.clone()))
+    }
+
+    /// Whether the values of the materialized style read the viewport size.
+    pub fn reads_viewport(&self) -> bool {
+        (self.0.borrow().as_ref()).is_some_and(|m| m.generation.1.is_some())
     }
 
     /// Материализованный стиль под родителем-элементом, годен ли он под другим родителем или нет.

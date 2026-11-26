@@ -24,6 +24,9 @@ pub(crate) fn route_pieces(
     clamp_budget: Option<usize>,
     clamp_tag: Option<(u64, u32)>,
     line_atoms: LineAtoms,
+    keep: Option<crate::layout::reuse::paragraph::Sealed>,
+    // The retained text the paragraph may share and the box of its flow.
+    (shared, flow): (Option<SharedString>, Option<crate::dom::BoxId>),
 ) -> AnyElement {
     let vcx = opts.cx.vcx();
     let edges = edge_pieces(&pieces, inherited, opts);
@@ -88,10 +91,10 @@ pub(crate) fn route_pieces(
         let selectable = inherited.reset_context.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
-            return gpui::StyledText::new(SharedString::from(text))
+            let text = gpui::StyledText::new(super::finish::own_text(text, shared))
                 .with_ligature_breaking(false)
-                .with_runs(runs)
-                .into_any_element();
+                .with_runs(runs);
+            return measured(text.into_any_element(), opts, flow);
         }
         // Native construction remains available without installing selection handlers.
         if let Some(wrap) = wrap_rules {
@@ -101,7 +104,7 @@ pub(crate) fn route_pieces(
                 native_request,
                 native,
                 selectable,
-                text,
+                super::finish::own_text(text, shared),
                 runs,
                 pieces,
                 edges,
@@ -112,6 +115,8 @@ pub(crate) fn route_pieces(
                 clamp_budget,
                 clamp_tag,
                 line_atoms,
+                keep,
+                flow,
             );
         }
     }
@@ -182,61 +187,20 @@ pub(crate) fn route_pieces(
         (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
         &opts.cx,
     );
-    match record {
+    let row = match record {
         Some(r) => r.row(row),
         None => row,
-    }
+    };
+    measured(row, opts, flow)
+}
+
+/// `el`, a paragraph that places no line fragments (no native paragraph
+/// paints it), keeping its ink overflow in the slot of the box of its flow
+/// instead (`layout::retained::measured`).
+fn measured(el: AnyElement, opts: &RenderOpts, flow: Option<crate::dom::BoxId>) -> AnyElement {
+    let target = crate::layout::reuse::fragment_target(opts, flow);
+    crate::layout::retained::measured(el, target)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::style::computed::Computed;
-
-    #[test]
-    fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {
-        for physical in [false, true] {
-            for text in ["", "text"] {
-                let mut opts = RenderOpts {
-                    text: gpui::TextStyle::default(),
-                    viewport: (800.0, 600.0),
-                    normal_line_height: 1.2,
-                    cx: Default::default(),
-                    frag: Default::default(),
-                };
-                opts.cx.inline.pure_atom_paragraph = physical;
-                let inherited = Computed {
-                    reset_context: crate::style::computed::StyleGroup::new(
-                        crate::style::computed::ResetContext {
-                            no_select: Some(true),
-                            ..Default::default()
-                        },
-                    ),
-                    ..Default::default()
-                };
-                let pieces = vec![
-                    inline::Piece::Text {
-                        text: text.into(),
-                        style: BoxStyle::from(inherited.clone()),
-                    },
-                    inline::Piece::Overlay(div().into_any_element(), Default::default()),
-                ];
-                let mut element = route_pieces(
-                    pieces,
-                    &BoxStyle::from(inherited.clone()),
-                    &opts,
-                    None,
-                    Default::default(),
-                    None,
-                    None,
-                    vec![],
-                );
-                assert_eq!(
-                    element.downcast_mut::<gpui::StyledText>().is_some(),
-                    !physical || !text.is_empty(),
-                    "physical={physical}, text={text:?}",
-                );
-            }
-        }
-    }
-}
+mod tests;

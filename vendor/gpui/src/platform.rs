@@ -1313,6 +1313,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     /// KaminIDE patch: забыть чужую текстуру.
     fn unregister_external_texture(&self, _id: AtlasTextureId) {}
 
+    /// KaminIDE patch: the producer repainted `rect` (texture pixels) of an
+    /// external texture. From the first call its changes are looked for only
+    /// in such rectangles, so every change must be reported.
+    fn damage_external_texture(&self, _id: AtlasTextureId, _rect: Bounds<DevicePixels>) {}
+
     fn can_start_external_drag(&self) -> bool {
         false
     }
@@ -1392,6 +1397,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     }
 
     /// Rasterize an isolated transparent scene without presenting the window.
+    /// KaminIDE patch: the last drawn frame reached the screen (a frame the
+    /// backend dropped is presented by the next draw, so that draw is needed).
+    fn last_frame_presented(&self) -> bool {
+        true
+    }
+
     fn rasterize_scene(&self, _scene: &Scene, _size: Size<DevicePixels>) -> Result<image::RgbaImage> {
         anyhow::bail!("isolated scene capture is unavailable on this platform")
     }

@@ -26,8 +26,7 @@ pub struct Paragraph {
     /// Выключка последней строки (`text-align-last`), если задана.
     pub(super) align_last: Option<Align>,
     pub(super) ruby_justify: bool,
-    /// `text-justify`: 0 none, 1 CJK (`auto`), 2 every character
-    /// (`inter-character`); see `justify_boundary`.
+    /// `text-justify`: 0 none, 1 CJK (`auto`), 2 every character (`justify_boundary`).
     pub(super) justify_chars: u8,
     pub(super) ruby_unit: bool,
     /// Ruby text painted in the unrotated plane of a vertical line.
@@ -244,7 +243,8 @@ pub struct Paragraph {
     /// Подъём и спуск струта в точках (меряются в `request_layout`).
     pub(super) strut_box: (f32, f32),
     pub(super) first_strut: Option<super::first_line::Strut>,
-    /// Границы строк в байтах для замера и отрисовки.
-    pub(super) lines: Vec<Line>,
+    pub(super) lines: Vec<Line>, // Line byte ranges, measured and painted.
     pub(super) fragment: Option<crate::text::paragraph::fragment::LineFlow>,
+    pub(super) kept: super::kept::Kept,
+    pub(super) fragments: Option<std::rc::Rc<crate::layout::retained::FragmentTarget>>,
 }

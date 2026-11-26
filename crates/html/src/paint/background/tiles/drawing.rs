@@ -27,6 +27,7 @@ pub(crate) fn draw_tiles(
     vcx: ValueCx<'_>,
 ) {
     // Место под фон: свой край по `background-origin`.
+    crate::work::time!(_background, PaintBackgroundNs);
     let bounds = Bounds {
         origin: gpui::point(
             bounds.origin.x + px(inset[3]),
@@ -149,16 +150,23 @@ pub(crate) fn draw_tiles(
         ys = ys.into_iter().step_by(k).collect();
         tile = (tile.0 * k as f32, tile.1 * k as f32);
     }
-    let raster = if matches!(
-        found,
-        super::super::Source::Image(CpuSource::Filtered { .. })
-    ) {
-        found.sampled_raster(tile, c.inh.ui.image_pixelated == Some(true), vcx)
-    } else {
-        conic::tile(&found, tile, window.scale_factor(), vcx)
-    };
-    let Some(image) = raster else {
-        return;
+    // Select the drawing path before acquiring its fallback bitmap:
+    // device-grid gradients otherwise rasterize here and again when painted.
+    let raster = std::cell::OnceCell::new();
+    let density = window.scale_factor();
+    let mut image = || {
+        raster
+            .get_or_init(|| {
+                if matches!(
+                    found,
+                    super::super::Source::Image(CpuSource::Filtered { .. })
+                ) {
+                    found.sampled_raster(tile, c.inh.ui.image_pixelated == Some(true), vcx)
+                } else {
+                    conic::tile(&found, tile, density, vcx)
+                }
+            })
+            .clone()
     };
     let corners_of = area_corners::corners(c, clip);
     let pixelated = c.inh.ui.image_pixelated == Some(true);
@@ -201,15 +209,7 @@ pub(crate) fn draw_tiles(
                         size: gpui::size(px(tile.0), px(tile.1)),
                     };
                     let corners = corners_of(cell);
-                    sampling::paint_tile(
-                        window,
-                        cell,
-                        corners,
-                        image.clone(),
-                        &found,
-                        pixelated,
-                        vcx,
-                    );
+                    sampling::paint_tile(window, cell, corners, &mut image, &found, pixelated, vcx);
                 }
             }
         });

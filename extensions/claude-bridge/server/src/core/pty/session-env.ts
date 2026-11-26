@@ -212,6 +212,30 @@ export function modelForResume(requestedModel: string): string {
     : requestedModel
 }
 
+/** `--thinking-display summarized` unless the session (or the server through
+ *  CLAUDE_BRIDGE_THINKING_DISPLAY) chose the CLI's own `updates` display, or
+ *  the session's extra flags already name a display. */
+export function thinkingDisplayArgs(sessionConfig: SessionConfig): string[] {
+  if (sessionConfig.extraArgs?.some((arg) => arg === '--thinking-display' || arg.startsWith('--thinking-display=')))
+    return []
+  const display =
+    sessionConfig.thinkingDisplay ??
+    (process.env.CLAUDE_BRIDGE_THINKING_DISPLAY === 'updates' ? 'updates' : 'summarized')
+  return display === 'summarized' ? ['--thinking-display', 'summarized'] : []
+}
+
+/** Claude Code tells the model its exact id but not the `--effort` it runs
+ *  with; this line does. A live `/effort` later in the chat changes the level
+ *  without a respawn; the next user message then names the new level in a
+ *  hidden block (effort-note.ts). */
+export function claudeEffortLine(effort: string): string {
+  return [
+    '## Reasoning effort',
+    `This chat was started with reasoning effort \`${effort}\`. A later \`/effort\` command, or a Bridge note in a user message that names a new reasoning effort, sets the current level.`,
+    'When asked about your reasoning effort, answer with that exact level.',
+  ].join('\n')
+}
+
 export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readonly string[] = []): string[] {
   const args: string[] = [
     '--disallowedTools',
@@ -220,6 +244,7 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
     '--effort',
     sessionConfig.effort || 'high',
   ]
+  args.push(...thinkingDisplayArgs(sessionConfig))
 
   // --model overrides the transcript's model on --resume. createSession
   // normally recovers that model first; if a transcript has no readable model,
@@ -242,7 +267,7 @@ export function buildClaudeArgs(sessionConfig: SessionConfig, pluginDirs: readon
     sessionConfig.transcriptMirrorDir,
     sessionConfig.host,
   )
-  args.push('--append-system-prompt', systemPrompt)
+  args.push('--append-system-prompt', `${systemPrompt}\n\n${claudeEffortLine(sessionConfig.effort || 'high')}`)
 
   for (const pluginDir of pluginDirs) args.push('--plugin-dir', pluginDir)
 

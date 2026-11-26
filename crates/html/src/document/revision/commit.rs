@@ -13,22 +13,37 @@
 //! - `Patched` — копия путей к правленым коробкам (`patch`); у новой ревизии
 //!   новый сохраняемый кадр, а факты прошлого дерева служат основой фактов
 //!   нового (`DocState::adopting`): обходятся только новые списки детей.
+//! - `Restyled` — копия путей к перестилизованным коробкам. Если изменились
+//!   только значения, которые берёт слой сцены документа (`paint_damage`),
+//!   они пишутся в слой (`layer_write`), а ревизия сохраняет кадр, как
+//!   `Clean`; иначе — новый сохраняемый кадр, как `Patched`.
 
 use crate::document::{Document, state::DocState};
 use crate::dom::Node;
+use crate::style::computed::Damage;
 use std::rc::Rc;
+
+/// COW paths changed by attribute writes. A paint restyle can also copy
+/// paths to boxes whose attributes did not change.
+pub(super) struct Edited {
+    pub(super) nodes: Vec<Node>,
+    pub(super) attrs: Vec<(super::patch::Path, u64)>,
+}
 
 /// Дерево коробок после пакета, который не меняет каскада.
 pub(super) enum Plan {
     /// Кадр прежний: дерево без правленых коробок (`None`) или с новыми
     /// атрибутами, которых сборка кадра не читает.
-    Clean(Option<Vec<Node>>),
+    Clean(Option<Edited>),
     /// Дерево с копией только путей к правкам.
     Patched(Vec<Node>),
     /// Copied paths to restyled boxes (`repaint_plan`), with the node ids of
-    /// the elements whose cascaded values changed: the block records are
-    /// compared as at a rebuild (`layout::reuse::Store::restyle`).
-    Restyled(Vec<Node>, Vec<u64>),
+    /// the elements whose cascaded values changed and the batch's damage
+    /// (`Damage::Paint`, or `Damage::Layout` if any): the block records are
+    /// compared as at a rebuild (`layout::reuse::Store::restyle`). The paths
+    /// to every box of those elements, in tree order, address them in both
+    /// trees: the restyle does not change the tree's shape.
+    Restyled(Edited, Vec<u64>, Vec<(super::patch::Path, u64)>, Damage),
 }
 
 impl Document {
@@ -41,21 +56,37 @@ impl Document {
         revision: &crate::budget::RevisionBudget,
         #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
     ) {
+        crate::paint_path::note_plan(match &plan {
+            Plan::Clean(_) => &crate::paint_path::PLAN_CLEAN,
+            Plan::Patched(_) => &crate::paint_path::PLAN_PATCHED,
+            Plan::Restyled(..) => &crate::paint_path::PLAN_RESTYLED,
+        });
         match plan {
             Plan::Clean(nodes) => {
-                if let Some(nodes) = nodes {
-                    self.nodes = Rc::new(nodes);
+                if let Some(edited) = nodes {
+                    self.publish_kept_nodes(edited, &[]);
+                    self.tree = crate::document::scope::next_tree();
                 }
-                let base = self.state.values.images.borrow().base().cloned();
-                self.state
-                    .values
-                    .admit_revision(revision.clone(), base.as_ref());
-                self.key = key;
-                self.last_failure = None;
-                #[cfg(feature = "engine-bench")]
-                {
-                    self.timings = timings;
-                }
+                self.keep_frame(
+                    key,
+                    revision,
+                    #[cfg(feature = "engine-bench")]
+                    timings,
+                );
+            }
+            // Only values the scene layer takes changed: they are written
+            // into it, and the recorded frame (`Slot`) replays with them.
+            Plan::Restyled(edited, restyled, paths, Damage::Paint)
+                if self.write_paint_values(&edited.nodes, &paths) =>
+            {
+                self.reuse.restyle(&self.nodes, &edited.nodes, &restyled);
+                self.publish_kept_nodes(edited, &paths);
+                self.keep_frame(
+                    key,
+                    revision,
+                    #[cfg(feature = "engine-bench")]
+                    timings,
+                );
             }
             Plan::Patched(nodes) => {
                 *self = self.adopted(
@@ -67,9 +98,9 @@ impl Document {
                     timings,
                 );
             }
-            Plan::Restyled(nodes, restyled) => {
+            Plan::Restyled(edited, restyled, ..) => {
                 *self = self.adopted(
-                    nodes,
+                    edited.nodes,
                     Some(&restyled),
                     key,
                     revision,
@@ -78,6 +109,96 @@ impl Document {
                 );
             }
         }
+    }
+
+    fn publish_kept_nodes(&mut self, edited: Edited, styles: &[(super::patch::Path, u64)]) {
+        // Paths came from this revision's index; the retained topology is identical.
+        let index = self.boxes();
+        let unique = |id| index.as_ref().is_some_and(|index| index.unique(id));
+        let mut boxes = crate::document::boxes::BoxTree::edit(&self.state.boxes);
+        for (path, _) in edited.attrs.iter().chain(styles) {
+            boxes.rebind_path(&edited.nodes, path, unique);
+        }
+        self.nodes = Rc::new(edited.nodes);
+    }
+
+    /// Ревизия `key` с прежним кадром, состоянием и фактами раскладки.
+    fn keep_frame(
+        &mut self,
+        key: u64,
+        revision: &crate::budget::RevisionBudget,
+        #[cfg(feature = "engine-bench")] timings: crate::document::BuildTimings,
+    ) {
+        let base = self.state.values.images.borrow().base().cloned();
+        self.state
+            .values
+            .admit_revision(revision.clone(), base.as_ref());
+        self.key = key;
+        self.last_failure = None;
+        #[cfg(feature = "engine-bench")]
+        {
+            self.timings = timings;
+        }
+    }
+
+    /// Write the paint values the restyle of the boxes at `paths` changed
+    /// from the current tree to `nodes` into the scene layer of the last
+    /// recorded frame; `false`, with nothing written, when there is no such
+    /// layer or a change is not a layer write (`layer_write`).
+    fn write_paint_values(&self, nodes: &[Node], paths: &[(super::patch::Path, u64)]) -> bool {
+        let _timer = crate::paint_path::Timer::start();
+        let (Some(layer), true) = (self.reuse.scene_layer(), self.frame_recorded()) else {
+            // A frame replays only from a settled record of this tree.
+            crate::paint_path::add(&crate::paint_path::REFUSED_NO_LAYER, 1);
+            self.note_no_layer();
+            return false;
+        };
+        let own = |e: &crate::dom::Element, boxed: bool| {
+            crate::paint::box_tree::styled::requested_painter(&self.state, e, boxed)
+        };
+        // A box under a block the frame skipped: any block on its path.
+        let unseen = |path: &super::patch::Path| {
+            self.reuse.skipped_any()
+                && super::patch::chain(&self.nodes, path)
+                    .iter()
+                    .any(|e| self.reuse.unpainted(e.node_id))
+        };
+        // A box whose runs showed no pixel of the layer's frame.
+        let off = |id: u64| {
+            self.reuse.owner_layer(id).is_some_and(|l| {
+                // Lifted draws may use a scroller-local coordinate space. Record
+                // their own paint now rather than defer it using root coordinates.
+                l.content().id() == layer.content().id() && self.reuse.off_screen(&l, id)
+            })
+        };
+        // A box the layer cannot record, wholly off the screen (`offscreen`).
+        let boxes = self.state.boxes.borrow();
+        let waits = |kind,
+                     path: &super::patch::Path,
+                     a: &crate::dom::Element,
+                     b: &crate::dom::Element| {
+            super::offscreen::waits(kind, &self.reuse, &boxes, &layer, (&self.nodes, path), a, b)
+        };
+        let mut frames = Vec::new();
+        let Some(taken) = super::layer_write::write_paint_values(
+            &self.nodes,
+            nodes,
+            paths,
+            |id| self.reuse.owner_layer(id),
+            own,
+            |e| crate::paint::box_tree::styled::requested_group_paint(&self.state, e),
+            unseen,
+            off,
+            waits,
+            &mut frames,
+        ) else {
+            return false;
+        };
+        drop(boxes);
+        self.reuse.queue_repaints(taken.records);
+        self.reuse.defer_repaints(taken.deferred);
+        self.reuse.defer_frames(frames);
+        true
     }
 
     /// Следующая ревизия с деревом `nodes` и прежними значениями документа;
@@ -95,6 +216,11 @@ impl Document {
         state.values.admit_revision(revision.clone(), base.as_ref());
         // Документ отпускает выведенные группы стиля в Drop.
         state.values.hold_document();
+        crate::document::boxes::BoxTree::edit(&state.boxes).publish_document(
+            &nodes,
+            Some(&self.nodes),
+            &state.values,
+        );
         match restyled {
             // A restyle reaches the records as a rebuild's does.
             Some(ids) => self.reuse.restyle(&self.nodes, &nodes, ids),
@@ -105,6 +231,7 @@ impl Document {
         Document {
             state,
             nodes: Rc::new(nodes),
+            tree: crate::document::scope::next_tree(),
             retained: Default::default(),
             reuse: self.reuse.clone(),
             restyle: self.restyle.clone(),
@@ -114,6 +241,7 @@ impl Document {
             base_url: self.base_url.clone(),
             xml: self.xml,
             last_failure: None,
+            media_reads: self.media_reads.clone(),
             #[cfg(feature = "engine-bench")]
             timings,
         }

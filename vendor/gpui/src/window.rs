@@ -65,16 +65,30 @@ use uuid::Uuid;
 
 pub(crate) mod a11y;
 mod prompts;
+mod analytic_gradient;
 mod image_sampling;
+mod image_resources;
 mod natural_image;
 mod absolute_transformation;
 pub(crate) mod vector_transform;
 mod scene_capture;
+mod scene_layer;
+mod group_root;
+mod grouped_layer;
+mod layer_box;
+mod layer_band;
+pub use scene_layer::{NoLayer, RecordedLayer};
 mod frame_capture;
 mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
-mod retained;
+mod retained; mod group_replay;
+mod scroll_deferred;
+mod scroll_masks;
+mod scroll_nodes;
+mod scroll_replay; mod scroll_refusal;
+pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
+pub use scroll_replay::ScrollReplay; pub use scroll_refusal::ScrollRefusal;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
 pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
@@ -97,7 +111,14 @@ mod render_context;
 mod box_edges;
 // KaminIDE patch: settle layout-dependent style inputs before painting.
 mod layout_inputs;
+// KaminIDE patch: frames that redraw only isolated views.
+mod isolated;
+use isolated::{IsolatedDraw, RootRanges};
+mod retained_layout_inputs;
+pub use retained_layout_inputs::RetainedLayoutInputs;
 mod retained_layout;
+mod update_rendering;
+pub use update_rendering::ElementPlace;
 pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
@@ -316,6 +337,11 @@ impl WindowInvalidator {
         self.inner.borrow().draw_phase == DrawPhase::None
     }
 
+    /// KaminIDE patch: the current draw phase (`Window::rerecord_layer_box`).
+    pub(crate) fn phase(&self) -> DrawPhase {
+        self.inner.borrow().draw_phase
+    }
+
     #[track_caller]
     pub fn debug_assert_paint(&self) {
         debug_assert!(
@@ -398,6 +424,12 @@ thread_local! {
 /// nested draw or panicking on the already-borrowed App.
 fn draw_in_progress() -> bool {
     CURRENT_ELEMENT_ARENA.with(|current| current.get().is_some())
+}
+
+/// KaminIDE patch: the element just built lays out as its child and takes no
+/// node of the layout tree (a wrapper that only records or hooks its child).
+pub fn note_layoutless_element() {
+    with_element_arena(|arena| arena.note_layoutless());
 }
 
 /// Allocates an element in the current arena. Uses the app-specific arena if one
@@ -1036,6 +1068,15 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: the composition groups its paint made in the frame's
+    // list; a reused draw copies them (`scroll_deferred::reuse_deferred_paint`).
+    pub(crate) groups: Range<usize>,
+    // KaminIDE patch: set for an isolated view's draw (`window/isolated.rs`).
+    isolated: Option<IsolatedDraw>,
+    // KaminIDE patch: the scroll node the draw belongs to (`scroll_deferred`).
+    scroll: scroll_deferred::DeferredScroll,
+    // KaminIDE patch: the line that deferred it, for DevTools' scroll refusals.
+    pub(crate) site: &'static core::panic::Location<'static>,
 }
 
 pub(crate) struct Frame {
@@ -1053,7 +1094,20 @@ pub(crate) struct Frame {
     /// overriding the scope of their hitbox id.
     pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
     pub(crate) window_control_hitboxes: Vec<(WindowControlArea, Hitbox)>,
+    /// KaminIDE patch: scroll containers prepainted in this frame (`scroll_nodes`).
+    pub(crate) scroll_nodes: Vec<scroll_nodes::ScrollNodeRecord>,
+    /// KaminIDE patch: the scroll nodes open while prepainting.
+    pub(crate) scroll_node_stack: Vec<u32>,
+    /// KaminIDE patch: paint pairing of scroll nodes (scroll_nodes::PaintPairing).
+    pub(crate) scroll_paint: scroll_nodes::PaintPairing,
+    /// KaminIDE patch: hitboxes inserted under scroll nodes (`scroll_masks`).
+    pub(crate) scroll_hitboxes: Vec<scroll_masks::HitboxMark>,
+    /// KaminIDE patch: paint that follows a scroll offset outside its node
+    /// (`paint_scroll_dependent`), with its scene index.
+    pub(crate) scroll_dependents: Vec<(scroll_nodes::ScrollNodeId, usize, crate::scene::scroll_marks::SceneSpace)>,
     pub(crate) deferred_draws: Vec<DeferredDraw>,
+    /// KaminIDE patch: views drawn isolated in this frame.
+    pub(crate) isolated_views: FxHashSet<EntityId>,
     pub(crate) input_handlers: Vec<Option<PlatformInputHandler>>,
     pub(crate) tooltip_requests: Vec<Option<TooltipRequest>>,
     pub(crate) cursor_styles: Vec<CursorStyleRequest>,
@@ -1075,6 +1129,8 @@ pub(crate) struct PrepaintStateIndex {
     deferred_draws_index: usize,
     dispatch_tree_index: usize,
     accessed_element_states_index: usize,
+    /// KaminIDE patch: scroll nodes prepainted so far (`scroll_nodes`).
+    scroll_nodes_index: usize,
     line_layout_index: LineLayoutIndex,
 }
 
@@ -1089,6 +1145,95 @@ pub(crate) struct PaintIndex {
     accessed_element_states_index: usize,
     tab_handle_index: usize,
     line_layout_index: LineLayoutIndex,
+}
+
+/// KaminIDE patch: a frame list index in a 32-bit word (`PackedPaintIndex`).
+pub(crate) fn pack_index(index: usize) -> u32 {
+    u32::try_from(index).expect("frame list index fits 32 bits")
+}
+
+/// KaminIDE patch: `PrepaintStateIndex` in 32-bit words: a retained range
+/// (`RetainedPrepaint`) is kept per recorded subtree.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPrepaintIndex([u32; 6], [u32; 5]);
+
+impl PrepaintStateIndex {
+    pub(crate) fn pack(&self) -> PackedPrepaintIndex {
+        PackedPrepaintIndex(
+            [
+                self.hitboxes_index,
+                self.tooltips_index,
+                self.deferred_draws_index,
+                self.dispatch_tree_index,
+                self.accessed_element_states_index,
+                self.scroll_nodes_index,
+            ]
+            .map(pack_index),
+            self.line_layout_index.pack(),
+        )
+    }
+}
+
+impl PackedPrepaintIndex {
+    pub(crate) fn unpack(&self) -> PrepaintStateIndex {
+        let [hitboxes_index, tooltips_index, deferred_draws_index, dispatch_tree_index, accessed_element_states_index, scroll_nodes_index] =
+            self.0.map(|w| w as usize);
+        PrepaintStateIndex {
+            hitboxes_index,
+            tooltips_index,
+            deferred_draws_index,
+            dispatch_tree_index,
+            accessed_element_states_index,
+            scroll_nodes_index,
+            line_layout_index: LineLayoutIndex::unpack(self.1),
+        }
+    }
+}
+
+/// KaminIDE patch: `PaintIndex` in 32-bit words (`RetainedPaint`).
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PackedPaintIndex {
+    words: [u32; 6],
+    #[cfg(any(test, feature = "test-support"))]
+    debug_bounds_index: u32,
+    line: [u32; 5],
+}
+
+impl PaintIndex {
+    pub(crate) fn pack(&self) -> PackedPaintIndex {
+        PackedPaintIndex {
+            words: [
+                self.scene_index,
+                self.mouse_listeners_index,
+                self.input_handlers_index,
+                self.cursor_styles_index,
+                self.accessed_element_states_index,
+                self.tab_handle_index,
+            ]
+            .map(pack_index),
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: pack_index(self.debug_bounds_index),
+            line: self.line_layout_index.pack(),
+        }
+    }
+}
+
+impl PackedPaintIndex {
+    pub(crate) fn unpack(&self) -> PaintIndex {
+        let [scene_index, mouse_listeners_index, input_handlers_index, cursor_styles_index, accessed_element_states_index, tab_handle_index] =
+            self.words.map(|w| w as usize);
+        PaintIndex {
+            scene_index,
+            #[cfg(any(test, feature = "test-support"))]
+            debug_bounds_index: self.debug_bounds_index as usize,
+            mouse_listeners_index,
+            input_handlers_index,
+            cursor_styles_index,
+            accessed_element_states_index,
+            tab_handle_index,
+            line_layout_index: LineLayoutIndex::unpack(self.line),
+        }
+    }
 }
 
 impl Frame {
@@ -1111,7 +1256,13 @@ impl Frame {
             hitbox_scopes: FxHashMap::default(),
             hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
+            scroll_nodes: Vec::new(),
+            scroll_node_stack: Vec::new(),
+            scroll_paint: Default::default(),
+            scroll_hitboxes: Vec::new(),
+            scroll_dependents: Vec::new(),
             deferred_draws: Vec::new(),
+            isolated_views: FxHashSet::default(),
             input_handlers: Vec::new(),
             tooltip_requests: Vec::new(),
             cursor_styles: Vec::new(),
@@ -1143,7 +1294,13 @@ impl Frame {
         self.hitbox_scopes.clear();
         self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
+        self.scroll_nodes.clear();
+        self.scroll_node_stack.clear();
+        self.scroll_paint.clear();
+        self.scroll_hitboxes.clear();
+        self.scroll_dependents.clear();
         self.deferred_draws.clear();
+        self.isolated_views.clear();
         self.tab_stops.clear();
         self.focus = None;
 
@@ -1219,6 +1376,8 @@ impl Frame {
 
         // KaminIDE patch: also releases the frame's grafts (`finish_frame`).
         self.scene.finish_frame();
+        // KaminIDE patch: what changed against the frame this one replays.
+        self.scene.note_damage(&prev_frame.scene);
     }
 }
 
@@ -1239,6 +1398,8 @@ pub struct Window {
     is_resizable: bool,
     is_minimizable: bool,
     sprite_atlas: Arc<dyn PlatformAtlas>,
+    natural_images: natural_image::Cache,
+    image_uploads: image_resources::ImageUploads,
     text_system: Arc<WindowTextSystem>,
     text_rendering_mode: Rc<Cell<TextRenderingMode>>,
     rem_size: Pixels,
@@ -1284,7 +1445,36 @@ pub struct Window {
     /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
+    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
+    pub(crate) box_fill: Option<Bounds<Pixels>>,
+    /// KaminIDE patch: the hover hitbox of the box whose own paint opens a run next (layer_box).
+    pub(crate) run_hover: Option<(HitboxId, bool)>,
+    /// KaminIDE patch: the bands painted now are cut into pieces by another
+    /// painter (`Window::paint_split_bands`).
+    pub(crate) band_split: bool,
+    /// KaminIDE patch: the scene layer being recorded (`window::scene_layer`)
+    /// and the binding scope of the paint (`with_paint_owner`, `with_paint_value`).
+    pub(crate) layer_recording: Option<Box<scene_layer::LayerRecording>>,
+    /// KaminIDE patch: tests paint without scene layers (set_scene_layers).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) scene_layers_off: bool,
+    /// The source layer of content painted into the frame (`RecordedLayer::Painted`).
+    pub(crate) layer_source: Option<Rc<crate::SceneLayer>>,
+    /// The platform showed a frame of this window (`present_unneeded`).
+    pub(crate) frame_presented: bool,
+    /// The next drawn frame is presented even if it changed nothing on screen
+    /// (Window::require_presentation).
+    pub(crate) presentation_required: bool,
+    /// KaminIDE patch: a frame capture reads the presented frames
+    /// (`Window::set_frame_capture`), and whether its reader lets unchanged
+    /// frames go unpresented (`Window::allow_unpresented_readback`).
+    pub(crate) frame_readback: bool,
+    pub(crate) unpresented_readback: bool,
+    pub(crate) paint_owner: u32,
+    pub(crate) paint_value: Option<crate::LayerValue>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
+    /// KaminIDE patch: `set_scroll_interest_margin`.
+    pub(crate) scroll_interest_margin: Pixels,
     /// KaminIDE patch: the innermost transformed-subtree hit scope during prepaint.
     hit_scope: Option<Rc<hit_transform::HitScope>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
@@ -1301,6 +1491,14 @@ pub struct Window {
     pub(crate) tooltip_bounds: Option<TooltipBounds>,
     pub(crate) next_frame_callbacks: Rc<RefCell<Vec<FrameCallback>>>,
     pub(crate) dirty_views: FxHashSet<EntityId>,
+    /// KaminIDE patch: a dirty view lies outside every isolated view, so the
+    /// root must be drawn again (`window/isolated.rs`).
+    dirty_outside_isolated: bool,
+    /// KaminIDE patch: the root tree's ranges in the drawn frame.
+    root_ranges: Option<RootRanges>,
+    /// KaminIDE patch: entities the drawn frame read; a frame that keeps the
+    /// root keeps observing them.
+    last_accessed_entities: FxHashSet<EntityId>,
     focus_listeners: SubscriberSet<(), AnyWindowFocusListener>,
     pub(crate) focus_lost_listeners: SubscriberSet<(), AnyObserver>,
     focus_lost_path: SmallVec<[FocusId; 8]>,
@@ -1314,6 +1512,11 @@ pub struct Window {
     appearance: WindowAppearance,
     pub(crate) appearance_observers: SubscriberSet<(), AnyObserver>,
     pub(crate) button_layout_observers: SubscriberSet<(), AnyObserver>,
+    /// KaminIDE patch: the hosts' steps before a draw (`update_rendering`).
+    pub(crate) update_rendering_observers: SubscriberSet<(), AnyObserver>,
+    /// KaminIDE patch: element states of layout reads (`update_rendering`).
+    layout_scroll_inputs: Option<Vec<retained_layout_inputs::ScrollInput>>,
+    pub(crate) read_states: update_rendering::ReadStates,
     active: Rc<Cell<bool>>,
     visibility: WindowVisibility,
     pub(crate) visibility_observers:
@@ -1958,7 +2161,9 @@ impl Window {
                                 }
                                 let arena_clear_needed = window.draw(cx);
                                 let t1 = std::time::Instant::now();
-                                window.present();
+                                // KaminIDE patch: a drawn frame that changed
+                                // nothing on screen is neither rastered nor presented.
+                                window.present_drawn(request_frame_options.require_presentation);
                                 {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
@@ -1975,7 +2180,16 @@ impl Window {
                     })
                 } else if needs_present {
                     handle
-                        .update(&mut cx, |_, window, _| window.present())
+                        .update(&mut cx, |_, window, _| {
+                            // KaminIDE patch: presenting the drawn frame again
+                            // (high-rate input) is present time too (`frame_perf`).
+                            let t0 = std::time::Instant::now();
+                            window.present();
+                            crate::frame_perf::PRESENT_US.fetch_add(
+                                t0.elapsed().as_micros() as u32,
+                                std::sync::atomic::Ordering::Relaxed,
+                            );
+                        })
                         .log_err();
                 }
 
@@ -2200,6 +2414,8 @@ impl Window {
             is_resizable,
             is_minimizable,
             sprite_atlas,
+            natural_images: Default::default(),
+            image_uploads: Default::default(),
             text_system,
             text_rendering_mode: cx.text_rendering_mode.clone(),
             rem_size: px(16.),
@@ -2223,8 +2439,22 @@ impl Window {
             mask_map: None,
             plane_contexts: Vec::new(),
             content_mask_stack: Vec::new(),
+            scroll_interest_margin: Pixels::ZERO,
             hit_scope: None,
             element_opacity: 1.0,
+            box_fill: None,
+            run_hover: None,
+            band_split: false,
+            layer_recording: None,
+            #[cfg(any(test, feature = "test-support"))]
+            scene_layers_off: false,
+            layer_source: None,
+            frame_presented: false,
+            presentation_required: false,
+            frame_readback: false,
+            unpresented_readback: false,
+            paint_owner: 0,
+            paint_value: None,
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -2235,6 +2465,9 @@ impl Window {
             next_tooltip_id: TooltipId::default(),
             tooltip_bounds: None,
             dirty_views: FxHashSet::default(),
+            dirty_outside_isolated: false,
+            root_ranges: None,
+            last_accessed_entities: FxHashSet::default(),
             focus_listeners: SubscriberSet::new(),
             focus_lost_listeners: SubscriberSet::new(),
             focus_lost_path: SmallVec::new(),
@@ -2248,6 +2481,9 @@ impl Window {
             appearance,
             appearance_observers: SubscriberSet::new(),
             button_layout_observers: SubscriberSet::new(),
+            update_rendering_observers: SubscriberSet::new(),
+            layout_scroll_inputs: None,
+            read_states: Default::default(),
             active,
             visibility,
             visibility_observers: SubscriberSet::new(),
@@ -2340,15 +2576,21 @@ impl Window {
     fn mark_view_dirty(&mut self, view_id: EntityId) {
         // Mark ancestor views as dirty. If already in the `dirty_views` set, then all its ancestors
         // should already be dirty.
+        // KaminIDE patch: the walk stops at an isolated view, which is redrawn
+        // alone; reaching the top means the root is drawn again.
         for view_id in self
             .rendered_frame
             .dispatch_tree
             .view_path_reversed(view_id)
         {
             if !self.dirty_views.insert(view_id) {
-                break;
+                return;
+            }
+            if self.rendered_frame.isolated_views.contains(&view_id) {
+                return;
             }
         }
+        self.dirty_outside_isolated = true;
     }
 
     pub(crate) fn refresh_visibility(&mut self, cx: &mut App) {
@@ -2837,6 +3079,20 @@ impl Window {
         self.on_next_frame(move |_, cx| cx.notify(entity));
     }
 
+    /// KaminIDE patch: show the last drawn frame again, without a draw.
+    ///
+    /// A producer of an external texture that reported what it repainted
+    /// (`damage_external_texture`) needs nothing else: the scene samples the
+    /// same atlas tile, so the renderer redraws only the reported rectangle.
+    /// Chromium shows a new frame of an embedded surface the same way, with no
+    /// commit of the embedding layer tree (`SurfaceAggregator` damage).
+    pub fn request_present(&self) {
+        self.needs_present.set(true);
+        self.platform_window.schedule_frame();
+        // Presenting creates frame demand without dirtying the window.
+        self.invalidator.wake_platform();
+    }
+
     /// Runs all callbacks scheduled via [`Self::on_next_frame`], returning how many ran.
     ///
     /// Tests have no platform frame loop, so this simulates the delivery of the
@@ -2926,15 +3182,54 @@ impl Window {
     /// whose bounds don't intersect their content mask are culled at paint time and won't appear.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_quads(&self) -> Vec<Quad> {
-        self.rendered_frame.scene.quads.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut quads = scene.quads.clone();
+        for layer in scene.layer_contents() {
+            quads.extend(layer.scene().quads.iter().copied());
+        }
+        quads
+    }
+
+    /// KaminIDE patch: the areas the most recently rendered frame hit-tests
+    /// (each hitbox's bounds within its content mask), in insertion order,
+    /// and how many deferred draws it painted.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_hit_areas(&self) -> (Vec<Bounds<Pixels>>, usize) {
+        let frame = &self.rendered_frame;
+        let areas = frame.hitboxes.iter().map(|hitbox| hitbox.bounds.intersect(&hitbox.content_mask.bounds)).collect();
+        (areas, frame.deferred_draws.len())
     }
 
     /// Returns the underlines in the most recently rendered frame's scene.
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_underlines(&self) -> Vec<Underline> {
-        self.rendered_frame.scene.underlines.clone()
+        let scene = &self.rendered_frame.scene;
+        let mut underlines = scene.underlines.clone();
+        for layer in scene.layer_contents() {
+            underlines.extend(layer.scene().underlines.iter().cloned());
+        }
+        underlines
     }
 
+    /// KaminIDE patch: paint later frames into scene layers (`true`, the
+    /// default) or straight into the frame, as without retained layers: the
+    /// draw sequences of both must agree (`painted_sequence`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_scene_layers(&mut self, on: bool) {
+        self.scene_layers_off = !on;
+    }
+
+    /// KaminIDE patch: the primitives of the most recently rendered frame in
+    /// the order they are drawn, a retained layer's in its place, without
+    /// their draw orders, each with its bounds within its content mask: a frame
+    /// painted into a scene layer and one painted straight into the frame draw
+    /// every two overlapping primitives in the same order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_sequence(&self) -> Vec<(String, Bounds<ScaledPixels>)> {
+        let mut out = Vec::new();
+        crate::scene::draw_sequence(&self.rendered_frame.scene, &mut out);
+        out
+    }
     /// Set the content size of the window.
     pub fn resize(&mut self, size: Size<Pixels>) {
         self.platform_window.resize(size);
@@ -3090,6 +3385,20 @@ impl Window {
         Some(texture.with_size(width, height))
     }
 
+    /// KaminIDE patch: the producer repainted the rectangle (`x, y, w, h`,
+    /// physical texture pixels) of an external texture. From the first call a
+    /// window frame redraws only such rectangles of its sprites, not the whole
+    /// window, so EVERY change of its pixels must be reported.
+    pub fn damage_external_texture(&self, texture: &ExternalTexture, x: i32, y: i32, w: i32, h: i32) {
+        self.platform_window.damage_external_texture(
+            texture.0.texture_id,
+            Bounds {
+                origin: point(DevicePixels(x), DevicePixels(y)),
+                size: size(DevicePixels(w.max(0)), DevicePixels(h.max(0))),
+            },
+        );
+    }
+
     /// KaminIDE patch: забыть чужую текстуру.
     pub fn drop_external_texture(&self, texture: &ExternalTexture) {
         self.platform_window
@@ -3113,7 +3422,7 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -3156,7 +3465,7 @@ impl Window {
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -3389,7 +3698,7 @@ impl Window {
         self.invalidator.debug_assert_paint();
         let underline = self.underline(origin, width, style);
         if exclusions.is_empty() {
-            self.next_frame.scene.insert_primitive(underline);
+            self.insert_scene_primitive(underline);
             return;
         }
 
@@ -3407,13 +3716,13 @@ impl Window {
             })
             .collect::<SmallVec<[_; 4]>>();
         if exclusions.is_empty() {
-            self.next_frame.scene.insert_primitive(underline);
+            self.insert_scene_primitive(underline);
             return;
         }
         exclusions.sort_unstable_by_key(|span| span.start);
 
         let mut paint_span = |start, end| {
-            self.next_frame.scene.insert_primitive(Underline {
+            self.insert_scene_primitive(Underline {
                 content_mask: ContentMask {
                     bounds: Bounds::from_corners(
                         point(start, bounds.top()),
@@ -3580,10 +3889,22 @@ impl Window {
     /// Produces a new frame and assigns it to `rendered_frame`. To actually show
     /// the contents of the new [`Scene`], use [`Self::present`].
     #[profiling::function]
+    #[track_caller]
     pub fn draw(&mut self, cx: &mut App) -> ArenaClearNeeded {
+        // KaminIDE patch: DevTools `why` reads which requests each draw served
+        // and which caller drew (the platform frame request or a forced draw).
+        crate::dirty_sources::trace::mark("draw");
+        crate::scene::no_run::drawn();
+        // KaminIDE patch: the hosts lay out before the paint pass (`update_rendering`).
+        self.update_rendering(cx);
         let drawn = self.with_paint_pass(|window| window.draw_frame(cx));
+        self.trace_unpainted_anchors();
+        // A frame takes what reads set aside; the rest is stale, like the
+        // states a frame does not access.
+        self.read_states.states.clear();
         // KaminIDE patch: the empty base style new elements share must not outlive them.
         crate::elements::refinement_share::release_empty();
+        self.image_uploads.release_unused();
         drawn
     }
 
@@ -3640,9 +3961,12 @@ impl Window {
         }
         // A caught unwind still aborts this pass; never publish its partial scene.
         if !self.paint_pass.is_live() {
+            // KaminIDE patch: the recorded root ranges index the dropped frame.
+            self.root_ranges = None;
             return arena_scope.exit(&cx.element_arena);
         }
         self.dirty_views.clear();
+        self.dirty_outside_isolated = false;
         self.next_frame.window_active = self.active.get();
 
         // Register requested input handler with the platform window.
@@ -3674,9 +3998,22 @@ impl Window {
                 });
         }
 
+        retained_layout::release_frame_layouts();
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
+        // KaminIDE patch: where the new scene paints otherwise than the one this
+        // window drew last (scene/damage.rs); a renderer that keeps its target
+        // redraws only there.
+        let device = (
+            (self.viewport_size.width.0 * self.scale_factor).ceil().max(0.0) as u32,
+            (self.viewport_size.height.0 * self.scale_factor).ceil().max(0.0) as u32,
+        );
+        // KaminIDE patch: a scroll step may be the last frame moved (`damage::shift`).
+        let moved = scroll_nodes::scroll_step(&self.rendered_frame.scroll_nodes, &self.next_frame.scroll_nodes, self.scale_factor);
+        self.next_frame
+            .scene
+            .note_frame_damage_moved(&self.rendered_frame.scene, self.frame_serial + 1, device, moved);
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();
@@ -3751,6 +4088,7 @@ impl Window {
     fn record_entities_accessed(&mut self, cx: &mut App) {
         let mut entities_ref = cx.entities.accessed_entities.get_mut();
         let mut entities = mem::take(entities_ref.deref_mut());
+        self.last_accessed_entities.clone_from(&entities);
         let handle = self.handle;
         cx.record_entities_accessed(
             handle,
@@ -3776,7 +4114,12 @@ impl Window {
         let _foreground_turn = profiler::journal::foreground_turn();
         #[cfg(feature = "profiler")]
         let present_start = Instant::now();
+        // KaminIDE patch: the frame holds its layers' content only while it
+        // is drawn (`scene::layer`); a host's write after this copies nothing.
+        self.rendered_frame.scene.hold_layers();
         self.platform_window.draw(&self.rendered_frame.scene);
+        self.rendered_frame.scene.release_layers();
+        self.frame_presented = true;
         #[cfg(feature = "profiler")]
         self.window_profiler.record_present(
             present_start,
@@ -3866,7 +4209,9 @@ impl Window {
         // KaminIDE patch: стоимость фаз кадра (`frame_perf`).
         let _phase_started = std::time::Instant::now();
         let PrepaintRoots {
-            mut root_element,
+            root_element,
+            root_prepaint,
+            kept_root,
             #[cfg(any(feature = "inspector", debug_assertions))]
             inspector_element,
             prompt_element,
@@ -3888,7 +4233,17 @@ impl Window {
         // Now actually paint the elements.
         self.invalidator.set_phase(DrawPhase::Paint);
         let _paint_started = std::time::Instant::now();
-        root_element.paint(self, cx);
+        // KaminIDE patch: a kept root replays its paint records (`window/isolated.rs`).
+        let root_paint_start = self.paint_index();
+        match (root_element, kept_root) {
+            (Some(mut root_element), _) => root_element.paint(self, cx),
+            (None, Some(kept)) => self.reuse_paint(kept.paint),
+            (None, None) => {}
+        }
+        self.root_ranges = Some(RootRanges {
+            prepaint: root_prepaint,
+            paint: root_paint_start..self.paint_index(),
+        });
         crate::frame_perf::PAINT_US.fetch_add(
             _paint_started.elapsed().as_micros() as u32,
             std::sync::atomic::Ordering::Relaxed,
@@ -4039,6 +4394,8 @@ impl Window {
                 let _render_scope = self.render_contexts.enter_snapshot(
                     self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
                 );
+                // KaminIDE patch: a dirty isolated view is drawn again alone.
+                self.rebuild_isolated(deferred_draw_ix, cx);
                 let (element, parent_node, current_view, rem_size, absolute_offset, prepaint_range) = {
                     let deferred_draw = &mut self.next_frame.deferred_draws[deferred_draw_ix];
                     self.element_id_stack
@@ -4056,6 +4413,8 @@ impl Window {
                 self.next_frame.dispatch_tree.set_active_node(parent_node);
 
                 let prepaint_start = self.prepaint_index();
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_prepaint(deferred_draw_ix);
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
                         .layout_owner.clone();
@@ -4070,8 +4429,9 @@ impl Window {
                     });
                     self.next_frame.deferred_draws[deferred_draw_ix].element = Some(element);
                 } else {
-                    self.reuse_prepaint(prepaint_range);
+                    self.reuse_deferred_prepaint(deferred_draw_ix, prepaint_range);
                 }
+                self.leave_deferred_prepaint(entered);
                 let prepaint_end = self.prepaint_index();
                 self.next_frame.deferred_draws[deferred_draw_ix].prepaint_range =
                     prepaint_start..prepaint_end;
@@ -4105,8 +4465,11 @@ impl Window {
                 .set_active_node(deferred_draw.parent_node);
 
             let paint_start = self.paint_index();
+            let groups_start = self.next_frame.scene.groups.len();
             let content_mask = deferred_draw.content_mask;
             if let Some(element) = deferred_draw.element.as_mut() {
+                // KaminIDE patch: under the node the draw belongs to (`scroll_deferred`).
+                let entered = self.enter_deferred_paint(&deferred_draw.scroll);
                 self.with_retained_layout(&mut deferred_draw.layout_owner, |window| {
                     window.with_rendered_view(deferred_draw.current_view, |window| {
                         window.with_content_mask(content_mask, |window| {
@@ -4115,12 +4478,15 @@ impl Window {
                             });
                         })
                     })
-                })
+                });
+                self.leave_deferred_paint(entered);
             } else {
-                self.reuse_paint(deferred_draw.paint_range.clone());
+                let range = deferred_draw.paint_range.clone();
+                self.reuse_deferred_paint(&mut deferred_draw.scroll, range, deferred_draw.groups.clone());
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
+            deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
         }
         self.next_frame.deferred_draws = deferred_draws;
         self.element_id_stack.clear();
@@ -4140,11 +4506,16 @@ impl Window {
             deferred_draws_index: self.next_frame.deferred_draws.len(),
             dispatch_tree_index: self.next_frame.dispatch_tree.len(),
             accessed_element_states_index: self.next_frame.accessed_element_states.len(),
+            scroll_nodes_index: self.next_frame.scroll_nodes.len(),
             line_layout_index: self.text_system.layout_index(),
         }
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
+        // KaminIDE patch: the scroll nodes prepainted in the range, and where
+        // they land (deferred draws keep their owner node, `scroll_deferred`).
+        let owners = scroll_deferred::OwnerMap::new(&range, self);
+        self.reuse_scroll_nodes(&range);
         for hitbox in &self.rendered_frame.hitboxes[range.start.hitboxes_index..range.end.hitboxes_index] {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
                 self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
@@ -4205,8 +4576,21 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    groups: deferred_draw.groups.clone(),
+                    isolated: deferred_draw.isolated.clone(),
+                    scroll: owners.copy(&deferred_draw.scroll),
+                    site: deferred_draw.site,
                 }),
         );
+        // KaminIDE patch: reused isolated draws stay isolated in the new frame.
+        let isolated = &mut self.next_frame.isolated_views;
+        for draw in &self.rendered_frame.deferred_draws
+            [range.start.deferred_draws_index..range.end.deferred_draws_index]
+        {
+            if let Some(draw) = &draw.isolated {
+                isolated.insert(draw.view.entity_id());
+            }
+        }
     }
 
     pub(crate) fn paint_index(&self) -> PaintIndex {
@@ -4223,7 +4607,8 @@ impl Window {
         }
     }
 
-    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+    /// KaminIDE patch: `reuse_paint` of everything but the scene commands.
+    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) {
         // Cached elements still exist in the frame even when their paint methods don't run.
         #[cfg(any(test, feature = "test-support"))]
         for (selector, bounds) in &self.rendered_frame.debug_bounds_records
@@ -4262,11 +4647,25 @@ impl Window {
         );
 
         self.text_system
-            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
-        self.next_frame.scene.replay(
-            range.start.scene_index..range.end.scene_index,
-            &self.rendered_frame.scene,
-        );
+            .reuse_layouts(range.start.line_layout_index.clone()..range.end.line_layout_index.clone());
+    }
+
+    pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
+        self.reuse_paint_state(&range);
+        // KaminIDE patch: a range recorded inside a scene layer is in its scene.
+        let scenes = range.start.scene_index..range.end.scene_index;
+        let landed = self.next_frame.scene.paint_operations.len();
+        let from = match self.replay_source() {
+            Some(source) => {
+                self.next_frame.scene.replay(scenes.clone(), source.scene());
+                source.scene().scroll.space
+            }
+            None => {
+                self.next_frame.scene.replay(scenes.clone(), &self.rendered_frame.scene);
+                self.rendered_frame.scene.scroll.space
+            }
+        };
+        self.land_scroll_paint(scenes, landed, from);
     }
 
     /// KaminIDE patch: read the host context of type `T` for this traversal.
@@ -4898,8 +5297,8 @@ impl Window {
     where
         S: 'static,
     {
-        self.invalidator.debug_assert_paint_or_prepaint();
-
+        // KaminIDE patch: without an id nothing is read or written, so an
+        // element without one lays out in any phase (`update_rendering`).
         if let Some(global_id) = global_id {
             self.with_element_state(global_id, |state, cx| {
                 let (result, state) = f(Some(state), cx);
@@ -4938,12 +5337,60 @@ impl Window {
     /// both prepaint and paint. When `None`, no additional clipping is applied.
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
+    #[track_caller]
     pub fn defer_draw(
         &mut self,
         element: AnyElement,
         absolute_offset: Point<Pixels>,
         priority: usize,
         content_mask: Option<ContentMask<Pixels>>,
+    ) {
+        let site = core::panic::Location::caller();
+        self.defer_draw_at(element, absolute_offset, priority, content_mask, site);
+    }
+
+    /// KaminIDE patch: `defer_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        site: &'static core::panic::Location<'static>,
+    ) {
+        self.push_deferred_draw(element, absolute_offset, priority, content_mask, Default::default(), site);
+    }
+
+    /// KaminIDE patch: `defer_draw` of content that belongs to the open scroll
+    /// node (`scroll_deferred`): drawn later, in priority order, but under
+    /// that node, clipped by it and moved with it, as Blink keeps a positioned
+    /// box's paint chunks on its scroll translation whatever its paint order.
+    #[track_caller]
+    pub fn defer_scrolled_draw(&mut self, element: AnyElement, absolute_offset: Point<Pixels>, priority: usize) {
+        let site = core::panic::Location::caller();
+        self.defer_scrolled_draw_at(element, absolute_offset, priority, site);
+    }
+
+    /// KaminIDE patch: `defer_scrolled_draw` made at `site` (`deferred()`'s caller).
+    pub(crate) fn defer_scrolled_draw_at(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        site: &'static core::panic::Location<'static>,
+    ) {
+        let scroll = self.deferred_scroll_owner();
+        self.push_deferred_draw(element, absolute_offset, priority, None, scroll, site);
+    }
+
+    fn push_deferred_draw(
+        &mut self,
+        element: AnyElement,
+        absolute_offset: Point<Pixels>,
+        priority: usize,
+        content_mask: Option<ContentMask<Pixels>>,
+        scroll: scroll_deferred::DeferredScroll,
+        site: &'static core::panic::Location<'static>,
     ) {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
@@ -4961,6 +5408,10 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            groups: 0..0,
+            isolated: None,
+            scroll,
+            site,
         });
     }
 
@@ -5014,7 +5465,9 @@ impl Window {
                     size: size(ScaledPixels(x1 - x0), ScaledPixels(y1 - y0)),
                 };
             }
-            self.next_frame.scene.push_layer(scaled);
+            // KaminIDE patch: under a scroll node the layer moves with it.
+            let scale = self.scale_factor();
+            self.next_frame.with_scene_node(scale, |scene| scene.push_layer(scaled));
         }
 
         self.with_restore(!clipped_bounds.is_empty(), |window, pushed| {
@@ -5091,7 +5544,7 @@ impl Window {
                 continue;
             }
             let shadow_bounds = (bounds + shadow.offset).dilate(shadow.spread_radius);
-            self.next_frame.scene.insert_primitive(Shadow {
+            self.insert_scene_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(shadow_bounds),
@@ -5136,7 +5589,7 @@ impl Window {
                 bottom_right: (corner_radii.bottom_right - shadow.spread_radius).max(zero),
                 bottom_left: (corner_radii.bottom_left - shadow.spread_radius).max(zero),
             };
-            self.next_frame.scene.insert_primitive(Shadow {
+            self.insert_scene_primitive(Shadow {
                 order: 0,
                 blur_radius: shadow.blur_radius.scale(scale_factor),
                 bounds: self.cover_bounds(hole),
@@ -5226,7 +5679,11 @@ impl Window {
         // The strip split below restricts screen-space content masks, which
         // only matches the quad's own coordinates without a transformation.
         if !quad.background.is_transparent() || transformation != TransformationMatrix::unit() {
-            self.next_frame.scene.insert_primitive(quad);
+            let before = self.next_frame.scene.quads.len();
+            self.insert_scene_primitive(quad);
+            if self.paint_value.is_some() {
+                self.bind_painted_quad(before, opacity);
+            }
             return;
         }
 
@@ -5236,7 +5693,7 @@ impl Window {
         let inner_bounds = Self::largest_border_interior(&quad);
 
         if inner_bounds.is_empty() {
-            self.next_frame.scene.insert_primitive(quad);
+            self.insert_scene_primitive(quad);
             return;
         }
 
@@ -5266,7 +5723,7 @@ impl Window {
         for strip in strips {
             let content_mask_bounds = quad.content_mask.bounds.intersect(&strip);
             if !content_mask_bounds.is_empty() {
-                self.next_frame.scene.insert_primitive(Quad {
+                self.insert_scene_primitive(Quad {
                     content_mask: ContentMask {
                         bounds: content_mask_bounds,
                     },
@@ -5288,9 +5745,7 @@ impl Window {
         path.content_mask = content_mask;
         let color: Background = color.into();
         path.color = color.opacity(opacity);
-        self.next_frame
-            .scene
-            .insert_primitive(path.scale(scale_factor));
+        self.insert_scene_primitive(path.scale(scale_factor));
     }
 
     /// Paint an underline into the scene for the next frame at the current z-index.
@@ -5304,7 +5759,7 @@ impl Window {
     ) {
         self.invalidator.debug_assert_paint();
         let underline = self.underline(origin, width, style);
-        self.next_frame.scene.insert_primitive(underline);
+        self.insert_scene_primitive(underline);
     }
 
     /// Paint a strikethrough into the scene for the next frame at the current z-index.
@@ -5326,7 +5781,7 @@ impl Window {
         };
         let opacity = self.element_opacity();
 
-        self.next_frame.scene.insert_primitive(Underline {
+        self.insert_scene_primitive(Underline {
             order: 0,
             pad: 0,
             bounds,
@@ -5431,7 +5886,7 @@ impl Window {
             let transformation = self.current_transformation();
 
             if subpixel_rendering {
-                self.next_frame.scene.insert_primitive(SubpixelSprite {
+                self.insert_scene_primitive(SubpixelSprite {
                     order: 0,
                     pad: 0,
                     bounds,
@@ -5441,7 +5896,7 @@ impl Window {
                     transformation,
                 });
             } else {
-                self.next_frame.scene.insert_primitive(MonochromeSprite {
+                self.insert_scene_primitive(MonochromeSprite {
                     order: 0,
                     pad: 0,
                     bounds,
@@ -5519,7 +5974,7 @@ impl Window {
             let opacity = self.element_opacity() * alpha;
 
             let transformation = self.current_transformation();
-            self.next_frame.scene.insert_primitive(PolychromeSprite {
+            self.insert_scene_primitive(PolychromeSprite {
                 transformation,
                 order: 0,
                 pad: 0,
@@ -5586,7 +6041,7 @@ impl Window {
             .map_origin(|value| ScaledPixels(round_half_toward_zero(value.0)))
             .map_size(|size| size.ceil());
 
-        self.next_frame.scene.insert_primitive(MonochromeSprite {
+        self.insert_scene_primitive(MonochromeSprite {
             order: 0,
             pad: 0,
             bounds: final_bounds,
@@ -5636,13 +6091,11 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
 
         let visible_bounds_snapped = self.snap_bounds(visible_bounds);
 
@@ -5694,7 +6147,8 @@ impl Window {
 
         // KaminIDE patch: картинка едет действующим преобразованием.
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        let before = self.next_frame.scene.len();
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -5705,6 +6159,9 @@ impl Window {
             tile: sub_tile,
             opacity,
         });
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+        }
         Ok(())
     }
 
@@ -5739,13 +6196,11 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
         // Регион внутри тайла: origin смещаем, размер клампим — выйти за
         // пределы тайла нельзя, иначе в спрайт попадут соседние атласные
         // страницы.
@@ -5763,7 +6218,8 @@ impl Window {
         let opacity = self.element_opacity();
 
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        let before = self.next_frame.scene.len();
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: 0,
@@ -5776,6 +6232,9 @@ impl Window {
             tile,
             opacity,
         });
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+        }
         Ok(())
     }
 
@@ -5806,7 +6265,7 @@ impl Window {
         let scale_factor = self.scale_factor();
         let bounds = self.backdrop_device_bounds(bounds.scale(scale_factor));
         let content_mask = self.content_mask().scale(scale_factor);
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.insert_scene_primitive(PaintSurface {
             order: 0,
             bounds,
             content_mask,
@@ -5823,10 +6282,7 @@ impl Window {
     /// current transformation is applied to their device bounds here, the
     /// way quads apply it in the vertex shader (Filter Effects 2
     /// §backdrop-filter: the filtered region is the transformed border box).
-    fn backdrop_device_bounds(
-        &self,
-        bounds: Bounds<ScaledPixels>,
-    ) -> Bounds<ScaledPixels> {
+    fn backdrop_device_bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
         let m = self.current_transformation();
         let [[a, b], [c, d]] = m.rotation_scale;
         if m == TransformationMatrix::unit() || b != 0.0 || c != 0.0 || a <= 0.0 || d <= 0.0 {
@@ -5843,7 +6299,6 @@ impl Window {
             ),
         }
     }
-
 
     /// KaminIDE patch: `backdrop-filter` с цветовыми функциями — матрица 4×5
     /// над подложкой (и размытие, если оно тоже задано). Прозрачность
@@ -5883,7 +6338,7 @@ impl Window {
         if hoist && self.next_frame.scene.in_group {
             self.next_frame.scene.hoist_backdrop(surface);
         } else {
-            self.next_frame.scene.insert_primitive(surface);
+            self.insert_scene_primitive(surface);
         }
     }
 
@@ -5946,11 +6401,12 @@ impl Window {
         let scaled = bounds.scale(scale_factor);
         let content_mask = self.content_mask().scale(scale_factor);
 
-        let (result, mut inner) = self.with_isolated_scene(f);
+        let (result, mut inner) = self.with_isolated_scene_runs(true, f);
         inner.finish();
         // KaminIDE patch: подложки, поднятые из группы (`paint_backdrop_filter`
         // с `hoist`), — в объемлющую сцену; до кадра — сквозь все уровни.
         let hoisted = inner.take_backdrops();
+        let runs = inner.book.group_runs.take();
         // Группы, вложенные в эту, переезжают в общий список кадра ПЕРЕД ней:
         // их номера были местными, поэтому сдвигаются на длину списка.
         let mut nested = std::mem::take(&mut inner.groups);
@@ -5958,7 +6414,7 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
@@ -5968,7 +6424,7 @@ impl Window {
             None => (None, Bounds::default(), 0),
         };
         self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
+            scene: std::rc::Rc::new(inner),
             bounds: scaled,
             blur_radius: blur_radius * scale_factor,
             blend,
@@ -5981,12 +6437,14 @@ impl Window {
             projection: None,
             fragments: Vec::new(),
         });
+        self.adopt_group_runs(runs, index, base);
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки
         // копирует кадр, уже нарисованный под элементом, а буфер группы
         // (фон, рамка, дети — filter-effects-2 §3 шаг 5) композитится поверх.
         self.next_frame.scene.adopt_backdrops(hoisted);
         let unbounded = self.content_mask_stack.len() == 1;
-        self.next_frame.scene.insert_group_surface(PaintSurface {
+        // KaminIDE patch: a label under a scroll node is marked there (`scroll_marks`).
+        self.next_frame.with_scene_node(scale_factor, |scene| scene.insert_group_surface(PaintSurface {
             order: 0,
             bounds: scaled,
             content_mask,
@@ -5996,7 +6454,7 @@ impl Window {
             opacity,
             color_matrix: None,
             fragment: 0,
-        }, unbounded);
+        }, unbounded));
         result
     }
 
@@ -6009,7 +6467,7 @@ impl Window {
 
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
-        self.next_frame.scene.insert_primitive(PaintSurface {
+        self.insert_scene_primitive(PaintSurface {
             order: 0,
             bounds,
             content_mask,
@@ -6061,12 +6519,14 @@ impl Window {
         self.request_layout_ref(&style, children, cx)
     }
 
-    /// KaminIDE patch: the frame's element count is the size hint of its layout tree.
+    /// KaminIDE patch: the frame's count of elements that may take a layout
+    /// node is the size hint of its layout tree; an element that lays out as
+    /// its child (`note_layoutless_element`) takes none.
     fn reserve_layout_nodes(&mut self) {
         self.layout_engine
             .as_mut()
             .unwrap()
-            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.allocations()));
+            .reserve_nodes_when_full(|| with_element_arena(|arena| arena.layout_elements()));
     }
 
     /// KaminIDE patch: `request_layout_ref` for a style that is `refinement` applied to the
@@ -6287,6 +6747,29 @@ impl Window {
             .as_ref()
             .unwrap()
             .layout_size_unrounded(layout_id, scale_factor)
+    }
+
+    /// KaminIDE patch: the bars the last layout decided for a node whose bars layout
+    /// decides (see `TaffyLayoutEngine::layout_scrollbars`).
+    pub fn layout_scrollbars(&self, layout_id: LayoutId) -> Option<[bool; 2]> {
+        self.layout_engine.as_ref()?.layout_scrollbars(layout_id)
+    }
+
+    /// KaminIDE patch: the descendants reaching farthest along an axis in the last
+    /// layout of a node (see `TaffyLayoutEngine::overflow_reach`); diagnostics only.
+    pub fn layout_overflow_reach(&self, layout_id: LayoutId, vertical: bool) -> Vec<String> {
+        let scale_factor = self.scale_factor();
+        self.layout_engine
+            .as_ref()
+            .map_or_else(Vec::new, |engine| engine.overflow_reach(layout_id, vertical, scale_factor))
+    }
+
+    /// KaminIDE patch: a node and its ancestors' sizing styles (see
+    /// `TaffyLayoutEngine::layout_ancestry`); diagnostics only.
+    pub fn layout_ancestry(&self, layout_id: LayoutId, depth: usize) -> Vec<String> {
+        self.layout_engine
+            .as_ref()
+            .map_or_else(Vec::new, |engine| engine.layout_ancestry(layout_id, depth))
     }
 
     /// KaminIDE patch: протяжённость содержимого узла без округления (см.
@@ -6537,7 +7020,8 @@ impl Window {
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
-        let content_mask = self.content_mask();
+        // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
+        let (content_mask, scroll_mark) = self.scroll_hitbox_mask(self.content_mask());
         let mut id = self.next_hitbox_id;
         self.next_hitbox_id = self.next_hitbox_id.next();
         let hitbox = Hitbox {
@@ -6550,6 +7034,10 @@ impl Window {
             self.next_frame.hitbox_scopes.insert(id, scope.clone());
         }
         if !self.insert_segment_hitbox(&hitbox) {
+            if let Some((node, own)) = scroll_mark {
+                let index = self.next_frame.hitboxes.len() as u32;
+                self.next_frame.scroll_hitboxes.push(scroll_masks::HitboxMark { index, node, own });
+            }
             self.next_frame.hitboxes.push(hitbox.clone());
         }
         hitbox
@@ -6856,7 +7344,12 @@ impl Window {
         self.window_profiler.begin_input(event.kind_name());
         let update_count_before = self.invalidator.update_count();
         // KaminIDE patch: any input may change element state of retained subtrees.
-        self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
+        // A wheel step moves scroll offsets, which retained records replay
+        // through their scroll nodes (`retained_scrolled`); a listener that
+        // changes anything else on a wheel notifies its view.
+        if !matches!(event, PlatformInput::ScrollWheel(_)) {
+            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
+        }
         // Track input modality for focus-visible styling and hover suppression.
         // Hover is suppressed during keyboard modality so that keyboard navigation
         // doesn't show hover highlights on the item under the mouse cursor.
@@ -7276,7 +7769,15 @@ impl Window {
 
     fn dispatch_key_event(&mut self, event: &dyn Any, cx: &mut App) {
         if self.invalidator.is_dirty() {
+            // KaminIDE patch: this frame shows the state before the key's
+            // handlers run, so it is drawn at the epoch before this input
+            // (`dispatch_event` counted it): a retained subtree replays here
+            // and judges the input once its handlers ran.
+            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
+            self.interaction_epoch = before;
             self.draw(cx).clear(cx);
+            // Inputs the draw itself counted (a focus change) stay counted.
+            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
         }
 
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);
@@ -8592,11 +9093,23 @@ impl Window {
         state_type: TypeId,
     ) -> ((GlobalElementId, TypeId), Option<ElementStateBox>) {
         let key = (global_id.clone(), state_type);
+        // KaminIDE patch: a read sets states aside for the next frame, which
+        // takes them before those of the drawn frame (`update_rendering`).
+        if self.read_states.active {
+            let state = self
+                .read_states
+                .states
+                .remove(&key)
+                .or_else(|| self.next_frame.element_states.remove(&key))
+                .or_else(|| self.rendered_frame.element_states.remove(&key));
+            return (key, state);
+        }
         self.next_frame.accessed_element_states.push(key.clone());
         let state = self
             .next_frame
             .element_states
             .remove(&key)
+            .or_else(|| self.read_states.states.remove(&key))
             .or_else(|| self.rendered_frame.element_states.remove(&key));
         (key, state)
     }
@@ -8607,6 +9120,9 @@ impl Window {
         key: (GlobalElementId, TypeId),
         state: ElementStateBox,
     ) -> Option<ElementStateBox> {
+        if self.read_states.active {
+            return self.read_states.states.insert(key, state);
+        }
         self.next_frame.element_states.insert(key, state)
     }
 
@@ -9399,6 +9915,42 @@ mod tests {
     /// Visibility transitions reach observers exactly once each, with the new
     /// state already stored on the window, and never wake the platform for a
     /// frame: the platform requests one itself when it resumes presenting.
+    /// `request_present` shows the last frame again: it wakes the platform,
+    /// and the frame it gets presents without rendering any view.
+    #[gpui::test]
+    fn test_request_present_presents_without_a_draw(cx: &mut TestAppContext) {
+        struct Counted(Rc<Cell<usize>>);
+        impl Render for Counted {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.0.set(self.0.get() + 1);
+                Empty
+            }
+        }
+        let renders = Rc::new(Cell::new(0));
+        let window = cx.add_window({
+            let renders = renders.clone();
+            move |_, _| Counted(renders)
+        });
+        let platform_window = cx.test_window(window.into());
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        let rendered = renders.get();
+        let wakes = platform_window.frame_wake_count();
+
+        window
+            .update(cx, |_, window, _| window.request_present())
+            .unwrap();
+        assert!(platform_window.frame_wake_count() > wakes);
+        window
+            .update(cx, |_, window, _| assert!(window.needs_present.get()))
+            .unwrap();
+
+        platform_window.simulate_frame_request(RequestFrameOptions::default());
+        assert_eq!(renders.get(), rendered);
+        window
+            .update(cx, |_, window, _| assert!(!window.needs_present.get()))
+            .unwrap();
+    }
+
     #[gpui::test]
     fn test_window_visibility(cx: &mut TestAppContext) {
         use crate::WindowVisibility;

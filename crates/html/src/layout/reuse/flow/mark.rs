@@ -26,8 +26,8 @@ pub(crate) struct Mark {
     /// (`FlowReuse::far_widths`): it is built with the flow's own options
     /// recording into it (`FlowCx::child_opts`); `widths` stays empty.
     pub(super) shared_widths: bool,
-    /// Инертность ребёнка (`plain::plain`), общая для `mark` и `record`.
-    pub(super) inert: super::super::plain::Inert,
+    /// Counter origin established while classifying the built child for skipping.
+    pub(super) skip_origin: Option<super::super::plain::CounterOrigin>,
     /// The paint key of the child's step-8 wrapper, which the flow puts on
     /// outside its records (`FlowCx::record`).
     pub(super) paint_last: Option<u64>,
@@ -70,7 +70,7 @@ pub(super) fn mark_of(opts: &RenderOpts, out: usize) -> Mark {
         replay: false,
         far: false,
         shared_widths: false,
-        inert: Default::default(),
+        skip_origin: None,
         paint_last: None,
     }
 }
@@ -81,12 +81,13 @@ impl super::FlowCx {
     /// может оказаться далёким блоком (`far_worth_recording`).
     pub(crate) fn mark(&self, e: &Element, opts: &RenderOpts, out: usize) -> Mark {
         let mut mark = mark_of(opts, out);
-        mark.replay = match self.recolour {
+        let restyled = self.restyled(e);
+        mark.replay = match self.recolour || restyled {
             true => self.recolour_worth_recording(e),
             false => self.replay_worth_recording(e),
         };
         // A build of a run of restyles wraps no child (`FlowCx::record`).
-        mark.far = !self.restyled && self.far_candidate(e, opts);
+        mark.far = !restyled && self.far_candidate(e, opts);
         if mark.replay {
             mark.widths = Some(Rc::default());
             // Its step-8 wrapper goes on outside the replay recorder.

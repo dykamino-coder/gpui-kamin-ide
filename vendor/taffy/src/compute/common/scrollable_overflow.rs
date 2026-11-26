@@ -22,7 +22,7 @@ use crate::util::sys::{f32_max, f32_min};
 ///
 /// A box whose containment contains its scrollable overflow (layout or paint containment)
 /// contributes only its border box, regardless of its overflow style.
-pub(crate) fn compute_scrollable_overflow_contribution(
+pub fn compute_scrollable_overflow_contribution(
     location: Point<f32>,
     size: Size<f32>,
     scrollable_overflow_rect: Rect<f32>,

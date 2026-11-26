@@ -9,6 +9,11 @@
 //! drawing a textured quad with a full 4×4). Planes of one context are
 //! ordered and split by a BSP tree (`crate::plane_bsp`) before compositing.
 
+mod coverage;
+mod group;
+#[cfg(test)]
+mod tests;
+
 use super::*;
 use crate::plane_bsp::{PlanePoly, back_to_front};
 use crate::{PaintGroup, PaintSurface};
@@ -219,15 +224,24 @@ impl Window {
             pending: Vec::new(),
             content_mask,
         });
-        let (result, ctx) = self.with_restore(None, |window, ctx| {
-            *ctx = window.plane_contexts.pop();
-        }, |window| window.with_paint_scope(|window| {
-            f(window)
-        }));
+        let (result, ctx) = self.with_restore(
+            None,
+            |window, ctx| {
+                *ctx = window.plane_contexts.pop();
+            },
+            |window| window.with_paint_scope(|window| f(window)),
+        );
         let Some(ctx) = ctx else { return result };
         let records: Vec<PlaneRecord> = ctx.pending.into_iter().flatten().collect();
         let mut polys = Vec::new();
         for (i, rec) in records.iter().enumerate() {
+            // A plane that paints nothing draws no pixel: like an edge-on
+            // plane it takes no place in the order and splits no other (viz
+            // sorts the quads its layers draw, and a layer without content
+            // draws none). Its buffer would be the whole window, transparent.
+            if !rec.scene.paints() {
+                continue;
+            }
             if let Some((pts, _)) = near_clip(&rec.corners) {
                 let poly = PlanePoly::new(pts, i);
                 // Edge-on planes are invisible and must not split others.
@@ -309,11 +323,17 @@ impl Window {
                 mem::replace(&mut window.mask_map, map),
                 mem::take(&mut window.content_mask_stack),
             );
-            window.with_restore(state, |window, state| {
-                mem::swap(&mut window.transformation_stack, &mut state.0);
-                mem::swap(&mut window.mask_map, &mut state.1);
-                mem::swap(&mut window.content_mask_stack, &mut state.2);
-            }, f).0
+            window
+                .with_restore(
+                    state,
+                    |window, state| {
+                        mem::swap(&mut window.transformation_stack, &mut state.0);
+                        mem::swap(&mut window.mask_map, &mut state.1);
+                        mem::swap(&mut window.content_mask_stack, &mut state.2);
+                    },
+                    f,
+                )
+                .0
         });
         scene.finish();
         let mut rect = spec.rect;
@@ -337,11 +357,12 @@ impl Window {
                 }
             }
             _ => {
-                let Some((pts, clipped)) = near_clip(&record.corners) else {
+                let Some((pts, clipped)) = near_clip(&record.corners).filter(|_| record.scene.paints()) else {
                     return result;
                 };
                 let polygon = if clipped { to_points(&pts) } else { Vec::new() };
-                let id = self.push_plane_group(record.scene, record.projection, polygon, Vec::new());
+                let id =
+                    self.push_plane_group(record.scene, record.projection, polygon, Vec::new());
                 self.insert_plane_mark(id, 0, content_mask);
             }
         }
@@ -350,7 +371,7 @@ impl Window {
 
     /// Prepare a plane scene for replay into the current one: its nested
     /// groups join the frame's list (ids shifted), hoisted backdrops go first.
-    pub(super) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
+    pub(crate) fn adopt_scene(&mut self, mut inner: Scene) -> Scene {
         inner.bind_record_segments(&self.next_frame.scene);
         let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
@@ -358,58 +379,11 @@ impl Window {
         if !nested.is_empty() {
             inner.shift_group_ids(base);
             for group in &mut nested {
-                group.scene.shift_group_ids(base);
+                group.scene_mut().shift_group_ids(base);
             }
             self.next_frame.scene.groups.append(&mut nested);
         }
         self.next_frame.scene.adopt_backdrops(hoisted);
         inner
-    }
-
-    /// Move a finished plane scene into the frame's group list (nested
-    /// groups first, as `paint_group` does); returns its group index.
-    fn push_plane_group(
-        &mut self,
-        mut inner: Scene,
-        projection: Option<[f32; 9]>,
-        polygon: Vec<Point<ScaledPixels>>,
-        fragments: Vec<Vec<Point<ScaledPixels>>>,
-    ) -> u32 {
-        let hoisted = inner.take_backdrops();
-        let mut nested = std::mem::take(&mut inner.groups);
-        let base = self.next_frame.scene.groups.len() as u32;
-        if !nested.is_empty() {
-            inner.shift_group_ids(base);
-            for group in &mut nested {
-                group.scene.shift_group_ids(base);
-            }
-            self.next_frame.scene.groups.append(&mut nested);
-        }
-        let index = self.next_frame.scene.groups.len() as u32;
-        let size = self.viewport_size.scale(self.scale_factor());
-        self.next_frame.scene.groups.push(PaintGroup {
-            scene: inner,
-            bounds: Bounds::new(Point::default(), size),
-            polygon,
-            projection,
-            fragments,
-            ..Default::default()
-        });
-        self.next_frame.scene.adopt_backdrops(hoisted);
-        index
-    }
-
-    fn insert_plane_mark(&mut self, index: u32, fragment: u32, mask: ContentMask<ScaledPixels>) {
-        self.next_frame.scene.insert_group_surface(PaintSurface {
-            order: 0,
-            bounds: mask.bounds,
-            content_mask: mask,
-            corner_radii: Corners::default(),
-            blur_radius: 0.0,
-            group: index + 1,
-            opacity: 1.0,
-            color_matrix: None,
-            fragment,
-        }, self.content_mask_stack.len() == 1);
     }
 }

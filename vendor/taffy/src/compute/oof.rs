@@ -464,20 +464,14 @@ pub(crate) struct OofBoxLayout {
     pub contain: crate::style::Contain,
 }
 
-/// Size and position a single out-of-flow box against its containing block, and store its layout.
-///
-/// - `area_size`/`area_offset` describe the inset-resolution area of the containing block
-///   (border box minus borders and scrollbar gutters), relative to the containing block's border box.
-/// - `container_overflow` is the `overflow` style of the containing block, which determines
-///   whether overflowing boxes may be aligned into its scrollable overflow area.
-/// - `grid_owner` is the node whose detailed layout info is consulted for grid placement: if it is
-///   a grid container, the box is positioned relative to the grid area determined by its
-///   grid-placement properties rather than the passed area.
-/// - `before_layout` is called with the inputs of the final layout pass just before it runs, which
-///   allows the caller to inspect the layout cache for the box.
+#[path = "oof_retry.rs"]
+mod retry;
+use retry::layout_oof_box;
+
+/// One size-selection and final-placement attempt for an out-of-flow box.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
+fn layout_oof_box_once<Tree: LayoutContainingBlock>(
     tree: &mut Tree,
     candidate: OofCandidate,
     area_size: Size<f32>,
@@ -513,6 +507,18 @@ pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
             )
         }
         _ => (area_size, area_offset),
+    };
+    // KaminIDE patch: a box built for the root gutter it assumed resolves its insets
+    // against the gutter the viewport decided in this layout (`kamin_scrollbars`).
+    let (area_size, area_offset) = match tree.kamin_oof_area_shift(candidate.node) {
+        Some(shift) => (
+            Size {
+                width: area_size.width - shift.left - shift.right,
+                height: area_size.height - shift.top - shift.bottom,
+            },
+            Point { x: area_offset.x + shift.left, y: area_offset.y + shift.top },
+        ),
+        None => (area_size, area_offset),
     };
     let area_width = area_size.width;
     let area_height = area_size.height;
@@ -878,8 +884,10 @@ pub(crate) fn perform_oof_layout(
             }
         }
 
+        // KaminIDE patch: a scroll range proxy adds nothing to the overflow that decides
+        // the container's bars (`kamin_scrollbars`).
         #[cfg(feature = "content_size")]
-        {
+        if !tree.kamin_oof_is_proxy(candidate.node) {
             // Location is measured from the scroll origin (the inline-start edge: right side in RTL)
             let relative_location = if direction.is_rtl() {
                 Point {

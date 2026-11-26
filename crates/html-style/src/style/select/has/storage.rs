@@ -25,7 +25,7 @@ pub(super) fn level(
         };
         let marks = tree
             .has_marks
-            .get(&crate::dom::tree_index::NodeKey::of(child))
+            .get(&crate::dom::tree_index::HandleKey::of(child))
             .map_or(0, Vec::len);
         let marks = marks
             .checked_mul(size_of::<u64>())
@@ -45,9 +45,7 @@ pub(super) fn level(
                 .ok_or(Error::CapacityOverflow)?;
             bytes = bytes.checked_add(strings).ok_or(Error::CapacityOverflow)?;
             if &*attr.name.local == "class" {
-                let classes = attr
-                    .value
-                    .split_whitespace()
+                let classes = crate::dom::class_tokens::tokens(&attr.value)
                     .count()
                     .checked_mul(2 * size_of::<String>())
                     .ok_or(Error::CapacityOverflow)?;

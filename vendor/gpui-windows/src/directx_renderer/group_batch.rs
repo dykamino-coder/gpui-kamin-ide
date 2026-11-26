@@ -49,18 +49,21 @@ pub(super) fn levels(rects: &[Region]) -> Vec<u32> {
 /// Scratch instance vectors of a stage layer (kept between frames for their capacity).
 #[derive(Default)]
 pub(super) struct LayerInstances {
-    shadows: Vec<Shadow>,
-    quads: Vec<Quad>,
-    underlines: Vec<Underline>,
-    mono: Vec<MonochromeSprite>,
-    subpixel: Vec<SubpixelSprite>,
-    poly: Vec<PolychromeSprite>,
+    pub(super) shadows: Vec<Shadow>,
+    pub(super) quads: Vec<Quad>,
+    pub(super) gradients: gpui::GradientData,
+    pub(super) underlines: Vec<Underline>,
+    pub(super) mono: Vec<MonochromeSprite>,
+    pub(super) subpixel: Vec<SubpixelSprite>,
+    pub(super) poly: Vec<PolychromeSprite>,
 }
 
 impl LayerInstances {
-    fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.shadows.clear();
         self.quads.clear();
+        self.gradients.descriptors.clear();
+        self.gradients.stops.clear();
         self.underlines.clear();
         self.mono.clear();
         self.subpixel.clear();
@@ -148,7 +151,9 @@ impl DirectXRenderer {
                 all.poly.len(),
             ]);
             all.shadows.extend_from_slice(&s.shadows);
+            let first_quad = all.quads.len();
             all.quads.extend_from_slice(&s.quads);
+            all.gradients.append(s, &mut all.quads[first_quad..]);
             all.underlines.extend_from_slice(&s.underlines);
             all.mono.extend_from_slice(&s.monochrome_sprites);
             all.subpixel.extend_from_slice(&s.subpixel_sprites);
@@ -160,7 +165,7 @@ impl DirectXRenderer {
         result.map(|()| bases)
     }
 
-    fn upload_instances(&mut self, all: &LayerInstances) -> Result<()> {
+    pub(super) fn upload_instances(&mut self, all: &LayerInstances) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         let p = &mut self.pipelines;
@@ -168,6 +173,7 @@ impl DirectXRenderer {
             p.shadow_pipeline.update_buffer(&device, &dc, &all.shadows)?;
         }
         if !all.quads.is_empty() {
+            p.quad_pipeline.upload_gradients(&device, &dc, &all.gradients)?;
             p.quad_pipeline.update_buffer(&device, &dc, &all.quads)?;
         }
         if !all.underlines.is_empty() {
@@ -249,6 +255,29 @@ impl DirectXRenderer {
 
     /// Draw a run of consecutive group composites level by level.
     pub(super) fn draw_composite_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
+        // KaminIDE patch: composites the tile pass takes are drawn in passes of
+        // one copy and one draw (`group_tiles`); the rest keep the levels.
+        // Segments are drawn in document order, each before the next.
+        let mut k = 0;
+        while k < run.len() {
+            if self.tiles_take(run[k]) {
+                let n = self.draw_composite_tiles(&run[k..])?;
+                if n > 0 {
+                    k += n;
+                    continue;
+                }
+                self.draw_composite_levels_run(&run[k..k + 1])?;
+                k += 1;
+                continue;
+            }
+            let end = k + 1 + run[k + 1..].iter().take_while(|s| !self.tiles_take(s)).count();
+            self.draw_composite_levels_run(&run[k..end])?;
+            k = end;
+        }
+        Ok(())
+    }
+
+    fn draw_composite_levels_run(&mut self, run: &[&PaintSurface]) -> Result<()> {
         for chunk in run.chunks(MAX_BATCH) {
             if let [s] = chunk {
                 self.draw_group_composite(s)?;
@@ -361,7 +390,7 @@ impl DirectXRenderer {
     /// Copy the backdrop under the blended composites of one level into the
     /// frame-sized level backdrop at the same coordinates: one copy of their
     /// bounding box when it is compact, otherwise one copy per composite.
-    fn copy_level_backdrop(&mut self, rects: &[Region]) -> Result<()> {
+    pub(super) fn copy_level_backdrop(&mut self, rects: &[Region]) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         let (w, h) = (self.width, self.height);

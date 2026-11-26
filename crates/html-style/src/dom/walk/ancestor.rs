@@ -54,10 +54,14 @@ pub(super) fn element_ancestor(
     let classes: Vec<String> = attrs
         .iter()
         .find(|(k, _)| k == "class")
-        .map(|(_, v)| v.split_whitespace().map(str::to_string).collect())
+        .map(|(_, v)| {
+            crate::dom::class_tokens::tokens(v)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
     let me = Ancestor {
-        key: crate::dom::tree_index::NodeKey::of(handle),
+        key: crate::dom::tree_index::HandleKey::of(handle),
         matching: tree.matching.clone(),
         ancestor_bloom: None,
         counter_style: Default::default(),
@@ -98,6 +102,7 @@ pub(super) fn element_ancestor(
             .map(|r| (r.clone(), sibs.pos)),
         target_group: None,
         target_current: false,
+        checked: tree.form.checked(handle, tag, attrs),
         empty: crate::style::select::is_empty_node(handle),
         foreign: match &handle.data {
             markup5ever_rcdom::NodeData::Element { name, .. } => {

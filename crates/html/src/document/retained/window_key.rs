@@ -18,10 +18,23 @@ pub(super) struct WindowKey {
     appearance: WindowAppearance,
     elapsed: Option<std::time::Duration>,
     reduce_motion: bool,
+    animation: (Option<std::time::Duration>, u64),
 }
 
 impl WindowKey {
-    pub(super) fn capture(bounds: Bounds<Pixels>, window: &Window, cx: &App) -> Self {
+    /// Discount inputs that only moved the root scroller
+    /// (`RootScroll::key`); the frame replays them through its scroll nodes.
+    pub(super) fn capture(
+        bounds: Bounds<Pixels>,
+        window: &Window,
+        cx: &App,
+        state: &super::DocState,
+    ) -> Self {
+        let scroll_inputs = state
+            .root_scroll
+            .as_ref()
+            .map_or(0, |root| root.scroll_inputs.get());
+        state.animation.sample(window, cx);
         Self {
             bounds,
             content_mask: window.content_mask(),
@@ -29,11 +42,12 @@ impl WindowKey {
             offset: window.element_offset(),
             scale: window.scale_factor(),
             rem: window.rem_size(),
-            interaction: window.interaction_epoch(),
+            interaction: window.interaction_epoch().wrapping_sub(scroll_inputs),
             active: window.is_window_active(),
             appearance: window.appearance(),
             elapsed: cx.try_global::<gpui::AnimationElapsedTime>().map(|t| t.0),
             reduce_motion: cx.reduce_motion(),
+            animation: state.animation.render_key(),
         }
     }
 }

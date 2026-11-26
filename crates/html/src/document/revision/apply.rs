@@ -8,7 +8,6 @@
 
 use super::mutation::{Batch, Mutation};
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus};
-use markup5ever_rcdom::Handle;
 use std::rc::Rc;
 
 /// Пакет записей не применён.
@@ -17,6 +16,10 @@ pub enum ApplyError {
     /// Запись адресует узел не того вида (текст вместо элемента) или узел вне
     /// исходного DOM ревизии (отсоединённый, содержимое шаблона, другой документ).
     Foreign,
+    /// The named node is not a current direct child of this parent.
+    NotChild,
+    /// The new edge would form a cycle or violate the document's child constraints.
+    Hierarchy,
     /// Сборка ревизии отвергнута; DOM и ревизия остались прежними.
     Rejected(DocumentFailure),
 }
@@ -25,6 +28,8 @@ impl std::fmt::Display for ApplyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Foreign => f.write_str("mutation record addresses a node outside the document"),
+            Self::Hierarchy => f.write_str("invalid DOM hierarchy"),
+            Self::NotChild => f.write_str("mutation record does not name a direct child"),
             Self::Rejected(failure) => std::fmt::Display::fmt(failure, f),
         }
     }
@@ -42,12 +47,16 @@ impl Document {
         #[cfg(feature = "engine-bench")]
         let started = crate::work::Clock::now();
         let root = self.source_dom();
-        let batch = Batch::new(records).ok_or(ApplyError::Foreign)?;
-        let attached = batch.texts.iter().map(|t| &t.node);
-        let mut attached = attached.chain(batch.elements.iter().map(|e| &e.element));
-        if !attached.all(|node| within(node, &root)) {
-            return Err(ApplyError::Foreign);
-        }
+        let revision = std::cell::OnceCell::new();
+        let mut batch = Batch::in_document(records, &root, || {
+            let budget = revision.get_or_init(|| self.budget().revision());
+            self.state
+                .values
+                .traversal
+                .source()
+                .context()
+                .continuing(budget.clone())
+        })?;
         if batch.is_empty() && *self.theme_css == *theme_css {
             // Как `update` той же разметки: терминальный отказ ревизии остаётся.
             if let Some(mut failure) = self.revision_budget().failure() {
@@ -62,36 +71,52 @@ impl Document {
                 degradation: self.traversal_limit(),
             });
         }
+        let revision = revision
+            .into_inner()
+            .unwrap_or_else(|| self.budget().revision());
         let key = applied_key(self.key, records, theme_css);
-        let revision = self.budget().revision();
-        if let Some(plan) = self.plan(&batch, theme_css, None, &revision) {
-            batch.write();
-            self.commit(
-                plan,
-                key,
+        // Read from the source DOM before it is taken and the batch written.
+        // Child membership can change sibling selectors, inherited values and formatting.
+        let invalidation = if batch.changes_children() {
+            None
+        } else {
+            let invalidation = self.invalidation(&batch, theme_css);
+            if let Some(plan) = self.plan(
+                &mut batch,
+                theme_css,
+                None,
+                invalidation.as_ref(),
                 &revision,
-                #[cfg(feature = "engine-bench")]
-                super::super::BuildTimings {
-                    parse: std::time::Duration::ZERO,
-                    style: started.elapsed(),
-                },
-            );
-            return Ok(self.report());
-        }
-        self.rebuild(&batch, theme_css, key, revision)
+            ) {
+                batch.write();
+                self.commit(
+                    plan,
+                    key,
+                    &revision,
+                    #[cfg(feature = "engine-bench")]
+                    super::super::BuildTimings {
+                        parse: std::time::Duration::ZERO,
+                        style: started.elapsed(),
+                    },
+                );
+                return Ok(self.report());
+            }
+            invalidation
+        };
+        crate::paint_path::add(&crate::paint_path::REFUSED_REBUILT, 1);
+        self.rebuild(&mut batch, invalidation, theme_css, key, revision)
             .map_err(ApplyError::Rejected)
     }
 
     /// Записать пакет в исходный DOM и собрать его заново в свежем состоянии.
-    fn rebuild(
+    pub(super) fn rebuild(
         &mut self,
-        batch: &Batch,
+        batch: &mut Batch,
+        invalidation: Option<crate::dom::invalidation::Changed>,
         theme_css: &str,
         key: u64,
         revision: crate::budget::RevisionBudget,
     ) -> Result<BuildReport, DocumentFailure> {
-        // Read from the source DOM before it is taken and the batch written.
-        let invalidation = self.invalidation(batch, theme_css);
         let mut input = self
             .state
             .values
@@ -104,9 +129,9 @@ impl Document {
         let context = input.replace_context(next_context);
         let agent_css = input.agent_css.get();
         batch.write();
-        let refused = |this: &mut Self,
-                       mut failure: DocumentFailure,
-                       mut input: crate::dom::input::Admitted| {
+        let mut refused = |this: &mut Self,
+                           mut failure: DocumentFailure,
+                           mut input: crate::dom::input::Admitted| {
             batch.undo();
             input.replace_context(context.clone());
             input.agent_css.set(agent_css);
@@ -175,25 +200,6 @@ impl Document {
     }
 }
 
-/// Узел стоит в исходном DOM `root` (цепочка родителей доходит до него).
-fn within(node: &Handle, root: &Handle) -> bool {
-    let mut at = node.clone();
-    loop {
-        if Rc::ptr_eq(&at, root) {
-            return true;
-        }
-        let weak = at.parent.take();
-        let parent = weak
-            .as_ref()
-            .and_then(markup5ever_rcdom::WeakHandle::upgrade);
-        at.parent.set(weak);
-        match parent {
-            Some(parent) => at = parent,
-            None => return false,
-        }
-    }
-}
-
 /// Ключ ревизии после записей: прежний ключ, тема и каждая запись (адрес
 /// узла и новое значение).
 fn applied_key(previous: u64, records: &[Mutation], theme_css: &str) -> u64 {
@@ -203,6 +209,22 @@ fn applied_key(previous: u64, records: &[Mutation], theme_css: &str) -> u64 {
     theme_css.hash(&mut hash);
     for record in records {
         match record {
+            Mutation::InsertBefore {
+                parent,
+                child,
+                before,
+            } => {
+                (
+                    3u8,
+                    parent.handle().key(),
+                    child.handle().key(),
+                    before.as_ref().map(|n| n.key()),
+                )
+                    .hash(&mut hash);
+            }
+            Mutation::RemoveChild { parent, child } => {
+                (2u8, parent.key(), child.key()).hash(&mut hash);
+            }
             Mutation::CharacterData { node, data } => {
                 (0u8, Rc::as_ptr(node) as usize, data).hash(&mut hash);
             }

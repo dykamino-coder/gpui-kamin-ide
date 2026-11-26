@@ -6,22 +6,19 @@ use crate::layout::order::{Unkeyed, unkeyed_positioned};
 use std::rc::Rc;
 
 pub(crate) struct Preparation {
-    pub(crate) facts: Rc<SubtreeFacts>,
     pub(crate) unkeyed: Rc<Unkeyed>,
     pub(crate) clearance_possible: bool,
-    /// Сколько подготовок продолжено от последней полной (`continued`).
-    depth: u8,
+    /// The preparation walked the whole tree (`new`), not only copied lists.
+    #[cfg(test)]
+    full: bool,
 }
 
-/// Предел цепочки продолжений: глубже факты собираются полным обходом, чтобы
-/// поиск по слоям и удержанные ими метки снимков не росли с числом правок.
-const MAX_DEPTH: u8 = 4;
+type Snapshot = (u64, Rc<Preparation>);
 
-type Snapshot = ((usize, usize), Rc<Preparation>);
-
-/// Ключ снимка-основы (`continuing`): адрес корневого списка не бывает нулевым,
-/// поэтому основа не совпадает ни с одним деревом и не требует своего поля.
-const BASE: (usize, usize) = (0, 0);
+/// Ключ снимка-основы (`continuing`): номер дерева документа не бывает нулевым
+/// (`Document::tree`), поэтому основа не совпадает ни с одним деревом и не
+/// требует своего поля.
+const BASE: u64 = 0;
 
 #[derive(Default)]
 pub(crate) struct PreparationCache {
@@ -48,37 +45,55 @@ impl PreparationCache {
         }
     }
 
-    /// Только Document гарантирует неизменность корневого списка. Для raw
-    /// render адрес не доказывает неизменность элементов и кэш не применяется.
-    pub(crate) fn get(&self, nodes: &[Node], stable: bool, changed: bool) -> Rc<Preparation> {
-        let key = (nodes.as_ptr() as usize, nodes.len());
+    /// `tree`: номер дерева документа (`Document::tree`), новый у каждого
+    /// дерева; только Document гарантирует неизменность дерева под номером.
+    /// Адрес корневого списка ключом не годится: правка текста, давшая новое
+    /// дерево, может положить его корень по адресу прошлого. Для raw render
+    /// (`None`) кэш не применяется.
+    pub(crate) fn get(&self, nodes: &[Node], tree: Option<u64>, changed: bool) -> Rc<Preparation> {
         let snapshot = self.snapshot.take();
-        let fresh = stable && !changed;
+        let fresh = tree.is_some() && !changed;
+        let key = tree.unwrap_or(BASE);
         let prepared = match snapshot {
             Some((old, prepared)) if fresh && old == key => prepared,
-            Some((BASE, base)) if fresh && base.depth < MAX_DEPTH => {
-                Rc::new(Preparation::continued(&base, nodes))
-            }
+            Some((BASE, base)) if fresh => Rc::new(Preparation::continued(&base, nodes)),
             _ => Rc::new(Preparation::new(nodes)),
         };
-        if stable {
+        if tree.is_some() {
             self.snapshot.set(Some((key, prepared.clone())));
         }
         prepared
     }
+
+    /// The preparation of the last document tree, and whether it was a full walk.
+    #[cfg(test)]
+    pub(crate) fn last(&self) -> Option<(Rc<Preparation>, bool)> {
+        let snapshot = self.snapshot.take();
+        let last = snapshot.as_ref().map(|(_, p)| (p.clone(), p.full));
+        self.snapshot.set(snapshot);
+        last
+    }
+}
+
+#[cfg(test)]
+impl Preparation {
+    /// A full preparation of `nodes`, as a new tree gets it.
+    pub(crate) fn fresh(nodes: &[Node]) -> Self {
+        Self::new(nodes)
+    }
 }
 
 impl Preparation {
-    /// Подготовка дерева той же формы и стилей, что у `base`: факты — слой
-    /// над фактами `base` с записями только для новых списков детей.
+    /// Preparation of a tree of the same shape and styles as `base`. Unchanged
+    /// copy-on-write lists already own their facts; only the copied ones are processed.
     fn continued(base: &Self, nodes: &[Node]) -> Self {
-        let mut facts = SubtreeFacts::overlay(base.facts.clone());
+        let mut facts = SubtreeFacts::default();
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
-            facts: Rc::new(facts),
             unkeyed: base.unkeyed.clone(),
             clearance_possible,
-            depth: base.depth + 1,
+            #[cfg(test)]
+            full: false,
         }
     }
 
@@ -102,9 +117,7 @@ impl Preparation {
         while let Some((e, leave)) = pending.pop() {
             if leave {
                 let flags = facts.list_flags(&e.children);
-                facts
-                    .children
-                    .insert(e.children.identity(), (e.children.mark(), flags));
+                e.children.publish_box_summary(flags);
                 // Конец поддерева исключает собственных потомков из проверки
                 // более позднего позиционированного (CSS2 Appendix E, шаг 8).
                 map.insert(e.node_id, at);
@@ -124,10 +137,10 @@ impl Preparation {
         }
         let clearance_possible = facts.clearance_possible(nodes);
         Self {
-            facts: Rc::new(facts),
             unkeyed: Rc::new((map, last)),
             clearance_possible,
-            depth: 0,
+            #[cfg(test)]
+            full: true,
         }
     }
 }

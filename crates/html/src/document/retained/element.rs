@@ -1,20 +1,13 @@
-//! Элемент сохраняемого кадра: собирает и записывает кадр документа либо
-//! повторяет записанный в прошлом кадре.
-//!
-//! Решение принимается на prepaint, когда известны границы и окружение окна.
-//! Кандидат повтора на раскладке занимает узел того же размера, что коробка
-//! области просмотра; если запись не подошла, дерево собирается здесь же и
-//! раскладывается отдельным корнем в тех же границах. Коробка имеет точный
-//! размер, поэтому её содержимое раскладывается так же, как в потоке.
+//! Draw the prepared root or replay the recorded frame. A host that changes
+//! the placement or skips the document step supplies its final inputs here.
 
-use super::record::Record;
-use super::window_key::WindowKey;
 use super::{Builder, FrameKey, Slot};
+mod build_in;
+mod frame_record;
 use crate::layout::reuse::FlowReuse;
 use gpui::{
-    AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
-    InspectorElementId, IntoElement, LayoutId, Pixels, RetainedPaint, RetainedPrepaint, Style,
-    Window, px, size,
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window,
 };
 use std::rc::Rc;
 
@@ -29,6 +22,18 @@ pub(super) struct Retained {
     /// Кадры, заказанные поддеревом на этом кадре: такой кадр не устоялся.
     scheduled: usize,
     replay: bool,
+    same_prepaint: bool,
+    /// The scroll nodes of the replayed record moved (`prepaint` to `paint`).
+    scroll_plan: Option<gpui::ScrollReplay>,
+    /// The root scrollport's bars and their hit areas this frame, drawn
+    /// after the record (`RootBars`).
+    root_bars: Option<RootBarsNow>,
+    /// Дерево собрано и разложено шагом документа до кадра (`prepared`) для
+    /// элемента документа под этим местом в кадре: коробка области просмотра
+    /// — лист её размера.
+    laid_out: Option<gpui::ElementPlace>,
+    checked: Option<super::prepared::CheckedRoot>,
+    layout_inputs: gpui::RetainedLayoutInputs,
 }
 
 impl Retained {
@@ -37,11 +42,33 @@ impl Retained {
         key: Option<FrameKey>,
         builder: Builder,
         candidate: bool,
+        prepared: Option<super::prepared::Prepared>,
     ) -> Self {
+        if let Some(prepared) = prepared {
+            return Self {
+                slot,
+                key,
+                builder: {
+                    builder.counters.set(prepared.counters);
+                    builder
+                },
+                tree: Some(prepared.tree),
+                flow: prepared.flow,
+                scheduled: prepared.scheduled,
+                replay: false,
+                same_prepaint: false,
+                scroll_plan: None,
+                root_bars: None,
+                laid_out: Some(prepared.parent),
+                checked: Some(prepared.checked),
+                layout_inputs: prepared.layout_inputs,
+            };
+        }
         let (tree, flow) = if candidate {
             (None, None)
         } else {
             slot.builds.set(slot.builds.get() + 1);
+            slot.inside_draw.set(slot.inside_draw.get() + 1);
             let (tree, flow) = builder.build(true, false);
             (Some(tree), flow)
         };
@@ -53,50 +80,13 @@ impl Retained {
             flow,
             scheduled: 0,
             replay: false,
+            same_prepaint: false,
+            scroll_plan: None,
+            root_bars: None,
+            laid_out: None,
+            checked: None,
+            layout_inputs: Default::default(),
         }
-    }
-
-    fn viewport_style(&self) -> Style {
-        let (w, h) = self.builder.opts.viewport;
-        Style {
-            size: size(px(w).into(), px(h).into()),
-            ..Style::default()
-        }
-    }
-
-    /// Дерево не подошло к записи: собрать и разложить в тех же границах.
-    fn build_in(
-        &mut self,
-        bounds: Bounds<Pixels>,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> RetainedPrepaint {
-        let space = size(
-            AvailableSpace::Definite(bounds.size.width),
-            AvailableSpace::Definite(bounds.size.height),
-        );
-        let (_, prepaint) = window.record_retained_prepaint(|window| {
-            // Заместители, отказанные проверкой прошлой сборки, собираются;
-            // если и эта не прошла (другое место корня), то без заместителей.
-            let mut allow = true;
-            loop {
-                self.slot.builds.set(self.slot.builds.get() + 1);
-                let (mut tree, flow) = self.builder.build(allow, true);
-                tree.layout_as_root(space, window, cx);
-                let fits = flow.as_ref().is_none_or(|flow| flow.validate(window));
-                if fits || !allow {
-                    tree.prepaint_at(bounds.origin, window, cx);
-                    self.tree = Some(tree);
-                    self.flow = flow;
-                    return;
-                }
-                if let Some(flow) = &flow {
-                    flow.note_rebuild();
-                }
-                allow = false;
-            }
-        });
-        prepaint
     }
 }
 
@@ -111,15 +101,9 @@ impl Element for Retained {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
-    /// Ключ — записи блоков документа: они переживают правки (новый `Slot`),
-    /// и состояние элемента должно пережить их тоже, чтобы видимые блоки
-    /// повторялись из прошлого кадра (`Store::draw`). Запись кадра чужого
-    /// `Slot` отсеивает `Record::reusable`.
+    /// Use the document store's identity across edits to the element tree.
     fn id(&self) -> Option<ElementId> {
-        Some(ElementId::NamedInteger(
-            "retained-document".into(),
-            Rc::as_ptr(&self.builder.store) as usize as u64,
-        ))
+        Some(super::prepared::document_id(&self.builder.store))
     }
 
     fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
@@ -133,16 +117,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        let before = window.next_frame_callback_count();
-        let id = match self.tree.as_mut() {
-            Some(tree) => {
-                let keys = self.builder.layout_keys;
-                window.with_layout_keys(keys, |window| tree.request_layout(window, cx))
-            }
-            None => window.request_layout(self.viewport_style(), None, cx),
-        };
-        self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-        (id, ())
+        (self.request_viewport_layout(window, cx), ())
     }
 
     fn prepaint(
@@ -155,59 +130,20 @@ impl Element for Retained {
         cx: &mut App,
     ) {
         let Some(id) = id else { return };
-        let key = WindowKey::capture(bounds, window, cx);
-        let root = window.retained_root_environment();
-        window.with_element_state::<Record, _>(id, |record, window| {
-            let before = window.next_frame_callback_count();
-            // Состояние элемента живёт кадр: без него прошлый кадр окна не
-            // рисовал документ, и повтор блоков из него невозможен.
-            self.builder.store.draw(record.is_some());
-            let record = record.filter(|r| r.reusable(&self.slot, &self.key, &key));
-            if let Some(r) = &record
-                && !window.retained_replayable(&r.prepaint, &r.paint)
-            {
-                self.slot.unreplayable.set(true);
-                *self.slot.recorded.borrow_mut() = None;
-            }
-            if self.tree.is_none()
-                && root
-                && !self.slot.unreplayable.get()
-                && let Some(record) = record
-            {
-                self.replay = true;
-                self.builder.store.forget_replays();
-                self.slot.replays.set(self.slot.replays.get() + 1);
-                let prepaint = window.replay_retained_prepaint(&record.prepaint);
-                return ((), Record { prepaint, ..record });
-            }
-            // Заместитель, оказавшийся у экрана, отменяет пропуск: кадр
-            // собирается заново без заместителей (`layout::reuse`).
-            if let Some(flow) = self.flow.as_ref()
-                && self.tree.is_some()
-                && !flow.validate(window)
-            {
-                flow.note_rebuild();
-                self.tree = None;
-            }
-            let prepaint = match self.tree.as_mut() {
-                Some(tree) => {
-                    window
-                        .record_retained_prepaint(|window| tree.prepaint(window, cx))
-                        .1
-                }
-                None => self.build_in(bounds, window, cx),
-            };
-            self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            let record = Record {
-                slot: Rc::downgrade(&self.slot),
-                key: self.key.clone(),
-                window: Some(key),
-                prepaint,
-                paint: RetainedPaint::default(),
-                root,
-                settled: false,
-            };
-            ((), record)
+        if let Some(root) = &self.builder.state.root_scroll {
+            root.hosted.set(true);
+        }
+        self.prepaint_record(id, bounds, window, cx);
+        // After the record: hit areas of the bars at the offset now.
+        let bars = self
+            .builder
+            .state
+            .root_scroll
+            .as_ref()
+            .and_then(|root| root.bars.borrow().clone());
+        self.root_bars = bars.map(|bars| {
+            let hits = bars.prepaint(window);
+            (bars, hits)
         });
     }
 
@@ -222,29 +158,14 @@ impl Element for Retained {
         cx: &mut App,
     ) {
         let Some(id) = id else { return };
-        window.with_element_state::<Record, _>(id, |record, window| {
-            let mut record = record.unwrap_or_default();
-            if self.replay {
-                record.paint = window.replay_retained_paint(&record.paint);
-                return ((), record);
-            }
-            let Some(tree) = self.tree.as_mut() else {
-                return ((), record);
-            };
-            let before = window.next_frame_callback_count();
-            let (_, paint) = window.record_retained_paint(|window| tree.paint(window, cx));
-            if let Some(flow) = &self.flow {
-                flow.finish();
-            }
-            self.scheduled += window.next_frame_callback_count().saturating_sub(before);
-            record.settled = record.root
-                && paint.replayable()
-                && self.scheduled == 0
-                && self.builder.state.values.frame_ready();
-            record.paint = paint;
-            record.settled &= !self.slot.unreplayable.get();
-            *self.slot.recorded.borrow_mut() = self.key.clone().filter(|_| record.settled);
-            ((), record)
-        });
+        self.paint_record(id, window, cx);
+        if let Some((bars, hits)) = self.root_bars.take() {
+            bars.paint(&hits, window);
+        }
     }
 }
+
+type RootBarsNow = (
+    Rc<crate::interactive::scroll_area::RootBars>,
+    Vec<crate::interactive::scrollbars::interaction::HitBar>,
+);

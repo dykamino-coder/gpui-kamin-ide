@@ -15,6 +15,7 @@ pub(super) fn wrap(
         child,
         handle,
         clip,
+        token: Rc::new(()),
     }
     .hooked()
 }
@@ -22,6 +23,8 @@ struct Stationary {
     child: AnyElement,
     handle: ScrollHandle,
     clip: Rc<Cell<Option<ContentMask<Pixels>>>>,
+    /// Identity of the wrapper's scroll anchor for this build.
+    token: Rc<()>,
 }
 impl Wrap for Stationary {
     fn child(&mut self) -> &mut AnyElement {
@@ -29,14 +32,61 @@ impl Wrap for Stationary {
     }
     fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let clip = self.clip.get().unwrap_or_else(|| window.content_mask());
-        window.with_content_mask_replaced(clip, |window| {
-            window.with_exact_element_offset(-self.handle.offset(), |window| {
-                self.child.prepaint(window, cx);
+        // A scroll anchor: a replay that moves the scroller's node cancels the
+        // move for the decorations, as the exact offset below does here (a
+        // fixed box hangs on the viewport the same way, `ViewportAnchor`).
+        let handle = self.handle.clone();
+        let counter: Rc<dyn Fn() -> gpui::Point<Pixels>> = Rc::new(move || -handle.offset());
+        let id = gpui::ScrollNodeId::of_token(&self.token);
+        let (child, shift) = (&mut self.child, -self.handle.offset());
+        window.with_scroll_anchor_prepaint(id, counter, |window| {
+            window.with_content_mask_replaced(clip, |window| {
+                window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));
             });
         });
     }
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let clip = self.clip.get().unwrap_or_else(|| window.content_mask());
-        window.with_content_mask_replaced(clip, |window| self.child.paint(window, cx));
+        let (child, id) = (&mut self.child, gpui::ScrollNodeId::of_token(&self.token));
+        window.with_scroll_node_paint(id, |window| {
+            window.with_content_mask_replaced(clip, |window| child.paint(window, cx));
+        });
+    }
+}
+
+/// Content inside a stationary layer that scrolls with the scroller's
+/// content: a follower node (`gpui::Window::with_scroll_follower_prepaint`)
+/// moves it by the change of the scroller's offset, so a scrolled replay
+/// moves it as a build places it.
+pub(super) fn follow(child: AnyElement, handle: ScrollHandle) -> AnyElement {
+    Follow {
+        child,
+        handle,
+        token: Rc::new(()),
+    }
+    .hooked()
+}
+struct Follow {
+    child: AnyElement,
+    handle: ScrollHandle,
+    /// Identity of the follower node for this build.
+    token: Rc<()>,
+}
+impl Wrap for Follow {
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.child
+    }
+    fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let id = gpui::ScrollNodeId::of_token(&self.token);
+        let along: Rc<dyn Fn(gpui::Point<Pixels>) -> gpui::Point<Pixels>> =
+            Rc::new(|change| change);
+        let child = &mut self.child;
+        window.with_scroll_follower_prepaint(id, Some(&self.handle), along, |window| {
+            child.prepaint(window, cx)
+        });
+    }
+    fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let (child, id) = (&mut self.child, gpui::ScrollNodeId::of_token(&self.token));
+        window.with_scroll_node_paint(id, |window| child.paint(window, cx));
     }
 }

@@ -6,6 +6,8 @@ mod capture;
 mod deferred;
 mod hit_transform;
 mod interaction;
+#[cfg(feature = "work-counters")]
+mod lazy_background;
 mod order;
 mod raster;
 mod raster_background;
@@ -104,3 +106,4 @@ fn assert_phases(events: &Events, tree_order: &[&str], paint_order: &[&str]) {
         assert_eq!(actual, expected, "{phase}");
     }
 }
+mod positioned_list;

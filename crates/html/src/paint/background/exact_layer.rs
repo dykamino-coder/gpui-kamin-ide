@@ -31,6 +31,14 @@ impl PaintGeometry {
     }
 }
 
+type ClipFn = Box<dyn Fn(PaintGeometry, &Window) -> Bounds<Pixels>>;
+
+struct Viewport {
+    token: std::rc::Rc<()>,
+    anchored: bool,
+    clip: ClipFn,
+}
+
 type PaintFn = Box<dyn FnMut(PaintGeometry, &mut Window)>;
 
 pub(crate) struct ExactLayer {
@@ -38,6 +46,9 @@ pub(crate) struct ExactLayer {
     paint: PaintFn,
     exact: Option<Bounds<Pixels>>,
     parent_edges: Option<(Edges<Pixels>, Edges<Pixels>)>,
+    /// `[top, right, bottom, left]` from the parent's padding box.
+    insets: [f32; 4],
+    viewport: Option<Viewport>,
 }
 
 impl ExactLayer {
@@ -59,7 +70,55 @@ impl ExactLayer {
             paint: Box::new(paint),
             exact: None,
             parent_edges: None,
+            insets: [t, r, b, l],
+            viewport: None,
         }
+    }
+
+    /// Keep paint in viewport space while its clip follows the containing box.
+    pub(crate) fn viewport(
+        mut self,
+        anchored: bool,
+        clip: impl Fn(PaintGeometry, &Window) -> Bounds<Pixels> + 'static,
+    ) -> Self {
+        self.viewport = Some(Viewport {
+            token: std::rc::Rc::new(()),
+            anchored,
+            clip: Box::new(clip),
+        });
+        self
+    }
+
+    pub(crate) fn needs_layout(&self) -> bool {
+        self.viewport.is_some()
+    }
+
+    /// The layer's box from its parent's padding box `padding`: what layout
+    /// gives the absolute child (CSS 2.2 §10.3.7, §10.6.4: insets from the
+    /// padding edge), before rounding.
+    pub(crate) fn bounds_in(&self, padding: Bounds<Pixels>) -> Bounds<Pixels> {
+        let [t, r, b, l] = self.insets.map(px);
+        Bounds::from_corners(
+            gpui::point(padding.left() + l, padding.top() + t),
+            gpui::point(padding.right() - r, padding.bottom() - b),
+        )
+    }
+
+    /// Paint the layer at `bounds` without a layout of its own, for a box
+    /// painted again in its scene layer (`document::retained::box_repaint`).
+    /// The caller gives the box layout would give it only when rounding
+    /// leaves it as it is (unrounded and snapped boxes equal), and only for
+    /// layers that read no parent edges (`decorations::Out::exact`: the
+    /// colour layer, which reads them, is an element there).
+    pub(crate) fn paint_at(&mut self, bounds: Bounds<Pixels>, window: &mut Window) {
+        (self.paint)(
+            PaintGeometry {
+                snapped: bounds,
+                exact: None,
+                parent_edges: None,
+            },
+            window,
+        );
     }
 }
 
@@ -92,7 +151,22 @@ impl Hooks for ExactLayer {
             && near(exact.right(), bounds.right())
             && near(exact.bottom(), bounds.bottom()))
         .then_some(exact);
-        self.child.prepaint(window, cx);
+        if let Some(viewport) = &self.viewport {
+            let geometry = PaintGeometry {
+                snapped: bounds,
+                exact: self.exact,
+                parent_edges: self.parent_edges,
+            };
+            let clip = (viewport.clip)(geometry, window);
+            window.with_viewport_content_prepaint(
+                gpui::ScrollNodeId::of_token(&viewport.token),
+                clip,
+                viewport.anchored,
+                |window| self.child.prepaint(window, cx),
+            );
+        } else {
+            self.child.prepaint(window, cx);
+        }
     }
 
     fn paint(
@@ -103,13 +177,20 @@ impl Hooks for ExactLayer {
         window: &mut Window,
         _cx: &mut App,
     ) {
-        (self.paint)(
-            PaintGeometry {
-                snapped: bounds,
-                exact: self.exact,
-                parent_edges: self.parent_edges,
-            },
-            window,
-        );
+        let mut paint = |window: &mut Window| {
+            (self.paint)(
+                PaintGeometry {
+                    snapped: bounds,
+                    exact: self.exact,
+                    parent_edges: self.parent_edges,
+                },
+                window,
+            )
+        };
+        if let Some(viewport) = &self.viewport {
+            window.with_scroll_node_paint(gpui::ScrollNodeId::of_token(&viewport.token), paint);
+        } else {
+            paint(window);
+        }
     }
 }

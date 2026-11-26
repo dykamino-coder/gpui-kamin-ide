@@ -15,7 +15,7 @@ test('interactive transport queues submit without blocking polls or abort', asyn
   const clock = mock.clock(on)
   mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('session.version', () => ({ value: { version: '2.1.322' } }))
+  on('session.version', () => ({ value: { version: '2.1.328' } }))
   let polls = 0
   const submits: unknown[] = [],
     aborts: unknown[] = []
@@ -46,11 +46,39 @@ test('interactive transport queues submit without blocking polls or abort', asyn
   expect(polls).toBeGreaterThanOrEqual(2)
 })
 
+test('an idle transport long-polls and still reports acks at once', async ($, on) => {
+  const clock = mock.clock(on)
+  mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.version', () => ({ value: { version: '2.1.328' } }))
+  let requests = 0
+  let waits = 0
+  const acks: unknown[] = []
+  on('http.fetch', async (_, e) => {
+    const body = JSON.parse(String(e.init?.body ?? '{}'))
+    let commands: unknown[] = []
+    if (!e.url.endsWith('/hello')) requests++
+    if (body.acks?.length) acks.push(...body.acks)
+    if (body.wait) {
+      // The first held poll is answered by a command, later ones stay held.
+      if (++waits === 1) commands = [{ id: 1, kind: 'submit', text: 'held' }]
+      else await clock.sleep(2000)
+    }
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ commands }) } }
+  })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(5000)
+  expect(waits).toBeGreaterThanOrEqual(2)
+  expect(acks).toEqual([{ id: 1 }])
+  // 100 ms polling would have made 50 requests in 5 s.
+  expect(requests).toBeLessThan(20)
+})
 test('unsupported CLI version stays on the legacy path', async ($, on) => {
   mock.env(on, { BRIDGE_CLI_MOD_SOCKET: '/tmp/probe.sock', BRIDGE_CLI_MOD_SESSION: 'probe' })
   let calls = 0
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('session.version', () => ({ value: { version: '2.1.323' } }))
+  on('session.version', () => ({ value: { version: '2.1.328' } }))
   on('http.fetch', () => {
     calls++
     return { deny: 'must not call' }

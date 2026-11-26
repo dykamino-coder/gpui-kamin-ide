@@ -7,6 +7,7 @@
 //! и слежение за выделением. Строки, чьи чернила целиком вне маски, не рисуются (`cull`).
 
 mod cull;
+mod fragments;
 mod rows;
 
 use crate::layout::fragment::line_admission;
@@ -225,15 +226,13 @@ impl Paragraph {
             }
         }
         window.replace_glyph_offset(outer_nudge);
-        // Атом — со своей строкой (той, что держит его место, как в `atom_placement`).
-        for (k, slot) in self.atoms.iter_mut().enumerate().filter(|(_, s)| !s.hidden) {
-            let at = self.atom_boxes.get(k).map(|b| b.at);
-            let row = at.and_then(|at| self.lines.iter().position(|l| at < l.range.end));
-            match row.and_then(|row| bands.get(row)) {
-                Some(&band) => line_admission::paint(window, band, |w| slot.el.paint(w, cx)),
-                None => slot.el.paint(window, cx),
-            }
-        }
+        // A paragraph painted whole still places its lines for the fragments.
+        let placed = cull
+            .is_none()
+            .then(|| cull::Cull::fragments_only(self, &segs, &pads, bounds, window))
+            .flatten();
+        self.write_fragments(cull.as_ref().or(placed.as_ref()), &bands, window);
+        self.paint_atoms(&bands, window, cx);
         for (i, (_, el, _)) in self.overlays.iter_mut().enumerate() {
             if !self.overlay_hidden.get(i).copied().unwrap_or(false) {
                 el.paint(window, cx);

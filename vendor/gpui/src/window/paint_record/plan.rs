@@ -124,18 +124,25 @@ impl PaintPlan {
             match command {
                 Command::Record(record) => {
                     let mask = window.content_mask().scale(window.scale_factor());
+                    // A copy under a scroll node is marked under it (`with_copies_marked`).
                     if presentation.is_none()
-                        && window.next_frame.scene.replay_placed(&record.0.scene, Point::default(), Some(mask.bounds))
+                        && window.with_copies_marked(|window| {
+                            window.replay_placed_carrying(&record.0.scene, Point::default(), Some(mask.bounds))
+                        })
                     {
                         continue;
                     }
-                    let scene = match presentation {
-                        Some(matrix) => present(record.0.scene.copy_record(Point::default(), None), matrix)
-                            .copy_record(Point::default(), Some(mask.bounds)),
-                        None => record.0.scene.copy_record(Point::default(), Some(mask.bounds)),
+                    let Some(matrix) = presentation else {
+                        // Its groups' runs follow the copy (`placed_groups`).
+                        window.with_copies_marked(|window| {
+                            window.place_record_copy(&record.0.scene, Point::default(), mask.bounds)
+                        });
+                        continue;
                     };
+                    let scene = present(record.0.scene.copy_record(Point::default(), None), matrix)
+                        .copy_record(Point::default(), Some(mask.bounds));
                     let scene = window.adopt_scene(scene);
-                    window.next_frame.scene.replay_record(&scene);
+                    window.with_copies_marked(|window| window.next_frame.scene.replay_record(&scene));
                 }
                 Command::Begin(descriptor) => match descriptor.as_ref() {
                     PaintScopeDescriptor::Clip(bounds) => {

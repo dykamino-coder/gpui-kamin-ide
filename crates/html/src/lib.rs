@@ -35,12 +35,18 @@ mod depth_tests;
 pub use kamin_style::budget;
 #[cfg(test)]
 pub mod coverage;
+pub mod paint_path;
+pub mod why;
+/// The memory report's walk state (`Document::heap_report`) for hosts and DevTools.
+#[cfg(feature = "heap-report")]
+pub use kamin_heap as heap;
 pub(crate) use kamin_style::defaults;
 pub use kamin_style::diagnostics;
 pub use kamin_style::work;
 pub(crate) mod hooks;
 pub mod host;
 pub use crate::document::dom;
+pub use dom::NodeKey;
 pub use dom::encoding;
 pub use kamin_font_facts::font_facts;
 pub(crate) use kamin_style::box_facts;
@@ -62,6 +68,7 @@ pub use style::values::value;
 // контракт между фазами, а не API крейта. Наружу выходит только объявленное
 // `pub` в этом файле: `dom`, `render`, `svg`, `tolerance`, `flow`, реэкспорты.
 pub(crate) mod animation;
+pub use animation::clock::{AnimationFrame, AnimationTimeSource};
 pub(crate) use kamin_style::cache;
 #[expect(unused_imports, reason = "корень нижней фазы без верхних читателей")]
 pub(crate) use kamin_style::color;
@@ -91,7 +98,8 @@ pub use layout::fragment::probe::diagnostics::{FragmentProbe, FragmentProbes};
 pub use document::parsed::{Parsed, try_parse as parse, try_parse_media, try_parse_xml};
 pub use document::{
     ApplyError, BuildReport, Document, DocumentBuilder, DocumentFailure, FailureReason,
-    FailureScope, Mutation, RevisionStatus, TraversalKind, TraversalLimit,
+    FailureScope, FrameCounters, Mutation, RevisionStatus, SourceNode, TraversalKind,
+    TraversalLimit, UpdatePhase,
 };
 pub use dom::{Element, Node};
 pub use render::{RenderOpts, render, render_block};

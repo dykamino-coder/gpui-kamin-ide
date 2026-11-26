@@ -8,6 +8,9 @@ use gpui::{Bounds, Pixels, px};
 /// недоступен: автоматическую высоту нельзя восстанавливать по высоте холста.
 #[derive(Clone, Default)]
 pub struct RootArea {
+    /// The root scroller a layer that is not `fixed` follows
+    /// (`scroll_target::canvas_scrolling`); `None` without one.
+    pub(crate) scroll: Option<gpui::ScrollHandle>,
     /// Geometry of the real root box, recorded before the canvas is painted.
     pub(crate) measured: Option<super::root_box::Measurement>,
     /// Поле плюс рамка корня с этой стороны.
@@ -29,6 +32,31 @@ pub struct RootArea {
 }
 
 impl RootArea {
+    /// The canvas a layer covers with its tiles, from the layer's bounds
+    /// `clip` (the viewport). A layer following the root scroller moves with
+    /// the document (CSS Backgrounds 3 §2.11.2), and a replayed step shows
+    /// its content past the viewport of the build: it covers the canvas of
+    /// the whole scroll range at this frame's offset, cut to what its node
+    /// records (the content mask, the node's interest rect), as Blink paints
+    /// the root background over the document rect into the scrolling
+    /// contents. A fixed layer and one without a scroller cover `clip`.
+    pub(crate) fn canvas(
+        &self,
+        fixed: bool,
+        clip: Bounds<Pixels>,
+        window: &gpui::Window,
+    ) -> Bounds<Pixels> {
+        let Some(scroll) = self.scroll.as_ref().filter(|_| !fixed) else {
+            return clip;
+        };
+        let (offset, max) = (scroll.offset(), scroll.max_offset());
+        let whole = Bounds {
+            origin: clip.origin + offset,
+            size: gpui::size(clip.size.width + max.x, clip.size.height + max.y),
+        };
+        whole.intersect(&window.content_mask().bounds)
+    }
+
     pub(crate) fn rect(&self, clip: Bounds<Pixels>) -> Bounds<Pixels> {
         if let Some(bounds) = self.measured.as_ref().and_then(|area| area.get()) {
             return bounds;

@@ -19,6 +19,9 @@ pub struct MeasureOutput {
     pub last_baseline_x: Option<f32>,
     /// X offsets are measured from the final content-box right when true.
     pub baseline_x_from_right: bool,
+    /// KaminIDE patch: the content's extent from the content-box start where it overflows
+    /// `size` (lines longer than the box); it only adds to the scrollable overflow.
+    pub overflow: Option<Size<f32>>,
 }
 
 impl From<Size<f32>> for MeasureOutput {
@@ -30,6 +33,7 @@ impl From<Size<f32>> for MeasureOutput {
             baseline_x: None,
             last_baseline_x: None,
             baseline_x_from_right: false,
+            overflow: None,
         }
     }
 }

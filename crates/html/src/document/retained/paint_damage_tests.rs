@@ -77,11 +77,20 @@ fn a_recoloured_block_keeps_its_record_for_layout_only(cx: &mut TestAppContext) 
     let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
     // The last row recorded is far below the screen: a recoloured block is
     // kept for its layout only there.
+    let last = cx.update(|_, cx| {
+        super::invalidation_tests::flow(view.read(cx).doc.nodes())
+            .iter()
+            .rev()
+            .find_map(|n| match n {
+                crate::dom::Node::Element(e) if e.tag == "div" => Some(e.node_id),
+                _ => None,
+            })
+            .expect("last flow row")
+    });
     let block = store
         .recorded()
         .into_iter()
-        .filter(|e| e.tag == "div")
-        .max_by_key(|e| e.node_id)
+        .find(|e| e.node_id == last)
         .expect("settled blocks were recorded");
     let damage = |e: &crate::dom::Element| store.same_tree(e).map(|(_, damage)| damage);
     assert_eq!(damage(&block), Some(Damage::None));
@@ -107,7 +116,8 @@ fn a_restyle_compares_the_records_at_the_rebuild_and_drops_their_frame_tree(
     let store = cx.update(|_, cx| view.read(cx).doc.reuse.clone());
     let marks: Vec<_> = store.recorded().iter().map(|e| e.children.mark()).collect();
     assert!(marks.len() > 400, "settled blocks were recorded");
-    let html = page("paint", "row");
+    // A text edit beside the restyle rebuilds the document (`revision::plan`).
+    let html = page("paint", "edited");
     cx.update(|_, cx| view.update(cx, |v, _| v.doc.update(&html, "").unwrap()));
     // The records compared at the rebuild hold no block of a frame tree.
     assert!(store.recorded().is_empty(), "a record kept its frame block");

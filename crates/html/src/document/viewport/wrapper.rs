@@ -1,27 +1,16 @@
 //! Анонимный бокс viewport: несёт политику прокрутки корня и цвет холста.
 
-use super::{Computed, Display, Node};
+use super::{Computed, Display, Node, Overflow};
 use crate::style::values::value::Len;
 
 pub(in crate::document) fn wrap(
     nodes: Vec<Node>,
     policy: Option<Computed>,
     canvas: Option<crate::style::values::value::Color>,
+    full_page: bool,
 ) -> Vec<Node> {
     let Some(c) = policy else { return nodes };
-    fn maximum_id(nodes: &[Node]) -> u64 {
-        nodes
-            .iter()
-            .filter_map(|node| match node {
-                Node::Element(e) => Some(e.node_id.max(maximum_id(&e.children))),
-                _ => None,
-            })
-            .max()
-            .unwrap_or(0)
-    }
-    let id = maximum_id(&nodes) + 1;
     let mut viewport = crate::layout::table::anon::anon_element("html-viewport", nodes);
-    viewport.node_id = id;
     let (rtl, writing_mode) = (c.inh.writing.rtl, c.inh.writing.writing_mode);
     viewport.style = {
         let mut with_inherited = Computed {
@@ -30,8 +19,14 @@ pub(in crate::document) fn wrap(
                     display: Some(Display::Block),
                     width: Some(Len::Vw(1.0)),
                     height: Some(Len::Vh(1.0)),
-                    overflow_x: c.reset_box_layout.overflow_x,
-                    overflow_y: c.reset_box_layout.overflow_y,
+                    overflow_x: c
+                        .reset_box_layout
+                        .overflow_x
+                        .or_else(|| full_page.then_some(Overflow::Scroll)),
+                    overflow_y: c
+                        .reset_box_layout
+                        .overflow_y
+                        .or_else(|| full_page.then_some(Overflow::Scroll)),
                     scroll: c.reset_box_layout.scroll.clone(),
                     ..Default::default()
                 },

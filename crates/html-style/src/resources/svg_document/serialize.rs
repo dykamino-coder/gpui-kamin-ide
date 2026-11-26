@@ -9,7 +9,7 @@ mod attributes;
 pub(super) use attributes::write_attributes;
 
 mod sizing;
-pub use sizing::serialize_sized;
+pub use sizing::{serialize_sized, serialize_viewport};
 
 mod filters;
 

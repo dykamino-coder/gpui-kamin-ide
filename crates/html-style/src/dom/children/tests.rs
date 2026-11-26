@@ -3,6 +3,64 @@
 use super::*;
 
 #[test]
+fn box_facts_follow_cow_ownership_and_invalidate_on_mutation_or_publication() {
+    let mut children: Children = vec![Node::Text("old".into())].into();
+    let summary = BoxTreeSummary {
+        floats: true,
+        ..Default::default()
+    };
+    children.publish_box_summary(summary);
+    let old = children.clone();
+    assert_eq!(old.box_summary(), Some(summary));
+    children[0] = Node::Text("changed".into());
+    assert_eq!(children.box_summary(), None);
+    assert_eq!(old.box_summary(), Some(summary));
+    children.publish_box_summary(summary);
+    children.dirty_intrinsic_sizes();
+    assert_eq!(children.box_summary(), None);
+    assert_eq!(old.box_summary(), Some(summary));
+}
+
+#[test]
+fn positioned_facts_are_answered_once_and_forgotten_on_any_change() {
+    let mut children: Children = vec![Node::Text("a".into())].into();
+    let calls = std::cell::Cell::new(0);
+    let ask = |c: &Children, q| {
+        c.positioned_fact(q, |nodes| {
+            calls.set(calls.get() + 1);
+            nodes.len() > 1
+        })
+    };
+    assert!(!ask(&children, PositionedQuery::Positioned));
+    assert!(!ask(&children, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 1);
+    // Other questions have their own answers.
+    assert!(!ask(&children, PositionedQuery::StaysOutsideCb));
+    assert_eq!(calls.get(), 2);
+    let old = children.clone();
+    // Insertion detaches the list: the copy keeps its answer, the new one asks again.
+    children.push(Node::Text("b".into()));
+    assert!(ask(&children, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 3);
+    assert!(!ask(&old, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 3);
+    // Removal and a style change of a node (or a descendant) forget the answer.
+    children.pop();
+    assert!(!ask(&children, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 4);
+    children.dirty_intrinsic_sizes();
+    assert!(!ask(&children, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 5);
+    // A cloned snapshot (copy on write of a shared list) starts empty.
+    let shared = children.clone();
+    children[0] = Node::Text("c".into());
+    assert!(!ask(&children, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 6);
+    assert!(!ask(&shared, PositionedQuery::Positioned));
+    assert_eq!(calls.get(), 6);
+}
+
+#[test]
 fn published_snapshot_releases_builder_capacity_and_still_detaches_on_growth() {
     let mut nodes = Vec::with_capacity(64);
     nodes.push(Node::Text("original".into()));

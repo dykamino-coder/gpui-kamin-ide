@@ -24,7 +24,11 @@
 // Knobs: FAKE_CODEX_LOGGED_IN=1 (start signed in), FAKE_CODEX_LOGIN_DELAY_MS,
 // FAKE_CODEX_LOGIN_FAIL=<error>, FAKE_CODEX_INIT_FAIL=<error> (stderr + exit 2),
 // FAKE_CODEX_START_DELAY_MS (app-server answers nothing for that long),
-// FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error).
+// FAKE_CODEX_THREAD_START_FAIL=<error> (thread/start answers with that error),
+// FAKE_CODEX_CONFIG_EFFORT=<level> (the effort its config sets, like
+// model_reasoning_effort; unset: the model's default `medium`). The model and
+// FAKE_CODEX_UNREPORTED_EFFORT=<level> (like a real app-server: thread/start and\n// thread/resume answer reasoningEffort: null, and a turn without effort runs on\n// this hidden level). The model and\n// effort fields of every thread/turn request go to $CODEX_HOME/fake-state/rpc.jsonl,
+// so tests check what the protocol carried.
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
@@ -46,6 +50,9 @@ const threadsDir = path.join(stateDir, 'threads')
 fs.mkdirSync(threadsDir, { recursive: true })
 const accountFile = path.join(stateDir, 'account.json')
 
+const DEFAULT_EFFORT = 'medium'
+/** What thread/start and thread/resume report as the thread's effort. */
+const reportedEffort = (t) => (process.env.FAKE_CODEX_UNREPORTED_EFFORT ? null : (t.effort ?? DEFAULT_EFFORT))
 const MODELS = [
   { slug: 'gpt-fake', display_name: 'GPT Fake', description: 'Fake default model', is_default: true },
   { slug: 'gpt-fake-mini', display_name: 'GPT Fake Mini', description: 'Fake small model', is_default: false },
@@ -176,7 +183,8 @@ const handlers = {
         { reasoningEffort: 'medium', description: 'medium' },
         { reasoningEffort: 'high', description: 'high' },
       ],
-      defaultReasoningEffort: 'medium',
+      // FAKE_CODEX_NO_DEFAULT_EFFORT=1: a catalog that names no default level.
+      defaultReasoningEffort: process.env.FAKE_CODEX_NO_DEFAULT_EFFORT ? null : 'medium',
       inputModalities: ['text'],
       supportsPersonality: false,
       multiAgentVersion: null,
@@ -197,6 +205,8 @@ const handlers = {
       mcp: mcpFromConfig(p?.config),
       instructions: p?.developerInstructions ?? '',
       turns: 0,
+      // Like codex: a thread runs on its config's effort until a turn sets one.
+      effort: process.env.FAKE_CODEX_UNREPORTED_EFFORT || process.env.FAKE_CODEX_CONFIG_EFFORT || DEFAULT_EFFORT,
     }
     await initializeMcp(t.mcp)
     threads.set(t.id, t)
@@ -204,7 +214,11 @@ const handlers = {
     // that never ran one cannot be resumed by a later app-server.
     if (!process.env.FAKE_CODEX_ROLLOUT_ON_TURN) saveThread(t)
     queueMicrotask(() => notify('thread/started', { thread: { id: t.id } }))
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
+    return {
+      thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
+      model: t.model,
+      reasoningEffort: reportedEffort(t),
+    }
   },
   'thread/resume': async (p) => {
     const loaded = threads.get(p?.threadId)
@@ -216,10 +230,16 @@ const handlers = {
     t.mcp = mcpFromConfig(p?.config) ?? t.mcp
     await initializeMcp(t.mcp)
     if (p?.model) t.model = p.model
-    if (typeof p?.developerInstructions === 'string') t.instructions = p.developerInstructions
+    // Like codex: developer instructions reach the model only with a thread's
+    // initial context. A thread that already ran a turn keeps what it was told.
+    if (typeof p?.developerInstructions === 'string' && !t.turns) t.instructions = p.developerInstructions
     threads.set(t.id, t)
     saveThread(t)
-    return { thread: { id: t.id, model: t.model, cwd: t.cwd, path: null }, model: t.model }
+    return {
+      thread: { id: t.id, model: t.model, cwd: t.cwd, path: null },
+      model: t.model,
+      reasoningEffort: reportedEffort(t),
+    }
   },
   'thread/unsubscribe': (p) => {
     threads.delete(p?.threadId)
@@ -230,14 +250,21 @@ const handlers = {
     if (!t) throw new RpcError(-32600, 'thread not loaded')
     if (t.active) throw new RpcError(-32600, 'turn already running')
     if (p.model) t.model = p.model
-    const turnId = `turn-${++t.turns}`
-    t.active = { id: turnId, interrupted: false, effort: p.effort ?? null, model: t.model }
+    // turn/start.effort applies to this turn and the later ones.
+    if (p.effort) t.effort = p.effort
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
+    t.active = { id: turnId, interrupted: false, effort: t.effort ?? DEFAULT_EFFORT, model: t.model }
     saveThread(t)
-    const text = (p.input ?? []).map((i) => i.text ?? '').join('\n')
+    // Bridge's session context travels as its own input item in front of the message.
+    const parts = (p.input ?? []).map((i) => i.text ?? '')
+    const context = parts.filter((s) => s.startsWith('<bridge_session_context>'))
+    const text = parts.filter((s) => !s.startsWith('<bridge_session_context>')).join('\n')
     // What the thread was told, for /fake-recall (a hidden context block included).
-    ;(t.inputs ??= []).push(text)
+    ;(t.inputs ??= []).push(...context, text)
     saveThread(t)
-    queueMicrotask(() => void runTurn(t, turnId, text))
+    queueMicrotask(() => void runTurn(t, turnId, text, context))
     return { turn: { id: turnId, status: 'inProgress', error: null, items: [] } }
   },
   'turn/steer': (p) => {
@@ -252,6 +279,30 @@ const handlers = {
     if (t?.active && t.active.id === p.turnId) t.active.interrupted = true
     return {}
   },
+  // Context compaction runs as its own turn: no model answer, one
+  // contextCompaction item. Counted so tests can tell it from a text turn.
+  'thread/compact/start': (p) => {
+    const t = threads.get(p?.threadId)
+    if (!t) throw new RpcError(-32600, 'thread not loaded')
+    if (t.active) throw new RpcError(-32600, 'turn already running')
+    // Real codex turn ids are UUIDs, unique across threads (usage rows key on them).
+    t.turns++
+    const turnId = randomUUID()
+    t.active = { id: turnId, interrupted: false, effort: null, model: t.model }
+    t.compactions = (t.compactions ?? 0) + 1
+    saveThread(t)
+    queueMicrotask(() => {
+      notify('turn/started', { threadId: t.id, turn: { id: turnId, status: 'inProgress', error: null, items: [] } })
+      item(t, turnId, { type: 'contextCompaction', id: `compact-${t.compactions}` })
+      t.active = null
+      saveThread(t)
+      notify('turn/completed', {
+        threadId: t.id,
+        turn: { id: turnId, status: 'completed', error: null, items: [], durationMs: 1 },
+      })
+    })
+    return {}
+  },
 }
 
 function item(t, turnId, it, started = true) {
@@ -259,13 +310,9 @@ function item(t, turnId, it, started = true) {
   notify('item/completed', { threadId: t.id, turnId, item: it, completedAtMs: Date.now() })
 }
 
-function userMessage(t, turnId, text) {
-  item(
-    t,
-    turnId,
-    { type: 'userMessage', id: randomUUID(), content: [{ type: 'text', text, text_elements: [] }] },
-    false,
-  )
+function userMessage(t, turnId, text, context = []) {
+  const content = [...context, text].map((s) => ({ type: 'text', text: s, text_elements: [] }))
+  item(t, turnId, { type: 'userMessage', id: randomUUID(), content }, false)
 }
 
 function agentMessage(t, turnId, text) {
@@ -333,10 +380,10 @@ async function callMcp(t, tool, argsJson) {
   return { result: json?.result ?? null }
 }
 
-async function runTurn(t, turnId, text) {
+async function runTurn(t, turnId, text, context = []) {
   const started = Date.now()
   notify('turn/started', { threadId: t.id, turn: { id: turnId, status: 'inProgress', error: null, items: [] } })
-  userMessage(t, turnId, text)
+  userMessage(t, turnId, text, context)
   let status = 'completed'
   let error = null
   try {
@@ -443,6 +490,11 @@ rl.on('line', (line) => {
   if (msg.id === undefined) return // notifications (initialized) and responses
   if (!msg.method) return
   const handler = handlers[msg.method]
+  if (msg.method.startsWith('thread/') || msg.method.startsWith('turn/')) {
+    const { model = null, effort = null, developerInstructions = null } = msg.params ?? {}
+    const record = { method: msg.method, model, effort, instructions: developerInstructions }
+    fs.appendFileSync(path.join(stateDir, 'rpc.jsonl'), JSON.stringify(record) + '\n')
+  }
   if (!handler) {
     send({ id: msg.id, error: { code: -32601, message: `fake-codex: ${msg.method} not implemented` } })
     return

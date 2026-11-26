@@ -10,6 +10,7 @@ pub mod css_syntax;
 pub mod defaults;
 pub mod diagnostics;
 pub mod dom;
+pub mod journal;
 pub mod resources;
 pub mod style;
 pub mod tolerance;

@@ -166,14 +166,15 @@ pub(crate) fn prepare_children(
     let collapsed = if ordered_context {
         reorder(split)
     } else {
-        let facts: &std::cell::RefCell<crate::layout::cx::subtree::SubtreeFacts> =
-            &opts.cx.contracts.subtrees;
         let (unchanged, inline_preparation) = {
-            let mut facts = facts.borrow_mut();
-            (
-                facts.margins_unchanged(&split),
-                !facts.inline_preparation_absent(&split),
-            )
+            let mut facts = crate::layout::cx::subtree::SubtreeFacts::default();
+            match facts.prepared_list(&split) {
+                Some(summary) => (!summary.margins, summary.split_inline),
+                None => (
+                    facts.margins_unchanged(&split),
+                    !facts.inline_preparation_absent(&split),
+                ),
+            }
         };
         let mut out = if unchanged {
             split
@@ -217,6 +218,7 @@ pub(crate) fn prepare_children(
 pub(super) fn container_flags(inherited: &BoxStyle) -> (bool, bool) {
     let under_tf = inherited.reset_transforms.transform_ancestor
         || inherited.reset_transforms.transform.is_some()
+        || inherited.reset_transforms.perspective.is_some()
         || inherited.reset_context.contain_layout == Some(true)
         || inherited.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(inherited)

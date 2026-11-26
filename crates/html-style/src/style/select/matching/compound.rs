@@ -66,6 +66,7 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
             // Состояние ссылки предка (`a:visited span`): то же, что у предмета.
             PseudoKind::Link => node.href.is_some() && !node.visited,
             PseudoKind::Visited => node.href.is_some() && node.visited,
+            PseudoKind::Checked => node.checked,
             _ => is_holds(sel, p, node, &path[..at], sibs).unwrap_or(true),
         })
 }

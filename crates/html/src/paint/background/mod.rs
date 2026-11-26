@@ -36,6 +36,8 @@ pub(crate) mod alpha_sampling;
 mod flat_vector;
 mod oriented_vector;
 mod sampling;
+#[cfg(windows)]
+mod sampling_analytic;
 pub(crate) use sampling::paint_gradient;
 mod mask_composite;
 mod mask_luminance;
@@ -46,7 +48,7 @@ mod clip;
 mod conic;
 mod gradient_raster;
 
-pub(super) mod exact_layer;
+pub(crate) mod exact_layer;
 mod radius_lengths;
 mod tile_positions;
 #[cfg(test)]
@@ -66,123 +68,21 @@ pub use crate::paint::background::tiles::*;
 /// миллионы копий.
 const MAX_TILES: f32 = 2048.0;
 
-/// Слой фона КАНВАСА: плитки меряются коробкой корня, а красят весь холст.
-pub(crate) fn canvas_layer(
-    layer: &crate::style::computed::BgLayer,
-    geometry: std::rc::Rc<Computed>,
-    area: RootArea,
-    vcx: ValueCx<'_>,
-) -> Option<AnyElement> {
-    let values = vcx.keep();
-    layer.image.as_ref()?;
-    let layer = layer.clone();
-    let opaque_borders = std::array::from_fn(|i| geometry.used_border_color(i).a >= 1.0);
-    Some(
-        gpui::canvas(
-            |_, _, _| {},
-            move |clip: Bounds<Pixels>, _, window, _| {
-                let vcx = values.vcx();
-                let bounds = if layer.fixed == Some(true) {
-                    clip
-                } else {
-                    area.rect(clip)
-                };
-                tiles::paint_layer_in(
-                    tiles::LayerPaint {
-                        layer: &layer,
-                        opaque_borders,
-                    },
-                    &geometry,
-                    bounds,
-                    Some(clip),
-                    window,
-                    None,
-                    vcx,
-                );
-            },
-        )
-        .absolute()
-        .top_0()
-        .left_0()
-        .size_full()
-        .into_any_element(),
-    )
-}
+mod canvas_layer;
+pub(crate) use canvas_layer::canvas_layer;
 
 pub(crate) fn layer(
     layer: &crate::style::computed::BgLayer,
     c: &crate::style::computed::BoxStyle,
     vcx: ValueCx<'_>,
 ) -> Option<AnyElement> {
-    let values = vcx.keep();
-    layer.image.as_ref()?;
-    // Одноцветный фон `border-area` несёт краска рамки (`border_paint`):
-    // плитки легли бы на всю коробку. Решают операнды именно этого слоя:
-    // в списке — свой clip слоя, у плитки градиента — его картинка.
-    let background = c.paint_background();
-    let own = if background.layers.is_some() {
-        std::borrow::Cow::Owned(background.layer_operands(layer))
-    } else if background.top == *layer {
-        background
-    } else {
-        std::borrow::Cow::Owned(crate::style::background_paint::BackgroundValues {
-            top: layer.clone(),
-            ..background.into_owned()
-        })
-    };
-    if border_area_fill(&own, vcx).is_some() {
-        return None;
-    }
-    let style = c.style_rc().clone();
-    let opaque_borders = std::array::from_fn(|i| c.used_border_color(i).a >= 1.0);
-    let layer = layer.clone();
-    Some(
-        exact_layer::ExactLayer::inset(
-            c.reset_background.bg_border_insets.unwrap_or([0.0; 4]),
-            move |geometry: exact_layer::PaintGeometry, window: &mut gpui::Window| {
-                let bounds = geometry.snapped;
-                let vcx = values.vcx();
-                clip::paint(&style, layer.clip, bounds, window, |window| {
-                    if layer.fixed == Some(true) {
-                        // Плитка меряется и отсчитывается от ОБЛАСТИ ПРОСМОТРА,
-                        // а красится только внутри своей коробки: сдвиг между
-                        // ними держит сам `paint_tiles`.
-                        let view = Bounds {
-                            origin: gpui::point(px(0.0), px(0.0)),
-                            size: window.viewport_size(),
-                        };
-                        tiles::paint_layer_in(
-                            tiles::LayerPaint {
-                                layer: &layer,
-                                opaque_borders,
-                            },
-                            &style,
-                            view,
-                            Some(bounds),
-                            window,
-                            Some(geometry),
-                            vcx,
-                        );
-                    } else {
-                        tiles::paint_layer_in(
-                            tiles::LayerPaint {
-                                layer: &layer,
-                                opaque_borders,
-                            },
-                            &style,
-                            bounds,
-                            None,
-                            window,
-                            Some(geometry),
-                            vcx,
-                        );
-                    }
-                });
-            },
-        )
-        .hooked(),
-    )
+    exact(layer, c, vcx).map(IntoHooked::hooked)
 }
+
+mod layer;
+pub(crate) use layer::exact;
+mod fixed_layer;
+mod paint_box;
 
 // --- Сплошная заливка ----------------------------------------------------
 //

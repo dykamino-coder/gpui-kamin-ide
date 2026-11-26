@@ -12,6 +12,8 @@ pub(crate) struct Record {
     pub(super) key: Rc<FlowKey>,
     pub(super) start: Counters,
     pub(super) end: Counters,
+    /// Recorded numbers are local to this subtree.
+    pub(super) relative_counters: bool,
     /// The exact leaf; `None` until the record is sealed (`recorder`).
     pub(super) snapshot: Cell<Option<LayoutSnapshot>>,
     /// Чернила относительно точного начала коробки; `None` — ничего не рисовал.
@@ -49,14 +51,17 @@ impl Record {
             key: self.key.clone(),
             start: self.start,
             end: self.end,
+            relative_counters: self.relative_counters,
             snapshot: self.snapshot.clone(),
             ink: self.ink.clone(),
             resizable: self.resizable.clone(),
             stretch: self.stretch.clone(),
             far: self.far.clone(),
+            // Copied: a frame refused and built again finds this record by its
+            // block once more (`FlowReuse::again`).
             replay: RefCell::new(match repaint {
                 true => None,
-                false => self.replay.take(),
+                false => self.replay.borrow().clone(),
             }),
             repaint: Cell::new(self.repaint.get() || repaint),
             kept: Cell::new(false),
@@ -74,6 +79,15 @@ impl Record {
         }
     }
 
+    /// Counter state after substituting the block at this build's origin.
+    pub(super) fn end_at(&self, start: Counters, same_paint: bool) -> Option<Counters> {
+        if start == self.start {
+            return Some(self.end);
+        }
+        (self.relative_counters && same_paint && !self.repaint.get())
+            .then(|| start.advanced(self.start, self.end))
+    }
+
     /// Запись годна в потоке ключа `key` другой ширины.
     pub(super) fn fits_width(&self, key: &FlowKey) -> bool {
         match self.resizable.get() {
@@ -89,6 +103,6 @@ impl Record {
         self.replay
             .borrow()
             .as_ref()
-            .is_some_and(|r| r.epoch == epoch)
+            .is_some_and(|r| r.available(&flow.store, epoch))
     }
 }

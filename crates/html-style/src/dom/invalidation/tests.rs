@@ -55,6 +55,31 @@ fn arguments_and_attribute_selectors_read_their_names() {
 }
 
 #[test]
+fn an_unparsed_selector_reads_a_name_only_as_a_whole_identifier() {
+    for (raw, read) in [
+        ("backdrop", false),
+        ("nth-child(2 of .b)", true),
+        ("nth-child(2 of .a-b)", false),
+        ("is(.B, p)", true),
+        ("not([data-b])", false),
+        ("x\\62", false),
+        ("is(.\\62 )", true),
+        ("where(.a\\.5>:not(:checked))", false),
+    ] {
+        let changed = Changed {
+            elements: vec![1],
+            classes: vec!["b".into()],
+            attrs: vec!["class".into()],
+        };
+        let mut sel = crate::style::css::parse_stylesheet("p{color:red}").unwrap()[0]
+            .sel
+            .clone();
+        sel.also = vec![raw.into()];
+        assert_eq!(reads(&sel, &changed), read, "{raw}");
+    }
+}
+
+#[test]
 fn a_dependent_rule_without_subject_features_restyles_anything() {
     for css in [
         ".alt *{color:red}",
@@ -78,4 +103,29 @@ fn many_restyled_elements_give_up_the_set() {
         restyled(".alt p{color:red}", alt_on(99), &tree[..LIMIT]).map(|v| v.len()),
         Some(LIMIT + 1)
     );
+}
+
+#[test]
+fn checked_state_dependencies_restyle_subjects_after_owner_changes() {
+    for attr in [
+        "form", "id", "name", "checked", "selected", "size", "multiple", "type", "disabled",
+    ] {
+        let changed = Changed {
+            elements: vec![4],
+            classes: vec![],
+            attrs: vec![attr.into()],
+        };
+        for css in [
+            "p:checked{color:red}",
+            "p:has(:checked){color:red}",
+            "p:is(:checked){color:red}",
+            "p:not(:checked){color:red}",
+        ] {
+            assert_eq!(
+                restyled(css, changed.clone(), &TREE),
+                Some(vec![4, 1, 2]),
+                "{attr}: {css}"
+            );
+        }
+    }
 }

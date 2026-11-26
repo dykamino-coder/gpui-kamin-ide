@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { register } from '../../cli-mod/hooks/bridge.js'
+import { register } from '../../cli-mod/hooks/bridge-conditions.js'
 
 type Handler = ($: any, e: any, next: any) => any
 function moduleHandlers() {
@@ -45,7 +45,7 @@ async function activeModule() {
           BRIDGE_CLI_MOD_HOOK_CONDITIONS: '1',
         })[key],
     },
-    session: { version: async () => ({ version: '2.1.322' }) },
+    session: { version: async () => ({ version: '2.1.328' }) },
     clock: { now: async () => 1, every: vi.fn() },
     fs: { read: vi.fn() },
     http: {

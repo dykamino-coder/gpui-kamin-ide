@@ -1,4 +1,5 @@
 import type { JsonlEntryData } from '../types/jsonl'
+import { contentWithThinkingDuration } from '../components/jsonl-viewer/thinking-duration'
 import { orderEntries } from './order-entries'
 
 /** A CLI message is persisted as one UUID-bearing row per content block.
@@ -22,7 +23,7 @@ export function mergeAssistantEntry(target: JsonlEntryData, incoming: JsonlEntry
     timestamp: first.timestamp,
     message: {
       ...last.message!,
-      content: parts.flatMap(part => Array.isArray(part.message?.content) ? part.message.content : []),
+      content: parts.flatMap(contentWithThinkingDuration),
     },
     __streaming: undefined,
     __assistantParts: parts,

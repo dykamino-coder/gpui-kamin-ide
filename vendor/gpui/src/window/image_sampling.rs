@@ -29,6 +29,26 @@ impl Window {
         grayscale: bool,
         sampling: ImageSampling,
     ) -> Result<()> {
+        self.paint_image_with_sampling_tile(
+            bounds,
+            corner_radii,
+            data,
+            frame_index,
+            grayscale,
+            sampling,
+        )
+        .map(|_| ())
+    }
+
+    pub(super) fn paint_image_with_sampling_tile(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        data: Arc<RenderImage>,
+        frame_index: usize,
+        grayscale: bool,
+        sampling: ImageSampling,
+    ) -> Result<Option<AtlasTile>> {
         self.invalidator.debug_assert_paint();
         let scale_factor = self.scale_factor();
         let bounds = bounds.scale(scale_factor);
@@ -41,18 +61,18 @@ impl Window {
             .get_or_insert_with(params.into(), &mut || {
                 Ok(Some((
                     data.size(frame_index),
-                    Cow::Borrowed(
-                        data.as_bytes(frame_index)
-                            .expect("It's the caller's job to pass a valid frame index"),
-                    ),
+                    data.upload_bytes(frame_index).ok_or_else(|| anyhow::anyhow!("image pixels unavailable"))?,
                 )))
             })?
             .expect("Callback above only returns Some");
+        let lease = self.image_uploads.lease(&self.sprite_atlas, &data, frame_index);
         let content_mask = self.content_mask().scale(scale_factor);
         let corner_radii = corner_radii.scale(scale_factor);
         let opacity = self.element_opacity();
         let transformation = self.current_transformation();
-        self.next_frame.scene.insert_primitive(PolychromeSprite {
+        let before = self.next_frame.scene.len();
+        // Under the open scroll node like every primitive (`insert_scene_primitive`).
+        self.insert_scene_primitive(PolychromeSprite {
             transformation,
             order: 0,
             pad: u32::from(matches!(
@@ -77,6 +97,11 @@ impl Window {
             tile,
             opacity,
         });
-        Ok(())
+        if self.next_frame.scene.len() > before {
+            self.next_frame.scene.keep_image(tile, lease);
+            Ok(Some(tile))
+        } else {
+            Ok(None)
+        }
     }
 }

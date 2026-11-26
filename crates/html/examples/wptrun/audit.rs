@@ -119,6 +119,14 @@ impl FrameCaptureSink for Endpoint {
         drop(value);
         self.inner.completed(frame, readback);
     }
+
+    fn copied(&mut self, copy: Duration) {
+        self.inner.copied(copy);
+    }
+
+    fn waited(&mut self, wait: Duration) {
+        self.inner.waited(wait);
+    }
 }
 
 #[cfg(test)]

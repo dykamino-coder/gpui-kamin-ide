@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CodexRuntime, codexStatus, codexUnavailableReason, parseCodexVersion } from './codex-runtime'
 import { codexStatusRow } from '../../ui/src/components/dashboard/codex-account-model'
+import { classifyCodexError, type CodexErrorInfo } from './codex-errors'
+import type { CodexNetworkReport } from './network-probe'
 
 describe('codex availability', () => {
   it('parses the version line of codex --version', () => {
@@ -75,15 +77,21 @@ describe('codex availability', () => {
   })
 })
 
+function report(problem: CodexErrorInfo | null): CodexNetworkReport {
+  return { checkedAt: 0, viaProxy: true, customCa: false, hosts: [], problem }
+}
+
 describe('codex account read that fails on the network', () => {
   const blocked = () => Promise.reject(new Error('workspace routing discovery failed'))
 
   it('names the proxy or TLS cause found by the probe and marks the state unknown', async () => {
-    const probeNetwork = vi.fn(async () => ({
-      kind: 'proxy-auth' as const,
-      message: 'The corporate proxy requires authentication (HTTP 407).',
-      detail: 'Proxy response (407) !== 200 when HTTP Tunneling',
-    }))
+    const probeNetwork = vi.fn(async () =>
+      report({
+        kind: 'proxy-auth',
+        message: 'The corporate proxy requires authentication (HTTP 407).',
+        detail: 'Proxy response (407) !== 200 when HTTP Tunneling',
+      }),
+    )
     const runtime = new CodexRuntime({ home: '/tmp/bridge-codex-test', env: {}, startHost: blocked, probeNetwork })
     const status = await runtime.accountStatus()
     expect(status.loggedIn).toBe(false)
@@ -101,10 +109,35 @@ describe('codex account read that fails on the network', () => {
       home: '/tmp/bridge-codex-test',
       env: {},
       startHost: blocked,
-      probeNetwork: async () => null,
+      probeNetwork: async () => report(null),
     })
     const status = await runtime.accountStatus()
     expect(status.checkFailed).toBe(true)
     expect(status.error?.detail).toBe('workspace routing discovery failed')
+  })
+
+  it('names who refused a bare 403 at sign-in, and shares one probe across asks', async () => {
+    const denied = {
+      kind: 'proxy-denied' as const,
+      message: 'The proxy refuses auth.openai.com.',
+      detail: 'auth.openai.com: HTTP 403 without cf-ray',
+    }
+    const probeNetwork = vi.fn(async () => report(denied))
+    const runtime = new CodexRuntime({ home: '/tmp/bridge-codex-test', env: {}, startHost: blocked, probeNetwork })
+    const info = await runtime.explainFailure(
+      classifyCodexError('device code request failed with status 403 Forbidden'),
+    )
+    expect(info).toEqual({
+      kind: 'proxy-denied',
+      message: denied.message,
+      detail: `device code request failed with status 403 Forbidden; ${denied.detail}`,
+    })
+    await runtime.networkReport()
+    expect(probeNetwork).toHaveBeenCalledTimes(1)
+    // A cause codex already names is not re-probed.
+    expect((await runtime.explainFailure(classifyCodexError('407 Proxy Authentication Required'))).kind).toBe(
+      'proxy-auth',
+    )
+    expect(probeNetwork).toHaveBeenCalledTimes(1)
   })
 })

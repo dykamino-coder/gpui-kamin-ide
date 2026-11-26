@@ -48,7 +48,9 @@ extern crate markup5ever;
 extern crate tendril;
 
 pub mod admission;
+mod node_key;
 mod selection;
+pub use node_key::NodeKey;
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
@@ -61,7 +63,6 @@ use std::rc::{Rc, Weak};
 
 use tendril::StrTendril;
 
-use markup5ever::interface::tree_builder;
 use markup5ever::interface::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
 use markup5ever::serialize::TraversalScope;
 use markup5ever::serialize::TraversalScope::{ChildrenOnly, IncludeNode};
@@ -131,22 +132,19 @@ pub struct Node {
     payload_lease: RefCell<admission::Lease>,
     _logical_node: admission::Lease,
     _node_lease: admission::Lease,
+    // Номер, выданный документом; ноль у узла вне документа (node_key.rs).
+    key: Cell<NodeKey>,
 }
 
 impl Node {
     /// Create a new node from its contents
     pub fn new(data: NodeData) -> Rc<Self> {
-        Rc::new(Node {
+        admission::infallible(Self::try_new(
             data,
-            parent: Cell::new(None),
-            children: RefCell::new(Vec::new()),
-            drop_next: RefCell::new(None),
-            children_lease: RefCell::new(None),
-            attrs_lease: RefCell::new(None),
-            payload_lease: RefCell::new(None),
-            _logical_node: None,
-            _node_lease: None,
-        })
+            None,
+            &admission::Unbounded,
+            NodeKey::NONE,
+        ))
     }
 
     fn parent(&self) -> Option<WeakHandle> {
@@ -253,7 +251,7 @@ pub struct WeakHandle {
 }
 
 impl WeakHandle {
-    fn new(node: &Handle) -> Self {
+    pub fn new(node: &Handle) -> Self {
         Self {
             weak: Rc::downgrade(node),
             _allocation: node._node_lease.clone(),
@@ -289,6 +287,7 @@ pub struct RcDom {
     pub quirks_mode: Cell<QuirksMode>,
     errors_lease: RefCell<admission::Lease>,
     errors_owned: RefCell<admission::Work<admission::Lease>>,
+    keys: node_key::Keys,
 }
 
 impl TreeSink for RcDom {
@@ -428,13 +427,7 @@ impl TreeSink for RcDom {
 
 impl Default for RcDom {
     fn default() -> RcDom {
-        RcDom {
-            document: Node::new(NodeData::Document),
-            errors: Default::default(),
-            quirks_mode: Cell::new(tree_builder::NoQuirks),
-            errors_lease: RefCell::new(None),
-            errors_owned: RefCell::new(admission::Work::new()),
-        }
+        admission::infallible(Self::try_new(&admission::Unbounded))
     }
 }
 

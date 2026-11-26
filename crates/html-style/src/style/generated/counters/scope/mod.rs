@@ -21,6 +21,7 @@ impl Counters {
     /// Page and margin contexts obscure the entire document chain of this name.
     /// CSS Paged Media 3 §page-based-counters; Blink GetCounterValues:356-377.
     pub fn obscure(&mut self, name: &str, value: i64) {
+        self.read_outside();
         self.stack.remove(name);
         self.reset(name, value);
     }
@@ -63,6 +64,42 @@ impl Counters {
         self.quotes.push((depth, value));
     }
 
+    /// The exit from a node with its own `counter-reset` (Blink
+    /// `RemoveCounterIfAncestorExists`): when the stack holds a counter of an
+    /// ANCESTOR under it (or of an ancestor's earlier sibling, not of its own
+    /// sibling), the following siblings inherit that one, and its own is
+    /// dropped. Otherwise `<span style="counter-reset: c 98">` inside
+    /// `#test { counter-reset: c }` would go on counting for the following
+    /// siblings (`counter-001`: `99 13 14`, not `99 100 101`).
+    pub(super) fn drop_shadowed_reset(&mut self, name: &str) {
+        let isolated = self.outside.is_some();
+        let cur = &self.path;
+        let Some(st) = self.stack.get_mut(name) else {
+            return;
+        };
+        if st.last().is_none_or(|e| e.owner != *cur) {
+            return;
+        }
+        if st.len() < 2 {
+            // An isolated walk does not see the counter it may shadow: what
+            // reads or updates this one later depends on the outside.
+            if isolated && let Some(own) = st.last_mut() {
+                own.outside = true;
+            }
+            return;
+        }
+        let prev = &st[st.len() - 2].owner;
+        if let Some(root) = self.boundaries.last()
+            && !(prev.len() > root.len() && super::covers(root, prev))
+        {
+            return;
+        }
+        let pp = super::parent(prev);
+        if super::covers(prev, cur) || (super::covers(pp, cur) && pp != super::parent(cur)) {
+            st.pop();
+        }
+    }
+
     /// Выход из коробки на глубине `depth`: её `quotes` и язык кончаются
     /// вместе с её поддеревом (стек синхронен обходу, как в Blink).
     pub(super) fn leave_quote_scope(&mut self, depth: usize) {
@@ -86,6 +123,8 @@ impl Counters {
         emit: bool,
         own: Option<&Option<Vec<(String, String)>>>,
     ) -> String {
+        // The depth and the `quotes` in force come from the walk before.
+        self.read_outside();
         let depth = if open {
             self.quote_depth += 1;
             self.quote_depth - 1

@@ -26,6 +26,9 @@ export interface WsMsgSessionCreate {
    *  system prompt (buildSystemPrompt) — never replaces it. Rides the session
    *  message so nothing has to be stored or synced server-side. */
   basePrompt?: string
+  /** Thinking display for this chat's CLI (INC-2026-0098): `summarized`
+   *  (the default) returns readable thinking, `updates` keeps the CLI's own. */
+  thinkingDisplay?: 'summarized' | 'updates'
   /** Absolute dir where THIS client mirrors the full transcript (one
    *  `<conversationId>.jsonl` per conversation). Embedded in the CLI system
    *  prompt so Claude can read its own history via the user-tools file MCP,
@@ -121,6 +124,8 @@ export interface WsMsgSessionResume {
    *  prompt too — otherwise the instructions would only ever reach brand-new
    *  sessions and silently vanish on every reconnect. */
   basePrompt?: string
+  /** See WsMsgSessionCreate. */
+  thinkingDisplay?: 'summarized' | 'updates'
   /** See WsMsgSessionCreate. */
   transcriptMirrorDir?: string
   /** See WsMsgSessionCreate. */
@@ -235,6 +240,9 @@ export type ClientToServerMsg =
   | WsMsgSessionInput
   | WsMsgSessionInterrupt
   | { type: 'session:submission-action'; id: string; action: 'cancel' | 'push' | 'interrupt' }
+  /** The user started typing in a chat reported `hibernation: 'asleep'`:
+   *  start its CLI now (behind wakes that already carry a message). */
+  | { type: 'session:warm' }
   | WsMsgSessionSubmitText
   | WsMsgSessionResize
   | WsMsgMcpResponse
@@ -401,6 +409,9 @@ export interface WsMsgSessionActivity {
   lastMessage?: string
   /** Notification hook: the message the CLI is waiting on. */
   notificationMessage?: string
+  /** Idle hibernation: `asleep` — the CLI is stopped and the next message
+   *  resumes it; `waking` — it is starting; `awake` — the new CLI is up. */
+  hibernation?: 'asleep' | 'waking' | 'awake'
 }
 
 /** Server sends raw JSONL file content for download */

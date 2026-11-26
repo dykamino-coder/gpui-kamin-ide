@@ -1,5 +1,96 @@
 # Runtime backlog: что осталось и как продолжать
 
+## Acceptance on the published KaminIDE 1.0.127 — 2026-11-26
+
+Acceptance by the release executor `rel128` on the payload of the
+`kaminide-v1.0.127` release installer (own hidden copy, empty profile, in-app
+probe only). The details are in the card's dated section.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0128](runtime-issues/INC-2026-0128.md) | passed: 30 rounds of new session, two files, delete: 272.4 → 273.6 MB from round 10 to 30, 0.04 MB per round | done (accepted 2026-11-26) |
+
+## Acceptance on the published KaminIDE 1.0.121 — 2026-11-20
+
+Acceptance by the executor `kacc26` on a private copy of the installed
+`kaminide-v1.0.121` (own profile, hidden desktop) and source tests on the
+`kaminide-v1.0.121` tree. Stubs only, no real model. The details are in each
+card's dated section. Closing a card as `done` is the maintainer's decision.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0122](runtime-issues/INC-2026-0122.md) | passed: WM_CLOSE 10/10 within 0.42 s, close button 10/10 within 0.57 s, CPU under 60 %, relaunch normal | maintainer decision |
+| [INC-0089](runtime-issues/INC-2026-0089.md) | passed: automated LSP label tests | Linux Podman run |
+| [INC-0090](runtime-issues/INC-2026-0090.md) | passed: automated TabManager tests | Linux Podman run, stdio reproducer |
+| [INC-0098](runtime-issues/INC-2026-0098.md) | passed: automated render tests | live session with a real model |
+| [INC-0101](runtime-issues/INC-2026-0101.md) | passed: automated queue tests | maintainer decision |
+| [INC-0102](runtime-issues/INC-2026-0102.md) | automated part passed | live `/resume` with a real CLI |
+| [INC-0125](runtime-issues/INC-2026-0125.md) | automated part passed | live server restart 3/3 |
+| [INC-0015](runtime-issues/INC-2026-0015.md) | automated part passed | isolated dashboard runtime |
+| [INC-0016](runtime-issues/INC-2026-0016.md) | automated part passed | reconciliation with the acceptance list |
+| [INC-0019](runtime-issues/INC-2026-0019.md) | automated part passed | Linux WS and Windows save/progress gates |
+| [INC-0051](runtime-issues/INC-2026-0051.md) | automated part passed | Windows link activation |
+
+No card failed in this run.
+
+## Acceptance on the published KaminIDE 1.0.116 / server 6.3.193 — 2026-11-19
+
+Live acceptance by the executor `kacc18` on the installed release
+`kaminide-v1.0.116` (`a52709b9`) and the acceptance container on 6.3.193.
+The details are in each card's dated section. Closing a card as `done` is the
+maintainer's decision after review; this run only records results.
+
+| Card | Result | Remaining |
+| --- | --- | --- |
+| [INC-0110](runtime-issues/INC-2026-0110.md) | passed: first frame 2.3 s on a cold profile copy, one HTML per view (16/16) | done (accepted 2026-11-19) |
+| [INC-0111](runtime-issues/INC-2026-0111.md) | passed: two concurrent profiles, each wrote only its own `globalStorage`, home Bridge files untouched | done (accepted 2026-11-19) |
+| [INC-0112](runtime-issues/INC-2026-0112.md) | passed: stdio server via `C:\Program Files\nodejs\node.exe` with spaced script path and argument connected | done (accepted 2026-11-19) |
+| [INC-0073](runtime-issues/INC-2026-0073.md) | passed: no `KAMIN_CEF_FORCE_SW`, hardware profile, chat and Console draw | done (accepted 2026-11-19) |
+| [INC-0074](runtime-issues/INC-2026-0074.md) | passed: not-found notice, input disabled, no server session, Retry keeps id, Start new creates one | done (accepted 2026-11-19) |
+| [INC-0063](runtime-issues/INC-2026-0063.md) | passed: narration between tool groups in chat matches Console | done (accepted 2026-11-19) |
+| [INC-0088](runtime-issues/INC-2026-0088.md) | passed: final multi-block reply starts with the same sentence in chat and Console | done (accepted 2026-11-19) |
+| [INC-0072](runtime-issues/INC-2026-0072.md) | passed: `project_sessions_list` answered in an ordinary turn | done (accepted 2026-11-19) |
+| [INC-0081](runtime-issues/INC-2026-0081.md) | passed on the stand: resumed conversation after container recreation, no hook errors | verify: production observation remains (lead/owner) |
+| [INC-0071](runtime-issues/INC-2026-0071.md) | observation: `emptyWindowWithRows` 0 over 17 renders | BR-22 classification |
+| [INC-0079](runtime-issues/INC-2026-0079.md) | partial: wheel reaches the alternate-screen CLI | rest of the native gate |
+
+Not checkable on the local stand: INC-0023 and INC-0025 need sleep, RDP and
+DPI transitions of the only machine. INC-0041, 0042 (field part), 0044, 0054,
+0091, 0092 and 0114 need the deployment owner's environment or production
+use. INC-0055 needs IPC fault injection that the release build does not have.
+INC-0117 and INC-0078 belong to the lead's engine batch and reconciliation.
+Not run in this batch: INC-0015, 0016, 0019, 0053, 0064, 0070, 0089, 0090 and
+0093 (the next acceptance run).
+
+## KaminIDE 1.0.104 delivery: large tool results reach the model — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`41099983f57815c0963389a5deea129bd6188cb1` (release #945):
+[KaminIDE 1.0.104](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.104)
+/ server 6.3.181 is published. The ancestry of #943 (`2f7b0c22`) in the tag and the
+published Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.181@sha256:ca75abffe54c10e66b2fa511b4f4e1428d69e1b62f39440560152fb38883fdf1`.
+[INC-0121](runtime-issues/INC-2026-0121.md) is resolved for its accepted scope.
+The exact-head live run on `7a0c80de` read a 200 KB file inline, got head, tail
+and a client path for `seq 1 200000` and read that path back, and saw the Grep
+pagination marker ([private evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/pull/201)).
+Codex sessions were not exercised live. Publication is not acceptance in the
+owner's environment.
+## KaminIDE 1.0.103 delivery: message sent during reconnect — 2026-11-15
+
+Delivery reconciliation 2026-11-15, source `origin/main`
+`5a7919a3c29ee76b9c340d06592705bd988914be` (release #941):
+[KaminIDE 1.0.103](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.103)
+/ server 6.3.180 is published. The ancestry of #938 in the tag and the published
+Release were checked; the image is
+`docker.io/dykamino/open-claude-bridge:6.3.180@sha256:b61ee7b41f76ca18ecc7c19616f0f20869bc8f8e4ef1d42791b8c6917cb8cf2b`.
+[INC-0120](runtime-issues/INC-2026-0120.md) is resolved for its accepted scope.
+The exact-head gate on `eaa6d51f` showed red on 1.0.102 ("Queued", no answer)
+and green on the candidate (text restored to the message box, a single answer
+after resend). The release candidate `ba850cbf` repeated it against a server
+built from the release commit ([private gate evidence](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/5c9d20d9078b0171cb546fdaffaaea1cf075fba3/incidents/INC-2026-0120/evidence/2026-11-15-pr938-gate-eaa6d51f)).
+The browser-workspace part is covered by automated tests only. Publication is
+not acceptance in the owner's environment.
 ## KaminIDE 1.0.102 delivery: first message after a server restart — 2026-11-15
 
 Delivery reconciliation 2026-11-15, source `origin/main`

@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[path = "group_visible.rs"]
+mod visible;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Region {
     pub x: u32,
@@ -47,6 +50,14 @@ impl Region {
         }
     }
 
+    /// The two rectangles share a pixel.
+    pub(super) fn meets(self, o: Self) -> bool {
+        self.x < o.x + o.width
+            && o.x < self.x + self.width
+            && self.y < o.y + o.height
+            && o.y < self.y + self.height
+    }
+
     pub(super) fn floats(self) -> [f32; 4] {
         [
             self.x as f32,
@@ -62,13 +73,49 @@ impl Region {
         } else {
             0.0
         };
-        // Проекция читает исходные пиксели через H^-1, включая область вне рамки.
-        let raw = if group.projection.is_some() {
-            Self::full(width, height)
-        } else {
-            Self::clipped(group.bounds, margin + 2.0, width, height)
-        };
+        // Source uses raster space; the projection maps the frame into it.
+        let bounds = visible::source(group, width, height);
+        let raw = Self::clipped(bounds, margin + 2.0, width, height);
         [raw, Self::clipped(group.bounds, margin, width, height)]
+    }
+}
+
+/// KaminIDE patch: a group composite's clip and geometry cut to what its
+/// image can cover (`footprint`). A plane mark is placed under the content
+/// mask of its 3D context, about the whole window
+/// (`Window::insert_plane_mark`), and the composite pass ran over all of it:
+/// on WARP each face of a cube cost a window of pixels. The pixels
+/// left out sample no source and take no colour, and the cut edges are whole
+/// pixels, so the frame is the same; cc and WebRender bound a render
+/// surface's composite the same way, by its content's projected bounds
+/// within the clip, not by the viewport.
+pub(super) fn narrow_composite(q: &mut BlurQuad, vw: f32, vh: f32) {
+    let Some(f) = visible::footprint(q, vw, vh) else {
+        return;
+    };
+    // The clip keeps the pixels; the bounds are the geometry rasterized (a
+    // clip distance discards pixels only after WARP walked them). Rounded
+    // bounds shade their own edge, so only a square composite (a plane's)
+    // moves them: its edge then lies 2 px beyond every pixel with a source.
+    cut_to(&mut q.content_mask, f);
+    if q.corner_radii.iter().all(|&r| r == 0.0) {
+        cut_to(&mut q.bounds, f);
+    }
+}
+
+/// `r` (x, y, w, h) cut to `f` (x0, y0, x1, y1), an edge it does not move
+/// keeping its float; empty: zero width.
+fn cut_to(r: &mut [f32; 4], f: [f32; 4]) {
+    for (k, (lo, hi)) in [(f[0], f[2]), (f[1], f[3])].into_iter().enumerate() {
+        let end = r[k] + r[k + 2];
+        let (start, stop) = (r[k].max(lo), end.min(hi));
+        if start >= stop {
+            r[2] = 0.0;
+            return;
+        }
+        if start != r[k] || stop != end {
+            (r[k], r[k + 2]) = (start, stop - start);
+        }
     }
 }
 
@@ -76,7 +123,14 @@ impl DirectXRenderer {
     /// Frame rectangle a group composite can write (and whose backdrop it reads).
     pub(super) fn composite_region(&self, s: &PaintSurface) -> Region {
         let target = Region::full(self.width, self.height);
-        let clipped = s.bounds.intersect(&s.content_mask.bounds);
+        let mut clipped = s.bounds.intersect(&s.content_mask.bounds);
+        if s.group > 0 {
+            if let Some((quad, _)) = self.group_composite_quad(s) {
+                let [x, y, w, h] = quad.content_mask;
+                let mask = Bounds::new(point(ScaledPixels(x), ScaledPixels(y)), size(ScaledPixels(w), ScaledPixels(h)));
+                clipped = visible::output(&quad, clipped.intersect(&mask));
+            }
+        }
         let region = Region::clipped(clipped, 0.0, self.width, self.height);
         let x = region.x.max(target.x).min(target.x + target.width - 1);
         let y = region.y.max(target.y).min(target.y + target.height - 1);
@@ -137,7 +191,9 @@ impl DirectXRenderer {
         Ok(region.floats())
     }
 
-    pub(super) fn prepare_group_targets(&mut self, scene: &Scene) -> Result<()> {
+    /// Lay out the group atlas for `scene`; returns which groups already have
+    /// their image in it (`group_cache`).
+    pub(super) fn prepare_group_targets(&mut self, scene: &Scene) -> Result<Vec<bool>> {
         let device = self.dev().device.clone();
         self.blur.group_regions.clear();
         for group in &scene.groups {
@@ -145,6 +201,10 @@ impl DirectXRenderer {
             self.blur
                 .group_regions
                 .push(regions[usize::from(group.blur_radius > 0.0)]);
+        }
+        if let Some((places, keep)) = self.keep_group_places(scene) {
+            self.blur.group_place = places;
+            return Ok(keep);
         }
         // KaminIDE patch: the retained images share atlas pages (`groups`).
         let sizes: Vec<(u32, u32)> = self
@@ -173,7 +233,17 @@ impl DirectXRenderer {
             }
         }
         self.blur.groups.truncate(pages.len());
-        Ok(())
+        let textures: Vec<(u32, u32)> = self
+            .blur
+            .groups
+            .iter()
+            .map(|t| (t.width, t.height))
+            .collect();
+        self.retained.groups.layout = Some((
+            group_atlas::Shelves::of_layout(&self.blur.group_place, &textures),
+            textures.len(),
+        ));
+        Ok(vec![false; scene.groups.len()])
     }
 }
 

@@ -5,6 +5,7 @@ import { warnLog } from '../../logging'
 
 import type { RequestLogEntry, RequestFilter } from '../types'
 import { getDb } from './lifecycle'
+import { withStatsWrite } from './write-lock'
 
 // ---------------------------------------------------------------------------
 // Row <-> Entry mapping
@@ -437,9 +438,32 @@ export async function deleteRequestsByFilter(filter: RequestFilter): Promise<num
   return cnt
 }
 
-/** Clear all requests and counters. */
+/** The request history the dashboard's "clear all" empties: the legacy request
+ *  log and the OTel metrics/events behind the request list. Nothing else. */
+export const HISTORY_TABLES = ['requests', 'otel_metrics', 'otel_events'] as const
+
+/** Clear the whole request history in one transaction. Only tables the
+ *  current schema has are touched (it dropped the legacy `counters`, whose
+ *  DELETE used to fail after `requests` was already gone), and any failure
+ *  rolls back every table: no partial clear. */
 export async function clearAll(): Promise<void> {
   const d = await getDb()
-  await d.run('DELETE FROM requests')
-  await d.run('DELETE FROM counters')
+  await withStatsWrite(
+    async () => {
+      const present = new Set(
+        (await d.runAndReadAll(`SELECT table_name FROM duckdb_tables() WHERE schema_name = 'main'`))
+          .getRowObjects()
+          .map((row) => String((row as Record<string, unknown>).table_name)),
+      )
+      await d.run('BEGIN')
+      try {
+        for (const table of HISTORY_TABLES) if (present.has(table)) await d.run(`DELETE FROM ${table}`)
+        await d.run('COMMIT')
+      } catch (err) {
+        await d.run('ROLLBACK').catch((error) => warnLog('[stats] clear-all rollback failed', { error: String(error) }))
+        throw err
+      }
+    },
+    { label: 'clear all history' },
+  )
 }

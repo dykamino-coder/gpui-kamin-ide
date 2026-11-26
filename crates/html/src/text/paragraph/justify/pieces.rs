@@ -49,7 +49,11 @@ impl Paragraph {
             if edge.background_color.is_none() {
                 continue;
             }
-            let own = (edge.background_color, edge.background_border);
+            let own = (
+                edge.background_color,
+                edge.background_border,
+                edge.background_owner,
+            );
             let pos = start_of(out, idx);
             let index = &self.prepared().box_index;
             let holders: Vec<u32> = index
@@ -79,7 +83,7 @@ impl Paragraph {
             let mut i = idx as isize;
             while i >= 0 && (i as usize) < n {
                 let r = &out[i as usize];
-                if (r.background_color, r.background_border) != own {
+                if (r.background_color, r.background_border, r.background_owner) != own {
                     break;
                 }
                 cuts.push((i as usize, is_left));

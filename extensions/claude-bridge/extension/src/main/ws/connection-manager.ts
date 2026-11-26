@@ -14,6 +14,7 @@ import { cancelMcpCall, type PendingMcpExecution, type PendingPermissionDecision
 import { McpResultOutbox } from './mcp-result-outbox'
 import { ClientCommands } from './client-commands'
 import { SubmissionHandoff } from './submission-handoff'
+import { CHANGED_WARNING, EXPIRED_WARNING, ReconnectOutbox } from './reconnect-outbox'
 import { TranscriptMirror } from './transcript-mirror'
 import { toRendererConnectionState } from './connection-state'
 import { recordConversationIdentity, type IdentityAction } from '../../incident-diagnostics'
@@ -140,6 +141,10 @@ let lastConnectionAuthoritySequence = 0
 export class ConnectionManager {
   private disposed = false
   private submissions = new SubmissionHandoff(update => this.window.webContents.send('session:submission', this.tabId, update))
+  private outbox = new ReconnectOutbox(
+    update => this.window.webContents.send('session:submission', this.tabId, update),
+    held => this.returnToComposer(held.id, held.text, EXPIRED_WARNING),
+  )
   private handoffWait?: { sessionId?: string; finish: (transferable?: string[]) => void }
   private reconnectAfterHandoff = false
   // Shared cache of the last tree update (all connections share one tree per token)
@@ -998,6 +1003,7 @@ export class ConnectionManager {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
+    this.outbox.take()
     this.handoffWait?.finish()
     this.disconnect()
   }
@@ -1026,6 +1032,10 @@ export class ConnectionManager {
   interruptSession(): void {
     this.send({ type: 'session:interrupt' })
   }
+  /** The user is typing in a chat the server put to sleep: start its CLI. */
+  warmSession(): void {
+    this.send({ type: 'session:warm' })
+  }
 
   /** Submit a full user message — server wraps it in bracketed paste and
    *  times the Enter via a quiet-window gate. Replaces the renderer's manual
@@ -1034,16 +1044,20 @@ export class ConnectionManager {
     if (this.disposed) return
     // An OPEN transport alone does not identify the destination CLI. Never
     // retain a new prompt across resume/identity recovery or session handoff.
-    const reject = (): void => {
-      const update: SubmissionUpdate = {
-        id: submissionId ?? randomUUID(), text, state: 'cancelled', rejected: true,
-        cancelable: false, retryable: false,
-        warning: 'Message not sent: the chat is reconnecting. Your text was returned to the composer.',
-      }
-      this.submissions.receive(update)
-      this.window.webContents.send('session:submission', this.tabId, update)
+    const reject = (): void =>
+      this.returnToComposer(submissionId ?? randomUUID(), text, 'Message not sent: the chat is reconnecting. Your text was returned to the composer.')
+    if (this.identityHold || this.handoffWait) {
+      reject()
+      return
     }
-    if (this.identityHold || this.handoffWait || this.state.status !== 'authenticated' || this.ws?.readyState !== WebSocket.OPEN) {
+    if (this.state.status !== 'authenticated' || this.ws?.readyState !== WebSocket.OPEN) {
+      // The chat's own conversation is reconnecting (server restart, network):
+      // the message waits for it, visibly, and goes out once it is back.
+      const conversationId = this.conversationId
+      if (submissionId && conversationId && !this.pendingNewConversation && !this.resumeParked && !this.intentionalDisconnect) {
+        this.outbox.hold({ id: submissionId, text, conversationId })
+        return
+      }
       reject()
       return
     }
@@ -1056,7 +1070,30 @@ export class ConnectionManager {
     if (submissionId) this.submissions.remember(submissionId, text)
   }
 
+  /** Refuse a prompt: the webview puts the text back into the composer and says why. */
+  private returnToComposer(id: string, text: string, warning: string): void {
+    const update: SubmissionUpdate = {
+      id, text, state: 'cancelled', rejected: true, cancelable: false, retryable: false, warning,
+    }
+    this.submissions.receive(update)
+    this.window.webContents.send('session:submission', this.tabId, update)
+  }
+
+  /** The chat is back: send what waited for it, in order, into the same conversation only. */
+  private flushOutbox(): void {
+    for (const held of this.outbox.take()) {
+      if (!this.identityHold && this.conversationId === held.conversationId) this.submitText(held.text, held.id)
+      else this.returnToComposer(held.id, held.text, CHANGED_WARNING)
+    }
+  }
+
   submissionAction(id: string, action: 'cancel' | 'push' | 'interrupt'): void {
+    if (this.outbox.has(id)) {
+      // Send now / interrupt cannot run before the chat is back; it is sent then anyway.
+      const held = action === 'cancel' ? this.outbox.cancel(id) : undefined
+      if (held) this.window.webContents.send('session:submission', this.tabId, { id, text: held.text, state: 'cancelled', cancelable: false })
+      return
+    }
     if (this.submissions.action(id, action, this.state.status === 'authenticated', (text, id) => this.submitText(text, id))) return
     this.send({ type: 'session:submission-action', id, action })
   }
@@ -1551,8 +1588,11 @@ export class ConnectionManager {
 
   commandAction(action: 'list' | 'stop' | 'output' | 'clear', id = ''): void {
     if (action === 'list') {
-      this.commands.list(this.state.sessionId ?? '')
-      this.send({ type: 'commands:list' })
+      // `id === 'refresh'`: the view just mounted and needs the snapshot even
+      // when nothing changed. Otherwise only changes are published.
+      const sessionId = this.state.sessionId ?? ''
+      this.commands.list(sessionId, id === 'refresh')
+      if (this.commands.needsServerList(sessionId)) this.send({ type: 'commands:list' })
     } else if (action === 'clear') {
       this.commands.clear()
       this.commands.list(this.state.sessionId ?? '')
@@ -1795,6 +1835,7 @@ export class ConnectionManager {
       isIntentionallyDisconnected: () => this.intentionalDisconnect,
       notifyAuthenticated: () => {
         this.submissions.resume((text, id) => this.submitText(text, id))
+        this.flushOutbox()
         ConnectionManager.onAuthenticated?.(this)
       },
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),

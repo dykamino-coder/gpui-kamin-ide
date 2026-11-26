@@ -6,6 +6,7 @@ import { CliXmlContent } from './CliXmlContent'
 import { JsonlTimestamp } from './JsonlTimestamp'
 import { codexCatalog } from '../../signals/agent'
 import { MODEL_OPTIONS, gptModelOptions } from '../../lib/model-options'
+import { engineIcon } from '../../lib/engine-icon'
 
 function formatNumber(n: number | undefined): string {
   if (n === undefined || n === null) return '—'
@@ -71,7 +72,7 @@ function EngineSwitch({ entry }: { entry: JsonlEntryData }): JSX.Element {
       style="background:transparent;border:none;border-radius:0;box-shadow:none;padding:6px 12px;margin:6px 40px 6px 40px;display:flex;align-items:center;gap:10px;color:var(--text-muted);font-size:11px"
     >
       <div style="flex:1;height:1px;background:linear-gradient(to right, transparent, var(--bg-overlay) 30%, var(--bg-overlay) 70%, transparent)" />
-      <i class={engine === 'codex' ? 'fas fa-robot' : 'fas fa-gem'} style="font-size:10px;color:var(--text-secondary)" />
+      <i class={engineIcon(engine)} style="font-size:10px;color:var(--text-secondary)" />
       <span style="color:var(--text-secondary);font-weight:600">→ {label}</span>
       {entry.timestamp && (
         <span style="font-size:10px;color:var(--text-disabled)"><JsonlTimestamp timestamp={entry.timestamp} /></span>

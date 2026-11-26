@@ -54,7 +54,7 @@ impl Scene {
             for fragment in &mut group.fragments {
                 fragment.iter_mut().for_each(|p| *p = map(*p, &matrix));
             }
-            group.scene = group.scene.affine_commands(&matrix, masks);
+            group.scene = std::rc::Rc::new(Scene::unshared(group.scene).affine_commands(&matrix, masks));
             group
         }).collect();
         scene
@@ -67,7 +67,12 @@ impl Scene {
             match &mut command {
                 PaintOperation::Primitive(p) => match p {
                     // Live paint carries the active matrix on these primitives only.
-                    Primitive::Quad(p) => {
+                    Primitive::Gradient(g) => {
+            let p = &mut g.quad;
+                        p.transformation = matrix.compose(p.transformation);
+                        mask(&mut p.content_mask.bounds);
+                    }
+        Primitive::Quad(p) => {
                         p.transformation = matrix.compose(p.transformation);
                         mask(&mut p.content_mask.bounds);
                     }
@@ -95,7 +100,7 @@ impl Scene {
                 PaintOperation::StartLayer(b, _) => *b = placed(*b, matrix),
                 _ => {}
             }
-            scene.replay_operation(command);
+            scene.replay_image_operation(command, &self.book.images);
         }
         scene.segment_capture = self.segment_capture;
         scene.hoisted_backdrops = self.hoisted_backdrops.into_iter().map(|mut p| {

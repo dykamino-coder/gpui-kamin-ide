@@ -119,6 +119,34 @@ pub(crate) fn reserve<T, A: Admission>(
     Ok(())
 }
 
+/// A prepared replacement keeps its allocation lease, including while held for rollback.
+pub struct ChildList {
+    children: Vec<Handle>,
+    storage: Lease,
+}
+impl ChildList {
+    pub fn prepare<A: Admission>(
+        children: impl Iterator<Item = Handle>,
+        policy: &A,
+    ) -> Result<Self, A::Error> {
+        let mut list = Self {
+            children: Vec::new(),
+            storage: None,
+        };
+        for node in children {
+            reserve(&mut list.children, &mut list.storage, 1, policy)?;
+            policy.visit()?;
+            list.children.push(node);
+        }
+        Ok(list)
+    }
+
+    pub fn exchange(&mut self, parent: &Handle) {
+        mem::swap(&mut self.children, &mut parent.children.borrow_mut());
+        mem::swap(&mut self.storage, &mut parent.children_lease.borrow_mut());
+    }
+}
+
 pub(crate) struct Work<T> {
     pub(crate) values: Vec<T>,
     lease: Lease,
@@ -182,6 +210,7 @@ impl Node {
         data: NodeData,
         attrs_lease: Lease,
         policy: &A,
+        key: crate::NodeKey,
     ) -> Result<Handle, A::Error> {
         let logical_node = policy.node_count()?;
         let node_lease = policy.node(mem::size_of::<Node>() + 2 * mem::size_of::<usize>())?;
@@ -197,6 +226,7 @@ impl Node {
             attrs_lease: RefCell::new(attrs_lease),
             payload_lease: RefCell::new(payload_lease),
             _node_lease: node_lease,
+            key: Cell::new(key),
         }))
     }
     pub(crate) fn reserve_children<A: Admission>(
@@ -216,8 +246,15 @@ impl Node {
 impl RcDom {
     /// The document node is admitted before Rc allocation.
     pub fn try_new<A: Admission>(policy: &A) -> Result<Self, A::Error> {
+        Self::try_new_from(policy, 1)
+    }
+
+    /// Повторный разбор продолжает номера ключей прежнего DOM (`next_key`).
+    pub fn try_new_from<A: Admission>(policy: &A, first_key: u64) -> Result<Self, A::Error> {
+        let keys = crate::node_key::Keys::starting_at(first_key);
         Ok(Self {
-            document: Node::try_new(NodeData::Document, None, policy)?,
+            document: Node::try_new(NodeData::Document, None, policy, keys.issue(policy)?)?,
+            keys,
             errors: RefCell::new(Vec::new()),
             quirks_mode: Cell::new(markup5ever::interface::tree_builder::NoQuirks),
             errors_lease: RefCell::new(None),

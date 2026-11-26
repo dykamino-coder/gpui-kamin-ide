@@ -1,7 +1,7 @@
 //! Предпроход областей теней с продолжениями и восстановлением пути.
 
 use super::{Scope, Shadow, SlotInfo, assign_slots, declarative_shadow, prepare, slotted};
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::style::select::has::{HasArg, shadow_marks};
 use crate::style::select::{Ancestor, census_of};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -19,7 +19,7 @@ pub(in crate::dom) fn scan_shadows(
     scope: &Rc<Scope>,
     prepared: &prepare::Prepared,
     args: &[HasArg],
-    drafts: &mut HashMap<NodeKey, SlotInfo>,
+    drafts: &mut HashMap<HandleKey, SlotInfo>,
     tree: &mut TreeIndex,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
@@ -73,7 +73,7 @@ pub(in crate::dom) fn scan_shadows(
         };
         let mut me = all[pos].clone();
         me.peers = Some((all.clone(), pos));
-        if let Some(slot) = drafts.get_mut(&NodeKey::of(&child)) {
+        if let Some(slot) = drafts.get_mut(&HandleKey::of(&child)) {
             admission.work(path.len())?;
             slot.origin = Some(slotted::SlotContext {
                 scope: scope.clone(),
@@ -87,7 +87,7 @@ pub(in crate::dom) fn scan_shadows(
             admission.work(
                 path.len() * 2 + child.children.borrow().len() + root.children.borrow().len(),
             )?;
-            let inner = prepared[&NodeKey::of(&child)].1.clone();
+            let inner = prepared[&HandleKey::of(&child)].1.clone();
             let host_path: Rc<Vec<Ancestor>> = Rc::new(
                 path.iter()
                     .cloned()
@@ -108,7 +108,7 @@ pub(in crate::dom) fn scan_shadows(
                 ..me.clone()
             };
             tree.shadows.insert(
-                NodeKey::of(&child),
+                HandleKey::of(&child),
                 Rc::new(Shadow {
                     root: root.clone(),
                     scope: inner.clone(),

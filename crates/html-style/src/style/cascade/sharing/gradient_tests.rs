@@ -10,7 +10,7 @@ fn gradients_are_pure_unless_a_nested_function_is_contextual() {
         "REPEATING-radial-gradient(circle, rgb(1 2 3) 2em, currentcolor 3em)",
         "conic-gradient(from 45deg, red, oklch(.5 .2 30))",
     ] {
-        assert!(pure_value(value), "{value}");
+        assert!(pure::pure_value(value), "{value}");
     }
     for value in [
         "linear-gradient(var(--a), red)",
@@ -18,7 +18,7 @@ fn gradients_are_pure_unless_a_nested_function_is_contextual() {
         "radial-gradient(red, blue), url(a.png)",
         "-webkit-linear-gradient(red, blue)",
     ] {
-        assert!(!pure_value(value), "{value}");
+        assert!(!pure::pure_value(value), "{value}");
     }
 }
 

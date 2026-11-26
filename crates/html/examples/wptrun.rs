@@ -78,6 +78,8 @@ mod retry;
 mod run;
 #[path = "wptrun/show.rs"]
 mod show;
+#[path = "wptrun/step.rs"]
+mod step;
 #[path = "wptrun/style_imports.rs"]
 mod style_imports;
 #[path = "wptrun/stylesheet.rs"]
@@ -185,12 +187,14 @@ fn main() {
                                 .set_frame_capture(Some(sink))
                                 .expect("Windows GPU readback");
                         }
-                        cx.new(|_| Page {
+                        let page = cx.new(|_| Page {
                             doc: empty,
                             select: None,
                             #[cfg(feature = "wpt-harness")]
                             probes: Default::default(),
-                        })
+                        });
+                        step::register(&page, window);
+                        page
                     },
                 )
                 .unwrap();

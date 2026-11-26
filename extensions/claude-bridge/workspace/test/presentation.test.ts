@@ -90,6 +90,18 @@ test('fallback receipts retain ingress cursor and consumption with zero views an
   assert.deepEqual(state.snapshot(), [])
 })
 
+test('an engine switch drops the queued items of the previous agent on every page', () => {
+  const entries: any[] = [{ type: 'user', uuid: 'old', _ord: 40, message: { content: 'earlier' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  const receipt = (id: string) => (state.snapshot().find(frame => frame.channel === 'session:submission' && (frame.args as any)[1].id === id)!.args as any)[1]
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'claude' }] })
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', 'answered before the switch', 'q1'] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'q1', state: 'fallback' }] })
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'claude', model: 'opus' }] })
+  assert.equal(receipt('q1').fallbackQueue.dismissed, undefined, 'A model change on the same agent keeps the queue')
+  state.observe({ kind: 'event', channel: 'session-restarted', args: ['tab', { engine: 'codex' }] })
+  assert.equal(receipt('q1').fallbackQueue.dismissed, true)
+})
 test('JSONL arriving before fallback is reconciled from the shared cache', () => {
   let entries: any[] = []
   const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
@@ -98,6 +110,21 @@ test('JSONL arriving before fallback is reconciled from the shared cache', () =>
   state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
   state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'id', state: 'fallback' }] })
   assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.consumed, true)
+})
+
+test('a server completion receipt consumes a /resume queue item no transcript row can match', () => {
+  let entries: any[] = [{ type: 'user', uuid: 'old', _ord: 40, message: { content: 'before clear' } }]
+  const state = new WorkspacePresentation((channel, ...args) => state.observe({ kind: 'event', channel, args }), () => entries)
+  const text = '/resume 0b6e1f1c-5a8a-4c4e-9d43-3f6a3c1f2b10'
+  state.accept({ kind: 'send', channel: 'pty-submit-text', args: ['tab', text, 'resume'] })
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'resume', text, state: 'fallback', cancelable: false }] })
+  entries = [{ type: 'user', uuid: 'resumed', _ord: 3, message: { content: 'hello one' } }]
+  state.observe({ kind: 'event', channel: 'jsonl-entries', args: ['tab', entries] })
+  assert.equal((state.snapshot()[0].args as any)[1].fallbackQueue.consumed, undefined)
+  state.observe({ kind: 'event', channel: 'session:submission', args: ['tab', { id: 'resume', text, state: 'fallback', cancelable: false, committed: true }] })
+  const receipt = (state.snapshot()[0].args as any)[1]
+  assert.equal(receipt.fallbackQueue.consumed, true)
+  assert.equal(receipt.committed, true)
 })
 
 test('native receipt commitment survives zero views and transcript eviction in either event order', () => {

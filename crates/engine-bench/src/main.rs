@@ -10,6 +10,10 @@
 #[cfg(windows)]
 mod accounting;
 mod allocations;
+#[cfg(windows)]
+mod animation;
+#[cfg(windows)]
+mod animation_spool;
 mod args;
 #[cfg(windows)]
 mod build_info;
@@ -32,6 +36,8 @@ mod memory;
 #[cfg(windows)]
 mod pixels;
 #[cfg(windows)]
+mod plan;
+#[cfg(windows)]
 mod process;
 #[cfg(all(windows, feature = "work-counters"))]
 mod profile_state;
@@ -39,13 +45,20 @@ mod report;
 mod resources;
 #[cfg(windows)]
 mod run;
+mod scroll_fresh;
+#[cfg(windows)]
+mod series;
 #[cfg(windows)]
 mod startup;
+mod step;
+mod step_frames;
 mod stylesheet;
 #[cfg(all(windows, feature = "work-counters"))]
 mod usage;
 #[cfg(windows)]
 mod view;
+#[cfg(windows)]
+mod why;
 #[cfg(windows)]
 mod work;
 
@@ -61,14 +74,19 @@ static ALLOC: allocations::Sampled = allocations::Sampled;
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() {
+    // Set allocator policy before any opt-in diagnostic configuration can allocate.
+    kamin_alloc::configure();
     // Пробник стеков читает окружение без аллокаций, до первой аллокации стенда.
     #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
     if let Err(error) = allocations::probe::init() {
         eprintln!("engine_bench: {error}");
         std::process::exit(1);
     }
-    // Политика арен — как у приложения, до первой аллокации стенда.
-    kamin_alloc::configure();
+    #[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+    if let Err(error) = allocations::retain::init() {
+        eprintln!("engine_bench: {error}");
+        std::process::exit(1);
+    }
     #[cfg(all(windows, feature = "work-counters"))]
     if let Err(error) = profile_state::publish() {
         eprintln!("engine_bench: {error}");
@@ -92,6 +110,13 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
     if std::env::args().skip(1).eq(["--build-info"]) {
         println!("{}", build_info::json());
+        return Ok(());
+    }
+    #[cfg(windows)]
+    if let [flag, a, b] = &std::env::args().skip(1).collect::<Vec<_>>()[..]
+        && flag == "--why-compare"
+    {
+        print!("{}", why::compare::run(a.as_ref(), b.as_ref())?);
         return Ok(());
     }
     let Some(args) = args::Args::parse(std::env::args().skip(1))? else {

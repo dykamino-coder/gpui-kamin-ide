@@ -1,6 +1,5 @@
 //! Цикл рядов таблицы: ячейки, рамки ячеек, фоны (table_rows).
 
-use crate::dom::text_content::gather_text;
 use crate::layout::options::RenderOpts;
 use crate::layout::table::table_finish;
 use gpui::AnyElement;
@@ -99,6 +98,7 @@ pub(super) async fn table_rows(
         for slot in &geom.grid.rows[cursor.row_ix - 1].cells {
             cursor.col_ix = slot.column;
             table_cell(stk, geom, layers, cursor, out, opts, &row_state, *slot).await;
+            cursor.cell_order = cursor.cell_order.saturating_add(1);
         }
     }
 

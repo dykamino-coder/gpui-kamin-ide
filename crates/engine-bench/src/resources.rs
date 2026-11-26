@@ -5,7 +5,7 @@ use html5ever::{
     tendril::TendrilSink,
     tree_builder::{NodeOrText, TreeSink},
 };
-use markup5ever_rcdom::{Handle, Node, NodeData, RcDom, SerializableHandle};
+use markup5ever_rcdom::{Handle, NodeData, RcDom, SerializableHandle};
 use std::{borrow::Cow, cell::RefCell, io::Read, path::Path, rc::Rc};
 use url::Url;
 
@@ -96,7 +96,10 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                 }) && attr(&node, "disabled").is_none() =>
             {
                 let href = attr(&node, "href").ok_or("stylesheet link has no href")?;
-                let mut css = stylesheet::load(&base.join(&href)?, &mut vec![])?;
+                // an unavailable stylesheet is not applied: the link stays and nothing is inlined
+                let Some(mut css) = stylesheet::load(&base.join(&href)?, &mut vec![])? else {
+                    continue;
+                };
                 if let Some(media) = attr(&node, "media").filter(|s| !s.trim().is_empty()) {
                     css = format!("@media {media} {{\n{css}\n}}");
                 }
@@ -108,13 +111,13 @@ fn rewrite(mut base: Url, html: String) -> Result<String> {
                 }
                 let mut style_name = name.clone();
                 style_name.local = "style".into();
-                let style = Node::new(NodeData::Element {
+                let style = dom.new_node(NodeData::Element {
                     name: style_name,
                     attrs: Default::default(),
                     template_contents: Default::default(),
                     mathml_annotation_xml_integration_point: false,
                 });
-                let text = Node::new(NodeData::Text {
+                let text = dom.new_node(NodeData::Text {
                     contents: RefCell::new(css.into()),
                 });
                 dom.append(&style, NodeOrText::AppendNode(text));

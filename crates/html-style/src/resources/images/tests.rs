@@ -10,20 +10,39 @@ use super::vector::svg_size;
 use crate::resources::loader::{Cancellation, ResourceUrl, SyncLoader, fetch};
 use fixtures::*;
 
+#[test]
+fn css_decode_publishes_renderer_pixels_without_changing_neutral_decode() {
+    let png = solid_png([8, 16, 24, 128]);
+    let (neutral, _) = raster(&png, DecodeOptions::default());
+    let (css, _) = raster(
+        &png,
+        DecodeOptions {
+            colour: ColourPolicy::CssBgra,
+            ..Default::default()
+        },
+    );
+    assert_eq!(neutral.pixel(0, 0), Some([8, 16, 24, 128]));
+    assert_eq!(css.pixel(0, 0), Some([47, 31, 15, 128]));
+    assert_eq!(css.format, PixelFormat::Bgra8);
+    assert_eq!(css.alpha, AlphaMode::Straight);
+    assert_eq!(css.colour_space, ColourSpace::Srgb);
+}
+
 /// Декодирование с допуском в стандартном профиле отдельного документа.
 fn decode(
     bytes: &[u8],
     options: &DecodeOptions,
 ) -> Result<(DecodedImage, ImageMetadata), ImageError> {
     let budget = crate::budget::RevisionBudget::standalone();
-    super::decode::decode(bytes, options, |declared| {
+    let bytes: std::sync::Arc<[u8]> = bytes.into();
+    super::decode::decode(&bytes, options, |declared| {
         super::admission::grant(budget.document(), declared).map(|(grant, _)| grant)
     })
 }
 
 fn raster(bytes: &[u8], options: DecodeOptions) -> (std::sync::Arc<CpuRaster>, ImageMetadata) {
     match decode(bytes, &options).unwrap() {
-        (DecodedImage::Raster(r), meta) => (r, meta),
+        (DecodedImage::Raster(r), meta) => (r.pixels().expect("decodable raster"), meta),
         (DecodedImage::Vector(_), _) => panic!("raster expected"),
     }
 }
@@ -64,7 +83,12 @@ fn empty_corrupt_and_foreign_bytes_are_typed_errors() {
     );
     let png = png(4, 4);
     let truncated = &png[..png.len() - 20];
-    assert_eq!(decode(truncated, &options).unwrap_err(), ImageError::Decode);
+    // The header is intact, so the file is admitted by its header; the pixels fail when a
+    // consumer decodes them.
+    match decode(truncated, &options).unwrap() {
+        (DecodedImage::Raster(r), _) => assert!(r.pixels().is_none()),
+        (DecodedImage::Vector(_), _) => panic!("raster expected"),
+    }
     // Looks like SVG but is not UTF-8.
     assert_eq!(
         decode(b"<svg>\xFF</svg>", &options).unwrap_err(),

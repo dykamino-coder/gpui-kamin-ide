@@ -302,6 +302,10 @@ export class TabManager {
     this.tabs.get(tabId)?.connection.interruptSession()
   }
 
+  warmSession(tabId: string): void {
+    this.tabs.get(tabId)?.connection.warmSession()
+  }
+
   sendInput(tabId: string, data: string): void {
     this.tabs.get(tabId)?.connection.sendInput(data)
   }

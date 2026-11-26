@@ -56,6 +56,9 @@ pub(crate) fn scrollable(
     // Слой ICB закрывается раньше, чем `ScrollArea` позовёт `build`, — поэтому
     // выносим кандидатов сейчас, из ещё не отданного в замыкание клона.
     hoist_from_scroll(&mut node, inherited, opts);
+    let root = (e.tag == "html-viewport")
+        .then(|| opts.cx.doc().root_scroll.clone())
+        .flatten();
     let (inherited, opts) = (inherited.clone(), opts.clone());
     let build = std::rc::Rc::new(
         move |handle: &gpui::ScrollHandle, h: bool, v: bool, frame| -> AnyElement {
@@ -112,8 +115,7 @@ pub(crate) fn scrollable(
                 outer_margin,
             );
             let inner_opts = opts.inner(|cx| {
-                cx.scroll.target = Some(target.clone());
-                cx.scroll.frame = frame;
+                cx.scroll.enter(target.clone(), frame, handle.clone());
             });
             let build = inner_opts.cx.contracts.build;
             let built = build.element(&inner, &inherited, &inner_opts);
@@ -127,12 +129,11 @@ pub(crate) fn scrollable(
                 .id(node.state_id("html-scroll-content", vcx))
                 .track_scroll(handle)
                 .child(built);
-            // Элемент потока родителя — ЭТА обёртка, а не внутренний узел: ей и
-            // сжатие, которое блоку в потоке выключено (`flex_shrink: 0` из
-            // `blocks()`), а во flex-контексте — 1. Без него автоминимум
-            // прокрутки (0) давал ленте ужаться под первым же потолком
-            // родителя до нуля (`line-clamp-007`: `overflow:auto`-ребёнок
-            // клэмп-контейнера пропадал целиком).
+            // This wrapper, not the inner node, is the parent's flow item, so it
+            // takes the shrink (0 for a block in flow, 1 in a flex context);
+            // without it the scroller's auto minimum (0) let it shrink to nothing
+            // (`line-clamp-007`). A wheel moves only the axes it scrolls.
+            d.style().restrict_scroll_to_axis = Some(true);
             if let Some(shrink) = node.style.used().reset_flex.flex_shrink {
                 d.style().flex_shrink = Some(shrink);
             }
@@ -204,6 +205,7 @@ pub(crate) fn scrollable(
         )
         .with_style(scroll_style, freeze_scrollbars)
         .with_tree(e, parent_frame.as_ref())
+        .with_root(root)
         .with_sticky(area_sticky)
         .into_any_element(),
         scroll_projection,

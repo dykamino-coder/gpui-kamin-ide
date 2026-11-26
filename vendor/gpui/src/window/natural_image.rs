@@ -1,10 +1,9 @@
 //! Opt-in natural raster painting preserves source phase on the CSS edge grid.
 
 use super::*;
-use std::sync::{Mutex, OnceLock};
 
-type Cache = std::collections::HashMap<(usize, usize, u32, u32, u64, u64, u64), Arc<RenderImage>>;
-static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+pub(super) type Cache =
+    std::collections::HashMap<(usize, usize, u32, u32, u64, u64, u64), Arc<RenderImage>>;
 
 impl Window {
     /// Paint an unresized CSS raster with device-snapped destination edges and
@@ -40,6 +39,7 @@ impl Window {
             device.round() - device
         };
         let data = resample(
+            &mut self.natural_images,
             &image,
             frame,
             w,
@@ -51,18 +51,21 @@ impl Window {
             Some(image) => (image, 0),
             None => (image, frame),
         };
-        self.paint_image_with_sampling(
+        self.paint_image_with_sampling_tile(
             bounds,
             corners,
             image,
             frame,
             grayscale,
             ImageSampling::NearestSnapped,
-        )
+        )?;
+        Ok(())
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resample(
+    cache: &mut Cache,
     image: &Arc<RenderImage>,
     frame: usize,
     w: u32,
@@ -95,13 +98,10 @@ fn resample(
         phase[1].to_bits(),
         scale.to_bits(),
     );
-    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
-    if let Ok(cache) = cache.lock()
-        && let Some(found) = cache.get(&key)
-    {
+    if let Some(found) = cache.get(&key) {
         return Some(found.clone());
     }
-    let bytes = image.as_bytes(frame)?;
+    let bytes = image.upload_bytes(frame)?;
     let mut out = Vec::with_capacity((w * h * 4) as usize);
     for y in 0..h {
         let sy = sample(y, ih, phase[1], scale);
@@ -112,12 +112,10 @@ fn resample(
         }
     }
     let result = crate::bgra_bytes_to_image(w, h, out)?;
-    if let Ok(mut cache) = cache.lock() {
-        if cache.len() >= 32 {
-            cache.clear();
-        }
-        cache.insert(key, result.clone());
+    if cache.len() >= 32 {
+        cache.clear();
     }
+    cache.insert(key, result.clone());
     Some(result)
 }
 
@@ -129,4 +127,35 @@ fn sample(pixel: u32, source: u32, phase: f64, scale: f64) -> u32 {
     // stretches or independently shifts the internal texel grid.
     (((f64::from(pixel) + 0.5 + phase) / scale).ceil() - 1.0).clamp(0.0, f64::from(source - 1))
         as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn natural_cache_eviction_releases_cpu_images() {
+        let image = crate::bgra_bytes_to_image(2, 2, vec![255; 16]).unwrap();
+        let mut cache = Cache::default();
+        let mut expired = Vec::new();
+        for width in 3..=35 {
+            let entry = resample(&mut cache, &image, 0, width, 3, [0.; 2], 1.25).unwrap();
+            expired.push(Arc::downgrade(&entry));
+        }
+        assert_eq!(cache.len(), 1);
+        assert!(expired[..32].iter().all(|image| image.upgrade().is_none()));
+        assert!(expired[32].upgrade().is_some());
+        cache.clear();
+        assert!(expired[32].upgrade().is_none());
+    }
+
+    #[test]
+    fn separate_windows_have_independent_resampled_images() {
+        let image = crate::bgra_bytes_to_image(2, 2, vec![255; 16]).unwrap();
+        let (mut ac, mut bc) = (Cache::default(), Cache::default());
+        let aa = resample(&mut ac, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
+        let bb = resample(&mut bc, &image, 0, 3, 3, [0.; 2], 1.25).unwrap();
+        assert_ne!(aa.id, bb.id);
+        assert_eq!(aa.as_bytes(0), bb.as_bytes(0));
+    }
 }

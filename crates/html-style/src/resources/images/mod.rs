@@ -10,6 +10,7 @@ pub mod admission;
 pub mod cache;
 pub mod colour;
 pub mod decode;
+pub mod encoded;
 pub mod natural;
 pub mod orientation;
 pub mod store;
@@ -24,6 +25,7 @@ pub mod tests_support;
 
 pub mod identity;
 pub mod pixels;
+mod presentation;
 pub mod svg_fragment;
 pub mod svg_links;
 pub mod svg_raster;

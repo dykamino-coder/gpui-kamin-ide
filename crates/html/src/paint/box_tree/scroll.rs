@@ -49,8 +49,11 @@ pub(crate) fn attach(
         stateful = stateful.overflow_y_scroll();
     }
     let mut div = stateful.0;
-    let bars =
-        crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e.node_id, c);
+    // A wheel moves only the axes the box scrolls, as in browsers: a vertical
+    // wheel over a box that scrolls only horizontally chains to its ancestor
+    // (`scroll_area::wheel`) instead of moving the box sideways.
+    div.style().restrict_scroll_to_axis = Some(true);
+    let bars = crate::interactive::scroll_extent::classic::reserve(cx.scroll.frame.as_ref(), e, c);
     div.style().scrollbar_width = Some(gpui::px(c.reset_box_layout.scroll.thickness()).into());
     // Taffy reserves a classic gutter for Scroll, while Hidden has the same
     // sizing semantics without a gutter. Auto starts without bars.
@@ -67,6 +70,18 @@ pub(crate) fn attach(
     }
     if c.reset_box_layout.overflow_y == Some(crate::style::computed::Overflow::Hidden) {
         div.style().overflow.y = Some(gpui::Overflow::Hidden);
+    }
+    // The bars above are the guess layout starts with; it decides the `auto`
+    // ones from the content and lays only this box out again when they differ.
+    let auto =
+        crate::interactive::scroll_extent::classic::layout_axes(cx.scroll.frame.as_ref(), e, c);
+    if auto[0] && horizontal || auto[1] && vertical {
+        let style = div.style();
+        let mut bars = style.kamin_scrollbars.unwrap_or_default();
+        bars.auto = [auto[0] && horizontal, auto[1] && vertical];
+        bars.viewport = e.tag == "html-viewport";
+        bars.bar_left = crate::interactive::scrollbar_gutter::on_left(c);
+        style.kamin_scrollbars = Some(bars);
     }
     if let Some(marker) =
         crate::interactive::scroll_extent::marker(cx.scroll.frame.as_ref(), e.node_id)

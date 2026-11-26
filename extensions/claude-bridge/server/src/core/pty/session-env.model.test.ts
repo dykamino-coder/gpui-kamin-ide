@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { buildClaudeArgs, buildSessionEnv, modelForResume } from './session-env'
+import { buildClaudeArgs, buildSessionEnv, claudeEffortLine, modelForResume } from './session-env'
 import { lastModelFromJsonlTail } from './session-resume-helpers'
 import type { SessionConfig } from '../types/pty'
 
@@ -23,6 +23,32 @@ it('trims nonessential traffic and keeps MCP Tasks in the background (CLI 2.1.31
   } finally {
     vi.unstubAllEnvs()
   }
+})
+
+describe('Claude CLI thinking display (INC-2026-0098)', () => {
+  const display = (args: string[]) => {
+    const i = args.indexOf('--thinking-display')
+    return i < 0 ? undefined : args[i + 1]
+  }
+
+  it('asks for summarized thinking by default, so thinking blocks carry text', () => {
+    expect(display(buildClaudeArgs(session()))).toBe('summarized')
+    expect(display(buildClaudeArgs({ ...session(), resumeConversationId: 'c' } as SessionConfig))).toBe('summarized')
+  })
+
+  it('keeps the CLI display when the session or the server chose it, or the flags name one', () => {
+    expect(display(buildClaudeArgs({ ...session(), thinkingDisplay: 'updates' }))).toBeUndefined()
+    const own = buildClaudeArgs({ ...session(), extraArgs: ['--thinking-display', 'omitted'] })
+    expect(own.filter((arg) => arg === '--thinking-display')).toHaveLength(1)
+    expect(display(own)).toBe('omitted')
+    vi.stubEnv('CLAUDE_BRIDGE_THINKING_DISPLAY', 'updates')
+    try {
+      expect(display(buildClaudeArgs(session()))).toBeUndefined()
+      expect(display(buildClaudeArgs({ ...session(), thinkingDisplay: 'summarized' }))).toBe('summarized')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })
 
 describe('Claude CLI model selection', () => {
@@ -77,5 +103,13 @@ describe('Claude CLI model selection', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Claude effort line', () => {
+  it('points the model at the note a live /effort adds to the next message (effort-note.ts)', () => {
+    const line = claudeEffortLine('high')
+    expect(line).toContain('started with reasoning effort `high`')
+    expect(line).toContain('Bridge note in a user message')
   })
 })

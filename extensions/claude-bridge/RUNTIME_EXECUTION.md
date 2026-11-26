@@ -140,6 +140,15 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 0087–0092 и строка INC-0042 в обзоре отстают от уже смерженных PR; их приводит в
 соответствие reconciliation PR kmaint без нового fix.
 
+### Приёмка на 1.0.116 — 2026-11-19 (#1045)
+
+Живая приёмка kacc18 на установленном KaminIDE 1.0.116 / server 6.3.193
+смержена в #1045 (`5407578d`); мейнтейнер (teamops28) выборочно сверил
+private evidence (0074, 0110, 0112). Закрыты как `done`: 0063, 0072, 0073,
+0074, 0088, 0110, 0111, 0112. 0081 остаётся `verify`: стенд PASS 19.11,
+остаток — наблюдение в развёртывании владельца (лид/владелец). Записи #1045
+по 0071 и 0079 их статус не меняют.
+
 ### Смена исполнителей 2026-11-13
 
 Таблицы выше сохраняют исходное распределение. Для снижения нагрузки на машину
@@ -175,7 +184,8 @@ BR-12 и BR-13 остаются `blocked`; у maintainer нет доступа �
 | [INC-0107](runtime-issues/INC-2026-0107.md) | [#869](https://github.com/dykamino-coder/gpui-kamin-ide/pull/869) (`ce1e7954`), [#917](https://github.com/dykamino-coder/gpui-kamin-ide/pull/917) (`410fd289`) | done: #869/#917 опубликованы в 1.0.100 после своих Windows gates; follow-up #923 — в 1.0.101 | нет остаточного gate принятой области; исторические ограничения — в карточке |
 | [INC-0118](runtime-issues/INC-2026-0118.md) | [#923](https://github.com/dykamino-coder/gpui-kamin-ide/pull/923) (`6aa64804`) | done: #923 опубликован в 1.0.101 / server 6.3.178; Windows gate на `ebf11d7e` и релизном кандидате пройден (priv #196, #197) | нет остаточного gate lease recovery; причина первоначальной паузы CLI неизвестна |
 | [INC-0119](runtime-issues/INC-2026-0119.md) | [#934](https://github.com/dykamino-coder/gpui-kamin-ide/pull/934) (`30010bc9`) | done: #934 опубликован в 1.0.102 / server 6.3.179 (#937); Windows gate на точной голове `046d53fa`: 6.3.178 обрезал 2 из 2, кандидат целый 2 из 2 (priv #198) | нет остаточного gate принятой области; публикация не равна приёмке у владельца |
-| [INC-0120](runtime-issues/INC-2026-0120.md) | [#938](https://github.com/dykamino-coder/gpui-kamin-ide/pull/938) (открыт) | verify: красное на 1.0.102 есть; первый гейт на `c872f168` отозван — закоммиченные бандлы не равны сборке из исходников | повторный Windows gate kacc на голове с пересобранными бандлами, затем merge teamops17 |
+| [INC-0120](runtime-issues/INC-2026-0120.md) | [#938](https://github.com/dykamino-coder/gpui-kamin-ide/pull/938) (`bb48a933`) | done: #938 опубликован в 1.0.103 / server 6.3.180 (#941); Windows gate на точной голове `eaa6d51f`: 1.0.102 «Queued» без ответа, кандидат вернул текст в composer (priv #200) | нет остаточного gate принятой области; браузерная часть только автотесты; публикация не равна приёмке у владельца |
+| [INC-0121](runtime-issues/INC-2026-0121.md) | [#943](https://github.com/dykamino-coder/gpui-kamin-ide/pull/943) (`2f7b0c22`) | done: #943 опубликован в 1.0.104 / server 6.3.181 (#945); живой прогон на точной голове `7a0c80de`: Read 200 KB inline, head/tail/путь для `seq 1 200000`, маркер Grep (priv #201) | нет остаточного gate принятой области; Codex вживую не проверен (лимит до 17.11); публикация не равна приёмке у владельца |
 | [INC-0117](runtime-issues/INC-2026-0117.md) | [#895](https://github.com/dykamino-coder/gpui-kamin-ide/pull/895) (`5458767b`) | verify: fix слит, CI зелёный на объединённой голове | exact-RGB на `main` в пачке после merge — лид; чистый прогон закрывает карточку |
 
 ### Вне пачки (backlog следующего запуска)
@@ -497,7 +507,7 @@ production-run требует repository secrets и отдельный след�
 | [BR-13](RUNTIME_RELIABILITY.md#br-13--retire-the-legacy-bridge-sync-mount-safely) | blocked | observation | deployment | owner confirms every deployment migration | Migration proof до cleanup PR |
 | [BR-14](RUNTIME_RELIABILITY.md#br-14--make-release-artifact-provenance-verifiable) | done | observation | release | none | PR #43–#44 в `main`; первый автоматический release после добавления secrets |
 | [BR-15](RUNTIME_RELIABILITY.md#br-15--evaluate-automatic-agent-teams-selection) | waiting | research | Agent Teams | BR-09 live gate + BR-25 completion; BR-27/26 done | Versioned orchestration eval |
-| [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | waiting | change | chat history | classification BR-22 | Keyed-anchor PR с CEF displacement gate |
+| [BR-16](RUNTIME_RELIABILITY.md#br-16--stabilize-upward-history-scroll-anchoring) | waiting | change | chat history | classification BR-22 (только для якорной части) | Политика следования принята: #1066 merged (`562383e6`), живой Windows CEF gate на `e215f4b4` passed (прокрутка вверх в нижней полосе больше не притягивает вниз). Осталась якорная часть: keyed-anchor PR с CEF displacement gate |
 | [BR-17](RUNTIME_RELIABILITY.md#br-17--persist-privacy-safe-bridge-server-logs) | verify | observation | server operations | PR #203 merged | Production rollout of the lifecycle volume + read-only confirmation (deployment owner) |
 | [BR-18](RUNTIME_RELIABILITY.md#br-18--keep-sessionend-relay-available-and-secret-safe-during-teardown) | done | observation | teardown | BR-17 для остаточной причины | PR #20 в `main`; trigger классифицируется по новым logs |
 | [BR-18A](RUNTIME_RELIABILITY.md#br-18a--classify-local-sessionend-execution-on-explicit-end) | done | none | local hooks | BR-18 relay fix merged | Fix #900 merged 2026-11-14 (`d8667701`): сокет закрытой вкладки живёт до закрытия сервером или 5 с; marker на кандидате: local SessionEnd выполнен 2/2 (priv #189); опубликовано в 1.0.98. Регрессия 1.0.98 (выход хоста до +5 с после закрытия вкладки) исправлена #909 (`9b508696`), опубликовано в 1.0.99 | — |

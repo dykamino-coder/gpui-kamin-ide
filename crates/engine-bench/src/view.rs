@@ -19,13 +19,26 @@ pub(super) struct Phases {
     pub(super) prepaint: Duration,
     pub(super) paint: Duration,
     pub(super) renders: usize,
+    /// Renders inside the draw of the previous render: GPUI's layout retry
+    /// (`Window::update_layout_input`) discards an attempt and renders the
+    /// root again in the same draw, for example after a container query
+    /// input changed. No new frame was requested for them.
+    pub(super) layout_retries: usize,
+    /// The draw of the latest render.
+    pass: Option<gpui::PaintPassId>,
     pub(super) observer_setup: Duration,
-    requested: Option<Instant>,
+    pub(super) requested: Option<Instant>,
     pub(super) request_to_render: Option<Duration>,
     request_finished: Option<Clock>,
 }
 
 impl Phases {
+    /// Draws that rendered the root: a layout retry renders again inside
+    /// its draw and is the same frame, timed whole.
+    pub(super) fn frame_renders(&self) -> usize {
+        self.renders - self.layout_retries
+    }
+
     pub(super) fn requested(observer_setup: Duration) -> Self {
         Self {
             observer_setup,
@@ -37,20 +50,21 @@ impl Phases {
 
 pub(super) struct View {
     pub(super) doc: Document,
+    pub(super) animation_elapsed: Option<Duration>,
     pub(super) phases: Rc<RefCell<Phases>>,
     pub(super) viewport: Option<(u32, u32)>,
+    /// Шаг документа перед каждым кадром окна (`step::register`).
+    pub(super) step: Option<gpui::Subscription>,
+    /// Опции, с которыми шаг этого кадра подготовил документ: кадр берёт их
+    /// же, а не строит вторые (каждые опции — свои контексты раскладки).
+    pub(super) step_opts: Option<RenderOpts>,
+    /// Root scroll offset the next fresh document opens at (`scroll_fresh`).
+    pub(super) fresh_scroll: Option<(f32, f32)>,
 }
 
-impl Render for View {
-    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        kamin_html::work::phase!(_work, BuildElements);
-        let started = Clock::now();
-        let mut phases = self.phases.borrow_mut();
-        let rendered = Instant::now();
-        phases.request_to_render = phases
-            .requested
-            .map(|request| rendered.duration_since(request));
-        drop(phases);
+impl View {
+    /// Опции кадра документа: те же у шага и у кадра.
+    pub(super) fn opts(&self, window: &Window) -> RenderOpts {
         let mut text = window.text_style();
         text.color = rgb(0).into();
         text.font_family = "Times New Roman".into();
@@ -71,12 +85,37 @@ impl Render for View {
             frag: Default::default(),
         };
         opts.cx.deferred.freeze_scrollbars = true;
+        opts
+    }
+}
+
+impl Render for View {
+    fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        kamin_html::work::phase!(_work, BuildElements);
+        let started = Clock::now();
+        let mut phases = self.phases.borrow_mut();
+        // Шаг документа (`step`) уже отметил начало кадра.
+        if phases.request_to_render.is_none() {
+            let rendered = Instant::now();
+            phases.request_to_render = phases
+                .requested
+                .map(|request| rendered.duration_since(request));
+        }
+        drop(phases);
+        let opts = self.step_opts.take().unwrap_or_else(|| self.opts(window));
         // Коробка области просмотра принадлежит документу: неизменный кадр
         // он повторяет без сборки и раскладки (`Document::render_viewport`).
         let root = self.doc.render_viewport(&opts);
         let mut phases = self.phases.borrow_mut();
         phases.build += started.elapsed();
         phases.renders += 1;
+        // DevTools `why`: each render in the order of the frame requests (`--why`).
+        gpui::dirty_sources::trace::mark("render");
+        let pass = window.paint_pass_id();
+        if phases.pass.as_ref() == Some(&pass) {
+            phases.layout_retries += 1;
+        }
+        phases.pass = Some(pass);
         Timed {
             root,
             phases: self.phases.clone(),
@@ -137,10 +176,12 @@ impl Element for Timed {
             let mut phases = self.phases.borrow_mut();
             // Между callback выполняются root layout и обвязка GPUI; вложенные
             // layout внутри prepaint остаются в prepaint, не считаясь повторно.
+            // Раскладка шага до кадра — часть той же фазы.
+            let step = phases.layout.take().unwrap_or_default();
             phases.layout = phases
                 .request_finished
                 .take()
-                .map(|end| started.duration_since(end));
+                .map(|end| started.duration_since(end) + step);
         }
         kamin_html::work::switch!(Prepaint);
         self.root.prepaint(window, cx);

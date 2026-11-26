@@ -117,6 +117,7 @@ fn half_width(text: &SharedString, window: &mut Window) -> f32 {
         background_pad: Default::default(),
         background_radius: Default::default(),
         background_line_gap: false,
+        background_owner: 0,
         background_border: None,
         underline: None,
         strikethrough: None,
@@ -170,6 +171,7 @@ impl Render for KaminTooltip {
             background_pad: Default::default(),
             background_radius: Default::default(),
             background_line_gap: false,
+            background_owner: 0,
             background_border: None,
             underline: None,
             strikethrough: None,
@@ -190,7 +192,6 @@ impl Render for KaminTooltip {
                     .top(px(-(box_h() + 14.0)))
                     // Регион на САМ бокс (легаси region-режим): обёртка в регионе
                     // рисовалась чёрной плитой
-                    .child(crate::overlay::tooltip_region())
                     .bg(rgba(p.bg_surface))
                     .text_color(rgba(p.text_primary))
                     .px(px(m::SPACE_2))

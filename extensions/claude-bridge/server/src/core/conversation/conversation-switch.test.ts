@@ -70,20 +70,20 @@ function claudeChat() {
   return { sessionsDir, settingsDir, native }
 }
 
-function planFirst() {
+async function planFirst() {
   const chat = claudeChat()
-  const plan = planSwitch({
+  const plan = (await planSwitch({
     manifest: null,
     sessionsDir: chat.sessionsDir,
     from: { engine: 'claude', nativeId: NATIVE, settingsDir: chat.settingsDir, model: 'claude-haiku-5-5' },
     target: { engine: 'codex', model: 'gpt-6-luna' },
-  })!
+  }))!
   return { chat, plan }
 }
 
 describe('engine switch: plan and commit', () => {
-  it('plans without touching the conversation (B1: a failed start changes nothing)', () => {
-    const { chat, plan } = planFirst()
+  it('plans without touching the conversation (B1: a failed start changes nothing)', async () => {
+    const { chat, plan } = await planFirst()
     expect(plan.existing).toBe(false)
     expect(plan.segment).toMatchObject({ engine: 'codex', model: 'gpt-6-luna', nativeId: null })
     expect(plan.segment.pendingContext).toContain('The code word is FALCON.')
@@ -95,10 +95,10 @@ describe('engine switch: plan and commit', () => {
     expect(fs.readFileSync(chat.native, 'utf8').split('\n').filter(Boolean)).toHaveLength(2)
   })
 
-  it('an empty chat has nothing to carry', () => {
+  it('an empty chat has nothing to carry', async () => {
     const chat = claudeChat()
     expect(
-      planSwitch({
+      await planSwitch({
         manifest: null,
         sessionsDir: chat.sessionsDir,
         from: { engine: 'claude', nativeId: null, settingsDir: chat.settingsDir, model: null },
@@ -107,8 +107,8 @@ describe('engine switch: plan and commit', () => {
     ).toBeNull()
   })
 
-  it('commit seeds the log, writes the marker and moves the manifest to the new segment', () => {
-    const { plan } = planFirst()
+  it('commit seeds the log, writes the marker and moves the manifest to the new segment', async () => {
+    const { plan } = await planFirst()
     const manifest = commitSwitch(plan)
     expect(manifest.segments).toHaveLength(2)
     expect(manifest.active).toBe(1)
@@ -119,19 +119,19 @@ describe('engine switch: plan and commit', () => {
     expect(activeSegment(manifest).logStart).toBe(Buffer.byteLength(log.slice(0, 2).join('\n') + '\n'))
   })
 
-  it('a later switch carries the whole conversation, both engines included', () => {
-    const { chat, plan } = planFirst()
+  it('a later switch carries the whole conversation, both engines included', async () => {
+    const { chat, plan } = await planFirst()
     const manifest = commitSwitch(plan)
     UnifiedLog.of(unifiedLogPath(plan.ref)).append([
       JSON.parse(line('c1', null, 'user', 'And the colour is teal.')),
       JSON.parse(line('c2', 'c1', 'assistant', 'Teal, noted.')),
     ])
-    const back = planSwitch({
+    const back = (await planSwitch({
       manifest,
       sessionsDir: chat.sessionsDir,
       from: { engine: 'codex', nativeId: 'thread-1', settingsDir: plan.segment.settingsDir, model: 'gpt-6-luna' },
       target: { engine: 'claude', model: 'claude-haiku-5-5' },
-    })!
+    }))!
     expect(back.existing).toBe(true)
     expect(back.segment.pendingContext).toContain('FALCON')
     expect(back.segment.pendingContext).toContain('teal')
@@ -140,8 +140,8 @@ describe('engine switch: plan and commit', () => {
 })
 
 describe('engine switch: first-turn context', () => {
-  it('is handed out once, with the first user turn', () => {
-    const { plan } = planFirst()
+  it('is handed out once, with the first user turn', async () => {
+    const { plan } = await planFirst()
     commitSwitch(plan)
     const first = takeTurnContext(plan.ref)
     expect(first).toContain('<bridge-context>')
@@ -152,19 +152,19 @@ describe('engine switch: first-turn context', () => {
     expect(takeTurnContext(plan.ref)).toBeNull()
   })
 
-  it('a segment whose native session is lost starts again with the whole conversation (S6)', () => {
-    const { plan } = planFirst()
+  it('a segment whose native session is lost starts again with the whole conversation (S6)', async () => {
+    const { plan } = await planFirst()
     const manifest = commitSwitch(plan)
     takeTurnContext(plan.ref)
     activeSegment(manifest).nativeId = 'thread-gone'
-    const segment = restartSegmentFresh(manifest)
+    const segment = await restartSegmentFresh(manifest)
     expect(segment.nativeId).toBeNull()
     expect(segment.pump).toEqual({ file: null, pos: 0 })
     expect(takeTurnContext(plan.ref)).toContain('FALCON')
   })
 
-  it('records an in-place model change on the running segment', () => {
-    const { plan } = planFirst()
+  it('records an in-place model change on the running segment', async () => {
+    const { plan } = await planFirst()
     commitSwitch(plan)
     noteSegmentModel(plan.ref, 'gpt-6-sol')
     resetManifestCacheForTests()
@@ -174,7 +174,7 @@ describe('engine switch: first-turn context', () => {
 
 describe('engine switch: segment files', () => {
   it('archives every segment and restores a swept native transcript (S6, INC-2026-0054)', async () => {
-    const { chat, plan } = planFirst()
+    const { chat, plan } = await planFirst()
     commitSwitch(plan)
     await archiveConversation(plan.ref)
     expect(archivedTranscriptPath(NATIVE)).not.toBeNull()
@@ -187,8 +187,8 @@ describe('engine switch: segment files', () => {
     expect(fs.readFileSync(chat.native, 'utf8')).toContain('FALCON')
   })
 
-  it('finds sub-agent transcripts under the running segment, not the logical id (S9)', () => {
-    const { plan } = planFirst()
+  it('finds sub-agent transcripts under the running segment, not the logical id (S9)', async () => {
+    const { plan } = await planFirst()
     const manifest = commitSwitch(plan)
     expect(segmentSubagentsDir(plan.ref)).toBeNull() // the new segment has no native id yet
     activeSegment(manifest).nativeId = 'native-b'
@@ -196,7 +196,7 @@ describe('engine switch: segment files', () => {
   })
 
   it('deletion removes every segment directory, native transcript, archive and the cache (S7)', async () => {
-    const { chat, plan } = planFirst()
+    const { chat, plan } = await planFirst()
     const manifest = commitSwitch(plan)
     fs.mkdirSync(plan.segment.settingsDir, { recursive: true })
     const nativeB = path.join(slugDirOf(plan.segment.settingsDir), 'native-b.jsonl')
@@ -221,8 +221,8 @@ describe('engine switch: segment files', () => {
     expect(loadManifest(plan.ref.dir)).toBeNull()
   })
 
-  it('deletion never removes a directory it does not own', () => {
-    const { plan } = planFirst()
+  it('deletion never removes a directory it does not own', async () => {
+    const { plan } = await planFirst()
     commitSwitch(plan)
     fs.mkdirSync(plan.segment.settingsDir, { recursive: true })
     deleteConversationFiles(plan.ref.dir, () => false)

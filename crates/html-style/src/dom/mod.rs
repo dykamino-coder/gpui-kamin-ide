@@ -6,27 +6,37 @@
 //! Наша часть — превратить его дерево в своё: с каскадом и без узлов, которые
 //! ничего не рисуют.
 
+pub use markup5ever_rcdom::NodeKey;
+
 mod anonymous;
 mod box_text;
 pub use box_text::{Text, TextId};
+mod box_id;
+pub use box_id::BoxId;
 mod children;
 mod same_tree;
 pub use same_tree::{
-    BoxStyles, CascadedMemo, paints_without_color, same_box, same_cascaded_box, same_cascaded_tree,
-    same_layout_box, same_layout_tree_as, same_shell, same_tree, same_tree_as,
+    BoxStyles, CascadedMemo, paints_without_color, same_box, same_cascaded_box,
+    same_cascaded_layout_stages, same_cascaded_tree, same_cascaded_values, same_layout_box,
+    same_layout_stages, same_layout_tree_as, same_shell, same_tree, same_tree_as,
     same_unread_color_tree_as, same_values,
 };
 mod intrinsic;
 pub use intrinsic::{IntrinsicInput, IntrinsicSizes};
+pub mod attr_reads;
+pub mod class_tokens;
 pub mod invalidation;
 pub mod traversal;
-pub use children::{Children, ChildrenMark};
+pub use children::{
+    BoxTextFacts, BoxTreeSummary, Children, ChildrenMark, PositionedFacts, PositionedQuery,
+};
 mod direction;
 pub mod early_admission;
 mod shared_style;
 pub use shared_style::SharedStyle;
 mod document_rules;
 mod finish_document;
+pub mod form_state;
 pub mod input;
 pub mod mathml;
 mod mathml_defaults;
@@ -38,7 +48,9 @@ pub mod outcome;
 mod page_scheme;
 mod parse_document;
 pub mod restyle_probe;
-pub use walk::{Probed, ProbedRest};
+pub use walk::{Probed, ProbedRest, Subtree};
+#[cfg(test)]
+mod class_token_tests;
 pub mod source_walk;
 pub mod style_sources;
 pub mod text_content;
@@ -135,8 +147,8 @@ pub enum Node {
 pub struct Element {
     /// Номер пункта списка из счётчика `list-item`; `None` — не пункт.
     pub list_item: Option<i64>,
-    /// Устойчивый номер авторского узла; ноль обозначает синтетическую коробку.
-    /// Идентичность состояния GPUI для неё хранится отдельно в Marks.
+    /// У исходного элемента — упакованный NodeKey; у layout-копий — внутренняя
+    /// метка. Синтетический ноль получает отдельный ключ состояния в Marks.
     pub node_id: u64,
     /// Кадры анимации, уже разрешённые в стиль: доля времени → стиль.
     pub anim: Option<std::rc::Rc<Vec<(f32, Computed)>>>,

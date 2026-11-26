@@ -5,8 +5,12 @@ mod completion;
 mod tests;
 
 pub use completion::{CaptureClosed, Completion};
-use gpui::frame_capture::{CapturedFrame, FrameCaptureSink};
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use gpui::frame_capture::{CapturedFrame, FrameCaptureSink, RasterReport};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 /// Кадр с номером завершения внутри этой сессии. Буфер readback один на кадр:
 /// first и latest делят его (как результат `CopyOutputRequest` в Chromium
@@ -15,6 +19,8 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 pub struct Frame {
     pub seq: u64,
     pub pixels: Rc<CapturedFrame>,
+    /// Момент завершения readback в потоке окна, до пробуждения ждущих.
+    pub completed_at: Instant,
 }
 
 impl Frame {
@@ -29,6 +35,10 @@ struct State {
     closed: bool,
     seq: u64,
     readback_us: u64,
+    copy_us: u64,
+    /// What the last captured frame rasterized and its GPU wait (`--why`).
+    raster: Option<RasterReport>,
+    wait_us: u64,
     latest: Option<Frame>,
     first: Option<Frame>,
     armed: bool,
@@ -53,6 +63,22 @@ impl CaptureSession {
 
     pub fn readback_time(&self) -> Duration {
         Duration::from_micros(self.0.borrow().readback_us)
+    }
+
+    /// Часть `readback_time` после готовности кадра на GPU: копия цели в память.
+    pub fn copy_time(&self) -> Duration {
+        Duration::from_micros(self.0.borrow().copy_us)
+    }
+
+    /// The raster of the last captured frame, when the backend reports it.
+    pub fn raster_report(&self) -> Option<RasterReport> {
+        self.0.borrow().raster.clone()
+    }
+
+    /// The part of `readback_time` before the frame is complete: the wait for
+    /// the GPU to execute it (on a software adapter, its CPU raster).
+    pub fn gpu_wait_time(&self) -> Duration {
+        Duration::from_micros(self.0.borrow().wait_us)
     }
 
     pub fn latest(&self) -> Option<Frame> {
@@ -107,6 +133,7 @@ impl FrameCaptureSink for Endpoint {
         let frame = Frame {
             seq,
             pixels: Rc::new(pixels),
+            completed_at: Instant::now(),
         };
         if state.armed {
             state.first = Some(frame.clone());
@@ -121,6 +148,18 @@ impl FrameCaptureSink for Endpoint {
         for waker in wakes {
             waker.wake();
         }
+    }
+
+    fn copied(&mut self, copy: Duration) {
+        self.0.borrow_mut().copy_us += copy.as_micros() as u64;
+    }
+
+    fn raster(&mut self, report: RasterReport) {
+        self.0.borrow_mut().raster = Some(report);
+    }
+
+    fn waited(&mut self, wait: Duration) {
+        self.0.borrow_mut().wait_us += wait.as_micros() as u64;
     }
 }
 

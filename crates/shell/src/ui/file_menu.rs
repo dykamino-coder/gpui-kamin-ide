@@ -2,7 +2,7 @@
 //! папка: New File… / New Folder… | Cut / Copy / Paste | Rename… / Delete |
 //! Copy Path / Copy Relative Path; файл — то же без New-группы.
 //! (Open In-каскад и contributed explorer/context — фаза расширений.)
-//! Рендерится в overlay-окне (единый слой), hit_area в корне.
+//! Рендерится в overlay-слое главного окна.
 
 use crate::host::events::EdEvent;
 use crate::host::events::ShellEvent;
@@ -107,8 +107,7 @@ pub fn file_menu(
         .bg(rgba(p.bg_surface))
         .border_1()
         .border_color(tint(rgba(p.text_primary), 0.06))
-        .shadow(crate::overlay::dropdown_shadow())
-        .child(crate::overlay::hit_area());
+        .shadow(crate::overlay::dropdown_shadow());
 
     // ── Open In ▸ (первым, group "open"; каскад по ховеру)
     {

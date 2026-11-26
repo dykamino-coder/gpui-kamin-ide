@@ -15,8 +15,19 @@ One command per question (docs/memprof.md):
       (DOM, style, layout, display list, text, gpui) after the last frame of each mode
       (ENGINE_BENCH_MEMORY_REPORT=1, crates/engine-bench/src/holders.rs); the probe records the whole
       run, and the report lists owners, the live heap at that moment and its unreported blocks by site.
+  memprof.py run --exe CAND.exe [--base-exe BASE.exe] --retainers --out DIR -- PAGE.html --mode relayout --runs 1
+      who keeps each block alive: with --owners, the bench also scans every live block and its roots
+      after the owner report of the first mode (ENGINE_BENCH_RETAINERS_OUT) and writes the retention
+      graph; the report gives the dominator tree, retained bytes by group and the path from a root
+      to the largest holders (scripts/memprof_retain.py); --heapsnapshot also writes a V8
+      .heapsnapshot for the Memory panel of Chrome.
   memprof.py diff A.json B.json
       compares two saved reports without symbols.
+  memprof.py retain-diff A-retain.json B-retain.json
+      retained bytes by group of two saved retention reports.
+  memprof.py retain-query DIR/cand.retain --holders TEXT... | --cut TEXT...
+      every holder (incoming edge, field offset) of the blocks whose label contains TEXT, or the bytes
+      they keep alive together (no root reaches them once those blocks are cut).
   memprof.py ws --exe CAND.exe [--base-exe BASE.exe] --out DIR -- PAGE.html --mode both --runs 5
       working set by memory region (image, mapped, private by reservation kind) at its peak, any build
       (timing-only included): what the live-heap reports cannot see (scripts/memprof_ws.py).
@@ -41,9 +52,16 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True
 from memprof_symbols import Symbols  # noqa: E402
+import memprof_guard  # noqa: E402
+import memprof_peak  # noqa: E402
 
 SCHEMA = "kamin.memprof.v1"
+# Mean sampling interval of `run` unless --sample says otherwise: an exact probe of a real page writes tens
+# of GB of stacks (15 GB for one page was seen); 16 KiB sampling gave 45 MB instead of 3.5 GB on wide-16000
+# with totals within 0.3% of the audit counter (docs/memprof.md, Limits).
+DEFAULT_SAMPLE = 16384
 
 # Frames of the allocator itself. Only a leading run of them is dropped, and a frame counts only when
 # its name STARTS with one of these: generic arguments such as `Vec<T, alloc::alloc::Global>` inside
@@ -302,6 +320,9 @@ class Run:
             group[1] += total
         if snapshot is not None:
             self.owners = self._owners(snapshot, measured, paths)
+        # The retention graph (memprof_retain) names its blocks from the same moment.
+        self.held = snapshot if snapshot is not None else blocks if self.until != "-" else None
+        self.measured = measured
         return groups
 
     def _owners(self, snapshot, owned, paths):
@@ -619,6 +640,9 @@ def report_command(args):
         same_build(args.exe, args.base[0], args)
         base = Run(args.base[0], args.base[1], live, frames)
     report = write_report(cand, base, live, args)
+    for run, graph in zip((cand, base), args.retainers or ()):
+        if run:
+            retain_outputs(run, graph, pathlib.Path(graph).with_suffix(""), args)
     if args.delete_stacks:
         for path in [args.stacks] + ([args.base[1]] if args.base else []):
             drop_stacks(path)
@@ -697,9 +721,43 @@ def diff_command(args):
     render(out)
 
 
+def retain_outputs(run, graph, stem, args):
+    """Retention report of one side: <stem>.txt, <stem>.json and, if asked, <stem>.heapsnapshot."""
+    import memprof_retain
+    if not pathlib.Path(graph).is_file():
+        raise SystemExit(f"{graph}: no retention graph; check the requested phase/frame and bench stderr")
+    text = pathlib.Path(f"{stem}.txt")
+    with open(text, "w", encoding="utf-8") as out:
+        data = memprof_retain.report(graph, run, out, args.top)
+    pathlib.Path(f"{stem}.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
+    print(text.read_text(encoding="utf-8"))
+    if args.heapsnapshot:
+        path = memprof_retain.export_heapsnapshot(graph, run, f"{stem}.heapsnapshot")
+        print(f"heap snapshot for Chrome: {path}", file=sys.stderr)
+    return data
+
+
+def retain_diff_command(args):
+    import memprof_retain
+    one, two = (json.loads(pathlib.Path(p).read_text(encoding="utf-8")) for p in (args.cand, args.base))
+    memprof_retain.diff(one, two, sys.stdout, args.top)
+
+
+def retain_query_command(args):
+    import memprof_retain
+    memprof_retain.query(args.graph, f"{args.graph}.names.json", args.holders, args.cut, sys.stdout)
+
+
 def run_command(args):
-    out = pathlib.Path(args.out)
+    out = memprof_peak.prepare(args)
     out.mkdir(parents=True, exist_ok=True)
+    if args.retainers:
+        # Sampling labels never samples the independently collected retention graph.
+        args.sample, args.owners = args.sample or 0, not args.at
+    elif args.sample is None:
+        args.sample = DEFAULT_SAMPLE
+    if args.owners and args.at:
+        raise SystemExit("--owners uses a late owner walk; use --retainers --at for a phase graph")
     if args.owners:
         # The owner report follows the last frame of a mode: the probe records the whole run.
         phase, spec = None, "*"
@@ -707,8 +765,10 @@ def run_command(args):
         if not args.at:
             raise SystemExit("run needs --at <phase>@<frame> or --owners")
         phase, _, frame = args.at.partition("@")
-        if not frame:
-            raise SystemExit("--at needs <phase>@<frame>, e.g. build_elements@2")
+        if not phase or not frame.isdecimal() or int(frame) < 1:
+            raise SystemExit("--at needs <phase>@<positive frame>, e.g. build_elements@2")
+        if args.retainers and args.start:
+            raise SystemExit("--retainers --at needs --start 0 to name blocks from process start")
         spec = f"*@{args.start}-{frame}"
     sides = [("cand", args.exe)] + ([("base", args.base_exe)] if args.base_exe else [])
     bench = list(args.bench)
@@ -724,8 +784,13 @@ def run_command(args):
     for name, exe in sides:
         stacks = out / f"{name}.stacks"
         env = dict(os.environ, ENGINE_BENCH_ALLOC_STACKS=spec, ENGINE_BENCH_ALLOC_STACKS_OUT=str(stacks))
-        for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT"):
+        for key in ("ENGINE_BENCH_ALLOC_STACKS_UNTIL", "ENGINE_BENCH_MEMORY_REPORT",
+                    "ENGINE_BENCH_RETAINERS_OUT", "ENGINE_BENCH_RETAINERS_AT"):
             env.pop(key, None)
+        if args.retainers:
+            env["ENGINE_BENCH_RETAINERS_OUT"] = str(out / f"{name}.retain")
+            if phase:
+                env["ENGINE_BENCH_RETAINERS_AT"] = args.at
         if phase:
             env["ENGINE_BENCH_ALLOC_STACKS_UNTIL"] = phase
         if args.owners:
@@ -736,19 +801,29 @@ def run_command(args):
             env.pop("ENGINE_BENCH_ALLOC_STACKS_SAMPLE", None)
         prefix = [part.strip('"') for part in shlex.split(args.launcher, posix=False)] if args.launcher else []
         command = [*prefix, exe, *bench]
-        with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
-            code = subprocess.run(command, env=env, stdout=stdout, stderr=stderr,
-                                  stdin=subprocess.DEVNULL, timeout=args.timeout).returncode
+        try:
+            with open(out / f"{name}.json", "wb") as stdout, open(out / f"{name}.err", "wb") as stderr:
+                code = memprof_guard.run(command, env=env, stdout=stdout, stderr=stderr, stdin=subprocess.DEVNULL,
+                                         timeout=args.timeout, watch=stacks,
+                                         max_bytes=int(args.max_stacks_gb * 1e9),
+                                         min_free=int(args.min_free_gb * (1 << 30)))
+        except memprof_guard.Stopped as stop:
+            if not args.keep_stacks and stacks.exists():
+                drop_stacks(stacks)
+            raise SystemExit(f"{name}: engine_bench stopped: {stop}. A bench that keeps working after its "
+                             f"report writes stacks without bound: see {out / (name + '.err')}; sample coarser "
+                             "(--sample), or raise --max-stacks-gb / --timeout if the run is expected to need it")
         print(f"{name}: exit {code}, {stacks}", file=sys.stderr)
         if code:
             if not args.keep_stacks and stacks.exists():
                 drop_stacks(stacks)
             raise SystemExit(f"{name} run failed, see {out / (name + '.err')}")
-        # Each side is folded and its probe file removed before the next side runs: one raw file
-        # on disk at a time.
-        runs.append(Run(exe, stacks, True, frames))
+        # Export both checkpoints before deleting this side's raw probe file.
+        runs.append(memprof_peak.fold_run(args, exe, stacks, frames, sys.modules[__name__], name))
         if not args.keep_stacks:
             drop_stacks(stacks)
+        if args.retainers:
+            retain_outputs(runs[-1], out / f"{name}.retain", out / f"{name}-retain", args)
     args.json = args.json or out / "report.json"
     report = write_report(runs[0], runs[1] if len(runs) > 1 else None, True, args)
     with open(out / "report.txt", "w", encoding="utf-8") as text:
@@ -772,16 +847,25 @@ def main(argv=None):
     run.add_argument("--at", help="<phase>@<frame>: live heap when this phase of this frame ends")
     run.add_argument("--owners", action="store_true",
                      help="who holds the heap: owner report after the last frame against the live heap")
+    run.add_argument("--retainers", action="store_true",
+                     help="retention graph after the first owner report, or at --at <phase>@<frame>")
+    run.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
     run.add_argument("--start", type=int, default=0, help="first recorded frame (0 = process start, default)")
-    run.add_argument("--sample", type=int, default=0, help="mean sampling interval in bytes (0 = exact)")
+    run.add_argument("--sample", type=int, default=None,
+                     help=f"mean sampling interval in bytes (default {DEFAULT_SAMPLE}; 0 = exact, "
+                          "--retainers: exact graph, optionally sampled allocation labels)")
+    run.add_argument("--max-stacks-gb", type=float, default=2,
+                     help="stop the bench and its launcher when a stack file grows past this (default 2)")
     run.add_argument("--out", required=True, help="directory for stacks, bench JSON and reports")
     run.add_argument("--launcher", help="command prefix, e.g. a hidden-desktop launcher")
-    run.add_argument("--timeout", type=int, default=1800)
+    run.add_argument("--timeout", type=int, default=900,
+                     help="seconds per side before the bench and its whole launcher tree are terminated (default 900)")
     run.add_argument("--frames", help="A-B: report only blocks allocated in these frames")
     run.add_argument("--keep-stacks", action="store_true",
                      help="keep the raw probe files (GBs in exact mode); by default each is removed once folded")
     run.add_argument("--min-free-gb", type=float, default=60,
-                     help="an exact run does not start with less free disk space than this (default 60)")
+                     help="an exact run does not start, and any run is stopped, with less free disk space "
+                          "than this (default 60)")
     run.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     run.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
@@ -792,6 +876,18 @@ def main(argv=None):
     rep.add_argument("--allocated", action="store_true", help="every allocation of the window, not the live heap")
     rep.add_argument("--frames", help="A-B: only blocks allocated in these frames (frees count in every frame)")
     rep.add_argument("--delete-stacks", action="store_true", help="remove the probe files once folded")
+    rep.add_argument("--retainers", nargs="+", metavar="GRAPH",
+                     help="retention graph files (.retain) of the candidate [and the base] run")
+    rep.add_argument("--heapsnapshot", action="store_true", help="with --retainers: also a V8 .heapsnapshot")
+
+    rtd = sub.add_parser("retain-diff", parents=[common], help="compare two saved retention reports by group")
+    rtd.add_argument("cand")
+    rtd.add_argument("base")
+
+    rtq = sub.add_parser("retain-query", help="holders of blocks, or what a set of blocks keeps alive")
+    rtq.add_argument("graph", help="a .retain file; its labels are read from GRAPH.names.json")
+    rtq.add_argument("--holders", nargs="+", metavar="TEXT", help="incoming edges of blocks whose label contains TEXT")
+    rtq.add_argument("--cut", nargs="+", metavar="TEXT", help="bytes freed without the blocks whose label contains TEXT")
 
     dif = sub.add_parser("diff", parents=[common, mismatch], help="compare two saved JSON reports")
     dif.add_argument("cand")
@@ -804,15 +900,16 @@ def main(argv=None):
     wsp.add_argument("--launcher", help="command prefix that prints 'own child: <pid>' first")
     wsp.add_argument("--interval-ms", type=int, default=1, help="working-set sampling interval")
     wsp.add_argument("--step-mb", type=int, default=2, help="new breakdown when the peak grows by this much")
+    wsp.add_argument("--timeout", type=int, default=600,
+                     help="seconds per side before the bench and its whole launcher tree are terminated (default 600)")
     wsp.add_argument("--ignore-hold", action="store_true", help="start even when a KAMIN_BENCH_HOLD file exists")
     wsp.add_argument("bench", nargs=argparse.REMAINDER, help="-- engine_bench arguments")
 
-    import memprof_build
-    memprof_build.add_parser(sub)
-
+    import memprof_commands
+    memprof_commands.register(sub, run)
     args = parser.parse_args(argv)
-    if args.command == "build":
-        return memprof_build.build_command(args)
+    if memprof_commands.dispatch(args, sys.modules[__name__]):
+        return
     if args.command == "ws":
         import memprof_ws
         os.makedirs(args.out, exist_ok=True)
@@ -822,7 +919,8 @@ def main(argv=None):
         preflight(args, args.out, exact=False)
         launcher = [p.strip('"') for p in shlex.split(args.launcher, posix=False)] if args.launcher else []
         return memprof_ws.ws_command(args, launcher)
-    {"run": run_command, "report": report_command, "diff": diff_command}[args.command](args)
+    {"run": run_command, "report": report_command, "diff": diff_command,
+     "retain-diff": retain_diff_command, "retain-query": retain_query_command}[args.command](args)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,33 @@ impl ColumnStack {
     fn prepaint_columns(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         let w = f32::from(bounds.size.width);
         let col_w = ((w - self.gap * (self.count as f32 - 1.0)) / self.count as f32).max(1.0);
-        self.measure_columns(col_w, window, cx);
+        // The columns the measure prepared at this width: one column layout
+        // per frame, laid out in the measure's engine (`Recipe::measure`).
+        let measured = self.deferred.as_ref().and_then(|r| r.take_measured(col_w));
+        let Some(measured) = measured else {
+            self.measured_layout = None;
+            self.measure_columns(col_w, window, cx);
+            self.place_columns(bounds, col_w, window, cx);
+            return;
+        };
+        crate::work::add!(MulticolMeasureReuses, 1);
+        let mut engine = measured.install(self);
+        self.measured_layout = Some(engine.clone());
+        window.with_retained_layout(&mut engine, |window| {
+            self.column_breaks(col_w, window, cx);
+            self.place_columns(bounds, col_w, window, cx);
+        });
+    }
+
+    /// План колонок и prepaint кусков, спаннеров и линеек по мерам детей.
+    #[inline(never)]
+    fn place_columns(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        col_w: f32,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let planned = self.plan_columns(bounds, col_w);
         let step = col_w + self.gap;
         self.prepaint_frags(window, cx, bounds, col_w, &planned.0, step);
@@ -99,6 +125,18 @@ impl Hooks for ColumnStack {
             self.paint_axis(bounds, window, cx);
             return;
         }
+        match self.measured_layout.clone() {
+            Some(mut engine) => window
+                .with_retained_layout(&mut engine, |window| self.paint_columns(bounds, window, cx)),
+            None => self.paint_columns(bounds, window, cx),
+        }
+    }
+}
+
+impl ColumnStack {
+    /// Горизонтальная отрисовка колонок по плану prepaint.
+    #[inline(never)]
+    fn paint_columns(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         if self.oof.plan.borrow().failure.is_some() || self.record_native(window, cx).is_err() {
             return;
         }

@@ -29,6 +29,25 @@ pub(super) fn peak_memory() -> Result<u64, Box<dyn std::error::Error>> {
     Ok(counters.PeakWorkingSetSize as u64)
 }
 
+/// The process's working set and private commit now, in bytes: a scroll
+/// sample of each step shows whether memory stays flat over the steps.
+pub(super) fn memory_now() -> Option<(u64, u64)> {
+    use windows::Win32::System::{
+        ProcessStatus::{
+            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
+        },
+        Threading::GetCurrentProcess,
+    };
+    let mut counters = PROCESS_MEMORY_COUNTERS_EX {
+        cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
+        ..Default::default()
+    };
+    // The extended counters start as the basic ones; the buffer is this call's.
+    let basic = &mut counters as *mut PROCESS_MEMORY_COUNTERS_EX as *mut PROCESS_MEMORY_COUNTERS;
+    unsafe { GetProcessMemoryInfo(GetCurrentProcess(), basic, counters.cb) }.ok()?;
+    Some((counters.WorkingSetSize as u64, counters.PrivateUsage as u64))
+}
+
 pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Error>> {
     use windows::Win32::{
         Foundation::{HWND, RECT},
@@ -92,6 +111,10 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Offscreen: текстура message-only окна, DWM не видит ни окна, ни кадров.
     let offscreen = args.surface == super::args::Surface::Offscreen;
     platform.set_offscreen_windows(offscreen);
+    // Сверка RGB: каждый кадр ещё раз целиком, расхождение — ошибкой в stderr.
+    gpui_windows::set_damage_audit(
+        std::env::var_os("ENGINE_BENCH_DAMAGE_AUDIT").is_some_and(|v| v == "1"),
+    );
     startup.mark("platform_device_text_and_host_setup");
     let application =
         gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);
@@ -109,6 +132,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
             startup.mark("font_context");
             let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
+            empty.set_animation_elapsed(args.animation_time(0));
             startup.mark("empty_document");
             let window = cx.open_window(
                 WindowOptions {
@@ -131,11 +155,18 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     window
                         .set_frame_capture(Some(sink))
                         .expect("Windows GPU readback");
-                    cx.new(|_| View {
+                    let view = cx.new(|_| View {
                         doc: empty,
+                        animation_elapsed: args.animation_time(0),
                         phases: Rc::new(RefCell::new(Phases::default())),
                         viewport: None,
-                    })
+                        step: None,
+                        step_opts: None,
+                        fresh_scroll: None,
+                    });
+                    let step = super::step::register(&view, window);
+                    view.update(cx, |view, _| view.step = Some(step));
+                    view
                 },
             )?;
             startup.mark("window_surface_pipeline");
@@ -149,12 +180,28 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         match setup() {
             Ok((window, fonts)) => {
                 cx.spawn(async move |cx| {
-                    let value =
-                        run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup)
-                            .await
-                            .map_err(|e| e.to_string());
+                    let value = if args.plan.is_some() {
+                        super::plan::run(
+                            cx,
+                            window,
+                            &fonts,
+                            &args,
+                            &platform,
+                            &capture,
+                            &mut startup,
+                        )
+                        .await
+                    } else {
+                        run::run(cx, window, &fonts, &args, &platform, &capture, &mut startup).await
+                    }
+                    .map_err(|e| e.to_string());
                     *result.borrow_mut() = Some(value);
-                    let _ = cx.update(|cx| cx.quit());
+                    let _ = cx.update(|cx| {
+                        // Stop this window's frame requests before the asynchronous platform quit.
+                        // A continuously posted offscreen paint can otherwise postpone WM_QUIT.
+                        let _ = window.update(cx, |_, window, _| window.remove_window());
+                        cx.quit();
+                    });
                 })
                 .detach();
             }
@@ -170,3 +217,6 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("benchmark exited before completion")?
         .map_err(Into::into)
 }
+
+#[cfg(test)]
+mod tests;

@@ -19,10 +19,11 @@
 //! - a mutated element is a target, and the record of a target on a kept
 //!   path is replaced by the one its entry gives (`entered`): ancestor
 //!   compounds read the attributes the batch left;
-//! - a name that a rule reads in a sibling compound or in a selector argument
-//!   never changes in place (such a batch is rebuilt), and the sheets of the
-//!   document do not change, so a census taken before a batch still answers
-//!   every question a selector asks the siblings.
+//! - the census of the children of a parent counts their names, so each probe
+//!   of a batch whose names a rule reads in a sibling compound drops the
+//!   contexts of the mutated elements' parents (`forget_parents`,
+//!   `Features::reads_siblings`); the sheets of the document do not change, so every
+//!   other census still answers every question a selector asks the siblings.
 use super::super::sibling_survey::{Survey, Visit};
 use crate::dom::shadow::Scope;
 use crate::dom::tree_index::TreeIndex;
@@ -48,6 +49,9 @@ struct Context {
     survey: Rc<Survey>,
     vars: Rc<VarMap>,
     preserve: bool,
+    /// The used colour scheme the children are entered with (the parent's,
+    /// walk::enter); None under the document: the probe's own.
+    scheme: Option<crate::style::values::value::Scheme>,
 }
 
 impl Chains {
@@ -55,8 +59,41 @@ impl Chains {
         self.0.iter().find(|c| Rc::ptr_eq(&c.parent, parent))
     }
 
+    /// Drop the contexts at and below the parents of `mutated`: the census
+    /// of a parent counts its children's names (`+`, `~`, `:nth-child(of S)`),
+    /// and the ancestor records below it carry what it answered.
+    pub fn forget_parents(&mut self, mutated: &[Handle]) {
+        let parents: Vec<Handle> = mutated.iter().filter_map(parent).collect();
+        self.0.retain(|c| {
+            let mut at = Some(c.parent.clone());
+            while let Some(node) = at {
+                if parents.iter().any(|p| Rc::ptr_eq(p, &node)) {
+                    return false;
+                }
+                at = parent(&node);
+            }
+            true
+        });
+    }
+
+    /// Drop the contexts whose ancestor records (or parent) are `marked`:
+    /// the records carry the `:has()` marks of their elements, and these
+    /// changed (`restyle_probe::relational`).
+    pub fn forget_marked(
+        &mut self,
+        marked: &std::collections::HashSet<crate::dom::tree_index::HandleKey>,
+    ) {
+        if marked.is_empty() {
+            return;
+        }
+        self.0.retain(|c| {
+            let parent = crate::dom::tree_index::HandleKey::of(&c.parent);
+            !marked.contains(&parent) && !c.path.iter().any(|r| marked.contains(&r.key))
+        });
+    }
+
     /// The children of `parent` have a context.
-    pub(super) fn knows(&self, parent: &Handle) -> bool {
+    pub(in crate::dom::walk) fn knows(&self, parent: &Handle) -> bool {
         self.find(parent).is_some()
     }
 
@@ -75,6 +112,7 @@ impl Chains {
             survey: first.survey.clone(),
             vars: first.vars.clone(),
             preserve: first.preserve,
+            scheme: Some(first.vcx.scheme),
         });
     }
 
@@ -87,13 +125,14 @@ impl Chains {
                 survey: Survey::children(root, tree),
                 vars: Rc::new(VarMap::new()),
                 preserve: false,
+                scheme: None,
             });
         }
     }
 
     /// The visit of `target` under its parent's context and the path it is
     /// entered with; `None`: no context, or `target` is not a child.
-    pub(super) fn visit<'a>(
+    pub(in crate::dom::walk) fn visit<'a>(
         &self,
         parent: &Handle,
         target: &Handle,
@@ -115,7 +154,7 @@ impl Chains {
             vars: context.vars.clone(),
             preserve: context.preserve,
             depth: context.path.len() + 1,
-            vcx,
+            vcx: context.scheme.map_or(vcx, |s| vcx.with_scheme(s)),
             // Targets are few: each is cascaded, none shares a style.
             parent_share: 0,
         };
@@ -153,4 +192,12 @@ impl Chains {
             }
         }
     }
+}
+
+/// The parent node of `node`.
+fn parent(node: &Handle) -> Option<Handle> {
+    let weak = node.parent.take();
+    let parent = weak.as_ref().and_then(|w| w.upgrade());
+    node.parent.set(weak);
+    parent
 }

@@ -192,3 +192,31 @@ fn concurrent_access_stays_within_budget_and_returns_created_values() {
     // Попадания были: без кэша каждое обращение создавало бы значение заново.
     assert!(created.load(Ordering::Relaxed) < 8 * 2000 * 3 / 4);
 }
+
+impl<K: Eq + std::hash::Hash, V: Clone> BoundedCache<K, V> {
+    /// Total weight of the entries.
+    pub fn bytes(&self) -> usize {
+        self.lock().as_ref().map_or(0, |s| s.bytes)
+    }
+
+    /// Number of entries.
+    pub fn len(&self) -> usize {
+        self.lock().as_ref().map_or(0, |s| s.map.len())
+    }
+}
+
+#[cfg(feature = "work-counters")]
+#[test]
+fn observes_empty_miss_and_hit_without_repeating_lookup() {
+    use crate::work::{Counter, Phase, Session};
+    let session = Session::begin();
+    let cache = BoundedCache::new(1024, |_: &u8| 1).for_paint();
+    assert_eq!(cache.get(&1u8), None);
+    cache.insert(1, 9);
+    assert_eq!(cache.get(&1), Some(9));
+    let counts = session.finish().0[Phase::PipelineOther as usize];
+    assert_eq!(counts[Counter::ResourceCacheMisses as usize], 1);
+    assert_eq!(counts[Counter::ResourceCacheHits as usize], 1);
+    assert_eq!(counts[Counter::PaintCacheMisses as usize], 1);
+    assert_eq!(counts[Counter::PaintCacheHits as usize], 1);
+}

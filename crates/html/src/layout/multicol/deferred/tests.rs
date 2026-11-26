@@ -158,7 +158,7 @@ fn numeric_measurements_release_children_before_materializing_the_final_stack(
                 Vec::new(), 2, 0., None, None, None, None, Default::default(),
             );
             for width in [200., 160., 200.] {
-                assert_eq!(recipe.measure(&mut stack, width, window, app).0, 50.);
+                assert_eq!(recipe.measure(&mut stack, width, None, window, app).0, 50.);
                 assert!(stack.children.is_empty());
             }
             recipe.prepare(&mut stack, 100., window, app);

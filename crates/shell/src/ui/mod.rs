@@ -90,6 +90,7 @@ pub mod term_tab;
 pub mod term_tb_parts;
 pub mod term_toolbar;
 pub mod text_fit;
+pub(crate) mod ticking;
 pub mod time_fmt;
 pub mod titlebar;
 pub mod titlebar_buttons;
@@ -107,8 +108,3 @@ pub mod webview_skeleton;
 pub mod webview_theme;
 pub mod welcome;
 pub mod workspace_symbols;
-
-/// Радиус скругления поповеров (для оконного региона overlay).
-pub fn metrics_radius() -> f32 {
-    kamin_metrics::RADIUS_MD
-}

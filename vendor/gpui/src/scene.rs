@@ -1,10 +1,23 @@
 // todo("windows"): remove
 #![cfg_attr(windows, allow(dead_code))]
 
-mod record;
+mod analytic_gradient;
+pub use analytic_gradient::{AnalyticGradient, GradientQuad, GradientDescriptor, GradientStop, GradientData};
+mod layer;
+pub use layer::{LayerHandle, LayerPainter, LayerValue, SceneLayer, layer_counters};
+pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, LayerOp, LayerSlot, OpenBox, ink_of, place_run, release_unheld};
+pub(crate) use layer::no_run;
+mod damage;
+pub(crate) mod image_resources;
+mod record; mod group_replay;
+#[doc(hidden)]
+pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
+mod projected;
+pub use projected::homography_image;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
+pub(crate) mod scroll_marks;
 impl Scene {
     /// KaminIDE patch: the display list's buffers for the engine bench's memory report
     /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
@@ -23,6 +36,8 @@ impl Scene {
         vec(sink, path, &self.subpixel_sprites);
         vec(sink, path, &self.polychrome_sprites);
         vec(sink, path, &self.surfaces);
+        vec(sink, path, &self.book.layers);
+        vec(sink, path, &self.book.layer_order);
     }
 }
 
@@ -82,11 +97,14 @@ const BOTTOM_LAYER: DrawOrder = 0;
 /// рисуют теми же конвейерами, только в свою текстуру.
 /// KaminIDE patch: `pub` + `doc(hidden)` — буферы групп рисует рендерер из
 /// отдельного крейта `gpui_windows`, которому доступен лишь публичный API.
-#[derive(Default)]
+#[derive(Default, Clone)]
 #[doc(hidden)]
 #[allow(missing_docs)]
 pub struct PaintGroup {
-    pub scene: Scene,
+    /// KaminIDE patch: shared by the frame, the retained layer and the
+    /// rendered frame that hold this group (one copy of its content), written
+    /// through `scene_mut`; equal handles compare equal without a walk.
+    pub scene: std::rc::Rc<Scene>,
     pub bounds: Bounds<ScaledPixels>,
     /// Радиус размытия готовой картинки группы; 0 — не размывать.
     pub blur_radius: f32,
@@ -122,11 +140,32 @@ pub struct PaintGroup {
     pub fragments: Vec<Vec<Point<ScaledPixels>>>,
 }
 
+impl PaintGroup {
+    /// The group scene to write: copied first while another frame or layer
+    /// still holds it (copy on write), so their content stays as drawn.
+    pub(crate) fn scene_mut(&mut self) -> &mut Scene {
+        if std::rc::Rc::get_mut(&mut self.scene).is_none() {
+            self.scene = std::rc::Rc::new(self.scene.copy_finished());
+        }
+        std::rc::Rc::get_mut(&mut self.scene).expect("unshared after the copy")
+    }
+}
+
+impl Scene {
+    /// The group scene `shared` by value: taken when no one else holds it,
+    /// else a copy (`PaintGroup::scene_mut`).
+    pub(crate) fn unshared(shared: std::rc::Rc<Scene>) -> Scene {
+        std::rc::Rc::try_unwrap(shared).unwrap_or_else(|shared| shared.copy_finished())
+    }
+}
+
 #[derive(Default)]
 #[expect(missing_docs)]
 pub struct Scene {
     pub(crate) segment_capture: Option<Box<segments::Capture>>,
     pub(crate) paint_operations: Vec<PaintOperation>,
+    /// KaminIDE patch: commands painted under scroll nodes (`scroll_marks`).
+    pub(crate) scroll: scroll_marks::ScrollBook,
     /// KaminIDE patch: группы, нарисованные в отдельные буферы.
     ///
     /// Список плоский и упорядочен по зависимости: вложенная группа стоит
@@ -154,6 +193,8 @@ pub struct Scene {
     pub surfaces: Vec<PaintSurface>,
     /// KaminIDE patch: сцена — буфер группы (`Window::paint_group`), а не кадр.
     pub(crate) in_group: bool,
+    /// KaminIDE patch: renumber copied group labels by this (group_replay).
+    pub(crate) relabel: i32,
     /// KaminIDE patch: подложки `backdrop-filter`, поднятые из группы: буфер
     /// группы рисуется ДО кадра, и копировать подложку в нём не из чего
     /// (filter-effects-2 §3 шаг 1 — «Backdrop Root Image» лежит ПОД
@@ -173,6 +214,56 @@ pub struct Scene {
     /// Counters of one frame, 32 bits each: with `ink_scope` the scene (two
     /// in every `Window`) stays the size it had without scopes.
     pub(crate) ink_allowed: (u32, u32),
+    /// KaminIDE patch: the frame's damage and retained layers (`SceneBook`).
+    pub(crate) book: Box<SceneBook>,
+}
+
+/// KaminIDE patch: what a scene keeps for its damage and its retained layers,
+/// behind one box: scenes are held by value in paint frames that recurse with
+/// the tree depth (`Window::record_scene`, `with_isolated_scene`), so the
+/// scene keeps the size it had with only the damage index boxed.
+#[derive(Default)]
+pub(crate) struct SceneBook {
+    pub(crate) images: image_resources::ImageResources,
+    pub(crate) gradients: collections::HashMap<std::sync::Arc<AnalyticGradient>, u32>,
+    pub(crate) gradient_values: Vec<std::sync::Arc<AnalyticGradient>>,
+    /// Клетки кадра и повреждение против прошлого кадра (`damage`).
+    pub(crate) index: damage::DamageIndex,
+    /// The box whose own paint is being recorded into a layer.
+    pub(crate) open_box: Option<OpenBox>,
+    /// Retained layers this scene draws (`scene::layer`), in insertion order,
+    /// and their indices by order for batching.
+    pub(crate) layers: Vec<LayerSlot>,
+    pub(crate) layer_order: Vec<u32>,
+    /// The sources of the layers recorded into this frame, kept from their
+    /// recording to its present (`Scene::keep_layer_source`).
+    pub(crate) layer_sources: Vec<std::rc::Rc<SceneLayer>>,
+    /// Primitives and layers painted into this scene rather than replayed
+    /// from another, and the rectangles written into the replayed layers
+    /// since they were last drawn: with no fresh paint, the frame differs
+    /// from the one it replays only there (`Scene::damage`).
+    pub(crate) fresh: u32,
+    pub(crate) layer_damage: Option<Bounds<ScaledPixels>>,
+    pub(crate) damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// `damage` of a frame that replays the last one but draws effect groups:
+    /// it holds only when every group paints the image the group of the same
+    /// index painted (`DamageIndex::group_base`), which is known later.
+    pub(crate) grouped_damage: Option<Option<Bounds<ScaledPixels>>>,
+    /// Union of the placed bounds within their content masks of every
+    /// primitive command, kept where a command is added: the bounds of a
+    /// layer finished from this scene (`SceneLayer::finish`) without a second
+    /// pass over its commands.
+    pub(crate) primitive_ink: Option<Bounds<ScaledPixels>>,
+    /// The box runs and bindings of a paint record painted while a layer
+    /// records (`scene::layer::placed`).
+    pub(crate) record_runs: Option<Box<layer::RecordRuns>>,
+    /// The box runs painted into a group's scene while a layer records
+    /// (`grouped_layer`): `paint_group` hands them to the scene around,
+    /// naming the group; `None` outside such a group.
+    pub(crate) group_runs: Option<Vec<layer::BoxRange>>,
+    /// Where the commands of a scene being placed here land
+    /// (`scene::layer::placed`), one entry per placed command.
+    pub(crate) placed_map: Option<layer::PlacedMap>,
 }
 
 /// KaminIDE patch: сортировка плоскостей объёмного контекста по глубине
@@ -346,8 +437,10 @@ impl Scene {
     }
 
     pub fn clear(&mut self) {
+        self.book.images.clear();
         self.segment_capture = None;
         self.paint_operations.clear();
+        self.scroll.clear();
         self.groups.clear();
         match std::rc::Rc::get_mut(&mut self.primitive_bounds) {
             Some(tree) => tree.clear(),
@@ -359,16 +452,27 @@ impl Scene {
         self.paths.clear();
         self.shadows.clear();
         self.quads.clear();
+        self.book.gradients.clear();
+        self.book.gradient_values.clear();
         self.underlines.clear();
         self.monochrome_sprites.clear();
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.book.layers.clear();
+        self.book.layer_order.clear();
+        self.book.layer_sources.clear();
+        self.book.fresh = 0;
+        self.book.layer_damage = None;
+        self.book.damage = None;
+        self.book.grouped_damage = None;
+        self.book.primitive_ink = None;
         self.hoisted_backdrops.clear();
         self.depth = DepthSort::default();
         self.ink.clear();
         self.ink_scope = 0;
         self.ink_allowed = (0, 0);
+        self.clear_damage_index();
         crate::window::reset_ink_scopes();
     }
 
@@ -379,6 +483,8 @@ impl Scene {
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         let order = self.tree_mut().insert(bounds) * ORDER_STEP;
         self.layer_stack.push(order);
+        // KaminIDE patch: a layer opened under a scroll node moves with it.
+        self.mark_layer(bounds);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds, order));
     }
@@ -404,16 +510,26 @@ impl Scene {
     }
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
+        self.book.fresh += 1;
         let mut primitive = primitive.into();
         let placed_bounds = placed_bounds(&primitive);
         // KaminIDE patch: ink of open retained subtrees, culled or not.
         crate::window::ink_add(&self.ink, self.ink_scope, placed_bounds);
         crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, placed_bounds));
+        // KaminIDE patch: under a scroll node, drawn with own mask ∩ chain.
+        let ordered = match self.scroll.open {
+            Some((node, chain)) => match self.mark_scrolled(&mut primitive, node, chain) {
+                Some(ordered) => Some(ordered),
+                None => return,
+            },
+            None => None,
+        };
         let clipped_bounds = placed_bounds.intersect(&primitive.content_mask().bounds);
 
         if clipped_bounds.is_empty() {
             return;
         }
+        self.add_primitive_ink(clipped_bounds);
 
         let order = match self.layer_stack.last().copied() {
             // Above the root background (tree order 1), below everything that
@@ -423,12 +539,17 @@ impl Scene {
                 ORDER_STEP + self.bottom_seq
             }
             Some(o) => o,
-            None => self.tree_mut().insert(clipped_bounds) * ORDER_STEP,
+            None =>self.tree_mut().insert(ordered.unwrap_or(clipped_bounds)) * ORDER_STEP,
         };
         match &mut primitive {
             Primitive::Shadow(shadow) => {
                 shadow.order = order;
                 self.shadows.push(*shadow);
+            }
+            Primitive::Gradient(p) => {
+                p.quad.order = order;
+                self.register_gradient(p);
+                self.quads.push(p.quad);
             }
             Primitive::Quad(quad) => {
                 quad.order = order;
@@ -463,7 +584,7 @@ impl Scene {
         if let Some(&plane) = self.depth.plane_stack.last() {
             let (kind, index) = match &primitive {
                 Primitive::Shadow(_) => (0, self.shadows.len() - 1),
-                Primitive::Quad(_) => (1, self.quads.len() - 1),
+                Primitive::Quad(_) | Primitive::Gradient(_) => (1, self.quads.len() - 1),
                 Primitive::Path(_) => (2, self.paths.len() - 1),
                 Primitive::Underline(_) => (3, self.underlines.len() - 1),
                 Primitive::MonochromeSprite(_) => (4, self.monochrome_sprites.len() - 1),
@@ -519,6 +640,13 @@ impl Scene {
     /// frozen tree it was indexed with; another range is indexed once by a
     /// packed tree (`BoundsTree::packed`) instead of one insert per primitive.
     pub fn replay(&mut self, range: Range<usize>, prev_scene: &Scene) {
+        let landed = self.paint_operations.len();
+        self.scroll.raise = 0;
+        self.replay_unmarked(range.clone(), prev_scene);
+        self.copy_scroll_marks(prev_scene, range, landed);
+    }
+
+    fn replay_unmarked(&mut self, range: Range<usize>, prev_scene: &Scene) {
         let operations = &prev_scene.paint_operations[range.clone()];
         // A block whose borrowed tree died with its record is packed again.
         let source = prev_scene
@@ -533,9 +661,9 @@ impl Scene {
                 }
             })
             .unwrap_or(ReplaySource::Pack);
-        if !self.replay_shifted(operations, source, |_| true) {
+        if !self.replay_shifted(operations, source, &prev_scene.book.images, |_| true) {
             for operation in operations {
-                self.replay_operation(operation.clone());
+                self.replay_image_operation(operation.clone(), &prev_scene.book.images);
             }
         }
     }
@@ -545,13 +673,51 @@ impl Scene {
     pub(crate) fn replay_record(&mut self, scene: &Scene) {
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), Point::default(), None, 0);
         let source = ReplaySource::Graft(graft, false);
-        if !self.replay_shifted(&scene.paint_operations, source, |_| true) {
-            for operation in &scene.paint_operations {
-                self.replay_operation(operation.clone());
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        if !self.replay_shifted(operations, source, &scene.book.images, |_| true) {
+            for operation in operations {
+                self.replay_image_operation(operation.clone(), &scene.book.images);
             }
         }
     }
 
+    /// KaminIDE patch: `replay` of `range` of the rendered `prev_scene` moved
+    /// by `offset` and clipped by `clip` (`Window::replay_retained_paint_moved`):
+    /// commands are placed as `replay_placed` places a record's, and indexed
+    /// by a tree packed from their new places.
+    pub(crate) fn replay_moved(
+        &mut self,
+        range: Range<usize>,
+        prev_scene: &Scene,
+        offset: Point<ScaledPixels>,
+        clip: Bounds<ScaledPixels>,
+    ) {
+        // KaminIDE patch: what a scroll node kept, with its own masks.
+        let mut operations = prev_scene.unscrolled(range);
+        operations.retain_mut(|operation| match operation {
+            PaintOperation::Primitive(primitive) => {
+                record::geometry::primitive(primitive, offset, Some(clip));
+                !placed_bounds(primitive)
+                    .intersect(&primitive.content_mask().bounds)
+                    .is_empty()
+            }
+            PaintOperation::StartLayer(bounds, _) => {
+                *bounds = record::geometry::bounds(*bounds, offset);
+                true
+            }
+            // KaminIDE patch: a moved copy is not a scroll step; its primitives
+            // stay as drawn, unmarked, so a scrolled replay builds instead.
+            PaintOperation::Reservoir(_) => false,
+            _ => true,
+        });
+        if !self.replay_shifted(&operations, ReplaySource::Pack, &prev_scene.book.images, |_| true) {
+            for operation in operations {
+                self.replay_image_operation(operation, &prev_scene.book.images);
+            }
+        }
+    }
     /// KaminIDE patch: `replay_record` of `scene.copy_record(offset, clip)`
     /// without the intermediate copy: every command is placed (moved by
     /// `offset`, clipped by `clip`; primitives clipped away are dropped as
@@ -569,12 +735,16 @@ impl Scene {
         offset: Point<ScaledPixels>,
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
-        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() {
+        // A layer is drawn where it was recorded: it cannot be moved.
+        if !scene.groups.is_empty() || !scene.hoisted_backdrops.is_empty() || !scene.book.layers.is_empty() {
             return false;
         }
         let graft = crate::bounds_tree::Graft::new(scene.primitive_bounds.clone(), offset, clip, 0);
         let source = ReplaySource::Graft(graft, false);
-        self.replay_shifted(&scene.paint_operations, source, |operation| match operation {
+        // KaminIDE patch: under a scroll node, what the record marked under it.
+        let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
+        let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
+        self.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
@@ -585,6 +755,9 @@ impl Scene {
                 *bounds = record::geometry::bounds(*bounds, offset);
                 true
             }
+            // KaminIDE patch: a moved copy is not a scroll step; its primitives
+            // stay as drawn, unmarked, so a scrolled replay builds instead.
+            PaintOperation::Reservoir(_) => false,
             _ => true,
         })
     }
@@ -596,7 +769,10 @@ impl Scene {
         let mut layers = 0usize;
         for operation in operations {
             match operation {
-                PaintOperation::Primitive(_) => {}
+                PaintOperation::Primitive(_)
+                | PaintOperation::Layer(_)
+                | PaintOperation::Dormant(_)
+                | PaintOperation::Reservoir(_) => {}
                 PaintOperation::StartLayer(..) => layers += 1,
                 PaintOperation::EndLayer => match layers.checked_sub(1) {
                     Some(open) => layers = open,
@@ -633,6 +809,9 @@ impl Scene {
                         rects.push((clipped, primitive.order() / ORDER_STEP));
                     }
                 }
+                PaintOperation::Layer(layer) if layers == 0 => {
+                    rects.push((layer.bounds, layer.order / ORDER_STEP));
+                }
                 _ => {}
             }
         }
@@ -656,6 +835,7 @@ impl Scene {
         &mut self,
         operations: &[PaintOperation],
         source: ReplaySource,
+        images: &image_resources::ImageResources,
         mut place: impl FnMut(&mut PaintOperation) -> bool,
     ) -> bool {
         if !self.layer_stack.is_empty()
@@ -681,34 +861,68 @@ impl Scene {
             graft
         });
         let shift = raise * ORDER_STEP;
+        // KaminIDE patch: dormant primitives take it when they wake.
+        self.scroll.raise = shift;
         let start = self.paint_operations.len();
         let mut ink: Option<Bounds<ScaledPixels>> = None;
+        let mut copied = 0;
         // No `reserve(operations.len())`: `place` may drop most commands (a
         // clipped record copies only what is visible), and a frame keeps its
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
         for operation in operations {
-            let mut operation = operation.clone();
+            let mut operation = self.relabeled(operation);
             if !place(&mut operation) {
+                layer::PlacedMap::skip(&mut self.book.placed_map);
                 continue;
             }
+            // KaminIDE patch: a copy landing under a scroll node is marked
+            // there, ordered by its own mask, dormant where the chain hides it.
+            if self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
+                let at = self.paint_operations.len();
+                layer::PlacedMap::land(&mut self.book.placed_map, at, None);
+                self.paint_operations.push(operation);
+                continue;
+            }
+            let mut quad = None;
             match &mut operation {
                 PaintOperation::Primitive(primitive) => {
+                    let placed = placed_bounds(primitive);
                     if !self.ink.is_empty() || self.ink_scope != 0 {
-                        let placed = placed_bounds(primitive);
                         ink = Some(ink.map_or(placed, |ink| ink.union(&placed)));
                     }
+                    self.add_primitive_ink(placed.intersect(&primitive.content_mask().bounds));
                     *primitive.order_mut() += shift;
+                    if matches!(primitive, Primitive::Quad(_)) {
+                        quad = Some(self.quads.len());
+                    }
+                    self.copy_image(primitive, images);
                     self.push_ordered(primitive);
+                    copied += 1;
                     if let Some(capture) = self.segment_capture.as_mut() {
                         capture.primitive();
                     }
                 }
                 PaintOperation::StartLayer(_, order) => *order += shift,
+                // KaminIDE patch: the primitives a reservoir draws next take it too.
+                PaintOperation::Reservoir(reservoir) => reservoir.raised += shift,
+                PaintOperation::Layer(layer) => {
+                    if !self.ink.is_empty() || self.ink_scope != 0 {
+                        ink = Some(ink.map_or(layer.bounds, |ink| ink.union(&layer.bounds)));
+                    }
+                    layer.order += shift;
+                    if !self.push_layer_slot(layer) {
+                        layer::PlacedMap::skip(&mut self.book.placed_map);
+                        continue;
+                    }
+                }
                 _ => {}
             }
+            let at = self.paint_operations.len();
+            layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
             self.paint_operations.push(operation);
         }
+        Self::count_copied(copied);
         if let Some(ink) = ink {
             crate::window::ink_add(&self.ink, self.ink_scope, ink);
             crate::window::scoped_ink(self.ink_scope, |sink| sink.add_in(self.ink_scope, ink));
@@ -732,11 +946,43 @@ impl Scene {
         true
     }
 
+    /// KaminIDE patch: room in the command and primitive lists for as many as
+    /// `other` holds (a recording of content painted before).
+    pub(crate) fn reserve_like(&mut self, other: &Scene) {
+        self.paint_operations.reserve_exact(other.paint_operations.len());
+        self.shadows.reserve_exact(other.shadows.len());
+        self.quads.reserve_exact(other.quads.len());
+        self.paths.reserve_exact(other.paths.len());
+        self.underlines.reserve_exact(other.underlines.len());
+        self.monochrome_sprites.reserve_exact(other.monochrome_sprites.len());
+        self.subpixel_sprites.reserve_exact(other.subpixel_sprites.len());
+        self.polychrome_sprites.reserve_exact(other.polychrome_sprites.len());
+        self.surfaces.reserve_exact(other.surfaces.len());
+    }
+
+    /// KaminIDE patch: whether the scene draws anything: a command (a
+    /// primitive, a nested composite, a layer) or a hoisted backdrop.
+    pub(crate) fn paints(&self) -> bool {
+        !self.paint_operations.is_empty() || !self.hoisted_backdrops.is_empty()
+    }
+
+    /// KaminIDE patch: count the clipped bounds of a primitive command added
+    /// to this scene in `primitive_ink`; empty bounds paint nothing.
+    fn add_primitive_ink(&mut self, clipped: Bounds<ScaledPixels>) {
+        if !clipped.is_empty() {
+            self.book.primitive_ink = Some(self.book.primitive_ink.map_or(clipped, |u| u.union(&clipped)));
+        }
+    }
+
     /// KaminIDE patch: add an ordered primitive to its kind's list.
     fn push_ordered(&mut self, primitive: &mut Primitive) {
         match primitive {
             Primitive::Shadow(shadow) => self.shadows.push(*shadow),
             Primitive::Quad(quad) => self.quads.push(*quad),
+            Primitive::Gradient(p) => {
+                self.register_gradient(p);
+                self.quads.push(p.quad);
+            }
             Primitive::Path(path) => {
                 path.id = PathId(self.paths.len());
                 self.paths.push(path.clone());
@@ -759,6 +1005,8 @@ impl Scene {
         clip: Option<Bounds<ScaledPixels>>,
         mut place: impl FnMut(&mut PaintOperation),
     ) -> Self {
+        // Layers are recorded only in the root environment, never in a record.
+        debug_assert!(self.book.layers.is_empty(), "a paint record with a scene layer");
         let mut scene = Self { in_group: self.in_group, ..Self::default() };
         // Without an output clip every command is kept (a composition
         // group's copy, which the frame keeps): reserve exactly. With one,
@@ -766,7 +1014,12 @@ impl Scene {
         if clip.is_none() {
             scene.paint_operations.reserve_exact(self.paint_operations.len());
         }
-        for operation in &self.paint_operations {
+        // KaminIDE patch: the copy keeps the scroll marks of what it keeps,
+        // moved and clipped as the commands are, so a copy placed under the
+        // node gives them back (`unscrolled_under`).
+        let mut marks = self.scroll.marks.iter().peekable();
+        for (at, operation) in self.paint_operations.iter().enumerate() {
+            let mark = marks.next_if(|mark| mark.op as usize == at);
             let mut operation = operation.clone();
             place(&mut operation);
             if let PaintOperation::Primitive(primitive) = &mut operation {
@@ -774,7 +1027,26 @@ impl Scene {
                 if clipped.is_empty() {
                     continue;
                 }
+                scene.add_primitive_ink(clipped);
+                scene.copy_image(primitive, &self.book.images);
                 scene.push_ordered(primitive);
+            }
+            if let Some(mark) = mark {
+                let moved = |bounds| {
+                    let bounds = record::geometry::bounds(bounds, offset);
+                    clip.map_or(bounds, |clip| bounds.intersect(&clip))
+                };
+                // A dormant command was not placed: its mark carries the shift.
+                let dormant = matches!(operation, PaintOperation::Dormant(_));
+                let shift = if dormant { mark.moved + offset } else { mark.moved };
+                let op = scene.paint_operations.len() as u32;
+                scene.scroll.marks.push(scroll_marks::ScrollMark {
+                    op,
+                    own: moved(mark.own),
+                    placed: record::geometry::bounds(mark.placed, offset),
+                    moved: shift,
+                    ..*mark
+                });
             }
             scene.paint_operations.push(operation);
         }
@@ -789,7 +1061,22 @@ impl Scene {
 
     fn replay_operation(&mut self, operation: PaintOperation) {
         match operation {
-            PaintOperation::Primitive(primitive) => self.insert_primitive(primitive),
+            PaintOperation::Primitive(primitive) => {
+                Self::count_copied(1);
+                let fresh = self.book.fresh;
+                self.insert_primitive(primitive);
+                self.book.fresh = fresh;
+            }
+            PaintOperation::Layer(layer) => {
+                if let Some(cell) = layer.cell.upgrade() {
+                    let (fresh, damage) = (self.book.fresh, cell.damage.take());
+                    self.insert_layer(&LayerHandle(cell), layer.bounds);
+                    self.book.fresh = fresh;
+                    if let Some(rect) = damage {
+                        self.book.layer_damage = Some(self.book.layer_damage.map_or(rect, |d| d.union(&rect)));
+                    }
+                }
+            }
             PaintOperation::StartLayer(bounds, _) => self.push_layer(bounds),
             PaintOperation::StartBottomLayer => self.push_bottom_layer(),
             PaintOperation::EndLayer => self.pop_layer(),
@@ -797,6 +1084,9 @@ impl Scene {
             PaintOperation::EndDepthContext => self.pop_depth_context(),
             PaintOperation::StartDepthPlane(z) => { self.push_depth_plane(z); }
             PaintOperation::EndDepthPlane => self.pop_depth_plane(),
+            // KaminIDE patch: kept as it is, not drawn.
+            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
+            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
         }
     }
 
@@ -805,13 +1095,16 @@ impl Scene {
         self.quads.sort_by_key(|quad| quad.order);
         self.paths.sort_by_key(|path| path.order);
         self.underlines.sort_by_key(|underline| underline.order);
-        self.monochrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.subpixel_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
-        self.polychrome_sprites
-            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
+        // KaminIDE patch: sprites of one order keep their paint order (a stable
+        // sort), as quads do. Upstream also sorted them by atlas tile id, so two
+        // overlapping glyphs of one text run blended in the order the atlas
+        // happened to number their tiles: the same text with tiles made by
+        // another font instance or in another frame differed by a code.
+        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
+        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
+        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
         self.surfaces.sort_by_key(|surface| surface.order);
+        self.finish_layers();
     }
 
     #[cfg_attr(
@@ -839,13 +1132,15 @@ impl Scene {
             polychrome_sprites_iter: self.polychrome_sprites.iter().peekable(),
             surfaces_start: 0,
             surfaces_iter: self.surfaces.iter().peekable(),
+            layers: &self.book.layers,
+            layers_iter: self.book.layer_order.iter().peekable(),
         }
     }
 }
 
 /// KaminIDE patch: bounds of a primitive at its place on screen (after its
 /// transformation), before the content mask.
-fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
+pub(crate) fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
         // KaminIDE patch: границы примитива ПОСЛЕ трансформации — обход
         // четырёх углов матрицей.
         fn placed_by(
@@ -887,6 +1182,7 @@ fn placed_bounds(primitive: &Primitive) -> Bounds<ScaledPixels> {
         // до трансформа выбрасывалась, хотя трансформ возвращал её в окно:
         // `transform-origin`, `transform-table-*`).
         match primitive {
+            Primitive::Gradient(p) => placed_by(p.quad.bounds, &p.quad.transformation),
             Primitive::Quad(q) if q.transformation != TransformationMatrix::unit() => {
                 placed_by(q.bounds, &q.transformation)
             }
@@ -953,6 +1249,8 @@ pub(crate) enum PrimitiveKind {
     SubpixelSprite,
     PolychromeSprite,
     Surface,
+    /// KaminIDE patch: a retained layer, one batch each.
+    Layer,
 }
 
 #[derive(Clone)]
@@ -967,6 +1265,14 @@ pub(crate) enum PaintOperation {
     EndDepthContext,
     StartDepthPlane(f32),
     EndDepthPlane,
+    /// KaminIDE patch: a retained layer (`scene::layer`), ordered like one primitive.
+    Layer(LayerOp),
+    /// KaminIDE patch: a primitive under a scroll node that its chain hides
+    /// now; not drawn, kept for a replay at another offset (`scroll_marks`).
+    Dormant(std::rc::Rc<Primitive>),
+    /// KaminIDE patch: the primitives of one scroll node kept across frames;
+    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
+    Reservoir(Box<scroll_marks::ReservoirOp>),
 }
 
 #[derive(Clone)]
@@ -974,6 +1280,7 @@ pub(crate) enum PaintOperation {
 pub enum Primitive {
     Shadow(Shadow),
     Quad(Quad),
+    Gradient(GradientQuad),
     Path(Path<ScaledPixels>),
     Underline(Underline),
     MonochromeSprite(MonochromeSprite),
@@ -988,6 +1295,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(shadow) => &shadow.bounds,
             Primitive::Quad(quad) => &quad.bounds,
+            Primitive::Gradient(p) => &p.quad.bounds,
             Primitive::Path(path) => &path.bounds,
             Primitive::Underline(underline) => &underline.bounds,
             Primitive::MonochromeSprite(sprite) => &sprite.bounds,
@@ -1001,6 +1309,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(shadow) => &shadow.content_mask,
             Primitive::Quad(quad) => &quad.content_mask,
+            Primitive::Gradient(p) => &p.quad.content_mask,
             Primitive::Path(path) => &path.content_mask,
             Primitive::Underline(underline) => &underline.content_mask,
             Primitive::MonochromeSprite(sprite) => &sprite.content_mask,
@@ -1015,6 +1324,7 @@ impl Primitive {
         match self {
             Primitive::Shadow(p) => p.order,
             Primitive::Quad(p) => p.order,
+            Primitive::Gradient(p) => p.quad.order,
             Primitive::Path(p) => p.order,
             Primitive::Underline(p) => p.order,
             Primitive::MonochromeSprite(p) => p.order,
@@ -1024,10 +1334,26 @@ impl Primitive {
         }
     }
 
-    fn order_mut(&mut self) -> &mut DrawOrder {
+    /// KaminIDE patch: the mask the primitive is drawn with.
+    pub(crate) fn content_mask_mut(&mut self) -> &mut ContentMask<ScaledPixels> {
+        match self {
+            Primitive::Shadow(p) => &mut p.content_mask,
+            Primitive::Quad(p) => &mut p.content_mask,
+            Primitive::Gradient(p) => &mut p.quad.content_mask,
+            Primitive::Path(p) => &mut p.content_mask,
+            Primitive::Underline(p) => &mut p.content_mask,
+            Primitive::MonochromeSprite(p) => &mut p.content_mask,
+            Primitive::SubpixelSprite(p) => &mut p.content_mask,
+            Primitive::PolychromeSprite(p) => &mut p.content_mask,
+            Primitive::Surface(p) => &mut p.content_mask,
+        }
+    }
+
+    pub(crate) fn order_mut(&mut self) -> &mut DrawOrder {
         match self {
             Primitive::Shadow(p) => &mut p.order,
             Primitive::Quad(p) => &mut p.order,
+            Primitive::Gradient(p) => &mut p.quad.order,
             Primitive::Path(p) => &mut p.order,
             Primitive::Underline(p) => &mut p.order,
             Primitive::MonochromeSprite(p) => &mut p.order,
@@ -1090,6 +1416,8 @@ struct BatchIterator<'a> {
     polychrome_sprites_iter: Peekable<slice::Iter<'a, PolychromeSprite>>,
     surfaces_start: usize,
     surfaces_iter: Peekable<slice::Iter<'a, PaintSurface>>,
+    layers: &'a [LayerSlot],
+    layers_iter: Peekable<slice::Iter<'a, u32>>,
 }
 
 impl<'a> Iterator for BatchIterator<'a> {
@@ -1122,6 +1450,10 @@ impl<'a> Iterator for BatchIterator<'a> {
             (
                 self.surfaces_iter.peek().map(|s| s.order),
                 PrimitiveKind::Surface,
+            ),
+            (
+                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
+                PrimitiveKind::Layer,
             ),
         ];
         orders_and_kinds.sort_by_key(|(order, kind)| (order.unwrap_or(u32::MAX), *kind));
@@ -1268,6 +1600,7 @@ impl<'a> Iterator for BatchIterator<'a> {
                 self.surfaces_start = surfaces_end;
                 Some(PrimitiveBatch::Surfaces(surfaces_start..surfaces_end))
             }
+            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
         }
     }
 }
@@ -1300,6 +1633,8 @@ pub enum PrimitiveBatch {
         range: Range<usize>,
     },
     Surfaces(Range<usize>),
+    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
+    Layer(usize),
 }
 
 impl PrimitiveBatch {
@@ -1332,11 +1667,12 @@ impl PrimitiveBatch {
                 )
             }
             Self::Surfaces(range) => format!("surfaces ({})", range.len()),
+            Self::Layer(index) => format!("layer {index}"),
         }
     }
 }
 
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Quad {
@@ -1366,7 +1702,7 @@ impl From<Quad> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Underline {
@@ -1385,7 +1721,7 @@ impl From<Underline> for Primitive {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct Shadow {
@@ -1544,7 +1880,7 @@ impl Default for TransformationMatrix {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct MonochromeSprite {
@@ -1563,7 +1899,7 @@ impl From<MonochromeSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct SubpixelSprite {
@@ -1582,7 +1918,7 @@ impl From<SubpixelSprite> for Primitive {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(C)]
 #[expect(missing_docs)]
 pub struct PolychromeSprite {
@@ -1869,6 +2205,69 @@ impl PathVertex<Pixels> {
             xy_position: self.xy_position.scale(factor),
             st_position: self.st_position,
             content_mask: self.content_mask.scale(factor),
+        }
+    }
+}
+
+/// KaminIDE patch: the primitives of `scene` in the order its batches draw
+/// them, a retained layer's in its place (`Window::painted_sequence`): each
+/// as its debug form without its draw order, with its bounds within its
+/// content mask.
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) fn draw_sequence(scene: &Scene, out: &mut Vec<(String, Bounds<ScaledPixels>)>) {
+    fn push(out: &mut Vec<(String, Bounds<ScaledPixels>)>, kind: &str, p: Primitive) {
+        let text = match &p {
+            Primitive::Shadow(x) => format!("{x:?}"),
+            Primitive::Quad(x) => format!("{x:?}"),
+            Primitive::Gradient(x) => format!("{x:?}"),
+            Primitive::Path(x) => format!("{x:?}"),
+            Primitive::Underline(x) => format!("{x:?}"),
+            Primitive::MonochromeSprite(x) => format!("{x:?}"),
+            Primitive::SubpixelSprite(x) => format!("{x:?}"),
+            Primitive::PolychromeSprite(x) => format!("{x:?}"),
+            Primitive::Surface(x) => format!("{x:?}"),
+        };
+        let text = match text.find("order: ") {
+            Some(at) => {
+                let rest = &text[at..];
+                let end = rest.find(", ").map_or(rest.len(), |e| e + 2);
+                format!("{}{}", &text[..at], &rest[end..])
+            }
+            None => text,
+        };
+        let ink = placed_bounds(&p).intersect(&p.content_mask().bounds);
+        out.push((format!("{kind} {text}"), ink));
+    }
+    for batch in scene.batches() {
+        match batch {
+            PrimitiveBatch::Shadows(r) => scene.shadows[r].iter().for_each(|p| push(out, "shadow", (*p).into())),
+            PrimitiveBatch::Quads(r) => scene.quads[r].iter().for_each(|p| {
+                if p.is_analytic_gradient() {
+                    let mut quad = *p;
+                    let gradient = scene.gradient(quad.background.stop_count).unwrap().clone();
+                    quad.background.stop_count = 0;
+                    push(out, "gradient", Primitive::Gradient(GradientQuad { quad, gradient }));
+                } else { push(out, "quad", (*p).into()); }
+            }),
+            PrimitiveBatch::Paths(r) => scene.paths[r].iter().for_each(|p| push(out, "path", p.clone().into())),
+            PrimitiveBatch::Underlines(r) => scene.underlines[r].iter().for_each(|p| push(out, "underline", p.clone().into())),
+            PrimitiveBatch::MonochromeSprites { range, .. } => {
+                scene.monochrome_sprites[range].iter().for_each(|p| push(out, "glyph", p.clone().into()))
+            }
+            PrimitiveBatch::SubpixelSprites { range, .. } => {
+                scene.subpixel_sprites[range].iter().for_each(|p| push(out, "subpixel", p.clone().into()))
+            }
+            PrimitiveBatch::PolychromeSprites { range, .. } => {
+                scene.polychrome_sprites[range].iter().for_each(|p| push(out, "image", p.clone().into()))
+            }
+            PrimitiveBatch::Surfaces(r) => scene.surfaces[r].iter().for_each(|p| push(out, "surface", p.clone().into())),
+            PrimitiveBatch::Layer(at) => {
+                if let Some(layer) = scene.layer(at) {
+                    out.push(("layer".into(), Bounds::default()));
+                    draw_sequence(layer.scene(), out);
+                    out.push(("end layer".into(), Bounds::default()));
+                }
+            }
         }
     }
 }

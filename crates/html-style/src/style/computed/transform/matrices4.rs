@@ -52,6 +52,7 @@ impl Transform {
     /// сплющенная тень нужна SVG и клипу.
     // Matrix multiplication uses the same row/column indices in both operands.
     pub fn push2(&mut self, l: [[f32; 2]; 2], v: [[f32; 3]; 2]) {
+        self.scale_primitive = false;
         let m = self.lin;
         self.lin = [
             [

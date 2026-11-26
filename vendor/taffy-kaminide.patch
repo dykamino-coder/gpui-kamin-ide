@@ -1,34 +1,36 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 2. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 3. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 4. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 5. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 6. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 7. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 8. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 9. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 10. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 11. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 12. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 13. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 14. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 15. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 16. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 17. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 18. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 19. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 20. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 21. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
-# 22. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
-# 23. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
+# 1. Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.
+# 2. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 21. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 23. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
+# 24. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
+# 25. Layout-decided scrollbars (CSS Overflow 3 section 3): a box whose overflow:auto bars layout decides is laid out with its guessed bars, and when its scrollable overflow (a scroll range proxy excluded) asks for others, only that box is laid out again in the same pass, at most twice, a bar that appeared staying (Blink AddScrollbarFreeze); the viewport publishes its gutter first, and out-of-flow boxes built for another root gutter resolve their insets against the decided one; a parent records the decided scrollbar size. Descendant gutter changes invalidate intrinsic ancestor measurements and repeat their size selection with transaction-frozen bars; empty grid and lane tracks contribute their in-flow overflow area.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
 diff --git a/vendor/taffy/src/compute/block.rs b/vendor/taffy/src/compute/block.rs
-index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3f521d011
+index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..58afea766c0796d0253fcc64c02294750f02b1fe
 --- a/vendor/taffy/src/compute/block.rs
 +++ b/vendor/taffy/src/compute/block.rs
 @@ -1,0 +2,6 @@
@@ -250,18 +252,32 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +        },
 @@ -765,0 +857 @@
 +        inline_block_last_y: Some(inline_block_last),
-@@ -971 +1063,2 @@
+@@ -774,0 +867,13 @@
++        // KaminIDE patch: a measure reports the in-flow overflow too, from which a
++        // scroll container whose bars layout decides finds a bar its size must hold
++        // (`kamin_scrollbars`). Only measures read it: no cache keeps a measure's
++        // overflow, and a final layout lays its children out again.
++        #[cfg(feature = "content_size")]
++        {
++            if is_scroll_container {
++                inflow_overflow_rect.right +=
++                    if direction.is_rtl() { resolved_padding.left } else { resolved_padding.right };
++                inflow_overflow_rect.bottom += resolved_padding.bottom;
++            }
++            output.scrollable_overflow_rect = inflow_overflow_rect;
++        }
+@@ -971 +1076,2 @@
 -    item_y_margin_sum: f32,
 +    item_margin: Rect<f32>,
 +    margins_treated_as_zero: Line<bool>,
-@@ -973,0 +1067,3 @@
+@@ -973,0 +1080,3 @@
 +    // KaminIDE patch: CSS Sizing 4 stretch ignores margins adjoining the parent's edges.
 +    let margin_sum = if margins_treated_as_zero.start { 0.0 } else { item_margin.top }
 +        + if margins_treated_as_zero.end { 0.0 } else { item_margin.bottom };
-@@ -976 +1072 @@
+@@ -976 +1085 @@
 -        container_inner_height.maybe_sub(item_y_margin_sum),
 +        container_inner_height.maybe_sub(margin_sum),
-@@ -982,0 +1079,25 @@
+@@ -982,0 +1092,25 @@
 +}
 +
 +// KaminIDE patch: floats and normal blocks share relative inset resolution.
@@ -287,60 +303,60 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +        inset.left.or(inset.right.map(|x| -x))
 +    };
 +    Point { x: x.unwrap_or(0.0), y: inset.top.or(inset.bottom.map(|x| -x)).unwrap_or(0.0) }
-@@ -1002 +1123,3 @@
+@@ -1002 +1136,3 @@
 -            .resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis))
 +            .resolve_or_zero(available_space.width.into_option(), |val, basis| {
 +                tree.calc(val, basis)
 +            })
-@@ -1006 +1129,3 @@
+@@ -1006 +1142,3 @@
 -                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| tree.calc(val, basis)) {
 +                match resolve_sizing_keyword(item.size_style.width, None, None, |val, basis| {
 +                    tree.calc(val, basis)
 +                }) {
-@@ -1040,0 +1166,6 @@
+@@ -1040,0 +1179,6 @@
 +
 +/// KaminIDE patch: overflow, height, collapsing margins, and exported baseline distances.
 +type BlockItemLayout = (
 +    Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet,
 +    (Option<f32>, Option<f32>, Option<f32>, Option<f32>, Option<f32>),
 +);
-@@ -1057,0 +1189 @@
+@@ -1057,0 +1202 @@
 +    children_margins_adjoin_own_edges: Line<bool>,
-@@ -1060 +1192 @@
+@@ -1060 +1205 @@
 -) -> (Rect<f32>, f32, CollapsibleMarginSet, CollapsibleMarginSet, Option<f32>) {
 +) -> BlockItemLayout {
-@@ -1098,0 +1231,4 @@
+@@ -1098,0 +1244,4 @@
 +    let mut last_baseline: Option<f32> = None;
 +    let mut first_baseline_x: Option<f32> = None;
 +    let mut last_baseline_x: Option<f32> = None;
 +    let mut inline_block_last: Option<f32> = None;
-@@ -1117,3 +1253,3 @@
+@@ -1117,3 +1266,3 @@
 -            let item_margin = item
 -                .margin
 -                .map(|margin| margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis)));
 +            let item_margin = item.margin.map(|margin| {
 +                margin.resolve_to_option(container_inner_width, |val, basis| tree.calc(val, basis))
 +            });
-@@ -1143 +1279,3 @@
+@@ -1143 +1292,3 @@
 -                    Some(SizingKeywordResolution::Exact(width)) => (Some(width), AvailableSpace::Definite(width)),
 +                    Some(SizingKeywordResolution::Exact(width)) => {
 +                        (Some(width), AvailableSpace::Definite(width))
 +                    }
-@@ -1149 +1287,2 @@
+@@ -1149 +1300,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    Line::FALSE,
-@@ -1181,0 +1321 @@
+@@ -1181,0 +1334 @@
 +                    item.node_id.into(),
-@@ -1199,0 +1340,5 @@
+@@ -1199,0 +1353,5 @@
 +
 +                // Relative painting does not alter float exclusions (CSS 2.2 9.4.3).
 +                let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
 +                location.x += inset_offset.x;
 +                location.y += inset_offset.y;
-@@ -1212,0 +1358 @@
+@@ -1212,0 +1371 @@
 +                    relative_offset: inset_offset,
-@@ -1280,2 +1426,10 @@
+@@ -1280,2 +1439,10 @@
 -                            let slot = block_ctx.find_bfc_slot(min_y, x_margins, direction, item.clear, slot_segment);
 -                            let Some(segment_id) = slot.segment_id else { break slot };
 +                            let slot = block_ctx.find_bfc_slot(
@@ -353,7 +369,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                            let Some(segment_id) = slot.segment_id else {
 +                                break slot;
 +                            };
-@@ -1355,3 +1509,5 @@
+@@ -1355,3 +1522,5 @@
 -                .map(|resolution| match resolution {
 -                    SizingKeywordResolution::Exact(width) => width,
 -                    SizingKeywordResolution::Measure(item_available_width) => tree.measure_child_size(
@@ -362,7 +378,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                        // min-/max-content probes (see `keyword_width`).
 +                        keyword_width::measure(
 +                            tree,
-@@ -1359,5 +1515,3 @@
+@@ -1359,5 +1528,3 @@
 -                        Size::NONE,
 -                        parent_size,
 -                        Size { width: item_available_width, height: AvailableSpace::MaxContent },
@@ -371,14 +387,14 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                            width_style,
 +                            resolution,
 +                            parent_size,
-@@ -1366 +1520 @@
+@@ -1366 +1533 @@
 -                    ),
 +                        )
-@@ -1372 +1526,2 @@
+@@ -1372 +1539,2 @@
 -                    item_non_auto_margin.vertical_axis_sum(),
 +                    item_non_auto_margin,
 +                    children_margins_adjoin_own_edges,
-@@ -1471,17 +1626 @@
+@@ -1471,17 +1639 @@
 -            let inset_percentage_basis =
 -                Size { width: Some(container_inner_width), height: container_percentage_resolution_height };
 -            let inset = item
@@ -397,29 +413,29 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 -                Point::ZERO
 -            };
 +            let inset_offset = resolve_relative_offset(item, parent_size, direction, tree);
-@@ -1542 +1681,5 @@
+@@ -1542 +1694,5 @@
 -                        Direction::Rtl => container_outer_width - resolved_content_box_inset.right - final_size.width,
 +                        Direction::Rtl => {
 +                            container_outer_width
 +                                - resolved_content_box_inset.right
 +                                - final_size.width
 +                        }
-@@ -1551 +1694,3 @@
+@@ -1551 +1707,3 @@
 -                        Direction::Rtl => float_avoiding_position.x + float_avoiding_width - final_size.width,
 +                        Direction::Rtl => {
 +                            float_avoiding_position.x + float_avoiding_width - final_size.width
 +                        }
-@@ -1559 +1704,3 @@
+@@ -1559 +1717,3 @@
 -                        Direction::Ltr => resolved_content_box_inset.left + inset_offset.x + resolved_margin.left,
 +                        Direction::Ltr => {
 +                            resolved_content_box_inset.left + inset_offset.x + resolved_margin.left
 +                        }
-@@ -1589 +1736,3 @@
+@@ -1589 +1749,3 @@
 -                        Direction::Ltr => float_avoiding_position.x + extra_margin_left + inset_offset.x,
 +                        Direction::Ltr => {
 +                            float_avoiding_position.x + extra_margin_left + inset_offset.x
 +                        }
-@@ -1682 +1831,33 @@
+@@ -1682 +1844,33 @@
 -                first_baseline = child_baseline.map(|baseline| location.y + baseline);
 +                first_baseline = child_baseline.map(|baseline| (location.y - inset_offset.y) + baseline);
 +            }
@@ -454,9 +470,9 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +                item.overflow.x.is_scroll_container(),
 +            )) {
 +                last_baseline_x = Some((location.x - inset_offset.x) + baseline);
-@@ -1711,0 +1893 @@
+@@ -1711,0 +1906 @@
 +                relative_offset: inset_offset,
-@@ -1805 +1987,13 @@
+@@ -1805 +2000,13 @@
 -    (inflow_overflow_rect, content_height, first_child_top_margin_set, last_child_bottom_margin_set, first_baseline)
 +    (
 +        inflow_overflow_rect,
@@ -471,7 +487,7 @@ index a17a045b73a41752738f3ece6ef5a3a1f7f755cf..6391641afe0bfacf805691545b9435a3
 +            inline_block_last,
 +        ),
 +    )
-@@ -1806,0 +2001,15 @@
+@@ -1806,0 +2014,15 @@
 +
 +
 +#[cfg(test)]
@@ -1348,6 +1364,13 @@ index f7807e92326b0d908f6b254aa427ea35c3671557..f2269671bfdecce6b094fe30bdf3dc4d
 @@ -6,0 +7,2 @@
 +
 +pub(crate) mod aspect_ratio_constraints;
+diff --git a/vendor/taffy/src/compute/common/scrollable_overflow.rs b/vendor/taffy/src/compute/common/scrollable_overflow.rs
+index 08937627b7354f93c464aa0590b9d6dd78cf15c7..72f5eef5ea1de71273f27633f275f24bab6255eb
+--- a/vendor/taffy/src/compute/common/scrollable_overflow.rs
++++ b/vendor/taffy/src/compute/common/scrollable_overflow.rs
+@@ -25 +25 @@
+-pub(crate) fn compute_scrollable_overflow_contribution(
++pub fn compute_scrollable_overflow_contribution(
 diff --git a/vendor/taffy/src/compute/common/sizing_keyword.rs b/vendor/taffy/src/compute/common/sizing_keyword.rs
 index 86f630aa35a4a256fb22eaf2b0dce4b3dec55d3a..f16dd288029b682a6e37f2a0f8558fee19e4101d
 --- a/vendor/taffy/src/compute/common/sizing_keyword.rs
@@ -7050,7 +7073,7 @@ index 0000000000000000000000000000000000000000..a8194968b193a91178d9c0c47ba8d232
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes.rs b/vendor/taffy/src/compute/grid/lanes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1cebe635425cf2aa5e4fb7adbfe9c5f72c56bb2c
+index 0000000000000000000000000000000000000000..99d59c33e89f45af791865896b628f58557719ee
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes.rs
 @@ -0,0 +1,2328 @@
@@ -8500,7 +8523,6 @@ index 0000000000000000000000000000000000000000..1cebe635425cf2aa5e4fb7adbfe9c5f7
 +    }
 +
 +    baseline_alignment::align(&mut placed, n, rows);
-+
 +    #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
 +    let mut item_content_size_contribution = final_placement::position(
 +        tree,
@@ -8510,6 +8532,7 @@ index 0000000000000000000000000000000000000000..1cebe635425cf2aa5e4fb7adbfe9c5f7
 +        stack_content,
 +        stack_start_inset,
 +        border,
++        (&grid_tracks, n, stacking_size),
 +        #[cfg(feature = "content_size")]
 +        is_scroll_container,
 +    );
@@ -9722,10 +9745,10 @@ index 0000000000000000000000000000000000000000..c82f273a509c15cec02b81ee7893b44e
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_final_placement.rs b/vendor/taffy/src/compute/grid/lanes_final_placement.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2c56d15bf65e5b61b0f7cfc7540603146a999537
+index 0000000000000000000000000000000000000000..2533df5c080a8280bb20b7798f18e214d7acbd56
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_final_placement.rs
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,103 @@
 +//! Project completed lane stacks onto physical axes and publish child geometry/overflow.
 +use super::*;
 +
@@ -9739,6 +9762,7 @@ index 0000000000000000000000000000000000000000..2c56d15bf65e5b61b0f7cfc754060314
 +    stack_content: f32,
 +    stack_start_inset: f32,
 +    border: Rect<f32>,
++    inflow: (&[GridTrack], usize, f32),
 +    #[cfg(feature = "content_size")] is_scroll_container: bool,
 +) -> Rect<f32> {
 +    if if rows { flow.width } else { flow.height } {
@@ -9752,8 +9776,21 @@ index 0000000000000000000000000000000000000000..2c56d15bf65e5b61b0f7cfc754060314
 +            item.stack_pos = stack_content - item.stack_pos - outer_size;
 +        }
 +    }
-+    #[cfg_attr(not(feature = "content_size"), allow(unused_mut))]
-+    let mut item_content_size_contribution = Rect::ZERO;
++    #[cfg(feature = "content_size")]
++    let mut item_content_size_contribution = super::super::lanes_geometry::inflow_bounds(
++        inflow.0,
++        inflow.1,
++        if rows { flow.height } else { flow.width },
++        rows,
++        stack_start_inset,
++        inflow.2,
++        border,
++    );
++    #[cfg(not(feature = "content_size"))]
++    let item_content_size_contribution = {
++        let _ = inflow;
++        Rect::ZERO
++    };
 +    for (order, p) in placed.iter().enumerate() {
 +        let (m_start, _) = if rows {
 +            (p.margin.left, p.margin.right)
@@ -9778,9 +9815,15 @@ index 0000000000000000000000000000000000000000..2c56d15bf65e5b61b0f7cfc754060314
 +                order: order as u32,
 +                location,
 +                relative_offset: if rows {
-+                    Point { x: p.stack_relative, y: p.grid_relative }
++                    Point {
++                        x: p.stack_relative,
++                        y: p.grid_relative,
++                    }
 +                } else {
-+                    Point { x: p.grid_relative, y: p.stack_relative }
++                    Point {
++                        x: p.grid_relative,
++                        y: p.stack_relative,
++                    }
 +                },
 +                size: p.size,
 +                #[cfg(feature = "content_size")]
@@ -9811,12 +9854,13 @@ index 0000000000000000000000000000000000000000..2c56d15bf65e5b61b0f7cfc754060314
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_geometry.rs b/vendor/taffy/src/compute/grid/lanes_geometry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cd9405028d468a68865e73151e01affde150d088
+index 0000000000000000000000000000000000000000..402577856bff569394f9595c860d692e2f0a8cb2
 --- /dev/null
 +++ b/vendor/taffy/src/compute/grid/lanes_geometry.rs
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,172 @@
 +//! Grid-lanes alignment uses real track edges and clamps safe overflow before reversal.
 +use super::types::GridTrack;
++use crate::geometry::{Rect, Size};
 +use crate::{AlignContent, AlignContentKeyword, AlignmentSafety, Line};
 +
 +/// Gutters represent grid lines, but their offsets include the preceding gap.
@@ -9913,6 +9957,77 @@ index 0000000000000000000000000000000000000000..cd9405028d468a68865e73151e01affd
 +        offset - free
 +    } else {
 +        offset
++    }
++}
++
++/// The in-flow grid area contributes overflow even when all its lanes are empty.
++/// Track coordinates include borders; overflow is relative to the padding box.
++#[cfg(feature = "content_size")]
++pub(super) fn inflow_bounds(
++    tracks: &[GridTrack],
++    count: usize,
++    reversed: bool,
++    rows: bool,
++    stack_start: f32,
++    stack_size: f32,
++    border: Rect<f32>,
++) -> Rect<f32> {
++    if count == 0 {
++        return Rect::ZERO;
++    }
++    let grid = track_area(tracks, 0, count, reversed);
++    let stack_end = stack_start + stack_size;
++    if rows {
++        Rect {
++            left: stack_start - border.left,
++            right: stack_end - border.left,
++            top: grid.start - border.top,
++            bottom: grid.end - border.top,
++        }
++    } else {
++        Rect {
++            left: grid.start - border.left,
++            right: grid.end - border.left,
++            top: stack_start - border.top,
++            bottom: stack_end - border.top,
++        }
++    }
++}
++
++/// Grid tracks contribute in-flow overflow independently of their item count.
++/// An empty axis has a single line at its aligned start, rather than a track.
++pub(super) fn grid_inflow_bounds(
++    columns: &[GridTrack],
++    rows: &[GridTrack],
++    reversed: Size<bool>,
++    border: Rect<f32>,
++) -> Rect<f32> {
++    #[cfg(feature = "content_size")]
++    {
++        let axis = |tracks: &[GridTrack], reverse| {
++            if tracks.len() > 1 {
++                track_area(tracks, 0, tracks.len() / 2, reverse)
++            } else {
++                let offset = tracks.first().map_or(0.0, |track| track.offset);
++                Line {
++                    start: offset,
++                    end: offset,
++                }
++            }
++        };
++        let x = axis(columns, reversed.width);
++        let y = axis(rows, reversed.height);
++        Rect {
++            left: x.start - border.left,
++            right: x.end - border.left,
++            top: y.start - border.top,
++            bottom: y.end - border.top,
++        }
++    }
++    #[cfg(not(feature = "content_size"))]
++    {
++        let _ = (columns, rows, reversed, border);
++        Rect::ZERO
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/grid/lanes_row_baselines.rs b/vendor/taffy/src/compute/grid/lanes_row_baselines.rs
@@ -10477,7 +10592,7 @@ index 0000000000000000000000000000000000000000..5bf4648458bccec41d6617b931298a06
 +#[path = "block_intrinsic_keyword_tests.rs"]
 +mod block_intrinsic_keyword_tests;
 diff --git a/vendor/taffy/src/compute/grid/mod.rs b/vendor/taffy/src/compute/grid/mod.rs
-index 4d1884612348ff58e5133cd5785dbc7f24917037..35ffc2ef070f12b694ea3c1bd26a41f7f9d1a635
+index 4d1884612348ff58e5133cd5785dbc7f24917037..1355e4ae23911bf46d15d53de6e025253dabd9c5
 --- a/vendor/taffy/src/compute/grid/mod.rs
 +++ b/vendor/taffy/src/compute/grid/mod.rs
 @@ -2,0 +3,3 @@
@@ -11078,8 +11193,7 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..35ffc2ef070f12b694ea3c1bd26a41f7
 @@ -691 +991 @@
 -        false,
 +        flow.height,
-@@ -692,0 +993,33 @@
-+
+@@ -693,0 +994,33 @@
 +    // KaminIDE patch: дорожки выровнены — подсеткам окончательные размеры
 +    // по смещениям (доля распределения содержимого входит в зазоры).
 +    // Размеры — нефрагментированные; рост фрагментации внутри пролёта подсетка получает отдельно.
@@ -11112,6 +11226,10 @@ index 4d1884612348ff58e5133cd5785dbc7f24917037..35ffc2ef070f12b694ea3c1bd26a41f7
 +    // KaminIDE patch: `subgrid::partition_for_axis` permutes the items, so restore document order
 +    // (upstream #1200 otherwise keeps it; the out-of-flow merge below relies on it).
 +    items.sort_by_key(|item| item.source_order);
++
+@@ -697 +1030 @@
+-    let mut item_overflow_rect = Rect::ZERO;
++    let mut item_overflow_rect = lanes_geometry::grid_inflow_bounds(&columns, &rows, flow, border);
 @@ -706,0 +1040 @@
 +    let mut baseline_x_items: Vec<(u16, Line<Option<f32>>)> = Vec::new();
 @@ -708,17 +1042,5 @@
@@ -15045,7 +15163,7 @@ index 70838fe7c835483ab9b849c1e535b75e2d21483d..fab7ee9ef7e47beb5677216c39df345d
 +                        .collect()
 +                })
 diff --git a/vendor/taffy/src/compute/leaf.rs b/vendor/taffy/src/compute/leaf.rs
-index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096fb2a81289
+index 415b41d0ce13288ad652e29e7e3225f629c010cb..c0ad76ad19618f6c80cdd5a794765271b00ca65e
 --- a/vendor/taffy/src/compute/leaf.rs
 +++ b/vendor/taffy/src/compute/leaf.rs
 @@ -8 +8 @@
@@ -15125,7 +15243,20 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +        node_min_size,
 +        node_max_size,
 +    );
-@@ -174,0 +179,9 @@
+@@ -166,0 +171,5 @@
++        // KaminIDE patch: lines longer than the box overflow it (`MeasureOutput::overflow`).
++        let extent = measured.overflow.map_or(measured_size, |o| Size {
++            width: o.width.max(measured_size.width),
++            height: o.height.max(measured_size.height),
++        });
+@@ -169 +178 @@
+-            right: start_padding + measured_size.width + if is_scroll_container { end_padding } else { 0.0 },
++            right: start_padding + extent.width + if is_scroll_container { end_padding } else { 0.0 },
+@@ -171 +180 @@
+-            bottom: padding.top + measured_size.height + if is_scroll_container { padding.bottom } else { 0.0 },
++            bottom: padding.top + extent.height + if is_scroll_container { padding.bottom } else { 0.0 },
+@@ -173,0 +183,9 @@
++
 +    let baselines = measured_baselines::with_inset(
 +        style,
 +        measured.baseline,
@@ -15134,14 +15265,13 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +    );
 +    let baselines_x =
 +        measured_baselines::physical_x(style, measured, size.width, content_box_inset);
-+
-@@ -179 +192,2 @@
+@@ -179 +197,2 @@
 -        baselines: Baselines::NONE,
 +        baselines,
 +        baselines_x,
-@@ -184,0 +199 @@
+@@ -184,0 +204 @@
 +        inline_block_last_y: None,
-@@ -188,0 +204,82 @@
+@@ -188,0 +209,83 @@
 +
 +#[cfg(test)]
 +mod measured_baseline_tests {
@@ -15160,6 +15290,7 @@ index 415b41d0ce13288ad652e29e7e3225f629c010cb..b515b024feb6069efd74dce4c153096f
 +            baseline_x: None,
 +            last_baseline_x: None,
 +            baseline_x_from_right: false,
++            overflow: None,
 +        }
 +    }
 +
@@ -15446,7 +15577,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5dff50ab583
+index 1366d8349f1668c19f04bd2d85e88422918b6604..780b2639d5ab2abf013364aaf9373f1b3f151e78
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15458,25 +15589,30 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +mod block_flow;
 +#[cfg(feature = "block_layout")]
 +mod root_block_constraints;
-@@ -50,2 +57,4 @@
+@@ -39,0 +47,4 @@
++// KaminIDE patch: independent measured hosts use the native overflow propagation rule.
++#[cfg(feature = "content_size")]
++pub use common::scrollable_overflow::compute_scrollable_overflow_contribution;
++
+@@ -50,2 +61,4 @@
 -pub use self::grid::compute_grid_layout;
 -
 +pub use self::grid::{compute_grid_layout, ContributionMemo};
 +
 +#[cfg(feature = "float_layout")]
 +pub use self::block::FloatMark;
-@@ -56 +65 @@
+@@ -56 +69 @@
 -use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow, Position};
 +use crate::style::{AvailableSpace, ContainingBlockClaims, CoreStyle, Overflow};
-@@ -58,2 +67,2 @@
+@@ -58,2 +71,2 @@
 -    AxisStaticAlign, AxisStaticEdge, AxisStaticPosition, Layout, LayoutInput, LayoutOutput, LayoutPartialTree,
 -    LayoutPartialTreeExt, NodeId, OofCandidate, OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
 +    Layout, LayoutInput, LayoutOutput, LayoutPartialTree, LayoutPartialTreeExt, NodeId,
 +    OofCandidates, RequestedAxis, RoundTree, RunMode, SizingMode,
-@@ -64 +73 @@
+@@ -64 +77 @@
 -use crate::{CacheTree, MaybeMath, MaybeResolve};
 +use crate::CacheTree;
-@@ -68,9 +77,6 @@
+@@ -68,9 +81,6 @@
 -/// The root's containing block is the initial containing block (ICB), which has the dimensions of the
 -/// viewport (`available_space`) and is anchored at the canvas origin. The root's `position` and `inset`
 -/// styles are resolved against it:
@@ -15492,19 +15628,19 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +/// placed at the origin (or the physical end edge for reversed flows), and its `position`/`inset`
 +/// styles are ignored. Out-of-flow candidates no ancestor claimed are still laid out against the
 +/// initial containing block by the final positioning pass below.
-@@ -82,5 +88 @@
+@@ -82,5 +92 @@
 -    let style = tree.get_core_container_style(root);
 -    let position = style.position();
 -    let direction = style.direction();
 -    drop(style);
 -
 +    let direction = tree.get_core_container_style(root).direction();
-@@ -88,4 +89,0 @@
+@@ -88,4 +93,0 @@
 -    let oof_root_area = match (position.is_out_of_flow(), icb_size.width, icb_size.height) {
 -        (true, Some(width), Some(height)) => Some(Size { width, height }),
 -        _ => None,
 -    };
-@@ -98,35 +96,2 @@
+@@ -98,35 +100,2 @@
 -    let (layout, candidates) = if let Some(area_size) = oof_root_area {
 -        // The static position of the root places its margin box at the origin of the ICB
 -        let (start, end) = if direction.is_rtl() { (area_size.width, area_size.width) } else { (0.0, 0.0) };
@@ -15542,10 +15678,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 -    };
 +    let (layout, candidates) =
 +        compute_in_flow_root_layout(tree, root, available_space, &mut root_is_cached);
-@@ -168 +133 @@
+@@ -168 +137 @@
 -            candidates,
 +            candidates.as_slice(),
-@@ -194,10 +158,0 @@
+@@ -194,10 +162,0 @@
 -    let mut known_dimensions = Size::NONE;
 -
 -    // The available space passed to the root excludes the root's margins
@@ -15556,7 +15692,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 -        available_space.maybe_sub(margin.sum_axes()).maybe_max(Size::ZERO)
 -    };
 -
-@@ -205,50 +160,3 @@
+@@ -205,50 +164,3 @@
 -    {
 -        use crate::BoxSizing;
 -
@@ -15610,10 +15746,10 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +    let known_dimensions = root_block_constraints::known(tree, root, available_space);
 +    #[cfg(not(feature = "block_layout"))]
 +    let known_dimensions = Size::NONE;
-@@ -260 +168 @@
+@@ -260 +172 @@
 -        available_space: root_available_space,
 +        available_space,
-@@ -271,6 +179,25 @@
+@@ -271,6 +183,25 @@
 -    let padding =
 -        style.padding().resolve_or_zero(available_space.width.into_option(), |val, basis| tree.calc(val, basis));
 -    let border =
@@ -15645,7 +15781,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        .resolve_or_zero(inline_space.into_option(), |val, basis| {
 +            tree.calc(val, basis)
 +        });
-@@ -281,7 +208,5 @@
+@@ -281,7 +212,5 @@
 -    let is_rtl = style.direction().is_rtl();
 -
 -    // The root's margin box is placed at the origin of the initial containing block
@@ -15658,7 +15794,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        Size {
 +            width: style.direction().is_rtl(),
 +            height: false,
-@@ -289,13 +214,20 @@
+@@ -289,13 +218,20 @@
 -        y: margin.top,
 -    };
 -
@@ -15692,7 +15828,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +                .width
 +                .into_option()
 +                .map_or(0.0, |available_width| available_width - output.size.width)
-@@ -303 +235,10 @@
+@@ -303 +239,10 @@
 -            left.or(right.map(|right| -right)).unwrap_or(0.0)
 +            0.0
 +        },
@@ -15704,16 +15840,16 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +        } else {
 +            0.0
 +        },
-@@ -305,2 +246 @@
+@@ -305,2 +250 @@
 -        location.y += top.or(bottom.map(|bottom| -bottom)).unwrap_or(0.0);
 -    }
 +
-@@ -311,0 +252 @@
+@@ -311,0 +256 @@
 +        relative_offset: Point::ZERO,
-@@ -355 +296 @@
+@@ -355 +300 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +302,13 @@
+@@ -360,0 +306,13 @@
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
@@ -15728,7 +15864,7 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..309208ae734297ab967c6ba7551bb5df
 +) {
 +    tree.cache_store(node, inputs, output.clone());
 diff --git a/vendor/taffy/src/compute/oof.rs b/vendor/taffy/src/compute/oof.rs
-index 746c9f387238729971e490debc213c5b8c882735..f17bd4d60004520ef8e8173c75342b39f86cbb7c
+index 746c9f387238729971e490debc213c5b8c882735..67809f726bf2f31914cd695b902b541d50576d70
 --- a/vendor/taffy/src/compute/oof.rs
 +++ b/vendor/taffy/src/compute/oof.rs
 @@ -102 +102,7 @@
@@ -15798,11 +15934,44 @@ index 746c9f387238729971e490debc213c5b8c882735..f17bd4d60004520ef8e8173c75342b39
 @@ -392 +427 @@
 -    candidates: OofCandidates,
 +    candidates: &[OofCandidate],
-@@ -596,2 +631 @@
+@@ -432,11 +467,5 @@
+-/// Size and position a single out-of-flow box against its containing block, and store its layout.
+-///
+-/// - `area_size`/`area_offset` describe the inset-resolution area of the containing block
+-///   (border box minus borders and scrollbar gutters), relative to the containing block's border box.
+-/// - `container_overflow` is the `overflow` style of the containing block, which determines
+-///   whether overflowing boxes may be aligned into its scrollable overflow area.
+-/// - `grid_owner` is the node whose detailed layout info is consulted for grid placement: if it is
+-///   a grid container, the box is positioned relative to the grid area determined by its
+-///   grid-placement properties rather than the passed area.
+-/// - `before_layout` is called with the inputs of the final layout pass just before it runs, which
+-///   allows the caller to inspect the layout cache for the box.
++#[path = "oof_retry.rs"]
++mod retry;
++use retry::layout_oof_box;
++
++/// One size-selection and final-placement attempt for an out-of-flow box.
+@@ -445 +474 @@
+-pub(crate) fn layout_oof_box<Tree: LayoutContainingBlock>(
++fn layout_oof_box_once<Tree: LayoutContainingBlock>(
+@@ -481,0 +511,12 @@
++    // KaminIDE patch: a box built for the root gutter it assumed resolves its insets
++    // against the gutter the viewport decided in this layout (`kamin_scrollbars`).
++    let (area_size, area_offset) = match tree.kamin_oof_area_shift(candidate.node) {
++        Some(shift) => (
++            Size {
++                width: area_size.width - shift.left - shift.right,
++                height: area_size.height - shift.top - shift.bottom,
++            },
++            Point { x: area_offset.x + shift.left, y: area_offset.y + shift.top },
++        ),
++        None => (area_size, area_offset),
++    };
+@@ -596,2 +637 @@
 -            Rect { left, right, top, bottom },
 -            margin,
 +            stretch_fit_size,
-@@ -633,2 +667,34 @@
+@@ -633,2 +673,34 @@
 -            known_dimensions =
 -                known_dimensions.maybe_apply_aspect_ratio(stretch_aspect_ratio).maybe_clamp(min_size, max_size);
 +            known_dimensions = known_dimensions
@@ -15839,14 +16008,72 @@ index 746c9f387238729971e490debc213c5b8c882735..f17bd4d60004520ef8e8173c75342b39
 +            known_dimensions = known_dimensions
 +                .maybe_apply_aspect_ratio(aspect_ratio)
 +                .maybe_clamp(min_size, max_size);
-@@ -696,0 +763 @@
+@@ -696,0 +769 @@
 +        relative_offset: Point::ZERO,
-@@ -739 +806 @@
+@@ -739 +812 @@
 -    candidates: OofCandidates,
 +    candidates: &[OofCandidate],
-@@ -762 +829 @@
+@@ -762 +835 @@
 -    for candidate in candidates.iter() {
 +    for candidate in candidates {
+@@ -813,0 +887,2 @@
++        // KaminIDE patch: a scroll range proxy adds nothing to the overflow that decides
++        // the container's bars (`kamin_scrollbars`).
+@@ -815 +890 @@
+-        {
++        if !tree.kamin_oof_is_proxy(candidate.node) {
+diff --git a/vendor/taffy/src/compute/oof_retry.rs b/vendor/taffy/src/compute/oof_retry.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..27d472a815aad2fd470116a2d25609e47dbd9107
+--- /dev/null
++++ b/vendor/taffy/src/compute/oof_retry.rs
+@@ -0,0 +1,46 @@
++//! Repeat only an out-of-flow box whose descendant gutters changed its intrinsic size.
++use super::*;
++
++/// Size and position a single out-of-flow box against its containing block, and store its layout.
++///
++/// - `area_size`/`area_offset` describe the inset-resolution area of the containing block
++///   (border box minus borders and scrollbar gutters), relative to the containing block's border box.
++/// - `container_overflow` is the `overflow` style of the containing block, which determines
++///   whether overflowing boxes may be aligned into its scrollable overflow area.
++/// - `grid_owner` is the node whose detailed layout info is consulted for grid placement: if it is
++///   a grid container, the box is positioned relative to the grid area determined by its
++///   grid-placement properties rather than the passed area.
++/// - `before_layout` is called with the inputs of the final layout pass just before it runs, which
++///   allows the caller to inspect the layout cache for the box.
++#[inline(always)]
++#[allow(clippy::too_many_arguments)]
++pub(super) fn layout_oof_box<Tree: LayoutContainingBlock>(
++    tree: &mut Tree,
++    candidate: OofCandidate,
++    area_size: Size<f32>,
++    area_offset: Point<f32>,
++    direction: Direction,
++    container_overflow: Point<Overflow>,
++    #[cfg(feature = "grid")] grid_owner: Option<NodeId>,
++    mut before_layout: impl FnMut(&mut Tree, &LayoutInput),
++) -> OofBoxLayout {
++    tree.take_intrinsic_size_change(candidate.node);
++    loop {
++        let result = super::layout_oof_box_once(
++            tree,
++            candidate,
++            area_size,
++            area_offset,
++            direction,
++            container_overflow,
++            #[cfg(feature = "grid")]
++            grid_owner,
++            &mut before_layout,
++        );
++        if !tree.take_intrinsic_size_change(candidate.node) {
++            return result;
++        }
++        // The invalidated intrinsic cache now measures the settled gutters. An
++        // explicit author size is resolved again unchanged; a fit-content size can grow.
++    }
++}
 diff --git a/vendor/taffy/src/compute/root_block_constraints.rs b/vendor/taffy/src/compute/root_block_constraints.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..a645bd748e3759c6fab15156f5395a68731bd91b
@@ -16358,14 +16585,148 @@ index f6ffa8092af88917af985592c77a132b2b3b6921..10ece19aa5e966b04f1232eb44e47666
 +            GridTemplateComponent::Repeat(repetition) => {
 +                GenericGridTemplateComponent::Repeat(repetition)
 +            }
+diff --git a/vendor/taffy/src/style/kamin_scrollbars.rs b/vendor/taffy/src/style/kamin_scrollbars.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..157032f11f2667247413377829edc088e6c0aa44
+--- /dev/null
++++ b/vendor/taffy/src/style/kamin_scrollbars.rs
+@@ -0,0 +1,124 @@
++//! KaminIDE patch: classic scrollbars that layout itself decides (CSS Overflow 3 §3,
++//! `overflow: auto`). A box lays its content out with the bars it guesses (`overflow`), and
++//! when the content's scrollable overflow asks for other bars it lays out again only itself,
++//! as Blink `BlockNode::Layout` does when `ComputeScrollbars` changes and Gecko
++//! `ScrollContainerFrame::ReflowContents` does with `TryLayout`.
++use crate::geometry::{Point, Rect};
++
++/// The layout-decided scrollbars of a box, and the boxes that follow the viewport's,
++/// packed in two bytes: node styles keep their size.
++#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
++#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
++pub struct ScrollbarLayout(u16);
++
++impl ScrollbarLayout {
++    /// No bar decided by layout, no root gutter followed.
++    pub const NONE: Self = Self(0);
++    /// Layout decides the horizontal bar.
++    const AUTO_X: u16 = 1;
++    /// Layout decides the vertical bar.
++    const AUTO_Y: u16 = 1 << 1;
++    /// The box is the viewport.
++    const VIEWPORT: u16 = 1 << 2;
++    /// The box is a scroll range proxy.
++    const PROXY: u16 = 1 << 3;
++    /// The box was built for a root gutter.
++    const ROOT: u16 = 1 << 4;
++    /// [RootGutter::grow].
++    const GROW: u16 = 1 << 5;
++    /// Shift of [RootGutter::assumed] in the bits.
++    const SIDES: u32 = 8;
++
++    /// - `auto`: axes (of `overflow`) whose bar the content decides: `Scroll` with a bar,
++    ///   `Hidden` without; `overflow` holds the guess the box is laid out with first.
++    /// - `viewport`: the box is the viewport, whose gutter `root_gutter` boxes follow.
++    /// - `proxy`: the box adds nothing to the scrollable overflow that decides the parent's
++    ///   bars: it sizes the parent's scroll range from a range measured before, or paints a
++    ///   canvas under the bars.
++    /// - `root_gutter`: an out-of-flow box built for this root gutter.
++    pub const fn new(auto: Point<bool>, viewport: bool, proxy: bool, root_gutter: Option<RootGutter>) -> Self {
++        const fn flag(on: bool, bit: u16) -> u16 {
++            if on {
++                bit
++            } else {
++                0
++            }
++        }
++        let root = match root_gutter {
++            Some(root) => Self::ROOT | flag(root.grow, Self::GROW) | (root.assumed as u16 & 0xf) << Self::SIDES,
++            None => 0,
++        };
++        Self(
++            flag(auto.x, Self::AUTO_X)
++                | flag(auto.y, Self::AUTO_Y)
++                | flag(viewport, Self::VIEWPORT)
++                | flag(proxy, Self::PROXY)
++                | root,
++        )
++    }
++
++    /// The axes whose bar layout decides.
++    #[inline(always)]
++    pub fn auto(self) -> Point<bool> {
++        Point { x: self.0 & Self::AUTO_X != 0, y: self.0 & Self::AUTO_Y != 0 }
++    }
++
++    /// Whether the box is the viewport.
++    #[inline(always)]
++    pub fn viewport(self) -> bool {
++        self.0 & Self::VIEWPORT != 0
++    }
++
++    /// Whether the box is a scroll range proxy.
++    #[inline(always)]
++    pub fn proxy(self) -> bool {
++        self.0 & Self::PROXY != 0
++    }
++
++    /// The root gutter an out-of-flow box was built for.
++    #[inline(always)]
++    pub fn root_gutter(self) -> Option<RootGutter> {
++        (self.0 & Self::ROOT != 0)
++            .then_some(RootGutter { assumed: (self.0 >> Self::SIDES) as u8 & 0xf, grow: self.0 & Self::GROW != 0 })
++    }
++
++    /// Whether layout decides any bar of the box or publishes the root gutter.
++    #[inline(always)]
++    pub fn decides(self) -> bool {
++        self.0 & (Self::AUTO_X | Self::AUTO_Y | Self::VIEWPORT) != 0
++    }
++}
++/// The sides of the root gutter an out-of-flow box was built with. Every side of the
++/// gutter is one bar thick, so the sides are bits: no node style grows for them.
++#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
++#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
++pub struct RootGutter {
++    /// Sides its insets already account for: bit 0 left, 1 top, 2 right, 3 bottom.
++    pub assumed: u8,
++    /// The box covers the gutter (a canvas under the bars) instead of stopping at it.
++    pub grow: bool,
++}
++
++impl RootGutter {
++    /// The sides of a gutter as `assumed` bits.
++    pub fn sides(gutter: Rect<f32>) -> u8 {
++        [gutter.left, gutter.top, gutter.right, gutter.bottom]
++            .iter()
++            .enumerate()
++            .fold(0, |bits, (side, &width)| if width > 0.0 { bits | 1 << side } else { bits })
++    }
++
++    /// How far the box's inset-resolution area moves in on each side when the viewport's
++    /// gutter is `now`, its bars `bar` thick: zero when layout kept the bars the box was
++    /// built with.
++    pub fn shift(&self, now: Rect<f32>, bar: f32) -> Rect<f32> {
++        let sign = if self.grow { -1.0 } else { 1.0 };
++        let assumed = |side: u8| if self.assumed & 1 << side != 0 { bar } else { 0.0 };
++        Rect {
++            left: sign * (now.left - assumed(0)),
++            top: sign * (now.top - assumed(1)),
++            right: sign * (now.right - assumed(2)),
++            bottom: sign * (now.bottom - assumed(3)),
++        }
++    }
++}
 diff --git a/vendor/taffy/src/style/mod.rs b/vendor/taffy/src/style/mod.rs
-index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8783bfce1
+index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912fb2f607c
 --- a/vendor/taffy/src/style/mod.rs
 +++ b/vendor/taffy/src/style/mod.rs
-@@ -29 +29 @@
+@@ -5,0 +6 @@
++mod kamin_scrollbars;
+@@ -21,0 +23 @@
++pub use self::kamin_scrollbars::{RootGutter, ScrollbarLayout};
+@@ -29 +31 @@
 -pub use self::block::{BlockContainerStyle, BlockItemStyle, TextAlign};
 +pub use self::block::{BlockContainerStyle, BlockFlow, BlockItemStyle, TextAlign};
-@@ -71,0 +72,17 @@
+@@ -71,0 +74,17 @@
 +/// KaminIDE patch: выражение `calc-size()` над размером основы:
 +/// `(size·mul + add)` с зажимом `[min, max]`, не меньше нуля
 +/// (css-values-5 §calc-size: «size» — размер, который дало бы ключевое
@@ -16383,14 +16744,14 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +}
 +
 +
-@@ -94,0 +112,6 @@
+@@ -94,0 +114,6 @@
 +    /// KaminIDE patch: `display: flow-root` — a block container that establishes a new block
 +    /// formatting context. As a layout root it is sized like a block box.
 +    #[inline(always)]
 +    fn is_flow_root(&self) -> bool {
 +        false
 +    }
-@@ -116,0 +140,10 @@
+@@ -116,0 +142,10 @@
 +    /// KaminIDE patch: `calc-size()` у `width`, `height`, `min-width`,
 +    /// `min-height` (см. [`Style::calc_size`]).
 +    #[inline(always)]
@@ -16401,7 +16762,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_basis(&self) -> [Dimension; 6] { [Dimension::auto(); 6] }
 +    /// Whether calc-size expressions operate on the content box.
 +    fn calc_size_content_box(&self) -> bool { false }
-@@ -121,0 +155,9 @@
+@@ -121,0 +157,9 @@
 +    }
 +    /// Physical grid axes supplied by a writing-mode adapter; otherwise use direction.
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
@@ -16411,7 +16772,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    #[cfg(feature = "block_layout")]
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        None
-@@ -178,2 +220,7 @@
+@@ -178,2 +222,7 @@
 -    /// Sets the preferred aspect ratio for the item
 -    /// The ratio is calculated as width divided by height.
 +    /// Border-box preferred size transferred by an adapter from a definite ratio axis.
@@ -16421,7 +16782,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    }
 +
 +    /// Sets the preferred aspect ratio, calculated as width divided by height.
-@@ -200,0 +248,51 @@
+@@ -200,0 +250,51 @@
 +    /// KaminIDE patch: приставка `safe` у выравнивания
 +    /// (`align_items`, `align_self`, `align_content`, `justify_content`) —
 +    /// css-align-3 §4.4.
@@ -16473,7 +16834,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn subgrid(&self) -> u8 {
 +        0
 +    }
-@@ -206,0 +305,128 @@
+@@ -206,0 +307,128 @@
 +    /// Empty content-box intrinsic sizes for size-contained physical axes.
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
@@ -16602,26 +16963,29 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    /// Ось укладки — блочная ось контейнера при ФИЗИЧЕСКИХ рядах (лунки
 +    /// колонками в вертикальном письме): элемент по ней — по содержимому.
 +    pub stack_block: bool,
-@@ -720,0 +947,6 @@
+@@ -720,0 +949,6 @@
 +    /// KaminIDE patch: `max-width`/`max-height` given as `min-content` /
 +    /// `max-content` (css-sizing-3 §3.2). `max_size` cannot hold these
 +    /// keywords; a flex container measures them for its items.
 +    pub item_max_size_keywords: Size<Option<AvailableSpace>>,
 +    /// Explicit intrinsic min-width/min-height for flex items.
 +    pub item_min_size_keywords: Size<Option<AvailableSpace>>,
-@@ -727,0 +960,5 @@
+@@ -727,0 +962,5 @@
 +    /// Logical grid track order projected onto the physical x/y axes.
 +    pub grid_axis_reversed: Option<Size<bool>>,
 +    /// Native block layout in logical axes, retaining its BFC and margin rules.
 +    #[cfg(feature = "block_layout")]
 +    pub block_flow: Option<BlockFlow>,
-@@ -735,0 +973,2 @@
+@@ -733,0 +973,2 @@
++    /// KaminIDE patch: the bars layout decides from the content (`overflow: auto`).
++    pub kamin_scrollbars: ScrollbarLayout,
+@@ -735,0 +977,2 @@
 +    /// Empty content-box intrinsic sizes for size-contained physical axes.
 +    pub contained_intrinsic_size: Size<Option<f32>>,
-@@ -764,0 +1004,2 @@
+@@ -764,0 +1008,2 @@
 +    /// Border-box ratio transfer preserved independently of content expansion.
 +    pub aspect_ratio_preferred_size: Size<Option<f32>>,
-@@ -795,0 +1037,20 @@
+@@ -795,0 +1041,20 @@
 +    /// KaminIDE patch: приставка `safe` у выравнивания (css-align-3 §4.4):
 +    /// при переполнении области выравнивание падает к `start`, чтобы
 +    /// содержимое не уезжало за начало и не становилось недоступным.
@@ -16642,7 +17006,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    pub calc_size_basis: [Dimension; 6],
 +    /// Maximum-size calculations, X/Y.
 +    pub calc_size_max: [Option<(f32, f32, f32, f32)>; 2],
-@@ -799,0 +1061,65 @@
+@@ -799,0 +1065,65 @@
 +    /// KaminIDE patch: `flex-wrap: balance` — 0 = обычный перенос; N ≥ 1 =
 +    /// балансировка строк с минимумом N строк (`flex-line-count`).
 +    #[cfg(feature = "flexbox")]
@@ -16708,14 +17072,14 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    /// KaminIDE patch: подсетка — биты [`CoreStyle::subgrid`].
 +    #[cfg(feature = "grid")]
 +    pub subgrid: u8,
-@@ -863,0 +1190,6 @@
+@@ -863,0 +1194,6 @@
 +    /// KaminIDE patch: `<line-name-list>` подсеточных колонок (см. [`SubgridLineNames`]).
 +    #[cfg(feature = "grid")]
 +    pub subgrid_column_names: Option<SubgridLineNames<S>>,
 +    /// KaminIDE patch: `<line-name-list>` подсеточных рядов.
 +    #[cfg(feature = "grid")]
 +    pub subgrid_row_names: Option<SubgridLineNames<S>>,
-@@ -880,0 +1213,8 @@
+@@ -880,0 +1217,8 @@
 +        item_max_size_keywords: Size {
 +            width: None,
 +            height: None,
@@ -16724,7 +17088,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +            width: None,
 +            height: None,
 +        },
-@@ -884 +1224,7 @@
+@@ -884 +1228,7 @@
 -        overflow: Point { x: Overflow::Visible, y: Overflow::Visible },
 +        grid_axis_reversed: None,
 +        #[cfg(feature = "block_layout")]
@@ -16733,18 +17097,20 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +            x: Overflow::Visible,
 +            y: Overflow::Visible,
 +        },
-@@ -886,0 +1233 @@
+@@ -885,0 +1236 @@
++        kamin_scrollbars: ScrollbarLayout::NONE,
+@@ -886,0 +1238 @@
 +        contained_intrinsic_size: Size::NONE,
-@@ -899,0 +1247 @@
+@@ -899,0 +1252 @@
 +        aspect_ratio_preferred_size: Size::NONE,
-@@ -902,0 +1251,6 @@
+@@ -902,0 +1256,6 @@
 +        #[cfg(any(feature = "flexbox", feature = "grid"))]
 +        safe_alignment: (false, false, false, false),
 +        calc_size: [None; 4],
 +        calc_size_content_box: false,
 +        calc_size_basis: [Dimension::auto(); 6],
 +        calc_size_max: [None; 2],
-@@ -923,0 +1278,20 @@
+@@ -923,0 +1283,20 @@
 +        flex_balance_lines: 0,
 +        #[cfg(feature = "flexbox")]
 +        flex_cross_reverse: false,
@@ -16765,12 +17131,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        #[cfg(feature = "grid")]
 +        subgrid: 0,
 +        #[cfg(feature = "flexbox")]
-@@ -940,0 +1315,4 @@
+@@ -940,0 +1320,4 @@
 +        subgrid_column_names: None,
 +        #[cfg(feature = "grid")]
 +        subgrid_row_names: None,
 +        #[cfg(feature = "grid")]
-@@ -962,0 +1341,7 @@
+@@ -962,0 +1346,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        self.calc_size
 +    }
@@ -16778,13 +17144,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_content_box(&self) -> bool { self.calc_size_content_box }
 +
 +    #[inline(always)]
-@@ -974,0 +1360,5 @@
+@@ -974,0 +1365,5 @@
 +    #[cfg(feature = "block_layout")]
 +    fn is_flow_root(&self) -> bool {
 +        matches!(self.display, Display::FlowRoot)
 +    }
 +    #[inline(always)]
-@@ -989,0 +1380,7 @@
+@@ -989,0 +1385,7 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        self.grid_axis_reversed
 +    }
@@ -16792,12 +17158,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        self.block_flow
 +    }
-@@ -1018,0 +1416,4 @@
+@@ -1018,0 +1421,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        self.aspect_ratio_preferred_size
 +    }
 +    #[inline(always)]
-@@ -1034,0 +1436,33 @@
+@@ -1034,0 +1441,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        self.safe_alignment
 +    }
@@ -16831,12 +17197,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        self.subgrid
 +    }
 +    #[inline(always)]
-@@ -1036,0 +1471,4 @@
+@@ -1036,0 +1476,4 @@
 +    }
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        self.contained_intrinsic_size
-@@ -1070,0 +1509,7 @@
+@@ -1070,0 +1514,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        (*self).calc_size()
 +    }
@@ -16844,12 +17210,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn calc_size_content_box(&self) -> bool { (*self).calc_size_content_box() }
 +
 +    #[inline(always)]
-@@ -1078,0 +1524,4 @@
+@@ -1078,0 +1529,4 @@
 +    fn is_flow_root(&self) -> bool {
 +        (*self).is_flow_root()
 +    }
 +    #[inline(always)]
-@@ -1093,0 +1543,7 @@
+@@ -1093,0 +1548,7 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        (*self).grid_axis_reversed()
 +    }
@@ -16857,12 +17223,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        (*self).block_flow()
 +    }
-@@ -1126,0 +1583,4 @@
+@@ -1126,0 +1588,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        (*self).aspect_ratio_preferred_size()
 +    }
 +    #[inline(always)]
-@@ -1142,0 +1603,33 @@
+@@ -1142,0 +1608,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        (*self).safe_alignment()
 +    }
@@ -16896,17 +17262,17 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        (*self).subgrid()
 +    }
 +    #[inline(always)]
-@@ -1145,0 +1639,4 @@
+@@ -1145,0 +1644,4 @@
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        (*self).contained_intrinsic_size()
 +    }
-@@ -1281,0 +1779,4 @@
+@@ -1281,0 +1784,4 @@
 +    fn is_table_container(&self) -> bool {
 +        self.item_is_table
 +    }
 +    #[inline(always)]
-@@ -1294,0 +1796,16 @@
+@@ -1294,0 +1801,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        self.flex_balance_lines
 +    }
@@ -16923,12 +17289,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1314,0 +1832,4 @@
+@@ -1314,0 +1837,4 @@
 +    fn is_table_container(&self) -> bool {
 +        (*self).is_table_container()
 +    }
 +    #[inline(always)]
-@@ -1327,0 +1849,16 @@
+@@ -1327,0 +1854,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        (*self).flex_balance_lines()
 +    }
@@ -16945,12 +17311,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        (*self).percent_basis_from_parent()
 +    }
 +    #[inline(always)]
-@@ -1351,0 +1889,4 @@
+@@ -1351,0 +1894,4 @@
 +    fn is_line_row(&self) -> bool {
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1362,0 +1904,13 @@
+@@ -1362,0 +1909,13 @@
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
 +        self.item_is_table
@@ -16964,12 +17330,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        self.item_min_size_keywords
 +    }
-@@ -1371,0 +1926,4 @@
+@@ -1371,0 +1931,4 @@
 +    fn is_line_row(&self) -> bool {
 +        (*self).is_line_row()
 +    }
 +    #[inline(always)]
-@@ -1381,0 +1940,13 @@
+@@ -1381,0 +1945,13 @@
 +    }
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
@@ -16983,13 +17349,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +    #[inline(always)]
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        (*self).min_size_keywords()
-@@ -1407 +1978,4 @@
+@@ -1407 +1983,4 @@
 -        = core::iter::Map<core::slice::Iter<'a, GridTrackVec<S>>, fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>>
 +        = core::iter::Map<
 +        core::slice::Iter<'a, GridTrackVec<S>>,
 +        fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>,
 +    >
-@@ -1482 +2056,14 @@
+@@ -1482 +2061,14 @@
 -        Some(self.grid_template_row_names.iter().map(|names| names.iter()))
 +        Some(
 +            self.grid_template_row_names
@@ -17005,12 +17371,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        } else {
 +            self.subgrid_row_names.clone()
 +        }
-@@ -1577,0 +2165,4 @@
+@@ -1577,0 +2170,4 @@
 +    #[inline(always)]
 +    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<Self::CustomIdent>> {
 +        (*self).subgrid_line_names(columns)
 +    }
-@@ -1635,0 +2227,30 @@
+@@ -1635,0 +2232,30 @@
 +            #[cfg(any(feature = "flexbox", feature = "grid"))]
 +            safe_alignment: (false, false, false, false),
 +            calc_size: [None; 4],
@@ -17041,7 +17407,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +            subgrid_column_names: None,
 +            #[cfg(feature = "grid")]
 +            subgrid_row_names: None,
-@@ -1639,0 +2261,8 @@
+@@ -1639,0 +2266,8 @@
 +            item_max_size_keywords: Size {
 +                width: None,
 +                height: None,
@@ -17050,15 +17416,17 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +                width: None,
 +                height: None,
 +            },
-@@ -1646,0 +2276,3 @@
+@@ -1646,0 +2281,3 @@
 +            grid_axis_reversed: None,
 +            #[cfg(feature = "block_layout")]
 +            block_flow: None,
-@@ -1649,0 +2282 @@
+@@ -1648,0 +2286 @@
++            kamin_scrollbars: Default::default(),
+@@ -1649,0 +2288 @@
 +            contained_intrinsic_size: Size::NONE,
-@@ -1683,0 +2317 @@
+@@ -1683,0 +2323 @@
 +            aspect_ratio_preferred_size: Size::NONE,
-@@ -1808 +2442,10 @@
+@@ -1808 +2448,10 @@
 -        assert_type_size::<Style<String>>(560);
 +        // KaminIDE patch: account for the fork's calc-size basis/max payloads,
 +        // containment, subgrid names, lanes, and writing-mode/baseline hints.
@@ -17070,7 +17438,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..b178a9410bb4b21ac802479e4ce1dda8
 +        assert_type_size::<Option<(f32, bool)>>(8);
 +        assert_type_size::<Size<Option<f32>>>(16);
 +        assert_type_size::<Style<String>>(1016);
-@@ -1814,3 +2457,3 @@
+@@ -1814,3 +2463,3 @@
 -        assert_type_size::<Style<Arc<str>>>(528);
 -    }
 -}
@@ -17152,10 +17520,10 @@ index 0000000000000000000000000000000000000000..18968524043d395ee0ac08993cbffaba
 +}
 diff --git a/vendor/taffy/src/tree/baseline_transport_tests.rs b/vendor/taffy/src/tree/baseline_transport_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9497fb5a33152e9bb61301ed8f6c64c3a95cf041
+index 0000000000000000000000000000000000000000..38064a1da5a2cfc462f3b3107dd6ed54aa76b486
 --- /dev/null
 +++ b/vendor/taffy/src/tree/baseline_transport_tests.rs
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,211 @@
 +//! KaminIDE patch: итоговые baseline X/Y сохраняют порядок, normal-flow и отсутствие каналов.
 +use crate::prelude::*;
 +use crate::{Baselines, Contain, GridLanes, MeasureOutput, Overflow, Point};
@@ -17171,6 +17539,7 @@ index 0000000000000000000000000000000000000000..9497fb5a33152e9bb61301ed8f6c64c3
 +        baseline_x: (!last_only).then_some(55.0),
 +        last_baseline_x: Some(-3.0),
 +        baseline_x_from_right: false,
++        overflow: None,
 +    }
 +}
 +
@@ -17368,10 +17737,10 @@ index 0000000000000000000000000000000000000000..9497fb5a33152e9bb61301ed8f6c64c3
 +}
 diff --git a/vendor/taffy/src/tree/block_baseline_relative_tests.rs b/vendor/taffy/src/tree/block_baseline_relative_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ffffb5e2c01edf6e34f0752c590d677b1eb20aeb
+index 0000000000000000000000000000000000000000..f0b54c04972082ef83ca51d579b87e8a0ffe83a1
 --- /dev/null
 +++ b/vendor/taffy/src/tree/block_baseline_relative_tests.rs
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,86 @@
 +//! KaminIDE patch: normal-flow baseline сохраняется при перестановке физических осей блока.
 +use crate::prelude::*;
 +use crate::{BlockFlow, MeasureOutput, Overflow, Point};
@@ -17426,6 +17795,7 @@ index 0000000000000000000000000000000000000000..ffffb5e2c01edf6e34f0752c590d677b
 +                            baseline_x: Some(55.0),
 +                            last_baseline_x: Some(-3.0),
 +                            baseline_x_from_right: false,
++                            overflow: None,
 +                        },
 +                    )
 +                })
@@ -18654,7 +19024,7 @@ index 0000000000000000000000000000000000000000..e2c4ab10d0af60169589bb8bb6885079
 +mod tests;
 diff --git a/vendor/taffy/src/tree/calc_size_tests.rs b/vendor/taffy/src/tree/calc_size_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1f01cfa526cdd721b34f1bd1d741d8bd4017a20
+index 0000000000000000000000000000000000000000..9985387940290cf0a531b008d4c0cdbdffc28f90
 --- /dev/null
 +++ b/vendor/taffy/src/tree/calc_size_tests.rs
 @@ -0,0 +1,170 @@
@@ -18685,7 +19055,7 @@ index 0000000000000000000000000000000000000000..b1f01cfa526cdd721b34f1bd1d741d8b
 +fn width(style: Style, inputs: LayoutInput) -> f32 {
 +    let mut tree = TaffyTree::<()>::new();
 +    let node = tree.new_leaf(style).unwrap();
-+    let mut view = TaffyView { taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
++    let mut view = TaffyView { scrollbar_touched: Default::default(), taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
 +    view.compute_child_layout(node, inputs, #[cfg(feature = "block_layout")] None).size.width
 +}
 +
@@ -18762,7 +19132,7 @@ index 0000000000000000000000000000000000000000..b1f01cfa526cdd721b34f1bd1d741d8b
 +        let mut inputs = input(AvailableSpace::Definite(800.0));
 +        inputs.known_dimensions.set_abs(axis, None);
 +        inputs.known_dimensions.set_abs(axis.other_axis(), Some(100.0));
-+        let mut view = TaffyView { taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
++        let mut view = TaffyView { scrollbar_touched: Default::default(), taffy: &mut tree, measure_function: measured, #[cfg(feature = "grid")] grid_memos: Default::default() };
 +        let output = view.compute_child_layout(node, inputs, None);
 +        assert_eq!(output.size.get_abs(axis), 100.0);
 +    }
@@ -18830,10 +19200,10 @@ index 0000000000000000000000000000000000000000..b1f01cfa526cdd721b34f1bd1d741d8b
 +}
 diff --git a/vendor/taffy/src/tree/computed_output.rs b/vendor/taffy/src/tree/computed_output.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c1cb755c05fd160217476a02383282701ba411db
+index 0000000000000000000000000000000000000000..8ed005baaba72ff3d94300c1876470ce5838b80b
 --- /dev/null
 +++ b/vendor/taffy/src/tree/computed_output.rs
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,91 @@
 +//! Expose completed native subtree geometry and baselines for custom flow consumers.
 +//! Dirty/uncomputed nodes have no completed output; intrinsic probes cannot replace it.
 +
@@ -18895,6 +19265,7 @@ index 0000000000000000000000000000000000000000..c1cb755c05fd160217476a0238328270
 +                    baseline_x: None,
 +                    last_baseline_x: None,
 +                    baseline_x_from_right: false,
++                    overflow: None,
 +                },
 +            )
 +        })
@@ -18922,6 +19293,91 @@ index 0000000000000000000000000000000000000000..c1cb755c05fd160217476a0238328270
 +        assert!(
 +            matches!(tree.computed_layout_output(node), Err(TaffyError::InvalidInputNode(id)) if id == node)
 +        );
++    }
++}
+diff --git a/vendor/taffy/src/tree/containing_block.rs b/vendor/taffy/src/tree/containing_block.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..920602d4a7283549ae7ae30f435347612e6f2754
+--- /dev/null
++++ b/vendor/taffy/src/tree/containing_block.rs
+@@ -0,0 +1,79 @@
++//! Operations shared by containing blocks and the out-of-flow positioning pass.
++use super::LayoutPartialTree;
++use crate::style::OofItemStyle;
++use crate::tree::{DetailedLayoutInfo, NodeId};
++
++/// Extends [`LayoutPartialTree`] with the operations needed by the out-of-flow positioning pass
++/// ([`compute_oof_layout`](crate::compute_oof_layout)), which lays out the absolute/fixed boxes
++/// for which a node acts as the containing block.
++///
++/// This trait is required by [`compute_oof_layout`](crate::compute_oof_layout) and
++/// [`compute_root_layout`](crate::compute_root_layout).
++pub trait LayoutContainingBlock: LayoutPartialTree {
++    /// Consume changes to intrinsic sizes caused by gutters during descendant layout.
++    /// Positioning must repeat its size selection before committing a forced final size.
++    fn take_intrinsic_size_change(&mut self, node_id: NodeId) -> bool {
++        let _ = node_id;
++        false
++    }
++
++    /// The style type representing the styles of an out-of-flow (absolute/fixed) box being
++    /// positioned by its containing block
++    type OofItemStyle<'a>: OofItemStyle<CustomIdent = Self::CustomIdent>
++    where
++        Self: 'a;
++
++    /// Get the style of an out-of-flow box being positioned by its containing block
++    ///
++    /// Interpreted in the containing block's axes (see [`LayoutPartialTree::get_core_container_style`]).
++    fn get_oof_item_style(&self, node_id: NodeId) -> Self::OofItemStyle<'_>;
++
++    /// Clear the list of out-of-flow (absolute/fixed) boxes whose containing block is `node_id`.
++    ///
++    /// This is called (exactly once) for each node laid out with `RunMode::PerformLayout`, before
++    /// the boxes it lays out are recorded with [`add_hoisted_children`](Self::add_hoisted_children),
++    /// so that lists recorded by previous layout runs do not persist.
++    fn clear_hoisted_children(&mut self, node_id: NodeId);
++
++    /// Append to the list of out-of-flow boxes whose containing block is `node_id`.
++    ///
++    /// This is called by each containing block for the boxes it lays out, and by
++    /// [`compute_root_layout`](crate::compute_root_layout) to record boxes (e.g. `position: fixed`
++    /// boxes) which are positioned by the final root positioning pass, which runs after the root
++    /// node's own layout algorithm has already recorded its list. The recorded lists are consumed
++    /// by [`round_layout`](crate::round_layout) (out-of-flow boxes are rounded via their
++    /// containing block rather than via their parent), and are also useful for consumers
++    /// implementing paint/hit-testing traversals.
++    fn add_hoisted_children(&mut self, node_id: NodeId, hoisted: &[NodeId]);
++
++    /// Read back the detailed layout information most recently recorded for `node_id`
++    /// (as stored by [`LayoutGridContainer::set_detailed_grid_info`](crate::tree::LayoutGridContainer::set_detailed_grid_info)).
++    ///
++    /// This is used by the out-of-flow positioning pass to resolve the grid area of absolutely
++    /// positioned boxes whose containing block is a grid container. Implementing this method is
++    /// optional: the default implementation returns [`DetailedLayoutInfo::None`], in which case
++    /// such boxes are positioned relative to the grid container's padding box instead of their
++    /// grid area.
++    #[inline(always)]
++    fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo<Self::CustomIdent> {
++        let _ = node_id;
++        &DetailedLayoutInfo::None
++    }
++
++    /// KaminIDE patch: how far the inset-resolution area of out-of-flow `node_id` moves in on
++    /// each side because the viewport decided other bars than the box was built for
++    /// (`ScrollbarLayout::root_gutter`). `None` leaves the area as it is.
++    #[inline(always)]
++    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
++        let _ = node_id;
++        None
++    }
++
++    /// KaminIDE patch: whether out-of-flow `node_id` is a scroll range proxy, which adds
++    /// nothing to its containing block's scrollable overflow (`ScrollbarLayout::proxy`).
++    #[inline(always)]
++    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
++        let _ = node_id;
++        false
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/flex.rs b/vendor/taffy/src/tree/flex.rs
@@ -20988,10 +21444,10 @@ index 0000000000000000000000000000000000000000..890fcb0f4c1484b0edf93e4702cd1dde
 +}
 diff --git a/vendor/taffy/src/tree/flex_perf_contract_tests.rs b/vendor/taffy/src/tree/flex_perf_contract_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..63ca714e0dd8568d7923eeb156158f5e9a6f8008
+index 0000000000000000000000000000000000000000..de3d9a7819e7052de4416219f9209799dc53a70a
 --- /dev/null
 +++ b/vendor/taffy/src/tree/flex_perf_contract_tests.rs
-@@ -0,0 +1,228 @@
+@@ -0,0 +1,229 @@
 +//! Flex-пробы сохраняют финальные метрики, кэш и процентную базу.
 +use crate::prelude::*;
 +use crate::{Baselines, MeasureOutput, RunMode};
@@ -21018,6 +21474,7 @@ index 0000000000000000000000000000000000000000..63ca714e0dd8568d7923eeb156158f5e
 +                baseline_x: (!absent).then_some(11.0 + offset),
 +                last_baseline_x: (!absent).then_some(23.0 + offset),
 +                baseline_x_from_right: true,
++                overflow: None,
 +            },
 +        )
 +    })
@@ -21609,7 +22066,7 @@ index 0000000000000000000000000000000000000000..0ed451f9b2fa4542e13917793c5e9b2d
 +}
 diff --git a/vendor/taffy/src/tree/flex_x_relative_tests.rs b/vendor/taffy/src/tree/flex_x_relative_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..22c8334176a47a982d20318ce122c9b2df11c9d4
+index 0000000000000000000000000000000000000000..5013b378d6f6c201b07155ae779566ba7fc5afd2
 --- /dev/null
 +++ b/vendor/taffy/src/tree/flex_x_relative_tests.rs
 @@ -0,0 +1,89 @@
@@ -21660,7 +22117,7 @@ index 0000000000000000000000000000000000000000..22c8334176a47a982d20318ce122c9b2
 +                )
 +                .unwrap();
 +            let mut view = TaffyView {
-+                taffy: &mut tree,
++            scrollbar_touched: Default::default(),                taffy: &mut tree,
 +                #[cfg(feature = "grid")]
 +                grid_memos: Default::default(),
 +                measure_function: |inputs, _, _, style: &Style| {
@@ -23411,6 +23868,872 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +        assert_eq!(adapt(measured(), &style).baselines, measured().baselines);
 +    }
 +}
+diff --git a/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4179e27541f58c281bd0cfbabab91c7757866076
+--- /dev/null
++++ b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
+@@ -0,0 +1,138 @@
++//! Gutter changes invalidate intrinsic sizes before an ancestor commits its result.
++//! As Blink's BlockNode retry, freeze appeared bars for the rest of the layout transaction
++//! while the box keeps the size they appeared at.
++use super::*;
++use crate::geometry::{Point, Size};
++
++/// An active ancestor must repeat its layout with the settled descendant gutter.
++const DIRTY: u8 = 1;
++/// Intrinsic size selection must run again, independently of the local layout retry.
++pub(super) const SIZE_DIRTY: u8 = 16;
++/// The view owns this node in its transaction cleanup list.
++const TOUCHED: u8 = 8;
++/// A horizontal bar appeared and stays while the box keeps the width it appeared at.
++const FROZEN_X: u8 = 2;
++/// A vertical bar appeared and stays while the box keeps the height it appeared at.
++const FROZEN_Y: u8 = 4;
++
++/// The nodes a layout transaction changed the scrollbar state of, and the border-box
++/// size each one's bars appeared at.
++#[derive(Default)]
++pub(crate) struct ScrollbarTouched {
++    /// Every node whose scrollbar state this transaction set, cleared when the view drops.
++    nodes: Vec<NodeId>,
++    /// Only boxes whose bars changed; looked up by the box's own settling only.
++    frozen_at: Vec<(NodeId, Size<f32>)>,
++}
++
++impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
++where
++    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++{
++    /// Only the ancestor chain loses intrinsic measurements; unrelated subtrees stay cached.
++    pub(super) fn kamin_gutter_changed(&mut self, node_id: NodeId, bars: Point<bool>, at: Size<f32>) {
++        self.touch_scrollbar_state(node_id);
++        let frozen = &mut self.scrollbar_touched.frozen_at;
++        match frozen.iter_mut().find(|(id, _)| *id == node_id) {
++            Some((_, size)) => *size = at,
++            None => frozen.push((node_id, at)),
++        }
++        // A bar taken back is no longer frozen: it was not needed at this size.
++        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
++        *state = (*state & !(FROZEN_X | FROZEN_Y))
++            | SIZE_DIRTY
++            | if bars.x { FROZEN_X } else { 0 }
++            | if bars.y { FROZEN_Y } else { 0 };
++        let mut parent = self.taffy.parents[node_id.into()];
++        while let Some(id) = parent {
++            if self.taffy.nodes[id.into()].scrollbar_state & (DIRTY | SIZE_DIRTY)
++                == DIRTY | SIZE_DIRTY
++            {
++                break;
++            }
++            self.touch_scrollbar_state(id);
++            let node = &mut self.taffy.nodes[id.into()];
++            node.scrollbar_state |= DIRTY | SIZE_DIRTY;
++            node.cache.clear();
++            #[cfg(feature = "grid")]
++            self.grid_memos.0.retain(|(grid, _)| *grid != id);
++            parent = self.taffy.parents[id.into()];
++        }
++    }
++
++    /// Register a changed node once so dropping the view clears transient state.
++    fn touch_scrollbar_state(&mut self, node_id: NodeId) {
++        if self.taffy.nodes[node_id.into()].scrollbar_state == 0 {
++            self.scrollbar_touched.nodes.push(node_id);
++            self.taffy.nodes[node_id.into()].scrollbar_state = TOUCHED;
++        }
++    }
++
++    /// Bars that appeared in any local retry of this transaction and still hold at the
++    /// box's `size`. A horizontal bar answers horizontal overflow, so it holds while the
++    /// width it was decided at does; a vertical bar while the height does. A box whose
++    /// inline size follows its own gutter (shrink-to-fit, CSS 2.1 §10.3.5 and §10.3.7)
++    /// is laid out once more at the width its parent gives it with the new bar: the other
++    /// bar is decided again there, as Blink decides it after `SetIntrinsicLogicalWidthsDirty`
++    /// (`PaintLayerScrollableArea::UpdateAfterLayout`), so the bars do not depend on the
++    /// guess the box was built with.
++    pub(super) fn kamin_frozen_scrollbars(&self, node_id: NodeId, size: Size<f32>) -> Point<bool> {
++        let flags = self.taffy.nodes[node_id.into()].scrollbar_state;
++        if flags & (FROZEN_X | FROZEN_Y) == 0 {
++            return Point { x: false, y: false };
++        }
++        let at = self.scrollbar_touched.frozen_at.iter().find(|(id, _)| *id == node_id).map(|(_, at)| *at);
++        Point {
++            x: flags & FROZEN_X != 0 && at.is_some_and(|at| at.width == size.width),
++            y: flags & FROZEN_Y != 0 && at.is_some_and(|at| at.height == size.height),
++        }
++    }
++
++    /// Repeat an affected active ancestor locally, using the children's now-stable gutters.
++    /// Cached descendants make this a dependency retry rather than a document restart.
++    #[inline(always)]
++    pub(super) fn compute_with_scrollbar_dependencies(
++        &mut self,
++        node_id: NodeId,
++        inputs: LayoutInput,
++        #[cfg(feature = "block_layout")] mut block_ctx: Option<&mut BlockContext<'_>>,
++    ) -> LayoutOutput {
++        let mut settling = kamin_scrollbars::Settling::default();
++        loop {
++            self.taffy.nodes[node_id.into()].scrollbar_state &= !DIRTY;
++            self.kamin_publish_root_gutter(node_id);
++            let display_mode = self.taffy.nodes[node_id.into()].style.display;
++            let has_children = self.child_count(node_id) > 0;
++            debug_log!(display_mode);
++            debug_log_node!(inputs);
++            let output = match (display_mode, has_children) {
++                #[cfg(feature = "block_layout")]
++                (Display::Block, true) => {
++                    compute_block_layout(self, node_id, inputs, block_ctx.as_deref_mut())
++                }
++                #[cfg(feature = "block_layout")]
++                (Display::FlowRoot, true) => compute_block_layout(self, node_id, inputs, None),
++                _ => self.compute_other_layout(node_id, inputs, display_mode, has_children),
++            };
++            let output = self.finish_child_layout(node_id, inputs.run_mode, output);
++            let own_bars_changed =
++                self.kamin_settle_scrollbars(node_id, inputs, &output, &mut settling);
++            if !own_bars_changed && self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY == 0 {
++                return output;
++            }
++            #[cfg(feature = "grid")]
++            self.grid_memos.0.retain(|(grid, _)| *grid != node_id);
++        }
++    }
++}
++
++impl<NodeContext, MeasureFunction> Drop for TaffyView<'_, NodeContext, MeasureFunction>
++where
++    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++{
++    fn drop(&mut self) {
++        for id in &self.scrollbar_touched.nodes {
++            self.taffy.nodes[(*id).into()].scrollbar_state = 0;
++        }
++    }
++}
+diff --git a/vendor/taffy/src/tree/kamin_scrollbars.rs b/vendor/taffy/src/tree/kamin_scrollbars.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ad575b293b5f6ad9ddb2c9337c877d10006eaebe
+--- /dev/null
++++ b/vendor/taffy/src/tree/kamin_scrollbars.rs
+@@ -0,0 +1,136 @@
++//! KaminIDE patch: classic bars decided inside layout (CSS Overflow 3 §3, `overflow: auto`).
++//!
++//! A box whose bars layout decides (`ScrollbarLayout::auto`) is laid out with the bars it
++//! guesses; after its layout (out-of-flow boxes included) its scrollable overflow says which
++//! bars it needs, and when that differs only this box is laid out again with them, before
++//! its parent places it. As Blink `BlockNode::Layout` (`ComputeScrollbars` before and after,
++//! `AddScrollbarFreeze`: a bar that appeared stays for the rest of the layout) and Gecko
++//! `ScrollContainerFrame::ReflowContents` (guess, then `TryLayout` of the scrolled frame only).
++//! The viewport publishes its gutter before laying its content out, so the boxes built for
++//! another root gutter follow the one it decides (`ScrollbarLayout::root_gutter`).
++use super::{NodeId, Style, TaffyView};
++use crate::geometry::{Point, Rect, Size};
++use crate::style::{Direction, Overflow};
++use crate::tree::traits::LayoutPartialTreeExt;
++use crate::tree::{LayoutInput, LayoutOutput, RequestedAxis, RunMode};
++use crate::util::ResolveOrZero;
++
++/// Overflow up to this far past the scrollport needs no bar (as the host's scroll range).
++const FIT: f32 = 0.5;
++/// Layouts of one box again per layout of it: one bar can bring the other.
++const PASSES: u8 = 2;
++
++/// What the layouts of one box learned of its bars in one layout of it.
++#[derive(Default)]
++pub(super) struct Settling {
++    /// Layouts of the box again so far.
++    passes: u8,
++    /// Bars that appeared in this layout; they stay (no bar flip-flop).
++    appeared: Point<bool>,
++}
++
++/// The space the box's bars take: a vertical bar takes width, a horizontal one height.
++pub(super) fn bar_size(style: &Style) -> Size<f32> {
++    let bar = |overflow: Overflow| if overflow == Overflow::Scroll { style.scrollbar_width } else { 0.0 };
++    Size { width: bar(style.overflow.y), height: bar(style.overflow.x) }
++}
++
++/// The gutter of the box's bars where block layout reserves it (inline-end, block-end).
++fn gutter(style: &Style) -> Rect<f32> {
++    let bar = bar_size(style);
++    let rtl = style.direction == Direction::Rtl;
++    Rect {
++        left: if rtl { bar.width } else { 0.0 },
++        right: if rtl { 0.0 } else { bar.width },
++        top: 0.0,
++        bottom: bar.height,
++    }
++}
++
++impl<NodeContext, MeasureFunction> TaffyView<'_, NodeContext, MeasureFunction>
++where
++    MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
++{
++    /// The viewport publishes the gutter its content is laid out with now.
++    #[inline(always)]
++    pub(super) fn kamin_publish_root_gutter(&mut self, node_id: NodeId) {
++        let style = &self.taffy.nodes[node_id.into()].style;
++        if style.kamin_scrollbars.viewport() {
++            self.taffy.kamin_root_gutter = Some((gutter(style), style.scrollbar_width));
++        }
++    }
++
++    /// After a layout of `node_id`: whether its content asks for other bars, which are
++    /// then set for the layout again. A final layout decides. A measure of the block
++    /// size at a known or definite inline size (a flex column measures its items so)
++    /// lays the box out as its final layout will, so a bar
++    /// it finds holds for the size the parent takes from it (Blink lays a scroll
++    /// container out with its bars for a flex or grid measure, and freezes them only
++    /// for intrinsic inline sizes); it only adds bars, as it sees only in-flow overflow.
++    #[inline(never)]
++    pub(super) fn kamin_settle_scrollbars(
++        &mut self,
++        node_id: NodeId,
++        inputs: LayoutInput,
++        output: &LayoutOutput,
++        settling: &mut Settling,
++    ) -> bool {
++        let style = &self.taffy.nodes[node_id.into()].style;
++        let auto = style.kamin_scrollbars.auto();
++        let measure = inputs.run_mode == RunMode::ComputeSize
++            && (inputs.known_dimensions.width.is_some() || inputs.available_space.width.is_definite())
++            && inputs.known_dimensions.height.is_none()
++            && inputs.axis != RequestedAxis::Horizontal;
++        if !(inputs.run_mode == RunMode::PerformLayout || measure)
++            || !(auto.x || auto.y)
++            || settling.passes >= PASSES
++        {
++            return false;
++        }
++        let border = style.border.resolve_or_zero(inputs.parent_size.width, |val, basis| self.calc(val, basis));
++        let bar = bar_size(style);
++        // The scrollport: the padding box less the gutter (CSS Overflow 3 §2.2). The
++        // overflow rectangle is measured from its start corner, end padding included.
++        let view = Size {
++            width: output.size.width - border.left - border.right - bar.width,
++            height: output.size.height - border.top - border.bottom - bar.height,
++        };
++        #[cfg(feature = "content_size")]
++        let content = output.scrollable_overflow_rect;
++        #[cfg(not(feature = "content_size"))]
++        let content = Rect::ZERO;
++        let open = view.width > 0.0 && view.height > 0.0;
++        let need = Point { x: open && content.right > view.width + FIT, y: open && content.bottom > view.height + FIT };
++        let current = Point { x: style.overflow.x == Overflow::Scroll, y: style.overflow.y == Overflow::Scroll };
++        let keep = |axis_auto: bool, need: bool, appeared: bool, current: bool| {
++            if !axis_auto {
++                current
++            } else {
++                need || appeared || (measure && current)
++            }
++        };
++        let frozen = self.kamin_frozen_scrollbars(node_id, output.size);
++        let next = Point {
++            x: keep(auto.x, need.x, settling.appeared.x || frozen.x, current.x),
++            y: keep(auto.y, need.y, settling.appeared.y || frozen.y, current.y),
++        };
++        if next == current {
++            return false;
++        }
++        settling.appeared.x |= next.x && !current.x;
++        settling.appeared.y |= next.y && !current.y;
++        settling.passes += 1;
++        self.kamin_gutter_changed(node_id, next, output.size);
++        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
++        let node = &mut self.taffy.nodes[node_id.into()];
++        // A style shared with other nodes is copied: only this box changes its bars.
++        super::SharedStyle::make_mut(&mut node.style).overflow = Point { x: mode(next.x), y: mode(next.y) };
++        // Results measured with the other bars must not answer the layout again.
++        node.cache.clear();
++        true
++    }
++}
++
++#[cfg(test)]
++#[path = "kamin_scrollbars_tests.rs"]
++mod tests;
+diff --git a/vendor/taffy/src/tree/kamin_scrollbars_dependency_tests.rs b/vendor/taffy/src/tree/kamin_scrollbars_dependency_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..643c088c8659c1f3166c1483178d85f86421369d
+--- /dev/null
++++ b/vendor/taffy/src/tree/kamin_scrollbars_dependency_tests.rs
+@@ -0,0 +1,151 @@
++//! Scrollbar geometry participates in track overflow and intrinsic ancestor sizing.
++use super::*;
++use crate::style::GridLanes;
++
++#[test]
++fn empty_tracks_export_overflow_without_children() {
++    for lanes in [false, true] {
++        for rows in [false, true] {
++            for track in [40.0, 150.0] {
++                for reverse in [false, true] {
++                    let mut tree: TaffyTree<()> = TaffyTree::new();
++                    let tracks = vec![length(track)];
++                    let root = tree
++                        .new_leaf(Style {
++                            display: Display::Grid,
++                            grid_lanes: lanes.then_some(GridLanes {
++                                rows,
++                                track_reverse: reverse,
++                                fill_reverse: false,
++                                dense: false,
++                                tolerance: 0.0,
++                                tolerance_pct: None,
++                                stack_block: false,
++                            }),
++                            grid_template_columns: if rows { vec![] } else { tracks.clone() },
++                            grid_template_rows: if rows { tracks } else { vec![] },
++                            size: Size {
++                                width: length(100.0),
++                                height: length(100.0),
++                            },
++                            padding: Rect::length(3.0),
++                            border: Rect::length(2.0),
++                            overflow: Point {
++                                x: Overflow::Hidden,
++                                y: Overflow::Hidden,
++                            },
++                            scrollbar_width: BAR,
++                            kamin_scrollbars: ScrollbarLayout::new(
++                                Point { x: true, y: true },
++                                false,
++                                false,
++                                None,
++                            ),
++                            ..Default::default()
++                        })
++                        .unwrap();
++                    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++                    let layout = tree.layout(root).unwrap();
++                    let overflow = track > 90.0;
++                    let expected = Size {
++                        width: if overflow && rows { BAR } else { 0.0 },
++                        height: if overflow && !rows { BAR } else { 0.0 },
++                    };
++                    assert_eq!(
++                        layout.scrollbar_size, expected,
++                        "lanes={lanes}, rows={rows}, track={track}, reverse={reverse}"
++                    );
++                }
++            }
++        }
++    }
++}
++
++fn intrinsic_fixture(force_bar: bool) -> (TaffyTree<()>, NodeId, NodeId, NodeId, NodeId) {
++    let mut tree: TaffyTree<()> = TaffyTree::new();
++    let child = tree
++        .new_leaf(Style {
++            size: Size {
++                width: length(10.0),
++                height: length(80.0),
++            },
++            flex_shrink: 0.0,
++            ..Default::default()
++        })
++        .unwrap();
++    let scroller = tree
++        .new_with_children(
++            Style {
++                flex_direction: FlexDirection::Column,
++                size: Size {
++                    width: auto(),
++                    height: length(79.0),
++                },
++                overflow: Point {
++                    x: Overflow::Hidden,
++                    y: if force_bar {
++                        Overflow::Scroll
++                    } else {
++                        Overflow::Hidden
++                    },
++                },
++                scrollbar_width: BAR,
++                kamin_scrollbars: ScrollbarLayout::new(
++                    Point {
++                        x: false,
++                        y: !force_bar,
++                    },
++                    false,
++                    false,
++                    None,
++                ),
++                ..Default::default()
++            },
++            &[child],
++        )
++        .unwrap();
++    let positioned = tree
++        .new_with_children(
++            Style {
++                position: Position::Absolute,
++                flex_direction: FlexDirection::Column,
++                ..Default::default()
++            },
++            &[scroller],
++        )
++        .unwrap();
++    let root = tree
++        .new_with_children(
++            Style {
++                flex_direction: FlexDirection::Column,
++                size: Size {
++                    width: length(200.0),
++                    height: length(200.0),
++                },
++                ..Default::default()
++            },
++            &[positioned],
++        )
++        .unwrap();
++    (tree, root, positioned, scroller, child)
++}
++
++fn intrinsic_scroller(force_bar: bool) -> (f32, f32) {
++    let (mut tree, root, positioned, scroller, _) = intrinsic_fixture(force_bar);
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    (
++        tree.layout(positioned).unwrap().size.width,
++        tree.layout(scroller).unwrap().scrollbar_size.width,
++    )
++}
++
++#[test]
++fn descendant_bar_updates_the_shrink_to_fit_ancestor() {
++    let forced = intrinsic_scroller(true);
++    let automatic = intrinsic_scroller(false);
++    assert_eq!(forced, (25.0, BAR));
++    assert_eq!(automatic, forced);
++}
++
++#[path = "kamin_scrollbars_retry_tests.rs"]
++mod retry_tests;
+diff --git a/vendor/taffy/src/tree/kamin_scrollbars_retry_tests.rs b/vendor/taffy/src/tree/kamin_scrollbars_retry_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee1fddc37d2b6557e423d920875f0036a747467f
+--- /dev/null
++++ b/vendor/taffy/src/tree/kamin_scrollbars_retry_tests.rs
+@@ -0,0 +1,99 @@
++//! Intrinsic dependency retries preserve author constraints and transaction boundaries.
++use super::*;
++
++#[test]
++fn explicit_ancestor_width_survives_a_descendant_gutter_change() {
++    let (mut tree, root, positioned, scroller, _) = intrinsic_fixture(false);
++    let mut style = tree.style(positioned).unwrap().clone();
++    style.size.width = length(40.0);
++    tree.set_style(positioned, style).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.layout(positioned).unwrap().size.width, 40.0);
++    assert_eq!(tree.layout(scroller).unwrap().scrollbar_size.width, BAR);
++}
++
++#[test]
++fn cached_layout_is_stable_and_a_later_transaction_can_remove_the_bar() {
++    let (mut tree, root, positioned, scroller, child) = intrinsic_fixture(false);
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    let before = *tree.layout(positioned).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(*tree.layout(positioned).unwrap(), before);
++    let mut style = tree.style(child).unwrap().clone();
++    style.size.height = length(20.0);
++    tree.set_style(child, style).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.layout(scroller).unwrap().scrollbar_size.width, 0.0);
++    assert_eq!(tree.layout(positioned).unwrap().size.width, 10.0);
++}
++
++#[test]
++fn axis_query_does_not_publish_layout_or_visit_an_unrelated_tree() {
++    let (mut tree, root, positioned, scroller, _) = intrinsic_fixture(false);
++    let unrelated = tree.new_leaf_with_context(Style::default(), ()).unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    let before = [root, positioned, scroller].map(|id| *tree.layout(id).unwrap());
++    tree.compute_size_with_measure(
++        positioned,
++        Size::MIN_CONTENT,
++        crate::RequestedAxis::Horizontal,
++        |input, node, _, style| {
++            assert_ne!(node, unrelated);
++            assert_eq!(input.run_mode, crate::RunMode::ComputeSize);
++            crate::compute_leaf_layout(input, style, |_, _| 0.0, |_, _| Size::ZERO)
++        },
++    );
++    assert_eq!(
++        [root, positioned, scroller].map(|id| *tree.layout(id).unwrap()),
++        before
++    );
++}
++
++fn measured_chain(depth: usize) -> usize {
++    let (mut tree, root, positioned, scroller, child) = intrinsic_fixture(false);
++    let mut style = tree.style(child).unwrap().clone();
++    style.size.width = auto();
++    tree.set_style(child, style).unwrap();
++    tree.set_node_context(child, Some(())).unwrap();
++    tree.set_children(positioned, &[]).unwrap();
++    let mut chain = scroller;
++    for _ in 0..depth {
++        chain = tree
++            .new_with_children(
++                Style {
++                    flex_direction: FlexDirection::Column,
++                    ..Default::default()
++                },
++                &[chain],
++            )
++            .unwrap();
++    }
++    tree.set_children(positioned, &[chain]).unwrap();
++    let mut calls = 0;
++    tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |input, _, _, style| {
++        calls += 1;
++        crate::compute_leaf_layout(
++            input,
++            style,
++            |_, _| 0.0,
++            |known, _| Size {
++                width: known.width.unwrap_or(10.0),
++                height: known.height.unwrap_or(80.0),
++            },
++        )
++    })
++    .unwrap();
++    assert_eq!(tree.layout(positioned).unwrap().size.width, 25.0);
++    calls
++}
++
++#[test]
++fn a_deeper_intrinsic_chain_reuses_descendant_measurements() {
++    let shallow = measured_chain(4);
++    let deep = measured_chain(24);
++    assert!(shallow > 0);
++    assert!(
++        deep <= shallow * 2,
++        "measure calls: depth4={shallow}, depth24={deep}"
++    );
++}
+diff --git a/vendor/taffy/src/tree/kamin_scrollbars_tests.rs b/vendor/taffy/src/tree/kamin_scrollbars_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e355ae36c90c8a54cb2453ee27d194c3d8be61f
+--- /dev/null
++++ b/vendor/taffy/src/tree/kamin_scrollbars_tests.rs
+@@ -0,0 +1,311 @@
++//! KaminIDE patch: tests of the bars layout decides (`kamin_scrollbars`).
++use crate::geometry::Point;
++use crate::prelude::*;
++use crate::style::{Overflow, RootGutter, ScrollbarLayout};
++
++const BAR: f32 = 15.0;
++
++fn scroller(tree: &mut TaffyTree, guess: bool, viewport: bool, children: &[NodeId]) -> NodeId {
++    let mode = if guess {
++        Overflow::Scroll
++    } else {
++        Overflow::Hidden
++    };
++    tree.new_with_children(
++        Style {
++            display: Display::Block,
++            size: Size {
++                width: length(200.0),
++                height: length(100.0),
++            },
++            overflow: Point {
++                x: Overflow::Hidden,
++                y: mode,
++            },
++            scrollbar_width: BAR,
++            kamin_scrollbars: ScrollbarLayout::new(
++                Point { x: false, y: true },
++                viewport,
++                false,
++                None,
++            ),
++            ..Default::default()
++        },
++        children,
++    )
++    .unwrap()
++}
++
++fn block(tree: &mut TaffyTree, height: f32) -> NodeId {
++    tree.new_leaf(Style {
++        display: Display::Block,
++        size: Size {
++            width: auto(),
++            height: length(height),
++        },
++        ..Default::default()
++    })
++    .unwrap()
++}
++
++#[test]
++fn content_that_overflows_gets_a_bar_and_a_narrower_box_in_the_same_layout() {
++    let mut tree = TaffyTree::new();
++    let tall = block(&mut tree, 300.0);
++    let root = scroller(&mut tree, false, false, &[tall]);
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.style(root).unwrap().overflow.y, Overflow::Scroll);
++    assert_eq!(tree.layout(tall).unwrap().size.width, 200.0 - BAR);
++    assert_eq!(tree.layout(root).unwrap().scrollbar_size.width, BAR);
++}
++
++#[test]
++fn a_wrong_guess_of_a_bar_is_taken_back_in_the_same_layout() {
++    let mut tree = TaffyTree::new();
++    let short = block(&mut tree, 40.0);
++    let root = scroller(&mut tree, true, false, &[short]);
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.style(root).unwrap().overflow.y, Overflow::Hidden);
++    assert_eq!(tree.layout(short).unwrap().size.width, 200.0);
++    assert_eq!(tree.layout(root).unwrap().scrollbar_size.width, 0.0);
++}
++
++#[test]
++fn a_proxy_does_not_keep_the_bar_of_a_range_measured_before() {
++    let mut tree = TaffyTree::new();
++    let short = block(&mut tree, 40.0);
++    let proxy = tree
++        .new_leaf(Style {
++            position: Position::Absolute,
++            size: Size {
++                width: length(200.0),
++                height: length(500.0),
++            },
++            kamin_scrollbars: ScrollbarLayout::new(Point { x: false, y: false }, false, true, None),
++            ..Default::default()
++        })
++        .unwrap();
++    let root = scroller(&mut tree, true, false, &[proxy, short]);
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.style(root).unwrap().overflow.y, Overflow::Hidden);
++}
++
++#[test]
++fn boxes_built_for_the_guessed_root_gutter_follow_the_gutter_the_viewport_decides() {
++    let mut tree = TaffyTree::new();
++    let short = block(&mut tree, 40.0);
++    // Built for the guessed vertical bar: the right inset already stops at the gutter.
++    let fixed = tree
++        .new_leaf(Style {
++            position: Position::Absolute,
++            inset: Rect {
++                left: auto(),
++                right: length(BAR),
++                top: length(0.0),
++                bottom: auto(),
++            },
++            size: Size {
++                width: length(20.0),
++                height: length(20.0),
++            },
++            kamin_scrollbars: ScrollbarLayout::new(
++                Point { x: false, y: false },
++                false,
++                false,
++                Some(RootGutter {
++                    assumed: RootGutter::sides(Rect {
++                        left: 0.0,
++                        right: BAR,
++                        top: 0.0,
++                        bottom: 0.0,
++                    }),
++                    grow: false,
++                }),
++            ),
++            ..Default::default()
++        })
++        .unwrap();
++    let viewport = scroller(&mut tree, true, true, &[short]);
++    // The box hangs on a box around the viewport, whose area knows no gutter.
++    let root = tree
++        .new_with_children(
++            Style {
++                size: Size {
++                    width: length(200.0),
++                    height: length(100.0),
++                },
++                ..Default::default()
++            },
++            &[viewport, fixed],
++        )
++        .unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(tree.style(viewport).unwrap().overflow.y, Overflow::Hidden);
++    // No bar: the author's `right: 0` reaches the viewport's edge, as built without one.
++    assert_eq!(tree.layout(fixed).unwrap().location.x, 200.0 - 20.0);
++}
++
++#[test]
++fn lines_longer_than_their_box_bring_the_horizontal_bar() {
++    let mut tree: TaffyTree<()> = TaffyTree::new();
++    let text = tree.new_leaf_with_context(Style::default(), ()).unwrap();
++    let root = tree
++        .new_with_children(
++            Style {
++                display: Display::Block,
++                size: Size {
++                    width: length(200.0),
++                    height: length(100.0),
++                },
++                overflow: Point {
++                    x: Overflow::Hidden,
++                    y: Overflow::Hidden,
++                },
++                scrollbar_width: BAR,
++                kamin_scrollbars: ScrollbarLayout::new(
++                    Point { x: true, y: true },
++                    false,
++                    false,
++                    None,
++                ),
++                ..Default::default()
++            },
++            &[text],
++        )
++        .unwrap();
++    // A preformatted line of 500 px in a box the measure keeps at its width.
++    tree.compute_layout_with_measure(root, Size::MAX_CONTENT, |input, _, _, style| {
++        crate::compute_leaf_layout(
++            input,
++            style,
++            |_, _| 0.0,
++            |_, available| {
++                let width = match available.width {
++                    AvailableSpace::Definite(width) => width.min(500.0),
++                    _ => 500.0,
++                };
++                let line = Size {
++                    width: 500.0,
++                    height: 20.0,
++                };
++                crate::MeasureOutput {
++                    overflow: Some(line),
++                    ..Size {
++                        width,
++                        height: 20.0,
++                    }
++                    .into()
++                }
++            },
++        )
++    })
++    .unwrap();
++    assert_eq!(
++        tree.style(root).unwrap().overflow,
++        Point {
++            x: Overflow::Scroll,
++            y: Overflow::Hidden
++        }
++    );
++}
++
++#[path = "kamin_scrollbars_dependency_tests.rs"]
++mod dependency_tests;
++
++/// The bars layout settles on depend on the content only, not on the bars the
++/// box was built with: a box whose content fits the scrollport exactly in one
++/// axis keeps no bar there whatever the guess (CSS Overflow 3 §3, `auto`).
++#[test]
++fn bars_settle_to_the_same_fixed_point_from_every_guess() {
++    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        let cover = tree
++            .new_leaf(Style {
++                position: Position::Absolute,
++                inset: Rect { left: length(0.0), right: length(0.0), top: length(0.0), bottom: length(0.0) },
++                ..Default::default()
++            })
++            .unwrap();
++        let tall = tree
++            .new_leaf(Style {
++                display: Display::Flex,
++                margin: Rect { left: zero(), right: zero(), top: length(20.2), bottom: zero() },
++                size: Size { width: length(129.3), height: length(1584.8) },
++                ..Default::default()
++            })
++            .unwrap();
++        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
++        let root = tree
++            .new_with_children(
++                Style {
++                    display: Display::Block,
++                    size: Size { width: length(176.286_71), height: length(32.0) },
++                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
++                    scrollbar_width: BAR,
++                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
++                    ..Default::default()
++                },
++                &[cover, tall],
++            )
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(
++            tree.style(root).unwrap().overflow,
++            Point { x: Overflow::Hidden, y: Overflow::Scroll },
++            "guess {guess:?}"
++        );
++    }
++}
++/// A shrink-to-fit box widens by the vertical bar that appears in its layout
++/// (CSS 2.1 §10.3.7, the gutter in its intrinsic inline size): the horizontal
++/// bar is decided at the width it settles on, not at the narrower width it had
++/// before its parent took the new gutter, and the bars do not depend on the
++/// guess they were built with (Blink `PaintLayerScrollableArea::UpdateAfterLayout`
++/// sets `SetIntrinsicLogicalWidthsDirty` and decides again at the new size).
++#[test]
++fn a_shrink_to_fit_box_decides_its_other_bar_at_the_width_its_gutter_gives_it() {
++    for guess in [Point { x: false, y: false }, Point { x: true, y: true }, Point { x: false, y: true }, Point { x: true, y: false }] {
++        let mut tree: TaffyTree<()> = TaffyTree::new();
++        let content = tree
++            .new_leaf(Style {
++                display: Display::Block,
++                size: Size { width: length(161.286_71), height: length(1621.0) },
++                ..Default::default()
++            })
++            .unwrap();
++        let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
++        let scroller = tree
++            .new_with_children(
++                Style {
++                    display: Display::Block,
++                    position: Position::Absolute,
++                    size: Size { width: auto(), height: length(32.0) },
++                    max_size: Size { width: length(200.0), height: length(390.0) },
++                    overflow: Point { x: mode(guess.x), y: mode(guess.y) },
++                    scrollbar_width: BAR,
++                    kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: true }, false, false, None),
++                    ..Default::default()
++                },
++                &[content],
++            )
++            .unwrap();
++        let root = tree
++            .new_with_children(
++                Style {
++                    display: Display::Flex,
++                    size: Size { width: length(800.0), height: length(600.0) },
++                    ..Default::default()
++                },
++                &[scroller],
++            )
++            .unwrap();
++        tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++        assert_eq!(
++            tree.style(scroller).unwrap().overflow,
++            Point { x: Overflow::Hidden, y: Overflow::Scroll },
++            "guess {guess:?}"
++        );
++        // The tree rounds its layout to whole pixels.
++        assert_eq!(tree.layout(scroller).unwrap().size.width, (161.286_71 + BAR).round(), "guess {guess:?}");
++    }
++}
+\ No newline at end of file
 diff --git a/vendor/taffy/src/tree/lanes_absolute_flow_tests.rs b/vendor/taffy/src/tree/lanes_absolute_flow_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..2ebc62fc93efd6bd41eeff98cd287f90eb5d0a49
@@ -23639,10 +24962,10 @@ index 0000000000000000000000000000000000000000..eb85f4856b766218916c079af981ae2c
 +}
 diff --git a/vendor/taffy/src/tree/lanes_container_export_tests.rs b/vendor/taffy/src/tree/lanes_container_export_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1b351620a912c1bbd851e1396a4c36b6b68dc264
+index 0000000000000000000000000000000000000000..967e3a695134cf96629a9d9cbf21f66c3a2baf51
 --- /dev/null
 +++ b/vendor/taffy/src/tree/lanes_container_export_tests.rs
-@@ -0,0 +1,116 @@
+@@ -0,0 +1,117 @@
 +//! Parent flex placement verifies that native lane container baselines reach consumers.
 +use crate::style_helpers::*;
 +use crate::{AlignItems, Display, GridLanes, Line, MeasureOutput, Size, Style, TaffyTree};
@@ -23736,6 +25059,7 @@ index 0000000000000000000000000000000000000000..1b351620a912c1bbd851e1396a4c36b6
 +                baseline_x: None,
 +                last_baseline_x: None,
 +                baseline_x_from_right: false,
++                overflow: None,
 +            },
 +        )
 +    })
@@ -24118,10 +25442,10 @@ index 0000000000000000000000000000000000000000..141d9ef6c3ba519662ade87b6aa4e94c
 +}
 diff --git a/vendor/taffy/src/tree/lanes_intrinsic_baseline_tests.rs b/vendor/taffy/src/tree/lanes_intrinsic_baseline_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ee5465ce4d7f71f1639f7490c09daf5163b93d4
+index 0000000000000000000000000000000000000000..4b9d32cd49c535bbad348781846720c859d3aa08
 --- /dev/null
 +++ b/vendor/taffy/src/tree/lanes_intrinsic_baseline_tests.rs
-@@ -0,0 +1,128 @@
+@@ -0,0 +1,129 @@
 +//! Native baseline shims must contribute before intrinsic lane tracks are sized.
 +use crate::style_helpers::*;
 +use crate::tree::MeasureOutput;
@@ -24199,6 +25523,7 @@ index 0000000000000000000000000000000000000000..5ee5465ce4d7f71f1639f7490c09daf5
 +                baseline_x: None,
 +                last_baseline_x: None,
 +                baseline_x_from_right: false,
++                overflow: None,
 +            },
 +        )
 +    })
@@ -24922,10 +26247,10 @@ index bb175dde340480f32138f1d069473d184b7097b9..0ae7dd553264efa3d90f90fbddbd0b50
 +}
 diff --git a/vendor/taffy/src/tree/leaf_xy_baselines_tests.rs b/vendor/taffy/src/tree/leaf_xy_baselines_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..4c49e292e1ae6f305ce270e61165ef54868e30e4
+index 0000000000000000000000000000000000000000..737bcc41c7f2bf84afd43b977f880af6e0dabb8c
 --- /dev/null
 +++ b/vendor/taffy/src/tree/leaf_xy_baselines_tests.rs
-@@ -0,0 +1,147 @@
+@@ -0,0 +1,148 @@
 +//! Actual leaf callbacks export both physical axes without replacing content order.
 +
 +use crate::style_helpers::*;
@@ -24942,6 +26267,7 @@ index 0000000000000000000000000000000000000000..4c49e292e1ae6f305ce270e61165ef54
 +        baseline_x: Some(23.0),
 +        last_baseline_x: Some(11.0),
 +        baseline_x_from_right: false,
++        overflow: None,
 +    }
 +}
 +
@@ -25075,10 +26401,10 @@ index 0000000000000000000000000000000000000000..4c49e292e1ae6f305ce270e61165ef54
 +}
 diff --git a/vendor/taffy/src/tree/measured_output.rs b/vendor/taffy/src/tree/measured_output.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d503202e2ae
+index 0000000000000000000000000000000000000000..ef514ba8e38ec155eb3d346f76f8b63a42574137
 --- /dev/null
 +++ b/vendor/taffy/src/tree/measured_output.rs
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,39 @@
 +//! Measured content size and physical baseline coordinates before leaf insets.
 +
 +use crate::geometry::Size;
@@ -25100,6 +26426,9 @@ index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d50
 +    pub last_baseline_x: Option<f32>,
 +    /// X offsets are measured from the final content-box right when true.
 +    pub baseline_x_from_right: bool,
++    /// KaminIDE patch: the content's extent from the content-box start where it overflows
++    /// `size` (lines longer than the box); it only adds to the scrollable overflow.
++    pub overflow: Option<Size<f32>>,
 +}
 +
 +impl From<Size<f32>> for MeasureOutput {
@@ -25111,6 +26440,7 @@ index 0000000000000000000000000000000000000000..9e5fc43a10f480a5f0c060d6ebed5d50
 +            baseline_x: None,
 +            last_baseline_x: None,
 +            baseline_x_from_right: false,
++            overflow: None,
 +        }
 +    }
 +}
@@ -25398,10 +26728,10 @@ index 0000000000000000000000000000000000000000..e1bb528c21bf12b4d4ef85838468f408
 +}
 diff --git a/vendor/taffy/src/tree/oof_borrow_tests.rs b/vendor/taffy/src/tree/oof_borrow_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e5683f157ab02f5e00d5f7ae3b7f4a723bf05018
+index 0000000000000000000000000000000000000000..470c2abf10b55232be2af7ce2d0c76c64c9ff29c
 --- /dev/null
 +++ b/vendor/taffy/src/tree/oof_borrow_tests.rs
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,96 @@
 +//! KaminIDE patch: borrowed OOF candidates retain ownership and hoisted-list lifecycle.
 +
 +use super::taffy_tree::TaffyView;
@@ -25439,7 +26769,7 @@ index 0000000000000000000000000000000000000000..e5683f157ab02f5e00d5f7ae3b7f4a72
 +    let original = candidates.clone();
 +    for _ in 0..2 {
 +        let mut view = TaffyView {
-+            taffy: &mut tree,
++            scrollbar_touched: Default::default(),            taffy: &mut tree,
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function: |input, _, _, style| {
@@ -25460,6 +26790,7 @@ index 0000000000000000000000000000000000000000..e5683f157ab02f5e00d5f7ae3b7f4a72
 +            Direction::Ltr,
 +            ContainingBlockClaims::ALL,
 +        );
++        drop(view);
 +        assert_eq!(output.hoisted, vec![child]);
 +        assert!(output.unclaimed.is_empty());
 +        assert_eq!(
@@ -25900,10 +27231,10 @@ index 0000000000000000000000000000000000000000..1a587556120339f39ff4e994da8080d4
 +}
 diff --git a/vendor/taffy/src/tree/scroll_baseline_tests.rs b/vendor/taffy/src/tree/scroll_baseline_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e8acaa24d8661152a2afadb6de42b0debd41a097
+index 0000000000000000000000000000000000000000..150412a643016f72b0361cd69a8caca8e1afa167
 --- /dev/null
 +++ b/vendor/taffy/src/tree/scroll_baseline_tests.rs
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,91 @@
 +//! A missing inline-block baseline synthesizes its margin edge; real scroll baselines clamp.
 +use crate::style_helpers::TaffyMaxContent;
 +use crate::tree::MeasureOutput;
@@ -25979,6 +27310,7 @@ index 0000000000000000000000000000000000000000..e8acaa24d8661152a2afadb6de42b0de
 +                baseline_x: None,
 +                last_baseline_x: None,
 +                baseline_x_from_right: false,
++                overflow: None,
 +            },
 +        )
 +    })
@@ -26203,10 +27535,10 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf99e25d4b
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..b5583745e07e05577fbe9ed466b6937976e58035
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
-@@ -7,0 +8,18 @@
+@@ -7,0 +8,22 @@
 +/// KaminIDE patch: a node style, shared by the nodes that have the same one.
 +///
 +/// A `Style` is about 1 KiB and the boxes of one frame tree mostly repeat a few styles, so a
@@ -26223,9 +27555,13 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +mod calc_size;
 +#[path = "computed_output.rs"]
 +mod computed_output;
++#[path = "kamin_scrollbars.rs"]
++mod kamin_scrollbars;
++#[path = "kamin_scrollbar_dependencies.rs"]
++mod kamin_scrollbar_dependencies;
 +#[path = "node_lifetime.rs"]
 +mod node_lifetime;
-@@ -69,2 +87,6 @@
+@@ -69,2 +91,6 @@
 -            TaffyError::InvalidChildNode(child) => write!(f, "Child Node {child:?} is not in the TaffyTree instance"),
 -            TaffyError::InvalidInputNode(node) => write!(f, "Supplied Node {node:?} is not in the TaffyTree instance"),
 +            TaffyError::InvalidChildNode(child) => {
@@ -26234,22 +27570,24 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            TaffyError::InvalidInputNode(node) => {
 +                write!(f, "Supplied Node {node:?} is not in the TaffyTree instance")
 +            }
-@@ -97 +119 @@
+@@ -97 +123 @@
 -    pub(crate) style: Style,
 +    pub(crate) style: SharedStyle,
-@@ -105 +127,4 @@
+@@ -105 +131,4 @@
 -    pub(crate) final_layout: Layout,
 +    ///
 +    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
 +    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
 +    pub(crate) final_layout: Option<Box<Layout>>,
-@@ -108,0 +134,5 @@
+@@ -108,0 +138,7 @@
 +
 +    /// KaminIDE patch: the host relies on this node's id as the identity of
 +    /// its subtree (`pin_identity`), so the node must not be reset into another
 +    /// node. Sits in the padding after `has_context`: no node grows.
 +    pub(crate) identity_pinned: bool,
-@@ -119 +149,73 @@
++    /// Transaction-local gutter changes; fits beside the existing boolean flags.
++    pub(crate) scrollbar_state: u8,
+@@ -119 +155,73 @@
 -}
 +    /// Tracks published by the parent subgrid layout, outside the native cache key.
 +    #[cfg(feature = "grid")]
@@ -26324,21 +27662,22 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +
 +/// KaminIDE patch: the final layout of a node that rounding has not written yet.
 +static NO_FINAL_LAYOUT: Layout = Layout::new();
-@@ -124 +226 @@
+@@ -124 +232 @@
 -    pub const fn new(style: Style) -> Self {
 +    pub const fn new(style: SharedStyle) -> Self {
-@@ -129 +231 @@
+@@ -129 +237 @@
 -            final_layout: Layout::new(),
 +            final_layout: None,
-@@ -130,0 +233 @@
+@@ -130,0 +239,2 @@
 +            identity_pinned: false,
-@@ -132,0 +236,5 @@
++            scrollbar_state: 0,
+@@ -132,0 +243,5 @@
 +            #[cfg(feature = "grid")]
 +            subgrid_tracks: None,
 +            pct_parent_h: None,
 +            content_shift: 0.0,
 +            fragmentation: None,
-@@ -143,0 +252,10 @@
+@@ -143,0 +259,10 @@
 +
 +    /// KaminIDE patch: the fragmentation inputs, defaults when none was set.
 +    fn fragmentation(&self) -> &NodeFragmentation {
@@ -26349,7 +27688,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    fn fragmentation_mut(&mut self) -> &mut NodeFragmentation {
 +        self.fragmentation.get_or_insert_with(|| Box::new(NodeFragmentation::NONE))
 +    }
-@@ -168,0 +287,27 @@
+@@ -168,0 +294,32 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
@@ -26360,6 +27699,11 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    /// calls (up to 1024 keys of capacity): a host that sweeps a few nodes
 +    /// every frame allocates no list per sweep.
 +    swept: Vec<DefaultKey>,
++
++    /// KaminIDE patch: the gutter (left, top, right, bottom) the viewport has in the
++    /// layout pass running now and its bar thickness, once its box publishes them
++    /// (`kamin_scrollbars`).
++    kamin_root_gutter: Option<(crate::geometry::Rect<f32>, f32)>,
 +
 +    /// KaminIDE patch: tests switch the grid contribution memos (contribution_memo) off and read their
 +    /// use; a build keeps them on and holds nothing for them in the tree.
@@ -26377,7 +27721,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    pub peak: usize,
 +    /// Contributions read from the memos instead of the items.
 +    pub hits: u64,
-@@ -173,0 +319,194 @@
+@@ -173,0 +331,194 @@
 +    }
 +}
 +
@@ -26572,10 +27916,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +599 @@
+@@ -260 +611 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -277,0 +617,18 @@
+@@ -277,0 +629,20 @@
++    /// Nodes touched by gutter settling; reset when this layout/query view ends.
++    pub(crate) scrollbar_touched: kamin_scrollbar_dependencies::ScrollbarTouched,
 +    /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
 +    /// one computation, so the memos are dropped with it.
 +    #[cfg(feature = "grid")]
@@ -26594,7 +27940,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        self.0.capacity() * core::mem::size_of::<(NodeId, crate::compute::ContributionMemo)>()
 +            + self.0.iter().map(|(_, memo)| memo.heap_bytes()).sum::<usize>()
 +    }
-@@ -283,0 +641,19 @@
+@@ -283,0 +655,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -26614,10 +27960,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        )
 +    }
 +
-@@ -287 +663 @@
+@@ -287 +677 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +676,13 @@
+@@ -299,0 +690,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -26631,11 +27977,20 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            }
 +        }
 +
-@@ -313,2 +702 @@
+@@ -306,33 +709,28 @@
+-            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
+-            let has_children = tree.child_count(node_id) > 0;
+-
+-            debug_log!(display_mode);
+-            debug_log_node!(inputs);
+-
+-            // Dispatch to a layout algorithm based on the node's display style and whether the node has children or not.
 -            let mut output = match (display_mode, has_children) {
 -                (Display::None, _) => compute_hidden_layout(tree, node_id),
-+            let output = match (display_mode, has_children) {
-@@ -319,11 +707 @@
+-                #[cfg(feature = "block_layout")]
+-                (Display::Block, true) => compute_block_layout(tree, node_id, inputs, block_ctx),
+-                #[cfg(feature = "block_layout")]
+-                (Display::FlowRoot, true) => compute_block_layout(tree, node_id, inputs, None),
 -                #[cfg(feature = "flexbox")]
 -                (Display::Flex, true) => compute_flexbox_layout(tree, node_id, inputs),
 -                #[cfg(feature = "grid")]
@@ -26647,8 +28002,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 -                    let node_context = has_context.then(|| tree.taffy.node_context_data.get_mut(node_key)).flatten();
 -                    (tree.measure_function)(inputs, node_id, node_context, style)
 -                }
-+                _ => tree.compute_other_layout(node_id, inputs, display_mode, has_children),
-@@ -331,8 +709,28 @@
+-            };
 -
 -            // Lay out any out-of-flow candidates for which this node is the containing block.
 -            // The rest bubble up via `output.oof_candidates`. This runs inside the cache-miss
@@ -26657,7 +28011,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 -            // (which would not be rewritten if the final layout pass is a cache hit).
 -            if inputs.run_mode == RunMode::PerformLayout {
 -                compute_oof_layout(tree, node_id, &mut output);
-+            tree.finish_child_layout(node_id, inputs.run_mode, output)
++            tree.compute_with_scrollbar_dependencies(node_id, inputs, #[cfg(feature = "block_layout")] block_ctx)
 +        })
 +    }
 +
@@ -26725,12 +28079,47 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -401,2 +832,2 @@
+@@ -397,6 +828,12 @@
+-        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
+-    }
+-
+-    #[inline(always)]
 -    fn resolve_calc_value(&self, _val: *const (), _basis: f32) -> f32 {
 -        0.0
++        let node = &mut self.taffy.nodes[node_id.into()];
++        node.unrounded_layout = *layout;
++        // KaminIDE patch: a parent records the bars from the style it read before the
++        // child's layout, which may have decided its bars since (`kamin_scrollbars`).
++        if node.style.kamin_scrollbars.decides() {
++            node.unrounded_layout.scrollbar_size = kamin_scrollbars::bar_size(&node.style);
++        }
++    }
++
++    #[inline(always)]
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -520,0 +952,34 @@
+@@ -419,0 +857,7 @@
++    fn take_intrinsic_size_change(&mut self, node_id: NodeId) -> bool {
++        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
++        let changed = *state & kamin_scrollbar_dependencies::SIZE_DIRTY != 0;
++        *state &= !kamin_scrollbar_dependencies::SIZE_DIRTY;
++        changed
++    }
++
+@@ -442,0 +887,12 @@
++    }
++
++    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
++        let link = self.taffy.nodes[node_id.into()].style.kamin_scrollbars.root_gutter()?;
++        let (now, bar) = self.taffy.kamin_root_gutter?;
++        let shift = link.shift(now, bar);
++        (shift != crate::geometry::Rect::zero()).then_some(shift)
++    }
++
++    #[inline(always)]
++    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
++        self.taffy.nodes[node_id.into()].style.kamin_scrollbars.proxy()
+@@ -520,0 +977,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -26765,7 +28154,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -541,0 +1007,22 @@
+@@ -541,0 +1032,22 @@
 +    fn take_contribution_memo(&mut self, node_id: NodeId) -> Option<crate::compute::ContributionMemo> {
 +        #[cfg(test)]
 +        if self.taffy.contribution_memo_use.off {
@@ -26788,7 +28177,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        self.grid_memos.0.push((node_id, memo));
 +    }
 +
-@@ -544,0 +1032,21 @@
+@@ -544,0 +1057,21 @@
 +    }
 +
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
@@ -26810,10 +28199,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +            node.subgrid_tracks = tracks.map(Box::new);
 +            node.cache.clear();
 +        }
-@@ -565 +1073 @@
+@@ -565 +1098 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1095,25 @@
+@@ -586,0 +1120,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -26839,11 +28228,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        })
 +    }
 +
-@@ -606 +1139,33 @@
+@@ -606 +1164,34 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
 +            swept: Vec::new(),
++            kamin_root_gutter: None,
 +            #[cfg(all(test, feature = "grid"))]
 +            contribution_memo_use: ContributionMemoStats::default(),
 +        }
@@ -26874,12 +28264,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1185,2 @@
+@@ -620,2 +1211,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1196,6 @@
+@@ -631,2 +1222,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -26888,12 +28278,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1214,2 @@
+@@ -645,2 +1240,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1236,115 @@
+@@ -666,0 +1262,115 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -27009,7 +28399,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1558,17 @@
+@@ -873,0 +1584,17 @@
 +    /// KaminIDE patch: whether the next node insertion has to grow the node storage.
 +    #[inline]
 +    pub fn node_storage_full(&self) -> bool {
@@ -27027,12 +28417,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        }
 +    }
 +
-@@ -897,2 +1598,2 @@
+@@ -897,2 +1624,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1610,31 @@
+@@ -908,0 +1636,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -27064,10 +28454,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1645 @@
+@@ -913 +1671 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1649,8 @@
+@@ -916,0 +1675,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -27076,17 +28466,19 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1717,8 @@
+@@ -977 +1743,10 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
++        self.kamin_root_gutter = None;
 +        let mut taffy_view = TaffyView {
 +            taffy: self,
++            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function,
 +        };
-@@ -984,0 +1732,26 @@
+@@ -984,0 +1760,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -27100,7 +28492,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    {
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
-+        let mut view = TaffyView { taffy: self, measure_function, #[cfg(feature = "grid")] grid_memos: Default::default() };
++        let mut view = TaffyView { taffy: self, measure_function, scrollbar_touched: Default::default(), #[cfg(feature = "grid")] grid_memos: Default::default() };
 +        view.compute_child_layout(node_id, LayoutInput {
 +            run_mode: crate::RunMode::ComputeSize,
 +            sizing_mode: crate::SizingMode::InherentSize,
@@ -27113,17 +28505,18 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1761 @@
+@@ -988 +1789 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1776,5 @@
+@@ -1003 +1804,6 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
++            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
 +            grid_memos: Default::default(),
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1807,54 @@
+@@ -1029,0 +1836,54 @@
 +    }
 +
 +    #[test]
@@ -27178,7 +28571,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2374,81 @@
+@@ -1543 +2403,81 @@
 -}
 +
 +    #[test]
@@ -27262,10 +28655,70 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..215dc63df666ecca0b9e025a0c607bdf
 +    }
 +}
 diff --git a/vendor/taffy/src/tree/traits.rs b/vendor/taffy/src/tree/traits.rs
-index 7d4adf226accc9339bedf755ca3b60007addecd9..29d86660f6e40f670af6219c98dadec35960f860
+index 7d4adf226accc9339bedf755ca3b60007addecd9..bb7afcd46ab7f5448d57780da1b3b5f9ad5472c2
 --- a/vendor/taffy/src/tree/traits.rs
 +++ b/vendor/taffy/src/tree/traits.rs
-@@ -323,0 +324,40 @@
+@@ -129 +129 @@
+-use super::{DetailedLayoutInfo, Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode, SizingMode};
++use super::{Layout, LayoutInput, LayoutOutput, NodeId, RequestedAxis, RunMode, SizingMode};
+@@ -132 +132 @@
+-use crate::style::{AvailableSpace, CoreStyle, OofItemStyle};
++use crate::style::{AvailableSpace, CoreStyle};
+@@ -206,50 +206,3 @@
+-/// Extends [`LayoutPartialTree`] with the operations needed by the out-of-flow positioning pass
+-/// ([`compute_oof_layout`](crate::compute_oof_layout)), which lays out the absolute/fixed boxes
+-/// for which a node acts as the containing block.
+-///
+-/// This trait is required by [`compute_oof_layout`](crate::compute_oof_layout) and
+-/// [`compute_root_layout`](crate::compute_root_layout).
+-pub trait LayoutContainingBlock: LayoutPartialTree {
+-    /// The style type representing the styles of an out-of-flow (absolute/fixed) box being
+-    /// positioned by its containing block
+-    type OofItemStyle<'a>: OofItemStyle<CustomIdent = Self::CustomIdent>
+-    where
+-        Self: 'a;
+-
+-    /// Get the style of an out-of-flow box being positioned by its containing block
+-    ///
+-    /// Interpreted in the containing block's axes (see [`LayoutPartialTree::get_core_container_style`]).
+-    fn get_oof_item_style(&self, node_id: NodeId) -> Self::OofItemStyle<'_>;
+-
+-    /// Clear the list of out-of-flow (absolute/fixed) boxes whose containing block is `node_id`.
+-    ///
+-    /// This is called (exactly once) for each node laid out with `RunMode::PerformLayout`, before
+-    /// the boxes it lays out are recorded with [`add_hoisted_children`](Self::add_hoisted_children),
+-    /// so that lists recorded by previous layout runs do not persist.
+-    fn clear_hoisted_children(&mut self, node_id: NodeId);
+-
+-    /// Append to the list of out-of-flow boxes whose containing block is `node_id`.
+-    ///
+-    /// This is called by each containing block for the boxes it lays out, and by
+-    /// [`compute_root_layout`](crate::compute_root_layout) to record boxes (e.g. `position: fixed`
+-    /// boxes) which are positioned by the final root positioning pass, which runs after the root
+-    /// node's own layout algorithm has already recorded its list. The recorded lists are consumed
+-    /// by [`round_layout`](crate::round_layout) (out-of-flow boxes are rounded via their
+-    /// containing block rather than via their parent), and are also useful for consumers
+-    /// implementing paint/hit-testing traversals.
+-    fn add_hoisted_children(&mut self, node_id: NodeId, hoisted: &[NodeId]);
+-
+-    /// Read back the detailed layout information most recently recorded for `node_id`
+-    /// (as stored by [`LayoutGridContainer::set_detailed_grid_info`]).
+-    ///
+-    /// This is used by the out-of-flow positioning pass to resolve the grid area of absolutely
+-    /// positioned boxes whose containing block is a grid container. Implementing this method is
+-    /// optional: the default implementation returns [`DetailedLayoutInfo::None`], in which case
+-    /// such boxes are positioned relative to the grid container's padding box instead of their
+-    /// grid area.
+-    #[inline(always)]
+-    fn get_detailed_layout_info(&self, node_id: NodeId) -> &DetailedLayoutInfo<Self::CustomIdent> {
+-        let _ = node_id;
+-        &DetailedLayoutInfo::None
+-    }
+-}
++#[path = "containing_block.rs"]
++mod containing_block;
++pub use containing_block::LayoutContainingBlock;
+@@ -323,0 +277,40 @@
 +
 +    /// KaminIDE patch: optionally retain the final solver lines and item positions.
 +    /// Size-only probes do not publish geometry. Fragmentation policy stays with the caller.
@@ -27306,7 +28759,7 @@ index 7d4adf226accc9339bedf755ca3b60007addecd9..29d86660f6e40f670af6219c98dadec3
 +    /// Column items whose block size may not shrink then encompass their
 +    /// intrinsic block size (Blink `MinBlockSizeShouldEncompassIntrinsicSize`).
 +    fn flex_fragmentation(&self, _node_id: NodeId) -> bool { false }
-@@ -345,0 +386,47 @@
+@@ -345,0 +339,47 @@
 +
 +    /// KaminIDE patch: дорожки, выданные узлу-ПОДСЕТКЕ его родительской сеткой
 +    /// (css-grid-2 §9). Родитель пишет их ПЕРЕД каждым замером и раскладкой

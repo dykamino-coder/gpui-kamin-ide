@@ -15,12 +15,14 @@
 //! (арены, шрифты, at-правила, картинки) и соответствие исходных узлов узлам
 //! коробок — прежними: записи пишутся в тот же исходный DOM.
 
-use super::commit::Plan;
-use super::mentions::mentions;
+use super::commit::{Edited, Plan};
+use super::mentions::{Mentions, mentions};
 use super::mutation::{AttrChange, Batch, open};
 use super::patch::{Target, attr_paths, patch};
+use super::repaint::roots::fall_back_document;
 use super::text::{TextEdits, editable, patch_texts, text_paths};
 use crate::document::Document;
+use crate::paint_path as why;
 use markup5ever_rcdom::Handle;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -28,12 +30,14 @@ use std::rc::Rc;
 impl Document {
     /// Дерево коробок после пакета `batch` без каскада, если ни одна правка не
     /// меняет каскад (`Plan`); `sheets` — тексты всех `<style>` документа, если
-    /// уже известны. Ничего в ревизии не меняется.
+    /// уже известны; `changed` — имена и номера узлов пакета (`invalidation`),
+    /// посчитанные один раз на пакет. Ничего в ревизии не меняется.
     pub(super) fn plan(
         &self,
-        batch: &Batch,
+        batch: &mut Batch,
         theme_css: &str,
         sheets: Option<&[String]>,
+        changed: Option<&crate::dom::invalidation::Changed>,
         revision: &crate::budget::RevisionBudget,
     ) -> Option<Plan> {
         let values = &self.state.values;
@@ -45,26 +49,20 @@ impl Document {
             && self.embedded_failure().is_none()
             && revision.failure().is_none();
         if !quiet || *self.theme_css != *theme_css {
-            return None;
+            return why::refuse(&why::REFUSED_PLAN_STATE);
         }
-        let root = values.source_dom()?;
+        let root = why::why(values.source_dom(), &why::REFUSED_PLAN_STATE)?;
         let mut targets = HashMap::new();
         if !batch.elements.is_empty() {
-            let collected;
-            let sheets: &[String] = match sheets {
-                Some(sheets) => sheets,
+            // The names the sheets mention, indexed once for the document.
+            let all = self.kept_mentions(&root, sheets, theme_css);
+            let ids = match changed {
+                Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
-                    collected = self.kept_sheets(&root);
-                    &collected
+                    let handles = batch.elements.iter().map(|change| &change.element);
+                    element_ids(&values.traversal.elements(), handles)
                 }
             };
-            let mut all = vec![crate::style::ua::user_agent_css(), theme_css];
-            if values.quirks() {
-                all.push(crate::style::ua::QUIRKS_CSS);
-            }
-            all.extend(sheets.iter().map(String::as_str));
-            let handles = batch.elements.iter().map(|change| &change.element);
-            let ids = source_ids(&values.traversal.elements(), handles);
             for (change, id) in batch.elements.iter().zip(ids) {
                 match id {
                     Some(id) if open(&change.element, &root) && neutral(change, &all) => {
@@ -80,9 +78,12 @@ impl Document {
                     // A class the sheets read: its restyle may still reach
                     // only inherited paint values (`repaint`).
                     Some(_) if open(&change.element, &root) => {
-                        return self.repaint_plan(batch, theme_css);
+                        let Some(changed) = changed else {
+                            return fall_back_document("an attribute the build reads");
+                        };
+                        return self.repaint_plan(batch, changed, theme_css);
                     }
-                    _ => return None,
+                    _ => return fall_back_document("an element outside an open root"),
                 }
             }
         }
@@ -98,24 +99,45 @@ impl Document {
                 Some(id) if open(&change.node, &root) && editable(change, &read) => {
                     texts.insert(id, change);
                 }
-                _ => return None,
+                _ => {
+                    crate::why::note("plan_text.refused", || match id {
+                        None => "the edited text has no source id".into(),
+                        Some(_) if !open(&change.node, &root) => {
+                            "the edited text is outside an open root".into()
+                        }
+                        Some(_) => super::text::not_editable_why(change, &read).into(),
+                    });
+                    return why::refuse(&why::REFUSED_PLAN_TEXT);
+                }
             }
         }
         // Пути к правкам ищутся в текущем дереве; без единого пути дерево
         // коробок после пакета то же самое, и копировать нечего.
-        let attrs = attr_paths(&self.nodes, &targets)?;
-        let found = text_paths(&self.nodes, &texts)?;
+        let attrs = match targets.is_empty() {
+            true => Vec::new(),
+            false => match self
+                .boxes()
+                .and_then(|b| attr_paths(&self.nodes, &b, &targets))
+            {
+                Some(attrs) => attrs,
+                None => return fall_back_document("attributes rewritten by the build"),
+            },
+        };
+        let found = why::why(text_paths(&self.nodes, &texts), &why::REFUSED_PLAN_TEXT)?;
         if attrs.is_empty() && found.is_empty() {
             return Some(Plan::Clean(None));
         }
         let mut nodes = (*self.nodes).clone();
-        if !(patch(&mut nodes, attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
-            return None;
+        if !(patch(&mut nodes, &attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
+            return fall_back_document("a box path");
         }
         // Цели атрибутов — только `class` и `data-*` (`neutral`): их читают
         // лишь селекторы и `attr()` каскада, а не сборка кадра.
+        if !texts.is_empty() {
+            self.forget_has();
+        }
         Some(if texts.is_empty() {
-            Plan::Clean(Some(nodes))
+            Plan::Clean(Some(Edited { nodes, attrs }))
         } else {
             Plan::Patched(nodes)
         })
@@ -130,8 +152,27 @@ pub(super) fn source_ids<'a>(
     list: &[usize],
     handles: impl Iterator<Item = &'a Handle>,
 ) -> Vec<Option<u64>> {
-    let wanted: Vec<usize> = handles.map(|h| Rc::as_ptr(h) as usize).collect();
-    let mut found: HashMap<usize, Option<u64>> = wanted.iter().map(|&a| (a, None)).collect();
+    find_sources(list, handles, |_, ordinal| ordinal)
+}
+
+/// Ключи исходных элементов, без зависимости от позиции адреса в списке.
+pub(super) fn element_ids<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+) -> Vec<Option<u64>> {
+    find_sources(list, handles, |handle, _| handle.key().packed())
+}
+
+fn find_sources<'a>(
+    list: &[usize],
+    handles: impl Iterator<Item = &'a Handle>,
+    id: impl Fn(&Handle, u64) -> u64,
+) -> Vec<Option<u64>> {
+    let wanted: Vec<_> = handles.collect();
+    let mut found: HashMap<usize, Option<u64>> = wanted
+        .iter()
+        .map(|handle| (Rc::as_ptr(handle) as usize, None))
+        .collect();
     let mut seen = std::collections::HashSet::with_capacity(wanted.len());
     for (slot, address) in list.iter().enumerate() {
         if let Some(id) = found.get_mut(address) {
@@ -139,7 +180,10 @@ pub(super) fn source_ids<'a>(
             *id = seen.insert(*address).then_some(slot as u64 + 1);
         }
     }
-    wanted.iter().map(|a| found[a]).collect()
+    wanted
+        .iter()
+        .map(|handle| found[&(Rc::as_ptr(handle) as usize)].map(|ordinal| id(handle, ordinal)))
+        .collect()
 }
 
 /// Тег коробки элемента HTML: локальное имя (обход снимает только префикс).
@@ -154,7 +198,7 @@ pub(super) fn tag_of(handle: &markup5ever_rcdom::Handle) -> String {
 /// изменены только `class` и `data-*` без пространства имён, и ни один лист
 /// (и собственный `style`, где `attr()` читает атрибуты элемента) не упоминает
 /// ни имя изменённого атрибута, ни добавленный или снятый класс.
-fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
+fn neutral(change: &AttrChange, sheets: &Mentions) -> bool {
     let (old, new) = (&change.old, &change.new);
     let value = |list: &[html5ever::Attribute], name: &html5ever::QualName| {
         list.iter()
@@ -174,16 +218,12 @@ fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
             return false;
         }
         if local == "class" {
-            let tokens = |v: &Option<String>| -> Vec<String> {
-                v.as_deref()
-                    .unwrap_or("")
-                    .split_ascii_whitespace()
-                    .map(str::to_ascii_lowercase)
-                    .collect()
-            };
-            let (a, b) = (tokens(&was), tokens(&is));
-            classes.extend(a.iter().filter(|t| !b.contains(t)).cloned());
-            classes.extend(b.iter().filter(|t| !a.contains(t)).cloned());
+            // Compared as selectors match them (`dom::class_tokens`): `A` -> `a`
+            // changes the class outside quirks mode.
+            classes.extend(crate::dom::class_tokens::changed(
+                was.as_deref(),
+                is.as_deref(),
+            ));
         }
         names.push(local.to_ascii_lowercase());
     }
@@ -191,9 +231,5 @@ fn neutral(change: &AttrChange, sheets: &[&str]) -> bool {
         new,
         &html5ever::QualName::new(None, html5ever::ns!(), "style".into()),
     );
-    !sheets
-        .iter()
-        .copied()
-        .chain(own.as_deref())
-        .any(|css| mentions(css, &names, &classes))
+    !sheets.any(&names, &classes) && !own.is_some_and(|css| mentions(&css, &names, &classes))
 }

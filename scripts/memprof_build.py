@@ -11,8 +11,8 @@ so a profile blames the wrong function. The linker flags of the worktree's .carg
 8 MiB stack) are kept. The result is checked: the stack reserve in the PE header, function records in
 the PDB, no folded functions.
 
-One target directory per checkout, always <worktree>/target/prof: every profiler build of a seat
-reuses it, so a rebuild after an edit is incremental.
+The default target is <worktree>/target/prof. --target-dir reuses an existing target; local build
+policy still applies. An exported source tree needs --source-repo and --source-commit for verification.
 
 --screen builds without link-time optimisation (LTO off, 256 codegen units, incremental) in the same
 target directory: several times faster to build, and cargo keeps both variants' artifacts side by
@@ -35,6 +35,8 @@ import subprocess
 import sys
 import tomllib
 
+import memprof_source
+
 TARGET = "x86_64-pc-windows-msvc"
 NOICF = ["-C", "link-arg=/OPT:NOICF"]
 
@@ -43,6 +45,9 @@ def add_parser(sub):
     parser = sub.add_parser("build", help="build engine_bench with symbols and without identical-code folding")
     parser.add_argument("--out", required=True, help="directory for engine_bench.exe, its PDB and build.json")
     parser.add_argument("--worktree", default=".", help="repository checkout to build (default: current directory)")
+    parser.add_argument("--source-repo", help="Git repository containing an exported source commit")
+    parser.add_argument("--source-commit", help="commit whose complete tree must match --worktree")
+    parser.add_argument("--target-dir", help="reuse an existing cargo target directory (default: worktree/target/prof)")
     parser.add_argument("--features", default="allocation-audit",
                         help="engine-bench features: allocation-audit (exact, audit counters; default), "
                              "heap-profile (probe only), timing-only (time profiles)")
@@ -96,11 +101,6 @@ def pin(process, affinity, below_normal):
         raise OSError(ctypes.get_last_error(), f"SetProcessAffinityMask {affinity:#x}")
 
 
-def git(worktree, *args):
-    done = subprocess.run(["git", "-C", str(worktree), *args], capture_output=True, text=True)
-    return done.stdout.strip() if done.returncode == 0 else None
-
-
 def check(exe, flags):
     """Facts of the built image a profile depends on; raises when one does not hold."""
     from memprof_symbols import Symbols
@@ -117,7 +117,10 @@ def check(exe, flags):
 
 def build_command(args):
     worktree = pathlib.Path(args.worktree).resolve()
-    target = worktree / "target" / "prof"
+    source = memprof_source.identity(worktree, args.source_repo, args.source_commit)
+    target = pathlib.Path(args.target_dir).absolute() if args.target_dir else worktree / "target" / "prof"
+    if args.target_dir and not target.is_dir():
+        raise SystemExit("--target-dir must be an existing directory")
     out = pathlib.Path(args.out).resolve()
     flags = rustflags(worktree)
     env = dict(os.environ)
@@ -142,12 +145,17 @@ def build_command(args):
     code = process.wait()
     if code:
         raise SystemExit(f"cargo build failed ({code})")
+    if memprof_source.identity(worktree, args.source_repo, args.source_commit) != source:
+        raise SystemExit("source identity changed during the build; artifacts were not exported")
     built = target / "release" / "engine_bench.exe"
     facts = check(built, flags)
     out.mkdir(parents=True, exist_ok=True)
     for name in ("engine_bench.exe", "engine_bench.pdb"):
         shutil.copy2(built.with_name(name), out / name)
-    facts.update(commit=git(worktree, "rev-parse", "HEAD"), dirty=bool(git(worktree, "status", "--porcelain")),
+    facts.update(commit=source["commit"], dirty=source["dirty"], source=source,
+                 target_dir=str(target), target_resolved=str(target.resolve()),
+                 artifacts={name: memprof_source.digest(out / name)
+                            for name in ("engine_bench.exe", "engine_bench.pdb")},
                  features=args.features, rustflags=flags,
                  lto="off" if args.screen else "fat",
                  profile="release without LTO + debug line tables" if args.screen else "release + debug line tables")

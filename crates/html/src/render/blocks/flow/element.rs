@@ -17,7 +17,6 @@ pub(crate) use position::position_element;
 
 use super::BelowRun;
 use crate::animation::frames::transitioned;
-use crate::dom::Node;
 use crate::interactive::scroll_box::{resizable, scrollable};
 use crate::layout::atom::pct_resolved_for_wrapper;
 use crate::layout::replaced::limits::content_limit_swapped;
@@ -31,7 +30,7 @@ use gpui::AnyElement;
 pub(crate) async fn paint_element(
     stk: &mut reblessive::Stk,
     e: &crate::dom::Element,
-    nodes: &[Node],
+    nodes: &crate::layout::positioned::predicates::Siblings<'_>,
     idx: usize,
     inherited: &BoxStyle,
     opts: &RenderOpts,
@@ -65,7 +64,14 @@ pub(crate) async fn paint_element(
             inherited,
             opts.cx.frame(),
         );
-        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
+        out.push(layered(
+            el,
+            &e.style.used(),
+            inherited,
+            layer_ok,
+            under_tf,
+            &opts.cx,
+        ));
         return;
     }
     if let Some(el) = resizable(e, inherited, opts) {
@@ -75,7 +81,14 @@ pub(crate) async fn paint_element(
     if let Some(el) = transitioned(e, inherited, opts) {
         // Наложение считается и для узла с переходом: раньше ветка
         // уходила мимо, и `z-index` у него пропадал.
-        out.push(layered(el, &e.style.used(), inherited, layer_ok, under_tf));
+        out.push(layered(
+            el,
+            &e.style.used(),
+            inherited,
+            layer_ok,
+            under_tf,
+            &opts.cx,
+        ));
         return;
     }
     // `display: contents` — своей коробки у элемента нет: дети

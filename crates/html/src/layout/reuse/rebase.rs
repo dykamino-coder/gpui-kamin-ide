@@ -9,15 +9,17 @@
 //! the records are repainted in place, without a walk of either tree.
 
 mod handover;
+mod holders;
 mod keys;
 use super::{Store, flow_blocks};
 use crate::dom::{CascadedMemo, Element, Node, same_cascaded_box, same_cascaded_tree};
+use holders::{holder, holders};
 use keys::Roots;
 use std::collections::HashMap;
 
 impl Store {
     /// The document `old` was rebuilt as `new` from the same source DOM
-    /// (`Document::apply`, same-shape `Document::update`): the node ids are
+    /// (`Document::apply`, same-shape `Document::update`): surviving node ids are
     /// the same. `restyled`: the elements the rebuild restyled, if known;
     /// otherwise each record's block is compared in the two trees by its
     /// cascaded values (`dom::same_cascaded_tree`: both computed from them
@@ -42,6 +44,10 @@ impl Store {
             (Some(a), Some(b), Some(ids)) => invalidated(was, now, a, b, ids, &mut memo),
             _ => None,
         };
+        // A restyle whose elements all lie in flow blocks restyled no root box.
+        // Its blocks may still change what follows them in document order
+        // (counters, list numbers), so the blocks are compared all the same.
+        let confined = restyled.and_then(|ids| holders(now, ids));
         let mut records = self.records.take();
         let recorded = records.len();
         // What the root boxes' comparison tells the flow keys (`carry_keys`).
@@ -81,15 +87,16 @@ impl Store {
                 })
             }
             None => {
-                let roots = match (&a, &b) {
-                    (Some(a), Some(b)) => {
-                        a.len() == b.len()
-                            && a.iter()
-                                .zip(b)
-                                .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
-                    }
-                    _ => false,
-                };
+                let roots = confined.is_some()
+                    || match (&a, &b) {
+                        (Some(a), Some(b)) => {
+                            a.len() == b.len()
+                                && a.iter()
+                                    .zip(b)
+                                    .all(|(&x, &y)| same_cascaded_box(x, y, false, &mut memo))
+                        }
+                        _ => false,
+                    };
                 if let (Some(a), Some(b)) = (&a, &b)
                     && (roots
                         || a.len() == b.len()
@@ -99,12 +106,7 @@ impl Store {
                 {
                     roots_seen = Roots::Equal(roots);
                 }
-                // The same source DOM: the flows have the same children in
-                // the same order, so the blocks pair by position.
-                for (x, y) in elements(was, now) {
-                    let Some(record) = records.get(&x.node_id) else {
-                        continue;
-                    };
+                for (record, x, y) in holders::recorded_pairs(was, now, &records) {
                     let exact = roots && same_cascaded_tree(x, y, false, &mut memo);
                     let repaint =
                         !exact && record.far.get() && same_cascaded_tree(x, y, true, &mut memo);
@@ -122,8 +124,15 @@ impl Store {
         // that needs paint until it is painted clean).
         self.rebased.set(true);
         self.carry_keys(roots_seen);
-        if records.len() < recorded {
-            self.restyled.set(true);
+        // Only the restyled blocks are built bare; the others keep being recorded.
+        match confined {
+            Some(blocks) => self.restyled_blocks.set(blocks),
+            None => {
+                self.restyled_blocks.take();
+                if records.len() < recorded {
+                    self.restyled.set(true);
+                }
+            }
         }
         // The last frame wrapped blocks and none gave a record: the next would
         // wrap them again for nothing, so the run of restyles covers them.
@@ -146,17 +155,6 @@ impl Store {
 /// Pairs of flow blocks of the two trees by node id.
 type Blocks<'a> = HashMap<u64, (&'a Element, &'a Element)>;
 
-/// The element pairs of two flows by position.
-fn elements<'a>(
-    was: &'a [Node],
-    now: &'a [Node],
-) -> impl Iterator<Item = (&'a Element, &'a Element)> {
-    was.iter().zip(now).filter_map(|pair| match pair {
-        (Node::Element(a), Node::Element(b)) => Some((a, b)),
-        _ => None,
-    })
-}
-
 /// The comparison by the restyled elements `ids` only: whether the root
 /// boxes `a`/`b` (`html`, `body`) cascade equal values (`None`: not even
 /// but for paint-only values), and the pairs of flow blocks that hold a
@@ -178,7 +176,6 @@ fn invalidated<'a>(
     }
     let mut roots = true;
     let mut blocks = HashMap::new();
-    let flow = b.last()?.node_id;
     for &id in ids {
         if let Some(at) = b.iter().position(|e| e.node_id == id) {
             if !same_cascaded_box(a[at], b[at], false, memo) {
@@ -189,11 +186,6 @@ fn invalidated<'a>(
                 }
                 roots = false;
             }
-            continue;
-        }
-        // Ids count elements as the walk leaves them: a descendant of the
-        // flow has a smaller one than the flow, an element after it larger.
-        if id > flow {
             continue;
         }
         let at = holder(now, id)?;
@@ -210,41 +202,4 @@ fn invalidated<'a>(
         }
     }
     Some((Some(roots), blocks))
-}
-
-/// The position of the flow child of `flow` that holds the element `id`:
-/// the first with an id not smaller (ids grow as the walk leaves elements),
-/// or an anonymous one before it.
-fn holder(flow: &[Node], id: u64) -> Option<usize> {
-    let first = flow
-        .iter()
-        .position(|n| block(n).is_some_and(|e| e.node_id >= id))?;
-    let start = flow[..first]
-        .iter()
-        .rposition(|n| block(n).is_some_and(|e| e.node_id != 0))
-        .map_or(0, |at| at + 1);
-    (start..=first).find(|&at| block(&flow[at]).is_some_and(|e| holds(e, id)))
-}
-
-/// The element `n`, if it is one.
-fn block(n: &Node) -> Option<&Element> {
-    match n {
-        Node::Element(e) => Some(e),
-        Node::Text(_) => None,
-    }
-}
-
-/// The subtree of `e` has the element `id`.
-fn holds(e: &Element, id: u64) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if e.node_id == id {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            Node::Element(c) => Some(c),
-            Node::Text(_) => None,
-        }));
-    }
-    false
 }

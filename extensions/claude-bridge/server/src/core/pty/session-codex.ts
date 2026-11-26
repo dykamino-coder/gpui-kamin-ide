@@ -13,16 +13,18 @@
 // codex's own rollout (CODEX_HOME) stays the source of truth for resume.
 // ============================================================================
 
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import type { WebSocket as WS } from 'ws'
 import type { AgentEvent } from '../../shared/agent-events'
 import { config as bridgeConfig } from '../config'
-import { CodexAgentSession } from '../codex/codex-session'
+import { CodexAgentSession, type TurnContext } from '../codex/codex-session'
+import { SESSION_CONTEXT_OPEN } from '../codex/normalize'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
+import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
 import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
@@ -32,6 +34,7 @@ import { eventBus } from '../events/bus'
 import { codexErrorType, recordApiError } from '../stats/api-errors'
 import { isEngineUsageLine } from '../../shared/engine-accounting'
 import { debugLog, warnLog } from '../logging'
+import { noteAppended } from '../engine/transcript-digest'
 import { lifecycleLog } from '../logging/lifecycle'
 import { bridgeClaudeMd } from './bridge-default-claude-md'
 import { computeProjectSlug } from './jsonl-watcher'
@@ -39,7 +42,9 @@ import { holdMcpEndpoint, mcpIdentity } from './mcp-tasks'
 import { ResumeNotFoundError } from './session-resume-not-found'
 import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
+import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
 export interface CodexSessionDeps {
@@ -67,6 +72,8 @@ export interface CodexBindingHooks {
   /** Bridge Console text (the virtual PTY's output). */
   console?(data: string): void
   stallMs?: number
+  /** The chat's session instructions without the model line (developerInstructions). */
+  instructions?: string
 }
 
 export interface CodexPlacement {
@@ -117,6 +124,9 @@ export interface CodexChoice {
   model?: string
   /** Bridge effort level (the selector's value). */
   effort?: string
+  /** Hashes of the session instructions and the model line the thread's
+   *  context holds (see sessionContextFor). */
+  context?: { prompt: string; model: string }
 }
 
 function choiceFile(settingsDir: string, threadId: string): string {
@@ -129,6 +139,7 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
     return {
       ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
       ...(typeof raw.effort === 'string' && raw.effort ? { effort: raw.effort } : {}),
+      ...(isContextRecord(raw.context) ? { context: raw.context } : {}),
     }
   } catch {
     return null
@@ -149,6 +160,74 @@ function writeCodexChoice(settingsDir: string, threadId: string, choice: CodexCh
   } catch (error) {
     warnLog('codex choice not saved', { threadId, error: String(error) })
   }
+}
+
+function isContextRecord(value: unknown): value is { prompt: string; model: string } {
+  const v = value as { prompt?: unknown; model?: unknown } | null
+  return Boolean(v) && typeof v?.prompt === 'string' && typeof v?.model === 'string'
+}
+
+const contextHash = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 32)
+
+/** The line that tells the model its exact id and effort: codex models know
+ *  their family, not the identifier the chat runs ("Codex based on GPT-6"). */
+export function modelLine(model: string | null | undefined, effort: string | null | undefined): string {
+  if (!model) return ''
+  const level = codexEffort(effort)
+  return [
+    '## Model',
+    `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
+    level
+      ? 'When asked which model or reasoning effort you run on, answer with these exact values.'
+      : 'When asked which model you are, answer with this exact identifier.',
+  ].join('\n')
+}
+
+/** The effort a turn of `model` runs with: the one chosen in the chat, else
+ *  the model's own default from the codex catalog. A chat that never picked
+ *  one still runs on a definite level, and the model line must name it. */
+export function effectiveEffort(
+  model: string | null | undefined,
+  effort: string | null | undefined,
+  catalog: { knownModel(model: string | null | undefined): { defaultReasoningEffort: string | null } | undefined },
+): string | undefined {
+  return codexEffort(effort) ?? codexEffort(catalog.knownModel(model)?.defaultReasoningEffort)
+}
+
+/** The context record of what a thread was given at thread/start. */
+export function startedContext(instructions: string, line: string): { prompt: string; model: string } {
+  return { prompt: contextHash(instructions), model: contextHash(line) }
+}
+
+/**
+ * What the thread's next turn must carry so the model works with the chat's
+ * current instructions, model and effort; null when its context has them.
+ *
+ * codex puts developerInstructions into the model context only with a
+ * thread's initial context: thread/resume of a thread that already ran a turn
+ * stores them in its config and the model never sees them, so a prompt saved
+ * after the first turn, or the model line after a switch, would not arrive.
+ * The changed part is sent once in front of the next message: the whole
+ * instructions when they changed, else the model line alone.
+ */
+export function sessionContextFor(
+  seen: { prompt: string; model: string } | undefined,
+  instructions: string,
+  line: string,
+): { text: string; record: { prompt: string; model: string } } | null {
+  const record = startedContext(instructions, line)
+  const promptChanged = seen?.prompt !== record.prompt
+  if (!promptChanged && seen?.model === record.model) return null
+  const parts = (promptChanged ? [instructions, line] : [line]).filter(Boolean)
+  if (!parts.length) return null
+  const text = [
+    SESSION_CONTEXT_OPEN,
+    'Bridge session context: it replaces the earlier session instructions and model line of this chat.',
+    '',
+    parts.join('\n\n'),
+    '</bridge_session_context>',
+  ].join('\n')
+  return { text, record }
 }
 
 /** Whether a codex chat's Bridge transcript holds a user or assistant entry,
@@ -177,6 +256,51 @@ export function codexModel(model: string | null | undefined): string | undefined
   return model && !/^claude/i.test(model) ? model : undefined
 }
 
+/** ChatGPT plan windows (`account/rateLimits/read`, account-wide bucket) as a
+ *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
+ *  windows take the ids the Claude status line uses, so the row labels them
+ *  alike; context fields stay null (codex reports its window per response). */
+export function codexPlanUsage(
+  limits: CodexRateLimits,
+  model: string | null,
+  effort: string | null,
+): SessionUsage | null {
+  const account = limits.buckets[0]
+  if (!account) return null
+  const windows: SessionUsageWindow[] = []
+  for (const [slot, w] of [
+    ['primary', account.primary],
+    ['secondary', account.secondary],
+  ] as const) {
+    if (!w || w.resetsAt === null) continue
+    const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
+    windows.push({
+      id,
+      label: limitWindowLabel(w.windowMinutes, 'Plan limit'),
+      percent: w.usedPercent,
+      resetsAt: new Date(w.resetsAt).toISOString(),
+    })
+  }
+  if (windows.length === 0) return null
+  const at = new Date(limits.readAt).toISOString()
+  return {
+    windows,
+    contextPercent: null,
+    contextWindowSize: null,
+    autoCompactAt: null,
+    model,
+    effort,
+    observedAt: at,
+    limitsObservedAt: at,
+    engine: 'codex',
+  }
+}
+
+/** `/compact`, alone or with instructions after a space or newline. */
+export function isCompactCommand(text: string): boolean {
+  return /^\s*\/compact(?:\s|$)/.test(text)
+}
+
 /** Bridge effort levels → codex ReasoningEffort; Claude's `max` is codex `xhigh`. */
 export function codexEffort(effort: string | null | undefined): string | undefined {
   if (effort === 'max') return 'xhigh'
@@ -186,10 +310,15 @@ export function codexEffort(effort: string | null | undefined): string | undefin
 function developerInstructions(config: SessionConfig): string {
   // Same session context the Claude CLI receives, with Bridge tool names as
   // codex sees them (server `bridge` instead of Claude's `user-tools`).
+  // The synced CLAUDE.md / AGENTS.md come last, where a Claude session's CLAUDE.md
+  // has them; a resumed thread that was not given them gets them with its next turn.
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
-  ].join('\n\n')
+    syncedInstructions(config.bearerHash, config.cwd),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
   return text.replaceAll('mcp__user-tools__', 'mcp__bridge__')
 }
 
@@ -225,6 +354,12 @@ export async function createCodexSession(
   // A resumed thread continues on the model and effort last chosen in it.
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
   const effort = saved?.effort ?? config.effort
+  const instructions = developerInstructions(config)
+  // A chat on the default model still learns which model and effort that is
+  // (the catalog names the default; no model call).
+  const catalog = await deps.runtime.recentModels().catch(() => [])
+  const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
+  const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
     id: sessionId,
@@ -232,7 +367,7 @@ export async function createCodexSession(
     model: codexModel(saved?.model) ?? codexModel(config.model),
     effort: codexEffort(effort),
     threadConfig,
-    developerInstructions: developerInstructions(config),
+    developerInstructions: [instructions, startLine].filter(Boolean).join('\n\n'),
   }
   // The binding is created below; the virtual PTY always drives its current
   // agent, which changes when the thread is resumed on a restarted app-server.
@@ -295,6 +430,9 @@ export async function createCodexSession(
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
     resumeNotFound,
+    // The chat's launch context (standing instructions and the rest) travels
+    // with the chat to the next engine on a switch, as for a Claude session.
+    launchConfig: { ...config, carryRegistrations: undefined },
     ...(config.conversation ? { conversation: config.conversation } : {}),
   }
   const releaseEndpoint = holdMcpEndpoint(session)
@@ -336,7 +474,26 @@ export async function createCodexSession(
   const transcript = codexTranscriptPath(settingsDir, threadId, projectsDir(deps))
   const resumed = Boolean(placement.resumeThreadId) && !resumeNotFound && !freshThread
   session.model = agent.model
+  // A chat that chose no effort runs on ONE level that the selector shows, the
+  // model line names and every turn/start sends: the one the engine reports
+  // for the thread, else the model's default from the catalog (a real
+  // app-server can answer thread/start with `reasoningEffort: null`, and a
+  // turn without effort ran on a level nobody showed, REAL-121). With neither,
+  // no level is sent and the chat shows none.
+  if (!session.effort) {
+    const resolved = agent.reasoningEffort ?? effectiveEffort(agent.model ?? lineModel, null, deps.runtime)
+    if (resolved) {
+      agent.setEffort(resolved)
+      session.effort = resolved
+    }
+  }
   session.cliConversationId = resumed ? threadId : null
+  // A new thread's initial context holds the instructions and the start line;
+  // a resumed one keeps what its record says it was given.
+  if (!resumed) {
+    const choice = loadCodexChoice(settingsDir, threadId)
+    writeCodexChoice(settingsDir, threadId, { ...choice, context: startedContext(instructions, startLine) })
+  }
   session.resumeNotFound = resumeNotFound
   if (freshThread) session.resumedOnFreshThread = true
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
@@ -353,6 +510,7 @@ export async function createCodexSession(
     onDead: (code) => vpty.markExited(code),
     console: (data) => vpty.emit(data),
     stallMs: deps.stallMs,
+    instructions,
   })
   session.agentInput = binding
   codexBindings.set(session, binding)
@@ -575,8 +733,40 @@ export class CodexSessionBinding {
 
   // ── Input ──────────────────────────────────────────────────────────────
 
-  submit(text: string, submissionId?: string): void {
-    void this.deliver(text, submissionId)
+  submit(text: string, submissionId?: string, userText = text): void {
+    this.delivering++
+    void this.deliver(text, submissionId, userText).finally(() => this.delivering--)
+  }
+
+  /** Messages handed to the thread whose delivery has not settled yet. */
+  private delivering = 0
+
+  /** What keeps the chat awake (idle hibernation): a turn that runs, a message
+   *  on its way to the thread, or a thread being resumed. */
+  liveWork(): 'turn' | 'submission' | null {
+    if (this.turnOpen || this.agent.running) return 'turn'
+    if (this.delivering > 0 || this.recovering) return 'submission'
+    return null
+  }
+
+  /** A turn that ended while no client was attached must not stay `working`. */
+  replay(): void {
+    this.activity(this.turnOpen)
+  }
+
+  /** The ChatGPT plan windows for the status row under the chat input, tagged
+   *  as codex usage (the webview never shows them in a Claude chat). Read
+   *  through the runtime's account cache; an unreadable account sends nothing
+   *  and the row says it has no plan data. */
+  private pushPlanLimits(): void {
+    void this.runtime
+      .rateLimits()
+      .then((limits) => {
+        if (this.disposed) return
+        const usage = codexPlanUsage(limits, this.session.model ?? null, this.session.effort ?? null)
+        if (usage) sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
+      })
+      .catch(() => undefined)
   }
 
   input(data: string): boolean {
@@ -586,7 +776,8 @@ export class CodexSessionBinding {
     return true
   }
 
-  private async deliver(text: string, submissionId?: string): Promise<void> {
+  /** Receipts carry `userText`: the client's identity of this submission. */
+  private async deliver(text: string, submissionId: string | undefined, userText: string): Promise<void> {
     // Queued behind an app-server restart, then sent to the resumed thread.
     if (this.recovering) await this.recovering
     const account = await this.runtime.accountStatus()
@@ -597,17 +788,43 @@ export class CodexSessionBinding {
         account.checkFailed && account.error
           ? describeCodexError(account.error)
           : (account.error && account.error.kind !== 'other' ? account.error : loginRequired()).message
-      this.receipt(text, submissionId, 'uncertain', message)
+      this.receipt(userText, submissionId, 'uncertain', message)
       sendToClient(this.session.ws, { type: 'codex:auth', sessionId: this.session.id, ...account })
       this.appendSystem(message, 'error')
       return
     }
     try {
-      await this.agent.send(text, submissionId)
-      this.receipt(text, submissionId, 'read')
+      // `/compact [instructions]` (typed, or the Compact button) compacts the
+      // thread like codex's own command; sent as text it was a paid model turn
+      // that compacted nothing. Codex compaction takes no instructions.
+      if (isCompactCommand(text)) await this.agent.compact()
+      else await this.agent.send(text, submissionId, () => this.turnContext())
+      this.receipt(userText, submissionId, 'read')
     } catch (error) {
       const info = classifyCodexError((error as Error).message)
-      this.receipt(text, submissionId, 'uncertain', describeCodexError(info))
+      this.receipt(userText, submissionId, 'uncertain', describeCodexError(info))
+    }
+  }
+
+  /** The session context the thread has not seen yet, recorded once codex took it. */
+  private turnContext(): TurnContext | null {
+    const instructions = this.hooks?.instructions
+    const threadId = this.agent.conversationId()
+    if (instructions === undefined || !threadId) return null
+    const { settingsDir } = this.session
+    const choice = loadCodexChoice(settingsDir, threadId)
+    const model = this.agent.model
+    const next = sessionContextFor(
+      choice?.context,
+      instructions,
+      // The effort this turn/start names, so the line never says another one.
+      modelLine(model, this.agent.reasoningEffort ?? effectiveEffort(model, this.session.effort, this.runtime)),
+    )
+    if (!next) return null
+    return {
+      text: next.text,
+      delivered: () =>
+        writeCodexChoice(settingsDir, threadId, { ...loadCodexChoice(settingsDir, threadId), context: next.record }),
     }
   }
 
@@ -646,6 +863,7 @@ export class CodexSessionBinding {
         this.flushStream()
         this.activity(false)
         if (event.status === 'failed' && event.error) this.recordError(raw.kind, event.error.message)
+        this.pushPlanLimits()
         break
       case 'notice':
         // A retried error is transient; the final outcome is the turn's.
@@ -700,6 +918,7 @@ export class CodexSessionBinding {
     try {
       fs.mkdirSync(path.dirname(this.transcriptPath), { recursive: true })
       fs.appendFileSync(this.transcriptPath, entries.map((e) => JSON.stringify(e) + '\n').join(''), { mode: 0o600 })
+      noteAppended(this.transcriptPath)
     } catch (error) {
       warnLog('codex transcript append failed', { sessionId: this.session.id, error: String(error) })
     }

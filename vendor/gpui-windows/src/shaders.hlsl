@@ -413,12 +413,78 @@ float2x2 rotate2d(float angle) {
     return float2x2(c, -s, s, c);
 }
 
+
+// KaminIDE patch: analytic gradients avoid intermediate BGRA tiles.
+struct GradientDescriptor {
+    float4 geometry;
+    float2 css_size;
+    uint radial;
+    uint repeating;
+    uint first;
+    uint count;
+    uint2 pad;
+};
+struct GradientStop {
+    float4 color;
+    float offset;
+    uint3 pad;
+};
+StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
+StructuredBuffer<GradientStop> analytic_stops : register(t6);
+
+float4 analytic_gradient(uint index, float2 position, Bounds bounds) {
+    GradientDescriptor g = analytic_gradients[index];
+    // Preserve exact local pixel centers at unit scale, including clipped tiles.
+    // Dividing the point before multiplying the size perturbs hard-stop boundaries.
+    precise float2 p = position - bounds.origin;
+    if (any(g.css_size != bounds.size)) {
+        p *= g.css_size / bounds.size;
+    }
+    precise float t;
+    if (g.radial != 0) {
+        t = (g.geometry.z <= 0.0 || g.geometry.w <= 0.0)
+            ? asfloat(0x7f800000) : length((p - g.geometry.xy) / g.geometry.zw);
+    } else {
+        precise float2 centered = p - g.css_size * 0.5;
+        precise float2 projected = centered * g.geometry.xy;
+        t = (projected.x + projected.y) / max(g.geometry.z, 1.192092896e-7) + 0.5;
+    }
+    GradientStop a = analytic_stops[g.first];
+    GradientStop last = analytic_stops[g.first + g.count - 1];
+    if (g.repeating != 0) {
+        float period = last.offset - a.offset;
+        if (period > 0.0) {
+            float v = t - a.offset;
+            t = a.offset + (v - floor(v / period) * period);
+        } else { return floor(saturate(last.color) * 255.0 + 0.5) / 255.0; }
+    }
+    precise float4 color = last.color;
+    if (t <= a.offset) { color = a.color; }
+    else {
+        [loop] for (uint i = 1; i < g.count; ++i) {
+            GradientStop b = analytic_stops[g.first + i];
+            if (t >= a.offset && t <= b.offset) {
+                precise float k = b.offset > a.offset ? (t - a.offset) / (b.offset - a.offset) : 1.0;
+                precise float alpha = a.color.a + (b.color.a - a.color.a) * k;
+                precise float kc = alpha > 0.0 ? k * b.color.a / alpha : k;
+                color = float4(a.color.rgb + (b.color.rgb - a.color.rgb) * kc, alpha);
+                break;
+            }
+            a = b;
+        }
+    }
+    return floor(saturate(color) * 255.0 + 0.5) / 255.0;
+}
+
 float4 gradient_color(Background background,
                       float2 position,
                       Bounds bounds,
                       float4 solid_color, float4 color0, float4 color1) {
     float4 color;
 
+    // KaminIDE patch: tag 5 (analytic) never reaches this function; those quads
+    // are drawn by `quad_gradient_fragment`, the only program that references
+    // the stop loop and its t5/t6 buffers.
     switch (background.tag) {
         case 0:
             color = solid_color;
@@ -508,8 +574,13 @@ float4 gradient_color(Background background,
              3.0, 11.0,  1.0,  9.0,
             15.0,  7.0, 13.0,  5.0
         };
-        uint bx = (uint)position.x & 3u;
-        uint by = (uint)position.y & 3u;
+        // KaminIDE patch: the pattern is anchored at the quad's whole-pixel
+        // origin, not the window: the gradient moved by whole pixels (a
+        // scroll step drawn as the kept frame moved) keeps its noise, as a
+        // tile rastered in content space keeps it in Chromium.
+        int2 cell = int2(floor(position - floor(bounds.origin)));
+        uint bx = (uint)cell.x & 3u;
+        uint by = (uint)cell.y & 3u;
         float noise = (bayer[by * 4u + bx] + 0.5) / 16.0 - 0.5;
         color.rgb += noise / 255.0;
     }
@@ -644,6 +715,37 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_I
 // Форма квада (скругления, рамки, градиент) считается по его собственным
 // границам. Пока матрица единичная, точка экрана и точка квада совпадают; с
 // поворотом — нет, и без обратного хода скругления «съезжали» бы с фигуры.
+// KaminIDE patch: the bilinear texel of a sprite at `local_position` (its own
+// coordinates), read in its tile's texel coordinates, never in normalized
+// atlas UVs. The sampler resolves an atlas coordinate with a fixed sub-texel
+// precision, so the same pixel of a sprite got other filter weights wherever
+// the atlas put the tile (a frame after an edit, whose tiles sit elsewhere,
+// differed from a fresh one by a code). Texels are fetched by integer address
+// inside the tile, clamped to its edge (clamp-to-edge of the sprite, no
+// neighbour of the shared atlas), and the weights come from the tile-local
+// position alone.
+float4 tile_texel(float2 local_position, Bounds bounds, AtlasTile tile) {
+    int2 tile_origin = int2(tile.bounds.origin);
+    int2 tile_last = int2(tile.bounds.size) - 1;
+    float2 source_position = (local_position - bounds.origin) / bounds.size * float2(tile.bounds.size);
+    float2 p = source_position - 0.5;
+    float2 base = floor(p);
+    float2 f = p - base;
+    int2 t0 = clamp(int2(base), int2(0, 0), tile_last);
+    float4 sample = t_sprite.Load(int3(tile_origin + t0, 0));
+    // A pixel centre on a texel centre (a sprite drawn 1:1 on the device
+    // grid, the common case) has zero weights: the one texel is the bilinear
+    // result exactly, so only other pixels read four.
+    if (any(f != 0.0)) {
+        int2 t1 = clamp(int2(base) + 1, int2(0, 0), tile_last);
+        float4 c10 = t_sprite.Load(int3(tile_origin + int2(t1.x, t0.y), 0));
+        float4 c01 = t_sprite.Load(int3(tile_origin + int2(t0.x, t1.y), 0));
+        float4 c11 = t_sprite.Load(int3(tile_origin + int2(t1.x, t1.y), 0));
+        sample = lerp(lerp(sample, c10, f.x), lerp(c01, c11, f.x), f.y);
+    }
+    return sample;
+}
+
 float2 untransform(float2 position, TransformationMatrix t) {
     float2x2 m = t.rotation_scale;
     float det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
@@ -655,13 +757,8 @@ float2 untransform(float2 position, TransformationMatrix t) {
     return mul(p, inv);
 }
 
-float4 quad_fragment(QuadFragmentInput input): SV_Target {
-    input.position.xy += global_origin;
-    Quad quad = quads[input.quad_id];
-    // KaminIDE patch: дальше работаем в координатах самого квада.
-    float2 local_position = untransform(input.position.xy, quad.transformation);
-    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
-    input.background_solid, input.background_color0, input.background_color1);
+float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
+                          float4 input_border_color) {
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.top_right == 0.0 &&
@@ -784,7 +881,7 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
     float4 color = background_color;
     if (border_sdf < antialias_threshold) {
-        float4 border_color = input.border_color;
+        float4 border_color = input_border_color;
         // Dashed border logic when border_style == 1
         // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
         if (quad.border_style == 1 || quad.border_style == 2) {
@@ -1297,15 +1394,15 @@ struct MonochromeSprite {
 };
 
 struct MonochromeSpriteVertexOutput {
+    nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
     float4 clip_distance: SV_ClipDistance;
 };
 
 struct MonochromeSpriteFragmentInput {
+    nointerpolation uint sprite_id: TEXCOORD0;
     float4 position: SV_Position;
-    float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
     float4 clip_distance: SV_ClipDistance;
 };
@@ -1319,20 +1416,29 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     float4 device_position =
         to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
     float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
     float4 color = hsla_to_rgba(sprite.color);
 
     MonochromeSpriteVertexOutput output;
+    output.sprite_id = sprite_id;
     output.position = device_position;
-    output.tile_position = tile_position;
     output.color = color;
     output.clip_distance = clip_distance;
     return output;
 }
 
+// KaminIDE patch: a glyph is read in its tile's own texels (`tile_texel`),
+// as an image is: normalized atlas coordinates gave a glyph other filter
+// weights wherever the atlas put its tile, so the same glyph in two tiles
+// (a fresh document's font instance, a replayed frame) differed by a code.
+float4 sprite_texel(MonochromeSpriteFragmentInput input) {
+    MonochromeSprite sprite = mono_sprites[input.sprite_id];
+    float2 local_position = untransform(input.position.xy, sprite.transformation);
+    return tile_texel(local_position, sprite.bounds, sprite.tile);
+}
+
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     input.position.xy += global_origin;
-    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
+    float sample = sprite_texel(input).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
     return float4(input.color.rgb, input.color.a * alpha_corrected);
 }
@@ -1343,7 +1449,7 @@ MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID,
 
 SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentInput input) {
     input.position.xy += global_origin;
-    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
+    float3 sample = sprite_texel(input).rgb;
     if (is_bgr) {
         sample = sample.bgr;
     }
@@ -1414,25 +1520,16 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     PolychromeSprite sprite = poly_sprites[input.sprite_id];
     // KaminIDE patch: координаты самого спрайта.
     float2 local_position = untransform(input.position.xy, sprite.transformation);
-    // KaminIDE patch: кламп UV на полтексела внутрь тайла — линейная выборка
-    // на краю тянула соседей по атласу, и растянутая картинка получала кайму
-    // (clamp-to-edge для тайла общего атласа).
-    float2 atlas_size;
-    t_sprite.GetDimensions(atlas_size.x, atlas_size.y);
-    float2 tile_min = (float2(sprite.tile.bounds.origin) + 0.5) / atlas_size;
-    float2 tile_max = (float2(sprite.tile.bounds.origin) + float2(sprite.tile.bounds.size) - 0.5) / atlas_size;
-    float2 uv = clamp(input.tile_position, tile_min, tile_max);
-    float4 sample = t_sprite.Sample(s_sprite, uv);
+    // KaminIDE patch: the image is read in its tile's own texels (`tile_texel`).
+    float4 sample;
     if ((sprite.pad & 1u) != 0u) {
-        int2 tile_origin = int2(sprite.tile.bounds.origin);
-        // Source coordinates must not depend on where the atlas allocated a
-        // tile: interpolated normalized UVs lose precision at texel boundaries.
+        int2 tile_last = int2(sprite.tile.bounds.size) - 1;
         float2 source_position = (local_position - sprite.bounds.origin)
             / sprite.bounds.size * float2(sprite.tile.bounds.size);
-        int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0),
-            int2(sprite.tile.bounds.size) - 1);
-        int2 texel = tile_origin + source_texel;
-        sample = t_sprite.Load(int3(texel, 0));
+        int2 source_texel = clamp(int2(floor(source_position)), int2(0, 0), tile_last);
+        sample = t_sprite.Load(int3(int2(sprite.tile.bounds.origin) + source_texel, 0));
+    } else {
+        sample = tile_texel(local_position, sprite.bounds, sprite.tile);
     }
     float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
 
@@ -1660,6 +1757,137 @@ float4 group_texel(BlurQuad q, float2 p) {
     return t_sprite.Load(int3(local + int2(q.src_origin), 0));
 }
 
+// KaminIDE patch: premultiplied source of a group composite at frame point p:
+// the retained image (or its plane through H^-1) under the rounded, polygon,
+// clip and mask-image coverage and the group opacity. Shared by blur_fragment
+// (blend modes mixed in the shader against a backdrop copy) and
+// group_tiles_fragment (a run of composites in one pass, no copies).
+// `in_loop` (a literal): the mask image is read at level 0 instead of by the
+// derivatives, which a loop with a varying count has none of; every texture
+// has one level (MipLevels 1), so the texel is the same.
+float4 group_source_with(BlurQuad q, float2 p, bool in_loop) {
+    float4 src;
+    // KaminIDE patch: plane of a 3D rendering context — map the frame
+    // pixel back through the inverse homography (perspective-correct
+    // sampling, css-transforms-2 §3d-transform-rendering); behind the
+    // eye or outside the buffer nothing is drawn.
+    if (q.proj[2].w > 0.5) {
+        float3 sp = float3(p, 1.0);
+        float3 h = float3(dot(q.proj[0].xyz, sp), dot(q.proj[1].xyz, sp),
+                          dot(q.proj[2].xyz, sp));
+        float2 rp = h.z > 1e-6 ? h.xy / h.z : float2(-1.0, -1.0);
+        float2 ruv = rp * q.texel;
+        // Nearest texel: the raster map is the plane's tangent affine, so
+        // texels stay ~1:1 with frame pixels; a bilinear tap would blur
+        // every edge already antialiased in the buffer a second time.
+        src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
+            ? group_texel(q, rp)
+            : float4(0.0, 0.0, 0.0, 0.0);
+    } else {
+        src = group_texel(q, p);
+    }
+    // A transparent texel stays transparent under every coverage below. Only
+    // in the loop (no gradient sampling follows a per-pixel branch there).
+    if (in_loop && !any(src)) {
+        return src;
+    }
+    float distance = quad_sdf(p, q.bounds, q.corner_radii);
+    float corner = saturate(0.5 - distance);
+    // KaminIDE patch: rounded composite (clip-path `round`) — the same
+    // 8-bit coverage a rounded quad reaches the blend stage with.
+    if (any(float4(q.corner_radii.top_left, q.corner_radii.top_right,
+                   q.corner_radii.bottom_right, q.corner_radii.bottom_left) > 0.0)) {
+        corner = round(corner * 255.0) / 255.0;
+    }
+    float mask = corner * q.pad;
+    // KaminIDE patch: bit 16 of poly_count inverts the polygon clip
+    // (border ring outside the inner contour, 1 - coverage).
+    uint poly_n = q.poly_count & 15u;
+    if (poly_n >= 3u) {
+        float pd = poly_sdf(q.poly, poly_n, p);
+        if (q.proj[0].w > 0.5) {
+            // KaminIDE patch: BSP piece of a 3D plane - cut edges are hard
+            // (viz draws split polygons without edge AA): two pieces meeting
+            // on a cut must not both fade and let the backdrop through.
+            mask *= pd <= 0.0 ? 1.0 : 0.0;
+        } else {
+            float poly_cover = saturate(0.5 - pd);
+            mask *= (q.poly_count & 16u) != 0u ? 1.0 - poly_cover : poly_cover;
+        }
+    }
+    // Маска-изображение: плитка лежит от угла коробки своим размером и
+    // повторяется по обеим осям (`mask-repeat: repeat` — начальное
+    // значение css-masking); запрет мощения пооосный (pad2.y: бит 0 —
+    // x, бит 1 — y) — за краем первой плитки маска пуста. Гасится вся
+    // картинка, альфа её умножена.
+    // Коробка окраски (`mask-clip`) и старый `clip: rect` режут группу
+    // и БЕЗ маски-изображения: вне коробки картинка пуста.
+    if (q.mask_clip.z > 0.0 && (
+        p.x < q.mask_clip.x ||
+        p.x >= q.mask_clip.x + q.mask_clip.z ||
+        p.y < q.mask_clip.y ||
+        p.y >= q.mask_clip.y + q.mask_clip.w)) {
+        mask = 0.0;
+    }
+    if (q.pad2.x > 0.5) {
+        float2 mt = (p - q.mask_rect.xy) / q.mask_rect.zw;
+        uint norep = uint(q.pad2.y + 0.5);
+        uint turn = (norep >> 3u) & 3u;
+        if (turn == 1u) { mt = float2(mt.y, 1.0 - mt.x); }
+        if (turn == 2u) { mt = 1.0 - mt; }
+        if (turn == 3u) { mt = float2(1.0 - mt.y, mt.x); }
+        float inside = 1.0;
+        if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
+        if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
+        float4 mc;
+        if (in_loop) {
+            mc = t_maskimg.SampleLevel(s_sprite, frac(mt), 0.0);
+        } else {
+            mc = t_maskimg.Sample(s_sprite, frac(mt));
+        }
+        // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
+        // на альфа, поэтому взвешенная сумма сразу равна lum * a.
+        float mval = (norep & 4u)
+            ? dot(mc.rgb, float3(0.2126, 0.7152, 0.0722))
+            : mc.a;
+        mask *= inside * mval;
+    }
+    src *= mask;
+    return src;
+}
+
+float4 group_source(BlurQuad q, float2 p) {
+    return group_source_with(q, p, false);
+}
+
+// KaminIDE patch: premultiplied source `src` of blend mode `mode` (not normal)
+// composited over the premultiplied destination `dst` (Compositing 1 §5.8:
+// the mixed colour shows only where both sides are opaque). The CSS formulas
+// take colour that is not multiplied, so both sides are divided by their alpha
+// first and the result is multiplied back as a whole.
+float4 composite_mix(uint mode, float4 src, float4 dst) {
+    // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
+    // This Porter-Duff operator does not use the source-over blend formula.
+    if (mode == 16u) {
+        return saturate(src + dst);
+    }
+    float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
+    float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
+    float3 mixed;
+    if (mode >= 12u) {
+        mixed = blend_nonseparable(mode, cb, cs);
+    } else {
+        mixed = float3(
+            blend_channel(mode, cb.r, cs.r),
+            blend_channel(mode, cb.g, cs.g),
+            blend_channel(mode, cb.b, cs.b));
+    }
+    float3 co = (1.0 - dst.a) * src.a * cs
+              + dst.a * src.a * mixed
+              + (1.0 - src.a) * dst.a * cb;
+    return float4(co, src.a + dst.a * (1.0 - src.a));
+}
+
 float4 blur_fragment(BlurFragmentInput input): SV_Target {
     input.position.xy += global_origin;
     BlurQuad q = blur_quads[input.quad_id];
@@ -1729,112 +1957,13 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
     // нельзя размазывать, поэтому выборка одна, а маска скруглений и
     // прозрачность группы гасят и цвет, и альфу (цвет премультиплирован).
     if (q.blur_pass > 2.5) {
-        float4 src;
-        // KaminIDE patch: plane of a 3D rendering context — map the frame
-        // pixel back through the inverse homography (perspective-correct
-        // sampling, css-transforms-2 §3d-transform-rendering); behind the
-        // eye or outside the buffer nothing is drawn.
-        if (q.proj[2].w > 0.5) {
-            float3 sp = float3(input.position.xy, 1.0);
-            float3 h = float3(dot(q.proj[0].xyz, sp), dot(q.proj[1].xyz, sp),
-                              dot(q.proj[2].xyz, sp));
-            float2 rp = h.z > 1e-6 ? h.xy / h.z : float2(-1.0, -1.0);
-            float2 ruv = rp * q.texel;
-            // Nearest texel: the raster map is the plane's tangent affine, so
-            // texels stay ~1:1 with frame pixels; a bilinear tap would blur
-            // every edge already antialiased in the buffer a second time.
-            src = (h.z > 1e-6 && all(ruv >= 0.0) && all(ruv < 1.0))
-                ? group_texel(q, rp)
-                : float4(0.0, 0.0, 0.0, 0.0);
-        } else {
-            src = group_texel(q, input.position.xy);
-        }
-        float distance = quad_sdf(input.position.xy, q.bounds, q.corner_radii);
-        float corner = saturate(0.5 - distance);
-        // KaminIDE patch: rounded composite (clip-path `round`) — the same
-        // 8-bit coverage a rounded quad reaches the blend stage with.
-        if (any(float4(q.corner_radii.top_left, q.corner_radii.top_right,
-                       q.corner_radii.bottom_right, q.corner_radii.bottom_left) > 0.0)) {
-            corner = round(corner * 255.0) / 255.0;
-        }
-        float mask = corner * q.pad;
-        // KaminIDE patch: bit 16 of poly_count inverts the polygon clip
-        // (border ring outside the inner contour, 1 - coverage).
-        uint poly_n = q.poly_count & 15u;
-        if (poly_n >= 3u) {
-            float pd = poly_sdf(q.poly, poly_n, input.position.xy);
-            if (q.proj[0].w > 0.5) {
-                // KaminIDE patch: BSP piece of a 3D plane - cut edges are hard
-                // (viz draws split polygons without edge AA): two pieces meeting
-                // on a cut must not both fade and let the backdrop through.
-                mask *= pd <= 0.0 ? 1.0 : 0.0;
-            } else {
-                float poly_cover = saturate(0.5 - pd);
-                mask *= (q.poly_count & 16u) != 0u ? 1.0 - poly_cover : poly_cover;
-            }
-        }
-        // Маска-изображение: плитка лежит от угла коробки своим размером и
-        // повторяется по обеим осям (`mask-repeat: repeat` — начальное
-        // значение css-masking); запрет мощения пооосный (pad2.y: бит 0 —
-        // x, бит 1 — y) — за краем первой плитки маска пуста. Гасится вся
-        // картинка, альфа её умножена.
-        // Коробка окраски (`mask-clip`) и старый `clip: rect` режут группу
-        // и БЕЗ маски-изображения: вне коробки картинка пуста.
-        if (q.mask_clip.z > 0.0 && (
-            input.position.x < q.mask_clip.x ||
-            input.position.x >= q.mask_clip.x + q.mask_clip.z ||
-            input.position.y < q.mask_clip.y ||
-            input.position.y >= q.mask_clip.y + q.mask_clip.w)) {
-            mask = 0.0;
-        }
-        if (q.pad2.x > 0.5) {
-            float2 mt = (input.position.xy - q.mask_rect.xy) / q.mask_rect.zw;
-            uint norep = uint(q.pad2.y + 0.5);
-            uint turn = (norep >> 3u) & 3u;
-            if (turn == 1u) { mt = float2(mt.y, 1.0 - mt.x); }
-            if (turn == 2u) { mt = 1.0 - mt; }
-            if (turn == 3u) { mt = float2(1.0 - mt.y, mt.x); }
-            float inside = 1.0;
-            if ((norep & 1u) && (mt.x < 0.0 || mt.x >= 1.0)) { inside = 0.0; }
-            if ((norep & 2u) && (mt.y < 0.0 || mt.y >= 1.0)) { inside = 0.0; }
-            float4 mc = t_maskimg.Sample(s_sprite, frac(mt));
-            // Светимость (`mask-mode: luminance`, бит 2): цвет уже умножен
-            // на альфа, поэтому взвешенная сумма сразу равна lum * a.
-            float mval = (norep & 4u)
-                ? dot(mc.rgb, float3(0.2126, 0.7152, 0.0722))
-                : mc.a;
-            mask *= inside * mval;
-        }
-        src *= mask;
+        float4 src = group_source(q, input.position.xy);
         if (q.blend_mode == 0u) {
             return src;
         }
-        // Цвет назначения — копия кадра под группой. Формулы CSS работают с
-        // НЕумноженным цветом, поэтому обе стороны сначала делятся на свою
-        // прозрачность, а результат умножается обратно уже целиком.
+        // Цвет назначения — копия кадра под группой.
         float4 dst = t_backdrop.Load(int3(int2(floor(input.position.xy) - q.backdrop_rect.xy), 0));
-        // Compositing 2 §9.1.15: plus-lighter adds premultiplied RGBA.
-        // This Porter-Duff operator does not use the source-over blend formula.
-        if (q.blend_mode == 16u) {
-            return saturate(src + dst);
-        }
-        float3 cs = src.a > 0.0 ? src.rgb / src.a : float3(0.0, 0.0, 0.0);
-        float3 cb = dst.a > 0.0 ? dst.rgb / dst.a : float3(0.0, 0.0, 0.0);
-        float3 mixed;
-        if (q.blend_mode >= 12u) {
-            mixed = blend_nonseparable(q.blend_mode, cb, cs);
-        } else {
-            mixed = float3(
-                blend_channel(q.blend_mode, cb.r, cs.r),
-                blend_channel(q.blend_mode, cb.g, cs.g),
-                blend_channel(q.blend_mode, cb.b, cs.b));
-        }
-        // Формула композита из спецификации: смешанный цвет виден только там,
-        // где обе стороны непрозрачны.
-        float3 co = (1.0 - dst.a) * src.a * cs
-                  + dst.a * src.a * mixed
-                  + (1.0 - src.a) * dst.a * cb;
-        return float4(co, src.a + dst.a * (1.0 - src.a));
+        return composite_mix(q.blend_mode, src, dst);
     }
     // Tent 3x3: с билинейкой и каскадом /2 → мягкое размытие без колец.
     float4 c = blur_tap(q, input.uv, float2(0.0, 0.0)) * 0.25;
@@ -1897,4 +2026,90 @@ ClearVertexOutput clear_vertex(uint vertex_id: SV_VertexID) {
 
 float4 clear_fragment(ClearVertexOutput input): SV_Target {
     return input.color;
+}
+
+// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
+//
+// blur_quads[0] is the cover: bounds = the run's rectangle, src_origin = the
+// tile grid's corner, poly_count = tiles per row, blend_mode = where the
+// drawn spans start in tile_lists. Composites are
+// blur_quads[1..]. tile_lists holds the first entry of every tile (one more
+// than the tiles, the last is the end), then composite indices, each tile's in
+// document order. Every pixel starts from the backdrop copy and applies the
+// composites covering it in order, rounding to the 8-bit target after every
+// step: the canonical group arithmetic (design.md), the frame the copy path
+// writes composite by composite.
+#define GROUP_TILE 16.0
+StructuredBuffer<uint> tile_lists: register(t4);
+
+// The pixels the composite's own draw covers: its rectangle with vertices on
+// the rasterizer's 1/256 grid (D3D11 §15.13: top-left rule) and the content
+// mask the clip distances keep (§15.4: kept at distance >= 0).
+bool composite_covers(BlurQuad q, float2 c) {
+    float2 lo = round(q.bounds.origin * 256.0) / 256.0;
+    float2 hi = round((q.bounds.origin + q.bounds.size) * 256.0) / 256.0;
+    float2 mlo = q.content_mask.origin;
+    float2 mhi = mlo + q.content_mask.size;
+    return all(c >= lo) && all(c < hi) && all(c >= mlo) && all(c <= mhi);
+}
+
+// Instance i draws span i of the pass (`group_tiles::bins::spans`): a row of
+// tiles that list a composite, its x, y, width and height at
+// tile_lists[cover.blend_mode + 4i]. Tiles listing nothing are not drawn.
+BlurVertexOutput group_tiles_vertex(uint vertex_id: SV_VertexID, uint span: SV_InstanceID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    uint at = blur_quads[0].blend_mode + 4u * span;
+    Bounds rect = blur_quads[0].bounds;
+    rect.origin = float2(float(tile_lists[at]), float(tile_lists[at + 1u]));
+    rect.size = float2(float(tile_lists[at + 2u]), float(tile_lists[at + 3u]));
+    BlurVertexOutput output;
+    output.position = to_device_position(unit_vertex, rect);
+    output.uv = unit_vertex;
+    output.quad_id = 0u;
+    output.clip_distance = float4(1.0, 1.0, 1.0, 1.0);
+    return output;
+}
+
+float4 group_tiles_fragment(BlurFragmentInput input): SV_Target {
+    float2 c = input.position.xy;
+    BlurQuad cover = blur_quads[0];
+    float4 dst = t_backdrop.Load(int3(int2(floor(c)), 0));
+    uint2 tile = uint2(floor((c - cover.src_origin) / GROUP_TILE));
+    uint t = tile.y * cover.poly_count + tile.x;
+    uint end = tile_lists[t + 1u];
+    float2 p = c + global_origin;
+    for (uint i = tile_lists[t]; i < end; i++) {
+        BlurQuad q = blur_quads[tile_lists[i]];
+        if (!composite_covers(q, c)) {
+            continue;
+        }
+        float4 src = group_source_with(q, p, true);
+        float4 o = q.blend_mode == 0u ? src + dst * (1.0 - src.a) : composite_mix(q.blend_mode, src, dst);
+        dst = round(saturate(o) * 255.0) / 255.0;
+    }
+    return dst;
+}
+
+// KaminIDE patch: two programs over one quad instance buffer. Plain quads never
+// carry the analytic stop loop or the t5/t6 gradient buffers; the renderer
+// draws runs of analytic-gradient quads with quad_gradient_fragment only.
+float4 quad_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    // KaminIDE patch: from here on, work in the quad's own coordinates.
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
+    input.background_solid, input.background_color0, input.background_color1);
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
+}
+QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    return quad_vertex(vertex_id, instance_id);
+}
+float4 quad_gradient_fragment(QuadFragmentInput input): SV_Target {
+    input.position.xy += global_origin;
+    Quad quad = quads[input.quad_id];
+    float2 local_position = untransform(input.position.xy, quad.transformation);
+    float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
+    background_color.a *= quad.background.solid.a;
+    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
 }

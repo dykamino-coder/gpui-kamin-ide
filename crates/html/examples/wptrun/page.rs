@@ -13,8 +13,15 @@ pub(super) struct Page {
     pub(super) probes: kamin_html::FragmentProbes,
 }
 
-impl Render for Page {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+impl Page {
+    /// Печатная пара рисуется стопкой страниц, а не областью просмотра.
+    pub(super) fn paged(&self) -> bool {
+        self.doc.is_print() && std::env::var_os("WPT_NO_PAGE").is_none()
+    }
+
+    /// Опции кадра документа с областью просмотра `viewport` (по умолчанию —
+    /// окно): те же у шага документа (`step`) и у кадра.
+    pub(super) fn opts(&self, window: &Window, viewport: Option<(f32, f32)>) -> RenderOpts {
         let mut text = window.text_style();
         text.color = rgb(0x000000).into();
         // Умолчание документа в браузере на Windows — Times New Roman 16px.
@@ -25,6 +32,27 @@ impl Render for Page {
         // показал 1041 → 1006 по css-text. Метрики системной подстановки
         // (кана в 0.82 кегля) совпадают с эталонами чаще, чем `MS Gothic`.
         text.font_size = px(16.).into();
+        let mut opts = RenderOpts {
+            viewport: viewport.unwrap_or((
+                f32::from(window.viewport_size().width),
+                f32::from(window.viewport_size().height),
+            )),
+            text,
+            normal_line_height: 1.31,
+            cx: Default::default(),
+            frag: Default::default(),
+        };
+        #[cfg(feature = "wpt-harness")]
+        {
+            opts.frag.probe = self.probes.clone();
+        }
+        opts.cx.deferred.freeze_scrollbars = true;
+        opts
+    }
+}
+
+impl Render for Page {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         // Правила и значения листа (`Len::parse` в `page_box`) — документа:
         // `@page` — его правила, значения — его арены (`Document::values`).
         let values = self.doc.values().keep();
@@ -46,7 +74,7 @@ impl Render for Page {
         // лист, а КРОП снимка: `ink()` при разной длине кадра и разделителя
         // возвращал `usize::MAX`, вердикт умножал его на 8 — переполнение в
         // debug-сборке роняло задачу стенда. Кропа больше нет.
-        let page = (self.doc.is_print() && std::env::var_os("WPT_NO_PAGE").is_none()).then(|| {
+        let page = self.paged().then(|| {
             // Лист — по своему номеру и имени страницы: каскад `@page`
             // (`:first`, `:left`/`:right`, имена; специфичность (f, g, h),
             // css-page-3 §cascading-and-page-context) решает
@@ -111,21 +139,7 @@ impl Render for Page {
             };
             (boxes(0, &first), boxes, margins)
         });
-        let mut opts = RenderOpts {
-            viewport: page.as_ref().map(|p| (p.0.area.0, p.0.area.1)).unwrap_or((
-                f32::from(window.viewport_size().width),
-                f32::from(window.viewport_size().height),
-            )),
-            text,
-            normal_line_height: 1.31,
-            cx: Default::default(),
-            frag: Default::default(),
-        };
-        #[cfg(feature = "wpt-harness")]
-        {
-            opts.frag.probe = self.probes.clone();
-        }
-        opts.cx.deferred.freeze_scrollbars = true;
+        let opts = self.opts(window, page.as_ref().map(|p| (p.0.area.0, p.0.area.1)));
         // Начальный содержащий блок — ВИДИМАЯ ОБЛАСТЬ, и размер ему нужен
         // точный, в точках. С долей (`size_full`) высота корня остаётся
         // неопределённой, и абсолютный элемент, растянутый краями

@@ -4,10 +4,13 @@
 #[cfg(feature = "allocation-audit")]
 pub(super) use counted::Counted;
 #[cfg(all(test, feature = "allocation-audit"))]
-pub(super) use counted::thread_live;
+pub(super) use counted::{thread_calls, thread_live};
 
 #[cfg(all(windows, any(feature = "allocation-audit", feature = "heap-profile")))]
 pub(super) mod probe;
+
+#[cfg(any(feature = "allocation-audit", feature = "heap-profile"))]
+pub(super) mod retain;
 
 #[cfg(all(feature = "heap-profile", not(feature = "allocation-audit")))]
 mod sampled;
@@ -31,6 +34,7 @@ mod counted {
     #[cfg(test)]
     thread_local! {
         static THREAD_LIVE: std::cell::Cell<i64> = const { std::cell::Cell::new(0) };
+        static THREAD_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     }
     #[cfg(test)]
     fn thread_delta(bytes: i64) {
@@ -42,9 +46,18 @@ mod counted {
         THREAD_LIVE.with(std::cell::Cell::get)
     }
 
+    /// Successful allocation calls on this thread, including temporary allocations.
+    #[cfg(test)]
+    pub(crate) fn thread_calls() -> u64 {
+        THREAD_CALLS.with(std::cell::Cell::get)
+    }
+
     fn allocated(bytes: usize) {
         #[cfg(test)]
-        thread_delta(bytes as i64);
+        {
+            thread_delta(bytes as i64);
+            let _ = THREAD_CALLS.try_with(|calls| calls.set(calls.get() + 1));
+        }
         CALLS.fetch_add(1, Relaxed);
         BYTES.fetch_add(bytes as u64, Relaxed);
         let live = LIVE.fetch_add(bytes as u64, Relaxed) + bytes as u64;
@@ -53,6 +66,7 @@ mod counted {
     // Пробник стеков выключен по умолчанию: тогда это одно чтение флага.
     #[inline]
     fn stack(kind: u8, bytes: usize, pointer: *const u8) {
+        super::retain::track(pointer, bytes);
         #[cfg(windows)]
         super::probe::record(kind, bytes, pointer);
         #[cfg(not(windows))]
@@ -62,6 +76,7 @@ mod counted {
     // получить тот же адрес и записать его выделение раньше этого освобождения.
     #[inline]
     fn release(bytes: usize, pointer: *const u8) {
+        super::retain::untrack(pointer);
         #[cfg(windows)]
         super::probe::release(bytes, pointer);
         #[cfg(not(windows))]

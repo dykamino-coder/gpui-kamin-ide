@@ -14,9 +14,12 @@ import {
   writeCoordinatedInput,
 } from './session-input-coordinator'
 import type { SendOutcome } from './jsonl-replay'
-import { sessionCliControl } from './session-cli-control'
+import { needsTerminalDelivery, sessionCliControl } from './session-cli-control'
+import { trackTerminalCommand } from './terminal-command-receipts'
 import { takeTurnContext } from '../conversation/conversation'
 import { withContextBlock } from '../engine/handoff'
+import { takeEffortNote } from './effort-note'
+import { applyTypedEffort } from './typed-effort'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -106,6 +109,14 @@ export function sendToClient(ws: WS, msg: Record<string, unknown>): boolean {
  *  that redeliver must split or replace it instead of retrying. */
 export type { SendOutcome } from './jsonl-replay'
 
+const UNCOMPRESSED_TYPES: ReadonlySet<string> = new Set([
+  'session:output',
+  'streaming:delta',
+  'streaming:status',
+  'session:activity',
+  'session:submission',
+])
+
 export function trySendToClient(ws: WS, msg: Record<string, unknown>): SendOutcome {
   if (ws.readyState !== 1 /* WS.OPEN */) return 'closed'
   // Checked BEFORE serialising: a congested socket costs no JSON.stringify.
@@ -126,7 +137,11 @@ export function trySendToClient(ws: WS, msg: Record<string, unknown>): SendOutco
   if (bytes > WS_SEND_MAX_BUFFER) return 'oversized'
   if ((ws.bufferedAmount ?? 0) + bytes > WS_SEND_MAX_BUFFER) return 'backpressured'
   try {
-    ws.send(frame)
+    // Live terminal and token-stream frames are frequent and short-lived:
+    // compressing them cost the main thread more than any other WS work
+    // under load (permessage-deflate). One-shot payloads (transcript entries,
+    // snapshots, replays) stay compressed.
+    ws.send(frame, { compress: !UNCOMPRESSED_TYPES.has(msg.type as string) })
     return 'sent'
   } catch {
     return 'closed'
@@ -234,42 +249,64 @@ export function submitTextToSession(session: PtySession, text: string, submissio
   }
   // The first turn of an engine that joined the conversation carries the
   // history as a hidden block (conversation/conversation.ts, handoff.ts).
-  const context = session.conversation ? takeTurnContext(session.conversation) : null
+  // Receipts keep the user's own text: it is the client's submission
+  // identity (the browser workspace persists it with its digest), and the
+  // block is the engine's input only.
+  // A typed `/effort <level>` is the selector's live change (typed-effort.ts);
+  // a live `/effort` since the last message adds the current level (effort-note.ts).
+  applyTypedEffort(session, text, (msg) => sendToClient(session.ws, msg))
+  const handoff = session.conversation ? takeTurnContext(session.conversation) : null
+  const effortNote = takeEffortNote(session, text)
+  const context = handoff && effortNote ? withContextBlock(handoff, effortNote) : (handoff ?? effortNote)
   if (context) {
-    text = withContextBlock(text, context)
+    const engineText = withContextBlock(text, context)
     // A multi-line paste needs the CLI's prompt up (see whenPromptReady).
     if (!session.agentInput && !getSessionInputSnapshot(session).promptReady) {
       const ready = whenPromptReady(session, FIRST_TURN_PROMPT_WAIT_MS).then(() => {
         firstTurnGates.delete(session)
-        deliverText(session, text, submissionId)
+        deliverText(session, { engine: engineText, user: text }, submissionId)
       })
       firstTurnGates.set(session, ready)
       return
     }
+    return deliverText(session, { engine: engineText, user: text }, submissionId)
   }
-  deliverText(session, text, submissionId)
+  deliverText(session, { engine: text, user: text }, submissionId)
 }
 
 /** A joining Claude session's first turn waits at most this long for the prompt. */
 const FIRST_TURN_PROMPT_WAIT_MS = 10_000
 const firstTurnGates = new WeakMap<PtySession, Promise<void>>()
 
-function deliverText(session: PtySession, text: string, submissionId?: string): void {
-  if (session.state !== 'running') return submitTextToSession(session, text, submissionId)
-  if (session.agentInput) return session.agentInput.submit(text, submissionId)
-  if (sessionCliControl(session)?.submit(text, submissionId)) return
-  if (submissionId)
+/** One user message: what the engine reads (with any hidden context block)
+ *  and what the user wrote (the receipt text and terminal-routing decision). */
+interface SubmittedText {
+  engine: string
+  user: string
+}
+
+function deliverText(session: PtySession, text: SubmittedText, submissionId?: string): void {
+  // The context block was already taken; a stopped session only reports.
+  if (session.state !== 'running') return submitTextToSession(session, text.user, submissionId)
+  if (session.agentInput) return session.agentInput.submit(text.engine, submissionId, text.user)
+  if (sessionCliControl(session)?.submit(text.engine, submissionId, text.user)) return
+  // A command, mention or attachment path goes through the terminal by design;
+  // the client warns only when delivery fell back for another reason.
+  if (submissionId) {
+    const createdAt = Date.now()
     sendToClient(session.ws, {
       type: 'session:submission',
       sessionId: session.id,
       id: submissionId,
-      text,
+      text: text.user,
       state: 'fallback',
       cancelable: false,
-      warning: 'Using native terminal delivery for this message.',
-      createdAt: Date.now(),
+      ...(needsTerminalDelivery(text.user) ? {} : { warning: 'Using native terminal delivery for this message.' }),
+      createdAt,
     })
-  submitCoordinatedText(session, text)
+    trackTerminalCommand(session, submissionId, text.user, createdAt)
+  }
+  submitCoordinatedText(session, text.engine)
 }
 
 /**

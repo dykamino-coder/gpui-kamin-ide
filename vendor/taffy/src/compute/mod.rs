@@ -44,6 +44,10 @@ pub(crate) mod flexbox;
 #[cfg(feature = "grid")]
 pub(crate) mod grid;
 
+// KaminIDE patch: independent measured hosts use the native overflow propagation rule.
+#[cfg(feature = "content_size")]
+pub use common::scrollable_overflow::compute_scrollable_overflow_contribution;
+
 pub use leaf::compute_leaf_layout;
 pub use oof::{compute_oof_layout, compute_oof_layout_for_area, resolve_static_offset, OofLayoutResult};
 

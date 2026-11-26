@@ -23,6 +23,33 @@ pub(crate) fn styled_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui:
     styled_div_with(e, &BoxStyle::shared(e.style.used()), cx)
 }
 
+mod owner;
+pub(crate) use owner::{Own, Refusal};
+
+mod probes;
+pub(crate) use probes::{requested_group_paint, requested_painter};
+
+/// The decorations of `e` as painters without layout (`decoration_painters`),
+/// for a box with no content painted again as the whole content of its
+/// composition group (`document::retained::box_repaint`): its own paint and
+/// these are all it paints there. `None` for a box with content, one whose
+/// painter is not its own (`owner::painter`), one painted per fragment, or a
+/// decoration only layout places.
+pub(crate) fn group_painters(
+    e: &Element,
+    cx: &crate::layout::cx::LayoutCx,
+) -> Option<crate::paint::decorations::Painters> {
+    let style = BoxStyle::shared(e.style.used());
+    let empty = !e.children.iter().any(|n| !is_blank(n));
+    if !empty
+        || cx.position.geometry_record.is_some()
+        || owner::painter(e, &style, true, || false) != Own::Plain
+    {
+        return None;
+    }
+    crate::paint::decorations::decoration_painters(&style, empty, cx.frame(), Some(cx))
+}
+
 pub(crate) fn styled_div_with(
     e: &Element,
     style: &BoxStyle,
@@ -36,6 +63,24 @@ pub(crate) fn styled_div_with_dimensions(
     style: &BoxStyle,
     cx: &crate::layout::cx::LayoutCx,
     dimensions: Option<BoxDimensions>,
+) -> gpui::Div {
+    built_div(e, style, cx, dimensions, true)
+}
+
+/// The `Div` of `styled_div` without its children (probes, decorations):
+/// what its own painter (`Style::paint_box`) reads, for a box that records
+/// its own commands again (`document::retained::box_repaint`). Children only
+/// add elements; none changes the style of the box.
+pub(crate) fn own_paint_div(e: &Element, cx: &crate::layout::cx::LayoutCx) -> gpui::Div {
+    built_div(e, &BoxStyle::shared(e.style.used()), cx, None, false)
+}
+
+fn built_div(
+    e: &Element,
+    style: &BoxStyle,
+    cx: &crate::layout::cx::LayoutCx,
+    dimensions: Option<BoxDimensions>,
+    children: bool,
 ) -> gpui::Div {
     let (frame, vcx) = (cx.frame(), cx.vcx());
     // Скрытая коробка с видимым потомком не прячется целиком: раскладка та
@@ -89,6 +134,10 @@ pub(crate) fn styled_div_with_dimensions(
             Some(crate::paint::apply::intrinsic_size::keywords_with_dimensions(c, &dimensions));
     }
     d = super::scroll::attach(d, e, c, cx);
+    if !children {
+        let d = clamp::apply(d, e, c, cx);
+        return d.paint_owner(u32::try_from(e.node_id).unwrap_or(0));
+    }
     if let Some(probe) = crate::interactive::scroll_extent::probe(
         cx.scroll.frame.as_ref(),
         e.node_id,
@@ -139,6 +188,7 @@ pub(crate) fn styled_div_with_dimensions(
     } else {
         c
     };
+    let mut decorated = false;
     if cx.position.geometry_record.is_some() {
         d = d.paint_box_with(crate::paint::coordinator::segments::box_painter(
             c.self_node,
@@ -152,9 +202,22 @@ pub(crate) fn styled_div_with_dimensions(
             d = d.child(clone_hidden::layer(e.node_id, extra));
         }
     } else {
-        for extra in decorations(c, empty, frame, Some(cx)) {
+        let extras = decorations(c, empty, frame, Some(cx));
+        decorated = !extras.is_empty();
+        for extra in extras {
             d = d.child(extra);
         }
     }
+    // The box's own fill binds to its number in the document's scene layer
+    // (`document::revision::layer_write`).
+    let id = u32::try_from(e.node_id).unwrap_or(0);
+    let d = match owner::painter(e, style, true, || decorated) {
+        Own::Plain => d.paint_owner(id),
+        Own::Not(Refusal::Decoration) => match crate::paint::decorations::outset(c) {
+            Some(outset) => d.decorated_paint_owner(id, gpui::px(outset)),
+            None => d.partial_paint_owner(id),
+        },
+        _ => d.partial_paint_owner(id),
+    };
     super::container_units::observe(d, e, style)
 }

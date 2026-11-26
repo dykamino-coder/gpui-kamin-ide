@@ -1,6 +1,7 @@
 //! Правка атрибутов коробок адресуемых элементов в разделяемом дереве: копия
 //! пути (`Children` копируется при записи) только до каждой правки.
 
+use super::boxes::{Boxes, at};
 use crate::dom::{Element, Node};
 use std::collections::HashMap;
 
@@ -14,21 +15,29 @@ pub(super) struct Target {
 }
 
 /// Атрибуты новой ревизии у каждого узла коробок адресуемого элемента: у
-/// коробок с его `node_id` и тегом (копии коробки делят оба). Синтетическая
-/// коробка с тем же номером и другим тегом (`html-viewport` берёт следующий
-/// за наибольшим номер дерева, которым может оказаться номер развёрнутого
-/// `html`) атрибутов автора не несёт: она должна быть без атрибутов и не
-/// правится. Элемент без коробки (`html`, `display: none`) правки не требует.
-/// `None` — у коробки атрибуты не те, что дал прежний DOM (их переписал
-/// проход сборки), и правка неприменима; пустой список — ни одна коробка не
-/// несёт правленых атрибутов. Без целей дерево не обходится.
+/// коробок с его `node_id` и тегом (копии коробки делят оба), найденных по
+/// индексу `boxes` без обхода дерева. Синтетическая коробка с тем же номером
+/// и другим тегом (`html-viewport` берёт следующий за наибольшим номер
+/// дерева, которым может оказаться номер развёрнутого `html`) атрибутов
+/// автора не несёт: она должна быть без атрибутов и не правится. Элемент без
+/// коробки (`html`, `display: none`) правки не требует. `None` — у коробки
+/// атрибуты не те, что дал прежний DOM (их переписал проход сборки), и правка
+/// неприменима; пустой список — ни одна коробка не несёт правленых атрибутов.
 pub(super) fn attr_paths(
     nodes: &[Node],
+    boxes: &Boxes,
     targets: &HashMap<u64, Target>,
 ) -> Option<Vec<(Path, u64)>> {
     let mut paths = Vec::new();
-    if !targets.is_empty() && !find(nodes, targets, &mut paths) {
-        return None;
+    for (&id, target) in targets {
+        for path in boxes.paths(id) {
+            let e = at(nodes, &path)?;
+            if e.tag == target.tag && e.attrs == target.old {
+                paths.push((path, id));
+            } else if e.tag == target.tag || !e.attrs.is_empty() {
+                return None;
+            }
+        }
     }
     Some(paths)
 }
@@ -36,11 +45,11 @@ pub(super) fn attr_paths(
 /// Записать атрибуты новой ревизии по путям `attr_paths` (копия только путей).
 pub(super) fn patch(
     nodes: &mut Vec<Node>,
-    paths: Vec<(Path, u64)>,
+    paths: &[(Path, u64)],
     targets: &HashMap<u64, Target>,
 ) -> bool {
     for (path, id) in paths {
-        match (apply(nodes, &path), targets.get(&id)) {
+        match (apply(nodes, path), targets.get(id)) {
             (Some(Node::Element(e)), Some(target)) => e.attrs = target.new.clone(),
             _ => return false,
         }
@@ -64,19 +73,40 @@ pub(super) fn apply<'a>(nodes: &'a mut Vec<Node>, path: &[usize]) -> Option<&'a 
     list.iter_mut().nth(*last)
 }
 
-/// Пути ко всем коробкам адресуемых элементов.
-fn find(nodes: &[Node], targets: &HashMap<u64, Target>, paths: &mut Vec<(Path, u64)>) -> bool {
-    let span = span(targets);
-    elements(nodes, |e, path| {
-        match within(&span, e).then(|| targets.get(&e.node_id)).flatten() {
-            Some(target) if e.tag == target.tag && e.attrs == target.old => {
-                paths.push((path.to_vec(), e.node_id));
-                true
-            }
-            Some(target) => e.tag != target.tag && e.attrs.is_empty(),
-            None => true,
-        }
-    })
+/// Коробка по пути `path` за O(глубины), без обхода дерева; `None`, если там
+/// не элемент.
+pub(in crate::document) fn element_at<'a>(
+    nodes: &'a [Node],
+    path: &[usize],
+) -> Option<&'a Element> {
+    let (last, parents) = path.split_last()?;
+    let mut list: &[Node] = nodes;
+    for &i in parents {
+        let Some(Node::Element(e)) = list.get(i) else {
+            return None;
+        };
+        list = &e.children;
+    }
+    match list.get(*last)? {
+        Node::Element(e) => Some(e),
+        _ => None,
+    }
+}
+
+/// The elements along `path` in `nodes`, outermost first, in one descent:
+/// `chain(nodes, path)[k]` is `element_at(nodes, &path[..=k])`, the chain ending
+/// at the first step that is no element.
+pub(in crate::document) fn chain<'a>(nodes: &'a [Node], path: &[usize]) -> Vec<&'a Element> {
+    let mut out = Vec::with_capacity(path.len());
+    let mut list = nodes;
+    for &i in path {
+        let Some(Node::Element(e)) = list.get(i) else {
+            break;
+        };
+        out.push(e);
+        list = &e.children;
+    }
+    out
 }
 
 /// Обход коробок в прямом порядке с путём к каждой (без рекурсии: глубина
@@ -102,16 +132,4 @@ pub(super) fn elements(nodes: &[Node], mut visit: impl FnMut(&Element, &[usize])
         stack.push((&e.children, 0));
     }
     true
-}
-
-/// The span of the box numbers of `targets`: a tree walk passes the boxes
-/// outside it without a lookup (the targets of an edit are few and close).
-pub(super) fn span<T>(targets: &HashMap<u64, T>) -> (u64, u64) {
-    let low = targets.keys().copied().min().unwrap_or(1);
-    (low, targets.keys().copied().max().unwrap_or(0))
-}
-
-/// The number of box `e` is within `span`.
-pub(super) fn within(span: &(u64, u64), e: &Element) -> bool {
-    span.0 <= e.node_id && e.node_id <= span.1
 }

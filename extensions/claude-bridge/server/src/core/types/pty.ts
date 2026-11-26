@@ -9,10 +9,16 @@ import type { AgentEngineId } from '../../shared/agent-events'
 /** Input side of a session driven by a non-PTY engine (codex app-server).
  *  session-io delegates to it instead of writing a terminal. */
 export interface SessionAgentInput {
-  /** A whole user message; the engine sends receipts itself. */
-  submit(text: string, submissionId?: string): void
+  /** A whole user message; the engine sends receipts itself, carrying
+   *  `userText` (what the user wrote, without Bridge's hidden context). */
+  submit(text: string, submissionId?: string, userText?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
+  /** Re-send the engine's live turn state to a newly attached client: an edge
+   *  sent while no client was attached is otherwise lost for good. */
+  replay?(): void
+  /** Work in progress that keeps the chat awake (idle hibernation); null = idle. */
+  liveWork?(): 'turn' | 'submission' | null
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +129,8 @@ export interface PtySession {
     stop(): void
     getFilePath(): string | null
     replayAll?(history?: SessionConfig['history']): void
+    /** Follow an inline /resume reported by the CLI's SessionStart hook. */
+    adoptResumedTranscript?(conversationId: string): boolean
     segmentRange?(fromTs: string, toTs: string): Promise<{ lower: number; upper: number } | null>
     scanSubagents?(): Promise<void>
     selectSubagent?(agentId: string | null): void
@@ -130,6 +138,8 @@ export interface PtySession {
      *  client that already mirrors the transcript. Callers must verify the
      *  file's fingerprint first. */
     streamFrom?(offset: number, live: () => boolean): Promise<number>
+    /** The CLI signalled activity (a hook); look at the transcript now. */
+    poke?(): void
   }
   /** What the client host declared it can execute; absent for older clients. */
   host?: HostDeclaration
@@ -197,6 +207,16 @@ export interface PtySession {
    *  boundary snapshots; 0/undefined → legacy full-snapshot every tick).
    *  Refreshed on reattach so a resumed client gets the mode it just asked for. */
   streamProtocol?: number
+  /** The create/resume config this session was started from. Idle hibernation
+   *  respawns the CLI from it, so a woken chat keeps its prompt, mirror dir,
+   *  host declaration and engine exactly as the client asked for them. */
+  launchConfig?: SessionConfig
+  /** Set by hibernateSession(): the PTY is being stopped on purpose; the
+   *  client keeps the chat and must not see a session:exit. */
+  hibernating?: boolean
+  /** ms timestamp of a pending ScheduleWakeup seen in the transcript. The
+   *  session never hibernates before it fires (plus a margin). */
+  scheduledWakeupAt?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +269,10 @@ export interface SessionConfig {
   rows?: number
   /** Additional Claude CLI flags */
   extraArgs?: string[]
+  /** How the CLI asks the API to return thinking. `summarized` (the default)
+   *  returns readable summaries; `updates` is the CLI's own default, which
+   *  returns most thinking as a signature without text (INC-2026-0098). */
+  thinkingDisplay?: 'summarized' | 'updates'
   /** The user's standing instructions, APPENDED to the technical system prompt
    *  (never replacing it — see buildSystemPrompt). Client-supplied per session. */
   basePrompt?: string
@@ -287,6 +311,13 @@ export interface SessionConfig {
   segmentStart?: { settingsDir: string }
   /** Engine switch (server-set): attach the transcript later (attachTranscript). */
   deferTranscript?: boolean
+  /** Server-set on a respawn of the same chat (hibernation wake, effort/model
+   *  restart): the client's MCP registrations carry over before the CLI asks
+   *  for its tool list, so the respawned CLI sees the same tools. */
+  carryRegistrations?: Pick<
+    PtySession,
+    'registeredTools' | 'registeredResources' | 'registeredResourceTemplates' | 'registeredPrompts'
+  >
 }
 
 // ---------------------------------------------------------------------------

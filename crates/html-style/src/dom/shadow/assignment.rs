@@ -8,7 +8,7 @@
 //! слот с его именем, остальные не рисуются. Результат — черновики `SlotInfo`.
 
 use super::{Scope, SlotInfo, Slotted, attr_of, is_slot};
-use crate::dom::tree_index::{NodeKey, TreeIndex};
+use crate::dom::tree_index::{HandleKey, TreeIndex};
 use crate::dom::*;
 use crate::style::css::{LayerRegistry, Media, Rule, parse_document_sheet};
 use crate::style::select::has::{HasArg, parse_has_arg, retain_valid_rules};
@@ -65,7 +65,7 @@ pub(super) fn shadow_scope(
     agent.clone_cost.replay(&admission)?;
     let mut rules = agent.rules.clone();
     let mut frames = agent.frames.clone();
-    let sheets = try_collect_style_tags(root, &admission)?;
+    let sheets = try_collect_style_tags(root, &admission, Some((&media, vcx)))?;
     for css in sheets.iter() {
         let base = rules.len();
         for (i, r) in parse_document_sheet(css, media, layers, vcx)?
@@ -125,7 +125,7 @@ pub(super) fn assign_slots(
     light: &[Handle],
     outer: &Rc<Scope>,
     host_path: &Rc<Vec<Ancestor>>,
-    drafts: &mut HashMap<NodeKey, SlotInfo>,
+    drafts: &mut HashMap<HandleKey, SlotInfo>,
     tree: &TreeIndex,
 ) -> Result<(), crate::budget::admission::Error> {
     let admission = tree.admission();
@@ -137,7 +137,7 @@ pub(super) fn assign_slots(
     admission.work(light.len())?;
     let (spots, all) = census_of(light, tree);
     let light_all = Rc::new(all);
-    let mut assigned: HashMap<NodeKey, Vec<Slotted>> = HashMap::new();
+    let mut assigned: HashMap<HandleKey, Vec<Slotted>> = HashMap::new();
     let mut pos = 0usize;
     for (idx, node) in light.iter().enumerate() {
         admission.work(slots.len() + 1)?;
@@ -163,7 +163,7 @@ pub(super) fn assign_slots(
             continue;
         };
         assigned
-            .entry(NodeKey::of(slot))
+            .entry(HandleKey::of(slot))
             .or_default()
             .push(Slotted {
                 node: node.clone(),
@@ -174,7 +174,7 @@ pub(super) fn assign_slots(
     }
     for slot in slots {
         admission.work(light.len() + spots.len() + 1)?;
-        let key = NodeKey::of(&slot);
+        let key = HandleKey::of(&slot);
         let assigned = assigned.remove(&key).unwrap_or_default();
         drafts.insert(
             key,

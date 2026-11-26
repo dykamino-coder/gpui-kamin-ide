@@ -25,10 +25,10 @@ impl Paragraph {
         hitbox: Hitbox,
         window: &mut Window,
     ) {
-        let inside = hitbox.is_hovered(window);
-        if inside {
-            window.set_cursor_style(gpui::CursorStyle::IBeam, &hitbox);
-        }
+        // The frame takes the caret over text by the hitbox hovered at its end
+        // (`gpui::Frame::cursor_style`): the request does not depend on where
+        // the pointer is at paint, so the paint replays (`track_selection`).
+        window.set_cursor_style(gpui::CursorStyle::IBeam, &hitbox);
         // Замыкания живут дольше кадра, поэтому берут СВОЙ снимок раскладки.
         let probe = Paragraph {
             prepared: Default::default(),
@@ -38,6 +38,8 @@ impl Paragraph {
             clamp_rows: self.clamp_rows.clone(),
             measures: self.measures.clone(),
             fragment: None,
+            kept: Default::default(),
+            fragments: None,
             scroll_owner: None,
             plaintext: self.plaintext,
             lines_reversed: self.lines_reversed,
@@ -123,7 +125,7 @@ impl Paragraph {
         let segs = std::rc::Rc::new(segs);
         track_selection(
             global,
-            inside,
+            &hitbox,
             move |p: Point<Pixels>| Some(probe.index_at(&segs, bounds, p)),
             window,
         );

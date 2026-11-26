@@ -42,12 +42,12 @@ impl FontFactsProvider for Faces {
     }
 }
 
-fn styled(css: &str, vcx: ValueCx<'_>) -> Computed {
+pub(super) fn styled(css: &str, vcx: ValueCx<'_>) -> Computed {
     let mut style = Computed::default();
     style.apply_decls(&crate::style::css::parse_decls(css), vcx);
     style
 }
-fn doc() -> Rc<crate::values::DocumentValues> {
+pub(super) fn doc() -> Rc<crate::values::DocumentValues> {
     let doc = crate::values::DocumentValues::detached(Default::default());
     doc.install_font_facts(Some(Rc::new(Faces)));
     doc

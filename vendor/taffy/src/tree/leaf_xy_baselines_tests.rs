@@ -14,6 +14,7 @@ fn measured() -> MeasureOutput {
         baseline_x: Some(23.0),
         last_baseline_x: Some(11.0),
         baseline_x_from_right: false,
+        overflow: None,
     }
 }
 

@@ -1869,6 +1869,28 @@ impl Div {
         self
     }
 
+    /// Record a box whose decorations also paint in child elements.
+    pub fn decorated_paint_owner(mut self, owner: u32, outset: Pixels) -> Self {
+        self.interactivity.paint_owner = owner;
+        self.interactivity.box_run = crate::scene::BoxContents::DecoratedBox(outset);
+        self
+    }
+
+    /// Bind this box's values, retaining that other painters contribute to its output.
+    pub fn partial_paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.paint_owner = owner;
+        self.interactivity.box_run = crate::scene::BoxContents::External;
+        self
+    }
+
+    /// KaminIDE patch: name the values the box's own paint binds in a scene
+    /// layer (`LayerHandle::set_background`) by `owner`; 0 for none.
+    pub fn paint_owner(mut self, owner: u32) -> Self {
+        self.interactivity.box_run = crate::scene::BoxContents::Own;
+        self.interactivity.paint_owner = owner;
+        self
+    }
+
     /// Прикрепление непрозрачных paint-метаданных без изменения дерева layout.
     pub fn with_paint_metadata(mut self, metadata: impl std::any::Any) -> Self {
         self.paint_metadata = Some(std::rc::Rc::new(metadata));
@@ -2147,6 +2169,14 @@ impl Element for Div {
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
 
+        // KaminIDE patch: a box whose bars layout decided takes them before its style is
+        // computed: they set its scrolling axes and the clip of its overflow.
+        if let Some(bars) = request_layout.layout_id.and_then(|id| window.layout_scrollbars(id))
+            && self.interactivity.base_style.differs_from_layout_scrollbars(bars)
+        {
+            Rc::make_mut(&mut self.interactivity.base_style).adopt_layout_scrollbars(bars);
+        }
+        let scroll_handle = self.interactivity.tracked_scroll_handle.clone();
         let hitbox = self.interactivity.prepaint(
             global_id,
             inspector_id,
@@ -2162,7 +2192,10 @@ impl Element for Div {
                     return hitbox;
                 }
 
+                // KaminIDE patch: a scroll container's children form a scroll node.
+                let node = scroll_handle.as_ref().map(|handle| (handle, window.content_mask().bounds));
                 window.with_image_cache(image_cache, |window| {
+                    let open = window.begin_scroll_node_prepaint(node, scroll_offset);
                     window.with_element_offset(scroll_offset, |window| {
                         if let Some(traversal) = window.render_context::<crate::PrepaintTraversal>() {
                             (traversal.enter_children)(window);
@@ -2180,6 +2213,7 @@ impl Element for Div {
                             }
                         }
                     });
+                    window.end_scroll_node_prepaint(open);
 
                     if let Some(listener) = self.prepaint_listener.as_ref() {
                         listener(children_bounds, window, cx);
@@ -2213,6 +2247,8 @@ impl Element for Div {
             &mut window.raster_frame.exact_bounds,
             request_layout.exact_bounds.map(|exact| (bounds, exact)),
         );
+        // KaminIDE patch: the children of a scroll container paint as its node.
+        let scroll_node = self.interactivity.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
         window.with_image_cache(image_cache, |window| {
             self.interactivity.paint(
                 global_id,
@@ -2238,6 +2274,7 @@ impl Element for Div {
                         #[cfg(feature = "stacker")] { &mut **child }
                         #[cfg(not(feature = "stacker"))] { child }
                     });
+                    let open = window.begin_scroll_node_paint(scroll_node);
                     if let Some(painter) = painter {
                         (painter.0)(
                             &crate::ChildPaintContext {
@@ -2253,6 +2290,7 @@ impl Element for Div {
                     } else {
                         for child in children { child.paint(window, cx); }
                     }
+                    window.end_scroll_node_paint(open);
                 },
             )
         });
@@ -2300,6 +2338,10 @@ pub(crate) struct AriaProperties {
 /// interactivity in the `Div` element.
 pub struct Interactivity {
     pub(crate) box_painter: Option<crate::BoxPainter>,
+    /// KaminIDE patch: the owner the box's own paint binds its values to
+    /// (`Window::with_paint_owner`); 0 for none.
+    pub(crate) paint_owner: u32,
+    pub(super) box_run: crate::scene::BoxContents,
     /// The element ID of the element. In id is required to support a stateful subset of the interactivity such as on_click.
     pub element_id: Option<ElementId>,
     /// Whether the element was clicked. This will only be present after layout.
@@ -2349,6 +2391,8 @@ impl Default for Interactivity {
     fn default() -> Self {
         Self {
             box_painter: None,
+            paint_owner: 0,
+            box_run: crate::scene::BoxContents::Own,
             element_id: None,
             active: None,
             hovered: None,
@@ -2596,6 +2640,10 @@ impl Interactivity {
                     );
                 }
 
+                if let Some(offset) = &self.scroll_offset {
+                    window.record_scroll_input(offset, self.tracked_scroll_handle.as_ref());
+                }
+
                 let style = self.compute_style_boxed(None, element_state.as_mut(), window, cx);
                 // Every state style lives in `rare`: without it the style is the base
                 // refinement on the default style (`compute_style_internal`).
@@ -2799,6 +2847,7 @@ impl Interactivity {
 
             if let Some(mut scroll_handle_state) = tracked_scroll_handle {
                 scroll_handle_state.max_offset = scroll_max;
+                scroll_handle_state.padding = padding_size;
                 scroll_handle_state.bounds = bounds;
             }
 
@@ -2894,7 +2943,7 @@ impl Interactivity {
         }
 
         window.with_element_opacity(style.opacity, |window| {
-            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx);
+            self.paint_own_box(&style, bounds, hitbox, window, cx);
             style.paint_after_box(window, cx, |window: &mut Window, cx: &mut App| {
                 window.with_child_style(&style, bounds, |window| {
                     window.with_tab_group(tab_group, |window| {
@@ -3638,6 +3687,28 @@ impl Interactivity {
         for (action_type, listener) in action_listeners {
             window.on_action(action_type, listener)
         }
+    }
+
+    /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
+    /// painter) under its scene-layer run (`Window::with_run`). A leaf
+    /// of the paint recursion: its paint state and painter stay out of the
+    /// recursive frame of `paint_with_state`, which every nesting level of a
+    /// deep tree lays out again.
+    #[inline(never)]
+    fn paint_own_box(&self, style: &Style, bounds: Bounds<Pixels>, hitbox: Option<&Hitbox>, window: &mut Window, cx: &mut App) {
+        let contents = if self.box_painter.is_some() {
+            crate::scene::BoxContents::External
+        } else {
+            self.box_run
+        };
+        let painter = crate::scene::RunPainter::Box(contents);
+        // A hover style refines the box's paint: its run notes the hitbox and
+        // whether this paint showed it (`compute_style`).
+        let hovered = self.rare().is_some_and(|rare| rare.hover_style.is_some());
+        window.run_hover = hitbox.filter(|_| hovered).map(|h| (h.id, window.hover_shown(h.id, cx)));
+        window.with_run(self.paint_owner, bounds, painter, |window| {
+            style.paint_box_with(bounds, self.box_painter.as_ref(), window, cx)
+        });
     }
 
     fn paint_hover_group_handler(&self, window: &mut Window, cx: &mut App) {
@@ -4595,6 +4666,8 @@ struct ScrollHandleState {
     ongoing_scroll: Rc<RefCell<OngoingScroll>>,
     bounds: Bounds<Pixels>,
     max_offset: Point<Pixels>,
+    // KaminIDE patch: the padding the last clamp added to the content (`resize_item`).
+    padding: Size<Pixels>,
     child_bounds: Vec<Bounds<Pixels>>,
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
@@ -4620,6 +4693,13 @@ enum ScrollStrategy {
 #[derive(Clone, Debug)]
 pub struct ScrollHandle(Rc<RefCell<ScrollHandleState>>);
 
+impl ScrollHandle {
+    /// KaminIDE patch: identity of the shared state, the scroll node's id.
+    pub(crate) fn node_identity(&self) -> usize {
+        Rc::as_ptr(&self.0) as *const () as usize
+    }
+}
+
 impl Default for ScrollHandle {
     fn default() -> Self {
         Self::new()
@@ -4637,9 +4717,54 @@ impl ScrollHandle {
         *self.0.borrow().offset.borrow()
     }
 
+    pub(crate) fn has_pending_scroll(&self) -> bool {
+        let state = self.0.borrow();
+        state.scroll_to_bottom || state.active_item.is_some()
+    }
+
     /// Get the maximum scroll offset.
     pub fn max_offset(&self) -> Point<Pixels> {
         self.0.borrow().max_offset
+    }
+
+    /// KaminIDE patch: the scroll range a prepaint would record (tests).
+    #[cfg(test)]
+    pub(crate) fn set_max_offset(&self, max: Point<Pixels>) {
+        self.0.borrow_mut().max_offset = max;
+    }
+
+    /// KaminIDE patch: child `index` of the last prepaint measures `size`
+    /// now (a proxy its host sizes from what that layout measured): the
+    /// scroll range takes it in place, as the next layout would compute it
+    /// (`clamp_scroll_position`), and nothing has to be laid out again.
+    /// False, the state unchanged, when the handle has no such child, or
+    /// the offset lies outside the new range, or a scroll to the bottom is
+    /// pending: then a layout must place the content (clamp the offset).
+    pub fn resize_item(&self, index: usize, size: Size<Pixels>) -> bool {
+        let mut state = self.0.borrow_mut();
+        if state.scroll_to_bottom || index >= state.child_bounds.len() {
+            return false;
+        }
+        let mut items = state.child_bounds.clone();
+        items[index].size = size;
+        // As the prepaint measures the content (`Div::prepaint`).
+        let (mut min, mut max) = (point(Pixels::MAX, Pixels::MAX), Point::default());
+        for item in &items {
+            min = min.min(&item.origin);
+            max = max.max(&item.bottom_right());
+        }
+        let round = |pixels: Pixels| (pixels * 100.0).round() / 100.0;
+        let content: Size<Pixels> = (max - min).into();
+        let range = Point::from(content + state.padding - state.bounds.size)
+            .map(round)
+            .max(&Default::default());
+        let offset = *state.offset.borrow();
+        if offset.x < -range.x || offset.y < -range.y {
+            return false;
+        }
+        state.child_bounds = items;
+        state.max_offset = range;
+        true
     }
 
     /// Get the top child that's scrolled into view.
@@ -5990,6 +6115,60 @@ mod tests {
             .unwrap();
 
         assert_eq!(scroll_handle.max_offset().y, px(0.));
+    }
+
+    /// KaminIDE patch: a child resized after the prepaint gives the range the
+    /// next layout gives (padding included), unless the offset lies past it.
+    #[gpui::test]
+    fn resize_item_takes_the_range_the_next_layout_gives(cx: &mut TestAppContext) {
+        struct Proxy {
+            scroll_handle: ScrollHandle,
+            height: Rc<Cell<f32>>,
+        }
+
+        impl Render for Proxy {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    div()
+                        .id("container")
+                        .h(px(50.))
+                        .w(px(100.))
+                        .py(px(4.))
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll_handle)
+                        .child(div().absolute().w(px(10.)).h(px(self.height.get())))
+                        .child(div().w_full().h(px(20.))),
+                )
+            }
+        }
+
+        let scroll_handle = ScrollHandle::new();
+        let height = Rc::new(Cell::new(80.));
+        let window: AnyWindowHandle = cx
+            .add_window({
+                let (scroll_handle, height) = (scroll_handle.clone(), height.clone());
+                move |_, _| Proxy { scroll_handle, height }
+            })
+            .into();
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx)
+            })
+            .unwrap()
+        };
+        draw(cx);
+        assert_eq!(scroll_handle.max_offset().y, px(38.));
+        // Taller: the range grows as a layout with the new height gives it.
+        assert!(scroll_handle.resize_item(0, size(px(10.), px(130.))));
+        let resized = scroll_handle.max_offset();
+        height.set(130.);
+        draw(cx);
+        assert_eq!(resized, scroll_handle.max_offset());
+        // Scrolled to the end, a shorter child needs a layout to clamp.
+        scroll_handle.set_offset(point(px(0.), -resized.y));
+        assert!(!scroll_handle.resize_item(0, size(px(10.), px(60.))));
+        assert_eq!(scroll_handle.max_offset(), resized, "unchanged");
     }
 
     struct ContentSizedGrid;

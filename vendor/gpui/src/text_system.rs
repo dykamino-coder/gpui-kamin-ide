@@ -1,3 +1,4 @@
+pub(crate) mod band_piece;
 mod composed;
 mod font_fallbacks;
 mod font_features;
@@ -10,6 +11,7 @@ mod shaping;
 pub use composed::LinePiece;
 pub use font_fallbacks::*;
 pub use font_features::*;
+pub use band_piece::BandStyle;
 pub use line::*;
 pub use line_layout::*;
 pub use line_wrapper::*;
@@ -660,6 +662,11 @@ impl WindowTextSystem {
         self.line_layout_cache.layout_index()
     }
 
+    /// KaminIDE patch: line layouts the frame caches hold.
+    pub fn cached_line_layouts(&self) -> usize {
+        self.line_layout_cache.cached_layouts()
+    }
+
     pub(crate) fn reuse_layouts(&self, index: Range<LineLayoutIndex>) {
         self.line_layout_cache.reuse_layouts(index)
     }
@@ -706,6 +713,7 @@ impl WindowTextSystem {
                 && last_run.underline == run.underline
                 && last_run.strikethrough == run.strikethrough
                 && last_run.background_color == run.background_color
+                && last_run.background_owner == run.background_owner
             {
                 last_run.len += run.len as u32;
                 continue;
@@ -717,6 +725,7 @@ impl WindowTextSystem {
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
                 background_line_gap: run.background_line_gap,
+                background_owner: run.background_owner,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -875,6 +884,7 @@ impl WindowTextSystem {
                 && last_run.underline == run.underline
                 && last_run.strikethrough == run.strikethrough
                 && last_run.background_color == run.background_color
+                && last_run.background_owner == run.background_owner
             {
                 last_run.len += run.len as u32;
                 continue;
@@ -886,6 +896,7 @@ impl WindowTextSystem {
                 background_pad: run.background_pad,
                 background_radius: run.background_radius,
                 background_line_gap: run.background_line_gap,
+                background_owner: run.background_owner,
                 background_border: run.background_border,
                 underline: run.underline,
                 strikethrough: run.strikethrough,
@@ -954,11 +965,14 @@ impl WindowTextSystem {
         let mut lines = SmallVec::new();
         let mut max_wrap_lines = line_clamp;
         let mut wrapped_lines = 0;
+        // KaminIDE patch: the runs of a line are gathered in one buffer and the
+        // line keeps an exact copy. A fresh `with_capacity(32)` per line kept
+        // 32 runs (~5 KB) alive in every wrapped line of a document.
+        let mut decoration_runs = Vec::<DecorationRun>::with_capacity(32);
 
         let mut process_line = |line_text: SharedString, line_start, line_end| {
             font_runs.clear();
-
-            let mut decoration_runs = <Vec<DecorationRun>>::with_capacity(32);
+            decoration_runs.clear();
             let mut run_start = line_start;
             while run_start < line_end {
                 let Some(run) = runs.peek_mut() else {
@@ -973,6 +987,7 @@ impl WindowTextSystem {
                     && last_run.underline == run.underline
                     && last_run.strikethrough == run.strikethrough
                     && last_run.background_color == run.background_color
+                    && last_run.background_owner == run.background_owner
                 {
                     last_run.len += run_len_within_line as u32;
                     false
@@ -984,6 +999,7 @@ impl WindowTextSystem {
                         background_pad: run.background_pad,
                         background_radius: run.background_radius,
                         background_line_gap: run.background_line_gap,
+                        background_owner: run.background_owner,
                         background_border: run.background_border,
                         underline: run.underline,
                         strikethrough: run.strikethrough,
@@ -1028,7 +1044,7 @@ impl WindowTextSystem {
 
             lines.push(WrappedLine {
                 layout,
-                decoration_runs,
+                decoration_runs: decoration_runs.to_vec(),
                 text: line_text,
             });
 
@@ -1400,6 +1416,12 @@ pub struct TextRun {
     /// (the HTML engine's inline box content area). `false` (IDE text) keeps
     /// the band at ascent + descent.
     pub background_line_gap: bool,
+    /// KaminIDE patch: the box whose band the run paints (the host's node
+    /// number of an inline box; 0 for none). Each piece of the band is that
+    /// box's run in a scene layer (`Window::with_run`) and its fill a
+    /// background value bound to it, so the box's fragments over all lines
+    /// are one owner's runs (`LayerHandle::set_backgrounds`).
+    pub background_owner: u32,
     /// The underline style (if any)
     pub underline: Option<UnderlineStyle>,
     /// The strikethrough style (if any)

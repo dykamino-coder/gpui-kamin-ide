@@ -11,6 +11,19 @@ use crate::values::ValueCx;
 /// Разметка с корневой канвой ЗАДАННОГО размера: собственные width/height
 /// корня заменяются, иначе растеризатор вписал бы рисунок по ним.
 pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: ValueCx<'_>) -> String {
+    serialize_viewport(e, size_of(e), w, h, nx, ny, vcx)
+}
+
+/// Serialize a used CSS viewport without changing the computed style or natural size.
+pub fn serialize_viewport(
+    e: &Element,
+    viewport: (f32, f32),
+    w: f32,
+    h: f32,
+    nx: f32,
+    ny: f32,
+    vcx: ValueCx<'_>,
+) -> String {
     crate::work::add!(SvgSerializeCalls, 1);
     crate::work::add!(SvgSerializeNodes, 1);
     crate::work::time!(_svg_time, SvgSerializeNs);
@@ -62,7 +75,7 @@ pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: Value
     // растянулся бы на выросшую канву (`border-shape-shadow-ref`: рамка
     // 220 → 230). `viewBox` расширяется в той же пропорции, что и канва, а
     // при запасе влево/вверх — сдвигается на него.
-    let (w0, h0) = size_of(e);
+    let (w0, h0) = viewport;
     let grown = w > w0 + 0.5 || h > h0 + 0.5 || shifted;
     for (k, v) in &e.attrs {
         if k == "width" || k == "height" {
@@ -97,7 +110,7 @@ pub fn serialize_sized(e: &Element, w: f32, h: f32, nx: f32, ny: f32, vcx: Value
     // Опорная коробка `view-box` для CSS-обрезки детей (`synth_clip`): корень
     // пишется здесь, а не в `write_element`.
     let cx = SerializeCx {
-        view_box: view_box_ratio(e).unwrap_or_else(|| size_of(e)),
+        view_box: view_box_ratio(e).unwrap_or(viewport),
         in_clip: false,
     };
     for child in &e.children {

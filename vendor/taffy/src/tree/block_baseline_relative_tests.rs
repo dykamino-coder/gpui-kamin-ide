@@ -52,6 +52,7 @@ fn vertical_block_baselines_ignore_relative_offsets_in_both_directions() {
                             baseline_x: Some(55.0),
                             last_baseline_x: Some(-3.0),
                             baseline_x_from_right: false,
+                            overflow: None,
                         },
                     )
                 })

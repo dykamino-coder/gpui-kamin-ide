@@ -32,7 +32,7 @@ pub(crate) use constraints::{BoxConstraints, FragmentConstraints, WidthBasis, Wi
 pub(crate) use contracts::BuildContext;
 pub use deferred::DeferredPaintContext;
 pub(crate) use fragmentation::FragmentationContext;
-pub(crate) use frame::FrameCx;
+pub(crate) use frame::{FrameCx, FrameDoc};
 pub(crate) use inline::InlineContext;
 pub(crate) use position::PositioningContext;
 pub(crate) use ruby::RubyContext;
@@ -153,7 +153,6 @@ impl LayoutCx {
             values: self.vcx(),
             lines: self.fragmentation.lines.as_ref(),
             lengths: Some(&self.contracts.lengths),
-            subtrees: Some(&self.contracts.subtrees),
             paint: Some(&self.deferred.paint),
             layout: self.layout(),
         }
@@ -174,6 +173,15 @@ impl RenderOpts {
     /// stack frames are tight.
     pub(crate) fn inner(&self, f: impl FnOnce(&mut LayoutCx)) -> Box<RenderOpts> {
         let mut opts = Box::new(self.clone());
+        f(&mut opts.cx);
+        opts
+    }
+
+    /// [`inner`](Self::inner) by value, for the build steps that run on the
+    /// builder's stack (`reblessive`): their state is already on the heap, so
+    /// the options need no box of their own.
+    pub(crate) fn inner_value(&self, f: impl FnOnce(&mut LayoutCx)) -> RenderOpts {
+        let mut opts = self.clone();
         f(&mut opts.cx);
         opts
     }

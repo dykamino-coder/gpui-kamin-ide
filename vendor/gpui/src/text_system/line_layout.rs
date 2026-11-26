@@ -554,6 +554,26 @@ pub(crate) fn layouts_released() -> bool {
     LAYOUTS_RELEASED.with(|released| released.get())
 }
 
+thread_local! {
+    /// KaminIDE patch: see [`with_layouts_sealed`].
+    static LAYOUTS_SEALED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn layouts_sealed() -> bool {
+    LAYOUTS_SEALED.with(|sealed| sealed.get())
+}
+
+/// KaminIDE patch: run `f` with the frame caches sealed: a hit is handed out
+/// where it is (a hit of the previous frame stays there), a miss is not
+/// cached. For a layout pass between frames (`Window::with_layout_read`):
+/// the caches neither grow nor lose the lines the next frame looks up.
+pub(crate) fn with_layouts_sealed<R>(f: impl FnOnce() -> R) -> R {
+    let outer = LAYOUTS_SEALED.with(|sealed| sealed.replace(true));
+    let result = f();
+    LAYOUTS_SEALED.with(|sealed| sealed.set(outer));
+    result
+}
+
 /// KaminIDE patch: exchange the release scope with `released` (deferred
 /// paint runs in the scope it was captured in, `PaintCtx`).
 pub(crate) fn swap_layouts_released(released: &mut bool) {
@@ -579,6 +599,33 @@ pub(crate) struct LineLayoutIndex {
     wrapped_lines_index: usize,
     lines_by_hash_index: usize,
     wrapped_lines_by_hash_index: usize,
+}
+
+impl LineLayoutIndex {
+    /// KaminIDE patch: this index in 32-bit words; retained ranges keep many.
+    pub(crate) fn pack(&self) -> [u32; 5] {
+        [
+            self.font_generation,
+            self.lines_index,
+            self.wrapped_lines_index,
+            self.lines_by_hash_index,
+            self.wrapped_lines_by_hash_index,
+        ]
+        .map(crate::window::pack_index)
+    }
+
+    /// KaminIDE patch: the index `pack` gave.
+    pub(crate) fn unpack(words: [u32; 5]) -> Self {
+        let [font_generation, lines_index, wrapped_lines_index, lines_by_hash_index, wrapped_lines_by_hash_index] =
+            words.map(|w| w as usize);
+        Self {
+            font_generation,
+            lines_index,
+            wrapped_lines_index,
+            lines_by_hash_index,
+            wrapped_lines_by_hash_index,
+        }
+    }
 }
 
 impl LineLayoutCache {
@@ -700,6 +747,17 @@ impl LineLayoutCache {
             .truncate(index.wrapped_lines_by_hash_index);
     }
 
+    /// KaminIDE patch: line layouts the frame caches hold (current and
+    /// previous frame), for hosts that check a pass leaves them unchanged.
+    pub fn cached_layouts(&self) -> usize {
+        let current = self.current_frame.read();
+        let previous = self.previous_frame.lock();
+        [&*current, &*previous]
+            .iter()
+            .map(|f| f.lines.len() + f.wrapped_lines.len() + f.lines_by_hash.len() + f.wrapped_lines_by_hash.len())
+            .sum()
+    }
+
     pub fn finish_frame(&self) {
         let _font_generation = self.clear_if_font_generation_changed();
         let mut curr_frame = self.current_frame.write();
@@ -760,6 +818,11 @@ impl LineLayoutCache {
             return layout;
         }
 
+        if layouts_sealed()
+            && let Some(layout) = self.previous_frame.lock().wrapped_lines.get(key)
+        {
+            return layout.clone();
+        }
         let previous_frame_entry = self.previous_frame.lock().wrapped_lines.remove_entry(key);
         if let Some((key, layout)) = previous_frame_entry {
             if layouts_released() {
@@ -791,7 +854,7 @@ impl LineLayoutCache {
                 wrap_boundaries,
                 wrap_width,
             });
-            if layouts_released() {
+            if layouts_released() || layouts_sealed() {
                 return layout;
             }
             let key = Arc::new(CacheKey {
@@ -908,6 +971,12 @@ impl LineLayoutCache {
             return layout;
         }
 
+        if layouts_sealed()
+            && let Some(layout) = self.previous_frame.lock().lines.get(key)
+        {
+            crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return layout.clone();
+        }
         let mut current_frame = RwLockUpgradableReadGuard::upgrade(current_frame);
         if let Some((key, layout)) = self.previous_frame.lock().lines.remove_entry(key) {
             crate::frame_perf::CACHED_LINES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -928,7 +997,7 @@ impl LineLayoutCache {
                 std::sync::atomic::Ordering::Relaxed,
             );
 
-            if layouts_released() {
+            if layouts_released() || layouts_sealed() {
                 return Arc::new(layout);
             }
             let key = Arc::new(CacheKey {
@@ -1065,7 +1134,13 @@ impl LineLayoutCache {
             })
             .cloned()
         {
-            if let Some((key, layout)) = previous_frame.lines_by_hash.remove_entry(&existing_key) {
+            if layouts_sealed() {
+                if let Some(layout) = previous_frame.lines_by_hash.get(&existing_key) {
+                    return layout.clone();
+                }
+            } else if let Some((key, layout)) =
+                previous_frame.lines_by_hash.remove_entry(&existing_key)
+            {
                 current_frame
                     .lines_by_hash
                     .insert(key.clone(), layout.clone());
@@ -1081,6 +1156,9 @@ impl LineLayoutCache {
 
         if let Some(force_width) = force_width {
             apply_force_width_to_layout(&mut layout, force_width);
+        }
+        if layouts_sealed() {
+            return Arc::new(layout);
         }
 
         let key = Arc::new(HashedCacheKey {

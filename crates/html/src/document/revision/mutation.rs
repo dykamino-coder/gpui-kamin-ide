@@ -1,19 +1,20 @@
-//! Записи мутаций DOM: единственный вход правки ревизии.
+//! The source DOM mutation journal used by document revisions.
 //!
-//! Запись адресует узел исходного DOM ревизии (`Document::source_dom`) так же,
-//! как ручка узла в JS, и несёт новое значение: `data` текстового узла (DOM
-//! §4.10, сеттер `CharacterData.data`) или атрибут элемента (`setAttribute`,
-//! `removeAttribute`). Так приходит правка в Blink (`CharacterData::
-//! SetDataAndUpdate`, `character_data.cc:193`) и Servo (`CharacterData::
-//! SetData`, `characterdata.rs:116`): без разбора и без сравнения деревьев.
-//! `Document::update` сводит новую разметку той же формы к тем же записям
-//! (`shape`), поэтому путь применения один.
+//! Each record names a source node. A document-owned handle also identifies
+//! a detached node. Child records address both ends of the changed link.
+//! `Document::update` converts same-shape markup edits into this journal.
 //!
-//! Пакет записей сводится к узлам (`Batch`): последнее значение каждого текста
-//! и итоговый список атрибутов каждого элемента рядом с прежними. Прежние
-//! значения нужны для отката: пакет, сборку которого отверг бюджет, не
-//! оставляет следов в DOM прежней ревизии.
+//! A batch keeps old values, child positions and parent links for rollback.
 
+mod attributes;
+mod children;
+mod source;
+pub(super) use attributes::attribute_records;
+pub use source::SourceNode;
+pub(super) use source::open;
+use source::parent;
+
+use super::apply::ApplyError;
 use html5ever::{Attribute, QualName};
 use markup5ever_rcdom::{Handle, NodeData};
 use std::rc::Rc;
@@ -21,6 +22,14 @@ use std::rc::Rc;
 /// Запись мутации исходного DOM ревизии.
 #[derive(Clone)]
 pub enum Mutation {
+    /// Insert or move this node before a direct child, or append when before is None.
+    InsertBefore {
+        parent: SourceNode,
+        child: SourceNode,
+        before: Option<Handle>,
+    },
+    /// DOM removeChild: detach this direct child of the given source parent.
+    RemoveChild { parent: Handle, child: Handle },
     /// Новое содержимое текстового узла `node`.
     CharacterData { node: Handle, data: String },
     /// Атрибут `name` элемента `element`: новое значение или `None` — снять.
@@ -46,36 +55,93 @@ pub(super) struct AttrChange {
 }
 
 /// Записи пакета, сведённые к узлам; правки без итогового отличия выброшены.
+#[derive(Default)]
 pub(super) struct Batch {
+    children: children::Changes,
     pub(super) texts: Vec<TextChange>,
     pub(super) elements: Vec<AttrChange>,
 }
 
+type Address = *const markup5ever_rcdom::Node;
+
+/// One target needs no table allocation. Additional targets index the text
+/// or attribute vector for the node's fixed storage kind.
+#[derive(Default)]
+struct ScalarSlots {
+    first: Option<Address>,
+    others: std::collections::HashMap<Address, usize>,
+}
+
+impl ScalarSlots {
+    fn slot(&mut self, node: &Handle, next: usize) -> usize {
+        let address = Rc::as_ptr(node);
+        if *self.first.get_or_insert(address) == address {
+            0
+        } else {
+            *self.others.entry(address).or_insert(next)
+        }
+    }
+}
+
 impl Batch {
-    /// `None` — запись адресует узел не того вида (текст вместо элемента).
+    /// Shape comparison already paired every target with the original source DOM.
     pub(super) fn new(records: &[Mutation]) -> Option<Self> {
-        let mut batch = Self {
-            texts: Vec::new(),
-            elements: Vec::new(),
-        };
+        Self::collect(records, None, || {
+            unreachable!("shape comparison emits scalar records")
+        })
+        .ok()
+    }
+
+    pub(super) fn in_document(
+        records: &[Mutation],
+        root: &Handle,
+        context: impl FnOnce() -> crate::dom::input::Context,
+    ) -> Result<Self, ApplyError> {
+        Self::collect(records, Some(root), context)
+    }
+
+    fn collect(
+        records: &[Mutation],
+        root: Option<&Handle>,
+        context: impl FnOnce() -> crate::dom::input::Context,
+    ) -> Result<Self, ApplyError> {
+        let mut batch = Self::default();
+        let mut children = children::Requests::default();
+        let mut certified = std::collections::HashSet::new();
+        let mut slots = ScalarSlots::default();
         for record in records {
             match record {
+                Mutation::InsertBefore {
+                    parent,
+                    child,
+                    before,
+                } => {
+                    if !root.is_some_and(|r| child.owned_by(r) && parent.owned_by(r)) {
+                        return Err(ApplyError::Foreign);
+                    }
+                    certified.insert(Rc::as_ptr(child.handle()));
+                    certified.insert(Rc::as_ptr(parent.handle()));
+                    if let Some(from) = source::parent(child.handle()) {
+                        certified.insert(Rc::as_ptr(&from));
+                    }
+                    children.insert(parent.handle(), child.handle(), before.as_ref())?;
+                }
+                Mutation::RemoveChild { parent, child } => {
+                    children.remove(parent, child)?;
+                }
                 Mutation::CharacterData { node, data } => {
                     let NodeData::Text { contents } = &node.data else {
-                        return None;
+                        return Err(ApplyError::Foreign);
                     };
-                    let at = match batch.texts.iter().position(|t| Rc::ptr_eq(&t.node, node)) {
-                        Some(at) => at,
-                        None => {
-                            let old = contents.borrow().to_string();
-                            batch.texts.push(TextChange {
-                                node: node.clone(),
-                                new: old.clone(),
-                                old,
-                            });
-                            batch.texts.len() - 1
-                        }
-                    };
+                    let at = slots.slot(node, batch.texts.len());
+                    if at == batch.texts.len() {
+                        let old = contents.borrow().to_string();
+                        batch.texts.push(TextChange {
+                            node: node.clone(),
+                            new: String::new(),
+                            old,
+                        });
+                    }
                     data.clone_into(&mut batch.texts[at].new);
                 }
                 Mutation::Attribute {
@@ -84,44 +150,55 @@ impl Batch {
                     value,
                 } => {
                     let NodeData::Element { attrs, .. } = &element.data else {
-                        return None;
+                        return Err(ApplyError::Foreign);
                     };
-                    let at = match batch
-                        .elements
-                        .iter()
-                        .position(|e| Rc::ptr_eq(&e.element, element))
-                    {
-                        Some(at) => at,
-                        None => {
-                            let old = attrs.borrow().clone();
-                            batch.elements.push(AttrChange {
-                                element: element.clone(),
-                                new: old.clone(),
-                                old,
-                            });
-                            batch.elements.len() - 1
-                        }
-                    };
-                    set(&mut batch.elements[at].new, name, value.as_deref());
+                    let at = slots.slot(element, batch.elements.len());
+                    if at == batch.elements.len() {
+                        let old = attrs.borrow().clone();
+                        batch.elements.push(AttrChange {
+                            element: element.clone(),
+                            new: old.clone(),
+                            old,
+                        });
+                    }
+                    attributes::set(&mut batch.elements[at].new, name, value.as_deref());
                 }
             }
         }
+        if let Some(root) = root {
+            let mut targets = batch
+                .texts
+                .iter()
+                .map(|t| &t.node)
+                .chain(batch.elements.iter().map(|e| &e.element))
+                .chain(children.parents());
+            if !targets.all(|node| source::belongs(node, root, &certified)) {
+                return Err(ApplyError::Foreign);
+            }
+        }
+        batch.children = children.finish(context)?;
         batch.texts.retain(|t| t.old != t.new);
         batch.elements.retain(|e| e.old != e.new);
-        Some(batch)
+        Ok(batch)
+    }
+
+    pub(super) fn changes_children(&self) -> bool {
+        !self.children.is_empty()
     }
 
     pub(super) fn is_empty(&self) -> bool {
-        self.texts.is_empty() && self.elements.is_empty()
+        self.texts.is_empty() && self.elements.is_empty() && !self.changes_children()
     }
 
     /// Записать итоговые значения в исходный DOM.
-    pub(super) fn write(&self) {
+    pub(super) fn write(&mut self) {
         self.store(|t| &t.new, |e| &e.new);
+        self.children.exchange(true);
     }
 
     /// Вернуть прежние значения: пакет отвергнут.
-    pub(super) fn undo(&self) {
+    pub(super) fn undo(&mut self) {
+        self.children.exchange(false);
         self.store(|t| &t.old, |e| &e.old);
     }
 
@@ -141,85 +218,4 @@ impl Batch {
             }
         }
     }
-}
-
-/// `setAttribute`/`removeAttribute` (DOM §4.9): значение на месте прежнего
-/// атрибута, новый — в конец списка.
-fn set(list: &mut Vec<Attribute>, name: &QualName, value: Option<&str>) {
-    let at = list.iter().position(|a| a.name == *name);
-    match (at, value) {
-        (Some(at), Some(value)) => list[at].value = value.into(),
-        (None, Some(value)) => list.push(Attribute {
-            name: name.clone(),
-            value: value.into(),
-        }),
-        (Some(at), None) => {
-            list.remove(at);
-        }
-        (None, None) => {}
-    }
-}
-
-/// Записи, переводящие атрибуты `old` в список `new` с тем же порядком: общее
-/// начало остаётся, хвост `old` снимается, хвост `new` ставится по порядку.
-pub(super) fn attribute_records(
-    element: &Handle,
-    old: &[Attribute],
-    new: &[Attribute],
-) -> Vec<Mutation> {
-    let common = old.iter().zip(new).take_while(|(a, b)| a == b).count();
-    let record = |name: &QualName, value: Option<String>| Mutation::Attribute {
-        element: element.clone(),
-        name: name.clone(),
-        value,
-    };
-    old[common..]
-        .iter()
-        .map(|a| record(&a.name, None))
-        .chain(
-            new[common..]
-                .iter()
-                .map(|a| record(&a.name, Some(a.value.to_string()))),
-        )
-        .collect()
-}
-
-/// Узел принадлежит DOM `root` и стоит под элементами HTML вне шаблонов и
-/// чужого содержимого: у такого узла атрибуты и текст не часть формы
-/// (`shape`). Текст требует родителя-элемента.
-pub(super) fn open(node: &Handle, root: &Handle) -> bool {
-    let mut at = node.clone();
-    let mut first = true;
-    loop {
-        match &at.data {
-            NodeData::Document => return Rc::ptr_eq(&at, root) && !first,
-            NodeData::Element { name, .. } => {
-                if name.ns != html5ever::ns!(html) || &*name.local == "template" {
-                    return false;
-                }
-            }
-            NodeData::Text { .. } if first => {}
-            _ => return false,
-        }
-        let Some(parent) = parent(&at) else {
-            return false;
-        };
-        if first
-            && matches!(at.data, NodeData::Text { .. })
-            && !matches!(parent.data, NodeData::Element { .. })
-        {
-            return false;
-        }
-        first = false;
-        at = parent;
-    }
-}
-
-fn parent(node: &Handle) -> Option<Handle> {
-    let weak = node.parent.take();
-    let parent = weak
-        .as_ref()
-        .and_then(markup5ever_rcdom::WeakHandle::upgrade);
-    node.parent.set(weak);
-    parent
 }

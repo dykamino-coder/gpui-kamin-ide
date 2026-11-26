@@ -4,20 +4,7 @@
 use crate::document::Document;
 use std::rc::Rc;
 
-/// Дерево коробок и стиль корня; ручки арен сравниваются без номера области,
-/// который у каждого `DocumentValues` свой.
-fn tree(doc: &Document) -> String {
-    let text = format!("{:?}\n{:?}", doc.nodes(), doc.root_style());
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text.as_str();
-    while let Some(i) = rest.find("owner: ") {
-        out.push_str(&rest[..i + 7]);
-        rest = rest[i + 7..].trim_start_matches(|c: char| c.is_ascii_digit());
-        out.push('_');
-    }
-    out.push_str(rest);
-    out
-}
+use crate::document::test_tree::tree;
 
 /// Обновить `old` до `new`: принята ли ревизия без каскада, и равна ли она свежей сборке.
 fn update(old: &str, new: &str, theme: &str) -> bool {
@@ -58,11 +45,20 @@ fn state(doc: &Document) -> String {
 mod damage;
 mod differential;
 mod invalidation;
+mod media;
+mod rebox;
 mod records;
 mod repaint;
 mod repaint_background;
+mod repaint_borders;
+mod repaint_has;
+mod repaint_images;
+mod repaint_inherited;
 mod repaint_sequence;
+mod repaint_shadow;
+mod repaint_values;
 mod revision_budget;
+mod stable_keys;
 mod text_edits;
 
 const PAGE: &str = "<!doctype html><html><head><style>p{color:#123}td{padding:1px}\
@@ -94,16 +90,23 @@ fn unmentioned_data_attributes_and_classes_keep_the_cascade() {
 fn mentioned_names_and_other_changes_rebuild_the_cascade() {
     let d = |attrs: &str| PAGE.replace("<p>d", &format!("<p {attrs}>d"));
     let attr_style = "style=\"--n:attr(data-n)\"";
-    let rebuilt = [
-        // Класс, атрибут или `attr()` в листе документа, теме или своём `style`.
+    // A class, an attribute or `attr()` in the document's sheet, the theme or
+    // the element's own `style` that changes its boxes rebuilds them in
+    // place (`repaint::rebox`).
+    let reboxed = [
         (PAGE.to_string(), d("class=\"on\""), ""),
         (
             PAGE.to_string(),
             d("data-n=5"),
             "p::after{content:attr(data-n)}",
         ),
-        (PAGE.to_string(), d("data-n=5"), "[DATA-N]{color:red}"),
+        (PAGE.to_string(), d("data-n=5"), "[DATA-N]{margin:1px}"),
         (d(attr_style), d(&format!("{attr_style} data-n=5")), ""),
+    ];
+    for (old, new, theme) in &reboxed {
+        assert!(update(old, new, theme), "{new} {theme}");
+    }
+    let rebuilt = [
         // Атрибут, который каскад читает сам, дети и комментарии.
         (PAGE.to_string(), PAGE.replace("<p id=x>", "<p id=y>"), ""),
         (
@@ -125,6 +128,9 @@ fn mentioned_names_and_other_changes_rebuild_the_cascade() {
     for (old, new, theme) in &rebuilt {
         assert!(!update(old, new, theme), "{new} {theme}");
     }
+    // A mentioned attribute that changes only a paint value of a box under
+    // the unwrapped `body` is restyled in place (`repaint`).
+    assert!(update(PAGE, &d("data-n=5"), "[DATA-N]{color:red}"));
     // Тема ревизии другая: каскад зависит от неё.
     let mut doc = Document::builder(PAGE, "").build().unwrap();
     let values = doc.state.values.clone();
@@ -137,11 +143,16 @@ fn foreign_and_template_attributes_rebuild_the_cascade() {
     let page = "<body><svg><rect class=a width=5 height=5></rect></svg>\
         <template><p class=a>t</p></template><math><mi class=a>x</mi></math></body>";
     for (from, to) in [
-        ("<rect class=a", "<rect class=b"),
+        ("width=5", "width=6"),
         ("<p class=a>t", "<p class=b>t"),
         ("<mi class=a", "<mi class=b"),
     ] {
         assert!(!update(page, &page.replace(from, to), ""), "{to}");
+    }
+    // SVG reads `class` and `data-*` through the cascade only: no sheet
+    // mentions them, so the cascade is kept.
+    for to in ["<rect class=b", "<rect data-k=1 class=a"] {
+        assert!(update(page, &page.replace("<rect class=a", to), ""), "{to}");
     }
 }
 
@@ -172,9 +183,9 @@ fn data_k(node: &markup5ever_rcdom::Handle) -> Option<String> {
 }
 
 #[test]
-fn root_class_skips_the_viewport_box_that_shares_the_root_number() {
-    // Политика прокрутки корня даёт коробку `html-viewport` с номером, следующим
-    // за наибольшим номером дерева, — номером развёрнутого `html`.
+fn root_class_skips_the_synthetic_viewport_box() {
+    // Политика прокрутки корня даёт synthetic `html-viewport`; его состояние
+    // не использует ключ исходного html-узла.
     let page = "<!doctype html><html><head><style>html{scrollbar-color:red blue}\
         </style></head><body><div><div>a</div></div></body></html>";
     let classed = page.replace("<html>", "<html class=\"zz-alt\">");

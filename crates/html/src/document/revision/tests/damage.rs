@@ -59,9 +59,10 @@ fn records_no_frame_reads_keep_the_frame_and_the_state() {
     assert_eq!(kept(PAGE, "p", "data-k", "1", &boxed), Some(false));
     let classed = PAGE.replace("<p>a", "<p class=\"zz\">a");
     assert_eq!(kept(PAGE, "p", "class", "zz", &classed), Some(false));
-    // Элемент вне обхода сборки (`head`) не адресуется правкой: каскад заново.
+    // An element outside the build's walk (`head`) has no box: an attribute
+    // no sheet reads changes nothing (css-display-3 §2.5).
     let head = PAGE.replace("<head>", "<head data-k=\"1\">");
-    assert_eq!(kept(PAGE, "head", "data-k", "1", &head), None);
+    assert_eq!(kept(PAGE, "head", "data-k", "1", &head), Some(true));
     // Упомянутый листом класс меняет каскад.
     let on = PAGE.replace("<p>a", "<p class=\"on\">a");
     assert_eq!(kept(PAGE, "p", "class", "on", &on), None);
@@ -101,4 +102,21 @@ fn a_clean_revision_still_answers_the_next_records_and_markup() {
     let fresh = Document::builder(&edited, "").build().unwrap();
     assert_eq!(tree(&doc), tree(&fresh));
     assert_eq!(state(&doc), state(&fresh));
+}
+
+#[test]
+fn attr_in_the_sheet_rebuilds_only_the_edits_of_the_names_it_reads() {
+    // `attr()` reads the attribute it names, of the element its rule applies to.
+    let page = PAGE.replace(".on{", "p::after{content:attr(title)}.on{");
+    let classed = page.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(kept(&page, "html", "class", "alt", &classed), Some(true));
+    let boxed = page.replace("<p>a", "<p data-k=\"1\">a");
+    assert_eq!(kept(&page, "p", "data-k", "1", &boxed), Some(false));
+    // The name the sheet reads changes the generated content: a fresh cascade.
+    let titled = page.replace("<p>a", "<p title=\"t\">a");
+    assert_eq!(kept(&page, "p", "title", "t", &titled), None);
+    // A name the sheet does not spell (`attr(var(--n))`) may be any attribute.
+    let any = PAGE.replace(".on{", "p{--n:class}p::after{content:attr(var(--n))}.on{");
+    let classed = any.replace("<p>a", "<p class=\"zz\">a");
+    assert_eq!(kept(&any, "p", "class", "zz", &classed), None);
 }

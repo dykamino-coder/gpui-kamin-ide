@@ -2,20 +2,30 @@
 
 mod adopt;
 mod apply;
+mod boxes;
 mod build;
 mod commit;
+mod kept;
+mod layer_band;
+mod layer_write;
+mod media;
+mod offscreen;
+pub(super) use layer_write::{at, parent_at};
 mod mentions;
 mod mutation;
+mod no_layer;
+mod paint_damage;
 mod patch;
 mod repaint;
 mod restyle;
 mod shape;
+mod source_index;
 #[cfg(test)]
 mod tests;
 mod text;
 
 pub use apply::ApplyError;
-pub use mutation::Mutation;
+pub use mutation::{Mutation, SourceNode};
 pub(super) use repaint::Kept;
 
 use super::{BuildReport, Document, DocumentFailure, RevisionStatus, base_url};
@@ -69,24 +79,33 @@ impl Document {
             this.last_failure = Some(failure);
             failure
         };
-        let source = match Self::admit(html, theme_css, self.base_url.as_ref(), self.xml, &revision)
-        {
+        let source = match Self::admit_in(
+            html,
+            theme_css,
+            self.base_url.as_ref(),
+            self.xml,
+            &revision,
+            self.state.values.next_node_key(),
+        ) {
             Ok(source) => source,
             Err(failure) => return Err(record(failure, self)),
         };
         // Та же форма: отличие — записи мутаций прежнего DOM, путь применения
         // общий с `apply`; иначе новая разметка собирается целиком.
-        let mut same_shape = false;
-        let mut invalidation = None;
         if let Some(old) = self.state.values.source_dom()
             && let Some(shape) = shape::compare(&old, &source.input.dom.document)
-            && let Some(batch) = mutation::Batch::new(&shape.records())
+            && let Some(mut batch) = mutation::Batch::new(&shape.records())
         {
             #[cfg(feature = "engine-bench")]
             let started = crate::work::Clock::now();
-            same_shape = true;
-            invalidation = self.invalidation(&batch, theme_css);
-            if let Some(plan) = self.plan(&batch, theme_css, Some(&shape.sheets), &revision) {
+            let invalidation = self.invalidation(&batch, theme_css);
+            if let Some(plan) = self.plan(
+                &mut batch,
+                theme_css,
+                Some(&shape.sheets),
+                invalidation.as_ref(),
+                &revision,
+            ) {
                 batch.write();
                 self.commit(
                     plan,
@@ -100,16 +119,21 @@ impl Document {
                 );
                 return Ok(self.report());
             }
+            #[cfg(feature = "engine-bench")]
+            let parse = source.parse;
+            drop(source);
+            let report = self.rebuild(&mut batch, invalidation, theme_css, key, revision)?;
+            #[cfg(feature = "engine-bench")]
+            {
+                self.timings.parse = parse;
+                self.timings.style = started.elapsed();
+            }
+            return Ok(report);
         }
+        crate::paint_path::add(&crate::paint_path::REFUSED_SHAPE, 1);
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);
-        let mut invalidation = invalidation.map(crate::dom::invalidation::Invalidation::new);
-        if same_shape {
-            // The records go to the rebuilt document (`restyle`); their
-            // sources are not needed for that.
-            self.reuse.release_sources();
-        }
         let candidate = match Self::try_source(
             source,
             theme_css,
@@ -118,25 +142,15 @@ impl Document {
             state,
             &fonts,
             revision,
-            invalidation.as_mut(),
+            None,
         ) {
             Ok(candidate) => candidate,
             Err((failure, _)) => {
-                if same_shape {
-                    self.reuse.forget();
-                }
                 return Err(record(failure, self));
             }
         };
-        // The same source shape gives the same node ids (traversal counters):
-        // the block records may hold for the restyled tree (`restyle`).
-        let mut candidate = candidate;
-        if same_shape {
-            let restyled = invalidation
-                .as_ref()
-                .and_then(crate::dom::invalidation::Invalidation::finish);
-            self.hand_over_reuse(&mut candidate, restyled);
-        }
+        crate::document::boxes::BoxTree::edit(&candidate.state.boxes)
+            .replace(&candidate.nodes, &candidate.state.values);
         *self = candidate;
         Ok(self.report())
     }
@@ -188,4 +202,9 @@ impl Document {
     pub fn embedded_failure(&self) -> Option<DocumentFailure> {
         self.state.values.embedded_failure()
     }
+}
+
+/// The controls a restyle of paint values does not reach (paint_damage::CONTROLS).
+pub(super) fn paint_damage_controls() -> &'static [&'static str; 6] {
+    &paint_damage::CONTROLS
 }

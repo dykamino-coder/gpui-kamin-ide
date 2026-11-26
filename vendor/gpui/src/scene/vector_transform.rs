@@ -25,7 +25,7 @@ impl Scene {
             for fragment in &mut group.fragments {
                 fragment.iter_mut().for_each(|p| *p = map_point(*p, matrix));
             }
-            group.scene = group.scene.transform_commands(transform, matrix);
+            group.scene = std::rc::Rc::new(Scene::unshared(group.scene).transform_commands(transform, matrix));
             group
         }).collect();
         scene
@@ -39,7 +39,7 @@ impl Scene {
                 PaintOperation::StartLayer(b, _) => *b = map_bounds(*b, matrix),
                 _ => {},
             }
-            scene.replay_operation(command);
+            scene.replay_image_operation(command, &self.book.images);
         }
         scene.segment_capture = self.segment_capture;
         scene.hoisted_backdrops = self.hoisted_backdrops.into_iter().map(|mut p| {
@@ -82,6 +82,11 @@ fn surface(p: &mut PaintSurface, t: VectorTransform, m: TransformationMatrix) {
 
 fn primitive(p: &mut Primitive, t: VectorTransform, m: TransformationMatrix) {
     match p {
+        Primitive::Gradient(g) => {
+            let p = &mut g.quad;
+            p.transformation = m.compose(p.transformation);
+            p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);
+        }
         Primitive::Quad(p) => {
             p.transformation = m.compose(p.transformation);
             p.content_mask.bounds = map_bounds(p.content_mask.bounds, m);

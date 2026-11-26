@@ -98,17 +98,71 @@ fn a_child_that_inherits_the_background_follows_by_materialization() {
 }
 
 #[test]
-fn the_canvas_background_layout_values_and_hover_layers_rebuild() {
+fn the_canvas_background_rebuilds_and_layout_values_and_url_images_rebox() {
+    // The canvas takes the root's background (css-backgrounds-3 §2.11.2).
+    let old = page("html.alt{background:#eee}");
+    let new = old.replace("<html>", "<html class=\"alt\">");
+    assert_eq!(both(&old, &new), (false, false));
     for style in [
         "html.alt body{background:#eee}",
-        "html.alt{background:#eee}",
         "html.alt [data-deep]{background:#eee;padding:1px}",
         "html.alt [data-deep]{background:url(a.png)}",
-        "html.alt [data-deep]{border-color:red}",
-        "html.alt [data-deep]{background:#eee}[data-deep]:hover{color:red}",
     ] {
         let old = page(style);
         let new = old.replace("<html>", "<html class=\"alt\">");
+        assert_eq!(both(&old, &new), (true, true), "{style}");
+    }
+}
+
+/// A page whose `html` and `body` have no box (`document::unwrap_document`):
+/// their values live in the cascades of the top-level boxes.
+fn unwrapped(style: &str) -> String {
+    format!(
+        "<!doctype html><html><head><style>html,body{{margin:0;font:13px serif;color:#000}}{style}\
+         </style></head><body><h1>t</h1><div class=box><p data-deep>a <span>b</span></p>\
+         <p class=own>c</p></div><ul><li>x</li></ul></body></html>"
+    )
+}
+
+fn folded(html: &str) -> bool {
+    let doc = Document::builder(html, "").build().unwrap();
+    !doc.nodes()
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if matches!(e.tag.as_str(), "html" | "body")))
+}
+
+#[test]
+fn a_descendant_under_unwrapped_wrappers_is_restyled_in_place() {
+    let old = unwrapped(".hot{color:red;background:#ff0}");
+    assert!(folded(&old));
+    let new = old.replace("<span>", "<span class=hot>");
+    assert_eq!(both(&old, &new), (true, true));
+    materialized(&old, &new);
+    materialized(&new, &old);
+}
+
+/// The box of a child of the unwrapped `body` folds the wrapper's values
+/// into its cascade; the probe folds them the same way.
+#[test]
+fn a_direct_child_of_an_unwrapped_body_is_restyled_in_place() {
+    let old = unwrapped(".box.hot{color:red;background:#ff0}.own{color:#00f}");
+    let new = old.replace("class=box", "class=\"box hot\"");
+    assert_eq!(both(&old, &new), (true, true));
+    materialized(&old, &new);
+    materialized(&new, &old);
+}
+
+/// An unwrapped wrapper has no box: its restyle reaches every top-level box
+/// and the text style of the page, and the document is rebuilt.
+#[test]
+fn a_restyled_unwrapped_wrapper_rebuilds_equal_to_a_fresh_build() {
+    for (style, tag) in [
+        ("body.alt{color:red}", "<body>"),
+        (".alt{color:red}", "<html>"),
+    ] {
+        let old = unwrapped(style);
+        let new = old.replace(tag, &tag.replace('>', " class=\"alt\">"));
+        assert!(folded(&old) && folded(&new), "{style}");
         assert_eq!(both(&old, &new), (false, false), "{style}");
     }
 }
@@ -157,4 +211,36 @@ fn a_rebuilding_edit_parses_the_sheets_once() {
     let hot = new.replace("class=box", "class=\"box hot\"");
     let parsed = sheets_parsed(|| assert!(doc.update(&hot, "").unwrap().changed()));
     assert_eq!(parsed, 0);
+}
+
+/// A matching rule that changes no cascaded value — a later rule of the same
+/// specificity or the element's own `style` wins — leaves the frame as
+/// recorded: the revision keeps its state, and its tree equals a fresh build.
+#[test]
+fn a_matching_rule_that_changes_no_value_keeps_the_frame() {
+    let later = page("[data-edit]{background:#eee}.own{background:#9ab}");
+    let inline = page("[data-edit]{background:#eee}").replace(
+        "<p class=own>",
+        "<p class=own style=\"background:#9ab;opacity:.5\">",
+    );
+    for old in [later, inline] {
+        let new = old.replace("<p class=own", "<p data-edit class=own");
+        assert!(update(&old, &new, ""), "{old}");
+        let mut doc = Document::builder(&old, "").build().unwrap();
+        let state = doc.state.clone();
+        assert!(doc.update(&new, "").unwrap().changed());
+        assert!(Rc::ptr_eq(&state, &doc.state), "{old}");
+    }
+}
+
+#[test]
+fn a_gradient_replaced_by_a_colour_is_restyled_in_place() {
+    // wide-16000 D: `background:#eee` replaces a row's gradient.
+    let page = "<!doctype html><html><head><style>html,body{margin:0;color:#000;background:#fff}\
+        .row{height:20px;background:linear-gradient(90deg,#def,#fff)}[data-edit]{background:#eee}\
+        </style></head><body><div class=row>a</div><div class=row>b</div></body></html>";
+    let edited = page.replace("<div class=row>b", "<div class=row data-edit=\"1\">b");
+    assert_eq!(both(page, &edited), (true, true));
+    materialized(page, &edited);
+    materialized(&edited, page);
 }

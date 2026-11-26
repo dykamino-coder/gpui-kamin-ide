@@ -16,6 +16,7 @@
 mod admission_diagnostics_tests;
 #[cfg(test)]
 mod admission_tests;
+mod animation;
 mod base_url;
 #[cfg(test)]
 mod budget_tests;
@@ -42,7 +43,7 @@ pub use crate::dom::outcome::{
     TraversalLimit,
 };
 pub use builder::DocumentBuilder;
-pub use revision::{ApplyError, Mutation};
+pub use revision::{ApplyError, Mutation, SourceNode};
 mod canvas_background;
 mod embedded;
 mod logical_properties;
@@ -50,15 +51,19 @@ mod prepare;
 #[cfg(test)]
 mod resource_tests;
 mod retained;
+pub(crate) use retained::frame_miss_code;
+pub use retained::{FrameCounters, UpdatePhase};
 mod scope;
 mod source;
 use prepare::parse_document;
 pub mod state;
 #[cfg(test)]
+mod test_tree;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod update_tests;
-mod viewport;
+pub(crate) mod viewport;
 mod writing_mode;
 use crate::document::canvas_background::any_containment;
 use crate::document::canvas_background::any_side;
@@ -74,6 +79,7 @@ use crate::document::logical_properties::resolve_logical;
 use crate::document::writing_mode::propagate_writing_mode;
 
 mod box_style;
+pub(crate) mod boxes;
 
 use crate::dom::Node;
 use state::DocState;
@@ -87,6 +93,11 @@ pub struct Document {
     /// Дерево общее с элементом сохраняемого кадра (`retained`): тот
     /// собирает кадр сам, когда повтор прошлого не подошёл.
     nodes: Rc<Vec<Node>>,
+    /// Номер дерева `nodes`, новый у каждого (`scope::next_tree`): ключ
+    /// подготовки дерева между кадрами (`PreparationCache`). Адрес корневого
+    /// списка им быть не может: освобождённый список прошлой ревизии
+    /// занимает тот же адрес у следующей.
+    tree: u64,
     /// Записи сохраняемого кадра этого дерева (`render_viewport`).
     retained: Rc<retained::Slot>,
     /// Записи блоков корневого потока; переживают `update` (`layout::reuse`).
@@ -105,6 +116,8 @@ pub struct Document {
     /// An XML document (`image/svg+xml`, `crate::dom::xml`).
     xml: bool,
     last_failure: Option<DocumentFailure>,
+    /// Media features of the build read from the viewport size (`viewport`).
+    media_reads: Rc<crate::style::css::reads::MediaReads>,
     #[cfg(feature = "engine-bench")]
     timings: BuildTimings,
 }
@@ -144,6 +157,18 @@ impl Document {
         self.key
     }
 
+    /// The document's state, shared (paint_path::census).
+    pub(crate) fn state_rc(&self) -> Rc<DocState> {
+        self.state.clone()
+    }
+
+    /// The root scroller's offset in CSS px, down and right positive, when the
+    /// document was built with one (`DocumentBuilder::build_root_scroller`).
+    pub fn root_scroll_offset(&self) -> Option<(f32, f32)> {
+        let offset = self.state.root_scroll.as_ref()?.handle.offset();
+        Some((-f32::from(offset.x), -f32::from(offset.y)))
+    }
+
     pub fn nodes(&self) -> &[Node] {
         &self.nodes
     }
@@ -174,3 +199,8 @@ impl Document {
 mod image_values;
 
 pub mod dom;
+
+/// Elements painted with UA control defaults (`revision::paint_damage`).
+pub(crate) fn paint_controls() -> &'static [&'static str] {
+    revision::paint_damage_controls()
+}
