@@ -179,4 +179,21 @@ mod tests {
             assert_eq!(styled, expected);
         }
     }
+
+    #[test]
+    fn first_line_vertical_align_does_not_reach_the_line_pieces() {
+        let mut first = Computed::default();
+        first.inh.font.font_weight = Some(700);
+        first.inh.text_flow.vertical_align = Some(crate::style::computed::Align::End);
+        let piece = Piece::Text {
+            text: "abc".into(),
+            style: BoxStyle::from(Computed::default()),
+        };
+        let pieces = style_first_line(vec![piece], 3, &first, &Computed::default());
+        let [Piece::Text { style, .. }] = pieces.as_slice() else {
+            panic!("one dressed piece expected");
+        };
+        assert_eq!(style.inh.font.font_weight, Some(700));
+        assert_eq!(style.inh.text_flow.vertical_align, None);
+    }
 }
