@@ -54,21 +54,8 @@ impl Document {
         let root = why::why(values.source_dom(), &why::REFUSED_PLAN_STATE)?;
         let mut targets = HashMap::new();
         if !batch.elements.is_empty() {
-            let collected;
-            let sheets: &[String] = match sheets {
-                Some(sheets) => sheets,
-                None => {
-                    collected = self.kept_sheets(&root);
-                    &collected
-                }
-            };
-            let mut all = vec![crate::style::ua::user_agent_css(), theme_css];
-            if values.quirks() {
-                all.push(crate::style::ua::QUIRKS_CSS);
-            }
-            all.extend(sheets.iter().map(String::as_str));
-            // One pass over the sheets for the whole batch.
-            let all = Mentions::of(all);
+            // The names the sheets mention, indexed once for the document.
+            let all = self.kept_mentions(&root, sheets, theme_css);
             let ids = match changed {
                 Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
