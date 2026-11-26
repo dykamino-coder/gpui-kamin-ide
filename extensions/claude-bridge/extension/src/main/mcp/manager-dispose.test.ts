@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import os from 'node:os'
 import type { BrowserWindow } from '@kaminide/host-compat'
 import type { ExternalMcpServerConfig } from '../../shared/types'
 import type { TransportContext } from './transports/context'
@@ -91,4 +92,64 @@ describe('MCP manager final shutdown', () => {
     expect(changed).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
   })
+})
+
+it('keeps a permanent startup diagnosis and retries only on explicit Test or changed config', async () => {
+  const installed = { ...config, autoDiscovered: true }
+  vi.mocked(discoverFromClaudeJsonAsync).mockResolvedValue([installed])
+  vi.mocked(connectStdio).mockImplementation(async (context, id) => {
+    context.servers.get(id)!.permanentFailure = 'MODULE_NOT_FOUND: missing fixture dependency'
+    throw new Error('Process exited early (code=1)')
+  })
+  const { instance } = manager()
+  await instance.initAll()
+  expect(instance.getServers()[0]?.error).toContain('missing fixture dependency')
+  await instance.initAll()
+  expect(connectStdio).toHaveBeenCalledTimes(1)
+  expect(instance.getServers()[0]?.error).toContain('missing fixture dependency')
+  expect((await instance.testServer(installed.id)).error).toContain('missing fixture dependency')
+  expect(connectStdio).toHaveBeenCalledTimes(2)
+  vi.mocked(discoverFromClaudeJsonAsync).mockResolvedValue([{ ...installed, command: 'changed' }])
+  await instance.initAll()
+  expect(connectStdio).toHaveBeenCalledTimes(3)
+})
+
+it('reports the missing dependency from a real stdio process after an unchanged rescan', async () => {
+  const transport = await vi.importActual<typeof import('./transports/stdio')>('./transports/stdio')
+  vi.mocked(connectStdio).mockImplementation(transport.connectStdio)
+  const fixture = { ...config, autoDiscovered: true, workingDirectory: os.tmpdir(),
+    command: process.execPath, args: ['-e', "require('missing-synthetic-bridge-dependency')"] }
+  vi.mocked(discoverFromClaudeJsonAsync).mockResolvedValue([fixture])
+  const { instance } = manager()
+  await instance.initAll()
+  expect(instance.getServers()[0]?.error).toContain('missing-synthetic-bridge-dependency')
+  await instance.initAll()
+  expect(connectStdio).toHaveBeenCalledTimes(1)
+  expect(instance.getServers()[0]?.status).toBe('error')
+})
+
+it('exhausts ordinary exit retries with bounded backoff and leaves the server idle', async () => {
+  vi.useFakeTimers()
+  const fixture = { ...config, autoDiscovered: true }
+  vi.mocked(discoverFromClaudeJsonAsync).mockResolvedValue([fixture])
+  vi.mocked(connectStdio).mockImplementation(async (context, id) => {
+    context.onUnexpectedDisconnect?.(id, 'process exited code=1')
+    throw new Error('Process exited early (code=1)')
+  })
+  const { instance } = manager()
+  try {
+    await instance.initAll()
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(connectStdio).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(connectStdio).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    const attempts = vi.mocked(connectStdio).mock.calls.length
+    expect(attempts).toBe(11)
+    expect(instance.getServers()[0]?.error).toContain('gave up after 10 attempts')
+    await instance.initAll()
+    await vi.advanceTimersByTimeAsync(15 * 60_000)
+    expect(connectStdio).toHaveBeenCalledTimes(attempts)
+    expect(instance.getServers()[0]?.status).toBe('error')
+  } finally { vi.useRealTimers() }
 })

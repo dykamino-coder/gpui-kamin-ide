@@ -319,7 +319,7 @@ export class McpServerManager {
     const network: Promise<void>[] = []
     const coldStdio: string[] = []
     for (const [id, state] of this.servers) {
-      if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
+      if (!state.permanentFailure && state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         // Ленивый stdio: схемы уже в диск-кэше → процесс НЕ поднимаем, тулы
         // отдаются из кэша, спавн случится при первом tools/call
         // (ensureLazyServerFor). Экономит ~сотни MB private на idle.
@@ -387,11 +387,12 @@ export class McpServerManager {
     // the give-up cap instead of being handed a clean budget on every re-scan —
     // which is how a dead server logged a failed connect + fired a churn of
     // `mcp-servers-changed` every ~60s for the life of the app.
-    const prevBudget = new Map<string, { attempts: number; fp: string }>()
+    const prevBudget = new Map<string, { attempts: number; fp: string; permanentFailure?: string }>()
     for (const [, state] of this.servers) {
       if (state.config.autoDiscovered) {
         prevBudget.set(state.config.name, {
           attempts: state.reconnectAttempts ?? 0,
+          permanentFailure: state.permanentFailure,
           fp: mcpConnectionFingerprint(state.config),
         })
       }
@@ -434,7 +435,11 @@ export class McpServerManager {
       if (prev && prev.fp === mcpConnectionFingerprint(config)) {
         const st = this.servers.get(stableId)!
         st.reconnectAttempts = prev.attempts
-        if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
+        if (prev.permanentFailure) {
+          st.permanentFailure = prev.permanentFailure
+          st.status = 'error'
+          st.error = prev.permanentFailure
+        } else if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
           st.status = 'error'
           st.error = `Auto-reconnect gave up after ${MAX_RECONNECT_ATTEMPTS} attempts (config unchanged since). Toggle the server off/on or fix its config to retry.`
         }
@@ -588,7 +593,7 @@ export class McpServerManager {
    *  stdio, не connected/connecting, кэш по fingerprint есть). */
   private lazyCachedSchemasFor(state: McpServerState): CachedToolSchema[] | null {
     if (!LAZY_STDIO_MCP) return null
-    if (!state.config.enabled || !isStdio(state.config)) return null
+    if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) return null
     if (state.status === 'connected' || state.status === 'connecting') return null
     return this.lazySchemaCache[mcpConnectionFingerprint(state.config)] ?? null
   }
@@ -844,7 +849,7 @@ export class McpServerManager {
     // тулы «оживали» только после ручного Test сервера (прод-репорт).
     if (LAZY_STDIO_MCP) {
       for (const state of this.servers.values()) {
-        if (!state.config.enabled || !isStdio(state.config)) continue
+        if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) continue
         const cached = this.lazySchemaCache[mcpConnectionFingerprint(state.config)]
         if (cached?.some((t) => exposedToolName(state, t.name) === toolName)) return true
       }
@@ -1026,7 +1031,9 @@ export class McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`)
       }
-      const fullMsg = extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg
+      // An exit callback may already have diagnosed the current attempt or
+      // recorded that its reconnect budget was exhausted.
+      const fullMsg = state.error ?? state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg)
       state.error = fullMsg
       // A failed HTTP handshake has no child exit or socket close callback.
       // Reuse the same capped backoff only for an explicitly transient failure.
