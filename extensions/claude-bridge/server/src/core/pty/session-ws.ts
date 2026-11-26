@@ -481,6 +481,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
               model: fresh.model,
             }),
           )
+          codexBinding(fresh)?.pushPlanLimits()
           sendHibernationState(fresh.id, 'awake')
           const now = Date.now()
           // Phases: pool wait, server-side start (teardown wait, settings,
@@ -660,6 +661,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                   ...(engineChoice?.notice ? { engineNotice: engineChoice.notice } : {}),
                 }),
               )
+              codexBinding(session)?.pushPlanLimits()
               void sendAgentPreferences(ws, resolved.tokenId)
 
               // Send initial tree to this client
@@ -1016,6 +1018,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 }),
               )
 
+              codexBinding(session)?.pushPlanLimits()
               // The requested conversation is not on this server — a fresh one
               // was started. Nothing hits the JSONL until the first message, so
               // without this the client sits in "Loading conversation…" until
@@ -1280,6 +1283,7 @@ export function attachSessionWebSocket(_server: HttpServer): void {
                 engineSwitch: { ...timings, contextBytes },
               }),
             )
+            codexBinding(next)?.pushPlanLimits()
             // The leaving CLI's queue, after the client knows the new session
             // and before the gate lets later prompts through (their order).
             for (const item of carried.returned)
