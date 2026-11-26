@@ -563,30 +563,62 @@ describe('codex chat over the Bridge session WebSocket', () => {
     client.close()
   })
 
-  it('shows /status locally before a first Codex turn', async () => {
-    const client = await Client.open(port)
-    try {
-      await createChat(client, { engine: 'codex' })
-      const rpc = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
-      const starts = () =>
-        fs
-          .readFileSync(rpc, 'utf8')
-          .split('\n')
-          .filter((line) => line.includes('"method":"turn/start"')).length
-      const before = starts()
-      expect(await say(client, '/status', 'status-command')).toMatchObject({ state: 'read' })
-      await client.entry(
-        (e) => e.type === 'system' && String(e.content).includes('model: gpt-fake · next-turn effort: medium'),
-      )
-      expect(starts()).toBe(before)
-      await say(client, 'describe /status', 'ordinary-text')
-      await client.entry((e) => text(e).startsWith('echo: describe /status'))
-      expect(starts()).toBe(before + 1)
-    } finally {
-      client.send({ type: 'session:end' })
-      client.close()
-    }
-  })
+  it.each([false, true])(
+    'shows /status before the first Codex turn with rounded mtimes (sibling=%s)',
+    async (sibling) => {
+      const client = await Client.open(port)
+      // Some filesystems round mtimes to before the WS admission. Preserve that
+      // timestamp on the immediate local status record, without another turn.
+      const realAppend = fs.appendFileSync
+      const append = vi.spyOn(fs, 'appendFileSync').mockImplementation((file, data, options) => {
+        realAppend(file, data, options)
+        if (typeof file === 'string' && String(data).includes('ChatGPT status ·')) fs.utimesSync(file, 1, 1)
+      })
+      try {
+        const created = await createChat(client, { engine: 'codex' })
+        const { getSession } = await import('./session-core')
+        const active = getSession(created.sessionId)!
+        if (sibling) {
+          const { computeProjectSlug } = await import('./jsonl-watcher')
+          const directory = path.join(state.home, '.claude', 'projects', computeProjectSlug(active.settingsDir))
+          fs.mkdirSync(directory, { recursive: true })
+          // A newer sibling must never become this thread's initial transcript.
+          const other = path.join(directory, '11111111-2222-4333-8444-555555555555.jsonl')
+          fs.writeFileSync(
+            other,
+            JSON.stringify({ type: 'system', uuid: 'other-thread', content: 'different chat' }) + '\n',
+          )
+          fs.utimesSync(other, Date.now() / 1000 + 10, Date.now() / 1000 + 10)
+        }
+
+        const rpc = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+        const starts = () =>
+          fs
+            .readFileSync(rpc, 'utf8')
+            .split('\n')
+            .filter((line) => line.includes('"method":"turn/start"')).length
+        const before = starts()
+        expect(await say(client, '/status', 'status-command')).toMatchObject({ state: 'read' })
+        await client.entry(
+          (e) => e.type === 'system' && String(e.content).includes('model: gpt-fake · next-turn effort: medium'),
+        )
+        expect(starts()).toBe(before)
+        const statusTranscript = active.jsonlWatcher!.getFilePath()
+        expect(statusTranscript).toBeTruthy()
+        await say(client, 'describe /status', 'ordinary-text')
+        await client.entry((e) => text(e).startsWith('echo: describe /status'))
+        const { compactionScanner } = await import('./compaction-scanner')
+        await compactionScanner.sweep()
+        expect(active.jsonlWatcher!.getFilePath()).toBe(statusTranscript)
+        expect(client.entries().some((entry) => entry.uuid === 'other-thread')).toBe(false)
+        expect(starts()).toBe(before + 1)
+      } finally {
+        append.mockRestore()
+        client.send({ type: 'session:end' })
+        client.close()
+      }
+    },
+  )
 
   it('switches model and effort for the next turn, interrupts, and explains failures', async () => {
     const client = await Client.open(port)
