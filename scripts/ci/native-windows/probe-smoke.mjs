@@ -73,15 +73,16 @@ try {
     await step("size-workspace-for-interaction", () => probe({ cmd: "resize", w: 1800, h: 1050 }));
   }
   // The welcome screen has no active IDE session and does not mount the chat view.
-  // Use the same host method as the native "Empty session" button.
-  await step("start-empty-ide-session", () => rpc("kamin:sessions:newNoFolderSession"));
+  // Open the link fixture as the native workspace, just as "New session in folder" does.
+  const fixture = behavior === "workspace-link" ? await createWorkspaceFixture(capture) : null;
+  if (fixture) await step("open-fixture-ide-session", () => rpc("kamin:sessions:newSessionInFolder", [fixture.directory]));
+  else await step("start-empty-ide-session", () => rpc("kamin:sessions:newNoFolderSession"));
   await step("show-bridge-view", () => rpc("kamin:command:execute", ["claude-bridge.openChat"]));
   await step("cef-chat-renderer", async () => {
     const { value } = await web("return document.readyState === 'complete' && typeof window.bridgeCmd?.raw === 'function'");
     assert.equal(value, true);
   }, true);
   if (behavior !== "native-client") {
-    const fixture = behavior === "workspace-link" ? await createWorkspaceFixture(capture) : null;
     await step("loopback-bridge-health", async () => {
       const reply = await fetch(`${origin}/health`, {signal: AbortSignal.timeout(3000)});
       assert.ok(reply.ok);
