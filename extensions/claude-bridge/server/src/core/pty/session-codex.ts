@@ -29,6 +29,7 @@ import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
 import { CodexConsoleRenderer, consoleBanner } from '../codex/console-render'
+import { recentConsoleMessages } from '../codex/console-history'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
@@ -374,6 +375,12 @@ export async function createCodexSession(
   })
   // A resumed thread continues on the model and effort last chosen in it.
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
+  const previousMessages = placement.resumeThreadId
+    ? await recentConsoleMessages(
+        codexTranscriptPath(settingsDir, placement.resumeThreadId, projectsDir(deps)),
+        placement.resumeThreadId,
+      )
+    : ''
   const instructions = developerInstructions(config)
   // A chat on the default model still learns which model and effort that is
   // (the catalog names the default; no model call).
@@ -561,6 +568,7 @@ export async function createCodexSession(
   // for reattach like CLI output. The banner is the console's first frame.
   attachOutputDebounce(session)
   vpty.emit(consoleBanner({ threadId, model: session.model, resumed, cwd: config.cwd || undefined }))
+  if (resumed && threadId === placement.resumeThreadId && previousMessages) vpty.emit(previousMessages)
 
   // A resumed transcript exists already (epoch 0 finds it); a fresh one
   // appears with the first projected entry.

@@ -548,6 +548,9 @@ describe('codex chat over the Bridge session WebSocket', () => {
     })
     expect(await again.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
     await again.entry((e) => e.uuid === first.uuid) // history replayed
+    const history = await again.next((f) => f.type === 'session:output' && String(f.data).includes('Recent messages'))
+    expect(history.data).toContain('remember 42')
+    expect(history.data).toContain('echo: remember 42')
     await say(again, 'still there?', 'r2')
     const next = await again.entry((e) => text(e).startsWith('echo: still there?'))
     expect(next.sessionId).toBe(conv)
