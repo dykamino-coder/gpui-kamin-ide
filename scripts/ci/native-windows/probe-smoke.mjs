@@ -75,6 +75,12 @@ try {
   }
   // The welcome screen has no active IDE session and does not mount the chat view.
   // Open the link fixture as the native workspace, just as "New session in folder" does.
+  if (behavior === "engine-menus") {
+    // The default layout pins Console in centralBottom. Remove the pin before
+    // the first IDE session binds so the menu must mount it on first use.
+    await step("start-with-console-closed", () =>
+      probe({ cmd: "hideView", id: "claudeBridgeConsole", slot: "centralBottom" }));
+  }
   const fixture = behavior === "workspace-link" ? await createWorkspaceFixture(capture) : null;
   if (fixture) await step("open-fixture-ide-session", () => rpc("kamin:sessions:newSessionInFolder", [fixture.directory]));
   else await step("start-empty-ide-session", () => rpc("kamin:sessions:newNoFolderSession"));

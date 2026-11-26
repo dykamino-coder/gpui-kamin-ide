@@ -15,6 +15,13 @@ export async function checkPermissionConsoleShortcut(driver, label, name) {
   const terminal = body => probe({ cmd: "wveval", id: "claudeBridgeConsoleView", body, timeoutMs: 6000 });
   const result = {};
   (report.consoleShortcuts ??= {})[name] = result;
+  await step(name + "-mount-state", async () => {
+    const views = (await probe({cmd:"webviews"})).views;
+    const mounted = views.includes("claudeBridgeConsoleView") &&
+      (await terminal("return !!document.querySelector('.xterm .xterm-helper-textarea')")).value === true;
+    result.alreadyMounted = mounted;
+    assert.equal(mounted, name === "repeat-console-command");
+  }, true);
   await step(name + "-active-window", () =>
     shell("if (!(Get-Process -Id $env:SMOKE_APP_PID).MainWindowHandle -or !$w.AppActivate([int]$env:SMOKE_APP_PID)) { throw 'window is not active' }"));
   // Route the initiating click through the GPUI window. A key targeted at one
