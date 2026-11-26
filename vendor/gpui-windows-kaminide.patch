@@ -7219,7 +7219,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..f5c1cd32ba18230598c6c8481cab33d5bb835931
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..25743926becc19a7cbdb355e4178847da38b3b23
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -8551,7 +8551,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..f5c1cd32ba18230598c6c8481cab33d5
 +        recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
-+        self.forget_frames();
++        self.forget_target();
 @@ -500,19 +1575,3 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
@@ -11177,10 +11177,10 @@ index 0000000000000000000000000000000000000000..4b0c22223bdac4b8ee8815338d15a857
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/damage_audit.rs b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..078f347f1316a85344f14325a48ef6b4afa9c5d9
+index 0000000000000000000000000000000000000000..a1f516eb2ac0ec493bf706b80ef604728f953369
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/damage_audit.rs
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,113 @@
 +//! KaminIDE patch: сверка кадра, нарисованного по плану (повреждение, кэш
 +//! групп), с тем же кадром, нарисованным целиком без кэша групп.
 +//!
@@ -11226,6 +11226,7 @@ index 0000000000000000000000000000000000000000..078f347f1316a85344f14325a48ef6b4
 +        );
 +        // Целый кадр без картинок групп прошлого кадра.
 +        self.retained.chain = None;
++        self.retained.group_chain = None;
 +        self.retained.groups.valid.clear();
 +        self.render(scene, background, None)?;
 +        let whole = self.read_target()?;
@@ -12757,10 +12758,10 @@ index 0000000000000000000000000000000000000000..46d56b3722d28fee2ef1ab2af996742f
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/group_cache.rs b/vendor/gpui-windows/src/directx_renderer/group_cache.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d499e6b7d4974c8db896725db30df02fb12a2c1a
+index 0000000000000000000000000000000000000000..8219f2766d4457478d8fa018f67ee052715c1e36
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/group_cache.rs
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,140 @@
 +//! KaminIDE patch: group images kept in the group atlas between frames.
 +//!
 +//! A group of a frame compared with the last one (`Scene::group_base`) that
@@ -12784,7 +12785,8 @@ index 0000000000000000000000000000000000000000..d499e6b7d4974c8db896725db30df02f
 +    /// The device and atlas pages the images were drawn on: a kept image is
 +    /// valid only on the same objects (font gamma and contrast are fixed per
 +    /// process, `get_font_info`; atlas tiles change only with the epoch in
-+    /// `retained::Target`, which `chain` requires).
++    /// `retained::Target`, which `group_chain` requires; the target's size
++    /// does not count, a group image holds no pixel of it).
 +    pub(super) objects: Vec<usize>,
 +    pub(super) places: Vec<group_atlas::Place>,
 +    pub(super) regions: Vec<Region>,
@@ -12811,7 +12813,7 @@ index 0000000000000000000000000000000000000000..d499e6b7d4974c8db896725db30df02f
 +    /// whether its image is already there. None: pack the atlas again.
 +    pub(super) fn keep_group_places(&self, scene: &Scene) -> Option<(Vec<group_atlas::Place>, Vec<bool>)> {
 +        let c = &self.retained.groups;
-+        let (same, base) = self.retained.chain?;
++        let (same, base) = self.retained.group_chain?;
 +        let (shelves, pages) = c.layout.as_ref()?;
 +        if c.id != base || *pages != self.blur.groups.len() || c.objects != self.group_objects() {
 +            return None;
@@ -15812,10 +15814,10 @@ index 0000000000000000000000000000000000000000..fe5d7e1b8ff44bcc7086a8183a96cb64
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7ab131822b75566cb51baf38271fc22b6650814d
+index 0000000000000000000000000000000000000000..2ea69cc89d5a161d21168423d310f57c9d891c03
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups/kept.rs
-@@ -0,0 +1,78 @@
+@@ -0,0 +1,103 @@
 +//! KaminIDE patch: the group cache survives frames that draw nothing and
 +//! frames that draw only the groups their damage needs (effects-480: 480
 +//! overlapping filtered groups, one edited, every edit used to draw all
@@ -15865,6 +15867,31 @@ index 0000000000000000000000000000000000000000..7ab131822b75566cb51baf38271fc22b
 +    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 11, drawn: 1 });
 +    let got = target_bytes(&mut r);
 +    let want = whole(&device, || groups(&recolored));
++    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
++}
++
++/// A group image holds no pixel of the target: a resized window (a width
++/// changed by one pixel each frame) keeps every image whose region stayed.
++#[test]
++fn a_resized_target_keeps_the_group_images() {
++    let device = DirectXDevices::new().unwrap();
++    let cells: Vec<(usize, Hsla)> = (0..12).map(|i| (i, color(i))).collect();
++    let mut r = offscreen(&device, W, H);
++    let mut first = groups(&cells);
++    first.note_frame_damage(&Scene::default(), 1, (W, H));
++    r.draw(&first, WindowBackgroundAppearance::Opaque).unwrap();
++    r.resize(gpui::size(gpui::DevicePixels(W as i32 + 1), gpui::DevicePixels(H as i32)))
++        .unwrap();
++    let mut next = groups(&cells);
++    next.note_frame_damage(&first, 2, (W + 1, H));
++    r.draw(&next, WindowBackgroundAppearance::Opaque).unwrap();
++    assert_eq!(r.retained.groups.counts, GroupCounts { kept: 12, drawn: 0 });
++    let got = target_bytes(&mut r);
++    let mut fresh = offscreen(&device, W + 1, H);
++    let mut alone = groups(&cells);
++    alone.note_frame_damage(&Scene::default(), 1, (W + 1, H));
++    fresh.draw(&alone, WindowBackgroundAppearance::Opaque).unwrap();
++    let want = target_bytes(&mut fresh);
 +    assert!(got == want, "{} pixels differ from the whole frame", differing(&got, &want));
 +}
 +
@@ -16778,10 +16805,10 @@ index 0000000000000000000000000000000000000000..aaf7456d5f3830b608a8856a69066fa9
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/retained.rs b/vendor/gpui-windows/src/directx_renderer/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..824b5248d63b92a34dcbe3b78ba5a23b5e5344eb
+index 0000000000000000000000000000000000000000..700e89d4f094aa812ecab1eb12e9ed21b2412106
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/retained.rs
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,258 @@
 +//! KaminIDE patch: the canvas keeps the last frame; a new frame is drawn
 +//! only where its scene paints otherwise (`Scene::frame_damage`), or as the
 +//! last frame moved and redrawn within a few rectangles (`Scene::frame_shift`).
@@ -16840,6 +16867,12 @@ index 0000000000000000000000000000000000000000..824b5248d63b92a34dcbe3b78ba5a23b
 +    /// This frame continues the last one: `Some(true)` the same scene again,
 +    /// `Some(false)` compared with it (`Scene::group_base`).
 +    pub(super) chain: Option<(bool, u64)>,
++    /// The same for the group images (`group_cache`): they hold no pixel of
++    /// the target, so another target size, background or backdrop keeps them;
++    /// only the atlas tiles they sample (`epoch`) and the scene comparison count.
++    pub(super) group_chain: Option<(bool, u64)>,
++    /// Atlas epoch and number of the last scene planned.
++    group_last: Option<(u64, u64)>,
 +    /// Why the last planned frame would be drawn whole.
 +    pub(super) full_by: FullBy,
 +    /// Frames the swap chain took (`present`): which buffer comes next.
@@ -16902,6 +16935,13 @@ index 0000000000000000000000000000000000000000..824b5248d63b92a34dcbe3b78ba5a23b
 +            Some((last, t)) if comparable && t == target && last == base => Some((false, base)),
 +            _ => None,
 +        };
++        let known = id != 0 && external != SceneDamage::Unknown;
++        self.retained.group_chain = match self.retained.group_last {
++            Some((epoch, last)) if known && epoch == target.epoch && last == id => Some((true, id)),
++            Some((epoch, last)) if known && epoch == target.epoch && last == base => Some((false, base)),
++            _ => None,
++        };
++        self.retained.group_last = Some((target.epoch, id));
 +        let frame = match self.retained.last {
 +            Some((last, t)) if comparable && t == target && last == id => SceneDamage::Unchanged,
 +            Some((last, t)) if comparable && t == target && last == base => damage,
@@ -16965,9 +17005,17 @@ index 0000000000000000000000000000000000000000..824b5248d63b92a34dcbe3b78ba5a23b
 +
 +    /// No buffer holds a known frame (resize, device loss, a failed or foreign draw).
 +    pub(super) fn forget_frames(&mut self) {
++        self.forget_target();
++        self.retained.group_last = None;
++        self.retained.group_chain = None;
++        self.retained.groups.valid.clear();
++    }
++
++    /// The target holds no known frame (resize); the group atlas keeps its
++    /// images, which hold no pixel of the target (`group_chain`).
++    pub(super) fn forget_target(&mut self) {
 +        self.retained.last = None;
 +        self.retained.chain = None;
-+        self.retained.groups.valid.clear();
 +        self.retained.canvas = SceneDamage::Unknown;
 +        self.forget_buffers();
 +    }

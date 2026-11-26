@@ -1566,7 +1566,7 @@ impl DirectXRenderer {
         recreate: impl FnOnce(&mut DirectXResources, &DirectXRendererDevices) -> Result<()>,
     ) -> Result<()> {
         // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
-        self.forget_frames();
+        self.forget_target();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;

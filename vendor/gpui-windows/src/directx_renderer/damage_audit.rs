@@ -43,6 +43,7 @@ impl DirectXRenderer {
         );
         // Целый кадр без картинок групп прошлого кадра.
         self.retained.chain = None;
+        self.retained.group_chain = None;
         self.retained.groups.valid.clear();
         self.render(scene, background, None)?;
         let whole = self.read_target()?;
