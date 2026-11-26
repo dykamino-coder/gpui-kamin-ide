@@ -45780,6 +45780,7 @@ function handleServerMessage(msg, ctx) {
           ...engineNotice ? { engineNotice } : {}
         });
       }
+      ctx.noteClaudePermissions?.(void 0);
       ctx.noteCollaboration?.(msg.codexCollaboration);
       ctx.noteSessionEngine?.(engine, msg.model);
       ctx.notifySessionInfo(msg.effort, msg.model);
@@ -46014,6 +46015,18 @@ function handleServerMessage(msg, ctx) {
       ctx.notifyActivity(isWorking, hookDriven);
       break;
     }
+    case "session:claude-permissions": {
+      if (typeof msg.sessionId !== "string" || !Array.isArray(msg.available)) break;
+      const { available, selected, requested, reason } = msg;
+      ctx.noteClaudePermissions?.({
+        available: available.filter((mode) => typeof mode === "string"),
+        selected: typeof selected === "string" ? selected : void 0,
+        requested: typeof requested === "string" ? requested : void 0,
+        reason: typeof reason === "string" ? reason : void 0
+      }, msg.sessionId);
+      ctx.notifySessionInfo();
+      break;
+    }
     case "session:codex-collaboration":
       ctx.noteCollaboration?.(msg.codexCollaboration, msg.sessionId);
       ctx.notifySessionInfo();
@@ -46041,6 +46054,7 @@ function handleServerMessage(msg, ctx) {
         model: msg.model,
         ...engine ? { engine } : {}
       });
+      ctx.noteClaudePermissions?.(void 0);
       ctx.noteCollaboration?.(msg.codexCollaboration);
       if (engine) ctx.noteSessionEngine?.(engine, msg.model);
       if (msg.engineSwitch) ctx.settleEngineSwitch?.(true);
@@ -46392,7 +46406,12 @@ var ConnectionManager = class _ConnectionManager {
   getSettingsDir() {
     return this.settingsDir;
   }
+  claudePermissions;
   codexCollaboration;
+  changeClaudePermissionMode(mode, sessionId) {
+    if (this.state.status !== "authenticated" || this.getEngine() !== "claude" || !sessionId || sessionId !== this.getSessionId()) return;
+    if (this.claudePermissions?.available.includes(mode)) this.send({ type: "session:change-claude-permission-mode", sessionId, mode });
+  }
   changeCodexCollaboration(mode, sessionId) {
     if (this.getEngine() === "codex" && sessionId === this.getSessionId() && this.codexCollaboration && (mode === "default" || mode === "plan" && this.codexCollaboration.available.includes(mode))) {
       this.send({ type: "session:codex-collaboration", mode, sessionId });
@@ -47562,6 +47581,9 @@ var ConnectionManager = class _ConnectionManager {
       notifyElicitationRequest: (p) => _ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => _ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => _ConnectionManager.onConversationId?.(this.tabId, id),
+      noteClaudePermissions: (value, id) => {
+        if (id === void 0 || id === this.getSessionId() && this.getEngine() === "claude") this.claudePermissions = value;
+      },
       noteCollaboration: (value, id) => {
         if (!id || id === this.getSessionId()) this.codexCollaboration = value;
       },
@@ -48368,6 +48390,7 @@ var TabManager = class {
       model: tab.model,
       engine: tab.connection.getEngine(),
       workspacePermission: tab.connection.getWorkspacePermission(),
+      claudePermissions: tab.connection.claudePermissions,
       codexCollaboration: tab.connection.codexCollaboration,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
@@ -48737,12 +48760,19 @@ function registerSessionsIPC(ctx) {
       tm()?.respondElicitation(requestId, action, content);
     }
   );
-  ipcMain.on("change-permission-mode", (_event, tabId, mode) => {
-    const conn = tm()?.getConnection(tabId);
-    if (conn) conn.setPermissionMode(mode);
+  function activeMenuConnection(tabId) {
+    const manager = tm();
+    return manager && manager.getActiveTabId() === tabId ? manager.getConnection(tabId) : void 0;
+  }
+  ipcMain.on("change-permission-mode", (_event, tabId, mode, sessionId) => {
+    const conn = activeMenuConnection(tabId);
+    if (conn && (sessionId === void 0 || sessionId === conn.getSessionId())) conn.setPermissionMode(mode);
+  });
+  ipcMain.on("claude:change-permission-mode", (_event, tabId, sessionId, mode) => {
+    activeMenuConnection(tabId)?.changeClaudePermissionMode(mode, sessionId);
   });
   ipcMain.on("codex:change-collaboration", (_event, tabId, sessionId, mode) => {
-    tm()?.getConnection(tabId)?.changeCodexCollaboration(mode, sessionId);
+    activeMenuConnection(tabId)?.changeCodexCollaboration(mode, sessionId);
   });
   ipcMain.on("change-effort", (_event, tabId, effort) => {
     const conn = tm()?.getConnection(tabId);

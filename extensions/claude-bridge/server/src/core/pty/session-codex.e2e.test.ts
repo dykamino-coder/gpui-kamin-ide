@@ -1364,6 +1364,188 @@ describe('engine switch inside one chat', () => {
     }
   }, 30_000)
 
+  it('keeps instructions scoped to the active project on create, resume and engine switch', async () => {
+    const { tokenHash, getUserSyncDir, getProjectSyncDir } = await import('../sync/routes')
+    const owner = tokenHash('tok-a')
+    const projectA = '/work/instructions-a'
+    const projectB = '/work/instructions-b'
+    const markers = [
+      [getUserSyncDir(owner), 'CLAUDE.md', 'SHARED-INSTRUCTION'],
+      [getProjectSyncDir(owner, projectA), 'AGENTS.md', 'PROJECT-ALPHA'],
+      [getProjectSyncDir(owner, projectB), 'AGENTS.md', 'PROJECT-BETA'],
+    ] as const
+    const file = path.join(state.home, 'codex-home', 'fake-state', 'rpc.jsonl')
+    const instructionsAfter = (offset: number, method: string) => {
+      const rows = fs
+        .readFileSync(file)
+        .subarray(offset)
+        .toString()
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const matching = rows.filter((row) => row.method === method)
+      expect(matching).toHaveLength(1)
+      return matching[0].instructions as string
+    }
+    const offset = () => (fs.existsSync(file) ? fs.statSync(file).size : 0)
+    const expectScope = (instructions: string, own: string, sibling: string) => {
+      expect(instructions.split('SHARED-INSTRUCTION')).toHaveLength(2)
+      expect(instructions.split(own)).toHaveLength(2)
+      expect(instructions).not.toContain(sibling)
+    }
+    let a = await Client.open(port)
+    const b = await Client.open(port)
+    try {
+      for (const [dir, name, value] of markers) {
+        fs.mkdirSync(dir, { recursive: true })
+        fs.writeFileSync(path.join(dir, name), value)
+      }
+      let start = offset()
+      expect(await createChat(a, { engine: 'codex', cwd: projectA })).toMatchObject({ engine: 'codex' })
+      expectScope(instructionsAfter(start, 'thread/start'), 'PROJECT-ALPHA', 'PROJECT-BETA')
+      await say(a, 'hello', 'scope-first')
+      await a.entry((e) => text(e).startsWith('echo: hello'))
+      const { conversationId } = await a.next((f) => f.type === 'session:conversation-id')
+
+      const created = await createChat(b, { engine: 'claude', cwd: projectB })
+      expect(created).toMatchObject({ engine: 'claude' })
+      expectScope(fs.readFileSync(path.join(created.settingsDir, 'CLAUDE.md'), 'utf8'), 'PROJECT-BETA', 'PROJECT-ALPHA')
+      start = offset()
+      expect((await switchTo(b, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      expectScope(instructionsAfter(start, 'thread/start'), 'PROJECT-BETA', 'PROJECT-ALPHA')
+
+      a.send({ type: 'session:end' })
+      await a.next((f) => f.type === 'session:exit')
+      a.close()
+      a = await Client.open(port)
+      start = offset()
+      a.send({ type: 'session:resume', token: 'tok-a', protocolVersion: 1, cwd: projectA, conversationId })
+      expect(await a.next((f) => f.type === 'session:created')).toMatchObject({ engine: 'codex' })
+      expectScope(instructionsAfter(start, 'thread/resume'), 'PROJECT-ALPHA', 'PROJECT-BETA')
+    } finally {
+      for (const c of [a, b]) {
+        c.send({ type: 'session:end' })
+        c.close()
+      }
+      for (const [dir, name] of markers) fs.rmSync(path.join(dir, name), { force: true })
+    }
+  }, 40_000)
+
+  it('changes an untouched Claude chat before its first turn and keeps the native identity', async () => {
+    const { getSession } = await import('./session-manager')
+    const { pristineClaudeChatId } = await import('./claude-permissions')
+    const launched = vi.spyOn(await import('./session-plugin-args'), 'buildSessionClaudeArgs')
+    const client = await Client.open(port)
+    try {
+      const created = await createChat(client, { engine: 'claude' })
+      const session = getSession(created.sessionId)!
+      // Same shape as Claude Code 2.1.328: authenticated startup has the native
+      // identity, with no permission_mode until UserPromptSubmit or Stop.
+      const startup = await client.next((f) => f.type === 'session:claude-permissions' && f.available?.includes('plan'))
+      expect(startup.selected).toBeUndefined()
+      const id = pristineClaudeChatId(session)!
+      expect(id).toBeTruthy()
+      expect(session.cliConversationId).toBeNull()
+      client.send({ type: 'session:change-claude-permission-mode', mode: 'plan', sessionId: session.id })
+      const fresh = await client.next((f) => f.type === 'session:restarted', 15000)
+      const args = launched.mock.results.at(-1)!.value
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(args[args.indexOf('--session-id') + 1]).toBe(id)
+      expect(args).not.toContain('--resume')
+      expect(getSession(fresh.sessionId)!.settingsDir).toBe(session.settingsDir)
+    } finally {
+      launched.mockRestore()
+      client.send({ type: 'session:end' })
+      client.close()
+    }
+  }, 30000)
+
+  it('resumes a native Claude PTY in the selected mode and retains it on cold restore', async () => {
+    const { getSession } = await import('./session-manager')
+    const { sessionCliControl } = await import('./session-cli-control')
+    const { listSession } = await import('../hooks/registry')
+    const launcher = await import('./session-plugin-args')
+    const launched = vi.spyOn(launcher, 'buildSessionClaudeArgs')
+    let client = await Client.open(port)
+    try {
+      const created = await createChat(client, { engine: 'claude' })
+      expect(created.type).toBe('session:created')
+      await say(client, '/fake-note permission-fixture', 'test-mode')
+      const reply = await client.entry((e) => e.type === 'assistant' && text(e).includes('noted: permission-fixture'))
+      const binding = getSession(created.sessionId)!
+      const id = binding.cliConversationId!
+      expect(id).toBeTruthy()
+      // The fixture clock is fixed. Supply a current completed reply together
+      // with the permission_mode and terminal OSC the fixture omits on
+      // ordinary turns. Supply the documented signals; the actual PTY, WS, HTTP
+      // authentication, transcript, resume orchestration and spawn args are real.
+      fs.appendFileSync(
+        binding.jsonlWatcher!.getFilePath()!,
+        JSON.stringify({
+          ...reply,
+          uuid: reply.uuid + '-end',
+          timestamp: new Date().toISOString(),
+          message: { ...reply.message, stop_reason: 'end_turn' },
+        }) + '\n',
+      )
+      const observe = async (session: typeof binding, mode: string) => {
+        const stop = listSession(session.id).find((h) => h.source.kind === 'bridge' && h.event === 'Stop')!
+        return app.request('/api/hooks/' + session.id + '/Stop/' + stop.id, {
+          method: 'POST',
+          headers: {
+            authorization: 'Bearer ' + session.mcpToken,
+            'content-type': 'application/json',
+            'X-Bridge-Hook-Relay': 'command',
+          },
+          body: JSON.stringify({ hook_event_name: 'Stop', permission_mode: mode, session_id: id, cwd: '/fixture' }),
+        })
+      }
+      expect((await observe(binding, 'default')).status).toBe(200)
+      sessionCliControl(binding)!.parser.feed('\x1b]7501;app=claude-code:state=idle\x07')
+      const { permissionChangeBlocker } = await import('./claude-permissions')
+      await vi.waitFor(() => expect(permissionChangeBlocker(binding)).toBeUndefined(), { timeout: 4000 })
+      const cursor = client.frames.length
+      client.send({ type: 'session:change-claude-permission-mode', sessionId: binding.id, mode: 'plan' })
+      const fresh = await client.next((f) => f.type === 'session:restarted', 15000, cursor)
+      expect(fresh.sessionId).not.toBe(binding.id)
+      const args = launched.mock.results.at(-1)!.value
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(args[args.indexOf('--resume') + 1]).toBe(id)
+      expect(args).not.toContain('--dangerously-skip-permissions')
+      const requested = await client.next(
+        (f) => f.type === 'session:claude-permissions' && f.sessionId === fresh.sessionId,
+        10000,
+        cursor,
+      )
+      expect(requested.requested).toBe('plan')
+      expect(requested.selected).toBeUndefined()
+      expect((await observe(getSession(fresh.sessionId)!, 'plan')).status).toBe(200)
+      await client.next((f) => f.type === 'session:claude-permissions' && f.selected === 'plan', 10000, cursor)
+      client.send({ type: 'session:end' })
+      await client.next((f) => f.type === 'session:exit', 10000, cursor)
+      client.close()
+      client = await Client.open(port)
+      client.send({ type: 'session:resume', token: 'tok-a', conversationId: id, engine: 'claude' })
+      const cold = await client.next((f) => f.type === 'session:created')
+      const coldArgs = launched.mock.results.at(-1)!.value
+      expect(coldArgs[coldArgs.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(coldArgs[coldArgs.indexOf('--resume') + 1]).toBe(id)
+      expect(coldArgs).not.toContain('--dangerously-skip-permissions')
+      expect(getSession(cold.sessionId)!.launchConfig?.claudePermissionMode).toBe('plan')
+      expect((await switchTo(client, 'codex', 'gpt-fake')).restarted.engine).toBe('codex')
+      const back = (await switchTo(client, 'claude', 'claude-opus-5-5')).restarted
+      expect(back.engine).toBe('claude')
+      expect(getSession(back.sessionId)!.launchConfig?.claudePermissionMode).toBe('plan')
+      const returnedArgs = launched.mock.results.at(-1)!.value
+      expect(returnedArgs[returnedArgs.indexOf('--permission-mode') + 1]).toBe('plan')
+      expect(returnedArgs).not.toContain('--dangerously-skip-permissions')
+    } finally {
+      launched.mockRestore()
+      client.send({ type: 'session:end' })
+      client.close()
+    }
+  }, 30000)
+
   it('publishes the external catalog before Codex discovery on create, resume and engine switch', async () => {
     const file = path.join(state.home, 'first-tools.json')
     const capture = { FAKE_CODEX_CAPTURE_INITIAL_TOOLS: file }
