@@ -160,10 +160,10 @@ fn a_comparison_past_its_deadline_gives_up_and_the_same_one_in_time_plans() {
     new.note_frame_damage(&old, 2, (W, H));
     let mut stats = Default::default();
     let now = std::time::Instant::now();
-    let late = new.plan_shift_within(&old, (W, H), (0, -20), &mut stats, Some(now));
+    let late = new.plan_shift_within(&old, (W, H), (0, -20), &[], &mut stats, Some(now));
     assert_eq!(late.err(), Some("over_budget"));
     let later = now + std::time::Duration::from_secs(60);
     let in_time =
-        new.plan_shift_within(&old, (W, H), (0, -20), &mut Default::default(), Some(later));
+        new.plan_shift_within(&old, (W, H), (0, -20), &[], &mut Default::default(), Some(later));
     assert_eq!(in_time.expect("a move").redraw, vec![[0, H - 20, W, 20]]);
 }

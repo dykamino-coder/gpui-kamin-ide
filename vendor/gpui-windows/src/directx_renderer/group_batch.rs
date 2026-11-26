@@ -49,17 +49,17 @@ pub(super) fn levels(rects: &[Region]) -> Vec<u32> {
 /// Scratch instance vectors of a stage layer (kept between frames for their capacity).
 #[derive(Default)]
 pub(super) struct LayerInstances {
-    shadows: Vec<Shadow>,
-    quads: Vec<Quad>,
-    gradients: gpui::GradientData,
-    underlines: Vec<Underline>,
-    mono: Vec<MonochromeSprite>,
-    subpixel: Vec<SubpixelSprite>,
-    poly: Vec<PolychromeSprite>,
+    pub(super) shadows: Vec<Shadow>,
+    pub(super) quads: Vec<Quad>,
+    pub(super) gradients: gpui::GradientData,
+    pub(super) underlines: Vec<Underline>,
+    pub(super) mono: Vec<MonochromeSprite>,
+    pub(super) subpixel: Vec<SubpixelSprite>,
+    pub(super) poly: Vec<PolychromeSprite>,
 }
 
 impl LayerInstances {
-    fn clear(&mut self) {
+    pub(super) fn clear(&mut self) {
         self.shadows.clear();
         self.quads.clear();
         self.gradients.descriptors.clear();
@@ -165,7 +165,7 @@ impl DirectXRenderer {
         result.map(|()| bases)
     }
 
-    fn upload_instances(&mut self, all: &LayerInstances) -> Result<()> {
+    pub(super) fn upload_instances(&mut self, all: &LayerInstances) -> Result<()> {
         let device = self.dev().device.clone();
         let dc = self.dev().device_context.clone();
         let p = &mut self.pipelines;
