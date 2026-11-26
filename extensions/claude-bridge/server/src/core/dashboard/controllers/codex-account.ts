@@ -44,7 +44,8 @@ export function registerCodexAccountRoutes(api: Hono, runtime: () => CodexRuntim
       eventBus.emit('codex:account-updated', { engine: 'codex', pendingLogin: true })
       return c.json(login)
     } catch (error) {
-      return c.json(fail(error), 502)
+      // "device code request failed with status 403" alone does not say who refused.
+      return c.json({ error: await runtime().explainFailure(fail(error).error) }, 502)
     }
   })
 

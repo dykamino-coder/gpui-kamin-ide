@@ -2,7 +2,8 @@
 // the card shows, and when the card keeps polling. Kept free of Preact so the
 // server's vitest suite can test it without the dashboard dependencies.
 
-export type CodexErrorKind = 'login-required' | 'unauthorized' | 'proxy-auth' | 'tls' | 'network' | 'other'
+export type CodexErrorKind =
+  'login-required' | 'unauthorized' | 'proxy-auth' | 'proxy-denied' | 'region-blocked' | 'tls' | 'network' | 'other'
 
 export interface CodexErrorInfo {
   kind: CodexErrorKind
