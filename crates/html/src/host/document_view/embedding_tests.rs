@@ -57,7 +57,8 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
     frame(cx);
     cx.update(|_, cx| {
         let doc = &page.read(cx).document;
-        let root = doc.state_rc().root_scroll.as_ref().unwrap();
+        let state = doc.state_rc();
+        let root = state.root_scroll.as_ref().unwrap();
         assert!(root.handle.offset().y < px(0.));
         let (builds, replays, inside) = doc.frame_counters().since(&before).unwrap();
         assert_eq!((builds, inside), (0, 0));
