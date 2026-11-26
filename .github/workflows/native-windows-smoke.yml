@@ -9,7 +9,7 @@ on:
       scenario:
         description: Last boundary to exercise
         type: choice
-        options: [bridge-roundtrip, native-client]
+        options: [bridge-roundtrip, native-client, workspace-link, extension-hooks]
         default: bridge-roundtrip
   # Bootstrap the optional workflow and exercise changes to this harness only.
   pull_request:
@@ -25,12 +25,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  hooks:
+    name: Windows hook command integration (no GUI)
+    if: github.event_name == 'workflow_dispatch' && inputs.scenario == 'extension-hooks'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      SMOKE_SHA: ${{ inputs.candidate || github.sha }}
+    steps:
+      - name: Validate immutable candidate
+        run: if ($env:SMOKE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'Full commit SHA required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.SMOKE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Run the candidate's synthetic hook fixture
+        working-directory: extensions/claude-bridge/extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SMOKE_SHA"
+          test -f src/main/hooks/verify-codex-tool-hook.test.ts
+          npm ci --no-audit --no-fund
+          npm test -- src/main/hooks/verify-codex-tool-hook.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hook-report.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-hook-integration-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hook-report.json
+          retention-days: 3
   native:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: windows-2025
+    if: inputs.scenario != 'extension-hooks' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: windows-2022
     timeout-minutes: 65
     env:
       SMOKE_SHA: ${{ inputs.candidate || github.event.pull_request.head.sha || github.sha }}
+      DRIVER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SMOKE_SCENARIO: ${{ inputs.scenario || 'bridge-roundtrip' }}
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_DEV_OPT_LEVEL: '0'
@@ -45,9 +78,24 @@ jobs:
           persist-credentials: false
       - name: Verify checkout
         run: if ((git rev-parse HEAD) -ne $env:SMOKE_SHA) { throw 'Checkout SHA mismatch' }
+      # A manually selected candidate can predate the harness or live on an
+      # independent fix branch. Always use the harness matching this workflow.
+      - name: Check out the scenario driver
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.DRIVER_SHA }}
+          path: .native-smoke-harness
+          sparse-checkout: scripts/ci/native-windows
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
+      # Node 22's bundled node-gyp supports the VS 2022 toolchain on this image.
+      - name: Install isolated Bridge dependencies
+        id: bridge_deps
+        if: env.SMOKE_SCENARIO != 'native-client'
+        working-directory: extensions/claude-bridge/server
+        run: npm ci --no-audit --no-fund
       - name: Restore Cargo sources
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -66,14 +114,9 @@ jobs:
           set -euo pipefail
           npm ci --no-audit --no-fund
           npm run build:host
-      - name: Install isolated Bridge dependencies
-        id: bridge_deps
-        if: env.SMOKE_SCENARIO == 'bridge-roundtrip'
-        working-directory: extensions/claude-bridge/server
-        run: npm ci --no-audit --no-fund
       - name: Exercise native client
         id: native_test
-        run: ./scripts/ci/native-windows/run.ps1 -Scenario $env:SMOKE_SCENARIO
+        run: ./.native-smoke-harness/scripts/ci/native-windows/run.ps1 -Scenario $env:SMOKE_SCENARIO
       - name: Record build and launch outcomes
         if: always()
         env:
@@ -86,7 +129,7 @@ jobs:
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
           $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
           $wslFeature = Get-CimInstance Win32_OptionalFeature -Filter "Name='Microsoft-Windows-Subsystem-Linux'" -ErrorAction SilentlyContinue
-          [ordered]@{ candidate = $env:SMOKE_SHA; scenario = $env:SMOKE_SCENARIO; runner = $env:ImageVersion
+          [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; scenario = $env:SMOKE_SCENARIO; runner = $env:ImageVersion
             shell = $env:BUILD_SHELL; host = $env:BUILD_HOST; bridge = $env:INSTALL_BRIDGE; native = $env:RUN_NATIVE
             wslExecutable = [bool]$wsl; wslFeatureEnabled = $wslFeature.InstallState -eq 1
           } | ConvertTo-Json | Set-Content (Join-Path $dir 'pipeline.json')

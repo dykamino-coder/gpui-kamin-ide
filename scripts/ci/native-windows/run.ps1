@@ -1,6 +1,6 @@
 # Hosted-runner PoC. Never read a locally installed application/profile.
 [CmdletBinding()]
-param([ValidateSet('bridge-roundtrip', 'native-client')][string]$Scenario = 'bridge-roundtrip')
+param([ValidateSet('bridge-roundtrip', 'native-client', 'workspace-link')][string]$Scenario = 'bridge-roundtrip')
 $ErrorActionPreference = 'Stop'
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted' -or $env:RUNNER_OS -ne 'Windows') { throw 'Requires a disposable hosted Windows runner' }
 $report = Join-Path $env:RUNNER_TEMP 'native-smoke-report'
@@ -17,7 +17,7 @@ try {
     if ($LASTEXITCODE) { throw 'Registry stub compilation failed' }
     $env:KAMIN_PROBE_PORT = '19357'
     $env:KAMIN_PROBE_TOKEN = [guid]::NewGuid().ToString('N')
-    if ($Scenario -eq 'bridge-roundtrip') {
+    if ($Scenario -ne 'native-client') {
         $env:CLAUDE_PROXY_PORT = '13456'
         $env:BRIDGE_CODEX_BIN = (Resolve-Path 'extensions/claude-bridge/server/test-support/fake-codex.mjs').Path
         $env:FAKE_CODEX_LOGGED_IN = '1'
@@ -26,7 +26,7 @@ try {
     ./scripts/start_native_acceptance.ps1 -Exe $exe -EvidenceDir $client -WithHost -Warp -SoftwareCef -Port 19357
     $manifest = Get-Content -Raw (Join-Path $client 'manifest.json') | ConvertFrom-Json
     $app = Get-Process -Id $manifest.pid -ErrorAction SilentlyContinue
-    node scripts/ci/native-windows/probe-smoke.mjs $Scenario $client $report
+    node (Join-Path $PSScriptRoot 'probe-smoke.mjs') $Scenario $client $report
     if ($LASTEXITCODE) { throw 'Native scenario failed. See report.json.' }
 } finally {
     foreach ($child in @($app, $runner)) {

@@ -5,6 +5,7 @@ import { open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
+import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs";
 
 const [scenario, capture, output] = process.argv.slice(2);
 const run = promisify(execFile);
@@ -82,7 +83,8 @@ try {
     const { value } = await web("return document.readyState === 'complete' && typeof window.bridgeCmd?.raw === 'function'");
     assert.equal(value, true);
   }, true);
-  if (scenario === "bridge-roundtrip") {
+  if (scenario !== "native-client") {
+    const fixture = scenario === "workspace-link" ? await createWorkspaceFixture(capture) : null;
     await step("loopback-bridge-health", async () => {
       const reply = await fetch(`${origin}/health`, {signal: AbortSignal.timeout(3000)});
       assert.ok(reply.ok);
@@ -100,7 +102,8 @@ try {
       // Keep the disposable Bridge credential inside the isolated renderer.
       const { value } = await web(`const origin = ${JSON.stringify(origin)};
         const { token } = await window.bridgeCmd.raw('createToken', origin, 'native-smoke');
-        return await window.bridgeCmd.raw('createTab', { serverUrl: origin, token, engine: 'codex' })`);
+        return await window.bridgeCmd.raw('createTab', { serverUrl: origin, token, engine: 'codex',
+          cwd: ${JSON.stringify(fixture?.directory ?? "")} })`);
       assert.equal(typeof value, "string");
       tab = value;
     });
@@ -119,6 +122,7 @@ try {
       assert.equal(value.settling, false);
       assert.ok(value.items.some(row => row.type === "assistant" && row.text.startsWith(`echo: ${marker} [model=`)));
     }, true);
+    if (fixture) await checkWorkspaceLink({ fixture, step, probe, web, report });
   }
   report.status = "passed";
 } catch (error) {
