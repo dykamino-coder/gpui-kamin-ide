@@ -40,10 +40,28 @@ impl Window {
         if let Some(at) = scene.groups.iter().position(|group| group.scene.scroll.space == space) {
             return format!("the scene of group {at} of {}", scene.groups.len());
         }
-        let layer = scene.paint_operations.iter().position(|operation| layer_spaces(std::slice::from_ref(operation)) == [space]);
-        match layer {
-            Some(op) => format!("the scene of the retained layer at command {op} of the frame's"),
-            None => "a scene the frame does not draw (a record's or a nested layer's)".into(),
+        let scenes = std::iter::once(("the frame's", scene)).chain(scene.groups.iter().map(|group| ("a group's", &*group.scene)));
+        for (whose, scene) in scenes {
+            if let Some(path) = layer_path(scene, space, 3) {
+                return format!("the scene of a retained layer at {path} of {whose} scene");
+            }
         }
+        "a scene the frame does not draw (a record's)".into()
     }
+}
+
+/// Where `scene` draws the retained layer whose scene is `space`, through at
+/// most `depth` nested layers: its command indices, outermost first.
+fn layer_path(scene: &Scene, space: SceneSpace, depth: usize) -> Option<String> {
+    scene.paint_operations.iter().enumerate().find_map(|(at, operation)| {
+        let PaintOperation::Layer(op) = operation else { return None };
+        let cell = op.cell.upgrade()?;
+        let content = cell.content.borrow();
+        let inner = content.scene();
+        if inner.scroll.space == space {
+            return Some(format!("command {at}"));
+        }
+        let nested = (depth > 0).then(|| layer_path(inner, space, depth - 1)).flatten()?;
+        Some(format!("command {at} > {nested}"))
+    })
 }

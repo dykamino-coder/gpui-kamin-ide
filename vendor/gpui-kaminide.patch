@@ -43655,10 +43655,10 @@ index 0000000000000000000000000000000000000000..17e80ea617d186c87fd874cc989eb082
 \ No newline at end of file
 diff --git a/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9e1565a9d8aab95225c19d85ef00145a6f73a56e
+index 0000000000000000000000000000000000000000..8c5b38ee6b87858430e31697eaa29d2719df6c9e
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes/anchor_trace.rs
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,67 @@
 +//! KaminIDE patch (DevTools `why`): anchors the frame drew without paint.
 +
 +use super::*;
@@ -43701,12 +43701,30 @@ index 0000000000000000000000000000000000000000..9e1565a9d8aab95225c19d85ef00145a
 +        if let Some(at) = scene.groups.iter().position(|group| group.scene.scroll.space == space) {
 +            return format!("the scene of group {at} of {}", scene.groups.len());
 +        }
-+        let layer = scene.paint_operations.iter().position(|operation| layer_spaces(std::slice::from_ref(operation)) == [space]);
-+        match layer {
-+            Some(op) => format!("the scene of the retained layer at command {op} of the frame's"),
-+            None => "a scene the frame does not draw (a record's or a nested layer's)".into(),
++        let scenes = std::iter::once(("the frame's", scene)).chain(scene.groups.iter().map(|group| ("a group's", &*group.scene)));
++        for (whose, scene) in scenes {
++            if let Some(path) = layer_path(scene, space, 3) {
++                return format!("the scene of a retained layer at {path} of {whose} scene");
++            }
 +        }
++        "a scene the frame does not draw (a record's)".into()
 +    }
++}
++
++/// Where `scene` draws the retained layer whose scene is `space`, through at
++/// most `depth` nested layers: its command indices, outermost first.
++fn layer_path(scene: &Scene, space: SceneSpace, depth: usize) -> Option<String> {
++    scene.paint_operations.iter().enumerate().find_map(|(at, operation)| {
++        let PaintOperation::Layer(op) = operation else { return None };
++        let cell = op.cell.upgrade()?;
++        let content = cell.content.borrow();
++        let inner = content.scene();
++        if inner.scroll.space == space {
++            return Some(format!("command {at}"));
++        }
++        let nested = (depth > 0).then(|| layer_path(inner, space, depth - 1)).flatten()?;
++        Some(format!("command {at} > {nested}"))
++    })
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes/source.rs b/vendor/gpui/src/window/scroll_nodes/source.rs
 new file mode 100644
