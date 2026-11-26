@@ -142,6 +142,23 @@ fn with(f: impl FnOnce(&mut Journal)) {
     f(&mut JOURNAL.lock());
 }
 
+/// Runs the stage `name` of an edit's restyle and, while recording, notes its
+/// time (`restyle.stage`, detail `<name> <microseconds> us`): the style phase
+/// of one edit frame by stage, which a sampling profile of a run cannot tell
+/// apart from the cold build of the same run.
+#[track_caller]
+pub fn stage<T>(name: &'static str, run: impl FnOnce() -> T) -> T {
+    if !enabled() {
+        return run();
+    }
+    let site = Location::caller();
+    let started = std::time::Instant::now();
+    let out = run();
+    let us = started.elapsed().as_micros();
+    note_at("restyle.stage", site, || format!("{name} {us} us"));
+    out
+}
+
 /// Record a decision `code` made at the caller; `detail` runs only while recording.
 #[track_caller]
 #[inline]

@@ -140,6 +140,39 @@ fn compare_ordered_glyphs(cx: &mut TestAppContext, mixed: bool) {
     }
 }
 
+/// Nested baseline flex and `min-content` grid items around one span, with
+/// or without a background on the outermost item.
+fn nested_items(depth: usize, background: bool) -> String {
+    let style = "html{background:white}body{margin:0;width:780px;font:16px Arial}\
+        *{box-sizing:border-box}.f{display:flex;align-items:baseline;min-width:0}\
+        .g{display:grid;grid-template-columns:minmax(min-content,1fr);min-width:0}\
+        span{padding:1px;border:1px solid #acd}.bg{background:#eee}";
+    let mut body = "<span>min-content and max-content intrinsic measure WWWWWWWWWWW</span>".to_string();
+    for level in 0..depth {
+        let class = if background && level + 1 == depth { " class=bg" } else { "" };
+        body = format!("<div class=f><div class=g>{body}</div><span{class}>side word</span></div>");
+    }
+    format!("<!doctype html><html><head><style>{style}</style></head><body>{body}</body></html>")
+}
+
+#[gpui::test]
+fn a_background_does_not_move_the_glyphs_of_a_fresh_frame(cx: &mut TestAppContext) {
+    let mut app = TestAppContext::build_with_text_system(
+        cx.dispatcher.clone(),
+        None,
+        Arc::new(GlyphTextSystem),
+    );
+    for depth in [1, 2, 8, 24, 48] {
+        let (_, plain) = open(&mut app, &nested_items(depth, false));
+        frame(plain);
+        let plain = glyphs(plain);
+        let (_, painted) = open(&mut app, &nested_items(depth, true));
+        frame(painted);
+        assert!(!plain.is_empty());
+        assert_eq!(plain, glyphs(painted), "depth {depth}");
+    }
+}
+
 #[gpui::test]
 fn ordered_inline_edits_match_fresh_glyphs(cx: &mut TestAppContext) {
     compare_ordered_glyphs(cx, false);

@@ -98,14 +98,18 @@ impl Document {
         {
             #[cfg(feature = "engine-bench")]
             let started = crate::work::Clock::now();
-            let invalidation = self.invalidation(&batch, theme_css);
-            if let Some(plan) = self.plan(
-                &mut batch,
-                theme_css,
-                Some(&shape.sheets),
-                invalidation.as_ref(),
-                &revision,
-            ) {
+            let invalidation =
+                crate::why::stage("invalidation", || self.invalidation(&batch, theme_css));
+            if let Some(plan) = crate::why::stage("plan", || {
+                let sheets = Some(&shape.sheets[..]);
+                self.plan(
+                    &mut batch,
+                    theme_css,
+                    sheets,
+                    invalidation.as_ref(),
+                    &revision,
+                )
+            }) {
                 batch.write();
                 self.commit(
                     plan,

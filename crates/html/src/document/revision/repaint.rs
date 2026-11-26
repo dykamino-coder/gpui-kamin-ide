@@ -85,40 +85,41 @@ impl Document {
         if values.quirks() {
             return roots::fall_back_document("quirks");
         }
-        let input = why::why(values.traversal.take_source(), &why::REFUSED_PLAN_STATE)?;
+        let source = crate::why::stage("source", || values.traversal.take_source());
+        let input = why::why(source, &why::REFUSED_PLAN_STATE)?;
         // The probes leave the cache in the state of the DOM after the
         // batch: it goes back only with a plan (otherwise the document is
         // rebuilt, and a fresh cache starts from its DOM).
         let mut kept = self.restyle.take().unwrap_or_default();
-        let levels = kept.ids(&values.traversal.elements()).map(|index| {
-            let levels =
-                self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache);
+        let index = crate::why::stage("ids", || kept.ids(&values.traversal.elements()));
+        let levels = index.map(|index| {
+            let levels = crate::why::stage("levels", || {
+                self.restyles(batch, changed, (&input, &index), theme_css, &mut kept.cache)
+            });
             (levels, index)
         });
         let Some((levels, index)) = levels else {
             values.traversal.retain(input);
             return roots::fall_back_document("index");
         };
-        let Some(boxes) = kept.boxes(&self.nodes) else {
+        let Some(boxes) = crate::why::stage("boxes", || kept.boxes(&self.nodes)) else {
             values.traversal.retain(input);
             return roots::fall_back_document("boxes");
         };
         let roots = roots::roots(&levels);
         if roots.is_empty() {
             values.traversal.retain(input);
-            let plan = self.restyled(batch, &changed.elements, &boxes, &levels.restyles, None)?;
+            let plan = crate::why::stage("restyled", || {
+                self.restyled(batch, &changed.elements, &boxes, &levels.restyles, None)
+            })?;
             why::add(&why::DAMAGE_PAINT, levels.restyles.len() as u64);
             self.restyle.set(Some(kept));
             return Some(plan);
         }
-        let reboxed = self.reboxed(
-            batch,
-            roots,
-            &levels,
-            (&input, &index, &boxes),
-            theme_css,
-            &mut kept,
-        );
+        let reboxed = crate::why::stage("reboxed", || {
+            let units = (&input, &*index, &*boxes);
+            self.reboxed(batch, roots, &levels, units, theme_css, &mut kept)
+        });
         values.traversal.retain(input);
         let reboxed = match reboxed {
             Ok(reboxed) => reboxed,

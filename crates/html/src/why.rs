@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
-pub(crate) use kamin_style::journal::{note, note_at};
+pub(crate) use kamin_style::journal::{note, note_at, stage};
 
 /// Stable codes of the protocol (renamed only with a schema bump): causes,
 /// cache miss reasons and frame events.
@@ -55,6 +55,7 @@ pub const CODES: &[&str] = &[
     "no_layer.frame_unrecorded",
     "not_own",
     "plan_text.refused",
+    "restyle.stage",
     "scroll_extent.layout_bars",
     "scroll_extent.relayout",
 ];

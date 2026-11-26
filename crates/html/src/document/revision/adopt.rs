@@ -55,7 +55,8 @@ impl Document {
         let mut targets = HashMap::new();
         if !batch.elements.is_empty() {
             // The names the sheets mention, indexed once for the document.
-            let all = self.kept_mentions(&root, sheets, theme_css);
+            let all =
+                crate::why::stage("mentions", || self.kept_mentions(&root, sheets, theme_css));
             let ids = match changed {
                 Some(changed) => changed.elements.iter().copied().map(Some).collect(),
                 None => {
@@ -88,7 +89,9 @@ impl Document {
             }
         }
         let handles = batch.texts.iter().map(|change| &change.node);
-        let text_ids = source_ids(&values.traversal.texts(), handles);
+        let text_ids = crate::why::stage("text_ids", || {
+            source_ids(&values.traversal.texts(), handles)
+        });
         let read = values.traversal.read_texts();
         let mut texts: TextEdits<'_> = HashMap::new();
         for (change, id) in batch.texts.iter().zip(text_ids) {
@@ -115,10 +118,9 @@ impl Document {
         // коробок после пакета то же самое, и копировать нечего.
         let attrs = match targets.is_empty() {
             true => Vec::new(),
-            false => match self
-                .boxes()
-                .and_then(|b| attr_paths(&self.nodes, &b, &targets))
-            {
+            false => match self.boxes().and_then(|b| {
+                crate::why::stage("attr_paths", || attr_paths(&self.nodes, &b, &targets))
+            }) {
                 Some(attrs) => attrs,
                 None => return fall_back_document("attributes rewritten by the build"),
             },
@@ -127,7 +129,7 @@ impl Document {
         if attrs.is_empty() && found.is_empty() {
             return Some(Plan::Clean(None));
         }
-        let mut nodes = (*self.nodes).clone();
+        let mut nodes = crate::why::stage("nodes", || (*self.nodes).clone());
         if !(patch(&mut nodes, &attrs, &targets) && patch_texts(&mut nodes, found, &texts)) {
             return fall_back_document("a box path");
         }

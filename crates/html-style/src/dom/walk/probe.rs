@@ -114,7 +114,7 @@ pub fn probe(
     chains: &mut Chains,
     vcx: ValueCx<'_>,
 ) -> Result<Vec<Option<Probed>>, Error> {
-    chains.root(root, tree);
+    crate::journal::stage("chains_root", || chains.root(root, tree));
     let mut run = Run {
         targets,
         parents: targets.iter().map(parent).collect(),
@@ -131,7 +131,9 @@ pub fn probe(
         .filter(|&i| !known(i, &run, chains))
         .collect();
     if !cold.is_empty() {
-        walk(root, tree, scope, &cold, Some(chains), &mut run, vcx)?;
+        crate::journal::stage("walk_cold", || {
+            walk(root, tree, scope, &cold, Some(chains), &mut run, vcx)
+        })?;
         // A target the walk gave a context enters again under it: both
         // probes of a batch then enter it alike (the counters of an entry
         // under a context do not pass through its ancestors).
@@ -178,7 +180,9 @@ pub fn probe(
         }
     }
     if !left.is_empty() {
-        walk(root, tree, scope, &left, None, &mut run, vcx)?;
+        crate::journal::stage("walk_left", || {
+            walk(root, tree, scope, &left, None, &mut run, vcx)
+        })?;
     }
     Ok(run.found)
 }

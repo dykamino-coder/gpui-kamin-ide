@@ -63,13 +63,15 @@ impl Document {
         let values = &self.state.values;
         let document = &input.dom.document;
         let media = self.state.media();
-        let Ok(Some(probe)) = cache.probe(input, theme_css, media, values) else {
+        let probe = crate::why::stage("probe", || cache.probe(input, theme_css, media, values));
+        let Ok(Some(probe)) = probe else {
             return Levels::document(document, "probe");
         };
         let (mutated, after): (Vec<_>, Vec<&[_]>) = (batch.elements.iter())
             .map(|c| (c.element.clone(), &c.new[..]))
             .unzip();
-        let mut targets = cache.targets(&probe, changed, (&mutated, &after));
+        let found = || cache.targets(&probe, changed, (&mutated, &after));
+        let mut targets = crate::why::stage("targets", found);
         // `attr()` reads an attribute of the element its declaration applies
         // to (css-values-5 §7.7): a changed name the sheets or a mutated
         // element's own `style=""` read restyles the mutated elements.
@@ -118,11 +120,13 @@ impl Document {
         // The styles before the batch are those the last probe of each
         // target left (Blink and Stylo keep the old style on the element);
         // only targets no edit has probed yet are cascaded.
-        let Ok(before) = cache.kept_styles(&probe, input, values, &targets) else {
+        let before = || cache.kept_styles(&probe, input, values, &targets);
+        let Ok(before) = crate::why::stage("kept_styles", before) else {
             return Levels::document(document, "budget");
         };
         batch.write();
-        let after = cache.styles(&probe, input, values, &targets);
+        let after = || cache.styles(&probe, input, values, &targets);
+        let after = crate::why::stage("styles", after);
         batch.undo();
         crate::paint_path::add(&crate::paint_path::HAS_MARKED, cache.take_remarks());
         let Ok(after) = after else {

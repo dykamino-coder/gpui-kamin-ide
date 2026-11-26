@@ -174,11 +174,12 @@ impl RestyleCache {
         values: &Rc<DocumentValues>,
         targets: &[Handle],
     ) -> Result<Vec<Option<Probed>>, DocumentFailure> {
-        let mut tree = TreeIndex::new(values.clone(), input.xhtml);
+        let mut tree =
+            crate::journal::stage("tree", || TreeIndex::new(values.clone(), input.xhtml));
         let document = &input.dom.document;
-        self.chains.forget_parents(&self.mutated);
+        crate::journal::stage("forget", || self.chains.forget_parents(&self.mutated));
         if !probe.has_args.is_empty() {
-            self.marks(document, &probe.has_args, &mut tree)?;
+            crate::journal::stage("marks", || self.marks(document, &probe.has_args, &mut tree))?;
         }
         let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;

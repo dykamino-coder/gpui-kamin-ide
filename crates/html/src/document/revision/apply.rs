@@ -80,14 +80,17 @@ impl Document {
         let invalidation = if batch.changes_children() {
             None
         } else {
-            let invalidation = self.invalidation(&batch, theme_css);
-            if let Some(plan) = self.plan(
-                &mut batch,
-                theme_css,
-                None,
-                invalidation.as_ref(),
-                &revision,
-            ) {
+            let invalidation =
+                crate::why::stage("invalidation", || self.invalidation(&batch, theme_css));
+            if let Some(plan) = crate::why::stage("plan", || {
+                self.plan(
+                    &mut batch,
+                    theme_css,
+                    None,
+                    invalidation.as_ref(),
+                    &revision,
+                )
+            }) {
                 batch.write();
                 self.commit(
                     plan,
