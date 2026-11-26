@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { probe } from "./native-probe.mjs";
 import { readRuntimeDiagnostics } from "./runtime-diagnostics.mjs";
 import { registerClient } from "./cef-input.mjs";
+import { checkConsoleScroll } from "./console-scroll.mjs";
 import { checkEngineMenus } from "./engine-menus.mjs";
 import { checkWorkspaceLink, createWorkspaceFixture } from "./workspace-link.mjs";
 
@@ -138,6 +139,7 @@ try {
       assert.ok(value.settled && value.user && value.assistant && value.rendered);
     }, true);
     if (fixture) await checkWorkspaceLink({ fixture, installed, ...driver });
+    if (behavior === "console-scroll") await checkConsoleScroll({ ...driver, rpc });
     if (behavior === "engine-menus") await checkEngineMenus(driver, tab);
   }
   report.status = "passed";

@@ -12,12 +12,12 @@ on:
       installed_scenario:
         description: Scenario after upgrading the verified installed client
         type: choice
-        options: [native-client, bridge-roundtrip, workspace-link, engine-menus]
+        options: [native-client, bridge-roundtrip, workspace-link, console-scroll, engine-menus]
         default: native-client
       scenario:
         description: Last boundary to exercise
         type: choice
-        options: [bridge-roundtrip, native-client, workspace-link, engine-menus, extension-hooks, installed-client]
+        options: [bridge-roundtrip, native-client, workspace-link, console-scroll, engine-menus, extension-hooks, installed-client]
         default: bridge-roundtrip
   # Bootstrap the optional workflow once for a same-repository harness PR.
   # Subsequent exact candidates run on explicit dispatch.
