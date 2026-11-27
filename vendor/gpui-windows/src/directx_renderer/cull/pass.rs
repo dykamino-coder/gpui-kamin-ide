@@ -17,7 +17,7 @@ use super::super::{
 };
 use super::{bounds, disjoint, extent, gather, region};
 use anyhow::Result;
-use gpui::{AtlasTextureId, GradientData, PrimitiveBatch, Quad, Scene};
+use gpui::{AtlasTextureId, ContentMask, GradientData, PrimitiveBatch, Quad, ScaledPixels, Scene};
 use std::ops::Range;
 
 /// What one draw of the pass draws: an instance kind and its atlas texture.
@@ -54,6 +54,9 @@ enum Op<'s> {
     },
     /// A batch drawn within each rectangle in turn.
     Each(&'s Scene, PrimitiveBatch),
+    /// Gathered instances `range` of one kind, uncut, drawn within each
+    /// rectangle in turn under the scissor (`gather_runs`).
+    Scissored { kind: Kind, range: Range<usize> },
 }
 
 /// The pass being gathered.
@@ -87,6 +90,41 @@ impl Gather<'_> {
             range: end - n..end,
             area,
         });
+    }
+
+    /// Gather `items` in paint order: a run whose extent is known as cut
+    /// copies (`gather`), a run that a transformation moves (no extent) once
+    /// each with its own mask, drawn within each rectangle under the scissor.
+    /// A mask cut through a transformed instance clips its triangles anew
+    /// (`SV_ClipDistance`, clipped as geometry on WARP), moving the edge
+    /// pixels the whole frame draws; the scissor tests pixels only.
+    fn gather_runs<T: Copy>(
+        &mut self,
+        kind: Kind,
+        out: &mut Vec<T>,
+        items: &[T],
+        rects: &[[f32; 4]],
+        extent: impl Fn(&T) -> Option<[f32; 4]>,
+        mask: impl Fn(&mut T) -> &mut ContentMask<ScaledPixels>,
+    ) {
+        let mut at = 0;
+        while at < items.len() {
+            let moved = extent(&items[at]).is_none();
+            let run = items[at..].iter().take_while(|item| extent(item).is_none() == moved).count();
+            let part = &items[at..at + run];
+            if moved {
+                let start = out.len();
+                out.extend_from_slice(part);
+                match self.ops.last_mut() {
+                    Some(Op::Scissored { kind: k, range }) if *k == kind && range.end == start => range.end = out.len(),
+                    _ => self.ops.push(Op::Scissored { kind, range: start..out.len() }),
+                }
+            } else {
+                let got = gather(out, part, rects, &extent, &mask);
+                self.push(kind, got, out.len());
+            }
+            at += run;
+        }
     }
 
     fn gradient_base(&mut self, scene: &Scene, gradients: &mut GradientData) -> u32 {
@@ -168,7 +206,8 @@ impl DirectXRenderer {
                     let skip = std::mem::take(&mut g.first_quads) && g.backdrop && r.start == 0;
                     let start = all.quads.len();
                     let items = &scene.quads[r.start + usize::from(skip)..r.end];
-                    let got = gather(
+                    g.gather_runs(
+                        Kind::Quads,
                         &mut all.quads,
                         items,
                         rects,
@@ -181,7 +220,6 @@ impl DirectXRenderer {
                             .iter_mut()
                             .for_each(|q| q.offset_gradient(base));
                     }
-                    g.push(Kind::Quads, got, all.quads.len());
                 }
                 PrimitiveBatch::Underlines(r) => {
                     let got = gather(
@@ -195,36 +233,36 @@ impl DirectXRenderer {
                 }
                 PrimitiveBatch::MonochromeSprites { texture_id, range } => {
                     let items = &scene.monochrome_sprites[range];
-                    let got = gather(
+                    g.gather_runs(
+                        Kind::Mono(texture_id),
                         &mut all.mono,
                         items,
                         rects,
                         |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
                         |s| &mut s.content_mask,
                     );
-                    g.push(Kind::Mono(texture_id), got, all.mono.len());
                 }
                 PrimitiveBatch::SubpixelSprites { texture_id, range } => {
                     let items = &scene.subpixel_sprites[range];
-                    let got = gather(
+                    g.gather_runs(
+                        Kind::Subpixel(texture_id),
                         &mut all.subpixel,
                         items,
                         rects,
                         |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
                         |s| &mut s.content_mask,
                     );
-                    g.push(Kind::Subpixel(texture_id), got, all.subpixel.len());
                 }
                 PrimitiveBatch::PolychromeSprites { texture_id, range } => {
                     let items = &scene.polychrome_sprites[range];
-                    let got = gather(
+                    g.gather_runs(
+                        Kind::Poly(texture_id),
                         &mut all.poly,
                         items,
                         rects,
                         |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
                         |s| &mut s.content_mask,
                     );
-                    g.push(Kind::Poly(texture_id), got, all.poly.len());
                 }
             }
         }
@@ -250,19 +288,17 @@ impl DirectXRenderer {
         for op in ops {
             let cost = match &op {
                 Op::Draw { kind, range, area } => (kind.index(), range.len(), *area),
+                Op::Scissored { kind, range } => (kind.index(), range.len() * rects.len(), 0.0),
                 Op::Each(scene, batch) => batch_area(scene, batch),
             };
             match op {
-                Op::Draw { kind, range, .. } => {
-                    let (start, len) = (range.start, range.len());
-                    match kind {
-                        Kind::Shadows => self.draw_shadows(start, len),
-                        Kind::Quads => self.draw_quads(&instances.quads[range], start),
-                        Kind::Underlines => self.draw_underlines(start, len),
-                        Kind::Mono(t) => self.draw_monochrome_sprites(t, start, len),
-                        Kind::Subpixel(t) => self.draw_subpixel_sprites(t, start, len),
-                        Kind::Poly(t) => self.draw_polychrome_sprites(t, start, len),
-                    }?
+                Op::Draw { kind, range, .. } => self.draw_kind(kind, range, instances)?,
+                Op::Scissored { kind, range } => {
+                    for r in rects {
+                        self.set_scissor(region(r));
+                        self.draw_kind(kind, range.clone(), instances)?;
+                    }
+                    self.set_scissor(all);
                 }
                 Op::Each(scene, batch) => {
                     for r in rects {
@@ -305,6 +341,21 @@ impl DirectXRenderer {
             }
         }
         Ok(())
+    }
+}
+
+impl DirectXRenderer {
+    /// Draw the gathered instances `range` of `kind`.
+    fn draw_kind(&mut self, kind: Kind, range: Range<usize>, instances: &LayerInstances) -> Result<()> {
+        let (start, len) = (range.start, range.len());
+        match kind {
+            Kind::Shadows => self.draw_shadows(start, len),
+            Kind::Quads => self.draw_quads(&instances.quads[range], start),
+            Kind::Underlines => self.draw_underlines(start, len),
+            Kind::Mono(t) => self.draw_monochrome_sprites(t, start, len),
+            Kind::Subpixel(t) => self.draw_subpixel_sprites(t, start, len),
+            Kind::Poly(t) => self.draw_polychrome_sprites(t, start, len),
+        }
     }
 }
 

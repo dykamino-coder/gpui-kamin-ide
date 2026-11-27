@@ -96,6 +96,7 @@ FIXES = {
         "Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.",
         "Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.",
         "Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.",
+        "Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).",
     ],
     "gpui-windows": [
         "Frame canvas: the frame is drawn into a kept canvas texture and each back buffer receives its accumulated damage by copy before present; a scroll step planned as a move (`Scene::frame_shift`) copies the canvas by the step through a scratch texture and rasterizes only the planned rectangles, from instances uploaded once; capture reads the canvas and reports the plan, rectangles and GPU wait.",
@@ -132,6 +133,7 @@ FIXES = {
         "Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.",
         "Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.",
         "Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.",
+        "Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.",
     ],
     "gpui-base": [
         "Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.",
