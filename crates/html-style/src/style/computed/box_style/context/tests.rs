@@ -219,8 +219,13 @@ fn propagated_decorations_share_one_list_and_leave_computed_unshared() {
         r#"<p style="text-decoration:underline"><span><b>x</b></span></p>"#,
         "",
     );
-    let find = |tag: &str| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
-    materialize(&parsed.nodes, &Rc::new(Computed::default()), parsed.values());
+    let find =
+        |tag: &str| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
+    materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
     let p = box_style(&BoxStyle::default(), &find("p").style, parsed.values());
     let span = box_style(&p, &find("span").style, parsed.values());
     let b = box_style(&span, &find("b").style, parsed.values());

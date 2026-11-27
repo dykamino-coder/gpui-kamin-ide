@@ -30,7 +30,10 @@ pub(super) fn input<'a>(
         return None;
     }
     if dependencies.last().is_none_or(|(last, _)| *last != id) {
-        dependencies.push((id, Inputs::of(style, style.reset_text_box.ruby_suppress_breaks)));
+        dependencies.push((
+            id,
+            Inputs::of(style, style.reset_text_box.ruby_suppress_breaks),
+        ));
     }
     Some(style)
 }

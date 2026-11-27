@@ -175,11 +175,9 @@ fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
         )
     };
     assert_eq!(
-        super::constraint(&intrinsic_table, 200.0).unwrap().used_keyword(
-            keyword(&intrinsic_table),
-            30.0,
-            900.0
-        ),
+        super::constraint(&intrinsic_table, 200.0)
+            .unwrap()
+            .used_keyword(keyword(&intrinsic_table), 30.0, 900.0),
         900.0
     );
     let table = Computed {
