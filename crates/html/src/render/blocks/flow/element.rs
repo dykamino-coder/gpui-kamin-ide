@@ -60,7 +60,7 @@ pub(crate) async fn paint_element(
         // preserve the parent 3D context, backface and plane as for other boxes.
         let el = crate::paint::effects::transform::transformed(
             el,
-            &e.style.used(),
+            &crate::style::computed::BoxStyle::shared(e.style.used()),
             inherited,
             opts.cx.frame(),
         );

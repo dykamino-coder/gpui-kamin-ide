@@ -118,6 +118,7 @@ impl SharedStyle {
             try_source: facts.and_then(|f| f.try_source.clone()),
             decor_box: self.decor_box(),
             flow_align: self.flow_align(),
+            tree: facts.map(|f| f.tree).unwrap_or_default(),
             ..BoxStyleInput::new(
                 style,
                 facts.and_then(|f| f.context.clone()),
@@ -174,6 +175,7 @@ impl SharedStyle {
             moved_from: None,
             decor_box: (input.decor_box != input.style.decor_box).then_some(input.decor_box),
             flow_align: input.flow_align,
+            tree: input.tree,
         };
         let decoration = crate::style::background_paint::DecorationInput {
             inline: input.inline_decoration,
@@ -188,7 +190,8 @@ impl SharedStyle {
             box_facts: (facts.context.is_some()
                 || facts.try_source.is_some()
                 || facts.decor_box.is_some()
-                || facts.flow_align.is_some())
+                || facts.flow_align.is_some()
+                || facts.tree != Default::default())
             .then(|| Rc::new(facts)),
             decoration: Some(Rc::new(decoration)).filter(|d| **d != Default::default()),
         }

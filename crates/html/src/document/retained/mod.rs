@@ -96,6 +96,8 @@ mod record;
 pub(crate) use record::frame_miss_code;
 mod builder;
 #[cfg(test)]
+mod line_split_tests;
+#[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
 mod resize_tests;

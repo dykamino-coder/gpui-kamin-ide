@@ -81,7 +81,7 @@ pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
 
 pub(crate) fn resolve(
     style: &mut BoxStyle,
-    parent: &Computed,
+    parent: &BoxStyle,
     viewport: (f32, f32),
     principal: bool,
 ) {
@@ -94,7 +94,7 @@ pub(crate) fn resolve(
     {
         Some([axis(style, false), axis(style, true)])
     } else {
-        parent.reset_context.orthogonal_scrollport
+        parent.tree.orthogonal_scrollport
     };
     let vertical = style.wm().vertical();
     let parent_vertical = parent.wm().vertical();
@@ -109,10 +109,10 @@ pub(crate) fn resolve(
     };
     // Equal values are not written: the context group stays shared with the
     // computed style (Blink `ComputedStyle` setters compare first).
-    if style.reset_context.orthogonal_scrollport != scrollport
+    if style.tree.orthogonal_scrollport != scrollport
         || style.reset_context.orthogonal_inline != inline
     {
-        style.reset_context.orthogonal_scrollport = scrollport;
+        style.tree.orthogonal_scrollport = scrollport;
         style.reset_context.orthogonal_inline = inline;
     }
     if principal || !vertical || parent_vertical || !ordinary(style) || !ordinary(parent) {
@@ -124,7 +124,7 @@ pub(crate) fn resolve(
     let parent_axis = ratio_basis::block_axis(parent);
     let fallback = available(
         parent_axis,
-        parent.reset_context.orthogonal_scrollport.map(|s| s[1]),
+        parent.tree.orthogonal_scrollport.map(|s| s[1]),
         viewport.1,
     );
     let basis = parent_axis
@@ -143,7 +143,7 @@ pub(crate) fn resolve(
     .into_iter()
     .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
     {
-        style.reset_context.orthogonal_scrollport = Some([axis(style, false), own]);
+        style.tree.orthogonal_scrollport = Some([axis(style, false), own]);
     }
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the

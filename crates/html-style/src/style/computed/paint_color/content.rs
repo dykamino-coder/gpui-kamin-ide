@@ -73,7 +73,6 @@ pub(super) fn fragmentation(g: &ResetFragmentation) -> bool {
         column_height: _,
         column_wrap: _,
         column_gap: _,
-        in_multicol: _,
         column_fill_auto: _,
         column_span: _,
         page: _,

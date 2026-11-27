@@ -60,7 +60,7 @@ impl BackgroundValues {
     /// Позднее разрешение единиц окна тем же обходом операндов, что у CSS.
     /// Размер области и ось берутся от корня, как до выделения этого входа.
     pub fn resolve_viewport(&mut self, root: &Computed, viewport: (f32, f32), vcx: ValueCx<'_>) {
-        let vp = root.viewport_cx(viewport);
+        let vp = root.viewport_cx(viewport, vcx);
         let fix = |l: &mut Option<crate::style::values::value::Len>| {
             *l = l.map(|l| l.fold_viewport(vp, vcx));
         };

@@ -128,8 +128,8 @@ mod tests {
         for position in ["absolute", "fixed"] {
             let child = inherit_unpainted(&parent, &declarations(&[("position", position)]), vcx);
             assert!(child.cb_ancestor, "{position}");
-            assert!(child.reset_transforms.transform_ancestor, "{position}");
-            assert!(child.reset_context.fragment_clip_ancestor, "{position}");
+            assert!(child.tree.transform_ancestor, "{position}");
+            assert!(child.tree.fragment_clip_ancestor, "{position}");
         }
     }
 

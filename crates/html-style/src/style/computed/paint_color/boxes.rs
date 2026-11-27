@@ -135,7 +135,6 @@ pub(super) fn effects(g: &ResetEffects) -> bool {
         blend: _,
         isolate: _,
         will_change: _,
-        backdrop_root_above: _,
         will_change_root: _,
         backdrop_filter_set: _,
         vt_name: _,

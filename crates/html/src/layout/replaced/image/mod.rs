@@ -28,18 +28,7 @@ mod sized;
 /// Только обычный блочный контейнер: у гибкого, сеточного и лунок высота
 /// приходит от раскладки, и подстановка ломает `row-auto-repeat-auto-023`.
 pub(crate) fn pct_height_to_px(e: &Element, inherited: &Computed) -> Element {
-    let mut resolved = pct_limits_to_px(e, inherited);
-    // Replaced boxes resolve viewport units from their raw style, too.
-    resolved
-        .style
-        .used_mut()
-        .reset_positioned
-        .viewport_unit_insets = resolved
-        .style
-        .used()
-        .reset_positioned
-        .viewport_unit_insets
-        .or(inherited.reset_positioned.viewport_unit_insets);
+    let resolved = pct_limits_to_px(e, inherited);
     let e = &resolved;
     let (Some(Len::Pct(k)), Some(Len::Px(h))) = (
         e.style.used().reset_box_layout.height,

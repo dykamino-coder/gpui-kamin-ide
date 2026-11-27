@@ -4,12 +4,7 @@
 //! предела родителя, ближайшего scrollport и ICB, а используемый размер
 //! зажимается своими min/max; внутренний минимум может превысить запасное место.
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct AxisSizes {
-    pub size: Option<f32>,
-    pub min: Option<f32>,
-    pub max: Option<f32>,
-}
+pub use crate::box_facts::AxisSizes;
 
 impl AxisSizes {
     pub fn limit(self) -> Option<f32> {
