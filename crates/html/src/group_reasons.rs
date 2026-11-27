@@ -6,9 +6,16 @@
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// The reasons, in the order of their counters.
-pub const REASONS: [&str; 9] = [
-    // Corners no quad draws (corner shapes, clipping corners, `calc()`
-    // radii, patterned or several-coloured borders): a rounded-box mask.
+pub const REASONS: [&str; 16] = [
+    // Corners no quad draws, by `Computed::ellipse_quad_refusal`: a
+    // rounded-box mask.
+    "rounded_mask_corner_shape",
+    "rounded_mask_calc",
+    "rounded_mask_border_shape",
+    "rounded_mask_border_image",
+    "rounded_mask_border_style",
+    "rounded_mask_border_colours",
+    "rounded_mask_clip",
     "rounded_mask",
     "mask_image",
     "border_shape",
@@ -43,18 +50,32 @@ pub(crate) fn of(
     mask: Option<&crate::paint::effects::grouped_element::GroupMask>,
     clipped: bool,
     clip_shape: bool,
+    refusal: Option<&'static str>,
 ) -> &'static str {
     use crate::paint::effects::grouped_element::GroupMask;
     match mask {
         Some(GroupMask::Images(_)) => "mask_image",
         Some(GroupMask::Geometry(s)) if s.starts_with("bordershape:") => "border_shape",
-        Some(GroupMask::Geometry(s)) if s.starts_with("shape:") && !clip_shape => "rounded_mask",
+        Some(GroupMask::Geometry(s)) if s.starts_with("shape:") && !clip_shape => rounded(refusal),
         Some(GroupMask::Geometry(_)) => "clip_shape",
         None if polygon => "clip_shape",
         None if clipped => "clip_rect",
         None if blur > 0.0 => "blur",
         None if blend != 0 => "blend",
         None => "isolation",
+    }
+}
+
+fn rounded(refusal: Option<&'static str>) -> &'static str {
+    match refusal {
+        Some("corner_shape") => "rounded_mask_corner_shape",
+        Some("calc") => "rounded_mask_calc",
+        Some("border_shape") => "rounded_mask_border_shape",
+        Some("border_image") => "rounded_mask_border_image",
+        Some("border_style") => "rounded_mask_border_style",
+        Some("border_colours") => "rounded_mask_border_colours",
+        Some("clip") => "rounded_mask_clip",
+        _ => "rounded_mask",
     }
 }
 

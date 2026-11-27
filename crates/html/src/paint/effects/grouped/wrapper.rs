@@ -43,6 +43,7 @@ pub(crate) fn grouped_wrapper(
         mask.as_ref(),
         clipped,
         c.reset_mask.clip_shape.is_some(),
+        c.ellipse_quad_refusal(),
     ));
     let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el, frame);
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);

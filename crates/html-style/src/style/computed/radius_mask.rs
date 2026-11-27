@@ -55,6 +55,13 @@ impl Computed {
     /// elliptical `SkRRect`; a group with a mask is an offscreen surface per
     /// box (99.8 % of the groups of a page drawn in CSS).
     fn ellipse_quad_draws(&self) -> bool {
+        self.ellipse_quad_refusal().is_none()
+    }
+
+    /// Why a quad does not draw these corners (`ellipse_quad_draws`), named
+    /// for the DevTools journal: `corner_shape`, `calc`, `border_shape`,
+    /// `border_image`, `border_style`, `border_colours` or `clip`.
+    pub fn ellipse_quad_refusal(&self) -> Option<&'static str> {
         let b = &self.reset_border;
         let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
         let solid = b
@@ -72,18 +79,22 @@ impl Computed {
                 .flatten()
                 .flatten()
                 .any(|(x, y)| calc(x) || calc(y));
-        !self.corner_shaped()
-            && !calculated
-            && b.border_shape.is_none()
-            && b.border_image.is_none()
-            && b.border_dashed != Some(true)
-            && b.border_dotted != Some(true)
-            && solid
-            && one_colour
-            && self.reset_context.contain_paint != Some(true)
-            && !self.reset_context.scroller
-            && visible(self.reset_box_layout.overflow_x)
-            && visible(self.reset_box_layout.overflow_y)
+        let clips = self.reset_context.contain_paint == Some(true)
+            || self.reset_context.scroller
+            || !visible(self.reset_box_layout.overflow_x)
+            || !visible(self.reset_box_layout.overflow_y);
+        let patterned = b.border_dashed == Some(true) || b.border_dotted == Some(true) || !solid;
+        [
+            (self.corner_shaped(), "corner_shape"),
+            (calculated, "calc"),
+            (b.border_shape.is_some(), "border_shape"),
+            (b.border_image.is_some(), "border_image"),
+            (patterned, "border_style"),
+            (!one_colour, "border_colours"),
+            (clips, "clip"),
+        ]
+        .into_iter()
+        .find_map(|(refused, why)| refused.then_some(why))
     }
 
     fn radius_beyond_circles(
