@@ -67,7 +67,6 @@ impl Computed {
                     && let Ok(a) = align_keyword(v)
                 {
                     self.reset_flex.align_self = accept_parsed!(self, a);
-                    self.reset_flex.align_self_decl = Some(a);
                     self.reset_flex.align_self_safe = is_safe(v);
                     self.reset_flex.align_self_normal = v.trim() == "normal";
                     self.reset_flex.align_self_own_axis =

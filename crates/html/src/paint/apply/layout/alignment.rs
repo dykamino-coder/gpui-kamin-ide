@@ -58,6 +58,8 @@ pub(super) fn layout_alignment(
     }
     // `align-self` — про САМ элемент, а не про его детей. Раньше оба свойства
     // писались в одно поле, и элемент выравнивал содержимое вместо себя.
+    // The box stage left the used value here: the author's value where it
+    // applies, block layout's placement elsewhere (`inherit::self_align`).
     if let Some(a) = c.reset_flex.align_self {
         d.style().align_self = Some(self_align(a, c.reset_flex.align_self_last));
     }

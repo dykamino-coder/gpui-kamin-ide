@@ -30,8 +30,6 @@ pub(super) fn finish(
     hoist_grid_abspos(admission, &mut out)?;
     grid_static_position::adjust(admission, &mut out)?;
     flex_items_lose_float(admission, &mut out)?;
-    align_self_from_dom_parent(admission, &mut out, None)?;
-    grid_table_items_keep_stretch(admission, &mut out)?;
     subgrid_takes_parent_tracks(admission, &mut out)?;
     filter_ref_only_empty(admission, &mut out)?;
     fold_run_ins(admission, &mut out, None)?;
