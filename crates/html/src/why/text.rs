@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 mod frames;
 mod memory;
 mod raster;
+mod roots;
 mod window;
 use frames::frames;
 use raster::raster;
@@ -79,6 +80,8 @@ pub(super) fn render(out: &Value) -> String {
         }
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render(&mut s, &f["paint_work"]);
+        roots::render(&mut s, &f["between"]["document_roots"], "root before");
+        roots::render(&mut s, &f["document_roots"], "root");
         let phases: Vec<String> = f["phases_ms"]
             .as_object()
             .into_iter()

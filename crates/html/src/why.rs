@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 mod memory;
 mod paint_work;
 mod report;
+pub(crate) mod root;
 mod text;
 pub use report::{Report, Watch, raster};
 pub use text::changes as owner_changes;

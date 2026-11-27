@@ -41,10 +41,12 @@ impl Report {
 
     /// Start before the action that can build or replace the document tree.
     pub fn watch(&self, doc: &Document) -> Watch {
+        let mut between = super::to_json(&super::take());
+        between["document_roots"] = doc.take_root_phases();
         Watch {
             frames: doc.frame_counters(),
             path: crate::paint_path::read(),
-            between: super::to_json(&super::take()),
+            between,
         }
     }
 
@@ -93,6 +95,7 @@ impl Report {
             "process_private_bytes": fields["memory"]["process_private_bytes"],
         });
         let mut entry = super::to_json(&super::take());
+        entry["document_roots"] = doc.take_root_phases();
         let after = crate::paint_path::read();
         let path: serde_json::Map<String, Value> = crate::paint_path::NAMES
             .iter()

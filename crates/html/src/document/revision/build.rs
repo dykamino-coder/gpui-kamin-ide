@@ -167,6 +167,7 @@ impl Document {
             nodes: Rc::new(nodes),
             tree: crate::document::scope::next_tree(),
             retained: Default::default(),
+            root_phases: Default::default(),
             reuse: Default::default(),
             restyle: super::Kept::built(kept),
             root,

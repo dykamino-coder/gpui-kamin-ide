@@ -18,6 +18,7 @@ mod animation_tests;
 mod box_repaint;
 #[cfg(test)]
 mod box_repaint_tests;
+mod builder;
 #[cfg(test)]
 mod child_removal_tests;
 #[cfg(test)]
@@ -98,6 +99,8 @@ mod restyle_run_tests;
 #[cfg(test)]
 mod reuse_tests;
 #[cfg(test)]
+mod root_phase_tests;
+#[cfg(test)]
 mod svg_paint_tests;
 #[cfg(test)]
 mod tests;
@@ -114,8 +117,7 @@ mod window_key;
 use super::Document;
 use super::state::DocState;
 use crate::dom::Node;
-use crate::layout::reuse::FlowReuse;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement};
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -172,40 +174,7 @@ struct Builder {
     /// No resource changed since the previous frame: the window's frame tree
     /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
     layout_keys: bool,
-}
-
-impl Builder {
-    /// Коробка области просмотра с деревом документа: начальный содержащий
-    /// блок точного размера, белый холст UA и текст окна из опций хоста.
-    /// Блоки корневого потока записываются для следующих кадров, а при
-    /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
-    /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
-    fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
-        let (w, h) = self.opts.viewport;
-        let again = self.counters.get().is_some();
-        match self.counters.get() {
-            Some(counters) => counters.write(&self.opts.cx),
-            None => self
-                .counters
-                .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
-        }
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
-        let mut opts = self.opts.clone();
-        opts.cx.contracts.reuse = flow.clone();
-        let tree = div()
-            .w(px(w))
-            .h(px(h))
-            .bg(rgb(0xffffff))
-            .text_size(self.opts.text.font_size)
-            .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(
-                &self.state,
-                (&self.nodes, self.tree),
-                &opts,
-            ))
-            .into_any_element();
-        (tree, flow)
-    }
+    phases: crate::why::root::Attempt,
 }
 
 impl Document {
@@ -216,7 +185,11 @@ impl Document {
         let candidate =
             self.retained.inputs(key.as_ref()).is_ok() && self.state.values.resources_unchanged();
         let prepared = self.retained.take_prepared(&key);
-        let builder = self.frame_builder(opts, &key);
+        let mut builder = self.frame_builder(opts, &key);
+        builder.phases = prepared.as_ref().map_or_else(
+            || self.frame_attempt(opts, false),
+            |prepared| prepared.phases.clone(),
+        );
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
             .into_any_element()
     }

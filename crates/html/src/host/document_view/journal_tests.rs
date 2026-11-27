@@ -46,6 +46,13 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
     assert_eq!(cold["document_step_calls"], 0);
     assert_eq!(cold["built"], 1);
     assert_eq!(cold["builds_inside_draw"], 1);
+    let roots = cold["document_roots"]["attempts"].as_array().unwrap();
+    assert_eq!(roots.len(), 1);
+    assert_eq!(roots[0]["prepared"], false);
+    assert_eq!(roots[0]["painted"], true);
+    for phase in ["build", "request_layout", "prepaint", "paint"] {
+        assert!(roots[0]["phases_ms"][phase]["calls"].as_u64().unwrap() > 0);
+    }
     let warm = frames.last().unwrap();
     assert_eq!(warm["document_step_calls"], 1);
     assert_eq!(warm["built"], 0);

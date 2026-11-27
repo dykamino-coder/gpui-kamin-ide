@@ -117,7 +117,15 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
-        (self.request_viewport_layout(window, cx), ())
+        let id = {
+            let _phase = self
+                .builder
+                .phases
+                .enter(crate::why::root::Phase::RequestLayout);
+            self.request_viewport_layout(window, cx)
+        };
+        self.builder.phases.requested(window.scale_factor());
+        (id, ())
     }
 
     fn prepaint(
@@ -129,6 +137,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let _phase = self.builder.phases.prepaint();
         let Some(id) = id else { return };
         if let Some(root) = &self.builder.state.root_scroll {
             root.hosted.set(true);
@@ -157,11 +166,13 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) {
+        let _phase = self.builder.phases.enter(crate::why::root::Phase::Paint);
         let Some(id) = id else { return };
         self.paint_record(id, window, cx);
         if let Some((bars, hits)) = self.root_bars.take() {
             bars.paint(&hits, window);
         }
+        self.builder.phases.painted();
     }
 }
 

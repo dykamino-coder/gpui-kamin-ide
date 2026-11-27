@@ -13,6 +13,7 @@ use std::rc::Rc;
 /// Дерево кадра, собранное и разложенное шагом документа.
 pub(super) struct Prepared {
     pub(super) key: FrameKey,
+    pub(super) phases: crate::why::root::Attempt,
     /// Счётчики до сборки шага: повторная сборка в кадре начинает с них, как
     /// шаг (сборщик кадр делает свой — опции того же ключа).
     pub(super) counters: Option<crate::layout::reuse::Counters>,
@@ -105,7 +106,8 @@ impl Document {
                         if replay {
                             return;
                         }
-                        let builder = self.frame_builder(opts, &Some(key.clone()));
+                        let mut builder = self.frame_builder(opts, &Some(key.clone()));
+                        builder.phases = self.frame_attempt(opts, true);
                         let before = window.next_frame_callback_count();
                         let (tree, flow, layout_inputs) =
                             builder.layout_checked(bounds, window, cx, |phase| {
@@ -118,6 +120,7 @@ impl Document {
                         let scheduled = window.next_frame_callback_count().saturating_sub(before);
                         self.retained.prepared.replace(Some(Prepared {
                             key: key.clone(),
+                            phases: builder.phases.clone(),
                             counters: builder.counters.get(),
                             tree,
                             flow,
@@ -143,6 +146,24 @@ impl Document {
         self.retained.inside_draw.get()
     }
 
+    pub(super) fn frame_attempt(
+        &self,
+        opts: &crate::RenderOpts,
+        prepared: bool,
+    ) -> crate::why::root::Attempt {
+        self.root_phases.begin(
+            Rc::as_ptr(&self.reuse) as usize as u64,
+            self.tree,
+            prepared,
+            opts,
+            self.state.root_scroll.is_some(),
+        )
+    }
+
+    pub(crate) fn take_root_phases(&self) -> serde_json::Value {
+        self.root_phases.take()
+    }
+
     pub(super) fn frame_builder(
         &self,
         opts: &crate::RenderOpts,
@@ -157,6 +178,7 @@ impl Document {
             store: self.reuse.clone(),
             counters: Cell::new(None),
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),
+            phases: Default::default(),
         }
     }
 }
