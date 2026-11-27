@@ -28,11 +28,21 @@ impl Computed {
         )
     }
 
-    pub fn radius_masked_with(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
+    pub fn radius_masked_with(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
         self.radius_beyond_circles(single_corner, shadows_empty, vcx) && !self.ellipse_quad_draws()
     }
 
-    pub fn radius_elliptic_with(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
+    pub fn radius_elliptic_with(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
         self.radius_beyond_circles(single_corner, shadows_empty, vcx) && self.ellipse_quad_draws()
     }
 
@@ -47,11 +57,21 @@ impl Computed {
     fn ellipse_quad_draws(&self) -> bool {
         let b = &self.reset_border;
         let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
-        let solid = b.border_side_styles.iter().all(|s| matches!(s, None | Some(0 | 1 | 9)));
+        let solid = b
+            .border_side_styles
+            .iter()
+            .all(|s| matches!(s, None | Some(0 | 1 | 9)));
         let one_colour = b.border_colors.iter().all(|c| *c == b.border_colors[0]);
         let calc = |l: &Len| matches!(l, Len::Calc(_));
-        let calculated = [b.radius.tl, b.radius.tr, b.radius.br, b.radius.bl].iter().flatten().any(calc)
-            || b.radius_ell.iter().flatten().flatten().any(|(x, y)| calc(x) || calc(y));
+        let calculated = [b.radius.tl, b.radius.tr, b.radius.br, b.radius.bl]
+            .iter()
+            .flatten()
+            .any(calc)
+            || b.radius_ell
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|(x, y)| calc(x) || calc(y));
         !self.corner_shaped()
             && !calculated
             && b.border_shape.is_none()
@@ -66,7 +86,12 @@ impl Computed {
             && visible(self.reset_box_layout.overflow_y)
     }
 
-    fn radius_beyond_circles(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
+    fn radius_beyond_circles(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
         if single_corner {
             return false;
         }
