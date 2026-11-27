@@ -109,6 +109,7 @@ FIXES = {
         "DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.",
         "Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.",
         "DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.",
+        "Zero em size: a run at font-size 0 is shaped blank (no glyph, no advance, zero extent); a line of such runs is not shaped, a mixed line shapes them at a stand-in size no neighbour uses and drops their glyph runs.",
         "DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.",
         "Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.",
         "Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.",
