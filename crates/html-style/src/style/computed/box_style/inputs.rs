@@ -28,11 +28,7 @@ impl BoxStyle {
                     Some(D::InlineBlock | D::InlineTable | D::InlineFlex | D::InlineGrid)
                 ));
         DecorationInputs {
-            inherited: if blocked {
-                &[]
-            } else {
-                &self.reset_text_box.decors
-            },
+            inherited: if blocked { None } else { Some(&self.decors) },
             block: match own.reset_box_layout.display {
                 None => own.block_tag && own.reset_context.inline_display != Some(true),
                 Some(D::Contents) => false,
@@ -50,6 +46,7 @@ impl From<&BoxStyle> for crate::style::box_input::BoxStyleInput {
             decor_box: style.decor_box,
             flow_align: style.flow_align,
             tree: style.tree,
+            decors: style.decors.clone(),
             ..Self::new(
                 std::rc::Rc::clone(style.style_rc()),
                 Some(std::rc::Rc::new(style.context.clone())),
@@ -71,6 +68,7 @@ impl From<BoxStyle> for crate::style::box_input::BoxStyleInput {
             decor_box: style.decor_box,
             flow_align: style.flow_align,
             tree: style.tree,
+            decors: style.decors,
             ..Self::new(
                 style.style,
                 Some(context),

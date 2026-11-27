@@ -15,7 +15,7 @@ use crate::style::values::value::Len;
 pub(super) fn inline_sides(
     e: &Element,
     merged: &Computed,
-    flow: &Computed,
+    flow: &crate::style::computed::BoxStyle,
     cb: impl Fn() -> Option<f32>,
     vcx: crate::values::ValueCx<'_>,
 ) -> ((f32, f32), (f32, f32)) {
