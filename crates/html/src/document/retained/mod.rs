@@ -21,9 +21,13 @@ mod box_repaint_tests;
 #[cfg(test)]
 mod child_removal_tests;
 #[cfg(test)]
+mod clip_replay_tests;
+#[cfg(test)]
 mod column_repaint_tests;
 #[cfg(test)]
 mod column_unseen_tests;
+#[cfg(test)]
+mod content_image_tests;
 #[cfg(test)]
 mod content_replay_tests;
 #[cfg(test)]
@@ -31,6 +35,8 @@ mod content_resize_tests;
 mod counters;
 #[cfg(test)]
 mod hover_repaint_tests;
+#[cfg(test)]
+mod hover_replay_tests;
 mod snapshot;
 pub use snapshot::FrameCounters;
 #[cfg(test)]
@@ -88,6 +94,7 @@ mod band_rerecord_tests;
 mod band_value_tests;
 mod record;
 pub(crate) use record::frame_miss_code;
+mod builder;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -109,14 +116,12 @@ mod used_style_tests;
 #[cfg(test)]
 mod why_tests;
 mod window_key;
+use builder::Builder;
 
 use super::Document;
 use super::state::DocState;
-use crate::dom::Node;
-use crate::layout::reuse::FlowReuse;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled, div, px, rgb};
+use gpui::{AnyElement, IntoElement};
 use std::cell::Cell;
-use std::rc::Rc;
 
 /// Записи сохраняемого кадра одного дерева документа.
 #[derive(Default)]
@@ -154,56 +159,6 @@ impl FrameKey {
             normal_line_height: opts.normal_line_height,
             freeze_scrollbars: opts.cx.deferred.freeze_scrollbars,
         })
-    }
-}
-
-/// Сборка кадра, которую элемент выполняет сам, если повтор не подошёл.
-struct Builder {
-    state: Rc<DocState>,
-    nodes: Rc<Vec<Node>>,
-    /// Номер дерева `nodes` (`Document::tree`).
-    tree: u64,
-    opts: crate::RenderOpts,
-    store: Rc<crate::layout::reuse::Store>,
-    /// Счётчики сборки до первой сборки кадра: повторная (после отказа
-    /// заместителей) начинает с них, как первая.
-    counters: Cell<Option<crate::layout::reuse::Counters>>,
-    /// No resource changed since the previous frame: the window's frame tree
-    /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
-    layout_keys: bool,
-}
-
-impl Builder {
-    /// Коробка области просмотра с деревом документа: начальный содержащий
-    /// блок точного размера, белый холст UA и текст окна из опций хоста.
-    /// Блоки корневого потока записываются для следующих кадров, а при
-    /// `allow` подходящие из прошлых записей замещаются (`layout::reuse`).
-    /// `drawn` — сборка внутри prepaint, кадр уже начат (`Store::draw`).
-    fn build(&self, allow: bool, drawn: bool) -> (AnyElement, Option<Rc<FlowReuse>>) {
-        let (w, h) = self.opts.viewport;
-        let again = self.counters.get().is_some();
-        match self.counters.get() {
-            Some(counters) => counters.write(&self.opts.cx),
-            None => self
-                .counters
-                .set(Some(crate::layout::reuse::Counters::read(&self.opts.cx))),
-        }
-        let flow = FlowReuse::new(self.store.clone(), &self.nodes, allow, drawn, again);
-        let mut opts = self.opts.clone();
-        opts.cx.contracts.reuse = flow.clone();
-        let tree = div()
-            .w(px(w))
-            .h(px(h))
-            .bg(rgb(0xffffff))
-            .text_size(self.opts.text.font_size)
-            .font_family(self.opts.text.font_family.clone())
-            .children(super::scope::render(
-                &self.state,
-                (&self.nodes, self.tree),
-                &opts,
-            ))
-            .into_any_element();
-        (tree, flow)
     }
 }
 

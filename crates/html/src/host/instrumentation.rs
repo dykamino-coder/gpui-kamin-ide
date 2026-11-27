@@ -12,6 +12,8 @@ use gpui::{DebugDevice, InstrumentationConfig};
 pub fn from_env() -> InstrumentationConfig {
     InstrumentationConfig {
         prepaint: std::env::var("KAMIN_PREPAINT_PROF").as_deref() == Ok("1"),
+        // Enabled by the host that journals layout (engine_bench --why).
+        request_layout: false,
         gpu_timing: std::env::var("KAMIN_DIAG_GPU_TIMING").as_deref() == Ok("1"),
         scale_factor: std::env::var("KAMIN_FORCE_SCALE")
             .ok()
@@ -52,6 +54,41 @@ mod tests {
         assert!(
             gpui::Instrumentation::default()
                 .prepaint
+                .enter("disabled")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn request_layout_costs_stay_with_the_element_that_spent_them() {
+        use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+        static SPENT: AtomicU64 = AtomicU64::new(0);
+        let profile = gpui::Instrumentation::new(InstrumentationConfig {
+            request_layout: true,
+            ..Default::default()
+        })
+        .request_layout;
+        profile.set_costs(|| [SPENT.load(Relaxed), 0, 0, 0]);
+        {
+            let _outer = profile.enter("a::Outer");
+            SPENT.fetch_add(2, Relaxed);
+            {
+                let _inner = profile.enter("a::Inner");
+                SPENT.fetch_add(5, Relaxed);
+            }
+            SPENT.fetch_add(1, Relaxed);
+        }
+        let mut costs = profile.take();
+        costs.sort_by_key(|(name, _)| *name);
+        let own: Vec<_> = costs
+            .iter()
+            .map(|(name, cost)| (*name, cost.calls, cost.self_costs[0]))
+            .collect();
+        assert_eq!(own, [("a::Inner", 1, 5), ("a::Outer", 1, 3)]);
+        assert!(profile.take().is_empty());
+        assert!(
+            gpui::Instrumentation::default()
+                .request_layout
                 .enter("disabled")
                 .is_none()
         );

@@ -37,9 +37,11 @@ impl FlowCx {
         }
         let record = store.replays.borrow().get(&e.node_id).cloned();
         let start = Counters::read(&opts.cx);
-        let Some(record) =
-            record.filter(|r| r.paint_last.is_some() == step8() && r.fits(&self.key, start, e))
-        else {
+        let Some(record) = record.filter(|r| {
+            r.paint_last.is_some() == step8()
+                && r.fits(&self.key, start, e)
+                && r.hovers_hold(&self.reuse.hover)
+        }) else {
             return self.far(e, opts);
         };
         start.advanced(record.start, record.end).write(&opts.cx);

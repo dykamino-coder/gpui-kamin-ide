@@ -16,6 +16,7 @@ pub(super) fn probe(
     shapes: Option<Shapes>,
     p: &mut Probe,
 ) -> (f32, f32) {
+    crate::work::inputs!(_unit, unit_key(kid, (cb, avail), shapes.as_ref(), p.vert));
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let Some(watched) = &kid.watched {
         watched.reset();
@@ -146,6 +147,7 @@ pub(super) fn intrinsic(kid: &Kid, p: &mut Probe) -> (f32, f32) {
     if let Some(size) = kid.intrinsic.get() {
         return size;
     }
+    crate::work::inputs!(_unit, unit_key(kid, (-1.0, -1.0), None, p.vert));
     let old = p.fragment.as_ref().map(|f| f.probes.clone());
     if let (Some(fragment), Some(flow)) = (&mut p.fragment, &kid.flow) {
         flow.rewind();
@@ -215,4 +217,25 @@ fn intrinsic_layout(build: &Build, p: &mut Probe) -> (f32, f32) {
     let mn = w(AvailableSpace::MinContent, p);
     let mx = w(AvailableSpace::MaxContent, p);
     (mn, mx.max(mn))
+}
+
+/// The layout unit of a probe for `work::inputs`: the node with every input
+/// of its probe (context and available widths, the float exclusions from its
+/// top, the writing direction). A box without a node of its own is keyed by
+/// its builder, which is new every frame, so it never counts as repeated.
+#[cfg(feature = "work-counters")]
+fn unit_key(kid: &Kid, (cb, avail): (f32, f32), shapes: Option<&Shapes>, vert: bool) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (kid.node_id, kid.flow_key, kid.anon, vert).hash(&mut h);
+    std::mem::discriminant(&kid.kind).hash(&mut h);
+    (cb.to_bits(), avail.to_bits()).hash(&mut h);
+    if kid.node_id == 0 {
+        (Rc::as_ptr(&kid.build) as *const () as usize).hash(&mut h);
+    }
+    for side in shapes.iter().flat_map(|s| [&s.0, &s.1]) {
+        side.len().hash(&mut h);
+        side.iter().for_each(|shape| shape.hash_bits().hash(&mut h));
+    }
+    h.finish()
 }

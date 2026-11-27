@@ -1,6 +1,6 @@
 //! KaminIDE patch: типизированные настройки и измерения, принадлежащие приложению.
 
-use crate::{batch_cost::BatchCost, prepaint_prof::PrepaintProfile};
+use crate::{batch_cost::BatchCost, prepaint_prof::ElementProfile};
 use std::sync::Arc;
 
 /// Выбор устройства для native acceptance; release использует Default.
@@ -20,6 +20,8 @@ pub enum DebugDevice {
 pub struct InstrumentationConfig {
     /// Измерять self-time prepaint по типам элементов.
     pub prepaint: bool,
+    /// Measure the self-time of request_layout by element type.
+    pub request_layout: bool,
     /// Создавать timestamp-запросы GPU.
     pub gpu_timing: bool,
     /// Подменить DPI монитора для воспроизводимого raster capture.
@@ -35,7 +37,9 @@ pub struct Instrumentation {
     /// Счётчики пачек, включая завершённые GPU timestamps.
     pub batches: Arc<BatchCost>,
     /// Профиль элементов UI-потока.
-    pub prepaint: PrepaintProfile,
+    pub prepaint: ElementProfile,
+    /// Self-time of request_layout by element type.
+    pub request_layout: ElementProfile,
 }
 
 impl Default for Instrumentation {
@@ -50,7 +54,8 @@ impl Instrumentation {
         Self {
             config,
             batches: Arc::default(),
-            prepaint: PrepaintProfile::new(config.prepaint),
+            prepaint: ElementProfile::new(config.prepaint),
+            request_layout: ElementProfile::new(config.request_layout),
         }
     }
 
