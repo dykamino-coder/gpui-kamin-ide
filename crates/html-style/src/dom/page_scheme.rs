@@ -1,14 +1,10 @@
-//! `<meta name=color-scheme>`: выбор схемы документа до разбора `@media`.
-//!
-//! Вход — дерево html5ever и предпочтение окружения; выход — тёмная ли схема
-//! по первому верному `<meta>` в порядке дерева. `content` разбирается как
-//! список CSS-идентификаторов с экранированием и комментариями: `only`,
-//! `light`/`dark`, `normal` в одиночку; CSS-wide слова и мусор делают запись
-//! негодной. Результат ставится в `Media::dark` перед каскадом.
+//! HTML page support from the first valid color-scheme metadata element.
+//! CSS Color Adjustment 1 section 2.1: normal uses page support; metadata
+//! does not change the host preference used by media queries.
 
 use markup5ever_rcdom::{Handle, NodeData};
 
-pub(super) fn preference(
+pub(super) fn used_dark(
     node: &Handle,
     preferred: bool,
     admission: &crate::budget::admission::Admission,
@@ -41,7 +37,7 @@ fn supported(value: &str, preferred: bool) -> Option<bool> {
     let (mut light, mut dark, mut only, mut count) = (false, false, false, 0);
     for ident in &words {
         match ident.as_str() {
-            "normal" if words.len() == 1 => return Some(preferred),
+            "normal" if words.len() == 1 => return Some(false),
             "light" => light = true,
             "dark" => dark = true,
             "only" if !only => {
@@ -135,7 +131,7 @@ mod tests {
             "<meta name=color-scheme content='only'><meta name=COLOR-SCHEME content=dark><meta name=color-scheme content=light>"
         );
         assert_eq!(
-            preference(&dom.document, false, &Default::default()).unwrap(),
+            used_dark(&dom.document, false, &Default::default()).unwrap(),
             Some(true)
         );
     }

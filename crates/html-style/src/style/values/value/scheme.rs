@@ -4,10 +4,14 @@
 //! `light-dark()`. Вложенный документ получает явную схему хозяина либо предпочтение окружения.
 use crate::values::ValueCx;
 
+const EXPLICIT: u8 = 1;
+const PAGE_DARK: u8 = 2;
+
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct Scheme {
     pub dark: bool,
-    explicit: bool,
+    // Keep explicit CSS support and page support in one byte.
+    flags: u8,
     preferred: bool,
 }
 impl Scheme {
@@ -18,11 +22,17 @@ impl Scheme {
         }
     }
     pub fn embedding(self) -> bool {
-        if self.explicit {
+        if self.flags & EXPLICIT != 0 {
             self.dark
         } else {
             self.preferred
         }
+    }
+    /// HTML metadata supplies page support, independently of the host preference.
+    pub fn with_page(mut self, dark: bool) -> Self {
+        self.flags = (self.flags & !PAGE_DARK) | if dark { PAGE_DARK } else { 0 };
+        self.dark = dark;
+        self
     }
     fn resolve(mut self, value: &str) -> Self {
         let value = value.to_ascii_lowercase();
@@ -30,8 +40,13 @@ impl Scheme {
         if words.iter().any(|w| matches!(*w, "inherit" | "unset")) {
             return self;
         }
-        self.explicit = !words.iter().any(|w| matches!(*w, "normal" | "initial"));
-        self.dark = words.contains(&"dark") && (!words.contains(&"light") || self.preferred);
+        if words.iter().any(|w| matches!(*w, "normal" | "initial")) {
+            self.flags &= !EXPLICIT;
+            self.dark = self.flags & PAGE_DARK != 0;
+        } else {
+            self.flags |= EXPLICIT;
+            self.dark = words.contains(&"dark") && (!words.contains(&"light") || self.preferred);
+        }
         self
     }
 }
@@ -55,6 +70,21 @@ mod tests {
     use super::*;
     use crate::style::values::value::Color;
     use crate::{style::css::Media, values::DocumentValues};
+
+    #[test]
+    fn page_support_does_not_replace_the_host_or_grow_the_value_context() {
+        assert_eq!(std::mem::size_of::<Scheme>(), 3);
+        for host in [false, true] {
+            for page in [false, true] {
+                let scheme = Scheme::new(host).with_page(page);
+                assert_eq!(scheme.dark, page);
+                assert_eq!(scheme.embedding(), host);
+                assert_eq!(scheme.resolve("light dark").dark, host);
+                assert_eq!(scheme.resolve("light").resolve("normal").dark, page);
+                assert_eq!(scheme.resolve("dark").resolve("initial").dark, page);
+            }
+        }
+    }
 
     #[test]
     fn inherited_schemes_and_retained_values_do_not_share_mutable_state() {
@@ -106,7 +136,7 @@ mod tests {
     #[test]
     fn cascade_children_hidden_siblings_and_metadata_keep_their_scheme() {
         let html = r#"<meta name=color-scheme content=dark>
-        <style>* { color: light-dark(red, blue) } html { color-scheme: light dark }</style>
+        <style>* { color: light-dark(red, blue) }</style>
         <section style="color-scheme:light"><span id=light></span>
         <div style="color-scheme:dark;display:none"></div><span id=after></span></section>
         <span id=dark></span>"#;

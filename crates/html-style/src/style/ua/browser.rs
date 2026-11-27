@@ -68,10 +68,10 @@ pub const BROWSER_CSS: &str = r#"
        docs/html-ua-deviations.md for the unresolved rule and acceptance case. */
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
-    a[href] { color: #0000ee }
+    a[href] { color: LinkText }
     /* css-overflow-5: a scroll marker behaves like a link (Blink
        `scroll_marker.css`: `color: -webkit-link; text-decoration: underline`). */
-    *::scroll-marker { color: #0000ee; text-decoration: underline }
+    *::scroll-marker { color: LinkText; text-decoration: underline }
     /* HTML Rendering, Button layout (#button-layout): a button generates
        an inline-block box, so its contents have an independent layout context. */
     button { display: inline-block; padding: 1px 6px; border-radius: 0 }

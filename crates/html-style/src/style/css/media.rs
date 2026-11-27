@@ -48,7 +48,7 @@ impl Media {
         Media {
             width,
             height,
-            dark: true,
+            dark: false,
             print,
         }
     }
