@@ -1,11 +1,11 @@
-//! Замещаемое содержимое может быть пустым, не стирая свою CSS-коробку: размер пустого
-//! `<iframe>` по умолчанию объекта (CSS 2.1 §10.3.2, §10.6.2) с учётом quirks-долей и
-//! `contain: size`, `object-position` у `Img` и замещаемый `<svg>` внутри стилевого `div`
-//! при ненулевой рамке или отбивке (CSS 2.1 §10.3.4), чтобы фон и рамка рисовались.
+//! Replaced content retains its CSS box even when empty: default iframe
+//! dimensions (CSS 2.1 sections 10.3.2 and 10.6.2), quirks percentages and
+//! size containment. An SVG's styled box owns its CSS background and border
+//! independently of its raster content (CSS 2.2 Appendix E.2).
 
 use crate::defaults::{DEFAULT_REPLACED_HEIGHT_PX, DEFAULT_REPLACED_WIDTH_PX};
 use crate::dom::Element;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::{Len, px_lossy_zero};
 use crate::values::ValueCx;
 use gpui::{AnyElement, IntoElement, ParentElement, Styled, px};
@@ -134,33 +134,18 @@ pub(crate) fn default_iframe(e: &Element) -> bool {
         && e.style.used().reset_context.contain_size != Some(true)
 }
 
-/// Замещаемый `<svg>` с учётом его CSS-коробки (CSS 2.1 §10.3.4): растр —
-/// содержимое, а при ненулевой рамке или отбивке (`svg_has_box`) — внутри
-/// стилевого `div` размером border-box, фон красит он. Прежде растр шёл
-/// голым и рамка не рисовалась вовсе (border-shape-clips-background-ref,
-/// mask-image-svg-child-will-change: маска ложится на коробку 200×200 с
-/// рамкой 50). Без рамки и отбивки — голый растр, путь прежний.
-/// `None` — рисунок не разобрался.
+/// CSS 2.2 Appendix E.2: the replaced box paints its background and border
+/// before its atomic content. Keep that box even when both are transparent:
+/// its layer run owns paint that a later restyle can introduce without
+/// rebuilding the replaced content or its layout.
 pub(crate) fn svg_replaced(
     e: &Element,
     sized: &Element,
     merged: &BoxStyle,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
-    let boxed = svg_has_box(merged);
-    let inner;
-    let sized = if boxed {
-        let mut copy = sized.clone();
-        copy.style.used_mut().reset_background.background = None;
-        inner = copy;
-        &inner
-    } else {
-        sized
-    };
-    let raster = opts.cx.contracts.build.svg(sized, opts);
-    if !boxed {
-        return raster;
-    }
+    let content = crate::layout::build_contracts::SvgContent::replaced(sized);
+    let raster = opts.cx.contracts.build.svg(content, opts);
     let px_of = px_lossy_zero;
     let (w, h) = crate::layout::replaced::svg_size::size_of(sized);
     // Empty replaced content still has its CSS padding, border and background.
@@ -191,24 +176,10 @@ pub(crate) fn svg_replaced(
     )
 }
 
-/// У `<svg>` есть своя CSS-коробка — ненулевая рамка или отбивка
-/// (см. ветку `"svg"` в `element`): тогда растр кладётся в стилевой `div`.
-pub(super) fn svg_has_box(c: &Computed) -> bool {
-    let nz = |l: Option<Len>| matches!(l, Some(Len::Px(v)) if v > 0.0);
-    let b = c.borders();
-    nz(b.top)
-        || nz(b.right)
-        || nz(b.bottom)
-        || nz(b.left)
-        || nz(c.reset_box_layout.padding.top)
-        || nz(c.reset_box_layout.padding.right)
-        || nz(c.reset_box_layout.padding.bottom)
-        || nz(c.reset_box_layout.padding.left)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     #[test]
     fn empty_floated_iframe_keeps_replaced_dimensions() {
         let doc = crate::document::state::DocState::new(Default::default());

@@ -15,7 +15,9 @@ pub(super) fn contains(e: &Element) -> bool {
             .any(|node| matches!(node, Node::Element(child) if contains(child)))
 }
 
-pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
+pub(super) fn element(input: super::SvgContent<'_>, opts: &RenderOpts) -> Option<AnyElement> {
+    let e = input.element;
+    let root_paint = input.root_paint;
     let frame = opts.cx.frame();
     let values = frame.values.keep();
     let (w, h) = crate::layout::replaced::svg_size::size_of(e);
@@ -25,7 +27,13 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
     let tree = e.clone();
     let opts = opts.clone();
     let mut wrapper = gpui::div().w(px(w)).h(px(h)).flex_shrink_0();
-    if let Some(bg) = e.style.used().reset_background.background {
+    if let Some(bg) = e
+        .style
+        .used()
+        .reset_background
+        .background
+        .filter(|_| input.root_paint == super::RootPaint::Svg)
+    {
         wrapper = wrapper.bg(bg.to_hsla());
     }
     let blend = geometry::sole_blend(e);
@@ -70,7 +78,8 @@ pub(super) fn element(e: &Element, opts: &RenderOpts) -> Option<AnyElement> {
                         }
                     }
                     let markup = super::serialize::serialize_sized(&tree, w, h, 0.0, 0.0, vcx);
-                    if let Some(image) = super::raster::rasterize(&markup, w, h, vcx) {
+                    let request = super::raster::request(w, h, root_paint);
+                    if let Some(image) = super::raster::rasterize_request(&markup, request, vcx) {
                         bounds.size = gpui::size(px(w), px(h));
                         super::device_image::paint(window, bounds, image);
                     }

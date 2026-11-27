@@ -2,7 +2,7 @@
 
 use super::inline_abs_paint_last;
 use crate::dom::Element;
-use crate::layout::build_contracts::Effect;
+use crate::layout::build_contracts::{Effect, SvgContent};
 use crate::layout::options::RenderOpts;
 use crate::layout::positioned::predicates::edge_set;
 use crate::layout::replaced::{inline_replaced_position, replaced_content};
@@ -34,7 +34,7 @@ pub(super) fn replaced_abs_atom(
         opts.cx
             .contracts
             .build
-            .svg(&copy, opts)
+            .svg(SvgContent::replaced(&copy), opts)
             .unwrap_or_else(|| opts.cx.contracts.build.replaced(&copy, None, &opts.cx))
     } else if replaced_content::default_iframe(e) {
         // The holder owns the CSS box; empty content paints no second border.

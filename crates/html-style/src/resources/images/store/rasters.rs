@@ -63,14 +63,28 @@ impl Default for Rasters {
     }
 }
 impl Rasters {
-    pub(super) fn clear(&mut self) {
-        *self = Self {
+    /// The same fonts, no rasters: a new document generation (another base) starts over.
+    pub(super) fn emptied(&self) -> Self {
+        Self {
             fonts: self.fonts.clone(),
             ..Self::default()
-        };
+        }
     }
 }
 impl ImageStore {
+    /// The store of the next revision of the same document
+    /// (`DocumentValues::continuing`): its own requests, jobs, budget and
+    /// cancellation, the same base and policy, and the SVG rasters of this one.
+    /// A raster is keyed by its content (markup, request, fonts and every
+    /// resource it read, by revision), so it stays valid in the next revision;
+    /// a fresh store per revision dropped them all, and an edit that left an
+    /// image alone rasterized it again.
+    pub fn continuing(&self) -> Self {
+        let mut next = Self::new(self.services.clone(), self.base.clone(), self.policy);
+        next.rasters = self.rasters.clone();
+        next
+    }
+
     fn svg_resource(&self, href: &str, request: RasterRequest) -> ExternalResource {
         // Контракт markup API не наследует базу документа. Корневой SVG
         // привязывается через with_base; usvg сохраняет базы вложенных SVG.
@@ -102,10 +116,10 @@ impl ImageStore {
     }
     pub fn set_svg_fonts(&mut self, fonts: Arc<Database>) {
         if !Arc::ptr_eq(&self.rasters.fonts, &fonts) {
-            self.rasters = Rasters {
+            self.rasters = Arc::new(Rasters {
                 fonts,
                 ..Rasters::default()
-            };
+            });
             self.revision += 1;
         }
     }

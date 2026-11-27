@@ -9,9 +9,9 @@ use units::masked_units;
 use units::non_rendering;
 use units::user_to_css;
 
-use super::raster::rasterize;
+use super::raster::{rasterize_request, request};
 use super::serialize::serialize_viewport;
-use crate::dom::{Element, Node};
+use crate::dom::Node;
 use gpui::{AnyElement, ImageSource, IntoElement};
 
 /// Рисунок с CSS-масками на детях: срезы разметки по порядку отрисовки —
@@ -20,7 +20,7 @@ use gpui::{AnyElement, ImageSource, IntoElement};
 /// (маска, `mask-size/-repeat/-position/-mode` — из её стиля). Порядок
 /// наложения сохраняется: слои кладутся абсолютно друг над другом.
 pub(super) fn masked_layers(
-    e: &Element,
+    input: super::SvgContent<'_>,
     w: f32,
     h: f32,
     rw: f32,
@@ -28,6 +28,7 @@ pub(super) fn masked_layers(
     frame: FrameCx<'_>,
 ) -> Option<AnyElement> {
     let vcx = frame.values;
+    let e = input.element;
     use gpui::{ParentElement as _, Styled as _};
     let units = masked_units(e, w, h)?;
     // Пользовательская единица в CSS-точках (та же, что у `masked_units`).
@@ -77,7 +78,13 @@ pub(super) fn masked_layers(
         }
     }
     let mut root = gpui::div().w(gpui::px(w)).h(gpui::px(h)).flex_shrink_0();
-    if let Some(bg) = e.style.used().reset_background.background {
+    if let Some(bg) = e
+        .style
+        .used()
+        .reset_background
+        .background
+        .filter(|_| input.root_paint == super::RootPaint::Svg)
+    {
         root = root.bg(bg.to_hsla());
     }
     let mut run: Vec<Unit> = Vec::new();
@@ -88,10 +95,9 @@ pub(super) fn masked_layers(
         let keep = run.clone();
         run.clear();
         let part = filtered(e, &|u| keep.contains(&u));
-        let Some(img) = rasterize(
+        let Some(img) = rasterize_request(
             &serialize_viewport(&part, (w, h), rw, rh, 0.0, 0.0, vcx),
-            rw,
-            rh,
+            request(rw, rh, input.root_paint),
             vcx,
         ) else {
             return root;
@@ -154,15 +160,12 @@ pub(super) fn masked_layers(
             }
         }
         let style = &crate::style::computed::BoxStyle::new(style);
-        // Срез по рамке: внешняя канва размером с рамку, `viewBox` — её
-        // окно в CSS-точках коробки рисунка (вложенный `<svg>` — вьюпорт
-        // с прежними единицами).
+        // Crop the source viewport without adding a synthetic SVG ancestor:
+        // root ownership and explicit inheritance still address the same root.
         let part = filtered(e, &|m| m == u);
-        let markup = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="{bw}" height="{bh}" viewBox="{bx} {by} {bw} {bh}">{}</svg>"#,
-            serialize_viewport(&part, (w, h), rw, rh, 0.0, 0.0, vcx)
-        );
-        let Some(img) = rasterize(&markup, *bw, *bh, vcx) else {
+        let markup = serialize_viewport(&part, (w, h), rw, rh, 0.0, 0.0, vcx);
+        let crop = request(rw, rh, input.root_paint).cropped(*bx, *by, *bw, *bh);
+        let Some(img) = rasterize_request(&markup, crop, vcx) else {
             continue;
         };
         let layer = gpui::img(ImageSource::Render(img))
