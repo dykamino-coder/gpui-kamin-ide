@@ -57,6 +57,7 @@ TEST_FILTERS = {
         "directx_renderer::group_region::",
         "directx_renderer::group_tiles::",
         "directx_renderer::recovery_tests::damage",
+        "directx_renderer::recovery_tests::path_target::",
         "directx_renderer::group_atlas",
         "window::drop_target",
     ],

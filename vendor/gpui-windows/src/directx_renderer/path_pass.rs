@@ -40,6 +40,7 @@ impl DirectXRenderer {
         let Some(area) = area else {
             return Ok(());
         };
+        self.ensure_path_target()?;
         let original = self.begin_scissor(area)?;
         let drawn = self
             .draw_paths_to_intermediate(paths, area)
