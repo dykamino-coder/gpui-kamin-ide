@@ -1,6 +1,6 @@
-//! Сохраняемый кадр: неизменный документ повторяется, любой изменённый вход
-//! (опции хоста, ввод, изменивший состояние элементов, живая анимация, новое дерево)
-//! собирает кадр заново; ввод без изменений — `input_replay_tests`.
+//! Retained frame: an unchanged document replays, any changed input (host
+//! options, an input that changed element state, live animation, a new tree)
+//! builds the frame again; inputs that change nothing: `input_replay_tests`.
 
 use super::box_repaint_tests::frames;
 use crate::{Document, RenderOpts};

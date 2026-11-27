@@ -1,8 +1,8 @@
-//! Входы окна, от которых зависит записанный кадр документа: границы,
-//! маска, наследуемый стиль текста, смещение, масштаб, rem, эпоха ввода,
-//! менявшего состояние элементов, и фокуса, активность и вид окна, время снимка
-//! анимаций, reduce-motion. Ввод, который ничего не изменил (движение указателя
-//! над содержимым), кадр не ломает (`gpui::Window::interaction_epoch`).
+//! Window inputs the recorded document frame depends on: bounds, content mask,
+//! inherited text style, offset, scale, rem, the epoch of inputs that changed
+//! element state and of focus moves, window activity and appearance, the
+//! animation snapshot time, reduce-motion. An input that changed nothing (a
+//! pointer move over content) keeps the frame (`gpui::Window::interaction_epoch`).
 
 use gpui::{App, Bounds, ContentMask, Pixels, Point, TextStyle, Window, WindowAppearance};
 
