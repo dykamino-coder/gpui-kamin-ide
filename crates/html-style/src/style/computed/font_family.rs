@@ -114,7 +114,7 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
     // доступности судить нечем — ниже прежняя ветка.
     if registry.fonts_known() && lower.trim() != "inherit" {
         style.inh.font.font_family = match first_generic.as_deref() {
-            Some("monospace" | "ui-monospace") => None,
+            Some("monospace") => None,
             Some(_) => generic.map(str::to_string),
             None => {
                 style.inh.font.monospace = Some(false);
@@ -149,7 +149,7 @@ fn families(value: &str, vcx: crate::values::ValueCx<'_>) -> Vec<String> {
         .map(|name| {
             if !name.starts_with(['\'', '"']) {
                 let lower = name.to_ascii_lowercase();
-                if matches!(lower.as_str(), "monospace" | "ui-monospace") {
+                if lower == "monospace" {
                     return vcx.doc.font_snapshot().mono_family(None).to_string();
                 }
                 if let Some(family) = generic_family(&lower) {
