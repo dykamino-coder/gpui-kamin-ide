@@ -7392,7 +7392,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b0627e7b6
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..94b775f73a879f2196f18a8795dd7f2e90547189
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -8774,7 +8774,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 @@ -539,0 +1608,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,4 +1669,13 @@
+@@ -599,4 +1669,10 @@
 -    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
 -        if len == 0 {
 -            return Ok(());
@@ -8788,11 +8788,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +            self.backdrop_pending = false;
 +        }
 +        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-+        // KaminIDE patch: every quad hands the blender a premultiplied source in
-+        // 8-bit steps (`blend_source` in shaders.hlsl), so GPU and WARP blend
-+        // the same bytes.
-+        let blend = self.premultiplied_blend()?;
-@@ -604,71 +1683,21 @@
++        let premultiplied = if quads.iter().any(|q| q.ellipse.on != 0) { Some(self.premultiplied_blend()?) } else { None };
+@@ -604,71 +1680,22 @@
 -        self.pipelines.quad_pipeline.draw_range(
 -            &devices.device_context,
 -            self.globals
@@ -8870,7 +8867,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +            .as_ref()
 +            .context("batch params buffer missing")?;
 +        let pipeline = &self.pipelines.quad_pipeline;
-+        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
++        for (analytic, elliptical, first, len) in analytic_gradient::program_runs(quads, start) {
++            let blend = premultiplied.as_ref().filter(|_| elliptical).unwrap_or(&pipeline.blend_state);
 +            if analytic {
 +                pipeline.bind_gradients(&devices.device_context);
 +                pipeline.draw_range_blended(
@@ -8879,13 +8877,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +                    first as u32,
 +                    len as u32,
 +                    self.pipelines.quad_gradient.fragment(&devices.device)?,
-+                    &blend,
++                    blend,
 +                )?;
 +            } else {
-+                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, &blend)?;
++                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, blend)?;
 +            }
 +        }
-@@ -676,44 +1704,0 @@
+@@ -676,44 +1702,0 @@
 -    }
 -
 -    fn draw_paths_from_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
@@ -8930,12 +8928,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 -            slice::from_ref(&self.globals.sampler),
 -            sprites.len() as u32,
 -        )
-@@ -815,0 +1801,4 @@
+@@ -815,0 +1799,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1809,40 @@
+@@ -819,0 +1807,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8976,7 +8974,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1852,366 @@
+@@ -822,0 +1850,366 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -9343,10 +9341,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +        group_region::narrow_composite(&mut quad, vw, vh);
 +        Some((quad, place.page))
 +    }
-@@ -840 +2235 @@
+@@ -840 +2233 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2286,12 @@
+@@ -890,0 +2284,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9359,22 +9357,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -893 +2300 @@
+@@ -893 +2298 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -895 +2301,0 @@
+@@ -895 +2299,0 @@
 -            path_intermediate_texture,
-@@ -900 +2306 @@
+@@ -900 +2304 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2310,2 @@
+@@ -904 +2308,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -907 +2314 @@
+@@ -907 +2312 @@
 -            path_intermediate_texture,
 +            back_buffer,
-@@ -912,0 +2320,30 @@
+@@ -912,0 +2318,30 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9405,20 +9403,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -923 +2360 @@
+@@ -923 +2358 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -925 +2361,0 @@
+@@ -925 +2359,0 @@
 -            path_intermediate_texture,
-@@ -930 +2366 @@
+@@ -930 +2364 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -933 +2369 @@
+@@ -933 +2367 @@
 -        self.path_intermediate_texture = path_intermediate_texture;
 +        self.back_buffer = back_buffer;
-@@ -957,0 +2394 @@
+@@ -957,0 +2392 @@
 +        let quad_gradient = analytic_gradient::GradientProgram::new()?;
-@@ -999,0 +2437,22 @@
+@@ -999,0 +2435,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9441,27 +9439,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2461 @@
+@@ -1001,0 +2459 @@
 +            group_tiles_pipeline,
-@@ -1003,0 +2464 @@
+@@ -1003,0 +2462 @@
 +            quad_gradient,
-@@ -1009,0 +2471,2 @@
+@@ -1009,0 +2469,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2482,4 @@
+@@ -1018,0 +2480,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2491 @@
+@@ -1023,0 +2489 @@
 +            comp_root,
-@@ -1030 +2498,2 @@
+@@ -1030 +2496,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2533 @@
+@@ -1063,0 +2531 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2546,16 @@
+@@ -1076 +2544,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9479,11 +9477,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2575,3 @@
+@@ -1089,0 +2573,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2587,0 @@
+@@ -1100,30 +2585,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9514,7 +9512,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 -        })
 -    }
 -
-@@ -1190,0 +2649,45 @@
+@@ -1190,0 +2647,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9560,10 +9558,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2700 @@
+@@ -1197 +2698 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1214,0 +2718,33 @@
+@@ -1214,0 +2716,33 @@
 +    ) -> Result<()> {
 +        self.draw_range_with_program(
 +            device_context,
@@ -9588,7 +9586,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +    }
 +
 +    /// KaminIDE patch: the instance range drawn by `fragment` through
-+    /// `blend` (quads blend their premultiplied `blend_source`).
++    /// `blend` (quads with elliptical corners blend premultiplied colour).
 +    fn draw_range_blended(
 +        &self,
 +        device_context: &ID3D11DeviceContext,
@@ -9597,31 +9595,31 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +        instance_count: u32,
 +        fragment: &ID3D11PixelShader,
 +        blend: &ID3D11BlendState,
-@@ -1227,2 +2763,2 @@
+@@ -1227,2 +2761,2 @@
 -            &self.fragment,
 -            &self.blend_state,
 +            fragment,
 +            blend,
-@@ -1275,0 +2812,2 @@
+@@ -1275,0 +2810,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2857,2 @@
+@@ -1319 +2855,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2886,2 @@
+@@ -1347 +2884,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +2898 @@
+@@ -1358 +2896 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1362 +2902 @@
+@@ -1362 +2900 @@
 -    ID3D11Texture2D,
 +    (ID3D11Texture2D, Option<ID3D11Texture2D>),
-@@ -1364 +2903,0 @@
+@@ -1364 +2901,0 @@
 -    ID3D11Texture2D,
-@@ -1370,5 +2909,9 @@
+@@ -1370,5 +2907,9 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 -    let (path_intermediate_texture, path_intermediate_srv) =
@@ -9636,9 +9634,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +    };
 +    let render_target = (render_target, back_buffer);
 +    let (path_intermediate_msaa_texture, path_intermediate_msaa_view, path_intermediate_srv) =
-@@ -1387 +2929,0 @@
+@@ -1387 +2927,0 @@
 -        path_intermediate_texture,
-@@ -1395,3 +2937,22 @@
+@@ -1395,3 +2935,22 @@
 -#[inline]
 -fn create_render_target_and_its_view(
 -    swap_chain: &IDXGISwapChain1,
@@ -9664,17 +9662,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +}
 +
 +fn create_offscreen_target_and_its_view(
-@@ -1398,0 +2960,2 @@
+@@ -1398,0 +2958,2 @@
 +    width: u32,
 +    height: u32,
-@@ -1400 +2963,5 @@
+@@ -1400 +2961,5 @@
 -    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
 +    let mut render_target = None;
 +    unsafe {
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1406,33 +2973,3 @@
+@@ -1406,33 +2971,3 @@
 -#[inline]
 -fn create_path_intermediate_texture(
 -    device: &ID3D11Device,
@@ -9711,22 +9709,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +/// KaminIDE patch: the path sprites read the samples themselves
 +/// (`path_pass`), so the texture is a shader resource too and has no
 +/// resolved single-sample copy.
-@@ -1444 +2981,5 @@
+@@ -1444 +2979,5 @@
 -) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
 +) -> Result<(
 +    ID3D11Texture2D,
 +    Option<ID3D11RenderTargetView>,
 +    Option<ID3D11ShaderResourceView>,
 +)> {
-@@ -1458 +2999 @@
+@@ -1458 +2997 @@
 -            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
 +            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-@@ -1467 +3008,3 @@
+@@ -1467 +3006,3 @@
 -    Ok((msaa_texture, Some(msaa_view.unwrap())))
 +    let mut samples = None;
 +    unsafe { device.CreateShaderResourceView(&msaa_texture, None, Some(&mut samples))? };
 +    Ok((msaa_texture, Some(msaa_view.unwrap()), Some(samples.unwrap())))
-@@ -1492,0 +3036,33 @@
+@@ -1492,0 +3034,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9760,7 +9758,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +    }
 +}
 +
-@@ -1701,7 +3277 @@
+@@ -1701,7 +3275 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9769,22 +9767,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1711,0 +3282,2 @@
+@@ -1711,0 +3280,2 @@
 +        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
 +        QuadGradient,
-@@ -1719,0 +3292,6 @@
+@@ -1719,0 +3290,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1763,0 +3342,4 @@
+@@ -1763,0 +3340,4 @@
 +                },
 +                ShaderModule::QuadGradient => match target {
 +                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
-@@ -1796,0 +3379,12 @@
+@@ -1796,0 +3377,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9797,9 +9795,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3396 @@
+@@ -1801,0 +3394 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3398 @@
+@@ -1803,64 +3396 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9865,13 +9863,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1875,0 +3408 @@
+@@ -1875,0 +3406 @@
 +                ShaderModule::QuadGradient => "quad_gradient",
-@@ -1883,0 +3417,3 @@
+@@ -1883,0 +3415,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3590,40 @@
+@@ -2054,17 +3588,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9931,10 +9929,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..a2377490be654362cdf0fd4ae619523b
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..edab36c3742ea464516540010862cb9466b3b9aa
+index 0000000000000000000000000000000000000000..eaabbf3cc776d3c87e09d72ffb7f5546eca0a66f
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,169 @@
 +//! Arbitrary stop buffers follow quad instances, including retained layer instances.
 +//! WARP executes the same analytic shader directly in the destination surface.
 +//! Analytic quads have a pixel program of their own (as WebRender separates
@@ -9977,14 +9975,17 @@ index 0000000000000000000000000000000000000000..edab36c3742ea464516540010862cb94
 +}
 +
 +/// Splits `quads` (instances `first..`) into maximal runs of one program and
-+/// yields `(analytic, first_instance, count)` in paint order. Runs keep the
-+/// primitive order exactly, so splitting never reorders overlapping quads.
-+pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, usize, usize)> + '_ {
++/// one blender and yields `(analytic, elliptical, first_instance, count)` in
++/// paint order: quads with elliptical corners hand the blender premultiplied
++/// colour (`quad_fragment_ellipse`). Runs keep the primitive order exactly,
++/// so splitting never reorders overlapping quads.
++pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, bool, usize, usize)> + '_ {
 +    let mut at = 0;
++    let key = |q: &Quad| (q.is_analytic_gradient(), q.ellipse.on != 0);
 +    std::iter::from_fn(move || {
-+        let analytic = quads.get(at)?.is_analytic_gradient();
-+        let len = quads[at..].iter().take_while(|q| q.is_analytic_gradient() == analytic).count();
-+        let run = (analytic, first + at, len);
++        let (analytic, elliptical) = key(quads.get(at)?);
++        let len = quads[at..].iter().take_while(|q| key(q) == (analytic, elliptical)).count();
++        let run = (analytic, elliptical, first + at, len);
 +        at += len;
 +        Some(run)
 +    })
@@ -16359,10 +16360,10 @@ index 0000000000000000000000000000000000000000..cfa9079d284dad42960f164f6ef925f3
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c2c19a628ea586d0fcadd71ba3b0e8fedfd03977
+index 0000000000000000000000000000000000000000..3095d9ce85f608387ed29925895e5a38b9750ba6
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
-@@ -0,0 +1,272 @@
+@@ -0,0 +1,273 @@
 +//! KaminIDE patch: a quad with elliptical corners (`CornerEllipse`) draws
 +//! the pixels that a group of its square fill drew through the coverage
 +//! mask it replaces (`contour_dist` in kamin-html, corner shape 1).
@@ -16540,7 +16541,8 @@ index 0000000000000000000000000000000000000000..c2c19a628ea586d0fcadd71ba3b0e8fe
 +    assert!(right[0] > right[2], "corner, by the right edge: {right:?}");
 +}
 +
-+/// A circular quad of the existing path, translucent edges included.
++/// A circular quad of the existing path: the reference for how far two
++/// adapters' blend units agree on antialiased edges.
 +fn circular(color: Hsla) -> Scene {
 +    let mut s = Scene::default();
 +    let mut q = fill(color);
@@ -16585,9 +16587,9 @@ index 0000000000000000000000000000000000000000..c2c19a628ea586d0fcadd71ba3b0e8fe
 +/// An opaque fill with elliptical corners draws the bytes of its masked
 +/// group on the default adapter and on WARP; a translucent one draws the
 +/// fixed-function blend of the same source (`fixed_blend`); the two adapters
-+/// draw the same frame, and so does a circular quad of the existing path
-+/// (both hand the blender `blend_source`). The masked group on the two
-+/// adapters is counted for comparison;
++/// draw the same frame. The masked group and a circular quad of the existing
++/// path (its float source still blended non-premultiplied) on the two
++/// adapters are counted for comparison;
 +/// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 +#[test]
 +fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
@@ -16633,7 +16635,7 @@ index 0000000000000000000000000000000000000000..c2c19a628ea586d0fcadd71ba3b0e8fe
 +        std::fs::write(path, lines.join("\n")).unwrap();
 +    }
 +    let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
-+    assert!(exact("alpha 1 quad vs mask") && exact("quad vs fixed blend") && exact("quad gpu vs warp") && exact("circle gpu vs warp"), "{}", lines.join("; "));
++    assert!(exact("alpha 1 quad vs mask") && exact("quad vs fixed blend") && exact("quad gpu vs warp"), "{}", lines.join("; "));
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
@@ -20101,7 +20103,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..d98d9ee923f9ed9e54646c120bd16cb594e7d8d0
+index ba89c6873354fb7449b8294878e080a68c3dd29b..9be910e6a1b4c44e0eeae82aed9d07be4cdb30b2
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -20474,13 +20476,13 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..d98d9ee923f9ed9e54646c120bd16cb5
 +    return max(corner_to_point.x, corner_to_point.y);
 +}
 +
-+// KaminIDE patch: the premultiplied source a quad hands the blender: `colour * alpha`
-+// and alpha in 8-bit steps, times the coverage in 8-bit steps, the product
-+// rounded to a step in integers. Left as a float product of steps, its
-+// fractions of 1/65025 of a code reach a blend that may round a hair apart
-+// on two adapters (non-premultiplied blending multiplies two such floats in
-+// the blend unit); with steps every sum stays at least 1/255 of a code from
-+// a tie (255 is odd), so every adapter writes the same byte.
++// KaminIDE patch: the premultiplied source an elliptical quad hands the
++// blender: `colour * alpha` and alpha in 8-bit steps, times the coverage in
++// 8-bit steps, the product rounded to a step in integers. Left as a float
++// product of steps, its fractions of 1/65025 of a code reach a blend that may
++// round a hair apart on two adapters; with steps every sum stays at least
++// 1/255 of a code from a tie (255 is odd), so every adapter writes the same
++// byte.
 +float4 blend_source(float4 color, float coverage) {
 +    uint4 p = uint4(round(saturate(float4(color.rgb * color.a, color.a)) * 255.0));
 +    uint m = uint(round(saturate(coverage) * 255.0));
@@ -20760,7 +20762,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..d98d9ee923f9ed9e54646c120bd16cb5
 +        sample = tile_texel(local_position, cell, sprite.tile);
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1690,576 @@
+@@ -1268,0 +1690,572 @@
 +
 +/*
 +**
@@ -21320,9 +21322,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..d98d9ee923f9ed9e54646c120bd16cb5
 +    float2 local_position = untransform(input.position.xy, quad.transformation);
 +    float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
 +    input.background_solid, input.background_color0, input.background_color1);
-+    float4 color = quad_fragment_impl(quad, local_position, background_color, input.border_color);
-+    // Elliptical quads return their blend source already (`blend_source`).
-+    return quad.ellipse.on != 0 ? color : blend_source(color, 1.0);
++    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
 +}
 +QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
 +    return quad_vertex(vertex_id, instance_id);
@@ -21333,9 +21333,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..d98d9ee923f9ed9e54646c120bd16cb5
 +    float2 local_position = untransform(input.position.xy, quad.transformation);
 +    float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
 +    background_color.a *= quad.background.solid.a;
-+    float4 color = quad_fragment_impl(quad, local_position, background_color, input.border_color);
-+    // Elliptical quads return their blend source already (`blend_source`).
-+    return quad.ellipse.on != 0 ? color : blend_source(color, 1.0);
++    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
 +}
 diff --git a/vendor/gpui-windows/src/window.rs b/vendor/gpui-windows/src/window.rs
 index 8a5327d1a88477e1b0fed913046d34cd29754174..3d5d4f53ca8c548b48210cec519a2660246891ef

@@ -1675,10 +1675,7 @@ impl DirectXRenderer {
             self.backdrop_pending = false;
         }
         let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-        // KaminIDE patch: every quad hands the blender a premultiplied source in
-        // 8-bit steps (`blend_source` in shaders.hlsl), so GPU and WARP blend
-        // the same bytes.
-        let blend = self.premultiplied_blend()?;
+        let premultiplied = if quads.iter().any(|q| q.ellipse.on != 0) { Some(self.premultiplied_blend()?) } else { None };
         let devices = self.devices.as_ref().context("devices missing")?;
         let params = self
             .globals
@@ -1686,7 +1683,8 @@ impl DirectXRenderer {
             .as_ref()
             .context("batch params buffer missing")?;
         let pipeline = &self.pipelines.quad_pipeline;
-        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
+        for (analytic, elliptical, first, len) in analytic_gradient::program_runs(quads, start) {
+            let blend = premultiplied.as_ref().filter(|_| elliptical).unwrap_or(&pipeline.blend_state);
             if analytic {
                 pipeline.bind_gradients(&devices.device_context);
                 pipeline.draw_range_blended(
@@ -1695,10 +1693,10 @@ impl DirectXRenderer {
                     first as u32,
                     len as u32,
                     self.pipelines.quad_gradient.fragment(&devices.device)?,
-                    &blend,
+                    blend,
                 )?;
             } else {
-                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, &blend)?;
+                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, blend)?;
             }
         }
         Ok(())
@@ -2739,7 +2737,7 @@ impl<T> PipelineState<T> {
     }
 
     /// KaminIDE patch: the instance range drawn by `fragment` through
-    /// `blend` (quads blend their premultiplied `blend_source`).
+    /// `blend` (quads with elliptical corners blend premultiplied colour).
     fn draw_range_blended(
         &self,
         device_context: &ID3D11DeviceContext,
