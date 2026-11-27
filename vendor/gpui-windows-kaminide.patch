@@ -17759,10 +17759,10 @@ index 0000000000000000000000000000000000000000..68d2885e8d4c265bc4ea44f28b942d76
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/lazy_programs.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/lazy_programs.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2d03493173a894ba3c4d289c7e942ea2c853748f
+index 0000000000000000000000000000000000000000..8083234543d4ddb965ca48e5e91fad27a825360b
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/lazy_programs.rs
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,128 @@
 +//! Cold draws create only the programs they use, including on WARP.
 +use super::*;
 +use gpui::{Background, ContentMask, Primitive, Quad, ScaledPixels, bounds, point, size};
@@ -17878,6 +17878,10 @@ index 0000000000000000000000000000000000000000..2d03493173a894ba3c4d289c7e942ea2
 +        assert_ne!(device.device, replacement.device);
 +        lazy.handle_device_lost_impl(&replacement).unwrap();
 +        created(&instrumentation.startup, 0);
++        assert!(lazy.skip_draws);
++        lazy.ensure_drawable_resources().unwrap();
++        // The platform resumes drawing after every renderer has recovered.
++        lazy.mark_drawable();
 +        let recovered = lazy
 +            .render_to_image(&scene, WindowBackgroundAppearance::Opaque)
 +            .unwrap();

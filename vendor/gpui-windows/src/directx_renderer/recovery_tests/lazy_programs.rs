@@ -113,6 +113,10 @@ fn cold_quad_creates_only_used_programs_and_recovery_repeats_that_work() {
         assert_ne!(device.device, replacement.device);
         lazy.handle_device_lost_impl(&replacement).unwrap();
         created(&instrumentation.startup, 0);
+        assert!(lazy.skip_draws);
+        lazy.ensure_drawable_resources().unwrap();
+        // The platform resumes drawing after every renderer has recovered.
+        lazy.mark_drawable();
         let recovered = lazy
             .render_to_image(&scene, WindowBackgroundAppearance::Opaque)
             .unwrap();
