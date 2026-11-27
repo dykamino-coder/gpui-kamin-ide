@@ -12,6 +12,8 @@ fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut Tes
             ("max-width:20em", width.min(400.0)),
             ("width:80%;max-width:20em", (width * 0.8).min(400.0)),
             ("width:200px", 200.0),
+            ("max-width:20ch", -1.0),
+            ("width:80%;max-width:20ch", -0.8),
             ("max-width:20em;padding:0 20px", width.min(440.0)),
             (
                 "width:80%;max-width:20em;padding:0 20px",
@@ -20,17 +22,27 @@ fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut Tes
         ] {
             let html = format!(
                 "<style>html,body{{margin:0;font-size:20px}}div{{height:20px;\
-                 margin:0 auto;background:blue;{rule}}}</style><div></div>"
+                 margin:0 auto;background:blue;{rule}}}#unit{{width:20ch;height:1px;\
+                 margin:0;background:red}}</style><div></div><div id=unit></div>"
             );
             let mut app = cx.clone();
             let (view, vcx) = open(&mut app, &html);
             vcx.simulate_resize(size(px(width), px(300.0)));
             vcx.update(|_, cx| view.update(cx, |view, _| view.viewport = (width, 300.0)));
             frame(vcx);
-            let boxes = vcx.update(|window, _| {
+            let (boxes, ch_limit) = vcx.update(|window, _| {
                 let scale = window.scale_factor();
-                window
-                    .painted_quads()
+                let quads = window.painted_quads();
+                let ch_limit = quads
+                    .iter()
+                    .find(|q| q.background.as_solid() == Some(gpui::red()))
+                    .expect("reference glyph width")
+                    .bounds
+                    .size
+                    .width
+                    .0
+                    / scale;
+                let boxes = quads
                     .into_iter()
                     .filter(|quad| quad.background.as_solid() == Some(gpui::blue()))
                     .map(|quad| {
@@ -39,8 +51,14 @@ fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut Tes
                             quad.bounds.size.width.0 / scale,
                         )
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<_>>();
+                (boxes, ch_limit)
             });
+            let expected = if expected < 0.0 {
+                (width * -expected).min(ch_limit)
+            } else {
+                expected
+            };
             assert_eq!(boxes.len(), 1, "{width} {rule}: {boxes:?}");
             let (x, actual) = boxes[0];
             assert!(
