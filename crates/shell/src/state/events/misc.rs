@@ -80,7 +80,7 @@ impl RootView {
                 }
             }
             ShellEvent::Ed(EdEvent::GotoLine(path, line)) => {
-                self.ed.pending_goto = Some((path, line));
+                self.ed.pending_goto = Some((path, line, 1));
             }
             ShellEvent::MoveToolTo(src, id, dst) => {
                 self.tool_tab_menu = None;

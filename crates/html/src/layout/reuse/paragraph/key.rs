@@ -107,7 +107,10 @@ pub(super) fn subtree(nodes: &[Node], opts: &RenderOpts) -> Option<bool> {
     let mut reads = false;
     for n in nodes {
         let Node::Element(e) = n else { continue };
-        if !super::super::content::inert_tree(e, vcx) {
+        // A kept paragraph keeps no note of the hover it paints.
+        if !super::super::content::inert_tree(e, vcx)
+            || !super::super::plain::all_elements(e, super::super::plain::hover_free)
+        {
             return None;
         }
         reads = reads

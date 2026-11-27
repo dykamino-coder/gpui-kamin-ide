@@ -24,6 +24,7 @@ interface PermissionStoreSchema {
 const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // Read-only (auto-allow)
   Read: 'read-only',
+  ListWorkspaceSkills: 'read-only',
   Glob: 'read-only',
   Grep: 'read-only',
   ToolSearch: 'read-only',

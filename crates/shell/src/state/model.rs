@@ -148,6 +148,8 @@ pub struct RootView {
     pub quick_pick: Option<crate::ui::quick_pick::QuickPickState>,
     /// Отложенный Tab-переход из probe (`apply` не видит `Window`).
     pub pending_focus_step: Option<bool>,
+    /// Explicit keyboard handoff from a contributed view's focus command.
+    pub pending_keyboard_view: Option<String>,
     /// Апдейт скачан и инсталлер ждёт: закрыть окно штатно на ближайшем кадре
     /// (см. CzEvent::QuitForUpdate — exit(0) ронял CEF-кэш).
     pub pending_quit: bool,

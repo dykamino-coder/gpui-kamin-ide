@@ -111,10 +111,11 @@ impl Drop for ImageStore {
 }
 
 impl ImageStore {
-    /// Ревизия, которой принадлежат следующие задания; прежние задания устаревают.
+    /// The revision the next jobs are charged to; requests and jobs in flight
+    /// outlive it (`keep::renew`).
     pub fn set_budget(&mut self, budget: RevisionBudget) {
         self.budget = budget;
-        self.begin_generation();
+        self.renew();
     }
 
     pub fn budget(&self) -> &RevisionBudget {

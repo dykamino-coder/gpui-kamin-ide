@@ -1,10 +1,5 @@
 [
   {
-    "file": "crates/html/src/dom/fixup_tree/alignment.rs",
-    "task": "cascade-7b-R06",
-    "reason": "Авторский align-self гасится в cascaded из-за общего поля с командами layout; удалить гашение после переноса команд в used values и проверки применимости в block layout."
-  },
-  {
     "file": "crates/html/src/dom/shared_style.rs",
     "task": "cascade-7b-layout-made",
     "reason": "computed() возвращает единственную стадию нематериализованных стилей и layout-made коробок; удалить fallback после отказа от element style handles для синтетических коробок."
@@ -55,16 +50,6 @@
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
   },
   {
-    "file": "crates/html/src/style/cascade/compute/fonts.rs",
-    "task": "cascade-7b-R11",
-    "reason": "Клэмп font-size:0 до 0.01 меняет computed значение, em и наследование ради text backend; удалить после безопасного shaping нулевого размера на границе backend."
-  },
-  {
-    "file": "crates/html/src/style/cascade/compute/longhands.rs",
-    "task": "cascade-7b-R06",
-    "reason": "Явный inherit align-self гасится для block parent в computed стадии; удалить гашение после сохранения computed значения и проверки применимости в used block layout."
-  },
-  {
     "file": "crates/html/src/style/cascade/inherit/context.rs",
     "task": "cascade-7b-R10",
     "reason": "Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers."
@@ -83,10 +68,5 @@
     "file": "crates/html/src/text/inline/runs/face.rs",
     "task": "cascade-7b-font-size-adjust",
     "reason": "A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face."
-  },
-  {
-    "file": "crates/html/src/text/inline/first_line.rs",
-    "task": "cascade-7b-R12",
-    "reason": "Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере."
   }
 ]

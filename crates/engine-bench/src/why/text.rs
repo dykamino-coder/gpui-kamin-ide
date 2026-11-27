@@ -28,21 +28,17 @@ pub(super) fn changes(
 
 const SHOWN_OWNERS: usize = 8;
 
-/// The raster line of a captured frame and its GPU wait on a line of its own:
-/// the wait is the GPU's time, not CPU work of the frame.
+/// The raster line of a captured frame, then its GPU wait, command submission
+/// and the bench's own copy of the frame to memory (not engine work).
 fn raster(s: &mut String, r: &Value) {
     if r.is_null() {
         return;
     }
-    let full_by = r["full_by"]
-        .as_str()
-        .map(|w| format!(" by {w}"))
-        .unwrap_or_default();
-    let full_by = full_by
-        + &r["shift_miss"]
-            .as_str()
-            .map(|w| format!(" (not a move: {w})"))
-            .unwrap_or_default();
+    let tag = |k: &str, a: &str, b: &str| {
+        r[k].as_str()
+            .map_or(String::new(), |w| format!("{a}{w}{b}"))
+    };
+    let full_by = tag("full_by", " by ", "") + &tag("shift_miss", " (not a move: ", ")");
     let delta = r["delta"]
         .as_array()
         .map(|d| format!(" delta {},{} moved_px {}", d[0], d[1], r["moved_px"]))
@@ -66,8 +62,10 @@ fn raster(s: &mut String, r: &Value) {
     }
     let _ = writeln!(
         s,
-        "  gpu_wait {:.3} ms",
-        r["gpu_wait_ms"].as_f64().unwrap_or(0.0)
+        "  gpu_wait {:.3} ms submit {:.3} ms capture_copy {:.3} ms",
+        r["gpu_wait_ms"].as_f64().unwrap_or(0.0),
+        r["submit_ms"].as_f64().unwrap_or(0.0),
+        r["capture_copy_ms"].as_f64().unwrap_or(0.0)
     );
 }
 
@@ -120,6 +118,8 @@ pub(super) fn render(out: &Value) -> String {
         }
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render(&mut s, &f["paint_work"]);
+        super::layout_work::render(&mut s, &f["layout_work"]);
+        super::element_kinds::render(&mut s, &f["request_layout_kinds"]);
         let phases: Vec<String> = f["phases_ms"]
             .as_object()
             .into_iter()

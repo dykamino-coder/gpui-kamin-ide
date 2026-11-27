@@ -7,6 +7,7 @@
 // files/editor/terminal/themes are all KaminIDE-native.
 // See docs/BRIDGE_VSIX_INTEGRATION.md.
 import * as vscode from "vscode"
+import { PermissionConsoleFocus } from "./permission-console-focus"
 import * as kaminide from "kaminide"
 import fs from "fs"
 import path from "path"
@@ -56,9 +57,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const host = new BridgeHost(context, {
     onOpenChat: openChat,
-    onOpenPermissionConsole: () => { void vscode.commands.executeCommand("claudeBridgeConsoleView.focus") },
+    onOpenPermissionConsole: id => permissionConsole.request(id),
     onRegenerateTitle: tabId => sessionsBridge.regenerateTitleByTab(tabId),
   })
+  const permissionConsole = new PermissionConsoleFocus(
+    id => {
+      const tabs = host.getTabManager()
+      const connection = tabs.getConnection(id)
+      return tabs.getActiveTabId() === id && connection?.getEngine() === 'claude' ? connection.getSessionId() : undefined
+    },
+    () => { void vscode.commands.executeCommand('workbench.view.extension.claudeBridgeConsole') },
+    () => { void vscode.commands.executeCommand('claudeBridgeConsoleView.focus', { keyboardFocus: true }) },
+  )
   const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath)
   sessionsBridge.install()
   context.subscriptions.push({ dispose: () => { sessionsBridge.dispose(); host.dispose() } })
@@ -84,6 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
         // tools panels keep only a projected slice on the webview side. This is
         // what stopped every panel from holding its own ~1GB copy of the store.
         const attached = host.attach(view.webview, role)
+        if (viewId === 'claudeBridgeConsoleView') permissionConsole.attach(view)
         // Tie the fan-out registration to THIS view's lifetime, not the
         // extension's: a disposed view must leave the broadcast Set (and its
         // visibility/stale bookkeeping) rather than linger as a dead target.

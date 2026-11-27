@@ -27,10 +27,20 @@ impl RootView {
     pub(crate) fn apply_native_acceptance(&mut self, event: ShellEvent, cx: &mut Context<Self>) {
         match event {
             ShellEvent::NativeAcceptance(action) => {
-                crate::host_link::register_dynamic_webview(VIEW);
                 let slot = crate::activity::PanelSlot::Sidebar;
-                self.sidebar_visible = true;
+                if !matches!(action, Action::InspectEditor(_)) {
+                    crate::host_link::register_dynamic_webview(VIEW);
+                    self.sidebar_visible = true;
+                }
                 match action {
+                    Action::InspectEditor(sender) => {
+                        let location = self.ed.editor_tabs.get(self.ed.editor_active).map(|tab| {
+                            let cursor = tab.input.read(cx).cursor_position();
+                            serde_json::json!({"path": tab.path, "line": cursor.line + 1, "column": cursor.character + 1})
+                        });
+                        let _ = sender.send(serde_json::json!({"ok": true, "location": location}));
+                        return;
+                    }
                     Action::Loaders => {
                         self.activity.pin(slot, LOADERS);
                         self.activity.set_active(slot, LOADERS);

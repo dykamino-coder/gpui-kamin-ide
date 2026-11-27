@@ -3,6 +3,7 @@
   {"id":"api:addMcpServer","status":"supported-in-browser-host","provider":"routes","routes":["invoke:mcp:add-server"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:browseMarketplace","status":"supported-in-browser-host","provider":"routes","routes":["invoke:plugins:browse-marketplace"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:browseNestedMarketplace","status":"supported-in-browser-host","provider":"routes","routes":["invoke:plugins:browse-nested-marketplace"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
+  {"id":"api:changeClaudePermissionMode","status":"supported-in-browser-host","provider":"routes","routes":["send:claude:change-permission-mode"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:changeCodexCollaboration","status":"supported-in-browser-host","provider":"routes","routes":["send:codex:change-collaboration"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:changeEffort","status":"supported-in-browser-host","provider":"routes","routes":["send:change-effort"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},
   {"id":"api:changeModel","status":"supported-in-browser-host","provider":"routes","routes":["send:change-model"],"sources":{"extension/src/shared/types.ts":1,"webview/shared/types.ts":1}},

@@ -55,8 +55,22 @@ impl Computed {
         } else {
             size
         };
+        // A `clamp(2rem, 1rem + 5vw, 4rem)` tree: the viewport is folded above,
+        // font leaves of `font-size` resolve against the PARENT font size.
+        let size = size.resolve_math(vcx, |s| {
+            s.fold_font(parent_px, || {
+                let (ch, ex) = metrics();
+                let cap = font.units.map_or_else(
+                    || crate::style::font_metrics::vertical(family, font.metric_px, vcx).2,
+                    |units| units[0],
+                );
+                [cap, ch, ex, ic()]
+            })
+        });
         Some(match size {
-            Len::Px(px) => px,
+            // A folded tree may go below zero: the font size is clamped to the
+            // property range (§10.12).
+            Len::Px(px) => px.max(0.0),
             Len::Em(k) | Len::Pct(k) => k * parent_px,
             Len::EmPx(k, add) => k * parent_px + add,
             Len::Ch(k) => k * metrics().0,

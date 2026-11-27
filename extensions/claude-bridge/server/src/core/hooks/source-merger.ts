@@ -33,13 +33,44 @@ function pushAll(acc: HookSettings, src: HookSettings | undefined): void {
   }
 }
 
-function readJsonHooks(filePath: string): HookSettings | undefined {
+/** A malformed tool policy must not turn into an empty list of guards. */
+function validateToolHooks(hooks: HookSettings | undefined): void {
+  if (hooks === undefined) return
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) throw new Error('Invalid hook settings')
+  for (const event of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'] as const) {
+    const groups = hooks[event]
+    if (groups === undefined) continue
+    if (!Array.isArray(groups)) throw new Error('Invalid hook groups')
+    for (const group of groups) {
+      if (!group || !Array.isArray(group.hooks)) throw new Error('Invalid hook group')
+      if (group.matcher !== undefined) {
+        if (typeof group.matcher !== 'string') throw new Error('Invalid hook matcher')
+        if (group.matcher !== '*') new RegExp(group.matcher)
+      }
+      for (const handler of group.hooks) {
+        if (
+          !handler ||
+          typeof handler.type !== 'string' ||
+          (handler.if !== undefined && typeof handler.if !== 'string')
+        )
+          throw new Error('Invalid hook handler')
+        if (handler.type === 'command' && (typeof handler.command !== 'string' || !handler.command.trim()))
+          throw new Error('Invalid hook command')
+      }
+    }
+  }
+}
+
+function readJsonHooks(filePath: string, strict = false): HookSettings | undefined {
   try {
     if (!fs.existsSync(filePath)) return undefined
     const raw = fs.readFileSync(filePath, 'utf-8')
     const parsed = JSON.parse(raw) as { hooks?: HookSettings }
+    if (strict && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) throw new Error()
+    if (strict) validateToolHooks(parsed.hooks)
     return parsed.hooks
   } catch {
+    if (strict) throw new Error('Cannot load the workspace hook settings')
     return undefined
   }
 }
@@ -121,20 +152,25 @@ interface SyncedPluginHooks {
   hooks: HookSettings
 }
 
-function loadSyncedPluginHooks(filePath: string | undefined): SyncedPluginHooks[] {
-  if (!filePath) return []
+function loadSyncedPluginHooks(filePath: string | undefined, strict = false): SyncedPluginHooks[] {
+  if (!filePath || !fs.existsSync(filePath)) return []
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as Array<{
       id?: string
       sourceRoot?: string
       hooks?: HookSettings
     }>
-    if (!Array.isArray(parsed)) return []
+    if (!Array.isArray(parsed)) throw new Error()
     return parsed.flatMap((entry) => {
-      if (!entry?.id || !entry.sourceRoot || !entry.hooks || typeof entry.hooks !== 'object') return []
+      if (!entry?.id || !entry.sourceRoot || !entry.hooks || typeof entry.hooks !== 'object') {
+        if (strict) throw new Error()
+        return []
+      }
+      if (strict) validateToolHooks(entry.hooks)
       return [{ id: entry.id, sourceRoot: entry.sourceRoot, hooks: entry.hooks }]
     })
   } catch {
+    if (strict) throw new Error('Cannot load the workspace plugin hook snapshot')
     return []
   }
 }
@@ -168,17 +204,7 @@ export function mergeAllHooks(
     }
   }
 
-  // ── 1b. synced per-token settings (the user's REAL hooks) ──
-  for (const [index, file] of (syncedSettingsFiles ?? []).entries()) {
-    const hooks = readJsonHooks(file)
-    if (!hooks) continue
-    pushAll(merged, hooks)
-    const source: HookSource =
-      index === 0 || !userCwd ? { kind: 'user', client: true } : { kind: 'project', projectPath: userCwd, client: true }
-    for (const matchers of Object.values(hooks)) {
-      if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, source)
-    }
-  }
+  appendClientSettings(merged, sourceByMatcher, userCwd, syncedSettingsFiles)
 
   // ── 2. project (<cwd>/.claude/settings.json) ───────────────
   if (userCwd) {
@@ -210,10 +236,41 @@ export function mergeAllHooks(
     }
   }
 
+  appendClientPlugins(merged, sourceByMatcher, syncedPluginsFile)
+
+  return { hooks: merged, sourceByMatcher }
+}
+
+function appendClientSettings(
+  merged: HookSettings,
+  sourceByMatcher: Map<HookMatcher, HookSource>,
+  userCwd?: string,
+  syncedSettingsFiles?: string[],
+  strict = false,
+): void {
+  // ── 1b. synced per-token settings (the user's REAL hooks) ──
+  for (const [index, file] of (syncedSettingsFiles ?? []).entries()) {
+    const hooks = readJsonHooks(file, strict)
+    if (!hooks) continue
+    pushAll(merged, hooks)
+    const source: HookSource =
+      index === 0 || !userCwd ? { kind: 'user', client: true } : { kind: 'project', projectPath: userCwd, client: true }
+    for (const matchers of Object.values(hooks)) {
+      if (Array.isArray(matchers)) for (const m of matchers) sourceByMatcher.set(m, source)
+    }
+  }
+}
+
+function appendClientPlugins(
+  merged: HookSettings,
+  sourceByMatcher: Map<HookMatcher, HookSource>,
+  syncedPluginsFile?: string,
+  strict = false,
+): void {
   // The bridge container cannot see the client host's plugin cache. The VSIX
   // host therefore uploads approved hook metadata alongside each proxy-plugin
   // snapshot; commands still execute on the client host via the HTTP/WS proxy.
-  for (const plugin of loadSyncedPluginHooks(syncedPluginsFile)) {
+  for (const plugin of loadSyncedPluginHooks(syncedPluginsFile, strict)) {
     pushAll(merged, plugin.hooks)
     for (const matchers of Object.values(plugin.hooks)) {
       if (Array.isArray(matchers))
@@ -226,6 +283,18 @@ export function mergeAllHooks(
         }
     }
   }
+}
 
-  return { hooks: merged, sourceByMatcher }
+/** Only inputs published by this client identity. A path supplied by a remote
+ * project never selects a settings file on the Bridge container. */
+export function mergeClientHooks(userCwd: string | undefined, settings: string[], plugins: string): MergedHooks {
+  const hooks: HookSettings = {}
+  const sourceByMatcher = new Map<HookMatcher, HookSource>()
+  if (!settings[0] || !hooksDisabled(settings[0])) {
+    // Project preferences may disable their own declarations only.
+    const activeSettings = settings.filter((file, index) => index === 0 || !hooksDisabled(file))
+    appendClientSettings(hooks, sourceByMatcher, userCwd, activeSettings, true)
+    appendClientPlugins(hooks, sourceByMatcher, plugins, true)
+  }
+  return { hooks, sourceByMatcher }
 }

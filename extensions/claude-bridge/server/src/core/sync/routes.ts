@@ -12,6 +12,7 @@ import type { SyncUserData, SyncProjectData } from '../pty/types'
 import { getAllSessions } from '../pty/session-core'
 import { requestMaintenanceSubmission } from '../pty/session-input-coordinator'
 import { refreshSessionSkills } from '../pty/session-settings'
+import { registerCodexToolHooks } from '../hooks/codex-tool-hooks'
 import { resolveToken } from '../auth/tokens'
 import { withProjectSyncLock, withUserSyncLock } from './lock'
 import { getProjectSyncDir, getUserSyncDir, prepareSyncStorage, resolveSyncBase } from './storage'
@@ -220,6 +221,21 @@ export async function syncSkillsSnapshot(
   return { present: true, changed, count: Object.keys(incoming).length }
 }
 
+/** Called while the authenticated upload still owns the snapshot lock. */
+function refreshCodexHooks(tokenHash: string, projectPath?: string): void {
+  let failed = false
+  for (const session of getAllSessions()) {
+    if (session.engine !== 'codex' || session.bearerHash !== tokenHash || (projectPath && session.cwd !== projectPath))
+      continue
+    try {
+      registerCodexToolHooks(session)
+    } catch {
+      failed = true
+    }
+  }
+  if (failed) throw new Error('Invalid workspace hook snapshot')
+}
+
 function reloadSkillsForRunningSessions(tokenId: string, telemetry: SkillsReloadContext, projectPath?: string): void {
   for (const s of getAllSessions()) {
     if (s.bearerHash !== tokenId || s.state !== 'running') continue
@@ -299,6 +315,10 @@ export function createSyncRoutes(): Hono {
 
     return withUserSyncLock(hash, async () => {
       try {
+        if (body.toolHookPlugins !== undefined) {
+          await fsp.mkdir(userDir, { recursive: true })
+          await fsp.writeFile(path.join(userDir, 'codex-tool-hooks.json'), JSON.stringify(body.toolHookPlugins), 'utf8')
+        }
         const skillsUpdate = await syncSkillsSnapshot(path.join(userDir, 'skills'), body.skills)
         if (skillsUpdate.present) {
           const telemetry = recordSkillsSnapshot(hash, 'user', undefined, body.skills!, skillsUpdate.changed)
@@ -336,6 +356,7 @@ export function createSyncRoutes(): Hono {
         else await fsp.rm(path.join(userDir, 'AGENTS.md'), { force: true })
         debugLog('[sync] User AGENTS.md synced', { tokenId: hash, present: body.agentsMd !== undefined })
 
+        refreshCodexHooks(hash)
         return c.json({ ok: true })
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)
@@ -370,6 +391,10 @@ export function createSyncRoutes(): Hono {
       try {
         await fsp.mkdir(projDir, { recursive: true })
 
+        if (body.toolHookPlugins !== undefined) {
+          await fsp.mkdir(projDir, { recursive: true })
+          await fsp.writeFile(path.join(projDir, 'codex-tool-hooks.json'), JSON.stringify(body.toolHookPlugins), 'utf8')
+        }
         const skillsUpdate = await syncSkillsSnapshot(path.join(projDir, 'skills'), body.skills)
         if (skillsUpdate.present) {
           const telemetry = recordSkillsSnapshot(hash, 'project', body.projectPath, body.skills!, skillsUpdate.changed)
@@ -453,6 +478,7 @@ export function createSyncRoutes(): Hono {
         // Store the projectPath for later lookup
         await fsp.writeFile(path.join(projDir, '_projectPath.txt'), body.projectPath, 'utf-8')
 
+        refreshCodexHooks(hash, body.projectPath)
         return c.json({ ok: true })
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err)

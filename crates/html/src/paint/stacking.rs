@@ -85,9 +85,10 @@ pub(crate) fn defers(c: &Computed, parent: &Computed, under_tf: bool) -> bool {
 
 /// `z-index`: порядок наложения.
 ///
-/// Deferred priority defines paint order. A viewport-fixed box keeps a scene
-/// layer after the document root; a box moving with a scroller keeps its
-/// commands in that scroller's primitive replay range.
+/// Deferred priority defines paint order. Every lifted box stays in the space
+/// of the scroll node open where it is deferred (`gpui::Deferred::in_scroll_node`):
+/// a viewport-fixed box hangs on the viewport through its anchor node, a box
+/// moving with a scroller moves with that scroller's node.
 ///
 /// `allowed` — снаружи ли мы отложенного поддерева: внутри откладывать нельзя.
 pub(crate) fn layered(
@@ -126,8 +127,13 @@ pub(crate) fn layered(
             .size_full()
             .child(el)
             .into_any_element();
+        // Its spatial parent is the scroll node open here, as for any box
+        // lifted in paint order: the build offset already holds that node's
+        // scroll, and the viewport anchor around or inside the box cancels
+        // the root's (`viewport_anchor`), so a wheel step replays it in place.
         return gpui::deferred(crate::layout::reuse::deferred_layer(child, cx))
             .with_priority(priority)
+            .in_scroll_node()
             .into_any_element();
     }
     match c.reset_positioned.z_index {

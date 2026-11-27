@@ -14,6 +14,7 @@ pub(crate) use commands::handle;
 #[cfg(debug_assertions)]
 #[derive(Clone)]
 pub(crate) enum Action {
+    InspectEditor(std::sync::mpsc::Sender<serde_json::Value>),
     Loaders,
     Waiting,
     Ready,
