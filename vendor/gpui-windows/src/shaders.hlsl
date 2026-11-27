@@ -769,6 +769,151 @@ float2 untransform(float2 position, TransformationMatrix t) {
     return mul(p, inv);
 }
 
+// KaminIDE patch: correctly rounded division and square root. Direct3D 11
+// rounds float addition, subtraction and multiplication correctly (to nearest
+// even), but lets division be off by 2.5 ulp and square root by 1 ulp, and
+// adapters differ there: `precise` only forbids fusing and reordering. A value
+// that lands next to an 8-bit step then rounds to different codes on two
+// adapters. These helpers take the hardware result and move it to the
+// correctly rounded one by the sign of the exact residual at the midpoints to
+// its neighbours, which only exact operations compute (Dekker's product,
+// Knuth's sum, Shewchuk's expansion growth), so every adapter returns the
+// IEEE 754 result. Inputs are normal floats of pixel magnitude.
+void two_sum(float a, float b, out float s, out float e) {
+    precise float sum = a + b;
+    precise float bv = sum - a;
+    precise float err = (a - (sum - bv)) + (b - bv);
+    s = sum;
+    e = err;
+}
+
+void two_prod(float a, float b, out float p, out float e) {
+    precise float prod = a * b;
+    precise float ca = 4097.0 * a;
+    precise float ah = ca - (ca - a);
+    precise float al = a - ah;
+    precise float cb = 4097.0 * b;
+    precise float bh = cb - (cb - b);
+    precise float bl = b - bh;
+    precise float err = ((ah * bh - prod) + ah * bl + al * bh) + al * bl;
+    p = prod;
+    e = err;
+}
+
+// Sign (-1, 0, 1) of the exact sum of four floats: grown one term at a time
+// into a nonoverlapping expansion (Shewchuk's Grow-Expansion), whose largest
+// nonzero component carries the sign of the whole.
+float sign_of_sum(float t, float u, float v, float w) {
+    float g0;
+    float g1;
+    two_sum(u, t, g1, g0);
+    float f0;
+    float f1;
+    float f2;
+    two_sum(v, g0, f2, f0);
+    two_sum(f2, g1, f2, f1);
+    float d0;
+    float d1;
+    float d2;
+    float d3;
+    two_sum(w, f0, d3, d0);
+    two_sum(d3, f1, d3, d1);
+    two_sum(d3, f2, d3, d2);
+    return d3 != 0.0 ? sign(d3) : d2 != 0.0 ? sign(d2) : d1 != 0.0 ? sign(d1) : sign(d0);
+}
+
+// `q` moved to the correctly rounded (ties to even) root of the residual
+// `residual(m)`, whose sign `up` and `down` give at the midpoints above and
+// below: positive above means the exact value lies past the next float.
+bool round_up(float up, uint bits) {
+    return up > 0.0 || (up == 0.0 && (bits & 1u) != 0u);
+}
+
+bool round_down(float down, uint bits) {
+    return down < 0.0 || (down == 0.0 && (bits & 1u) != 0u);
+}
+
+// a / b correctly rounded. The residual a - m*b at a midpoint m = q ± h is
+// (a - p) - e ∓ h*b with q*b = p + e exactly; a - p is exact because p lies
+// within a few ulp of a, and h*b because h is a power of two.
+float exact_div(float a, float b) {
+    if (a == 0.0) {
+        return 0.0;
+    }
+    bool negative = (a < 0.0) != (b < 0.0);
+    precise float x = abs(a);
+    precise float y = abs(b);
+    precise float q = x / y;
+    [unroll] for (int i = 0; i < 4; i++) {
+        uint bits = asuint(q);
+        float p;
+        float e;
+        two_prod(q, y, p, e);
+        precise float t = x - p;
+        precise float next = asfloat(bits + 1u);
+        precise float hu = (next - q) * 0.5;
+        precise float prev = asfloat(bits - 1u);
+        precise float hd = (q - prev) * 0.5;
+        if (round_up(sign_of_sum(t, -e, -(hu * y), 0.0), bits)) {
+            q = next;
+        } else if (round_down(sign_of_sum(t, -e, hd * y, 0.0), bits)) {
+            q = prev;
+        }
+    }
+    return negative ? -q : q;
+}
+
+// sqrt(x) correctly rounded: the residual x - m*m at m = s ± h is
+// (x - p) - e ∓ 2*s*h - h*h with s*s = p + e exactly, every term exact.
+float exact_sqrt(float x) {
+    if (x <= 0.0) {
+        return 0.0;
+    }
+    precise float s = sqrt(x);
+    [unroll] for (int i = 0; i < 3; i++) {
+        uint bits = asuint(s);
+        float p;
+        float e;
+        two_prod(s, s, p, e);
+        precise float t = x - p;
+        precise float next = asfloat(bits + 1u);
+        precise float hu = (next - s) * 0.5;
+        precise float prev = asfloat(bits - 1u);
+        precise float hd = (s - prev) * 0.5;
+        if (round_up(sign_of_sum(t, -e, -(2.0 * s * hu), -(hu * hu)), bits)) {
+            s = next;
+        } else if (round_down(sign_of_sum(t, -e, 2.0 * s * hd, -(hd * hd)), bits)) {
+            s = prev;
+        }
+    }
+    return s;
+}
+
+// `over` with its division correctly rounded.
+float4 exact_over(float4 below, float4 above) {
+    precise float alpha = above.a + below.a * (1.0 - above.a);
+    precise float3 sum = above.rgb * above.a + below.rgb * below.a * (1.0 - above.a);
+    return float4(exact_div(sum.r, alpha), exact_div(sum.g, alpha), exact_div(sum.b, alpha), alpha);
+}
+
+// `hsla_to_rgba` in exact operations: `fmod(h, 2)` as `h - 2 * floor(h / 2)`
+// (halving and doubling are exact) and no fused multiply-adds.
+float4 exact_hsla_to_rgba(Hsla hsla) {
+    precise float h = hsla.h * 6.0;
+    precise float c = (1.0 - abs(2.0 * hsla.l - 1.0)) * hsla.s;
+    precise float h2 = h - 2.0 * floor(h * 0.5);
+    precise float x = c * (1.0 - abs(h2 - 1.0));
+    precise float m = hsla.l - c * 0.5;
+    float3 rgb = h < 1.0 ? float3(c, x, 0.0)
+               : h < 2.0 ? float3(x, c, 0.0)
+               : h < 3.0 ? float3(0.0, c, x)
+               : h < 4.0 ? float3(0.0, x, c)
+               : h < 5.0 ? float3(x, 0.0, c)
+                         : float3(c, 0.0, x);
+    precise float3 sum = rgb + m;
+    return float4(sum, hsla.a);
+}
+
 // KaminIDE patch: signed distance (negative inside) of a box to the edge of
 // the corner `r` (horizontal, vertical radius) nearest to the point, the
 // point mirrored into the bottom right quadrant (`corner_to_point` =
@@ -778,14 +923,15 @@ float2 untransform(float2 position, TransformationMatrix t) {
 // for a circle; elsewhere the distance to the nearer straight side.
 float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     // `precise`: one rounding per operation in this order on every adapter
-    // (no fused multiply-adds), so GPU and WARP reach the same coverage.
+    // (no fused multiply-adds), and division and roots correctly rounded, so
+    // GPU and WARP reach the same coverage.
     precise float2 v = -corner_to_point;
     if (r.x > 0.0 && r.y > 0.0 && v.x >= 0.0 && v.y >= 0.0 && v.x < r.x && v.y < r.y) {
-        precise float2 e = 1.0 - v / r;
-        precise float dd = sqrt(e.x * e.x + e.y * e.y);
-        precise float2 g = e / r;
-        precise float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
-        precise float d = (dd - 1.0) / max(grad, 1e-6);
+        precise float2 e = 1.0 - float2(exact_div(v.x, r.x), exact_div(v.y, r.y));
+        precise float dd = exact_sqrt(e.x * e.x + e.y * e.y);
+        precise float2 g = float2(exact_div(e.x, r.x), exact_div(e.y, r.y));
+        precise float grad = exact_div(exact_sqrt(g.x * g.x + g.y * g.y), max(dd, 1e-6));
+        precise float d = exact_div(dd - 1.0, max(grad, 1e-6));
         return d;
     }
     return max(corner_to_point.x, corner_to_point.y);
@@ -794,8 +940,9 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
 // KaminIDE patch: `v` rounded to the nearest of the 256 steps of an 8-bit
 // unorm channel, as a target of that format stores it.
 float4 q8(float4 v) {
-    precise float4 steps = round(saturate(v) * 255.0) / 255.0;
-    return steps;
+    precise float4 steps = round(saturate(v) * 255.0);
+    return float4(exact_div(steps.x, 255.0), exact_div(steps.y, 255.0),
+                  exact_div(steps.z, 255.0), exact_div(steps.w, 255.0));
 }
 
 // KaminIDE patch: distance to the edge of the quad's box inset by `inset`
@@ -845,7 +992,7 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
         precise float inner = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges, r, left, top));
         precise float ring = covered - inner;
         if (quad.ellipse.style == 1u) {
-            float4 line_width = round(edges / 3.0);
+            float4 line_width = round(float4(exact_div(edges.x, 3.0), exact_div(edges.y, 3.0), exact_div(edges.z, 3.0), exact_div(edges.w, 3.0)));
             precise float outer_line = covered - saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, line_width, r, left, top));
             precise float inner_line = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges - line_width, r, left, top)) - inner;
             ring = max(outer_line, 0.0) + max(inner_line, 0.0);
@@ -856,17 +1003,18 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
             // `BoxBorderPainter` clips each side to that miter): the signed
             // distance to it weighs the two colours.
             precise float2 from_edge = half_size - abs(center_to_point);
-            // `precise` throughout (the colour conversion included): one
-            // rounding per operation, so GPU and WARP pick the same bytes.
+            // Exact operations throughout (the colour conversion included):
+            // one correct rounding per operation, so GPU and WARP pick the
+            // same bytes.
             float2 width = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
-            precise float miter = (from_edge.x * width.y - from_edge.y * width.x) / max(sqrt(width.x * width.x + width.y * width.y), 1e-6);
-            precise float4 horizontal = hsla_to_rgba(quad.ellipse.side_colors[top ? 0 : 2]);
-            precise float4 vertical = hsla_to_rgba(quad.ellipse.side_colors[left ? 3 : 1]);
+            precise float miter = exact_div(from_edge.x * width.y - from_edge.y * width.x, max(exact_sqrt(width.x * width.x + width.y * width.y), 1e-6));
+            precise float4 horizontal = exact_hsla_to_rgba(quad.ellipse.side_colors[top ? 0 : 2]);
+            precise float4 vertical = exact_hsla_to_rgba(quad.ellipse.side_colors[left ? 3 : 1]);
             precise float4 mixed = lerp(vertical, horizontal, saturate(0.5 + miter));
             border_color = mixed;
         }
-        precise float4 blended_border = over(background_color, border_color);
-        precise float4 ringed = lerp(background_color, blended_border, saturate(ring / covered));
+        precise float4 blended_border = exact_over(background_color, border_color);
+        precise float4 ringed = lerp(background_color, blended_border, saturate(exact_div(ring, covered)));
         color = ringed;
     }
     // Premultiplied output, drawn with the premultiplied blender
