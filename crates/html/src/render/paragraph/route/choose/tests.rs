@@ -1,7 +1,6 @@
 //! Tests of the paragraph route choice (`route_pieces`).
 
 use super::*;
-use crate::style::computed::Computed;
 
 #[test]
 fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {

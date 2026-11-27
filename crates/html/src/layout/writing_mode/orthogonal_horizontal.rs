@@ -4,7 +4,7 @@
 use crate::dom::Element;
 use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
 use crate::style::computed::orthogonal::available;
-use crate::style::computed::{BoxStyle, Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
 pub(super) fn size_auto(child: &mut Element, container: &BoxStyle, icb_width: f32) -> bool {
@@ -47,7 +47,7 @@ pub(super) fn size_auto(child: &mut Element, container: &BoxStyle, icb_width: f3
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::style::computed::{Display, Position};
+    use crate::style::computed::{Computed, Display, Position};
 
     #[test]
     fn omitted_and_authored_auto_have_the_same_intrinsic_contract() {
