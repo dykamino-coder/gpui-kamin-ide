@@ -81,4 +81,5 @@ fn host_without_a_document_step_uses_the_same_phase_protocol(cx: &mut TestAppCon
     assert_ne!(root["tree"], before);
     assert_eq!(root["prepared"], false);
     assert_eq!(root["document"], painted(&cold)["document"]);
+    assert!(root["attempt"].as_u64().unwrap() > painted(&cold)["attempt"].as_u64().unwrap());
 }

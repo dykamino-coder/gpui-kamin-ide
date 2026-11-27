@@ -37,6 +37,7 @@ pub(crate) struct Journal(RefCell<Option<Rc<RefCell<Log>>>>);
 
 #[derive(Default)]
 struct Log {
+    document: Option<u64>,
     next: u64,
     attempts: Vec<Attempt>,
     dropped: u64,
@@ -77,6 +78,7 @@ impl Journal {
             .get_or_insert_with(Default::default)
             .clone();
         let mut log = owner.borrow_mut();
+        let document = *log.document.get_or_insert(document);
         log.next += 1;
         if log.attempts.len() == LIMIT {
             log.dropped += 1;

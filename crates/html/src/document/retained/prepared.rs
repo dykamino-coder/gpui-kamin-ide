@@ -152,7 +152,7 @@ impl Document {
         prepared: bool,
     ) -> crate::why::root::Attempt {
         self.root_phases.begin(
-            Rc::as_ptr(&self.reuse) as usize as u64,
+            self.tree,
             self.tree,
             prepared,
             opts,
