@@ -71,7 +71,7 @@ impl Journal {
         if !super::enabled() {
             return Attempt::default();
         }
-        let owner = self
+        let owner: Rc<RefCell<Log>> = self
             .0
             .borrow_mut()
             .get_or_insert_with(Default::default)
@@ -102,16 +102,17 @@ impl Journal {
 
     /// A checkpoint invalidates pending gaps and scopes, including abandoned roots.
     pub(crate) fn take(&self) -> Value {
-        let owner = self.0.borrow().clone();
-        let Some(owner) = owner else {
+        let Some(stored) = self.0.borrow().clone() else {
             return json!({"clock": "wall", "attempts": [], "dropped": 0});
         };
+        let owner: Rc<RefCell<Log>> = stored;
         let mut log = owner.borrow_mut();
         let attempts: Vec<Value> = log
             .attempts
             .drain(..)
             .map(|attempt| {
-                let mut data = attempt.0.as_ref().unwrap().borrow_mut();
+                let cell: &RefCell<Data> = attempt.0.as_deref().unwrap();
+                let mut data = cell.borrow_mut();
                 data.live = false;
                 let mut out = data.identity.clone();
                 out["painted"] = json!(data.painted);

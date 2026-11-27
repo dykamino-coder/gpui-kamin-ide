@@ -2,7 +2,10 @@
 
 use super::{Attempt, Data, Phase, Scope};
 use serde_json::json;
-use std::time::Instant;
+use std::{
+    cell::{RefCell, RefMut},
+    time::Instant,
+};
 
 impl Data {
     fn charge(&mut self, now: Instant) {
@@ -15,14 +18,15 @@ impl Data {
 
 impl Attempt {
     fn observed(&self) -> bool {
-        let Some(data) = &self.0 else {
+        let Some(stored) = &self.0 else {
             return false;
         };
+        let cell: &RefCell<Data> = stored;
         if !crate::why::enabled() {
-            data.borrow_mut().live = false;
+            cell.borrow_mut().live = false;
             return false;
         }
-        data.borrow().live
+        cell.borrow().live
     }
 
     pub(crate) fn enter(&self, phase: Phase) -> Scope {
@@ -33,10 +37,11 @@ impl Attempt {
     }
 
     pub(super) fn enter_at(&self, phase: Phase, now: Instant) -> Scope {
-        let Some(data) = &self.0 else {
+        let Some(stored) = &self.0 else {
             return Scope(None);
         };
-        let mut data = data.borrow_mut();
+        let cell: &RefCell<Data> = stored;
+        let mut data = cell.borrow_mut();
         if !data.live {
             return Scope(None);
         }
@@ -50,8 +55,9 @@ impl Attempt {
         if !self.observed() {
             return;
         }
-        if let Some(data) = &self.0 {
-            let mut data = data.borrow_mut();
+        if let Some(stored) = &self.0 {
+            let cell: &RefCell<Data> = stored;
+            let mut data: RefMut<'_, Data> = cell.borrow_mut();
             if data.live {
                 data.identity["scale_factor"] = json!(scale);
                 data.gap = Some(Instant::now());
@@ -64,8 +70,9 @@ impl Attempt {
             return Scope(None);
         }
         let now = Instant::now();
-        if let Some(data) = &self.0 {
-            let mut data = data.borrow_mut();
+        if let Some(stored) = &self.0 {
+            let cell: &RefCell<Data> = stored;
+            let mut data = cell.borrow_mut();
             if data.live
                 && let Some(start) = data.gap.take()
             {
@@ -83,8 +90,9 @@ impl Attempt {
         if !self.observed() {
             return;
         }
-        if let Some(data) = &self.0 {
-            data.borrow_mut().painted = true;
+        if let Some(stored) = &self.0 {
+            let cell: &RefCell<Data> = stored;
+            cell.borrow_mut().painted = true;
         }
     }
 }
@@ -92,7 +100,8 @@ impl Attempt {
 impl Scope {
     pub(super) fn finish_at(&mut self, now: Instant) {
         if let Some((attempt, phase, previous, start)) = self.0.take() {
-            let mut data = attempt.0.as_ref().unwrap().borrow_mut();
+            let cell: &RefCell<Data> = attempt.0.as_deref().unwrap();
+            let mut data = cell.borrow_mut();
             if data.live {
                 data.charge(now);
                 data.inclusive[phase as usize] += now.duration_since(start);
