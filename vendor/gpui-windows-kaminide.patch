@@ -6598,7 +6598,7 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +}
 diff --git a/vendor/gpui-windows/src/direct_write/size_adjust.rs b/vendor/gpui-windows/src/direct_write/size_adjust.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..eaad9c194712c0801a750e4c43a3304d53fd25b2
+index 0000000000000000000000000000000000000000..7a2f3b55cee69def07cb3a03c43a6a65732862d0
 --- /dev/null
 +++ b/vendor/gpui-windows/src/direct_write/size_adjust.rs
 @@ -0,0 +1,163 @@
@@ -6676,10 +6676,10 @@ index 0000000000000000000000000000000000000000..eaad9c194712c0801a750e4c43a3304d
 +        // pointers. A mapping must not extend into the next CSS run.
 +        unsafe {
 +            inner.MapCharacters(
-+                source,
++                source.as_ref(),
 +                position,
 +                length,
-+                collection,
++                collection.as_ref(),
 +                *family,
 +                weight,
 +                style,
@@ -6767,13 +6767,19 @@ index 0000000000000000000000000000000000000000..eaad9c194712c0801a750e4c43a3304d
 +mod tests;
 diff --git a/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs b/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..62bc51f0d87a38009b7f93c5acb15c50e8c3973d
+index 0000000000000000000000000000000000000000..48850054f473f5b58f72a03ce442777c80f8bcca
 --- /dev/null
 +++ b/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,129 @@
 +//! Native DirectWrite shaping with different primary and fallback metrics.
 +
-+use super::*;
++use super::super::DirectWriteTextSystem;
++use super::aspect;
++use anyhow::Result;
++use gpui::{
++    FontFallbacks, FontId, FontRun, FontSizeAdjustment, FontSizeMetric, GlyphId, LineLayout,
++    PlatformTextSystem, px,
++};
 +use std::borrow::Cow;
 +
 +fn system() -> Result<DirectWriteTextSystem> {

@@ -72,10 +72,10 @@ impl IDWriteFontFallback_Impl for AdjustedFallback_Impl {
         // pointers. A mapping must not extend into the next CSS run.
         unsafe {
             inner.MapCharacters(
-                source,
+                source.as_ref(),
                 position,
                 length,
-                collection,
+                collection.as_ref(),
                 *family,
                 weight,
                 style,
