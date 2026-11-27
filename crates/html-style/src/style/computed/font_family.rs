@@ -172,12 +172,14 @@ fn family_name(raw: &str) -> String {
 }
 
 pub fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) {
-    target.inh.font.font_family = own
-        .inh
-        .font
-        .font_family
-        .clone()
-        .or_else(|| parent.inh.font.font_family.clone());
+    target.inh.font.font_family = own.inh.font.font_family.clone().or_else(|| {
+        own.inh
+            .font
+            .font_families
+            .is_none()
+            .then(|| parent.inh.font.font_family.clone())
+            .flatten()
+    });
     target.inh.font.font_families = own
         .inh
         .font

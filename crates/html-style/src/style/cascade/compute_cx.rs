@@ -71,10 +71,11 @@ impl<'a> ComputeCx<'a> {
 /// начальные 16px), высота строки и семейство.
 fn set_root_from(style: &Computed, vcx: ValueCx<'_>) {
     let family = style.inh.font.font_family.clone().unwrap_or_default();
-    let font = style
+    let mut resolved = style.clone();
+    super::compute::font_defaults::inherit_size(&Computed::default(), style, &mut resolved, vcx);
+    let font = resolved
         .computed_font_px(crate::style::computed::FontCx::new(&family, 16.0), vcx)
         .unwrap_or(16.0);
-    let mut resolved = style.clone();
     resolved.inh.font.font_size = Some(Len::Px(font));
     resolved.compute_font_adjust(&family, vcx);
     let used = resolved.used_font(font, vcx);

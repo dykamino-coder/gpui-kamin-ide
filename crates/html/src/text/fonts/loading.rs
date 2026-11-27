@@ -4,7 +4,7 @@
 //! и базовую линию `romn`. Полная загрузка сбрасывает таблицы документа, дозагрузка
 //! (`<iframe>`) — нет.
 
-use super::{declaration, faces, is_quote, read_font, sfnt_romn_baseline, source, stretch_desc};
+use super::{declaration, faces, is_quote, stretch_desc};
 use crate::budget::admission::{Admission, Error};
 use crate::values::ValueCx;
 
@@ -87,7 +87,7 @@ pub(super) fn load_faces_into(
     used: Option<&super::used_chars::UsedChars>,
 ) -> Result<(), Error> {
     for block in faces(css, vcx) {
-        let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
+        let Some(family) = declaration(&block, "font-family") else {
             continue;
         };
         // A subset no character of the document falls in is not loaded
@@ -97,30 +97,7 @@ pub(super) fn load_faces_into(
         if used.is_some_and(|used| !used.intersects(&ranges)) {
             continue;
         }
-        let src = crate::resources::url_loader::resolve(&src, base, admission)?;
-        let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
-        let real = match real {
-            Some(hit) => hit,
-            None => {
-                let loaded = read_font(&src, vcx.doc).and_then(|bytes| {
-                    super::math::remember(&src, &bytes, fonts);
-                    let romn = sfnt_romn_baseline(&bytes);
-                    vcx.doc
-                        .font_faces
-                        .romn_by_src
-                        .borrow_mut()
-                        .insert(src.clone(), romn);
-                    crate::text::metrics::load_font(bytes, fonts)
-                });
-                vcx.doc
-                    .font_faces
-                    .loaded
-                    .borrow_mut()
-                    .insert(src.clone(), loaded.clone());
-                loaded
-            }
-        };
-        if let Some(real) = real {
+        if let Some((src, real)) = super::font_sources::load(&block, base, fonts, vcx, admission)? {
             super::math::register(&src, &real, fonts);
             let name = family.trim_matches(is_quote).to_ascii_lowercase();
             if let Some(Some(v)) = vcx.doc.font_faces.romn_by_src.borrow().get(&src).copied() {

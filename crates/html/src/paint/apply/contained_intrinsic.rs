@@ -68,7 +68,7 @@ pub(super) fn empty_contained_size(c: &Computed, inline: bool) -> f32 {
     let one = |t: &Track| -> Option<f32> {
         match t {
             Track::Px(v) => Some(*v),
-            Track::Font(_) => None,
+            Track::Font(_) | Track::FitFont(_) => None,
             _ => Some(0.0),
         }
     };

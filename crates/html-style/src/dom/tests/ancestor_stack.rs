@@ -19,7 +19,7 @@ fn completed_subtrees_do_not_leak_ancestors_into_siblings() {
 }
 
 #[test]
-fn unfocused_ancestors_do_not_activate_descendants_or_generated_content() {
+fn board_appearance_unfocused_ancestors_do_not_activate_descendants_or_generated_content() {
     let doc = crate::values::DocumentValues::detached(crate::style::css::Media::default());
     let vcx = doc.values();
     for state in ["hover", "active", "focus", "focus-visible", "focus-within"] {

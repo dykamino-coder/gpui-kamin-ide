@@ -3,9 +3,8 @@
 //!
 //! The list is Blink's `css_properties.json5` `alias_for` (the Compat Standard
 //! for `-webkit-`): the old name becomes the new one while parsing and both share
-//! one cascade slot. Not included: `-webkit-mask-composite` (its old keywords are
-//! parsed in `mask_clip.rs`), `-webkit-app-region`, and `-webkit-perspective` /
-//! `-webkit-perspective-origin`, which wait for the perspective projection fix.
+//! one cascade slot. Value grammars and rendering support remain the responsibility
+//! of the corresponding property; an alias does not add rendering capabilities.
 
 use std::borrow::Cow;
 
@@ -24,6 +23,13 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
         "-webkit-mask-position" => "mask-position",
         "-webkit-mask-repeat" => "mask-repeat",
         "-webkit-mask-size" => "mask-size",
+        "-webkit-mask-composite" => "mask-composite",
+        "-webkit-mask-box-image" => "mask-border",
+        "-webkit-mask-box-image-outset" => "mask-border-outset",
+        "-webkit-mask-box-image-repeat" => "mask-border-repeat",
+        "-webkit-mask-box-image-slice" => "mask-border-slice",
+        "-webkit-mask-box-image-source" => "mask-border-source",
+        "-webkit-mask-box-image-width" => "mask-border-width",
         // css-fonts-4 §font-width-prop: «font-stretch is a legacy name alias».
         "font-stretch" => "font-width",
         // css-text-3 §5.5: «word-wrap … legacy name alias of overflow-wrap».
@@ -60,6 +66,8 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
         "-webkit-transform" => "transform",
         "-webkit-transform-origin" => "transform-origin",
         "-webkit-transform-style" => "transform-style",
+        "-webkit-perspective" => "perspective",
+        "-webkit-perspective-origin" => "perspective-origin",
         "-webkit-backface-visibility" => "backface-visibility",
         // css-backgrounds-3: shadows and corner radii.
         "-webkit-box-shadow" => "box-shadow",
@@ -137,6 +145,11 @@ pub fn legacy_name_alias(name: &str) -> Option<&'static str> {
 /// - `-webkit-border-radius: a b` means `a / b` (`ConsumeRadii`);
 /// - `-webkit-background-size: a` means `a a` (`ParsingStyle::kLegacy`).
 pub fn legacy_alias_value<'a>(name: &str, value: &'a str) -> Cow<'a, str> {
+    // CSS-wide keywords also apply to the complete legacy declaration.
+    // Doubling `inherit` as a background size would make it invalid.
+    if super::CssWide::parse(value).is_some() {
+        return Cow::Borrowed(value);
+    }
     let words = |v: &str| v.split_whitespace().count();
     match name {
         "-webkit-border-radius" if !value.contains('/') && words(value) == 2 => {
@@ -168,37 +181,4 @@ pub fn legacy_alias_value<'a>(name: &str, value: &'a str) -> Cow<'a, str> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn prefixed_transform_family_shares_the_standard_slot() {
-        assert_eq!(legacy_name_alias("-webkit-perspective"), None);
-        assert_eq!(legacy_name_alias("-webkit-transform"), Some("transform"));
-        assert_eq!(legacy_name_alias("-webkit-box-shadow"), Some("box-shadow"));
-        assert_eq!(legacy_name_alias("-webkit-mask-image"), Some("mask-image"));
-        assert_eq!(legacy_name_alias("-webkit-mask-composite"), None);
-        assert_eq!(legacy_name_alias("perspective"), None);
-    }
-
-    #[test]
-    fn legacy_values_follow_the_old_grammar() {
-        assert_eq!(
-            legacy_alias_value("-webkit-border-radius", "4px 8px"),
-            "4px / 8px"
-        );
-        assert_eq!(
-            legacy_alias_value("-webkit-border-radius", "1px 2px 3px"),
-            "1px 2px 3px"
-        );
-        assert_eq!(
-            legacy_alias_value("-webkit-border-radius", "1px / 2px"),
-            "1px / 2px"
-        );
-        assert_eq!(
-            legacy_alias_value("-webkit-background-size", "2em, cover"),
-            "2em 2em, cover"
-        );
-        assert_eq!(legacy_alias_value("border-radius", "4px 8px"), "4px 8px");
-    }
-}
+mod tests;

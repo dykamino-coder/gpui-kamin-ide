@@ -91,6 +91,9 @@ pub(super) fn pseudo_holds(
         }
         PseudoKind::TargetCurrent => me.target_current,
         PseudoKind::Checked => me.checked,
+        PseudoKind::Disabled(want) => {
+            crate::dom::form_state::disabled(me.key.handle()) == Some(want)
+        }
         // Корень документа — `<html>`: не структурный по месту среди соседей.
         PseudoKind::Root => me.tag == "html",
         PseudoKind::HasSlotted => has_slotted_holds(sel, pseudo, me),

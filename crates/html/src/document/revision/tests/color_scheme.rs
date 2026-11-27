@@ -93,7 +93,7 @@ fn metadata_never_replaces_host_media_preference() {
 }
 
 #[test]
-fn appearance_changes_and_later_attribute_edits_match_fresh_builds() {
+fn board_appearance_changes_and_later_attribute_edits_match_fresh_builds() {
     for meta in [
         "",
         "<meta name=color-scheme content=dark>",

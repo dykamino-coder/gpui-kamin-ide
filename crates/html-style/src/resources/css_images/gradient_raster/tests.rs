@@ -4,6 +4,32 @@ use super::*;
 use crate::style::computed::ImageSource;
 
 #[test]
+fn board_appearance_mixed_stops_are_fixed_after_resolving_the_tile_axis() {
+    let doc = crate::values::DocumentValues::detached(Default::default());
+    for angle in ["90deg,", ""] {
+        let src = ImageSource::parse(
+            &format!("linear-gradient({angle}#fff 21px,transparent 1%)"),
+            doc.values(),
+        )
+        .unwrap();
+        for pixels in [22, 28] {
+            let image = tile(&src, pixels, pixels, (22., 22.), doc.values()).unwrap();
+            for y in 0..pixels {
+                for x in 0..pixels {
+                    let at = if angle.is_empty() { y } else { x };
+                    let opaque = (at as f32 + 0.5) * 22. / (pixels as f32) < 21.;
+                    assert_eq!(
+                        image.bytes[((y * pixels + x) * 4 + 3) as usize],
+                        if opaque { 255 } else { 0 },
+                        "{angle} {pixels} ({x},{y})"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn numeric_images_hit_across_documents_and_keep_uncached_pixels() {
     for css in [
         "linear-gradient(red 3px, blue)",

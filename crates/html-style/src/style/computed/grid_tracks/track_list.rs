@@ -4,14 +4,7 @@ use super::*;
 use crate::values::ValueCx;
 
 /// Разбор списка дорожек `grid-template-*` в `TrackSize`.
-///
-/// `fit-content(N)` теряет функцию дорожки в переводе CSS→gpui и доезжает как
-/// `minmax(auto, N)` — ЗАКРЕПЛЕНИЕ вместо ПОТОЛКА. Не чинить это новым
-/// вариантом `GridTrack::FitContent` в вендорных `geometry.rs`/`taffy.rs`:
-/// под `GridTrack` идут ВСЕ дорожечные размеры gpui, и раскладка меняется
-/// далеко за пределами сетки (`block-aspect-ratio-*`, `flex-aspect-ratio-*`,
-/// `intrinsic-size-*`, `multicol-rule-*`, таблицы). Только вместе с полным
-/// перебором потребителей `GridTrack`.
+/// Keep percentages and mixed lengths until the grid dimensions are known.
 pub(in crate::style::computed) fn parse_tracks(
     v: &str,
     vcx: ValueCx<'_>,
@@ -36,14 +29,27 @@ pub(in crate::style::computed) fn parse_tracks(
         }
 
         if let Some(fr) = t.strip_suffix("fr") {
-            return fr.trim().parse().ok().map(Track::Fr);
+            let value: f32 = fr.trim().parse().ok()?;
+            return (value.is_finite() && value >= 0.0).then_some(Track::Fr(value));
         }
         match Len::parse(t, vcx) {
             Some(Len::Px(px)) => Some(Track::Px(px)),
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
             // Единицы шрифта откладываются: раньше они роняли разбор, а с
             // ним и ВЕСЬ список дорожек — сетка выходила из равных долей.
-            Some(l @ (Len::Em(_) | Len::Ch(_) | Len::Ex(_) | Len::Ic(_))) => Some(Track::Font(l)),
+            Some(
+                l @ (Len::Em(_)
+                | Len::EmPx(..)
+                | Len::Ch(_)
+                | Len::Ex(_)
+                | Len::Ic(_)
+                | Len::Lh(_)
+                | Len::LhPx(..)
+                | Len::Vw(_)
+                | Len::Vh(_)
+                | Len::Calc(_)
+                | Len::Math(_)),
+            ) => Some(Track::Font(l)),
             _ => None,
         }
     }
@@ -52,8 +58,15 @@ pub(in crate::style::computed) fn parse_tracks(
     fn one(t: &str, vcx: ValueCx<'_>) -> Option<TrackSize> {
         let t = t.trim();
         if let Some(inner) = t.strip_prefix("minmax(").and_then(|s| s.strip_suffix(')')) {
-            let (lo, hi) = inner.split_once(',')?;
-            return Some(TrackSize::MinMax(single(lo, vcx)?, single(hi, vcx)?));
+            let args = crate::style::css::split_args(inner);
+            let [lo, hi] = args.as_slice() else {
+                return None;
+            };
+            let lo = single(lo, vcx)?;
+            if matches!(lo, Track::Fr(_)) {
+                return None;
+            }
+            return Some(TrackSize::MinMax(lo, single(hi, vcx)?));
         }
         // `fit-content(N)` — дорожка по содержимому, но НЕ ШИРЕ N: раньше
         // сводилась к `Px(N)`, и потолок работал полом
@@ -63,15 +76,16 @@ pub(in crate::style::computed) fn parse_tracks(
         // `None` для ВСЕГО списка (`out.push(one(&token)?)` ниже), после чего
         // сетка сводилась к равным колонкам по `count_tracks`. Верхняя грань
         // теперь идёт через `single`, который знает px, проценты и единицы
-        // шрифта; нераспознанный аргумент — это `auto`, а не потеря шаблона.
+        // Reject an invalid argument together with the whole declaration.
         if let Some(inner) = t
             .strip_prefix("fit-content(")
             .and_then(|r| r.strip_suffix(')'))
         {
-            let hi = match single(inner, vcx).unwrap_or(Track::Auto) {
+            let hi = match single(inner, vcx)? {
                 Track::Px(v) => Track::FitPx(v),
                 Track::Pct(v) => Track::FitPct(v),
-                other => other,
+                Track::Font(v) => Track::FitFont(v),
+                _ => return None,
             };
             return Some(TrackSize::MinMax(Track::Auto, hi));
         }
@@ -92,8 +106,9 @@ pub(in crate::style::computed) fn parse_tracks(
             let count = count.trim();
             let unit: Vec<TrackSize> = tokenize_tracks(rest)
                 .iter()
-                .filter_map(|t| one(t, vcx))
-                .collect();
+                .filter(|t| !(t.starts_with('[') && t.ends_with(']')))
+                .map(|t| one(t, vcx))
+                .collect::<Option<_>>()?;
             if unit.is_empty() {
                 return None;
             }
@@ -107,6 +122,9 @@ pub(in crate::style::computed) fn parse_tracks(
                 continue;
             }
             let count: usize = count.parse().ok()?;
+            if count == 0 {
+                return None;
+            }
             for _ in 0..count.min(64) {
                 out.extend(unit.iter().cloned());
             }

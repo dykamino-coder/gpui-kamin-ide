@@ -18,6 +18,7 @@
 mod face_rules;
 pub(crate) mod fallbacks;
 mod font_faces;
+mod font_sources;
 mod loading;
 pub(crate) mod matching;
 pub(crate) mod math;
@@ -103,7 +104,9 @@ mod tests {
     }
 }
 mod windows_names;
-use crate::text::fonts::face_rules::{declaration, faces, source};
+#[cfg(test)]
+use crate::text::fonts::face_rules::source;
+use crate::text::fonts::face_rules::{declaration, faces};
 use crate::text::fonts::font_faces::is_quote;
 use crate::text::fonts::font_faces::read_font;
 pub use crate::text::fonts::loading::covers_space;

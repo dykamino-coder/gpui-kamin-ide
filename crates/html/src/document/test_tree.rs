@@ -2,25 +2,23 @@
 
 use super::Document;
 
-/// Дерево и стиль сравниваются по значениям. Owner и ключи отдельных DOM
-/// нормализуются; повторные ссылки на один ключ сохраняют связь, а synthetic — 0.
+/// Compare tree and style values, normalizing document-local identities.
+/// Repeated node references retain their relationship.
 pub(super) fn tree(doc: &Document) -> String {
     let text = format!("{:?}\n{:?}", doc.nodes(), doc.root_style());
     let mut out = String::with_capacity(text.len());
     let mut rest = text.as_str();
     let mut keys = std::collections::HashMap::new();
-    // Source text numbers (`TextId`, `"text"#n`) and the state identities of
-    // synthetic boxes are identities as node ids are: a rebuilt subtree
-    // numbers a text the build did not reach, and a new synthetic box, next.
+    // Rebuilt subtrees can allocate text and synthetic paint identities
+    // in a different order than a fresh build.
     let mut texts = std::collections::HashMap::new();
-    let mut synthetic = std::collections::HashMap::new();
     while let Some((i, field)) = [
         "owner: ",
         "node_id: ",
         "decor_box: ",
         "implicit_anchor: Some(",
         "\"#",
-        "state_id: OnceCell(\"",
+        "state_id: OnceCell(",
     ]
     .into_iter()
     .filter_map(|field| rest.find(field).map(|i| (i, field)))
@@ -28,6 +26,14 @@ pub(super) fn tree(doc: &Document) -> String {
     {
         out.push_str(&rest[..i + field.len()]);
         rest = &rest[i + field.len()..];
+        // Synthetic paint identities are allocated lazily during an edit;
+        // an untouched fresh build can still have an empty cell.
+        if field.starts_with("state_id") {
+            let end = rest.find(')').expect("a debug OnceCell ends with ')'");
+            out.push('_');
+            rest = &rest[end..];
+            continue;
+        }
         let end = rest
             .find(|c: char| !c.is_ascii_digit())
             .unwrap_or(rest.len());
@@ -37,14 +43,6 @@ pub(super) fn tree(doc: &Document) -> String {
             let next = texts.len() + 1;
             out.push_str(
                 &texts
-                    .entry(rest[..end].to_string())
-                    .or_insert(next)
-                    .to_string(),
-            );
-        } else if field.starts_with("state_id") {
-            let next = synthetic.len();
-            out.push_str(
-                &synthetic
                     .entry(rest[..end].to_string())
                     .or_insert(next)
                     .to_string(),

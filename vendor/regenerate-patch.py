@@ -75,6 +75,7 @@ FIXES = {
         "calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.",
         "Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.",
         "Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.",
+        "Grid lengths: preserve mixed percentage and absolute terms in track bounds and fit-content caps until native layout supplies the relevant axis; device scaling applies only to absolute terms.",
         "Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.",
         "Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.",
         "Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.",

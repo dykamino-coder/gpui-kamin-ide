@@ -51,6 +51,7 @@ fn ui_reads(g: &InheritedUi) -> bool {
 fn font_reads(g: &InheritedFont) -> bool {
     let InheritedFont {
         font_size: _,
+        font_size_origin: _,
         font_weight: _,
         italic: _,
         oblique: _,

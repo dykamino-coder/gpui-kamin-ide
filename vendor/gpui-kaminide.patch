@@ -40,32 +40,41 @@
 # 38. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
 # 39. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
 # 40. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 41. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 42. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 43. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 44. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 45. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 46. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 47. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 48. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 49. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 50. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 51. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 52. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 53. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 54. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 55. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 56. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 57. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 58. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
-# 59. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
-# 60. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
-# 61. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
-# 62. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
+# 41. Grid lengths: preserve mixed percentage and absolute terms in track bounds and fit-content caps until native layout supplies the relevant axis; device scaling applies only to absolute terms.
+# 42. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 43. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 44. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 45. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 46. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 47. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 48. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 49. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 50. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 51. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 52. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 53. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 54. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 55. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 56. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 57. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 58. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 59. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 60. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
+# 61. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
+# 62. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
+# 63. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
+diff --git a/vendor/gpui/.cargo-ok b/vendor/gpui/.cargo-ok
+deleted file mode 100644
+index 5f8b795830acbab5961c1a28c76a7916c9631493..0000000000000000000000000000000000000000
+--- a/vendor/gpui/.cargo-ok
++++ /dev/null
+@@ -1 +0,0 @@
+-{"v":1}
+\ No newline at end of file
 diff --git a/vendor/gpui/Cargo.lock b/vendor/gpui/Cargo.lock
 deleted file mode 100644
 index c09b2c7977d933310de9e8fdac42ffeab6888395..0000000000000000000000000000000000000000
@@ -11639,7 +11648,7 @@ index 0000000000000000000000000000000000000000..ccb6b56a6851ba50653d4de0ccae3d0e
 +    pub gpu_wait: Duration,
 +}
 diff --git a/vendor/gpui/src/geometry.rs b/vendor/gpui/src/geometry.rs
-index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae45b45e2db
+index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc735734d33460
 --- a/vendor/gpui/src/geometry.rs
 +++ b/vendor/gpui/src/geometry.rs
 @@ -3476,0 +3477,4 @@
@@ -11659,7 +11668,7 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 +            DefiniteLength::Calc(add, fraction) => {
 +                write!(f, "calc({}% + {}px)", fraction * 100.0, add)
 +            }
-@@ -3802,0 +3817,140 @@
+@@ -3802,0 +3817,144 @@
 +/// KaminIDE patch: одна дорожка сетки.
 +///
 +/// Штатный путь умеет только «N равных колонок» (`grid_cols`), хотя taffy под
@@ -11677,6 +11686,8 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 +    /// от свободного остатка. Без своего варианта проценты в дорожках
 +    /// сводились к равным долям, и колонки расходились с браузером.
 +    Percent(f32),
++    /// Grid-axis fraction plus logical pixels, before display scaling.
++    Calc { fraction: f32, add: Pixels },
 +    /// Ширина по содержимому: `auto`.
 +    Auto,
 +    /// Минимально возможная ширина содержимого: `min-content`.
@@ -11688,6 +11699,8 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 +    FitContentPx(Pixels),
 +    /// KaminIDE patch: `fit-content(N%)`.
 +    FitContentPercent(f32),
++    /// Intrinsic size limit expressed as a mixed length.
++    FitContentCalc { fraction: f32, add: Pixels },
 +    /// `minmax(min, max)` — пара из двух дорожек выше.
 +    MinMax(Box<(GridTrack, GridTrack)>),
 +    /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
@@ -11800,7 +11813,7 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..901383175a1386f737ab1be8fbfc5ae4
 +    pub area_size: (u16, u16),
 +}
 +
-@@ -3936,0 +4091 @@
+@@ -3936,0 +4095 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
 index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..ca79eab6b89b977eca232a24bafd3d6da81f8d36
@@ -25846,7 +25859,7 @@ index 0000000000000000000000000000000000000000..764ccc5a38e83f418a3a0258164fedc4
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy.rs b/vendor/gpui/src/taffy.rs
-index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b6b03d462
+index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..3cb3298057f98d31edf293d394b52c1b5dfd38d9
 --- a/vendor/gpui/src/taffy.rs
 +++ b/vendor/gpui/src/taffy.rs
 @@ -0,0 +1,71 @@
@@ -26659,7 +26672,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +    }
 +    style.max_size.width = taffy::LengthPercentageAuto::length(inner.max(0.0));
 +    tree.set_style(child, style).is_ok()
-@@ -448,0 +1021,105 @@
+@@ -448,0 +1021,134 @@
 +            }
 +        }
 +
@@ -26682,14 +26695,23 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +                    G::Pixels(px) => length(f32::from(*px) * scale_factor),
 +                    // KaminIDE patch: процент от ширины сетки.
 +                    G::Percent(p) => taffy::style_helpers::percent(*p),
-+                    G::Fraction(_) | G::Auto | G::FitContentPx(_) | G::FitContentPercent(_) => {
-+                        auto()
-+                    }
++                    G::Calc { fraction, add } => taffy::MinTrackSizingFunction::calc(
++                        taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
++                    ),
++                    G::Fraction(_)
++                    | G::Auto
++                    | G::FitContentPx(_)
++                    | G::FitContentPercent(_)
++                    | G::FitContentCalc { .. } => auto(),
 +                    G::MinContent => min_content(),
 +                    G::MaxContent => max_content(),
 +                    // Вложенный `minmax` сводится к своим граням по отдельности.
 +                    G::MinMax(pair) => match &pair.0 {
 +                        G::Pixels(px) => length(f32::from(*px) * scale_factor),
++                        G::Percent(p) => taffy::style_helpers::percent(*p),
++                        G::Calc { fraction, add } => taffy::MinTrackSizingFunction::calc(
++                            taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
++                        ),
 +                        G::MinContent => min_content(),
 +                        G::MaxContent => max_content(),
 +                        _ => auto(),
@@ -26703,6 +26725,9 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +                    G::Pixels(px) => length(f32::from(*px) * scale_factor),
 +                    // KaminIDE patch: процент от ширины сетки.
 +                    G::Percent(p) => taffy::style_helpers::percent(*p),
++                    G::Calc { fraction, add } => taffy::MaxTrackSizingFunction::calc(
++                        taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
++                    ),
 +                    G::Fraction(f) => fr(*f),
 +                    G::Auto => auto(),
 +                    G::MinContent => min_content(),
@@ -26710,9 +26735,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +                    G::FitContentPx(px) => {
 +                        taffy::MaxTrackSizingFunction::fit_content_px(f32::from(*px) * scale_factor)
 +                    }
-+                    G::FitContentPercent(p) => taffy::MaxTrackSizingFunction::fit_content_percent(*p),
++                    G::FitContentPercent(p) => {
++                        taffy::MaxTrackSizingFunction::fit_content_percent(*p)
++                    }
++                    G::FitContentCalc { fraction, add } => {
++                        taffy::MaxTrackSizingFunction::fit_content_calc(taffy::tree::calc_handle(
++                            f32::from(*add) * scale_factor,
++                            *fraction,
++                        ))
++                    }
 +                    G::MinMax(pair) => match &pair.1 {
 +                        G::Pixels(px) => length(f32::from(*px) * scale_factor),
++                        G::Percent(p) => taffy::style_helpers::percent(*p),
++                        G::Calc { fraction, add } => taffy::MaxTrackSizingFunction::calc(
++                            taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
++                        ),
++                        G::FitContentCalc { fraction, add } => {
++                            taffy::MaxTrackSizingFunction::fit_content_calc(
++                                taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
++                            )
++                        }
 +                        G::FitContentPx(px) => taffy::MaxTrackSizingFunction::fit_content_px(
 +                            f32::from(*px) * scale_factor,
 +                        ),
@@ -26765,21 +26807,21 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +            match to_grid_track::<String>(track, scale_factor) {
 +                taffy::GridTemplateComponent::Single(one) => vec![one],
 +                _ => Default::default(),
-@@ -483 +1160 @@
+@@ -483 +1189 @@
 -        taffy::style::Style {
 +        let mut out = taffy::style::Style {
-@@ -484,0 +1162,3 @@
+@@ -484,0 +1191,3 @@
 +            block_flow: self.block_flow.map(|[vertical, block_reverse, inline_reverse]| taffy::BlockFlow {
 +                vertical, block_reverse, inline_reverse,
 +            }),
-@@ -486,0 +1167 @@
+@@ -486,0 +1196 @@
 +            kamin_scrollbars: kamin_scrollbars(self.kamin_scrollbars),
-@@ -492,0 +1174,4 @@
+@@ -492,0 +1203,4 @@
 +            aspect_ratio_preferred_size: taffy::Size {
 +                width: self.aspect_ratio_preferred_size[0].map(|v| v * scale_factor),
 +                height: self.aspect_ratio_preferred_size[1].map(|v| v * scale_factor),
 +            },
-@@ -495,5 +1180,22 @@
+@@ -495,5 +1209,22 @@
 -            border: border_widths_to_taffy(&self.border_widths, rem_size, scale_factor),
 -            align_items: self.align_items.map(|x| x.into()),
 -            align_self: self.align_self.map(|x| x.into()),
@@ -26807,7 +26849,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +                self.safe_alignment.3,
 +            )
 +            .unwrap_or(taffy::JustifyContent::NORMAL),
-@@ -502 +1204,68 @@
+@@ -502 +1233,68 @@
 -            flex_wrap: self.flex_wrap.into(),
 +            flex_wrap: alignment_adapter::flex_wrap(self.flex_wrap.into(), self.flex_balance_lines),
 +            // KaminIDE patch: `flex-wrap: balance` + `flex-line-count`.
@@ -26877,10 +26919,10 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +            }),
 +            // KaminIDE patch: подсетка (css-grid-2 §9), биты taffy.
 +            subgrid: self.grid_subgrid,
-@@ -503,0 +1273,2 @@
+@@ -503,0 +1302,2 @@
 +            // KaminIDE patch: пол GRIDMIN у таблицы-элемента.
 +            item_is_table: self.item_is_table,
-@@ -506,2 +1277,70 @@
+@@ -506,2 +1306,70 @@
 -            grid_template_rows: to_grid_repeat(&self.grid_rows),
 -            grid_template_columns: to_grid_repeat(&self.grid_cols),
 +            // KaminIDE patch: явный список дорожек имеет приоритет — он
@@ -26953,7 +26995,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +                    .collect::<Vec<_>>()
 +                    .into()
 +            },
-@@ -519 +1358,132 @@
+@@ -519 +1387,132 @@
 -        }
 +        };
 +        if let Some(keyword) = self.sizing_keywords[0] {
@@ -27087,26 +27129,26 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +        && auto(&out.grid_row.end)
 +    {
 +        out.grid_row.end = placement(p);
-@@ -525 +1495,5 @@
+@@ -525 +1524,5 @@
 -        round_to_device_pixel(self.to_pixels(rem_size).0, scale_factor)
 +        // KaminIDE patch: no pre-layout snapping of authored lengths (upstream
 +        // rounds them to device pixels here). CSS layout is fractional; edges
 +        // are snapped once, on absolute coordinates, in `layout_bounds`, and
 +        // border widths by the HTML painter (`border_snap`). See decisions.md.
 +        self.to_pixels(rem_size).0 * scale_factor
-@@ -557,0 +1532,3 @@
+@@ -557,0 +1561,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentage::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -568,0 +1546,3 @@
+@@ -568,0 +1575,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::LengthPercentageAuto::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -577,0 +1558,3 @@
+@@ -577,0 +1587,3 @@
 +            DefiniteLength::Calc(add, fraction) => taffy::style::Dimension::calc(
 +                taffy::tree::calc_handle(add * scale_factor, *fraction),
 +            ),
-@@ -745,17 +1728,7 @@
+@@ -745,17 +1757,7 @@
 -#[cfg(test)]
 -mod tests {
 -    use super::*;
@@ -27131,7 +27173,7 @@ index b9e583a8df43a95a8dd87ae73822ad52efb0d5ee..ffcb6148a40203953cd4893143003c7b
 +        crate::frame_perf::MEASURE_US.fetch_add(
 +            self.0.elapsed().as_micros() as u32,
 +            std::sync::atomic::Ordering::Relaxed,
-@@ -763,14 +1736,15 @@
+@@ -763,14 +1765,15 @@
 -        assert_eq!(
 -            taffy_border.right,
 -            taffy::style::LengthPercentage::length(1.0)
@@ -28474,12 +28516,12 @@ index 0000000000000000000000000000000000000000..cd365c37d6283daa398191186a43e298
 +}
 diff --git a/vendor/gpui/src/taffy/grid_tracks_tests.rs b/vendor/gpui/src/taffy/grid_tracks_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5bb6335d0aaa75d2f4687c702c642d1e73f9610a
+index 0000000000000000000000000000000000000000..7cc72bfe7e481bcf8c3c18a5998ae2aab34202df
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/grid_tracks_tests.rs
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,148 @@
 +//! Дорожки пустой сетки доступны без фиктивного ребёнка и только после раскладки.
-+use super::TaffyLayoutEngine;
++use super::{TaffyLayoutEngine, ToTaffy};
 +use crate::{LayoutId, Pixels, point};
 +use taffy::prelude::*;
 +
@@ -28510,6 +28552,120 @@ index 0000000000000000000000000000000000000000..5bb6335d0aaa75d2f4687c702c642d1e
 +        assert!(engine.parent_grid_tracks(root, scale).is_none());
 +        engine.taffy.mark_dirty(root.into()).unwrap();
 +        assert!(engine.grid_tracks(root, scale).is_none());
++    }
++}
++
++#[test]
++fn board_appearance_grid_calc_uses_each_axis_and_scales_only_pixels() {
++    use crate::{Display as GDisplay, GridTrack as G, Style as GStyle, px, size};
++    for scale in [1.0, 1.25, 2.0] {
++        let mut engine = TaffyLayoutEngine::new();
++        let _scope = engine.taffy.calc_scope();
++        let tracks = vec![
++            G::Calc {
++                fraction: 0.25,
++                add: px(10.0),
++            },
++            G::MinMax(Box::new((
++                G::Pixels(px(0.0)),
++                G::Calc {
++                    fraction: 0.25,
++                    add: px(-10.0),
++                },
++            ))),
++        ];
++        let native: Style = GStyle {
++            display: GDisplay::Grid,
++            size: size(px(400.0).into(), px(200.0).into()),
++            grid_template_cols: Some(tracks.clone()),
++            grid_template_rows: Some(tracks),
++            ..GStyle::default()
++        }
++        .to_taffy(px(16.0), scale);
++        let root: LayoutId = engine.taffy.new_leaf(native).unwrap().into();
++        engine
++            .taffy
++            .compute_layout(root.into(), Size::MAX_CONTENT)
++            .unwrap();
++        let (_, columns, rows) = engine.grid_tracks(root, scale).unwrap();
++        assert_eq!(columns, vec![(0.0, 110.0), (110.0, 200.0)]);
++        assert_eq!(rows, vec![(0.0, 60.0), (60.0, 100.0)]);
++    }
++}
++
++#[test]
++fn board_appearance_grid_fit_calc_retains_an_intrinsic_limit() {
++    use crate::{GridTrack as G, Style as GStyle, px};
++    for scale in [1.0, 1.25] {
++        let engine = TaffyLayoutEngine::new();
++        let _scope = engine.taffy.calc_scope();
++        let native: Style = GStyle {
++            grid_template_cols: Some(vec![G::FitContentCalc {
++                fraction: 0.25,
++                add: px(10.0),
++            }]),
++            ..GStyle::default()
++        }
++        .to_taffy(px(16.0), scale);
++        let GridTemplateComponent::Single(track) = native.grid_template_columns[0] else {
++            panic!()
++        };
++        assert!(track.min.is_auto());
++        assert!(track.max.is_fit_content());
++        // Layout resolves the registered expression against its own axis.
++        let resolver = |handle, basis| taffy::tree::calc_value(handle, basis);
++        assert_eq!(track.max.fit_content_limit(None, resolver), None);
++        assert_eq!(
++            track.max.fit_content_limit(Some(400.0 * scale), resolver),
++            Some(110.0 * scale)
++        );
++    }
++}
++
++#[test]
++fn board_appearance_grid_auto_repeat_resolves_calc_for_each_axis() {
++    use crate::{Display as GDisplay, GridTrack as G, Style as GStyle, px, size};
++    for scale in [1.0, 1.25] {
++        let mut engine = TaffyLayoutEngine::new();
++        let _scope = engine.taffy.calc_scope();
++        let tracks = vec![G::AutoRepeat {
++            fit: false,
++            tracks: vec![G::MinMax(Box::new((
++                G::Calc {
++                    fraction: 0.25,
++                    add: px(-10.0),
++                },
++                G::Fraction(1.0),
++            )))],
++        }];
++        let native: Style = GStyle {
++            display: GDisplay::Grid,
++            size: size(px(400.0).into(), px(200.0).into()),
++            grid_template_cols: Some(tracks.clone()),
++            grid_template_rows: Some(tracks),
++            ..GStyle::default()
++        }
++        .to_taffy(px(16.0), scale);
++        let root: LayoutId = engine.taffy.new_leaf(native).unwrap().into();
++        engine
++            .taffy
++            .compute_layout(root.into(), Size::MAX_CONTENT)
++            .unwrap();
++        let (_, columns, rows) = engine.grid_tracks(root, scale).unwrap();
++        assert_eq!(
++            columns,
++            vec![(0.0, 100.0), (100.0, 200.0), (200.0, 300.0), (300.0, 400.0)]
++        );
++        assert_eq!(
++            rows,
++            vec![
++                (0.0, 40.0),
++                (40.0, 80.0),
++                (80.0, 120.0),
++                (120.0, 160.0),
++                (160.0, 200.0)
++            ]
++        );
 +    }
 +}
 diff --git a/vendor/gpui/src/taffy/intrinsic.rs b/vendor/gpui/src/taffy/intrinsic.rs

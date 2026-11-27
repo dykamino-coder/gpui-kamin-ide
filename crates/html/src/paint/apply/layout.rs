@@ -36,7 +36,7 @@ pub(super) fn apply_layout_with_dimensions(
     vcx: ValueCx<'_>,
 ) -> Div {
     let sizes = dimensions.transfer_ratio(c);
-    d = layout_display(d, c);
+    d = layout_display(d, c, vcx);
     // При вертикальном письме оси меняются местами: `row` — это ось СТРОКИ,
     // а она идёт сверху вниз; `column` — ось потока, справа налево
     // (`vertical-rl`) или слева направо (`vertical-lr`).

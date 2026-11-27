@@ -8,6 +8,9 @@ pub const SIZE_ADJUST_FROM_FONT: u8 = 8;
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InheritedFont {
     pub font_size: Option<Len>,
+    /// 0 initial, 1..=8 absolute-size keyword, 9 relative, 10 absolute length.
+    /// Preserved after resolving pixels for generic-family size changes.
+    pub font_size_origin: u8,
     pub font_weight: Option<u16>,
     pub italic: Option<bool>,
     /// `font-style: oblique` отдельно от `italic`: набору наклон один

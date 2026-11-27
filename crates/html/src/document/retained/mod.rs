@@ -202,3 +202,6 @@ mod deferred_group_tests;
 mod lifted_tests;
 #[cfg(test)]
 mod outline_scroll_tests;
+
+#[cfg(test)]
+mod block_auto_margin_tests;

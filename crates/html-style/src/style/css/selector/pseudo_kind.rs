@@ -33,6 +33,8 @@ pub enum PseudoKind {
     TargetCurrent,
     /// `:checked`: the checkedness kept by `dom::form_state`.
     Checked,
+    /// HTML controls that support being disabled; boolean chooses :disabled.
+    Disabled(bool),
     Root,
     Empty,
     /// `:lang(…)`; the ranges are read from the text.
@@ -93,6 +95,8 @@ impl PseudoKind {
             ("visited", _) => Self::Visited,
             ("target-current", _) => Self::TargetCurrent,
             ("checked", _) => Self::Checked,
+            ("disabled", _) => Self::Disabled(true),
+            ("enabled", _) => Self::Disabled(false),
             ("root", _) => Self::Root,
             ("empty", _) => Self::Empty,
             ("hover" | "active", _) => Self::UserAction,
