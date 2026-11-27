@@ -1,14 +1,9 @@
-//! Viewer state, window lifecycle, folder selection, and bounded file polling.
+//! Viewer state, window lifecycle, folder selection, and native file notifications.
 
 use crate::{paths, viewport};
-use gpui::{
-    Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task, Window, px, size,
-};
+use gpui::{Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Window, px, size};
 use kamin_html::{host::document_view::DocumentView, metrics::FontContext};
-use std::{
-    path::PathBuf,
-    time::{Duration, SystemTime},
-};
+use std::{path::PathBuf, time::SystemTime};
 
 pub struct Browser {
     pub fonts: FontContext,
@@ -36,7 +31,7 @@ pub struct Browser {
     #[cfg(feature = "why-profiler")]
     pub timing_plain: bool,
     _bounds: Subscription,
-    _poll: Task<()>,
+    pub file_watch: Option<crate::file_watch::FileWatch>,
 }
 
 impl Browser {
@@ -47,27 +42,6 @@ impl Browser {
         cx: &mut Context<Self>,
     ) -> Self {
         let bounds = cx.observe_window_bounds(window, |this, window, cx| this.resize(window, cx));
-        let poll = cx.spawn_in(window, async move |this, cx| {
-            loop {
-                cx.background_executor()
-                    .timer(Duration::from_millis(500))
-                    .await;
-                if this
-                    .update_in(cx, |this, window, cx| {
-                        if this
-                            .current
-                            .as_ref()
-                            .is_some_and(|path| paths::stamp(path) != this.stamp)
-                        {
-                            this.reload(window, cx);
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        });
         let mut this = Self {
             fonts,
             page: None,
@@ -94,7 +68,7 @@ impl Browser {
             #[cfg(feature = "why-profiler")]
             timing_plain: false,
             _bounds: bounds,
-            _poll: poll,
+            file_watch: None,
         };
         this.resize(window, cx);
         if let Some(path) = path {

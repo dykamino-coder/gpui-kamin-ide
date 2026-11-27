@@ -130,6 +130,12 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
                 Ok(()) => eprintln!("Engine journal: {}", options.why.join("why.json").display()),
                 Err(error) => eprintln!("Cannot write engine journal: {error}"),
             }
+            if options.idle {
+                if let Err(error) = crate::idle_control::serve(&journal, &options.why).await {
+                    journal.error(format!("Idle observation control: {error}"));
+                    let _ = journal.write(&options.why);
+                }
+            }
             let _ = cx.update(|_, cx| cx.quit());
         })
         .detach();

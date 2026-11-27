@@ -1,11 +1,14 @@
 //! One shared schema-1 recorder; hosts clone the handle, not its mutable state.
 
+mod activity;
+mod idle;
 mod presentation;
 mod recording;
 mod step;
 use super::{Report, Watch};
 use crate::Document;
 use gpui::{App, Window, profiler::Instant};
+pub use idle::IdleCpuWindow;
 use serde_json::{Value, json};
 use std::{cell::RefCell, path::Path, rc::Rc};
 pub(crate) use step::Step;
@@ -63,6 +66,16 @@ impl WindowJournal {
     /// Drain observed entries without requesting a frame.
     pub fn poll(&self) -> usize {
         self.recording.borrow_mut().poll()
+    }
+
+    /// Start a quiet observation without scheduling any polling or frame.
+    pub fn begin_idle(&self) {
+        self.recording.borrow_mut().begin_idle();
+    }
+
+    /// End after an external process observer has read both CPU checkpoints.
+    pub fn finish_idle(&self, cpu: IdleCpuWindow) -> Result<(), &'static str> {
+        self.recording.borrow_mut().finish_idle(cpu)
     }
 
     /// Whether the current request has reached platform submit completion.

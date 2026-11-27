@@ -1,5 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
+mod state;
+
 use std::{
     cell::{Cell, RefCell},
     num::NonZeroIsize,
@@ -82,6 +84,7 @@ pub struct WindowsWindowState {
     /// and when a forced render was requested while another draw was in
     /// progress and had to be deferred.
     pub force_render_pending: Cell<bool>,
+    pub(crate) presentation_pending: Cell<bool>,
 
     pub click_state: ClickState,
     pub current_cursor: Cell<Option<HCURSOR>>,
@@ -95,9 +98,8 @@ pub struct WindowsWindowState {
     pub invalidate_devices: Arc<AtomicBool>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
-    /// KaminIDE patch: `Some` for an offscreen (message-only) window: a paint
-    /// message is queued (see `post_offscreen_paint`).
-    pub(crate) offscreen_paint: Option<Arc<AtomicBool>>,
+    pub(crate) frame_demand: Arc<FrameDemand>,
+    pub(crate) offscreen: bool,
     fullscreen: Cell<Option<StyleAndBounds>>,
     initial_placement: Cell<Option<WindowOpenStatus>>,
     hwnd: HWND,
@@ -127,97 +129,6 @@ pub(crate) struct WindowsWindowInner {
 }
 
 impl WindowsWindowState {
-    fn new(
-        hwnd: HWND,
-        directx_devices: &DirectXDevices,
-        window_params: &CREATESTRUCTW,
-        current_cursor: Option<HCURSOR>,
-        cursor_visible: Arc<AtomicBool>,
-        display: WindowsDisplay,
-        min_size: Option<Size<Pixels>>,
-        appearance: WindowAppearance,
-        disable_direct_composition: bool,
-        offscreen: bool,
-        invalidate_devices: Arc<AtomicBool>,
-        draw_coordinator: Rc<DrawCoordinator>,
-    ) -> Result<Self> {
-        let scale_factor = {
-            let monitor_dpi = unsafe { GetDpiForWindow(hwnd) } as f32;
-            display.forced_scale.unwrap_or(monitor_dpi / USER_DEFAULT_SCREEN_DPI as f32)
-        };
-        let origin = logical_point(window_params.x as f32, window_params.y as f32, scale_factor);
-        let logical_size = {
-            let physical_size = size(
-                DevicePixels(window_params.cx),
-                DevicePixels(window_params.cy),
-            );
-            physical_size.to_pixels(scale_factor)
-        };
-        let fullscreen_restore_bounds = Bounds {
-            origin,
-            size: logical_size,
-        };
-        let border_offset = WindowBorderOffset::default();
-        let restore_from_minimized = None;
-        let resize_boost_until = None;
-        let renderer = if offscreen {
-            DirectXRenderer::new_offscreen(hwnd, directx_devices)
-        } else {
-            DirectXRenderer::new(hwnd, directx_devices, disable_direct_composition)
-        }
-        .context("Creating DirectX renderer")?;
-        let callbacks = Callbacks::default();
-        let input_handler = None;
-        let pending_surrogate = None;
-        let last_reported_modifiers = None;
-        let last_reported_capslock = None;
-        let hovered = false;
-        let click_state = ClickState::new();
-        let nc_button_pressed = None;
-        let fullscreen = None;
-        let initial_placement = None;
-
-        let direct_manipulation = DirectManipulationHandler::new(hwnd, scale_factor)
-            .context("initializing Direct Manipulation")?;
-
-        Ok(Self {
-            origin: Cell::new(origin),
-            logical_size: Cell::new(logical_size),
-            fullscreen_restore_bounds: Cell::new(fullscreen_restore_bounds),
-            border_offset,
-            appearance: Cell::new(appearance),
-            background_appearance: Cell::new(WindowBackgroundAppearance::Opaque),
-            scale_factor: Cell::new(scale_factor),
-            restore_from_minimized: Cell::new(restore_from_minimized),
-            resize_boost_until: Cell::new(resize_boost_until),
-            min_size,
-            callbacks,
-            frame_signal: Arc::new(PlatformFrameSignal::new()),
-            input_handler: Cell::new(input_handler),
-            ime_enabled: Cell::new(true),
-            pending_surrogate: Cell::new(pending_surrogate),
-            last_reported_modifiers: Cell::new(last_reported_modifiers),
-            last_reported_capslock: Cell::new(last_reported_capslock),
-            hovered: Cell::new(hovered),
-            last_visibility: Cell::new(None),
-            renderer: RefCell::new(renderer),
-            force_render_pending: Cell::new(false),
-            click_state,
-            current_cursor: Cell::new(current_cursor),
-            cursor_visible,
-            nc_button_pressed: Cell::new(nc_button_pressed),
-            display: Cell::new(display),
-            fullscreen: Cell::new(fullscreen),
-            initial_placement: Cell::new(initial_placement),
-            hwnd,
-            invalidate_devices,
-            draw_coordinator,
-            offscreen_paint: offscreen.then(|| Arc::new(AtomicBool::new(false))),
-            direct_manipulation,
-            a11y: RefCell::new(None),
-        })
-    }
-
     #[inline]
     pub(crate) fn is_fullscreen(&self) -> bool {
         self.fullscreen.get().is_some()
@@ -304,6 +215,7 @@ impl WindowsWindowInner {
             context.disable_direct_composition,
             context.offscreen,
             context.invalidate_devices.clone(),
+            context.frame_pacer.clone(),
             context.draw_coordinator.clone(),
         )?;
 
@@ -458,6 +370,7 @@ struct WindowCreateContext {
     offscreen: bool,
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
+    frame_pacer: Arc<FramePacer>,
     draw_coordinator: Rc<DrawCoordinator>,
     parent_hwnd: Option<HWND>,
 }
@@ -492,6 +405,7 @@ impl WindowsWindow {
             offscreen: _,
             directx_devices,
             invalidate_devices,
+            frame_pacer,
             draw_coordinator,
         } = creation_info;
         // KaminIDE patch: env перечитывается ПРИ КАЖДОМ создании окна —
@@ -556,11 +470,16 @@ impl WindowsWindow {
 
         let hinstance = get_module_handle();
         let display = if let Some(display_id) = params.display_id {
-            WindowsDisplay::new(display_id, directx_devices.instrumentation.config().scale_factor)
+            WindowsDisplay::new(
+                display_id,
+                directx_devices.instrumentation.config().scale_factor,
+            )
         } else {
             None
         }
-        .or_else(|| WindowsDisplay::primary_monitor(directx_devices.instrumentation.config().scale_factor))
+        .or_else(|| {
+            WindowsDisplay::primary_monitor(directx_devices.instrumentation.config().scale_factor)
+        })
         .context("failed to find any monitor")?;
         let appearance = system_appearance().unwrap_or_default();
         let mut context = WindowCreateContext {
@@ -585,6 +504,7 @@ impl WindowsWindow {
             offscreen: false,
             directx_devices,
             invalidate_devices,
+            frame_pacer,
             draw_coordinator,
             parent_hwnd,
         };
@@ -657,12 +577,14 @@ impl WindowsWindow {
             disable_direct_composition,
             directx_devices,
             invalidate_devices,
+            frame_pacer,
             draw_coordinator,
             ..
         } = creation_info;
         register_window_class(icon);
         let scale = directx_devices.instrumentation.config().scale_factor;
-        let display = WindowsDisplay::primary_monitor(scale).context("failed to find any monitor")?;
+        let display =
+            WindowsDisplay::primary_monitor(scale).context("failed to find any monitor")?;
         let device = params.bounds.size.to_device_pixels(display.scale_factor());
         let appearance = system_appearance().unwrap_or_default();
         let mut context = WindowCreateContext {
@@ -687,6 +609,7 @@ impl WindowsWindow {
             offscreen: true,
             directx_devices,
             invalidate_devices,
+            frame_pacer,
             draw_coordinator,
             parent_hwnd: None,
         };
@@ -769,7 +692,10 @@ impl Drop for WindowsWindow {
 }
 
 impl PlatformWindow for WindowsWindow {
-    fn set_frame_capture(&self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) -> Result<()> {
+    fn set_frame_capture(
+        &self,
+        sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
+    ) -> Result<()> {
         self.state.renderer.borrow_mut().set_frame_capture(sink);
         Ok(())
     }
@@ -1121,8 +1047,13 @@ impl PlatformWindow for WindowsWindow {
     fn frame_waker(&self) -> Option<Rc<dyn Fn()>> {
         Some(self.0.frame_waker())
     }
+    fn schedule_frame(&self) {
+        self.state.frame_demand.request();
+    }
+
     fn on_request_frame(&self, callback: Box<dyn FnMut(RequestFrameOptions)>) {
         self.state.callbacks.request_frame.set(Some(callback));
+        self.state.frame_demand.request();
     }
 
     fn on_input(&self, callback: Box<dyn FnMut(PlatformInput) -> DispatchEventResult>) {
@@ -1130,7 +1061,10 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn on_active_status_change(&self, callback: Box<dyn FnMut(bool)>) {
-        self.state.callbacks.active_status_change.set(Some(callback));
+        self.state
+            .callbacks
+            .active_status_change
+            .set(Some(callback));
     }
 
     fn on_visibility_change(&self, callback: Box<dyn FnMut(WindowVisibility)>) {
@@ -1195,11 +1129,21 @@ impl PlatformWindow for WindowsWindow {
     }
 
     fn last_frame_presented(&self) -> bool {
-        self.state.renderer.try_borrow().is_ok_and(|renderer| !renderer.needs_presentation())
+        self.state
+            .renderer
+            .try_borrow()
+            .is_ok_and(|renderer| !renderer.needs_presentation())
     }
 
-    fn rasterize_scene(&self, scene: &Scene, size: Size<DevicePixels>) -> anyhow::Result<image::RgbaImage> {
-        self.state.renderer.borrow_mut().rasterize_scene(scene, size)
+    fn rasterize_scene(
+        &self,
+        scene: &Scene,
+        size: Size<DevicePixels>,
+    ) -> anyhow::Result<image::RgbaImage> {
+        self.state
+            .renderer
+            .borrow_mut()
+            .rasterize_scene(scene, size)
     }
 
     fn d3d_device_raw(&self) -> Option<*mut std::ffi::c_void> {
@@ -1736,7 +1680,9 @@ fn register_drag_drop(window: &Rc<WindowsWindowInner>) -> Result<()> {
     // we call `RevokeDragDrop`.
     // So, it's safe to drop it here.
     let drag_drop_handler: IDropTarget = handler.into();
-    window.drop_target.register(window_handle, &drag_drop_handler)
+    window
+        .drop_target
+        .register(window_handle, &drag_drop_handler)
 }
 
 fn calculate_window_rect(bounds: Bounds<DevicePixels>, border_offset: &WindowBorderOffset) -> RECT {

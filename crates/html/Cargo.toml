@@ -92,6 +92,8 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
 
 [dev-dependencies]
+# Native file notifications keep an unchanged viewer asleep.
+notify = "8.2.0"
 # Ожидание события завершённого GPU-кадра в WPT-стенде.
 futures = "0.3"
 # Настоящие фазы GPUI на тестовой платформе для проверки порядка краски.

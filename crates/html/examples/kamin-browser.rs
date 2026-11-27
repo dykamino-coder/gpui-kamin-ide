@@ -16,8 +16,13 @@ mod app;
 mod cli;
 #[path = "kamin-browser/dialog.rs"]
 mod dialog;
+#[path = "kamin-browser/file_watch.rs"]
+mod file_watch;
 #[path = "kamin-browser/folder.rs"]
 mod folder;
+#[cfg(feature = "why-profiler")]
+#[path = "kamin-browser/idle_control.rs"]
+mod idle_control;
 #[path = "kamin-browser/page.rs"]
 mod page;
 #[path = "kamin-browser/paths.rs"]

@@ -2053,24 +2053,15 @@ impl Window {
                     });
                     (foreground_turn, window_id)
                 };
-                // This must be checked before accessing App: if this request
-                // arrived re-entrantly while a draw is on this thread's stack
-                // (e.g. via a nested message pump in the Windows window
-                // procedure), drawing would nest draws, and even touching the
-                // App would panic on its already-mutable borrow. Skip instead;
-                // the platform leaves the window invalidated (or re-invalidates
-                // it), so a fresh request arrives once the in-progress draw
-                // unwinds. Remember force_render so the deferred frame still
-                // bypasses the view cache.
-                //
-                // Returning here skips `complete_frame`, which on Wayland would
-                // stall the window's frame callbacks (no `surface.commit()`) —
-                // but calling it would hit the App borrow panic above, and this
-                // branch is unreachable there in practice: only Windows pumps
-                // platform events (and thus requests frames) mid-draw.
+                // A nested native callback must not borrow App. Retain both
+                // presentation and render demand, then ask the platform to
+                // retry after this draw unwinds.
                 if draw_in_progress() {
                     log::debug!("deferring re-entrant window draw request");
                     deferred_force_render |= request_frame_options.force_render;
+                    needs_present
+                        .set(needs_present.get() || request_frame_options.require_presentation);
+                    invalidator.wake_platform();
                     #[cfg(feature = "profiler")]
                     profiler::journal::record_reentrant_frame_skipped(window_id, Instant::now());
                     return;
@@ -2089,7 +2080,8 @@ impl Window {
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
                 // - Inactive window (not focused): cap to ~30fps to save energy
                 let min_frame_interval = if request_frame_options.require_presentation
-                    || (!request_frame_options.force_render
+                    || needs_present.get()
+                    || (!force_render
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
@@ -2152,12 +2144,12 @@ impl Window {
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
                 // Once high-rate input is detected, we sustain presentation for 1 second
                 // to prevent display underclocking during active input.
-                let needs_present = request_frame_options.require_presentation
+                let should_present = request_frame_options.require_presentation
                     || needs_present.get()
                     || input_rate_tracker.borrow_mut().is_high_rate();
 
                 let should_draw = invalidator.is_dirty() || force_render;
-                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={needs_present}");
+                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={should_present}");
                 if should_draw {
                     measure("frame duration", || {
                         handle
@@ -2174,7 +2166,7 @@ impl Window {
                                 let t1 = std::time::Instant::now();
                                 // KaminIDE patch: a drawn frame that changed
                                 // nothing on screen is neither rastered nor presented.
-                                window.present_drawn(request_frame_options.require_presentation);
+                                window.present_drawn(should_present);
                                 {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
@@ -2189,7 +2181,7 @@ impl Window {
                             })
                             .log_err();
                     })
-                } else if needs_present {
+                } else if should_present {
                     handle
                         .update(&mut cx, |_, window, _| {
                             // KaminIDE patch: presenting the drawn frame again
@@ -2219,13 +2211,17 @@ impl Window {
                 // after this frame (the window was re-invalidated mid-draw, or
                 // animations scheduled next-frame callbacks), re-arm the frame
                 // source explicitly.
-                if invalidator.is_dirty() || !next_frame_callbacks.borrow().is_empty() {
+                if invalidator.is_dirty()
+                    || !next_frame_callbacks.borrow().is_empty()
+                    || needs_present.get()
+                    || input_rate_tracker.borrow_mut().is_high_rate()
+                {
                     invalidator.wake_platform();
                 }
                 log::debug!(target: "gpui::frame", "complete dirty={} next={}",
                     invalidator.is_dirty(), next_frame_callbacks.borrow().len());
                 #[cfg(feature = "profiler")]
-                if !should_draw {
+                if !should_draw && !should_present {
                     profiler::journal::record_frame_skipped(
                         window_id,
                         Instant::now(),
@@ -9734,6 +9730,9 @@ impl Window {
         self.text_system.heap_report(sink);
     }
 }
+
+#[cfg(all(test, feature = "profiler"))]
+mod frame_demand_tests;
 
 #[cfg(test)]
 mod tests {

@@ -11,6 +11,7 @@ pub struct Report {
     frames: Vec<Value>,
     owners: BTreeMap<String, u64>,
     memory_samples: Vec<Value>,
+    idle_samples: Vec<Value>,
     status: Value,
     _reader: super::Subscription,
 }
@@ -34,6 +35,7 @@ impl Report {
             frames: Vec::new(),
             owners: BTreeMap::new(),
             memory_samples: Vec::new(),
+            idle_samples: Vec::new(),
             status: Value::Null,
             _reader: super::subscribe(),
         }
@@ -146,12 +148,20 @@ impl Report {
         self.status = status;
     }
 
+    #[cfg(feature = "why-profiler")]
+    pub(super) fn idle_sample(&mut self, sample: Value) {
+        self.idle_samples.push(sample);
+    }
+
     /// The same top-level document consumed by DevTools and engine-compare.
     pub fn to_json(&self) -> Value {
         let mut out = json!({"schema": super::SCHEMA, "frames": self.frames,
             "memory_samples": self.memory_samples});
         if !self.status.is_null() {
             out["observations"] = self.status.clone();
+        }
+        if !self.idle_samples.is_empty() {
+            out["idle_samples"] = json!(self.idle_samples);
         }
         out
     }

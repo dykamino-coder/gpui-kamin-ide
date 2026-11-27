@@ -3936,6 +3936,7 @@ dependencies = [
  "kamin-style",
  "kurbo 0.13.1",
  "markup5ever_rcdom 0.39.0+unofficial",
+ "notify",
  "png 0.18.1",
  "raw-window-handle",
  "reblessive",

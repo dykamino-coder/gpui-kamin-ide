@@ -5,6 +5,7 @@
 use serde_json::Value;
 use std::collections::BTreeMap;
 
+mod activity;
 mod frames;
 mod memory;
 mod raster;
@@ -124,6 +125,7 @@ pub(super) fn render(out: &Value) -> String {
     for sample in out["memory_samples"].as_array().into_iter().flatten() {
         memory::sample(&mut s, sample);
     }
+    activity::render(&mut s, out);
     s
 }
 

@@ -1,6 +1,7 @@
 //! Mutable state of one explicitly enabled shared recorder.
 
-use super::{Instant, Report, Step, Value, json, ms, presentation};
+use super::idle::{IdleCpuWindow, Observation};
+use super::{Instant, Report, Step, Value, activity::Activity, json, ms, presentation};
 use crate::Document;
 use gpui::profiler::journal::{
     ForegroundJournalCollector, ForegroundJournalEntry as Entry, IntervalBoundary,
@@ -24,6 +25,8 @@ pub(super) struct Recording {
     errors: Vec<String>,
     lost: u64,
     request: u64,
+    idle: Option<Observation>,
+    activity: Activity,
     _trace: gpui::profiler::TraceGuard,
 }
 
@@ -44,6 +47,8 @@ impl Recording {
             errors: Vec::new(),
             lost: 0,
             request: 0,
+            idle: None,
+            activity: Activity::default(),
             _trace: trace,
         }
     }
@@ -115,6 +120,10 @@ impl Recording {
     pub fn poll(&mut self) -> usize {
         let batch = self.collector.collect_unseen();
         self.lost += batch.lost;
+        self.activity.lost(batch.lost);
+        if let Some(idle) = &mut self.idle {
+            idle.lost(batch.lost);
+        }
         for event in batch.entries {
             self.observe(event);
         }
@@ -122,6 +131,10 @@ impl Recording {
     }
 
     fn observe(&mut self, event: Entry) {
+        self.activity.observe(event, self.window);
+        if let Some(idle) = &mut self.idle {
+            idle.observe(event, self.window);
+        }
         match event {
             Entry::Event(gpui::profiler::journal::ForegroundEvent::Draw(frame))
                 if frame.window_id == self.window =>
@@ -169,6 +182,22 @@ impl Recording {
             .any(|frame| requested_presentation(frame, self.request))
     }
 
+    pub fn begin_idle(&mut self) {
+        self.poll();
+        self.idle = Some(Observation::new());
+    }
+
+    pub fn finish_idle(&mut self, cpu: IdleCpuWindow) -> Result<(), &'static str> {
+        self.poll();
+        let sample = self
+            .idle
+            .take()
+            .ok_or("idle observation was not started")?
+            .finish(cpu)?;
+        self.report.idle_sample(sample);
+        Ok(())
+    }
+
     pub fn presented(&self) -> usize {
         self.report
             .frames()
@@ -182,7 +211,8 @@ impl Recording {
         self.report
             .status(json!({"foreground_entries_lost": self.lost,
             "draws_awaiting_observation": self.pending.len(),
-            "draws_without_presentation": self.drawn.len(), "errors": self.errors}));
+            "draws_without_presentation": self.drawn.len(), "errors": self.errors,
+            "platform_activity": self.activity.to_json()}));
         self.report.write(dir)
     }
 
@@ -197,19 +227,4 @@ fn requested_presentation(frame: &Value, request: u64) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_old_or_unpresented_frame_cannot_complete_a_new_request() {
-        let mut frame = json!({"request_id": 1, "presented": true});
-        assert!(requested_presentation(&frame, 1));
-        assert!(!requested_presentation(&frame, 2));
-        frame["request_id"] = json!(2);
-        frame["presented"] = json!(false);
-        assert!(!requested_presentation(&frame, 2));
-        frame["presented"] = json!(true);
-        assert!(requested_presentation(&frame, 2));
-        assert!(!requested_presentation(&json!({"presented": true}), 0));
-    }
-}
+mod tests;

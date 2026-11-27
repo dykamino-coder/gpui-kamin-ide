@@ -25,7 +25,7 @@ pub use text::changes as owner_changes;
 #[cfg(feature = "why-profiler")]
 mod window;
 #[cfg(feature = "why-profiler")]
-pub use window::WindowJournal;
+pub use window::{IdleCpuWindow, WindowJournal};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};

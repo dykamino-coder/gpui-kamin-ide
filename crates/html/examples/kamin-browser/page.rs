@@ -8,6 +8,7 @@ impl Browser {
     pub fn reload(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.selector_open = false;
         self.page = None;
+        self.watch_current_file(window, cx);
         let Some(path) = &self.current else {
             cx.notify();
             return;

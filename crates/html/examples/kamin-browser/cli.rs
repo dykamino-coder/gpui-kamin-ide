@@ -26,6 +26,11 @@ pub struct TimeOptions {
     )]
     pub base_only: bool,
     pub plain: bool,
+    #[cfg_attr(
+        not(feature = "why-profiler"),
+        allow(dead_code, reason = "opt-in idle observation")
+    )]
+    pub idle: bool,
     pub width: u32,
     pub height: u32,
 }
@@ -49,6 +54,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String
         why: PathBuf::new(),
         base_only: false,
         plain: false,
+        idle: false,
         width: 800,
         height: 600,
     };
@@ -62,6 +68,7 @@ pub fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String
             }
             Some("--base-only") => time.base_only = true,
             Some("--plain") => time.plain = true,
+            Some("--idle") => time.idle = true,
             Some("--width" | "--height") => {
                 let value = args
                     .next()
@@ -111,6 +118,7 @@ mod tests {
             "journal",
             "--base-only",
             "--plain",
+            "--idle",
             "--height",
             "480",
             "--width",
@@ -122,6 +130,14 @@ mod tests {
         assert_eq!(time.why, PathBuf::from("journal"));
         assert!(time.base_only);
         assert!(time.plain);
+        assert!(time.idle);
+        assert!(
+            !args(&["--time", "pages", "--why", "journal"])
+                .unwrap()
+                .time
+                .unwrap()
+                .idle
+        );
         assert_eq!((time.width, time.height), (375, 480));
         assert!(args(&["--time"]).is_err());
         assert!(args(&["--time", "pages"]).is_err());

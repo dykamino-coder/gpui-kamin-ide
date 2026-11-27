@@ -82,6 +82,26 @@ in the bench JSON). See also [recorded peaks and source exports](memprof-peak.md
    differently, so one logical stack can appear as a `+N`/`-N` pair of rows; the subsystem totals
    are not affected.
 
+## Unchanged-window CPU
+
+Run a `why-profiler` viewer with `--time PAGE_DIRECTORY --why JOURNAL_DIRECTORY --idle`.
+After its frame series it serves an event-driven journal control endpoint and waits without
+polling. On Windows, observe its exact child process, including its creation time:
+
+```powershell
+python -I scripts/memprof.py idle --pid VIEWER_PID --journal JOURNAL_DIRECTORY --seconds 5 --quit
+```
+
+The external observer reads raw process cycle time, kernel/user time in 100 ns ticks and QPC
+checkpoints. It publishes them to the engine's schema-1 `why.json`; it does not report a private
+CPU estimate. The journal's `idle_samples` include the raw checkpoints, duration, unrounded
+deltas, platform callbacks, draws, presentations, skipped callbacks by reason, reentry and lost
+foreground entries. `quiet` requires at least five seconds, zero raw CPU deltas and zero activity
+or loss. The journal interval covers the CPU interval; command handling occurs outside the CPU
+checkpoints. Aggregate `observations.platform_activity` also records activity across the series.
+
+The command exits unsuccessfully for any nonzero result. A rounded `0%` CPU value does not pass.
+
 ## The profiler build
 
 A release build misleads a profile in two ways, and `memprof.py build` removes both:

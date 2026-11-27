@@ -28,7 +28,7 @@ const DRAIN_POLL_MS: u32 = 100;
 impl WindowsPlatform {
     pub(super) fn finish_shutdown(&self) -> Result<()> {
         if let Some(stop) = self.vsync_stop.borrow_mut().take() {
-            stop.store(true, Ordering::Release);
+            self.frame_pacer.stop(&stop);
         }
         // WindowsWindow::drop ждёт закрытия диалогов и ставит DestroyWindow в
         // foreground executor. После WM_QUIT эти задачи ещё требуют сообщений.

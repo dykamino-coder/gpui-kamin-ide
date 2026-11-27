@@ -1,5 +1,9 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::sync::Arc;
+
+mod callbacks;
+mod status;
 
 use anyhow::Result;
 use gpui::*;
@@ -26,10 +30,12 @@ pub(crate) struct DirectManipulationHandler {
     window: HWND,
     scale_factor: Rc<Cell<f32>>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    demand: Arc<FrameDemand>,
+    active: Rc<Cell<bool>>,
 }
 
 impl DirectManipulationHandler {
-    pub fn new(window: HWND, scale_factor: f32) -> Result<Self> {
+    pub fn new(window: HWND, scale_factor: f32, demand: Arc<FrameDemand>) -> Result<Self> {
         unsafe {
             let manager: IDirectManipulationManager =
                 CoCreateInstance(&DirectManipulationManager, None, CLSCTX_INPROC_SERVER)?;
@@ -65,12 +71,15 @@ impl DirectManipulationHandler {
 
             let scale_factor = Rc::new(Cell::new(scale_factor));
             let pending_events = Rc::new(RefCell::new(Vec::new()));
+            let active = Rc::new(Cell::new(false));
 
             let event_handler: IDirectManipulationViewportEventHandler =
                 DirectManipulationEventHandler::new(
                     window,
                     Rc::clone(&scale_factor),
                     Rc::clone(&pending_events),
+                    demand.clone(),
+                    active.clone(),
                 )
                 .into();
 
@@ -86,6 +95,8 @@ impl DirectManipulationHandler {
                 window,
                 scale_factor,
                 pending_events,
+                demand,
+                active,
             })
         }
     }
@@ -100,7 +111,9 @@ impl DirectManipulationHandler {
             let mut pointer_type = POINTER_INPUT_TYPE::default();
             if GetPointerType(pointer_id, &mut pointer_type).is_ok() && pointer_type == PT_TOUCHPAD
             {
-                self.viewport.SetContact(pointer_id).log_err();
+                if self.viewport.SetContact(pointer_id).log_err().is_some() {
+                    self.demand.request();
+                }
             }
         }
     }
@@ -112,7 +125,11 @@ impl DirectManipulationHandler {
     }
 
     pub fn drain_events(&self) -> Vec<PlatformInput> {
-        std::mem::take(&mut *self.pending_events.borrow_mut())
+        let events = std::mem::take(&mut *self.pending_events.borrow_mut());
+        if self.active.get() {
+            self.demand.request();
+        }
+        events
     }
 }
 
@@ -143,6 +160,8 @@ struct DirectManipulationEventHandler {
     last_y_offset: Cell<f32>,
     scroll_phase: Cell<TouchPhase>,
     pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+    demand: Arc<FrameDemand>,
+    active: Rc<Cell<bool>>,
 }
 
 impl DirectManipulationEventHandler {
@@ -150,6 +169,8 @@ impl DirectManipulationEventHandler {
         window: HWND,
         scale_factor: Rc<Cell<f32>>,
         pending_events: Rc<RefCell<Vec<PlatformInput>>>,
+        demand: Arc<FrameDemand>,
+        active: Rc<Cell<bool>>,
     ) -> Self {
         Self {
             window,
@@ -160,10 +181,15 @@ impl DirectManipulationEventHandler {
             last_y_offset: Cell::new(0.0),
             scroll_phase: Cell::new(TouchPhase::Started),
             pending_events,
+            demand,
+            active,
         }
     }
 
     fn end_gesture(&self) {
+        if self.gesture_kind.get() == GestureKind::None {
+            return;
+        }
         let position = self.mouse_position();
         let modifiers = current_modifiers();
         match self.gesture_kind.get() {
@@ -200,156 +226,6 @@ impl DirectManipulationEventHandler {
             let _ = ScreenToClient(self.window, &mut point);
             logical_point(point.x as f32, point.y as f32, scale_factor)
         }
-    }
-}
-
-impl IDirectManipulationViewportEventHandler_Impl for DirectManipulationEventHandler_Impl {
-    fn OnViewportStatusChanged(
-        &self,
-        viewport: windows_core::Ref<'_, IDirectManipulationViewport>,
-        current: DIRECTMANIPULATION_STATUS,
-        previous: DIRECTMANIPULATION_STATUS,
-    ) -> windows_core::Result<()> {
-        if current == previous {
-            return Ok(());
-        }
-
-        // A new gesture interrupted inertia, so end the old sequence.
-        if current == DIRECTMANIPULATION_RUNNING && previous == DIRECTMANIPULATION_INERTIA {
-            self.end_gesture();
-        }
-
-        if current == DIRECTMANIPULATION_READY {
-            self.end_gesture();
-
-            // Reset the content transform so the viewport is ready for the next gesture.
-            // ZoomToRect triggers a second RUNNING -> READY cycle, so prevent an infinite loop here.
-            if self.last_scale.get() != 1.0
-                || self.last_x_offset.get() != 0.0
-                || self.last_y_offset.get() != 0.0
-            {
-                if let Some(viewport) = viewport.as_ref() {
-                    unsafe {
-                        viewport
-                            .ZoomToRect(
-                                0.0,
-                                0.0,
-                                DEFAULT_VIEWPORT_SIZE as f32,
-                                DEFAULT_VIEWPORT_SIZE as f32,
-                                false,
-                            )
-                            .log_err();
-                    }
-                }
-            }
-
-            self.last_scale.set(1.0);
-            self.last_x_offset.set(0.0);
-            self.last_y_offset.set(0.0);
-        }
-
-        Ok(())
-    }
-
-    fn OnViewportUpdated(
-        &self,
-        _viewport: windows_core::Ref<'_, IDirectManipulationViewport>,
-    ) -> windows_core::Result<()> {
-        Ok(())
-    }
-
-    fn OnContentUpdated(
-        &self,
-        _viewport: windows_core::Ref<'_, IDirectManipulationViewport>,
-        content: windows_core::Ref<'_, IDirectManipulationContent>,
-    ) -> windows_core::Result<()> {
-        let content = content.as_ref().ok_or(E_POINTER)?;
-
-        // Get the 6-element content transform: [scale, 0, 0, scale, tx, ty]
-        let mut xform = [0.0f32; 6];
-        unsafe {
-            content.GetContentTransform(&mut xform)?;
-        }
-
-        let scale = xform[0];
-        let scale_factor = self.scale_factor.get();
-        let x_offset = xform[4] / scale_factor;
-        let y_offset = xform[5] / scale_factor;
-
-        if scale == 0.0 {
-            return Ok(());
-        }
-
-        let last_scale = self.last_scale.get();
-        let last_x = self.last_x_offset.get();
-        let last_y = self.last_y_offset.get();
-
-        if float_equals(scale, last_scale)
-            && float_equals(x_offset, last_x)
-            && float_equals(y_offset, last_y)
-        {
-            return Ok(());
-        }
-
-        let position = self.mouse_position();
-        let modifiers = current_modifiers();
-
-        // Direct Manipulation reports both translation and scale in every content update.
-        // Translation values can shift during a pinch due to the zoom center shifting.
-        // We classify each gesture as either scroll or pinch and only emit one type of event.
-        // We allow Scroll -> Pinch (a pinch can start with a small pan) but not the reverse.
-        if !float_equals(scale, 1.0) {
-            if self.gesture_kind.get() != GestureKind::Pinch {
-                self.end_gesture();
-                self.gesture_kind.set(GestureKind::Pinch);
-                self.pending_events
-                    .borrow_mut()
-                    .push(PlatformInput::Pinch(PinchEvent {
-                        position,
-                        delta: 0.0,
-                        modifiers,
-                        phase: TouchPhase::Started,
-                    }));
-            }
-        } else if self.gesture_kind.get() == GestureKind::None {
-            self.gesture_kind.set(GestureKind::Scroll);
-            self.scroll_phase.set(TouchPhase::Started);
-        }
-
-        match self.gesture_kind.get() {
-            GestureKind::Scroll => {
-                let dx = x_offset - last_x;
-                let dy = y_offset - last_y;
-                let touch_phase = self.scroll_phase.get();
-                self.scroll_phase.set(TouchPhase::Moved);
-                self.pending_events
-                    .borrow_mut()
-                    .push(PlatformInput::ScrollWheel(ScrollWheelEvent {
-                        position,
-                        delta: ScrollDelta::Pixels(point(px(dx), px(dy))),
-                        modifiers,
-                        touch_phase,
-                    }));
-            }
-            GestureKind::Pinch => {
-                let scale_delta = scale / last_scale;
-                self.pending_events
-                    .borrow_mut()
-                    .push(PlatformInput::Pinch(PinchEvent {
-                        position,
-                        delta: scale_delta - 1.0,
-                        modifiers,
-                        phase: TouchPhase::Moved,
-                    }));
-            }
-            GestureKind::None => {}
-        }
-
-        self.last_scale.set(scale);
-        self.last_x_offset.set(x_offset);
-        self.last_y_offset.set(y_offset);
-
-        Ok(())
     }
 }
 
