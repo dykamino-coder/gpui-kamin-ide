@@ -8,11 +8,16 @@ impl super::super::FlowReuse {
     /// if layout needed a measure) are banned while the flow key is the same.
     pub(in crate::layout::reuse) fn validate_replays(&self, window: &mut Window) -> bool {
         let slots = self.replay_slots.take();
+        let mut placed = Vec::new();
         let refusals: Vec<(u64, bool, &'static str)> = slots
             .iter()
             .filter_map(|slot| {
                 let content = slot.record.key.is_none();
-                slot.refusal(window).map(|why| (slot.node(), content, why))
+                let why = slot.refusal(window)?;
+                if placed.len() < 3 && crate::why::enabled() {
+                    placed.push(slot.placement(window));
+                }
+                Some((slot.node(), content, why))
             })
             .collect();
         let failed: Vec<u64> = refusals.iter().map(|(node, ..)| *node).collect();
@@ -25,10 +30,11 @@ impl super::super::FlowReuse {
                 reasons.sort_unstable();
                 reasons.dedup();
                 format!(
-                    "{} of {} replays refused ({contents} contents), layout stale {all}: {}",
+                    "{} of {} replays refused ({contents} contents), layout stale {all}: {}; first: {}",
                     failed.len(),
                     slots.len(),
-                    reasons.join(",")
+                    reasons.join(","),
+                    placed.join("; ")
                 )
             });
             let mut banned = self.store.banned.take();

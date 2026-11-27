@@ -68,3 +68,30 @@ fn foreign_object_cannot_create_a_new_style_input_on_each_prepaint(cx: &mut gpui
         },
     );
 }
+
+#[gpui::test]
+fn a_container_no_value_reads_lays_out_once_at_any_width(cx: &mut gpui::TestAppContext) {
+    // No value of the document holds a container-relative length: the
+    // containers' sizes reach nothing, so a resize renders the frame once and
+    // keeps every computed style.
+    let mut html = String::from("<div id='outer' style='container-type:inline-size;width:100%'>");
+    for id in 1..=3 {
+        html.push_str(&format!(
+            "<div id='c{id}' style='container-type:inline-size;width:50%;padding:1px'>text"
+        ));
+    }
+    html.push_str(&"</div>".repeat(4));
+    run_bounded(cx, &html, 4, |doc, width, renders, cx| {
+        assert_eq!(renders.get(), 1, "initial renders");
+        let held = element(doc.nodes(), "c3").style.computed();
+        assert_eq!(held.reset_context.cq_size, (None, None));
+        width.set(801.);
+        cx.update(|window, app| {
+            window.refresh();
+            window.draw(app).clear(app);
+        });
+        assert_eq!(renders.get(), 2, "one render for the new width");
+        let kept = element(doc.nodes(), "c3").style.computed();
+        assert!(std::rc::Rc::ptr_eq(&held, &kept), "the style was kept");
+    });
+}

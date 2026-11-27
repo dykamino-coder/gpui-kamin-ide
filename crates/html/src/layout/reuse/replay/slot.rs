@@ -29,6 +29,20 @@ impl ReplaySlot {
         self.record.source.id()
     }
 
+    /// Where the replay was recorded and where this frame laid it out, for
+    /// the `why` journal: `node origin size -> origin size`.
+    pub(in crate::layout::reuse) fn placement(&self, window: &mut Window) -> String {
+        let Some(id) = self.layout.get() else {
+            return format!("{} unclaimed", self.node());
+        };
+        let (origin, size) = (
+            window.layout_origin_unrounded(id),
+            window.layout_size_unrounded(id),
+        );
+        let recorded = self.record.ranges(|r| (r.origin, r.size));
+        format!("{} {recorded:?} -> {:?}", self.node(), (origin, size))
+    }
+
     /// This frame's replay is exact (`None`): its nodes are claimed, no measure
     /// was needed, the block lies where it was recorded at the same size in the
     /// same environment, and its ranges were recorded in the frame just shown;

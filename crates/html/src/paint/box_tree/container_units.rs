@@ -14,9 +14,19 @@ mod fixture;
 #[cfg(test)]
 mod tests;
 
-pub(super) fn observe(div: Div, element: &Element, style: &BoxStyle) -> Div {
+/// Publish the content box of a size container after its layout, when a value
+/// of the document can read it (`values::container_reads`). Otherwise the
+/// size is an input of nothing: a new one restyles nothing and lays the window
+/// out only once.
+pub(super) fn observe(
+    div: Div,
+    element: &Element,
+    style: &BoxStyle,
+    vcx: crate::values::ValueCx<'_>,
+) -> Div {
     let axes = style.query_container_axes();
     if axes == (false, false)
+        || !crate::values::container_reads::any(vcx.doc)
         || element.marks.anonymous_wrapper
         || element.style.slot().any().is_none()
     {

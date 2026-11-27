@@ -219,5 +219,5 @@ fn built_div(
         },
         _ => d.partial_paint_owner(id),
     };
-    super::container_units::observe(d, e, style)
+    super::container_units::observe(d, e, style, vcx)
 }
