@@ -6,7 +6,7 @@ use crate::style::cascade::materialize::{OwnKey, StageMemo, identity};
 impl SharedStyle {
     /// The remembered box stages of this style.
     pub(crate) fn stage_memo(&self) -> &StageMemo {
-        &self.stage
+        self.computed.stage_memo()
     }
 
     /// The allocations of every stage a box stage reads: an edit of any gives a new one.

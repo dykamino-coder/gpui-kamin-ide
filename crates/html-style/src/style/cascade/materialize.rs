@@ -40,9 +40,18 @@ use walk::walk;
 #[derive(Default)]
 pub struct ComputedSlot(
     RefCell<Option<Rc<Materialized>>>,
-    Rc<Cell<(Option<f32>, Option<f32>)>>,
+    Rc<SlotShared>,
     gpui::LayoutInputId,
 );
+
+/// What the copies of an element share beside the materialized style: the query container
+/// size it was resolved with and the remembered box stages (`stage_memo`). One allocation,
+/// made with the slot: a copy made before the first stage reads and fills the same records.
+#[derive(Default)]
+pub(crate) struct SlotShared {
+    container: Cell<(Option<f32>, Option<f32>)>,
+    stage: StageMemo,
+}
 
 impl Clone for ComputedSlot {
     fn clone(&self) -> Self {
@@ -76,7 +85,8 @@ impl ComputedSlot {
             .borrow()
             .as_ref()
             .filter(|m| {
-                m.computed.reset_context.cq_size == self.1.get() && m.fits(parent, generation, own)
+                m.computed.reset_context.cq_size == self.1.container.get()
+                    && m.fits(parent, generation, own)
             })
             .map(|m| m.computed.clone())
     }
@@ -103,7 +113,12 @@ impl ComputedSlot {
     /// remembered box stage was computed from (`stage_memo`).
     pub(crate) fn stage_identity(&self) -> (stage_memo::Identity, (Option<f32>, Option<f32>)) {
         let materialized = self.0.borrow().as_ref().map(stage_memo::identity);
-        (materialized, self.1.get())
+        (materialized, self.1.container.get())
+    }
+
+    /// The remembered box stages of this style and its element's copies.
+    pub(crate) fn stage_memo(&self) -> &StageMemo {
+        &self.1.stage
     }
 }
 
@@ -156,7 +171,8 @@ impl kamin_heap::HeapSize for ComputedSlot {
         let Ok(slot) = self.0.try_borrow() else {
             return 0;
         };
-        let inputs = ops.at("style/materialized", |ops| ops.shallow(Rc::as_ptr(&self.1)));
+        let inputs = ops.at("style/materialized", |ops| ops.shallow(Rc::as_ptr(&self.1)))
+            + self.1.stage.heap_size(ops);
         let Some(materialized) = slot.as_ref() else {
             return inputs;
         };

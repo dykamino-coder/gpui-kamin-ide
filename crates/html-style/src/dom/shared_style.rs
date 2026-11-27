@@ -7,7 +7,7 @@
 
 use crate::style::ComputedHandle;
 use crate::style::box_input::BoxStyleInput;
-use crate::style::cascade::materialize::{ComputedSlot, StageMemo};
+use crate::style::cascade::materialize::ComputedSlot;
 use crate::style::computed::Computed;
 use std::rc::Rc;
 
@@ -25,8 +25,6 @@ pub struct SharedStyle {
     box_facts: Option<Rc<BoxFacts>>,
     /// Оформление inline в существующем транспорте синтетических коробок.
     decoration: Option<Rc<crate::style::background_paint::DecorationInput>>,
-    /// The box stages computed from this style (`materialize::stage_memo`).
-    stage: StageMemo,
 }
 
 impl From<Computed> for SharedStyle {
@@ -37,7 +35,6 @@ impl From<Computed> for SharedStyle {
             used: None,
             box_facts: None,
             decoration: Default::default(),
-            stage: StageMemo::default(),
         }
     }
 }
@@ -51,7 +48,6 @@ impl From<Box<Computed>> for SharedStyle {
             used: None,
             box_facts: None,
             decoration: Default::default(),
-            stage: StageMemo::default(),
         }
     }
 }
@@ -204,7 +200,6 @@ impl SharedStyle {
                 || facts.tree != Default::default())
             .then(|| Rc::new(facts)),
             decoration: Some(Rc::new(decoration)).filter(|d| **d != Default::default()),
-            stage: StageMemo::default(),
         }
     }
 

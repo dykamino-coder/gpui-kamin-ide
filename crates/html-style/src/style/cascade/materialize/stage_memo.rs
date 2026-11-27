@@ -86,11 +86,11 @@ impl Entry {
         Ok(())
     }
 }
-/// The remembered box stages of one style, shared by the copies of its element: the table
-/// exists from the start, so a copy made before the first stage (render works on copies of
-/// the document's elements) still reads and fills the document's records.
-#[derive(Clone, Default)]
-pub struct StageMemo(Rc<RefCell<Vec<Entry>>>);
+/// The remembered box stages of one style. It lives in the allocation the copies of its
+/// element share (`ComputedSlot`), so a copy made before the first stage (render works on
+/// copies of the document's elements) still reads and fills the document's records.
+#[derive(Default)]
+pub struct StageMemo(RefCell<Vec<Entry>>);
 
 impl std::fmt::Debug for StageMemo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -154,20 +154,19 @@ impl StageMemo {
         }
     }
 
-    /// The records of the style, without the values they share (`heap-report`).
+    /// The records of the style, without the values they share (`heap-report`); the
+    /// table itself is counted with the slot it lives in.
     #[cfg(feature = "heap-report")]
     pub(crate) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        let rc = &self.0;
         ops.at("style/box-stage", |ops| {
-            let block = ops.shallow(Rc::as_ptr(rc));
-            let entries = rc.borrow();
-            if block == 0 || entries.capacity() == 0 {
-                return block;
+            let entries = self.0.borrow();
+            if entries.capacity() == 0 {
+                return 0;
             }
             let parents: usize = (entries.iter())
                 .map(|e| ops.shallow(Rc::as_ptr(&e.parent)))
                 .sum();
-            block + ops.shallow(entries.as_ptr()) + parents
+            ops.shallow(entries.as_ptr()) + parents
         })
     }
 }
