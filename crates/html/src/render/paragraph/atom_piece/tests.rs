@@ -1,8 +1,8 @@
 //! Тесты: маршрутизация статической позиции учитывает систему координат абзаца.
 
 use super::*;
+use crate::style::computed::BoxStyle;
 use crate::style::computed::Position;
-use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
@@ -22,18 +22,11 @@ fn static_absolute_atoms_use_the_containing_block_route_in_horizontal_frames() {
     for (offered, turned) in [(false, false), (true, false), (false, true), (true, true)] {
         let piece = atom_piece_in(
             &element,
-            &BoxStyle::from(
-                (Computed {
-                    reset_text_box: crate::style::computed::StyleGroup::new(
-                        crate::style::computed::ResetTextBox {
-                            turned_line: turned,
-                            ..Default::default()
-                        },
-                    ),
-                    ..Default::default()
-                })
-                .clone(),
-            ),
+            &{
+                let mut flow = BoxStyle::default();
+                flow.tree.turned_line = turned;
+                flow
+            },
             &opts,
             false,
             offered,

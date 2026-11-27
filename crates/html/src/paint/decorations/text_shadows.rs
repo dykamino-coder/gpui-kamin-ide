@@ -26,7 +26,7 @@ fn shadow_layer(
     let frame = opts.cx.frame();
     let copy = if same_paragraph {
         let mut mask = style.clone();
-        mask.reset_text_box.text_shadow_ink = Some(shadow.used_color(style.current_color()));
+        mask.tree.text_shadow_ink = Some(shadow.used_color(style.current_color()));
         mask.inh.text_ink.text_shadow = None;
         mask.inh.text_ink.text_shadow_rest.clear();
         mask.reset_text_box.text_shadow_raw = None;
@@ -65,7 +65,7 @@ pub(crate) fn with_text_shadow(
     let block = context.resolved();
     let all_text = nodes.iter().all(|n| matches!(n, Node::Text(_)));
     let flat = !style.wm().vertical()
-        && !style.wm().turned()
+        && !style.turned_line()
         && style.reset_text_box.first_line.is_none()
         && style.reset_text_box.first_letter.is_none()
         && style.inh.text_ink.text_emphasis.is_none();

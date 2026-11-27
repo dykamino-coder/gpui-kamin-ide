@@ -57,7 +57,7 @@ impl RowRecord {
         opts: &crate::layout::options::RenderOpts,
     ) -> Option<Self> {
         let watch = opts.frag.watch.as_ref()?;
-        (!inherited.wm().turned()).then(|| {
+        (!inherited.turned_line()).then(|| {
             Self::new(
                 watch.flow.clone(),
                 StackAxis::of(inherited.wm()),

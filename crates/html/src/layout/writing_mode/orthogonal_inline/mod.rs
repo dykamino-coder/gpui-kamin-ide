@@ -71,11 +71,13 @@ fn ordinary(style: &Computed) -> bool {
         && !style.reset_context.ortho_col
 }
 
-pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
+pub(super) fn flow_constraint(
+    style: &crate::style::computed::BoxStyle,
+) -> Option<InlineConstraint> {
     // Parallel table cells receive their inline measure from the column track.
     // A containing-block fallback must not override that intrinsic probe.
     (!style.reset_context.ortho_col)
-        .then_some(style.reset_context.orthogonal_inline)
+        .then_some(style.tree.orthogonal_inline)
         .flatten()
 }
 
@@ -109,11 +111,9 @@ pub(crate) fn resolve(
     };
     // Equal values are not written: the context group stays shared with the
     // computed style (Blink `ComputedStyle` setters compare first).
-    if style.tree.orthogonal_scrollport != scrollport
-        || style.reset_context.orthogonal_inline != inline
-    {
+    if style.tree.orthogonal_scrollport != scrollport || style.tree.orthogonal_inline != inline {
         style.tree.orthogonal_scrollport = scrollport;
-        style.reset_context.orthogonal_inline = inline;
+        style.tree.orthogonal_inline = inline;
     }
     if principal || !vertical || parent_vertical || !ordinary(style) || !ordinary(parent) {
         return;
@@ -166,14 +166,14 @@ pub(crate) fn resolve(
     // indefinite one (css-writing-modes-4 §7.3.1, `available-size-020`: a
     // `height: 120vh` parent is not capped by the ICB).
     let space = basis;
-    style.reset_context.orthogonal_inline = Some(InlineConstraint {
+    style.tree.orthogonal_inline = Some(InlineConstraint {
         available: (space - own_edges - margins).max(0.0),
         fixed: own.size,
         min: own.min,
         max: own.max,
     });
     // A wrapping cap is not a percentage basis or a used inline size.
-    style.reset_context.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
+    style.tree.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
 }
 
 #[cfg(test)]
