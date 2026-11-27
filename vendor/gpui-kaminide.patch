@@ -22725,10 +22725,10 @@ index 0000000000000000000000000000000000000000..3e00ae506e6205060d83e33cedc7e0b1
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks.rs b/vendor/gpui/src/scene/scroll_marks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..22d6115725e49114d4b3ce7eebb7cbf67b893cbc
+index 0000000000000000000000000000000000000000..665e2e306f4d2f74d6a0171ddca8e39edae189aa
 --- /dev/null
 +++ b/vendor/gpui/src/scene/scroll_marks.rs
-@@ -0,0 +1,650 @@
+@@ -0,0 +1,654 @@
 +//! KaminIDE patch: primitives painted under a scroll node (`window::scroll_nodes`).
 +//!
 +//! A primitive painted inside a scroll container keeps its own mask: the mask
@@ -22806,6 +22806,9 @@ index 0000000000000000000000000000000000000000..22d6115725e49114d4b3ce7eebb7cbf6
 +    /// While a paint record lands: the marks of the nodes it opened inside
 +    /// itself, carried to its copy (carry).
 +    pub(crate) carry: Option<Box<carry::Carry>>,
++    /// Of a paint record's scene: the records landed in it whose nodes it
++    /// holds, by their scene, and each landing on the way (carry::Relay).
++    pub(crate) relayed: Vec<carry::Relay>,
 +    /// Around one insert (`Window::insert_scene_primitive`): the pivot of
 +    /// the flat transform painted now.
 +    pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
@@ -22827,6 +22830,7 @@ index 0000000000000000000000000000000000000000..22d6115725e49114d4b3ce7eebb7cbf6
 +        self.marks.clear();
 +        self.open = None;
 +        self.carry = None;
++        self.relayed.clear();
 +        (self.pivot, self.unpivoted) = (None, false);
 +        self.pivots.clear();
 +        self.copying = None;
@@ -23381,10 +23385,10 @@ index 0000000000000000000000000000000000000000..22d6115725e49114d4b3ce7eebb7cbf6
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks/carry.rs b/vendor/gpui/src/scene/scroll_marks/carry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6c867ce20ef48be05b1231fbaf91d991b165aaef
+index 0000000000000000000000000000000000000000..fc3a9f49b30456378b17109b3134673ae98346f7
 --- /dev/null
 +++ b/vendor/gpui/src/scene/scroll_marks/carry.rs
-@@ -0,0 +1,126 @@
+@@ -0,0 +1,142 @@
 +//! KaminIDE patch: the marks of the scroll nodes a paint record opened inside
 +//! itself, carried to its copy where it lands (`Window::paint_plan`).
 +//!
@@ -23403,8 +23407,13 @@ index 0000000000000000000000000000000000000000..6c867ce20ef48be05b1231fbaf91d991
 +/// A source command its node can no longer show where the copy lands.
 +const GONE: u32 = u32::MAX - 1;
 +
++/// The scene a record's nodes were painted in and the landings that copied
++/// its commands since, in order, into a scene that lands later itself.
++pub(crate) type Relay = (SceneSpace, Vec<Box<Carry>>);
++
 +/// The marks still to carry, in command order, where the copy lands
 +/// (`offset`, `clip`), and where the commands of the source landed.
++#[derive(Clone)]
 +pub(crate) struct Carry {
 +    marks: Vec<ScrollMark>,
 +    next: usize,
@@ -23421,6 +23430,17 @@ index 0000000000000000000000000000000000000000..6c867ce20ef48be05b1231fbaf91d991
 +    pub(crate) fn of(source: &Scene, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
 +        let landed = Vec::with_capacity(source.paint_operations.len());
 +        Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, offset, clip, landed, kept: Vec::new() })
++    }
++
++    /// Where the copy lands: its offset and clip.
++    pub(crate) fn placement(&self) -> (Point<ScaledPixels>, Option<Bounds<ScaledPixels>>) {
++        (self.offset, self.clip)
++    }
++
++    /// What a later landing of the copy needs: its marks are carried already.
++    pub(crate) fn landed(mut self: Box<Self>) -> Box<Self> {
++        self.marks = Vec::new();
++        self
 +    }
 +
 +    /// The mark of source command `index`, taken in order.
@@ -39166,24 +39186,27 @@ index 0000000000000000000000000000000000000000..086264246f9da359379c9ffb095d5d22
 +}
 diff --git a/vendor/gpui/src/window/paint_record/landing.rs b/vendor/gpui/src/window/paint_record/landing.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..26beaffe9f2fc7e08ab5af180fd55731b8c30209
+index 0000000000000000000000000000000000000000..947a5e10817bab63d9512b6af972e705666cd983
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/landing.rs
-@@ -0,0 +1,102 @@
+@@ -0,0 +1,122 @@
 +//! KaminIDE patch: a paint record lands with the scroll nodes it painted.
 +//!
 +//! A node opened while a record records has its ranges in the record's
 +//! scene (`Window::begin_scroll_node_paint`), a scene the frame never draws.
 +//! Where the record lands, moved and clipped (a column of a multicol flow),
 +//! its copy keeps those nodes' marks moved with it (`scene::scroll_marks::
-+//! carry`), and a node whose commands the copy shows takes its ranges in the
-+//! scene it lands in, its clips moved and clipped as the copy, so a scrolled
-+//! replay of the frame moves it as a node the frame painted itself. A node
-+//! shown by two landings, or with a command of its ranges dropped by the
-+//! copy, stays where it was (torn): a scrolled replay then builds.
++//! carry`). Landed in another record's scene (a plan's invocation), the copy
++//! only relays the nodes: that scene keeps the landing (`ScrollBook::relayed`)
++//! for its own. Landed in a scene the frame draws, a node whose commands the
++//! copy shows takes its ranges there through every landing on the way, its
++//! mask moved and clipped as the copy, so a scrolled replay of the frame
++//! moves it as a node the frame painted itself. A node shown by two
++//! landings, or with a command of its ranges dropped by a copy, stays where
++//! it was (torn): a scrolled replay then builds.
 +
 +use super::*;
-+use crate::scene::scroll_marks::{SceneSpace, carry::Carry};
++use crate::scene::scroll_marks::carry::{Carry, Relay};
 +
 +#[cfg(test)]
 +mod tests;
@@ -39197,7 +39220,6 @@ index 0000000000000000000000000000000000000000..26beaffe9f2fc7e08ab5af180fd55731
 +        offset: Point<ScaledPixels>,
 +        clip: Option<Bounds<ScaledPixels>>,
 +    ) -> bool {
-+        let from = scene.scroll.space;
 +        // A record's marks are those of the nodes it opened (`ScrollBook::record_base`).
 +        let marked = !scene.scroll.marks.is_empty();
 +        if marked {
@@ -39214,60 +39236,78 @@ index 0000000000000000000000000000000000000000..26beaffe9f2fc7e08ab5af180fd55731
 +            };
 +            crate::dirty_sources::trace::push_with("scroll_node.record_unlanded", core::panic::Location::caller(), || why);
 +        }
-+        if let Some(carry) = carry {
-+            self.land_carried_nodes(from, &carry, offset, clip);
++        if let Some(carry) = carry.map(Carry::landed) {
++            let mut relays: Vec<Relay> = (scene.scroll.relayed.iter())
++                .map(|(space, hops)| (*space, hops.iter().cloned().chain([carry.clone()]).collect()))
++                .collect();
++            relays.push((scene.scroll.space, vec![carry]));
++            match self.next_frame.scene.scroll.record_base {
++                Some(_) => self.next_frame.scene.scroll.relayed.extend(relays),
++                None => self.land_carried_nodes(&relays),
++            }
 +        }
 +        done
 +    }
 +
-+    /// Move the ranges of the nodes painted in scene `from` that the copy
-+    /// shows to where `carry` says their commands landed in the scene
-+    /// painted now, their clips moved by `offset` and clipped by `clip`.
-+    fn land_carried_nodes(&mut self, from: SceneSpace, carry: &Carry, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) {
++    /// Move the ranges of the nodes painted in the scenes of `relays` that
++    /// the last landing shows to where their landings put their commands in
++    /// the scene painted now, their masks moved and clipped by each landing.
++    fn land_carried_nodes(&mut self, relays: &[Relay]) {
 +        let scale = self.scale_factor();
 +        let unscaled = |v: ScaledPixels| px(v.0 / scale);
-+        let shift = point(unscaled(offset.x), unscaled(offset.y));
-+        let clip = clip.map(|clip| {
-+            let origin = point(unscaled(clip.origin.x), unscaled(clip.origin.y));
-+            Bounds { origin, size: size(unscaled(clip.size.width), unscaled(clip.size.height)) }
-+        });
-+        let place = |bounds: Bounds<Pixels>| {
++        let place = |bounds: Bounds<Pixels>, hop: &Carry| {
++            let (offset, clip) = hop.placement();
++            let shift = point(unscaled(offset.x), unscaled(offset.y));
 +            let moved = Bounds { origin: bounds.origin + shift, size: bounds.size };
-+            clip.map_or(moved, |clip| moved.intersect(&clip))
++            let clip = clip.map(|clip| {
++                let origin = point(unscaled(clip.origin.x), unscaled(clip.origin.y));
++                Bounds { origin, size: size(unscaled(clip.size.width), unscaled(clip.size.height)) }
++            });
++            (clip.map_or(moved, |clip| moved.intersect(&clip)), shift)
 +        };
++        let Some(last) = relays.last().and_then(|(_, hops)| hops.last()) else { return };
 +        let frame = &mut self.next_frame;
 +        let here = frame.scene.scroll.space;
 +        for at in 0..frame.scroll_nodes.len() {
 +            // Its real clip is its parent's, not moved by the copy, cut by its moved mask.
 +            let parent = frame.scroll_nodes[at].parent.map(|parent| frame.scroll_nodes[parent as usize].clip);
 +            let node = &mut frame.scroll_nodes[at];
-+            let shown = carry.kept.contains(&node.id);
-+            if node.painted_in != Some(from) {
++            let shown = last.kept.contains(&node.id);
++            let Some((_, hops)) = relays.iter().find(|(space, _)| node.painted_in == Some(*space)) else {
 +                // Its commands landed already elsewhere: two landings cannot move as one node.
 +                node.torn |= shown && node.painted_in.is_some();
 +                continue;
-+            }
++            };
 +            // A node the copy hides lands where another copy of the record shows it.
 +            if !shown && node.ranges().any(|range| !range.is_empty()) {
 +                continue;
 +            }
-+            let paint = node.paint.as_ref().map(|range| carry.range(range));
-+            let more: Option<Vec<_>> = node.more.iter().map(|range| carry.range(range)).collect();
++            let land = |range: &Range<usize>| hops.iter().try_fold(range.clone(), |range, hop| hop.range(&range));
++            let paint = node.paint.as_ref().map(land);
++            let more: Option<Vec<_>> = node.more.iter().map(land).collect();
 +            match (paint, more) {
 +                (Some(Some(paint)), Some(more)) => {
 +                    (node.paint, node.more, node.painted_in) = (Some(paint), more, Some(here));
-+                    node.chain = place(node.chain);
-+                    node.clip = parent.map_or_else(|| place(node.clip), |parent| parent.intersect(&node.chain));
-+                    node.interest.origin += shift;
-+                    node.children_offset += shift;
++                    for hop in hops {
++                        let (chain, shift) = place(node.chain, hop);
++                        node.chain = chain;
++                        node.interest.origin += shift;
++                        node.children_offset += shift;
++                    }
++                    node.clip = match parent {
++                        Some(parent) => parent.intersect(&node.chain),
++                        None => hops.iter().fold(node.clip, |clip, hop| place(clip, hop).0),
++                    };
 +                }
 +                _ => node.torn = true,
 +            }
 +        }
-+        // A dependent lands before the next command the copy kept.
-+        for dependent in frame.scroll_dependents.iter_mut().filter(|dependent| dependent.2 == from) {
-+            if let Some(at) = carry.range(&(dependent.1..dependent.1)) {
-+                (dependent.1, dependent.2) = (at.start, here);
++        // A dependent lands before the next command the copies kept.
++        for dependent in frame.scroll_dependents.iter_mut() {
++            let Some((_, hops)) = relays.iter().find(|(space, _)| dependent.2 == *space) else { continue };
++            let at = dependent.1;
++            if let Some(landed) = hops.iter().try_fold(at..at, |range, hop| hop.range(&range)) {
++                (dependent.1, dependent.2) = (landed.start, here);
 +            }
 +        }
 +    }
