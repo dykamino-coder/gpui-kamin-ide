@@ -10,7 +10,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use crate::values::ValueCx;
 
 impl Computed {
-    /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
+    /// Use the group mask for shaped corners and corners that clip content.
     pub fn radius_masked(&self, vcx: ValueCx<'_>) -> bool {
         self.radius_masked_with(
             crate::style::computed::single_corner::eligible(self),
@@ -19,12 +19,54 @@ impl Computed {
         )
     }
 
-    pub fn radius_masked_with(
-        &self,
-        single_corner: bool,
-        shadows_empty: bool,
-        vcx: ValueCx<'_>,
-    ) -> bool {
+    /// The quad draws elliptical corners itself (`gpui::EllipseRadii`).
+    pub fn radius_elliptic(&self, vcx: ValueCx<'_>) -> bool {
+        self.radius_elliptic_with(
+            crate::style::computed::single_corner::eligible(self),
+            self.reset_effects.shadows.is_empty(),
+            vcx,
+        )
+    }
+
+    pub fn radius_masked_with(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
+        self.radius_beyond_circles(single_corner, shadows_empty, vcx) && !self.ellipse_quad_draws()
+    }
+
+    pub fn radius_elliptic_with(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
+        self.radius_beyond_circles(single_corner, shadows_empty, vcx) && self.ellipse_quad_draws()
+    }
+
+    /// Corners a quad with quarter-ellipse corners draws (css-backgrounds-3
+    /// §5.1, §5.5): elliptical, percentage or overlapping radii of a box
+    /// whose corners shape only its own background, border and shadows (no
+    /// content clip, which the group mask still cuts), with a solid border of
+    /// one colour or none, plain `round` corners and lengths the quad
+    /// resolves (no `calc()` mixing a percentage). Blink draws these as one
+    /// elliptical `SkRRect`; a group with a mask is an offscreen surface per
+    /// box (99.8 % of the groups of a page drawn in CSS).
+    fn ellipse_quad_draws(&self) -> bool {
+        let b = &self.reset_border;
+        let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+        let solid = b.border_side_styles.iter().all(|s| matches!(s, None | Some(0 | 1 | 9)));
+        let one_colour = b.border_colors.iter().all(|c| *c == b.border_colors[0]);
+        let calc = |l: &Len| matches!(l, Len::Calc(_));
+        let calculated = [b.radius.tl, b.radius.tr, b.radius.br, b.radius.bl].iter().flatten().any(calc)
+            || b.radius_ell.iter().flatten().flatten().any(|(x, y)| calc(x) || calc(y));
+        !self.corner_shaped()
+            && !calculated
+            && b.border_shape.is_none()
+            && b.border_image.is_none()
+            && b.border_dashed != Some(true)
+            && b.border_dotted != Some(true)
+            && solid
+            && one_colour
+            && self.reset_context.contain_paint != Some(true)
+            && !self.reset_context.scroller
+            && visible(self.reset_box_layout.overflow_x)
+            && visible(self.reset_box_layout.overflow_y)
+    }
+
+    fn radius_beyond_circles(&self, single_corner: bool, shadows_empty: bool, vcx: ValueCx<'_>) -> bool {
         if single_corner {
             return false;
         }

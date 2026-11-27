@@ -11,6 +11,8 @@ use gpui::{
 };
 use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
 
+// KaminIDE patch: elliptical corners drawn by the quad, not a masked group.
+mod ellipse;
 mod groups;
 // KaminIDE patch: a scroll step drawn as the canvas moved.
 mod moved;

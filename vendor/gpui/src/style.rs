@@ -418,6 +418,9 @@ pub struct Style {
     /// The radius of the corners of this element
     #[refineable]
     pub corner_radii: Corners<AbsoluteLength>,
+    /// KaminIDE patch: quarter-ellipse corners (css-backgrounds-3 §5.1,
+    /// `EllipseRadii`); with them `corner_radii` is unused.
+    pub corner_ellipse: Option<Box<EllipseRadii>>,
 
     /// Box shadow of the element
     pub box_shadow: Vec<BoxShadow>,
@@ -1061,10 +1064,21 @@ impl Style {
         }
 
         let rem_size = window.rem_size();
-        let corner_radii = self
-            .corner_radii
-            .to_pixels(rem_size)
-            .clamp_radii_for_quad_size(bounds.size);
+        // KaminIDE patch: elliptical corners resolve against the box here.
+        let (corner_radii, ellipse) = match self.corner_ellipse.as_deref() {
+            Some(e) => {
+                let (x, y) = e.to_pixels(bounds.size, rem_size);
+                let [top_left, top_right, bottom_right, bottom_left] = x;
+                (Corners { top_left, top_right, bottom_right, bottom_left }, Some(y))
+            }
+            None => (self.corner_radii.to_pixels(rem_size).clamp_radii_for_quad_size(bounds.size), None),
+        };
+        window.with_corner_ellipse(ellipse, |window| self.paint_own_box(bounds, corner_radii, rem_size, window));
+    }
+
+    /// KaminIDE patch: the element's own shadows, fill and borders, under
+    /// its corner ellipse (`Style::paint_box`).
+    fn paint_own_box(&self, bounds: Bounds<Pixels>, corner_radii: Corners<Pixels>, rem_size: Pixels, window: &mut Window) {
 
         window.paint_drop_shadows(bounds, corner_radii, &self.box_shadow);
 
@@ -1157,6 +1171,35 @@ impl Style {
     }
 }
 
+/// KaminIDE patch: the radii of a box's quarter-ellipse corners (top left,
+/// top right, bottom right, bottom left; css-backgrounds-3 §5.1): `x`
+/// horizontal, a fraction of the box's width, `y` vertical, of its height.
+/// Blink draws such a box as one rounded rectangle with elliptical radii
+/// (`SkRRect`), not through a mask.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EllipseRadii {
+    /// Horizontal radius per corner.
+    pub x: [DefiniteLength; 4],
+    /// Vertical radius per corner.
+    pub y: [DefiniteLength; 4],
+}
+
+impl EllipseRadii {
+    /// The horizontal and vertical radii in pixels for a box of `size`, all
+    /// reduced by the one factor of §5.5 when adjacent radii overlap.
+    pub fn to_pixels(&self, size: Size<Pixels>, rem_size: Pixels) -> ([Pixels; 4], [Pixels; 4]) {
+        let resolve = |v: &[DefiniteLength; 4], base: Pixels| v.map(|l| l.to_pixels(AbsoluteLength::Pixels(base), rem_size).max(Pixels::ZERO));
+        let (x, y) = (resolve(&self.x, size.width), resolve(&self.y, size.height));
+        let fit = |side: Pixels, a: Pixels, b: Pixels| if a + b > side { side / (a + b) } else { 1.0 };
+        let f = fit(size.width, x[0], x[1])
+            .min(fit(size.width, x[3], x[2]))
+            .min(fit(size.height, y[0], y[3]))
+            .min(fit(size.height, y[1], y[2]))
+            .max(0.0);
+        (x.map(|v| v * f), y.map(|v| v * f))
+    }
+}
+
 impl Default for Style {
     fn default() -> Self {
         Style {
@@ -1236,6 +1279,7 @@ impl Default for Style {
             border_style: BorderStyle::default(),
             snap_to_device_pixels: false,
             corner_radii: Corners::default(),
+            corner_ellipse: None,
             box_shadow: Default::default(),
             inset_box_shadow: Default::default(),
             text: TextStyleRefinement::default(),

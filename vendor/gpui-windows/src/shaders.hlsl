@@ -645,6 +645,13 @@ float quarter_ellipse_sdf(float2 pt, float2 radii) {
 **
 */
 
+// KaminIDE patch: vertical corner radii (`CornerEllipse` in scene.rs).
+struct CornerEllipse {
+    float4 radii_y;
+    uint on;
+    uint3 pad;
+};
+
 struct Quad {
     uint order;
     uint border_style;
@@ -654,6 +661,7 @@ struct Quad {
     Hsla border_color;
     Corners corner_radii;
     Edges border_widths;
+    CornerEllipse ellipse;
     // KaminIDE patch: преобразование квада. Поле обязано идти последним и
     // совпадать с `Quad` в scene.rs — раскладка структуры не проверяется
     // сборкой, расхождение видно только мусором на экране.
@@ -757,8 +765,63 @@ float2 untransform(float2 position, TransformationMatrix t) {
     return mul(p, inv);
 }
 
+// KaminIDE patch: signed distance (negative inside) of a box to the edge of
+// the corner `r` (horizontal, vertical radius) nearest to the point, the
+// point mirrored into the bottom right quadrant (`corner_to_point` =
+// |center_to_point| - half size). In the corner it is the first-order
+// distance f/|grad f| of the ellipse's implicit function, the formula of the
+// coverage mask these quads replace (`contour_dist` in kamin-html), exact
+// for a circle; elsewhere the distance to the nearer straight side.
+float ellipse_box_sdf(float2 corner_to_point, float2 r) {
+    float2 v = -corner_to_point;
+    if (r.x > 0.0 && r.y > 0.0 && v.x >= 0.0 && v.y >= 0.0 && v.x < r.x && v.y < r.y) {
+        float2 e = 1.0 - v / r;
+        float dd = sqrt(e.x * e.x + e.y * e.y);
+        float2 g = e / r;
+        float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
+        return (dd - 1.0) / max(grad, 1e-6);
+    }
+    return max(corner_to_point.x, corner_to_point.y);
+}
+
+// KaminIDE patch: a quad with quarter-ellipse corners (css-backgrounds-3
+// §5.1): `corner_radii` the horizontal radii, `ellipse.radii_y` the vertical
+// ones. The border's inner edge is the box inset by the four border widths
+// with each corner's radii shrunk by the widths of its two sides (§5.4); a
+// solid border lies over the background between the two edges.
+float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background_color,
+                             float4 border_color) {
+    float2 half_size = quad.bounds.size / 2.;
+    float2 center_to_point = local_position - quad.bounds.origin - half_size;
+    bool left = center_to_point.x < 0.0;
+    bool top = center_to_point.y < 0.0;
+    float rx = pick_corner_radius(center_to_point, quad.corner_radii);
+    float ry = top ? (left ? quad.ellipse.radii_y.x : quad.ellipse.radii_y.y)
+                   : (left ? quad.ellipse.radii_y.w : quad.ellipse.radii_y.z);
+    float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
+    float4 color = background_color;
+    float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
+                          quad.border_widths.right, quad.border_widths.bottom);
+    if (any(edges != 0.0)) {
+        float2 inner_min = edges.xy - half_size;
+        float2 inner_max = half_size - edges.zw;
+        float2 inner_half = (inner_max - inner_min) / 2.;
+        float2 side = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
+        float inner_sdf = 1.0e6;
+        if (inner_half.x > 0.0 && inner_half.y > 0.0) {
+            float2 inner_point = center_to_point - (inner_min + inner_max) / 2.;
+            inner_sdf = ellipse_box_sdf(abs(inner_point) - inner_half, max(float2(rx, ry) - side, 0.0));
+        }
+        float4 blended_border = over(background_color, border_color);
+        color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
+    }
+    return color * float4(1.0, 1.0, 1.0, saturate(0.5 - outer_sdf));
+}
 float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
                           float4 input_border_color) {
+    if (quad.ellipse.on != 0) {
+        return quad_fragment_ellipse(quad, local_position, background_color, input_border_color);
+    }
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
         quad.corner_radii.top_right == 0.0 &&

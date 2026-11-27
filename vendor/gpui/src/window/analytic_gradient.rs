@@ -26,6 +26,7 @@ impl Window {
                 border_widths: Edges::default(),
                 corner_radii: corners.scale(scale),
                 border_style: BorderStyle::Solid,
+                ellipse: Default::default(),
                 transformation: self.current_transformation(),
             },
             gradient,

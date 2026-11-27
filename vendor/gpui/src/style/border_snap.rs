@@ -88,7 +88,9 @@ pub(super) fn paint(
         // `rgb(0 0 255 / 50%)` came out 75% blue; css-backgrounds-3 §7.1
         // `box-shadow-multiple-001`). Clamping each strip at the box middle
         // keeps the union equal to the box.
-        let band = max_border_width.max(max_corner_radius);
+        // An elliptical corner reaches `radii_y` down (`Window::with_corner_ellipse`).
+        let max_radius_y = window.corner_ellipse.map_or(Pixels::ZERO, |r| r.into_iter().fold(Pixels::ZERO, Pixels::max));
+        let band = max_border_width.max(max_corner_radius).max(max_radius_y);
         let mid_y = bounds.origin.y + bounds.size.height / 2.0;
         let mid_x = bounds.origin.x + bounds.size.width / 2.0;
         let top_bounds = Bounds::from_corners(

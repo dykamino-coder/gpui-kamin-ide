@@ -222,6 +222,10 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if c.radius_masked(vcx) || c.reset_border.border_shape.is_some() {
         return d;
     }
+    if c.radius_elliptic(vcx) {
+        d.style().corner_ellipse = Some(Some(Box::new(ellipse_radii(c, vcx))));
+        return d;
+    }
     let r = &c.reset_border.radius;
     let resolve = |l: Option<Len>| radius_px(c, l, vcx);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {
@@ -234,4 +238,25 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         };
     }
     d
+}
+
+/// The box's corners as quarter ellipses (`Computed::radius_elliptic`): per
+/// corner its horizontal and vertical radius, a percentage of the box's own
+/// width and height (css-backgrounds-3 §5.1); one radius gives both. The
+/// quad reduces them by the factor of §5.5 against the painted box
+/// (`gpui::EllipseRadii::to_pixels`).
+pub(crate) fn ellipse_radii(c: &Computed, vcx: ValueCx<'_>) -> gpui::EllipseRadii {
+    let length = |l: Option<Len>| match l {
+        Some(Len::Pct(p)) => gpui::DefiniteLength::Fraction(p),
+        l => gpui::DefiniteLength::Absolute(gpui::AbsoluteLength::Pixels(px(radius_px(c, l, vcx).unwrap_or(0.0)))),
+    };
+    let r = &c.reset_border.radius;
+    let round = [r.tl, r.tr, r.br, r.bl];
+    let ell = c.reset_border.radius_ell.unwrap_or([None; 4]);
+    let pair = |i: usize| match ell[i] {
+        Some((x, y)) => (Some(x), Some(y)),
+        None => (round[i], round[i]),
+    };
+    let pairs = [pair(0), pair(1), pair(2), pair(3)];
+    gpui::EllipseRadii { x: pairs.map(|(x, _)| length(x)), y: pairs.map(|(_, y)| length(y)) }
 }

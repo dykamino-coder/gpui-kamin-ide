@@ -210,7 +210,7 @@ pub(super) fn inset_shadows(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, frame
         ring.style().snap_to_device_pixels = Some(true);
         // Внешний край кольца — padding-box: скругление «радиус − рамка»
         // (§5.4, как у `clip_layer`).
-        if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
+        if !c.radius_masked(vcx) && !c.radius_elliptic(vcx) && c.reset_border.border_shape.is_none() {
             let bw = c.borders();
             let side = px_lossy_zero;
             let pad = |r: Option<Len>, a: Option<Len>, b: Option<Len>| {
