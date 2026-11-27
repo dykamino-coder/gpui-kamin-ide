@@ -29,7 +29,7 @@ pub(crate) fn load_faces(
 ) -> Result<(), crate::dom::outcome::DocumentFailure> {
     let admission = admit(css, vcx)?;
     clear(fonts, vcx);
-    Ok(load_faces_into(css, None, fonts, vcx, &admission)?)
+    Ok(load_faces_into(css, None, fonts, vcx, &admission, None)?)
 }
 
 fn clear(fonts: &crate::text::text_fonts::TextFonts, vcx: ValueCx<'_>) {
@@ -50,6 +50,7 @@ pub(crate) fn load_faces_sheets(
     base: Option<&url::Url>,
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
+    used: &super::used_chars::UsedChars,
 ) -> Result<(), Error> {
     clear(fonts, vcx);
     let admission = vcx
@@ -60,7 +61,7 @@ pub(crate) fn load_faces_sheets(
         .map(Admission::new)
         .unwrap_or_default();
     for css in sheets {
-        load_faces_into(css.as_ref(), base, fonts, vcx, &admission)?;
+        load_faces_into(css.as_ref(), base, fonts, vcx, &admission, Some(used))?;
     }
     Ok(())
 }
@@ -83,11 +84,19 @@ pub(super) fn load_faces_into(
     fonts: &crate::text::text_fonts::TextFonts,
     vcx: ValueCx<'_>,
     admission: &Admission,
+    used: Option<&super::used_chars::UsedChars>,
 ) -> Result<(), Error> {
     for block in faces(css, vcx) {
         let (Some(family), Some(src)) = (declaration(&block, "font-family"), source(&block)) else {
             continue;
         };
+        // A subset no character of the document falls in is not loaded
+        // (css-fonts-4 section 4.5); it is not available either.
+        let ranges =
+            crate::font_facts::coverage::ranges(declaration(&block, "unicode-range").as_deref());
+        if used.is_some_and(|used| !used.intersects(&ranges)) {
+            continue;
+        }
         let src = crate::resources::url_loader::resolve(&src, base, admission)?;
         let real = vcx.doc.font_faces.loaded.borrow().get(&src).cloned();
         let real = match real {
@@ -170,9 +179,7 @@ pub(super) fn load_faces_into(
                     family: real.clone(),
                     adjust,
                     features,
-                    ranges: crate::font_facts::coverage::ranges(
-                        declaration(&block, "unicode-range").as_deref(),
-                    ),
+                    ranges,
                 });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))
