@@ -178,7 +178,10 @@ mod tests {
             base.apply_one(key, value, doc.values());
         }
         let mut value = base.clone();
-        value.resolve_container_other_lengths(value.viewport_cx((800.0, 600.0)), doc.values());
+        value.resolve_container_other_lengths(
+            value.viewport_cx((800.0, 600.0), doc.values()),
+            doc.values(),
+        );
         assert!(base.shares_storage(&value));
     }
 
@@ -188,7 +191,10 @@ mod tests {
         let mut base = Computed::default();
         base.apply_one("shape-margin", "10cqw", doc.values());
         let mut value = base.clone();
-        value.resolve_container_other_lengths(value.viewport_cx((800.0, 600.0)), doc.values());
+        value.resolve_container_other_lengths(
+            value.viewport_cx((800.0, 600.0), doc.values()),
+            doc.values(),
+        );
         assert_eq!(value.reset_shapes.shape_margin, Some(Len::Px(80.0)));
         assert!(
             base.reset_shapes

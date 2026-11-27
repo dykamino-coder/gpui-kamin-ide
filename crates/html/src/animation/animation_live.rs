@@ -15,7 +15,7 @@ use std::rc::Rc;
 fn painted(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> AnyElement {
     transformed_node(
         opts.cx.contracts.build.element(e, inherited, opts),
-        &e.style.used(),
+        &crate::style::computed::BoxStyle::shared(e.style.used()),
         inherited,
         e.node_id,
         opts.cx.frame(),
@@ -34,7 +34,7 @@ async fn painted_stack(
             .build
             .element_stack(stk, e, inherited, opts)
             .await,
-        &e.style.used(),
+        &crate::style::computed::BoxStyle::shared(e.style.used()),
         inherited,
         e.node_id,
         opts.cx.frame(),

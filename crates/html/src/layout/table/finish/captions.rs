@@ -52,7 +52,11 @@ pub(super) async fn collect_captions(
             // (`transform-transformed-caption-contains-fixed-position`).
             let built = opts.cx.contracts.build.effects(
                 built,
-                Effect::transform(&cap.style.used(), inherited, frame),
+                Effect::transform(
+                    &crate::style::computed::BoxStyle::shared(cap.style.used()),
+                    inherited,
+                    frame,
+                ),
             );
             // Подпись — сосед коробки таблицы в стопке обёртки: её border box
             // читает фрагментация (`watch::wrap`).

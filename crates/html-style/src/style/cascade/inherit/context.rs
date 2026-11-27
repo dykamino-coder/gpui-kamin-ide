@@ -38,10 +38,7 @@ pub(super) fn inherit_context(parents: super::BoxParents<'_>, own: &Computed, c:
             .ortho_limit
             .or(layout.reset_context.ortho_limit)
     );
-    set!(
-        c.reset_context.orthogonal_scrollport,
-        layout.reset_context.orthogonal_scrollport
-    );
+    c.tree.orthogonal_scrollport = layout.tree.orthogonal_scrollport;
     // An absolutely positioned box sizes its inline axis against its own
     // containing block (CSS 2.1 §10.3.7 / §10.6.4 shrink-to-fit), never with
     // the in-flow inline measure of the paragraph it was written in.
@@ -72,15 +69,9 @@ pub(super) fn inherit_context(parents: super::BoxParents<'_>, own: &Computed, c:
     // `auto` — `none` под коробкой с используемым `none`, иначе выделяемое
     // (`all` родителя тоже выделяемо).
     use crate::style::computed::UserSelect as U;
-    set!(
-        c.reset_context.no_select,
-        match c.reset_context.user_select {
-            Some(U::None) => Some(true),
-            Some(U::Text | U::Contain | U::All) => Some(false),
-            Some(U::Auto) | None => own
-                .reset_context
-                .no_select
-                .or(parent.reset_context.no_select),
-        }
-    );
+    c.tree.no_select = match c.reset_context.user_select {
+        Some(U::None) => Some(true),
+        Some(U::Text | U::Contain | U::All) => Some(false),
+        Some(U::Auto) | None => parent.tree.no_select,
+    };
 }

@@ -109,28 +109,28 @@ fn user_select_is_not_inherited_and_auto_follows_the_parent_box() {
     let vcx = doc.values();
     let none = inherit(&BoxStyle::default(), &style("user-select: none"), vcx);
     assert_eq!(none.reset_context.user_select, Some(UserSelect::None));
-    assert_eq!(none.reset_context.no_select, Some(true));
+    assert_eq!(none.tree.no_select, Some(true));
     // css-ui-4 §6.1: the computed value is not inherited ...
     let child = inherit(&none, &Computed::default(), vcx);
     assert_eq!(child.reset_context.user_select, None);
     // ... but the used value of `auto` under a `none` box is `none`.
-    assert_eq!(child.reset_context.no_select, Some(true));
+    assert_eq!(child.tree.no_select, Some(true));
     assert_eq!(
         inherit(&none, &style("user-select: auto"), vcx)
-            .reset_context
+            .tree
             .no_select,
         Some(true)
     );
     assert_eq!(
         inherit(&none, &style("user-select: text"), vcx)
-            .reset_context
+            .tree
             .no_select,
         Some(false)
     );
     let all = inherit(&BoxStyle::default(), &style("user-select: all"), vcx);
     assert_eq!(
         inherit(&all, &style("user-select: auto"), vcx)
-            .reset_context
+            .tree
             .no_select,
         Some(false)
     );

@@ -223,14 +223,12 @@ impl Len {
 }
 
 impl Computed {
-    /// Окно единиц окна для этой коробки: размер без полос прокрутки
-    /// (`viewport_unit_insets`), ось её письма, контейнер запросов размера
-    /// (недостающая ось — окно).
-    pub fn viewport_cx(&self, raw: (f32, f32)) -> ViewportCx {
-        let insets = self
-            .reset_positioned
-            .viewport_unit_insets
-            .unwrap_or_default();
+    /// The viewport of viewport units for this box: the document's viewport
+    /// without the scrollbars units exclude (`ViewportFacts::unit_insets`),
+    /// the box's writing axis and its size query container (the viewport for
+    /// a missing axis).
+    pub fn viewport_cx(&self, raw: (f32, f32), vcx: ValueCx<'_>) -> ViewportCx {
+        let insets = vcx.doc.viewport.unit_insets();
         let size = ((raw.0 - insets[0]).max(0.0), (raw.1 - insets[1]).max(0.0));
         ViewportCx::for_box(size, self)
     }

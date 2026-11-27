@@ -43,12 +43,6 @@ pub(in crate::document) fn wrap(
                     ..Default::default()
                 },
             ),
-            reset_positioned: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetPositioned {
-                    viewport_unit_insets: c.reset_positioned.viewport_unit_insets,
-                    ..Default::default()
-                },
-            ),
             ..Computed::default()
         };
         with_inherited.inh.writing.rtl = rtl;

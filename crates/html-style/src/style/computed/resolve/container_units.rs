@@ -8,7 +8,7 @@ use crate::values::ValueCx;
 impl Computed {
     /// Кегль и строка разрешаются раньше зависимых от них em/lh.
     pub fn resolve_container_font_lengths(&mut self, vcx: ValueCx<'_>) {
-        let vp = self.viewport_cx(vcx.viewport);
+        let vp = self.viewport_cx(vcx.viewport, vcx);
         if let Some(value) = self
             .inh
             .font
@@ -29,7 +29,7 @@ impl Computed {
 
     /// Свернуть единицы по завершённой раскладке ближайших подходящих предков.
     pub fn resolve_container_units(&mut self, vcx: ValueCx<'_>) {
-        let vp = self.viewport_cx(vcx.viewport);
+        let vp = self.viewport_cx(vcx.viewport, vcx);
         let fix = |length: &mut Option<Len>| {
             if let Some(value) = *length {
                 *length = Some(value.fold_container(vp, vcx));
