@@ -174,8 +174,9 @@ pub(super) fn order(a: &[(u8, f32); 3], b: &[(u8, f32); 3]) -> std::cmp::Orderin
 /// (`coverage::composite`), so a later subset without U+0020 does not win.
 pub fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> {
     super::coverage::composite(faces, request)
-        .first()
-        .map(|face| (*face).clone())
+        .into_iter()
+        .next()
+        .cloned()
 }
 
 /// Descriptor capabilities override binary style metadata: an oblique/bold
