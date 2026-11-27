@@ -18,14 +18,16 @@
 
 pub(super) mod inert;
 mod key;
+mod record;
 pub(crate) mod shared;
 pub(super) use key::{inert_node, inert_tree};
 
-use super::replay::{PendingReplay, Replay, ReplayRecord, ReplayRecorder, ReplaySlot};
-use super::{Counters, FlowReuse, Source};
+use super::replay::{PendingReplay, Replay, ReplayRecord, ReplaySlot};
+use super::{Counters, FlowReuse};
 use crate::dom::{BoxId, Node};
 use crate::hooks::IntoHooked;
 use crate::layout::options::RenderOpts;
+use crate::resources::images::store::ImageRead;
 use crate::style::computed::BoxStyle;
 use gpui::AnyElement;
 use key::{ContentKey, KeyEnv, follows_width, key, plain};
@@ -42,6 +44,8 @@ pub(crate) struct ContentRecord {
     start: Counters,
     end: Counters,
     items: Box<[Rc<ReplayRecord>]>,
+    /// The images its build read, in the state read (`ImageStore::replay_reads`).
+    images: Box<[ImageRead]>,
 }
 
 /// A content built in this build with record wrappers.
@@ -62,6 +66,8 @@ pub(crate) struct Content {
     reads: Rc<Cell<bool>>,
     /// The container's width follows the outside one (`key::follows_width`).
     follows: bool,
+    /// The image request log before its build (`ImageStore::log_position`).
+    images_at: usize,
 }
 
 impl Content {
@@ -96,7 +102,7 @@ impl FlowReuse {
         {
             return None;
         }
-        let (owner, at) = {
+        let (owner, at, distributed) = {
             let boxes = inner.cx.doc().boxes.borrow();
             let owner = boxes.owner_of(nodes)?;
             // A block of the root flow is replayed whole by its records
@@ -109,11 +115,15 @@ impl FlowReuse {
             if flow == Some(parent) || boxes.get(parent).is_none() {
                 return None;
             }
-            (owner, boxes.clock())
+            (owner, boxes.clock(), boxes.distributed(owner))
         };
-        let follows = follows_width(inherited, outer);
+        let follows = follows_width(inherited, outer, distributed);
         let env = KeyEnv::of(&self.store.inputs, inherited, outer, inner, fresh);
+        // The log holds this build's reads only: the first content empties it.
+        let first = !self.images_log.replace(true);
+        let images_at = inner.cx.vcx().doc.image_log_mark(first);
         Some(Content {
+            images_at,
             follows,
             owner,
             at,
@@ -146,13 +156,17 @@ impl FlowReuse {
         let clean = {
             let boxes = opts.cx.doc().boxes.borrow();
             let epoch = boxes.build_epoch(content.owner)?;
-            // Its width may follow a changed sibling (a table column): the
-            // replay would be refused after layout, and the frame built twice.
+            // A width following a changed sibling (a column) is refused after layout.
             epoch <= record.at
                 && record.at <= boxes.clock()
                 && !boxes.resized_by_siblings(content.owner, record.at)
         };
-        if !clean || !record.key.same(&content.key, record.widths) {
+        let cut = !record
+            .items
+            .iter()
+            .all(|item| item.replays_clipped() && item.hovers_hold(&self.hover));
+        let images = || opts.cx.vcx().doc.replay_image_reads(&record.images);
+        if !clean || cut || !record.key.same(&content.key, record.widths) || !images() {
             return None;
         }
         if record.widths {
@@ -178,73 +192,5 @@ impl FlowReuse {
         next.insert(key(content.owner), record);
         self.next_contents.replace(next);
         Some(out)
-    }
-
-    /// Wrap the built content in a record (see the module).
-    pub(crate) fn record_content(
-        &self,
-        content: Content,
-        opts: &RenderOpts,
-        out: &mut Vec<AnyElement>,
-    ) {
-        // Its width changes with the window's: the next build of another
-        // width would not replay it (Blink `ShouldCreateSubsequence` caches
-        // only where a replay is likely).
-        if content.follows && self.resized.get() {
-            return;
-        }
-        let end = Counters::read(&opts.cx);
-        let mut items = Vec::with_capacity(out.len());
-        for child in std::mem::take(out) {
-            let pending = Rc::new(PendingReplay::new(
-                None,
-                (content.start, end),
-                true,
-                content.reads.clone(),
-                false,
-                &self.ink,
-                None,
-            ));
-            items.push(pending.clone());
-            out.push(ReplayRecorder::new(child, pending).hooked());
-        }
-        let mut pending = self.pending_contents.take();
-        pending.push(PendingContent {
-            owner: content.owner,
-            record: ContentRecord {
-                key: content.key,
-                widths: false,
-                at: content.at,
-                start: content.start,
-                end,
-                items: Box::default(),
-            },
-            reads: content.reads,
-            items,
-        });
-        self.pending_contents.replace(pending);
-    }
-
-    /// The content records of this frame: replayed and finished.
-    pub(super) fn finish_contents(&self) {
-        let (mut next, mask) = (self.next_contents.take(), self.mask.get());
-        for pending in self.pending_contents.take() {
-            let PendingContent {
-                owner,
-                mut record,
-                reads,
-                items,
-            } = pending;
-            let finished: Option<Box<[_]>> = items
-                .iter()
-                .map(|i| i.finish(Source::bare(key(owner)), None, mask).map(Rc::new))
-                .collect();
-            if let Some(items) = finished {
-                record.items = items;
-                record.widths = reads.get();
-                next.insert(key(owner), Rc::new(record));
-            }
-        }
-        self.store.contents.replace(next);
     }
 }

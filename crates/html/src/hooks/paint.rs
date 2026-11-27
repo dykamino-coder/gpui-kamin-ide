@@ -34,8 +34,9 @@ pub(crate) fn replay_deferred_moved(
     window: &mut Window,
     record: &LineCapture,
     offset: gpui::Point<gpui::Pixels>,
+    clip: bool,
 ) -> std::rc::Rc<LineCapture> {
-    crate::paint::coordinator::replay_moved(window, record, offset)
+    crate::paint::coordinator::replay_moved(window, record, offset, clip)
 }
 
 /// The deferred paint of `record` moves with its block.
