@@ -23,7 +23,7 @@ pub fn content(marker: Option<BoxStyle>, item: &BoxStyle, vcx: ValueCx<'_>) -> B
     style.inh.text_flow.nowrap = Some(true);
     // Внешний маркер вне потока: фиксированная мера строки пункта
     // не должна растянуть его абзац перед привязкой к inline-start.
-    style.reset_context.orthogonal_inline = None;
+    style.tree.orthogonal_inline = None;
     // css-lists-3 §marker-properties: text-indent не применяется к ::marker.
     // Абзац служит геометрией маркера, а не первой строкой главного бокса.
     style.inh.text_flow.text_indent = None;

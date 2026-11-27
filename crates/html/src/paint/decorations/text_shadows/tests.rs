@@ -129,11 +129,11 @@ fn mask_keeps_decoration_records_and_original_text_color() {
     };
     assert_eq!(mask.style.cascaded().inh.ui.color, owner.inh.ui.color);
     assert_eq!(
-        mask.style.used().reset_text_box.decors,
-        owner.reset_text_box.decors
+        mask.style.used().reset_text_box.td_lines,
+        owner.reset_text_box.td_lines
     );
     assert_eq!(
-        mask.style.used().reset_text_box.text_shadow_ink,
+        mask.style.used().tree.text_shadow_ink,
         Some(Color::parse("green", vcx).unwrap())
     );
 }
@@ -142,13 +142,10 @@ fn mask_keeps_decoration_records_and_original_text_color() {
 fn text_only_preserves_shadow_ink_without_changing_computed_color() {
     let doc = crate::document::state::DocState::new(crate::style::css::Media::default());
     let vcx = doc.values();
-    let mut style = Computed::default();
+    let mut style = BoxStyle::default();
     style.apply_one("color", "red", vcx);
-    style.reset_text_box.text_shadow_ink = Some(Color::parse("green", vcx).unwrap());
-    let text = style.text_only();
+    style.tree.text_shadow_ink = Some(Color::parse("green", vcx).unwrap());
+    let text = style.restyled(style.text_only());
     assert_eq!(text.inh.ui.color, style.inh.ui.color);
-    assert_eq!(
-        text.reset_text_box.text_shadow_ink,
-        style.reset_text_box.text_shadow_ink
-    );
+    assert_eq!(text.tree.text_shadow_ink, style.tree.text_shadow_ink);
 }

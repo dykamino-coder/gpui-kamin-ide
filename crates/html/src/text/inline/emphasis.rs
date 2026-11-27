@@ -81,28 +81,24 @@ pub(crate) fn emphasis_spans(
                 // geometry regardless of the mark's foreground transparency.
                 // CurrentColor already carries the composited text fill;
                 // explicit emphasis colors need the same composition here.
-                color: style
-                    .reset_text_box
-                    .text_shadow_ink
-                    .map(Color::to_hsla)
-                    .or_else(|| {
-                        let color = style
-                            .inh
-                            .text_ink
-                            .emphasis_color
-                            .as_ref()
-                            .filter(|c| !c.is_current());
-                        color.map(|color| {
-                            let color = style.used_color(color);
-                            style
-                                .foreground_paint()
-                                .fill
-                                .map_or(color, |fill| {
-                                    crate::style::values::composite::over(color, fill)
-                                })
-                                .to_hsla()
-                        })
-                    }),
+                color: style.tree.text_shadow_ink.map(Color::to_hsla).or_else(|| {
+                    let color = style
+                        .inh
+                        .text_ink
+                        .emphasis_color
+                        .as_ref()
+                        .filter(|c| !c.is_current());
+                    color.map(|color| {
+                        let color = style.used_color(color);
+                        style
+                            .foreground_paint()
+                            .fill
+                            .map_or(color, |fill| {
+                                crate::style::values::composite::over(color, fill)
+                            })
+                            .to_hsla()
+                    })
+                }),
             });
         }
         if let Some(span) = out.last().filter(|span| span.range.end == end)

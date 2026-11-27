@@ -13,7 +13,9 @@ pub(crate) fn normal_block_flow(child: &Computed, parent: &Computed) -> bool {
         && matches!(child.reset_box_layout.display, None | Some(Display::Block))
 }
 
-pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
+pub(super) fn containing_inline(
+    parent: &crate::style::computed::BoxStyle,
+) -> Option<InlineConstraint> {
     // A parallel block fills its containing block's definite logical inline
     // size even while the parent's block size is being probed intrinsically.
     // Inline-blocks and table-cell flow roots also establish this containing
@@ -37,7 +39,7 @@ pub(super) fn containing_inline(parent: &Computed) -> Option<InlineConstraint> {
             });
         }
     }
-    parent.reset_context.orthogonal_inline
+    parent.tree.orthogonal_inline
 }
 
 pub(super) fn inherit(style: &mut Computed, mut parent: InlineConstraint) -> InlineConstraint {

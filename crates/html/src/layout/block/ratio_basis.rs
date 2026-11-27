@@ -75,10 +75,7 @@ mod tests {
         let (mut child, parent) = (BoxStyle::from(child), BoxStyle::from(parent));
         resolve(&mut child, &parent, (800.0, 600.0), false);
         assert_eq!(child.reset_box_layout.height, Some(Len::Px(100.0)));
-        assert_eq!(
-            child.reset_context.orthogonal_inline.unwrap().fixed,
-            Some(100.0)
-        );
+        assert_eq!(child.tree.orthogonal_inline.unwrap().fixed, Some(100.0));
     }
 
     #[test]
