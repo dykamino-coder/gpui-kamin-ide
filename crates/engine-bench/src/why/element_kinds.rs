@@ -39,7 +39,7 @@ pub(super) fn to_json(costs: Vec<(&'static str, ElementCost)>) -> Value {
         })
         .collect();
     // Every element whose request_layout ran: the elements the sample built.
-    let calls: u64 = list.iter().map(|(_, c)| c.calls).sum();
+    let calls: u64 = list.iter().map(|(_, c)| u64::from(c.calls)).sum();
     json!({"self_ns_total": total, "calls_total": calls, "kinds_total": list.len(), "top_by_self_ns": kinds})
 }
 
