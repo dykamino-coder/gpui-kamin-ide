@@ -10,6 +10,7 @@
 
 pub(super) mod compare;
 mod element_kinds;
+mod layout_inputs;
 mod layout_work;
 mod paint_work;
 mod text;
@@ -111,6 +112,9 @@ impl Watch {
         // Exclusive request_layout time and style copies by element type since the last sample.
         let kinds =
             cx.update(|cx| element_kinds::to_json(cx.instrumentation().request_layout.take()));
+        // Boxes laid out with the inputs of the previous layout pass since the last sample.
+        let inputs =
+            cx.update(|cx| layout_inputs::to_json(cx.instrumentation().layout_inputs.take()));
         let index = FRAMES.with(|f| f.borrow().len()) + 1;
         let fields = json!({
             "frame": index,
@@ -130,6 +134,7 @@ impl Watch {
             })),
             "gpu_batches": gpu_batches,
             "request_layout_kinds": kinds,
+            "layout_inputs": inputs,
             "memory": memory,
             "between": self.between,
         });

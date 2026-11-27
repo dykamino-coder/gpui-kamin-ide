@@ -38,7 +38,9 @@ pub(super) fn to_json(costs: Vec<(&'static str, ElementCost)>) -> Value {
             })
         })
         .collect();
-    json!({"self_ns_total": total, "kinds_total": list.len(), "top_by_self_ns": kinds})
+    // Every element whose request_layout ran: the elements the sample built.
+    let calls: u64 = list.iter().map(|(_, c)| c.calls).sum();
+    json!({"self_ns_total": total, "calls_total": calls, "kinds_total": list.len(), "top_by_self_ns": kinds})
 }
 
 /// The type name without module paths, generic arguments included.
@@ -65,7 +67,8 @@ pub(super) fn render(out: &mut String, value: &Value) {
     let total = value["self_ns_total"].as_u64().unwrap_or(0) as f64 / 1e6;
     let _ = writeln!(
         out,
-        "  request_layout self-time by element type ({total:.3} ms measured):"
+        "  request_layout self-time by element type ({total:.3} ms measured, {} elements):",
+        value["calls_total"]
     );
     for k in kinds {
         let _ = writeln!(
@@ -100,6 +103,7 @@ mod tests {
         ]);
         assert_eq!(value["self_ns_total"], 21);
         assert_eq!(value["kinds_total"], 2);
+        assert_eq!(value["calls_total"], 3);
         let top = &value["top_by_self_ns"];
         assert_eq!(top[0]["kind"], "Hooked<Probe>");
         assert_eq!(
