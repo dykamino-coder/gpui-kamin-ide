@@ -30,9 +30,10 @@ fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut Tes
             vcx.simulate_resize(size(px(width), px(300.0)));
             vcx.update(|_, cx| view.update(cx, |view, _| view.viewport = (width, 300.0)));
             frame(vcx);
-            let (boxes, ch_limit) = vcx.update(|window, _| {
+            let (boxes, ch_limit, painted) = vcx.update(|window, _| {
                 let scale = window.scale_factor();
                 let quads = window.painted_quads();
+                let painted = format!("{quads:?}");
                 let ch_limit = quads
                     .iter()
                     .find(|q| q.background.as_solid() == Some(gpui::red()))
@@ -52,14 +53,14 @@ fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut Tes
                         )
                     })
                     .collect::<Vec<_>>();
-                (boxes, ch_limit)
+                (boxes, ch_limit, painted)
             });
             let expected = if expected < 0.0 {
                 (width * -expected).min(ch_limit)
             } else {
                 expected
             };
-            assert_eq!(boxes.len(), 1, "{width} {rule}: {boxes:?}");
+            assert_eq!(boxes.len(), 1, "{width} {rule}: {boxes:?}; {painted}");
             let (x, actual) = boxes[0];
             assert!(
                 (actual - expected).abs() <= 1.0,

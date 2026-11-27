@@ -59,6 +59,24 @@ fn an_auto_width_block_is_reusable_only_while_its_floor_holds_it_wider_than_the_
 }
 
 #[test]
+fn auto_margins_reuse_only_the_overflowing_auto_width_floor() {
+    let doc = DocumentValues::detached(Default::default());
+    for width in [None, Some(Len::Auto), Some(Len::Px(300.0))] {
+        let mut e = el("div", vec![Node::Text("one line".into())]);
+        let b = &mut e.style.used_mut().reset_box_layout;
+        b.width = width;
+        b.margin.left = Some(Len::Auto);
+        b.margin.right = Some(Len::Auto);
+        let expected = if width == Some(Len::Px(300.0)) {
+            Width::Dependent
+        } else {
+            Width::Floor
+        };
+        assert_eq!(independent(&e, doc.values()), expected);
+    }
+}
+
+#[test]
 fn a_one_line_text_block_is_reusable_while_its_line_fits() {
     // The line leaves 200 of 800: it stays one line down to a 601 flow.
     let range = reusable_range(Width::Stretch, 800.0, Some(800.0), Some(200.0));
