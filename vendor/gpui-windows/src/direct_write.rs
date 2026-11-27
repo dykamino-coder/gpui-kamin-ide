@@ -810,16 +810,12 @@ impl DirectWriteState {
             let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
             // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
             let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
-            let mut adjust_fallbacks = false;
+            // KaminIDE patch: runs whose fallback faces are normalized (`size_adjust`).
+            let mut adjusted: Vec<size_adjust::AdjustedRun> = Vec::new();
             {
                 let mut u8_at = 0usize;
                 let mut u16_at = 0u32;
                 for run in font_runs {
-                    adjust_fallbacks |= self.fonts[run.font_id.0]
-                        .fallback_key
-                        .as_ref()
-                        .and_then(FontFallbacks::size_adjustment)
-                        .is_some();
                     // KaminIDE patch: контракт «len на границе знака» ничем
                     // не гарантирован — кривой прогон не должен ронять кадр.
                     let len16 = text
@@ -832,6 +828,20 @@ impl DirectWriteState {
                     }
                     if blank_runs::is_blank(run.font_size) && len16 > 0 {
                         blank_ranges.push((u16_at, len16));
+                    }                    if len16 > 0
+                        && !blank_runs::is_blank(run.font_size)
+                        && self.fonts[run.font_id.0]
+                            .fallback_key
+                            .as_ref()
+                            .and_then(FontFallbacks::size_adjustment)
+                            .is_some()
+                    {
+                        adjusted.push(size_adjust::AdjustedRun {
+                            start: u16_at,
+                            len: len16,
+                            font: run.font_id,
+                            size: run.font_size.as_f32(),
+                        });
                     }
                     u8_at += run.len;
                     u16_at += len16;
@@ -861,11 +871,8 @@ impl DirectWriteState {
                         &components.locale,
                     )?
                     .cast()?;
-                let fallbacks = if adjust_fallbacks {
-                    Some(size_adjust::for_layout(self, components, text, font_runs)?)
-                } else {
-                    self.layout_fallbacks(components, font_runs)?
-                };
+                let fallbacks = self.layout_fallbacks(components, font_runs)?;
+
                 if let Some(fallbacks) = fallbacks {
                     format.SetFontFallback(&fallbacks)?;
                 }
@@ -968,6 +975,9 @@ impl DirectWriteState {
                     text_range,
                 )?;
                 text_layout.SetTypography(&font_info.features, text_range)?;
+            }
+            if !adjusted.is_empty() {
+                self.pin_adjusted_faces(components, &text_layout, text_wide, &adjusted)?;
             }
 
             // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО

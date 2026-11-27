@@ -127,3 +127,29 @@ fn normalization_stays_in_its_own_run() -> Result<()> {
     assert_ne!(sizes[0], sizes[1]);
     Ok(())
 }
+#[test]
+fn covered_characters_keep_the_primary_face_at_the_run_size() -> Result<()> {
+    let system = system()?;
+    let fallback = system.font_id(&gpui::font("Lilex"))?;
+    let mut font = gpui::font("IBM Plex Sans");
+    font.fallbacks = Some(
+        FontFallbacks::from_fonts(vec!["Lilex".into()]).with_size_adjustment(FontSizeAdjustment {
+            metric: FontSizeMetric::XHeight,
+            aspect: 1.0,
+        }),
+    );
+    let adjusted = system.font_id(&font)?;
+    let fallback_aspect = {
+        let state = system.state.read();
+        let info = &state.fonts[fallback.0];
+        let face = unsafe { info.font_collection.GetFontFromFontFace(&info.font_face)? };
+        aspect(&face, FontSizeMetric::XHeight)?
+    };
+    let line = system.layout_line("aǪa", px(20.), &[run(adjusted, "aǪa", 20.)]);
+    let sizes: Vec<_> = line.runs.iter().map(|run| run.font_size).collect();
+    assert_eq!(
+        sizes,
+        vec![px(20.), px(20. * (1.0 / fallback_aspect)), px(20.)]
+    );
+    Ok(())
+}

@@ -1,103 +1,205 @@
-//! CSS Fonts 5: normalize every selected fallback face before native shaping.
+//! CSS Fonts 5 font-size-adjust: each fallback face of a normalized run is
+//! selected before shaping and pinned as its own format range at its used size.
+//!
+//! DirectWrite applies one font fallback to the whole layout and keys it by
+//! the base family, so two runs of one family cannot carry different
+//! normalizations through it. Selecting the faces here makes each pinned
+//! range a shaping boundary of its own, as with any change of face or size.
 
 use super::*;
 
-struct Range {
-    end: u32,
-    adjustment: Option<FontSizeAdjustment>,
-    fallback: Option<IDWriteFontFallback>,
+/// A UTF-16 range of one run that asks for metric normalization.
+pub(super) struct AdjustedRun {
+    pub(super) start: u32,
+    pub(super) len: u32,
+    pub(super) font: FontId,
+    pub(super) size: f32,
 }
 
-#[implement(IDWriteFontFallback)]
-struct AdjustedFallback {
-    inner: IDWriteFontFallback,
-    ranges: Vec<Range>,
-}
-
-/// Constructed only when a run requests metric normalization.
-pub(super) fn for_layout(
-    state: &DirectWriteState,
-    components: &DirectWriteComponents,
-    text: &str,
-    runs: &[FontRun],
-) -> Result<IDWriteFontFallback> {
-    let mut at = 0;
-    let mut end = 0;
-    let ranges = runs
-        .iter()
-        .map(|run| {
-            let part = text.get(at..at + run.len).unwrap_or("");
-            at += run.len;
-            end += part.encode_utf16().count() as u32;
-            let font = &state.fonts[run.font_id.0];
-            Range {
-                end,
-                adjustment: font
-                    .fallback_key
-                    .as_ref()
-                    .and_then(FontFallbacks::size_adjustment),
-                fallback: font.fallbacks.clone(),
-            }
-        })
-        .collect();
-    let inner = unsafe { components.factory.GetSystemFontFallback()? };
-    Ok(AdjustedFallback { inner, ranges }.into())
+/// The line text as analysis input for face selection.
+#[implement(IDWriteTextAnalysisSource)]
+struct Source {
+    text: Vec<u16>,
+    locale: HSTRING,
 }
 
 #[allow(non_snake_case)]
-impl IDWriteFontFallback_Impl for AdjustedFallback_Impl {
-    fn MapCharacters(
+impl IDWriteTextAnalysisSource_Impl for Source_Impl {
+    fn GetTextAtPosition(
         &self,
-        source: Ref<'_, IDWriteTextAnalysisSource>,
         position: u32,
-        length: u32,
-        collection: Ref<'_, IDWriteFontCollection>,
-        family: &PCWSTR,
-        weight: DWRITE_FONT_WEIGHT,
-        style: DWRITE_FONT_STYLE,
-        stretch: DWRITE_FONT_STRETCH,
-        mapped_length: *mut u32,
-        mapped_font: OutRef<'_, IDWriteFont>,
-        scale: *mut f32,
+        text: *mut *mut u16,
+        length: *mut u32,
     ) -> windows::core::Result<()> {
-        let range = self
-            .ranges
-            .get(self.ranges.partition_point(|range| range.end <= position));
-        let length = range.map_or(length, |range| length.min(range.end - position));
-        let inner = range
-            .and_then(|range| range.fallback.as_ref())
-            .unwrap_or(&self.inner);
-        let mut font = None;
-        // COM keeps the input interfaces alive; DirectWrite supplies valid out
-        // pointers. A mapping must not extend into the next CSS run.
+        let rest = self.text.get(position as usize..).unwrap_or(&[]);
+        // DirectWrite supplies valid out pointers; the text outlives the call.
         unsafe {
-            inner.MapCharacters(
-                source.as_ref(),
-                position,
-                length,
-                collection.as_ref(),
-                *family,
-                weight,
-                style,
-                stretch,
-                mapped_length,
-                &mut font,
-                scale,
-            )?;
-            if let (Some(font), Some(adjustment)) =
-                (font.as_ref(), range.and_then(|range| range.adjustment))
-            {
-                let aspect = aspect(font, adjustment.metric)?;
-                if aspect > 0.0 && adjustment.aspect.is_finite() && adjustment.aspect > 0.0 {
-                    // Replace the system em scale: u = (m / m') s.
-                    *scale = adjustment.aspect / aspect;
-                }
-            }
+            *text = if rest.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                rest.as_ptr() as *mut u16
+            };
+            *length = rest.len() as u32;
         }
-        mapped_font.write(font)
+        Ok(())
+    }
+
+    fn GetTextBeforePosition(
+        &self,
+        position: u32,
+        text: *mut *mut u16,
+        length: *mut u32,
+    ) -> windows::core::Result<()> {
+        let head = &self.text[..(position as usize).min(self.text.len())];
+        unsafe {
+            *text = if head.is_empty() {
+                std::ptr::null_mut()
+            } else {
+                head.as_ptr() as *mut u16
+            };
+            *length = head.len() as u32;
+        }
+        Ok(())
+    }
+
+    fn GetParagraphReadingDirection(&self) -> DWRITE_READING_DIRECTION {
+        DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+    }
+
+    fn GetLocaleName(
+        &self,
+        position: u32,
+        length: *mut u32,
+        locale: *mut *mut u16,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            *length = (self.text.len() as u32).saturating_sub(position);
+            *locale = self.locale.as_ptr() as *mut u16;
+        }
+        Ok(())
+    }
+
+    fn GetNumberSubstitution(
+        &self,
+        position: u32,
+        length: *mut u32,
+        substitution: OutRef<'_, IDWriteNumberSubstitution>,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            *length = (self.text.len() as u32).saturating_sub(position);
+        }
+        substitution.write(None)
     }
 }
 
+impl DirectWriteState {
+    /// Pins every fallback face that a normalized run selects. The face keeps
+    /// its own weight, style and stretch; its size is `u = (m / m') s`.
+    pub(super) fn pin_adjusted_faces(
+        &self,
+        components: &DirectWriteComponents,
+        layout: &IDWriteTextLayout,
+        text: &[u16],
+        runs: &[AdjustedRun],
+    ) -> Result<()> {
+        let source: IDWriteTextAnalysisSource = Source {
+            text: text.to_vec(),
+            locale: components.locale.clone(),
+        }
+        .into();
+        for run in runs {
+            let info = &self.fonts[run.font.0];
+            let Some(adjustment) = info
+                .fallback_key
+                .as_ref()
+                .and_then(FontFallbacks::size_adjustment)
+            else {
+                continue;
+            };
+            if !(adjustment.aspect.is_finite() && adjustment.aspect > 0.0) {
+                continue;
+            }
+            unsafe {
+                let fallback = match &info.fallbacks {
+                    Some(fallback) => fallback.clone(),
+                    None => components.factory.GetSystemFontFallback()?,
+                };
+                let collection: IDWriteFontCollection = info.font_collection.cast()?;
+                let weight = info
+                    .layout_weight
+                    .unwrap_or_else(|| info.font_face.GetWeight());
+                let style = info.font_face.GetStyle();
+                let stretch = info.font_face.GetStretch();
+                let end = run.start + run.len;
+                let mut at = run.start;
+                while at < end {
+                    let mut mapped = 0;
+                    let mut font = None;
+                    let mut scale = 1.0;
+                    fallback.MapCharacters(
+                        &source,
+                        at,
+                        end - at,
+                        &collection,
+                        PCWSTR(info.font_family_h.as_ptr()),
+                        weight,
+                        style,
+                        stretch,
+                        &mut mapped,
+                        &mut font,
+                        &mut scale,
+                    )?;
+                    let mapped = mapped.clamp(1, end - at);
+                    if let Some(font) = font {
+                        let face = font.CreateFontFace()?;
+                        let primary: IDWriteFontFace5 = info.font_face.cast()?;
+                        if !primary.Equals(&face).as_bool() {
+                            let aspect = aspect(&font, adjustment.metric)?;
+                            if aspect > 0.0 {
+                                let range = DWRITE_TEXT_RANGE {
+                                    startPosition: at,
+                                    length: mapped,
+                                };
+                                pin(layout, &font, run.size * (adjustment.aspect / aspect), range)?;
+                            }
+                        }
+                    }
+                    at += mapped;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The selected face as an explicit range: DirectWrite resolves the same
+/// family, weight, style and stretch in the face's own collection.
+unsafe fn pin(
+    layout: &IDWriteTextLayout,
+    font: &IDWriteFont,
+    size: f32,
+    range: DWRITE_TEXT_RANGE,
+) -> windows::core::Result<()> {
+    unsafe {
+        let family = font.GetFontFamily()?;
+        let names = family.GetFamilyNames()?;
+        let mut index = 0;
+        let mut exists = BOOL(0);
+        names.FindLocaleName(w!("en-us"), &mut index, &mut exists)?;
+        if !exists.as_bool() {
+            index = 0;
+        }
+        let mut name = vec![0u16; names.GetStringLength(index)? as usize + 1];
+        names.GetString(index, &mut name)?;
+        layout.SetFontCollection(&family.GetFontCollection()?, range)?;
+        layout.SetFontFamilyName(PCWSTR(name.as_ptr()), range)?;
+        layout.SetFontWeight(font.GetWeight(), range)?;
+        layout.SetFontStyle(font.GetStyle(), range)?;
+        layout.SetFontStretch(font.GetStretch(), range)?;
+        layout.SetFontSize(size, range)?;
+    }
+    Ok(())
+}
 fn aspect(font: &IDWriteFont, metric: FontSizeMetric) -> windows::core::Result<f32> {
     use FontSizeMetric::*;
     let mut metrics = DWRITE_FONT_METRICS::default();
