@@ -24,6 +24,7 @@ interface PermissionStoreSchema {
 const TOOL_CATEGORIES: Record<string, ToolCategory> = {
   // Read-only (auto-allow)
   Read: 'read-only',
+  ListWorkspaceSkills: 'read-only',
   Glob: 'read-only',
   Grep: 'read-only',
   ToolSearch: 'read-only',
@@ -136,7 +137,7 @@ export class PermissionManager {
    * Get the category for a tool.
    */
   getToolCategory(toolName: string): ToolCategory {
-    return TOOL_CATEGORIES[toolName] || 'shell' // Unknown tools default to most restrictive
+    return Object.hasOwn(TOOL_CATEGORIES, toolName) ? TOOL_CATEGORIES[toolName]! : 'shell' // Unknown tools default to most restrictive
   }
 
   /**
@@ -147,19 +148,19 @@ export class PermissionManager {
    * 2. Persisted rule (stored in the bridge JSON store)
    * 3. Category default
    */
-  checkPermission(toolName: string, _input: Record<string, unknown>): PermissionDecision {
+  checkPermission(toolName: string, _input: Record<string, unknown>, acceptFileEdits = false): PermissionDecision {
     // 1. Session override
     const sessionDecision = this.sessionRules.get(toolName)
     if (sessionDecision) return sessionDecision
 
     // 2. Persisted rule
     const rules = this.store.get('rules')
-    const persistedRule = rules[toolName]
+    const persistedRule = Object.hasOwn(rules, toolName) ? rules[toolName] : undefined
     if (persistedRule) return persistedRule.decision
 
     // 3. Category default
     const category = this.getToolCategory(toolName)
-    return CATEGORY_DEFAULTS[category]
+    return acceptFileEdits && category === 'write' ? 'allow' : CATEGORY_DEFAULTS[category]
   }
 
   /**

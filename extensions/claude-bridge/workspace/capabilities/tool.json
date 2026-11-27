@@ -16,6 +16,7 @@
   {"id":"tool:KillShell","status":"supported-in-browser-host","provider":"shared-host","handler":"killBackgroundShell","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:LspDefinition","status":"supported-in-browser-host","provider":"shared-host","handler":"lspDefinition","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:LspDiagnostics","status":"supported-in-browser-host","provider":"shared-host","handler":"lspDiagnostics","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
+  {"id":"tool:ListWorkspaceSkills","status":"supported-in-browser-host","provider":"shared-host","handler":"listWorkspaceSkills","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:LspHover","status":"supported-in-browser-host","provider":"shared-host","handler":"lspHover","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:LspReferences","status":"supported-in-browser-host","provider":"shared-host","handler":"lspReferences","sources":{"extension/src/main/mcp/tool-registry.ts":1}},
   {"id":"tool:NotebookEdit","status":"supported-in-browser-host","provider":"shared-host","handler":"notebookEdit","sources":{"extension/src/main/mcp/tool-registry.ts":1}},

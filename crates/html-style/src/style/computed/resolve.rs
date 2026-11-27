@@ -14,6 +14,7 @@ mod font_size;
 mod glyph_units;
 mod len_cx;
 mod len_px;
+mod math_lengths;
 mod unit_change;
 mod unit_lengths;
 mod used_font;

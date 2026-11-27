@@ -161,7 +161,11 @@ impl RootView {
             }
             ShellEvent::Ed(EdEvent::OpenFileAt(path, line)) => {
                 self.reveal_file_panel();
-                host_link::request_read_file(self.tx.clone(), path, Some(line));
+                host_link::request_read_file(self.tx.clone(), path, Some((line, 1)));
+            }
+            ShellEvent::Ed(EdEvent::OpenTextLocation(path, line, column)) => {
+                self.reveal_file_panel();
+                host_link::request_read_file(self.tx.clone(), path, Some((line, column)));
             }
             ShellEvent::Ed(EdEvent::FileOpened(path, text, target)) => {
                 // Успешное чтение снимает прежнюю карточку ошибки
@@ -171,8 +175,8 @@ impl RootView {
                 // Уже открыт → просто активировать таб (как оригинал);
                 // иначе создать в render (нужен window). target = строка
                 // из поиска → goto в render (scroll-to-line).
-                if let Some(line) = target {
-                    self.ed.pending_goto = Some((path.clone(), line));
+                if let Some((line, column)) = target {
+                    self.ed.pending_goto = Some((path.clone(), line, column));
                 }
                 if let Some(i) = self.ed.editor_tabs.iter().position(|t| t.path == path) {
                     self.ed.editor_active = i;

@@ -59,7 +59,7 @@ describe('sessions bridge: chat engine per KaminIDE session', () => {
     })
     await f.bridge.openAgentChat('codex', 'gpt-5.5')
     expect(k.createSession).toHaveBeenCalledWith({ projectId: 'p1' })
-    expect(f.tm.createTab).toHaveBeenCalledWith({ serverUrl: 'ws://synthetic', token: 'synthetic', cwd: 'C:/work', engine: 'codex', model: 'gpt-5.5' })
+    expect(f.tm.createTab).toHaveBeenCalledWith({ serverUrl: 'ws://synthetic', token: 'synthetic', cwd: 'C:/work', engine: 'codex', model: 'gpt-5.5' }, { workspacePermission: undefined })
     expect(k.updateSession).toHaveBeenCalledWith('fresh', { metadata: { bridge: { conversationId: null, cwd: null, engine: 'codex', model: 'gpt-5.5' } } })
     expect(k.setActiveSession).toHaveBeenCalledWith('fresh')
   })
@@ -73,13 +73,13 @@ describe('sessions bridge: chat engine per KaminIDE session', () => {
   it('a new session without a stored engine opens on the main agent', () => {
     const f = fixture('codex')
     f.onActive({ id: 's1', projectId: 'p1', metadata: {} })
-    expect(f.tm.createTab).toHaveBeenCalledWith({ serverUrl: 'ws://synthetic', token: 'synthetic', cwd: 'C:/work', engine: 'codex' })
+    expect(f.tm.createTab).toHaveBeenCalledWith({ serverUrl: 'ws://synthetic', token: 'synthetic', cwd: 'C:/work', engine: 'codex' }, { workspacePermission: undefined })
   })
 
   it('a session with a conversation resumes with its stored engine as a hint', () => {
     const f = fixture('claude')
     f.onActive({ id: 's2', projectId: 'p1', name: 'GPT chat', metadata: { bridge: { conversationId: 'conv-1', engine: 'codex' } } })
-    expect(f.tm.resumeSession).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', engine: 'codex' }))
+    expect(f.tm.resumeSession).toHaveBeenCalledWith(expect.objectContaining({ conversationId: 'conv-1', engine: 'codex' }), { workspacePermission: undefined })
     expect(f.tm.createTab).not.toHaveBeenCalled()
   })
 })

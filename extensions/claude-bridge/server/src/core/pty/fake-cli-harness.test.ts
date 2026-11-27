@@ -7,6 +7,7 @@ import http from 'node:http'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { once } from 'node:events'
 import { fakeCliPath } from './dev-cli'
+import { repairJsonlTail } from './jsonl-repair'
 import { JsonlWatcher, computeProjectSlug } from './jsonl-watcher'
 import { projectSlug, usageLayouts } from '../../../test-support/fixtures.mjs'
 import { seedPluginFixture } from '../../../test-support/plugin-fixture.mjs'
@@ -23,7 +24,7 @@ function sandbox() {
   fs.mkdirSync(cwd)
   return {
     root,
-    cwd,
+    cwd: fs.realpathSync(cwd),
     env: {
       ...process.env,
       NODE_ENV: 'test',
@@ -99,6 +100,46 @@ describe('credential-free fake Claude', () => {
     await expect.poll(() => cli.errors()).toContain('Only loopback')
     expect(entries(s).some((e) => e.message?.content?.[0]?.type === 'tool_result')).toBe(false)
   })
+  it.each([
+    { flags: ['--dangerously-skip-permissions'], expected: 'bypassPermissions' },
+    { flags: ['--permission-mode', 'default'], expected: 'default' },
+    { flags: ['--permission-mode', 'plan'], expected: 'plan' },
+    { flags: ['--permission-mode', 'acceptEdits'], expected: 'acceptEdits' },
+    { flags: [], expected: undefined },
+  ])('relays the launched permission flag on turn hooks: $flags', async ({ flags, expected }) => {
+    const s = sandbox()
+    Object.assign(s.env, { BRIDGE_FAKE_CLI_PERMISSION_RECEIPTS: '1' })
+    const events: Array<{ event: string; mode?: string }> = []
+    const server = http.createServer(async (req, res) => {
+      const chunks: Buffer[] = []
+      for await (const chunk of req) chunks.push(chunk)
+      const body = JSON.parse(Buffer.concat(chunks).toString())
+      events.push({ event: body.hook_event_name, mode: body.permission_mode })
+      res.end('{}')
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    cleanups.push(() => new Promise<void>((done) => server.close(() => done())))
+    const { port } = server.address() as { port: number }
+    const names = ['SessionStart', 'UserPromptSubmit', 'Stop']
+    const hooks = Object.fromEntries(
+      names.map((event) => [event, [{ hooks: [{ args: [`http://127.0.0.1:${port}/api/hooks/test/${event}/1`] }] }]]),
+    )
+    const settings = path.join(s.cwd, 'hooks.json')
+    fs.writeFileSync(settings, JSON.stringify({ hooks }))
+    const cli = launch(s, [...flags, '--settings', settings])
+    await expect.poll(() => events.length).toBe(1)
+    const started = Date.now()
+    await command(cli.child, s, '/fake-note mode')
+    expect(events).toEqual(names.map((event) => ({ event, mode: event === 'SessionStart' ? undefined : expected })))
+    const answer = entries(s).at(-1)
+    expect(answer.message.stop_reason).toBe('end_turn')
+    const file = path.join(s.root, '.claude/projects', computeProjectSlug(s.cwd), answer.sessionId + '.jsonl')
+    expect((await repairJsonlTail(file)).repaired).toBe(false)
+    expect(Date.parse(answer.timestamp)).toBeGreaterThanOrEqual(started)
+    expect(cli.output()).toContain('app=claude-code:state=idle')
+  })
+
   it('matches short and hashed CLI project slugs', () => {
     for (const p of [path.resolve('x'), path.resolve('x'.repeat(250))])
       expect(projectSlug(p)).toBe(computeProjectSlug(p))

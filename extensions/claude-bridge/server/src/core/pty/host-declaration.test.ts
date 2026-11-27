@@ -145,6 +145,24 @@ describe('tools/list serves exactly the declared built-in tools', () => {
   })
 })
 
+describe('text skill catalog capability', () => {
+  it('only advertises and routes the catalog to an explicitly capable Codex session', async () => {
+    const catalog = 'ListWorkspaceSkills'
+    const host = declare(['Read', catalog], 'win32', 'test host')
+    session.engine = 'codex'
+    expect(builtin(await listed(host))).toEqual(['Read', catalog])
+    expect((await request('tools/call', { name: catalog })).status).toBe(200)
+    for (const older of [undefined, declare(['Read'], 'win32', 'old'), declare([catalog], 'linux', 'without Read')]) {
+      expect(builtin(await listed(older))).not.toContain(catalog)
+      expect((await request('tools/call', { name: catalog })).status).toBe(400)
+    }
+    session.engine = 'claude'
+    expect(builtin(await listed(host))).not.toContain(catalog)
+    expect((await request('tools/call', { name: catalog })).status).toBe(400)
+    expect(mocks.call).toHaveBeenCalledOnce()
+  })
+})
+
 describe('tools/call', () => {
   it('rejects an undeclared built-in tool with the reason and never forwards it', async () => {
     session.host = linuxNoPwsh

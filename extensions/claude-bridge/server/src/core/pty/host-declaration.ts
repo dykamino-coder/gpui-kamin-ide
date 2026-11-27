@@ -10,6 +10,19 @@ export type { HostDeclaration }
 
 type McpTool = (typeof MCP_TOOLS)[number]
 
+/** Older hosts retain their native skill behavior. This optional catalog needs
+ * an explicit host implementation and the normal client Read tool. */
+export const WORKSPACE_SKILLS_TOOL = {
+  name: 'ListWorkspaceSkills',
+  description:
+    'List the model-invocable text skills of this client, project and its enabled plugins. Use Read on a returned file_path for the complete instructions.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+}
+
+export function hasWorkspaceSkills(engine?: string, host?: HostDeclaration): boolean {
+  return engine === 'codex' && !!host?.tools.includes(WORKSPACE_SKILLS_TOOL.name) && host.tools.includes('Read')
+}
+
 const PLATFORM_LABELS: Record<string, string> = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' }
 const SHELL_TOOLS = ['Bash', 'PowerShell']
 const DEFAULT_PLACE = 'the client host'
@@ -32,7 +45,7 @@ export function normalizeHostDeclaration(raw: unknown): HostDeclaration | undefi
   const declared = new Set(input.tools.filter((name): name is string => typeof name === 'string'))
   const platform = phrase(input.platform, 32)
   return {
-    tools: MCP_TOOLS.map((tool) => tool.name).filter((name) => declared.has(name)),
+    tools: [...MCP_TOOLS.map((tool) => tool.name), WORKSPACE_SKILLS_TOOL.name].filter((name) => declared.has(name)),
     platform: /^[A-Za-z0-9_.-]+$/.test(platform) ? platform : 'unknown',
     place: phrase(input.place, 80) || DEFAULT_PLACE,
     ...(typeof input.home === 'string' && input.home ? { home: input.home } : {}),

@@ -60,3 +60,20 @@ still required for the CLI-side proxy snapshot and hook registry to change.
 - Channels are not exposed by this bridge. They are a research-preview,
   session-scoped stdio MCP notification surface and require a dedicated direct
   CLI transport rather than the current external-tool proxy.
+
+## Text skills in Codex
+
+On a client declaring both `ListWorkspaceSkills` and `Read`, a Codex thread
+receives instructions to discover matching skills. The catalog resolves the
+owning connection's project, its user's skills, and enabled installed plugins
+on that host. Each query reflects the current installation and settings. An
+eligible entry names its source and client-side file. The model retrieves that
+file and any references through the ordinary permission-checked client tools.
+The app-server's shared home stores no client skill files.
+
+Project entries shadow same-directory-name user entries. Project-scoped
+plugin installations are available only in the matching project. Entries
+marked for user-only invocation, or requiring Claude-specific hooks, tool
+restrictions, model selection, dynamic shell expansion or forked execution
+stay with the native Claude skill runtime. Reading and applying plain text in a
+real model turn requires separate deployment acceptance.

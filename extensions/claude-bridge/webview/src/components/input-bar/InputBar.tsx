@@ -5,7 +5,7 @@ import { useSlashAutocomplete } from '../../hooks/useSlashAutocomplete'
 import { useInputHistory } from '../../hooks/useInputHistory'
 import { useClipboardPaste } from '../../hooks/useClipboardPaste'
 import { useVoiceInput } from '../../hooks/useVoiceInput'
-import { mcpLoading, tabPromptReady } from '../../signals/connection'
+import { tabPromptReady } from '../../signals/connection'
 import { tabWorking, tabHibernation, setTabHibernation } from '../../signals/ui'
 import { activeTabId, tabs } from '../../signals/tabs'
 import { sessionBindingPending } from '../../signals/session-binding'
@@ -22,6 +22,7 @@ import { InputControls } from './InputControls'
 import { SlashAutocomplete } from './SlashAutocomplete'
 import { ScrollDownPill } from './ScrollDownPill'
 import { ActiveFileStatusBar } from './ActiveFileStatusBar'
+import { SESSION_LIMIT_NOTICE, waitingForSessionSlot } from '../../lib/session-admission'
 import { UsageLimitsRow } from './UsageLimitsRow'
 import { useTabSend } from './useTabSend'
 import { NOT_CONNECTED_WARNING, sendGate } from './send-gate'
@@ -56,13 +57,13 @@ export function InputBar(): JSX.Element {
     }).catch(() => {})
   }, [])
 
-  const mcp = mcpLoading.value
   const tabId = activeTabId.value
   // Server's promptReady flag is authoritative — the xterm AND-gate experiment
   // produced false negatives (Stop button stuck on idle sessions). Kept the
   // signal for potential future use, but don't block Send on it.
   const isPromptReady = tabId ? (tabPromptReady.value.get(tabId) ?? false) : false
   const tab = tabs.value.find(t => t.id === tabId)
+  const atSessionLimit = waitingForSessionSlot(tab)
   const connStatus = tab?.status ?? 'disconnected'
   const isDisconnected = connStatus === 'disconnected' || connStatus === 'error' || connStatus === 'connecting'
   // CLI sometimes flips promptReady back to true between turns while the
@@ -70,7 +71,7 @@ export function InputBar(): JSX.Element {
   // active activity spinner as "busy" too — otherwise the send-arrow returns
   // and the user has no way to interrupt a long think.
   const isActivityWorking = tabId ? (tabWorking.value.get(tabId) ?? false) : false
-  const isBusy = !isDisconnected && (!isPromptReady || mcp || isActivityWorking)
+  const isBusy = !isDisconnected && (!isPromptReady || isActivityWorking)
   // The chat still shows the PREVIOUS session while a big one replays, but
   // `activeTabId` already points at the new one. Sending in that window delivers
   // the message to a session the user cannot see — so hold until the view and
@@ -100,7 +101,7 @@ export function InputBar(): JSX.Element {
   }
 
   function handleButtonClick(): void {
-    if (!tabId || tab?.resumeNotFound) return
+    if (!tabId || tab?.resumeNotFound || atSessionLimit) return
     // Stop must work even while the transcript is still downloading — a resumed
     // session can be mid-generation during that 15-20s window, which is exactly
     // when interrupting matters most. Only SEND is gated below.
@@ -217,6 +218,7 @@ export function InputBar(): JSX.Element {
         onNew={() => bridge.chooseNewConversation(tabId)}
         onRetry={() => bridge.retryStoredConversation(tabId)}
       />}
+      {atSessionLimit && <div role="status" class="session-limit-notice"><strong>Session limit reached.</strong> {SESSION_LIMIT_NOTICE}</div>}
       <ScrollDownPill />
       <ActiveFileStatusBar />
       <div class="input-wrapper">
@@ -230,11 +232,11 @@ export function InputBar(): JSX.Element {
             onKeyDown={handleKeyDown}
             onPaste={onPaste}
           />
-          <SendButton mode={sendMode} queueCount={qCount} onClick={handleButtonClick} />
+          {!atSessionLimit && <SendButton mode={sendMode} queueCount={qCount} onClick={handleButtonClick} />}
         </div>
-        <InputControls />
+        {!atSessionLimit && <InputControls />}
       </div>
-      <UsageLimitsRow />
+      {!atSessionLimit && <UsageLimitsRow />}
       <SlashAutocomplete
         query={slashState.query}
         matches={slashState.matches}

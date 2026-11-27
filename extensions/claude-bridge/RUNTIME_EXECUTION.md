@@ -46,20 +46,39 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
+## Целевая пачка `RC-2026-11-27-BRIDGE-INTEGRATION`
+
+Исходный срез после 1.0.131 / 6.3.208 зафиксирован в [#1244](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1244) на `c239fbfccb58901d5101c2014a40c59c7e1d1aab`. Пачка охватывает запуск инструментов, изоляцию настроек по чатам и приёмку клиента. Исполнитель ведёт один согласованный выпуск клиента и Bridge. HTML и GPUI performance остаются в очереди их авторов.
+
+| INC | Результат и порядок | Проверка и состояние при регистрации |
+| --- | --- | --- |
+| 0131, 0146, 0147 | Позднее сообщение прежнего CLI; обнаружение текстовых skills; запуск разрешённых MCP при входе | #1244, #1245, #1251 в main. Проверки жизненного цикла, каталогов и первого обращения к MCP |
+| 0144 | Отдельный ручной workflow Windows, временный профиль и loopback Bridge | #1243. Требуются процесс GPUI, готовность CEF, Extension Host и результат операции через Bridge. Проверка установки выпущенной сборки учитывается отдельно |
+| 0145 | Защитные hooks для поддерживаемых workspace tools в Codex | #1253. Изоляция проекта, блокировка операции при отказе и проверка реального дочернего процесса на Windows |
+| 0148 | Открытие ссылок из чата в редакторе | #1252. Проверки пути и позиции плюс клик в CEF и наблюдение открытой позиции в Windows |
+| 0149, 0150, 0151 | Видимость Stop, диагностика WebFetch и прекращение повторов после постоянного отказа stdio | #1254, #1255, #1256. Переходы состояния хода, синтетический транспорт и повторное обнаружение |
+| 0141, 0152 | Причина отказа при подключении и окна квоты основного аккаунта | #1258, #1259. Последовательность кодов закрытия и выбор окна при наличии нескольких buckets |
+| 0143 | Меню активного движка, подтверждённый режим Claude и отдельные разрешения workspace tools | #1257 и связанное изменение Bridge. Проверяются переключение в обе стороны, сохранение режима в пределах чата и независимость подтверждений инструментов |
+| 0079, 0037, 0129–0132 | Повторная приёмка ранее зарегистрированных наблюдений | Сохраняются критерии исходных карточек. Полевые outcomes требуют проверки в соответствующем окружении |
+
+Сначала проходят проверки отдельных изменений. Проверки нативного интерфейса привязаны к проверяемой сборке. После сверки состава выпуска мейнтейнер проверяет установщик Windows и соответствие образа Bridge release commit. Состояние публикации и фактические результаты приёмки фиксируются отдельно.
+
 ## Целевая пачка `RC-2026-11-26-BRIDGE-INTEGRATION`
+
+Published in [kaminide-v1.0.130](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.130). Deployment observations remain with the owner.
 
 Срез `9add363b0e8957d63488f8af09905700a5757305`, релиз 1.0.129 / 6.3.206.
 Владелец поручил автору регистрации подготовить исправления интеграции и один релиз. Рендеринг и прежние пачки ведутся отдельно. В момент сверки открытые публичные PR касались HTML, GPUI и производительности. У приватных PR #141, #147 и #150 другой scope.
 
 | Очерёдность | Artifact | Приёмка |
 | --- | --- | --- |
-| INC-0133, [Diagnostic PR #1219](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1219) | Сохранение контекста после пустого промежуточного сегмента | Синтетический engine switch в обе стороны |
-| INC-0134 | Параметр effort принятого Codex turn в Console и JSONL | Resume, смена уровня и сверка с turn/start. Учитывать steer и отказ RPC |
-| INC-0135 | Клиентский каталог MCP при старте сеанса | Первый tools/list во время запуска, повторное открытие и переход между движками |
-| INC-0136, [#1224](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1224) | Информационный stderr останавливал работающий stdio connector | Дочерний процесс с INFO отвечает на initialize и tools/list, контроль с ошибкой завершает работу |
-| INC-0137, [#1225](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1225) | Список уровней Codex и валидация по модели | Ограниченный model/list, значения Max и Extra high, следующий ход после смены модели |
-| INC-0138, [#1226](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1226) | Панель Active Hooks следит за подключением выбранной вкладки | Mount до подключения, смена session и запоздалый ответ |
-| INC-0139, [#1227](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1227) | Команда /status в чате Codex | Ответ Bridge и квитанция без модельного хода, обычный текст с упоминанием команды по-прежнему доходит до модели |
+| INC-0133, [#1223](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1223) merged | Engine switch history preserves authorship | both switch directions and original answers. Deployment owner to switch in both directions in one disposable chat. |
+| INC-0134, [#1222](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1222) merged | Console and JSONL show requested Codex turn effort | resumed RPC and real 0.170.0 CLI with a mock HTTP provider. Deployment owner to compare new and resumed turns at different selected levels. |
+| INC-0135, [#1221](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1221) merged | First discovery includes available client MCP tools | first tools/list on create, resume and switch. Deployment owner to find a test tool on the first turn. |
+| INC-0136, [#1224](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1224) merged | Informational stderr no longer stops a healthy stdio peer | real child handshake and repeated connection error control. Deployment owner to connect a permitted peer and list its tools. |
+| INC-0137, [#1225](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1225) merged | Codex effort selection follows the model catalog | filtered catalog, native and legacy Max, rejected change and next turn. Deployment owner to compare the picker with model/list and restore the selected effort. |
+| INC-0138, [#1226](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1226) merged | Active Hooks follows the selected connected chat | panel mount, late connection, tab switch and delayed reply. Deployment owner to open Customize before connecting and switch between chats. |
+| INC-0139, [#1227](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1227) merged | Codex chat handles /status locally | local status receipt without a model turn and ordinary text pass-through. Deployment owner to send /status in a disposable Codex chat. |
 | INC-0037, 0079, 0124, 0129–0132 и остальные наблюдения интеграции | Сопоставить старые результаты с опубликованной версией, сохранить действующие gates | Владелец стенда подтверждает сценарии, требующие Windows, провайдера или рабочего сетевого маршрута |
 
 Сначала принимается регистрация. Изменения общих путей запуска и тестовых сценариев сливаются последовательно. После доступных исправлений автор сверяет карточки, выполняет release flow, передаёт номер релиза и критерии проверки владельцу. У прежней пачки сохраняются её исполнители и остаточные gates.

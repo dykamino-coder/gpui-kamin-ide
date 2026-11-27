@@ -5,7 +5,7 @@ export interface SessionUsageWindow {
   label: string
   percent: number
   /** ISO reset time */
-  resetsAt: string
+  resetsAt: string | null
 }
 /** Live subscription limits + context fill from the CLI status line. */
 export interface SessionUsage {
@@ -135,7 +135,13 @@ export interface ConnectionState {
 export type ConnectionRefusal = 'session-limit'
 
 // Tab info for sidebar rendering
+export type WorkspacePermissionMode = 'ask' | 'acceptEdits' | 'readOnly' | 'dontAsk' | 'bypassPermissions'
+
 export interface TabInfo {
+  /** Policy enforced by this tab's workspace host for incoming tool calls. */
+  workspacePermission?: WorkspacePermissionMode
+  claudePermissions?: { available: string[]; selected?: string; requested?: string; reason?: string }
+  codexCollaboration?: { selected: 'default' | 'plan'; available: ('default' | 'plan')[] }
   id: string
   cwd: string
   label: string // "#1", "#2", etc.
@@ -701,7 +707,10 @@ export interface KaminBridgeApi {
   deleteSessionData(conversationId: string): Promise<void>
 
   // ─── Permissions ────────────────────────────────────
-  changePermissionMode(tabId: string, mode: string): void
+  openPermissionConsole(tabId: string): void
+  changeClaudePermissionMode(tabId: string, sessionId: string, mode: string): void
+  changeCodexCollaboration(tabId: string, sessionId: string, mode: 'default' | 'plan'): void
+  changePermissionMode(tabId: string, mode: string, sessionId?: string): void
 
   // ─── Effort ────────────────────────────────────────
   changeEffort(tabId: string, effort: string): void
