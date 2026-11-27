@@ -228,3 +228,7 @@ impl Computed {
         w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
     }
 }
+
+#[cfg(test)]
+#[path = "radius_mask_tests.rs"]
+mod tests;
