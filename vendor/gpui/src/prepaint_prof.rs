@@ -18,6 +18,7 @@ pub type CostProbe = fn() -> [u64; COSTS];
 pub struct ElementCost {
     /// Nanoseconds outside child elements of the same phase.
     pub self_ns: u64,
+    /// Elements of this type measured.
     pub calls: u32,
     /// Growth of the host counters outside child elements.
     pub self_costs: [u64; COSTS],

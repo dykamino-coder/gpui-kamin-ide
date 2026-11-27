@@ -12617,10 +12617,10 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..f9e896cd4abf44d3a51f15ce6df35281
 +                font_size,
 diff --git a/vendor/gpui/src/prepaint_prof.rs b/vendor/gpui/src/prepaint_prof.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..229c680ab6c09daa74c793a88d2dfc116c90924f
+index 0000000000000000000000000000000000000000..6caf02a817a94f9b1c04ac365f37bcfdd3d611f1
 --- /dev/null
 +++ b/vendor/gpui/src/prepaint_prof.rs
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,139 @@
 +//! KaminIDE patch: self-time of one element phase by element type, owned by
 +//! one application. The host may attach monotonic cost counters; each element
 +//! then also gets the part of their growth that happened outside its children.
@@ -12641,6 +12641,7 @@ index 0000000000000000000000000000000000000000..229c680ab6c09daa74c793a88d2dfc11
 +pub struct ElementCost {
 +    /// Nanoseconds outside child elements of the same phase.
 +    pub self_ns: u64,
++    /// Elements of this type measured.
 +    pub calls: u32,
 +    /// Growth of the host counters outside child elements.
 +    pub self_costs: [u64; COSTS],

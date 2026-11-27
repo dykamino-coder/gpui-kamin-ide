@@ -87,6 +87,7 @@ mod tests {
         assert_eq!(super::running(Counter::StyleGroupClones), 1);
         assert_eq!(super::style_copy_costs(), [1, 24, 0, 0]);
         assert!(session.take_clone_sites().is_empty());
+        assert_eq!((shared[0], copy[0]), (0, 1));
     }
 
     #[test]
