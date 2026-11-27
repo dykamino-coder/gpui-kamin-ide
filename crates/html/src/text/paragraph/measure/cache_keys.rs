@@ -77,6 +77,10 @@ mod tests {
         let split = p.split_key(Some(px(40.)));
         p.indent_basis = Some(px(200.));
         assert_ne!(p.split_key(Some(px(40.))), split);
+        // Prepaint of the laid out box names the limit as its basis: the
+        // layout's split of that limit is the same one.
+        p.indent_basis = Some(px(40.));
+        assert_eq!(p.split_key(Some(px(40.))), split);
     }
 
     #[test]
@@ -143,8 +147,10 @@ impl Paragraph {
             .get_or_init(|| self.split_key_uncached())
             .hash(&mut h);
         limit.map(|l| f32::from(l).to_bits()).hash(&mut h);
-        self.indent_basis
-            .map(|l| f32::from(l).to_bits())
+        // The percentage basis of text-indent as the split reads it
+        // (`line_padding`): an explicit basis equal to the limit is no basis.
+        limit
+            .map(|l| f32::from(self.indent_basis.unwrap_or(l)).to_bits())
             .hash(&mut h);
         h.finish()
     }

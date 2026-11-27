@@ -89,6 +89,8 @@ mod band_value_tests;
 mod record;
 pub(crate) use record::frame_miss_code;
 #[cfg(test)]
+mod line_split_tests;
+#[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
 mod resize_tests;
