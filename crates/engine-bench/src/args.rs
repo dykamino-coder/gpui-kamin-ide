@@ -13,6 +13,7 @@ mod usage;
 pub(super) use usage::USAGE;
 mod surface;
 pub(super) use surface::Surface;
+mod profile;
 mod scale;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

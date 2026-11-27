@@ -4,7 +4,8 @@ pub(crate) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--sca
     engine_bench --list-gpus\n\
     engine_bench --why-compare A B   (what changed between two --why runs: dirs or why.json)\n\
     engine_bench --build-info   (features and profile of this exe, as in the JSON's `build`)\n\
-    Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
+    Default: 800x600, 30 runs per mode, both modes. Windows; release profile for measurements.\n\
+    Debug profiles require --why DIR and are for diagnosis only; JSON build.debug_assertions records this.\n\
     Scale defaults to 1; viewport is CSS pixels, capture is rounded device pixels.\n\
     --root-scroller builds the standalone viewer's root scrollport in any mode.\n\
     --why also keeps progress.json once per second: running intervals and completed pass counts, even during a stalled frame.\n\

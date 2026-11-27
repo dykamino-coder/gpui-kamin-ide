@@ -55,7 +55,9 @@ fn scaled_grid_scrollports_finish_each_document_layout_pass(cx: &mut TestAppCont
             .root_scroll
             .clone()
             .unwrap();
-        assert_eq!(root.handle.bounds().size, viewport);
+        // Native client edges round in device pixels: 1446 * 1.25 is
+        // 1807.5, so the 1808-pixel client is 1446.4 CSS pixels wide.
+        assert_eq!(root.handle.bounds().size, size(px(1808. / 1.25), px(804.)));
     });
 }
 
