@@ -19,6 +19,8 @@ mod measured;
 #[cfg(test)]
 mod oof_tests;
 #[cfg(test)]
+mod static_oof_tests;
+#[cfg(test)]
 mod table_row_tests;
 
 /// Исходное дерево, без LayoutId и изменяемых рекордеров от пробной раскладки.

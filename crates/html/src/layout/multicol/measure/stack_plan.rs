@@ -9,6 +9,7 @@ use crate::layout::fragment::{FlowMargins, with_lines};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::{BoxStyle, Computed, Position};
 use crate::style::values::value::Len;
+mod positioned;
 
 /// Итог меры стопки: всё, что сборка передаёт `multicol_column_stack`.
 pub(crate) struct StackPlan {
@@ -16,6 +17,7 @@ pub(crate) struct StackPlan {
     /// Ширина колонки для раскладки копии таблицы-ребёнка до укладки
     /// (`column_layout_width`).
     pub(crate) layout_col_w: Option<f32>,
+    pub(crate) source: Vec<Element>,
     pub(crate) direct_oof: Vec<Element>,
     pub(crate) oof_static: Vec<(usize, Element)>,
     pub(crate) nested_whole: std::cell::RefCell<Vec<u64>>,
@@ -100,28 +102,6 @@ pub(crate) fn plan_at(
             _ => None,
         })
         .collect();
-    // Позиционированные прямые дети несут МЕСТО В ПОТОКЕ —
-    // номер среди детей, ушедших в стопку: точка статической
-    // позиции лежит В КОЛОНКЕ, а не под стопкой, и взять её
-    // больше неоткуда — раскладка под нами про колонки не
-    // знает. Счёт идёт по тем же детям, что отбирает
-    // `stackable` ниже: непустые и не внепоточные.
-    let oof_static: Vec<(usize, Element)> = {
-        let mut at = 0usize;
-        let mut out: Vec<(usize, Element)> = Vec::new();
-        for n in ge.children.iter().filter(|n| !is_blank(n)) {
-            let Node::Element(c) = n else {
-                at += 1;
-                continue;
-            };
-            if positioned(&c.style.used()) {
-                out.push((at, c.clone()));
-            } else if !out_of_flow(&c.style.used()) {
-                at += 1;
-            }
-        }
-        out
-    };
     // Высота внешнего фрагментаинера для вложенного рядами
     // (`nested_rows_shape`): `column-fill: auto` и блочный размер
     // в точках, без своих рядов.
@@ -238,7 +218,20 @@ pub(crate) fn plan_at(
                 )
             })
         });
+    let oof_static = positioned::statics(ge, stackable.as_deref());
+    let source = if !col_vert && rows.is_none() {
+        ge.children
+            .iter()
+            .filter_map(|n| match n {
+                Node::Element(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
     StackPlan {
+        source,
         line_col_w,
         layout_col_w,
         direct_oof,
