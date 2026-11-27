@@ -3,6 +3,7 @@
 //! builds every scroll step names what it painted (`ScrollRefusal`).
 
 use super::super::{PaintOperation, Scene};
+use super::SceneSpace;
 use crate::{ScrollNodeId, ScrollRefusal};
 use std::ops::Range;
 
@@ -40,7 +41,20 @@ impl Scene {
         if layers != 0 {
             return Err(ScrollRefusal::UnbalancedLayer);
         }
-        nodes.into_iter().try_for_each(|node| self.node_check(&node).map_err(|(refusal, _)| refusal))
+        nodes.into_iter().try_for_each(|node| self.node_check(&node, &|_| false).map_err(|(refusal, _)| refusal))
+    }
+
+    /// `scroll_check` where a node range may also draw a retained layer
+    /// whose scene `still` names: the copy draws it as it was, all it holds
+    /// unmoved (`Window::plan_scrolled_replay`, `scroll_still`).
+    pub(crate) fn scroll_check_still(
+        &self,
+        range: &Range<usize>,
+        nodes: impl Iterator<Item = Range<usize>>,
+        still: &dyn Fn(SceneSpace) -> bool,
+    ) -> Result<(), ScrollRefusal> {
+        self.scroll_check(range, std::iter::empty())?;
+        nodes.into_iter().try_for_each(|node| self.node_check(&node, still).map_err(|(refusal, _)| refusal))
     }
 
     /// The command of the first node range (`nodes`) that refuses a scrolled
@@ -48,7 +62,7 @@ impl Scene {
     /// scroll steps names the paint that holds no node mark.
     pub(crate) fn scroll_refusal_detail(&self, nodes: impl Iterator<Item = Range<usize>>) -> Option<String> {
         nodes.into_iter().find_map(|node| {
-            let (refusal, at) = self.node_check(&node).err()?;
+            let (refusal, at) = self.node_check(&node, &|_| false).err()?;
             let what = match self.paint_operations.get(at) {
                 Some(PaintOperation::Primitive(primitive)) => primitive_name(primitive, "primitive"),
                 Some(PaintOperation::Dormant(primitive)) => primitive_name(primitive, "dormant"),
@@ -66,7 +80,7 @@ impl Scene {
         })
     }
 
-    fn node_check(&self, node: &Range<usize>) -> Result<(), (ScrollRefusal, usize)> {
+    fn node_check(&self, node: &Range<usize>, still: &dyn Fn(SceneSpace) -> bool) -> Result<(), (ScrollRefusal, usize)> {
         let mut marks = self.scroll.within(node).iter().peekable();
         // The node of each layer open in the range.
         let mut layers: Vec<ScrollNodeId> = Vec::new();
@@ -85,6 +99,7 @@ impl Scene {
                     return Err((ScrollRefusal::Unmarked, at));
                 }
                 (PaintOperation::StartLayer(..), None) => return Err((ScrollRefusal::UnmarkedLayer, at)),
+                (PaintOperation::Layer(layer), None) if layers.is_empty() && layer.cell.upgrade().is_some_and(|cell| still(cell.content.borrow().scene().scroll.space)) => {}
                 (PaintOperation::Layer(_), _) => return Err((ScrollRefusal::RetainedLayer, at)),
                 (PaintOperation::Reservoir(_), _) => return Err((ScrollRefusal::LayerReservoir, at)),
                 (PaintOperation::StartBottomLayer, _) => return Err((ScrollRefusal::BottomLayer, at)),

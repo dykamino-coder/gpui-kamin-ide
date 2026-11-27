@@ -38,6 +38,11 @@ impl Frame {
                 self.scroll_nodes[index as usize].torn = true;
             }
         }
+        if std::mem::take(&mut self.scene.scroll.unpivoted) {
+            if let Some(index) = open {
+                self.scroll_nodes[index as usize].unpivoted = true;
+            }
+        }
         result
     }
 
@@ -92,7 +97,32 @@ impl Window {
     /// open paint node when there is one.
     pub(crate) fn insert_scene_primitive(&mut self, primitive: impl Into<Primitive>) {
         let scale = self.scale_factor();
-        self.next_frame.with_scene_node(scale, |scene| scene.insert_primitive(primitive));
+        // The flat transform painted now, for a mark's move (`TransformPivot`).
+        let pivot = self.transform_pivot.clone();
+        self.next_frame.with_scene_node(scale, |scene| {
+            scene.scroll.pivot = pivot;
+            scene.insert_primitive(primitive);
+            scene.scroll.pivot = None;
+        });
+    }
+
+    /// The pivot of the current transformation, when it is the matrix the
+    /// innermost `with_transform_pivot` builds: a transform painted under it
+    /// builds its own pivot on it.
+    pub fn current_transform_pivot(&self) -> Option<std::rc::Rc<crate::TransformPivot>> {
+        let current = self.current_transformation();
+        self.transform_pivot.clone().filter(|pivot| pivot.matrix() == current)
+    }
+
+    /// Run `f` painting under the flat transform `pivot` builds (its
+    /// `matrix()` the current transformation): primitives drawn through
+    /// that matrix keep its inputs, so a scrolled replay moves them as a
+    /// fresh paint there would build them.
+    pub fn with_transform_pivot<R>(&mut self, pivot: crate::TransformPivot, f: impl FnOnce(&mut Self) -> R) -> R {
+        let outer = self.transform_pivot.replace(std::rc::Rc::new(pivot));
+        let result = f(self);
+        self.transform_pivot = outer;
+        result
     }
 
     /// Run `f`, which copies a finished scene (a paint record) into the
@@ -115,6 +145,11 @@ impl Window {
         if std::mem::take(&mut frame.scene.scroll.lost) {
             if let Some(index) = open {
                 frame.scroll_nodes[index as usize].torn = true;
+            }
+        }
+        if std::mem::take(&mut frame.scene.scroll.unpivoted) {
+            if let Some(index) = open {
+                frame.scroll_nodes[index as usize].unpivoted = true;
             }
         }
         result
@@ -144,6 +179,18 @@ impl Window {
         let at = self.next_frame.scene.paint_operations.len();
         let space = self.next_frame.scene.scroll.space;
         self.next_frame.scroll_dependents.push((ScrollNodeId::of(handle), at, space));
+    }
+
+    /// Paint placed against the viewport inside the open paint nodes (a
+    /// `background-attachment: fixed` layer): it stays while they move, so a
+    /// scrolled replay of a record holding it while any of them moved needs a
+    /// build, as for `paint_scroll_dependent`.
+    pub fn paint_viewport_dependent(&mut self) {
+        let frame = &mut self.next_frame;
+        let (at, space) = (frame.scene.paint_operations.len(), frame.scene.scroll.space);
+        let nodes = &frame.scroll_nodes;
+        let open = frame.scroll_paint.open.iter().map(|&(index, _)| (nodes[index as usize].id, at, space));
+        frame.scroll_dependents.extend(open.collect::<Vec<_>>());
     }
 
     /// Whether a dependent painted in `scenes` of the rendered frame belongs
