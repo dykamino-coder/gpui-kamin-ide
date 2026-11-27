@@ -81,10 +81,14 @@ impl<T> Deref for StyleGroup<T> {
 }
 
 impl<T: Clone> DerefMut for StyleGroup<T> {
+    // The journal names the write that detaches a shared group (`work::clone_site`).
+    #[cfg_attr(feature = "work-counters", track_caller)]
     fn deref_mut(&mut self) -> &mut T {
         if Rc::strong_count(&self.0) > 1 {
             crate::work::add!(StyleGroupClones, 1);
             crate::work::add!(StyleGroupCloneBytes, size_of::<T>());
+            #[cfg(feature = "work-counters")]
+            crate::work::clone_site(std::panic::Location::caller(), size_of::<T>() as u64);
         }
         &mut Rc::make_mut(&mut self.0).value
     }

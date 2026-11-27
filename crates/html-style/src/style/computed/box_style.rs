@@ -112,6 +112,8 @@ pub struct BoxStyle {
     /// percentage height calculation quirk» — ближайший предок с не-`auto`
     /// высотой). `None` — квирка нет или опоры не нашлось.
     pub quirk_pct_base: Option<f32>,
+    /// Block layout's placement of the box (`BoxStyleInput::flow_align`).
+    pub flow_align: Option<super::Align>,
 }
 
 impl BoxStyle {
@@ -135,6 +137,7 @@ impl BoxStyle {
             paint,
             try_source,
             decor_box,
+            flow_align,
         } = input.into();
         // Определённость высоты и квирк-опора доли, которые раскладка положила
         // в стиль элемента-копии, — исходные значения контекста его коробки.
@@ -164,6 +167,7 @@ impl BoxStyle {
             cb_depth: 0,
             sc_ancestor: false,
             inline_definite: None,
+            flow_align,
         }
     }
 

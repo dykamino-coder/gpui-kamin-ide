@@ -19,6 +19,9 @@ pub struct ResetFlex {
     pub align_items: Option<Align>,
     /// `align-self` — про сам элемент; отдельное поле, иначе он выравнивал
     /// бы своих детей вместо себя.
+    /// Cascaded and computed stages hold the author's value only; whether it
+    /// applies (css-align-3 §6.1) is decided by the box stage
+    /// (`style::cascade::inherit::self_align`).
     pub align_self: Option<Align>,
     /// Авторское `align-self: normal` (css-align-3 §6.2): у элемента гибкого
     /// контейнера оно ведёт себя как `stretch`, а не «взять у родителя».
@@ -79,15 +82,6 @@ pub struct ResetFlex {
     /// (css-align-3 §9.3; `align-self-static-position-008`,
     /// `justify-self-static-position-001`). `Align::Baseline` его не различает.
     pub align_self_last: bool,
-    /// Авторское объявление `align-self` (внешний `Some`), с его значением.
-    /// Нужно, чтобы отличать значение автора от приёмов сборки, которые
-    /// пишут в то же поле `align_self` (блок собран колонкой flex): только
-    /// авторское значение гасится у коробки вне гибкого контейнера и сетки
-    /// (`style::cascade::inherit`), и только оно же переходит по `inherit` к детям —
-    /// вычисленное значение родителя от гашения не меняется (css-align-3
-    /// §6.1 «Applies to: flex items, grid items, and absolutely-positioned
-    /// boxes»; css-cascade-4 §7.3).
-    pub align_self_decl: Option<Option<Align>>,
     pub justify_self_last: bool,
     /// `align-items: last baseline` — то же для умолчания детей: раскладка
     /// получает `LastBaseline` (css-align-3 §4.2), а не первую базовую.

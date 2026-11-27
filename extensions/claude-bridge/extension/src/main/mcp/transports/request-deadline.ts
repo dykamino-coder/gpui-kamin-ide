@@ -56,6 +56,15 @@ export interface AwaitMcpReplyOptions {
   cancel?: (requestId: number, reason: string) => void
 }
 
+/** Discard requests owned by a connection whose transport has closed. */
+export function rejectPendingMcpRequests(state: McpServerState, error: Error): void {
+  for (const pending of state.pendingRequests.values()) {
+    if (pending.timer) clearTimeout(pending.timer)
+    pending.reject(error)
+  }
+  state.pendingRequests.clear()
+}
+
 function duration(ms: number): string {
   return ms % 60_000 === 0 ? `${ms / 60_000} min` : `${ms / 1000}s`
 }

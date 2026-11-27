@@ -1,11 +1,16 @@
 // Main-turn lifecycle and terminal status share one precedence decision.
 import type { PtySession } from './types'
 import { sendToClient } from './session-io'
-import { getSessionInputSnapshot, setSessionPromptReady, submitCoordinatedText } from './session-input-coordinator'
+import {
+  getSessionInputSnapshot,
+  isTerminalResponseInput,
+  setSessionPromptReady,
+  submitCoordinatedText,
+} from './session-input-coordinator'
 import { ProgramStatusParser, type ProgramStatus } from './program-status'
 import { CliSubmissions, type CarriedSubmission } from './cli-submissions'
 import { replayTerminalCommandReceipts } from './terminal-command-receipts'
-import type { CliModTransport } from './cli-mod-transport'
+import { CLI_MOD_VERSION, type CliModTransport } from './cli-mod-transport'
 import type { JsonlEntry } from '../../shared/jsonl-types'
 
 const controls = new WeakMap<PtySession, SessionCliControl>()
@@ -28,11 +33,15 @@ export class SessionCliControl {
   private oscDoneTurnId: string | null = null
   private turnId: string | null = null
   private modReady = false
+  private lastPromptSubmission = 0
+  private awaitingPrompt = false
+  private receivedUserInput = false
   private submissions?: CliSubmissions
 
   constructor(
     private readonly session: PtySession,
     private readonly mod?: CliModTransport,
+    onCapabilitiesChanged?: () => void,
   ) {
     controls.set(session, this)
     this.parser = new ProgramStatusParser(
@@ -40,12 +49,12 @@ export class SessionCliControl {
       () => session.pty.write('\x1b]7501;?\x1b\\'),
     )
     if (mod) {
+      // A replaced PTY can exit after its successor has taken over the same socket.
+      const ownsTerminal = () => session.state === 'running' && !session.isRestarting
       const timeout = setTimeout(() => {
-        if (session.state === 'running' && !mod?.healthy()) this.warnFallback()
+        if (ownsTerminal() && !mod.healthy()) this.warnFallback()
       }, 15_000)
       timeout.unref()
-    }
-    if (mod) {
       this.submissions = new CliSubmissions(
         session,
         mod,
@@ -53,9 +62,12 @@ export class SessionCliControl {
         () => this.interrupt(),
       )
       mod.onTurn = (turnId) => {
+        if (!ownsTerminal()) return
         const changed = !this.modReady || turnId !== this.turnId
+        const becameReady = !this.modReady
         this.modReady = true
         this.turnId = turnId
+        if (becameReady) onCapabilitiesChanged?.()
         if (changed) {
           if (this.osc === 'working' && this.oscWorkingTurnId === null) this.oscWorkingTurnId = turnId
           // A terminal blocked report from the previous turn cannot survive a boundary.
@@ -64,7 +76,9 @@ export class SessionCliControl {
         }
       }
       mod.onUnavailable = () => {
+        if (!ownsTerminal()) return
         this.modReady = false
+        onCapabilitiesChanged?.()
         this.turnId = null
         this.oscWorkingTurnId = null
         this.oscDoneTurnId = null
@@ -73,6 +87,7 @@ export class SessionCliControl {
         this.warnFallback()
       }
       mod.onUncertain = () => {
+        if (!ownsTerminal()) return
         this.submissions?.uncertain()
         sendToClient(session.ws, {
           type: 'session:output',
@@ -87,7 +102,7 @@ export class SessionCliControl {
     sendToClient(this.session.ws, {
       type: 'session:output',
       sessionId: this.session.id,
-      data: '\r\n[Bridge: CLI mod unavailable or incompatible (requires 2.1.322); using native terminal delivery and OSC status.]\r\n',
+      data: `\r\n[Bridge: CLI mod unavailable or incompatible (requires ${CLI_MOD_VERSION}); using native terminal delivery and OSC status.]\r\n`,
     })
   }
 
@@ -104,6 +119,7 @@ export class SessionCliControl {
       this.oscWorkingTurnId = null
       if (state === 'clear') this.oscDoneTurnId = null
     }
+    if (state === 'idle' || state === 'done') this.awaitingPrompt = false
     this.osc = state === 'clear' ? undefined : state
     this.snapshot()
   }
@@ -133,6 +149,26 @@ export class SessionCliControl {
    *  or at a visible prompt without it. */
   inputReady(): boolean {
     return this.mod ? this.mod.healthy() : getSessionInputSnapshot(this.session).promptReady
+  }
+
+  pinnedModReady(): boolean {
+    return !!this.mod?.healthy() && this.modReady
+  }
+
+  /** A terminal-level idle signal after our last send, independent of the mod heartbeat. */
+  safeRestartSince(): number | undefined {
+    if (this.awaitingPrompt || this.busy() || (this.osc !== 'idle' && this.osc !== 'done')) return undefined
+    return this.lastPromptSubmission
+  }
+
+  pristinePrompt(): boolean {
+    return !this.receivedUserInput && !this.busy() && this.osc !== 'error'
+  }
+
+  private markSubmission(): void {
+    this.receivedUserInput = true
+    this.lastPromptSubmission = Date.now()
+    this.awaitingPrompt = true
   }
 
   authoritative(): boolean {
@@ -181,6 +217,8 @@ export class SessionCliControl {
   rawInput(data: string): void {
     // Up can withdraw a native queued item without an addressed receipt. Stop
     // correlating this process rather than attach a later UUID to the wrong ID.
+    if (!isTerminalResponseInput(data)) this.receivedUserInput = true
+    if (data.includes('\r') || data.includes('\n')) this.markSubmission()
     this.submissions?.rawInput(data)
   }
 
@@ -205,6 +243,7 @@ export class SessionCliControl {
   /** `text` goes to the CLI; `userText` is what the user wrote (receipts,
    *  routing): a hidden history block may quote a command or a mention. */
   submit(text: string, submissionId?: string, userText = text): boolean {
+    this.markSubmission()
     const input = getSessionInputSnapshot(this.session)
     // Engine submit intentionally does not expand mentions, pastes or native commands.
     if (

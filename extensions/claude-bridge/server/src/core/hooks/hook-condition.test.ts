@@ -146,7 +146,7 @@ it('filters before dispatch/audit and runs each matching settings hook call, inc
       const message = JSON.parse(frame)
       inputs.push(message.payload)
       setImmediate(() =>
-        handleLocalHookResponse(message.requestId, {
+        handleLocalHookResponse(ws, message.requestId, {
           stdout: '',
           stderr: '',
           exitCode: 0,

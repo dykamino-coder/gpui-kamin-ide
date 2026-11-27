@@ -19,7 +19,6 @@ export const currentEffort = signal('high')
 // Старые сессии сохраняют свою доступную модель, даже если её нет в picker.
 export { DEFAULT_MODEL_ID }
 export const currentModel = signal(DEFAULT_MODEL_ID)
-export const currentPermission = signal('bypassPermissions')
 
 export interface FileAttachment {
   path: string

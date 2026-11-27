@@ -154,14 +154,15 @@ pub(super) async fn table_finish(
     // две короткие колонки разъезжались к противоположным краям — видно на
     // `shaping-tatweel-002`, где одинаковые знаки стояли по краям окна.
     //
-    // Заданный `align-self` приём отменяет: у элемента СЕТКИ эта ось —
-    // блочная (css-align-3 §6.2, `taffy: grid/alignment.rs:145`), сжатие по
-    // строчной оси ведёт `justify-self`, и прижим к началу здесь только
-    // отбирал у стола высоту дорожки. Метку ставит
-    // `dom::grid_table_items_keep_stretch`; авторский `align-self` она же и
-    // пропускает вперёд.
+    // A used `align-self` cancels the shrink: for a GRID item this axis is
+    // the block axis (css-align-3 §6.2, `taffy: grid/alignment.rs:145`), the
+    // inline shrink is led by `justify-self`, and a start alignment here only
+    // took the track height away from the table.
+    // The used value is read: a grid item table keeps its stretch
+    // (`render::blocks::ordered_children`), and the author's `align-self` of
+    // a table in block flow does not apply (box stage, css-align-3 §6.1).
     if geom.e.style.used().reset_box_layout.width.is_none()
-        && geom.e.style.used().reset_flex.align_self.is_none()
+        && inherited.reset_flex.align_self.is_none()
     {
         outer.style().align_self = Some(gpui::AlignItems::FlexStart);
     }
@@ -228,7 +229,7 @@ pub(super) async fn table_finish(
             && geom.e.style.used().reset_box_layout.min_height.is_none()
             && !inherited.stretched
             && geom.e.style.used().reset_flex.flex_basis.is_none()
-            && geom.e.style.used().reset_flex.align_self.is_none()
+            && inherited.reset_flex.align_self.is_none()
             && geom.e.style.used().reset_grid.grid_col.is_none()
             && geom.e.style.used().reset_grid.grid_row.is_none());
     finish_table_outer(

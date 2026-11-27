@@ -26,7 +26,7 @@ it('logs how long a client-host hook took, split from the round trip', async () 
       const { requestId } = JSON.parse(frame) as { requestId: string }
       setTimeout(
         () =>
-          handleLocalHookResponse(requestId, {
+          handleLocalHookResponse(ws, requestId, {
             stdout: '',
             stderr: '',
             exitCode: 0,

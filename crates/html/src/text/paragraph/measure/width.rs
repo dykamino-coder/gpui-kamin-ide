@@ -16,6 +16,7 @@ impl Paragraph {
     /// за кадр (перебор ширин в гибком контейнере), а набор строки — самая
     /// дорогая операция здесь.
     pub(crate) fn measure(&self, window: &mut Window) -> Vec<Seg> {
+        crate::work::time!(_measure, TextMeasureNs);
         let key = self.measure_key();
         let hit = self.measures.measured.borrow_mut().get(&key).cloned();
         crate::work::cache!(hit, MeasureCacheHits, MeasureCacheMisses);
@@ -24,6 +25,7 @@ impl Paragraph {
             return segs;
         }
         let mut chunks = super::chunked::Keys::default();
+        crate::work::time!(_shape, TextShapeNs);
         let out = self.measure_uncached(&mut chunks, window);
         self.remember_chunks(key, &chunks, window);
         self.measures.measured.borrow_mut().insert(key, out.clone());

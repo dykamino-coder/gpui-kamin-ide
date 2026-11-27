@@ -37,7 +37,17 @@ import { newestInFileOrder } from '../../shared/jsonl-cache-order'
 import { handleHookExecute as runHookExecute, handleMcpCall as runMcpCall, tabWorkingDirectory, type McpCallCtx } from './mcp-call-pipeline'
 import { lingerForSessionEnd } from './session-end-linger'
 
-export type PermissionMode = 'ask' | 'acceptEdits' | 'plan' | 'bypassPermissions'
+import type { TabInfo, WorkspacePermissionMode } from '../../shared/types'
+export type PermissionMode = WorkspacePermissionMode
+
+function workspaceMode(value: unknown): PermissionMode | undefined {
+  switch (value) {
+    case 'plan': return 'readOnly'
+    case 'default': case 'auto': return 'ask'
+    case 'ask': case 'readOnly': case 'acceptEdits': case 'dontAsk': case 'bypassPermissions': return value
+    default: return undefined
+  }
+}
 
 /** Streaming protocol this client speaks. >=1 tells the server to send
  *  incremental `streaming:delta` frames between boundary snapshots instead of a
@@ -71,6 +81,7 @@ export interface ExtendedConnectionState {
 /** Server close code for "this token already has the maximum number of
  *  sessions" (`session-ws.ts`, SessionAdmissionError kind `token`). */
 export const SESSION_LIMIT_CLOSE_CODE = 4002
+const INVALID_TOKEN_CLOSE_CODE = 4001
 
 /** The refusal that stays on the tab: set by a session-limit close, kept
  *  through the reconnect states that follow, cleared once the tab connects or
@@ -80,7 +91,9 @@ export function stickyRefusal(
   next: Pick<ExtendedConnectionState, 'status' | 'closeCode'>,
   intentional: boolean,
 ): ConnectionRefusal | undefined {
-  if (next.status === 'authenticated' || intentional) return undefined
+  // A new admission decision supersedes the previous refusal. Losing the
+  // transport alone provides no such decision.
+  if (next.status === 'authenticated' || intentional || next.closeCode === INVALID_TOKEN_CLOSE_CODE) return undefined
   if (next.closeCode === SESSION_LIMIT_CLOSE_CODE) return 'session-limit'
   return previous
 }
@@ -152,6 +165,7 @@ export class ConnectionManager {
   // Optional callback to enrich tree with tab metadata before sending to renderer
   static enrichTree: ((tree: any[]) => void) | null = null
   // Optional callback when session info (effort/model) arrives from server
+  static onWorkspacePermission: ((tabId: string, mode: WorkspacePermissionMode) => void) | null = null
   static onSessionInfo: ((tabId: string, effort?: string, model?: string) => void) | null = null
   // The server told this tab the user's main agent (agent:preferences).
   static onAgentPreferences: ((tabId: string, engine: AgentEngine) => void) | null = null
@@ -212,6 +226,8 @@ export class ConnectionManager {
   private readonly stateAuthoritySequence = ++lastConnectionAuthoritySequence
   /** Orders every state publication for this tab across async WS callbacks. */
   private stateRevision = 0
+  prepareHookSnapshot?: () => Promise<boolean>
+  private hookSyncFailed = false
   private config: ConnectionConfig
   private window: BrowserWindow
 
@@ -344,7 +360,8 @@ export class ConnectionManager {
    *  the mirror so a later run can prove its copy is still a prefix. */
   private mirrorHead: string | null = null
 
-  constructor(config: ConnectionConfig, window: BrowserWindow, tabId: string, conversationId?: string) {
+  constructor(config: ConnectionConfig, window: BrowserWindow, tabId: string, conversationId?: string, restoredPermission?: unknown) {
+    if (restoredPermission !== undefined) this.permissionMode = workspaceMode(restoredPermission) ?? 'ask'
     this.config = config
     this.engine = config.engine
     this.pendingModel = config.model ?? null
@@ -387,8 +404,35 @@ export class ConnectionManager {
   getSettingsDir(): string | null {
     return this.settingsDir
   }
-  setPermissionMode(mode: PermissionMode): void {
-    this.permissionMode = mode
+  claudePermissions: TabInfo['claudePermissions']
+  codexCollaboration: TabInfo['codexCollaboration']
+
+  changeClaudePermissionMode(mode: string, sessionId: string): void {
+    if (this.state.status !== 'authenticated' || this.getEngine() !== 'claude' || !sessionId || sessionId !== this.getSessionId()) return
+    if (this.claudePermissions?.available.includes(mode)) this.send({ type: 'session:change-claude-permission-mode', sessionId, mode })
+  }
+
+  changeCodexCollaboration(mode: string, sessionId: string): void {
+    if (this.getEngine() === 'codex' && sessionId === this.getSessionId() &&
+        this.codexCollaboration && (mode === 'default' || (mode === 'plan' && this.codexCollaboration.available.includes(mode)))) {
+      this.send({ type: 'session:codex-collaboration', mode, sessionId })
+    }
+  }
+
+  getWorkspacePermission(): PermissionMode {
+    return this.permissionMode
+  }
+
+  setPermissionMode(value: string): boolean {
+    const mode = workspaceMode(value)
+    if (!mode) return false
+    if (mode !== this.permissionMode) {
+      this.permissionMode = mode
+      for (const respond of [...this.pendingPermissions.values()]) respond('cancelled')
+      ConnectionManager.onWorkspacePermission?.(this.tabId, mode)
+      ConnectionManager.onSessionInfo?.(this.tabId)
+    }
+    return true
   }
   getSessionId(): string | undefined {
     return this.state.sessionId
@@ -574,6 +618,13 @@ export class ConnectionManager {
         /* no declaration: the server keeps its legacy full tool set */
       }
     }
+    // Warm tabs and reconnects can enter here without TabManager's initial
+    // upload. Its successful sync is debounced; a failed upload gets a retry.
+    if (this.prepareHookSnapshot) {
+      const ready = await this.prepareHookSnapshot().catch(() => false)
+      if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
+      this.hookSyncFailed = !ready
+    }
     const host = ConnectionManager.hostDeclaration
     // A replacement child has no in-memory Agent projection. A disk cursor
     // alone can return an empty delta and never rebuild the retained panels.
@@ -595,6 +646,7 @@ export class ConnectionManager {
     if (this.conversationId && !this.pendingNewConversation) {
       this.sendRaw({
         type: 'session:resume',
+        ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
         noSpawnOnNotFound: true,
         token: this.config.token,
         conversationId: this.conversationId,
@@ -615,6 +667,7 @@ export class ConnectionManager {
       if (this.chosenModel) this.pendingModel = this.chosenModel
       this.sendRaw({
         type: 'session:create',
+        ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
         token: this.config.token,
         cwd: this.config.cwd,
         cols: 120,
@@ -1445,6 +1498,7 @@ export class ConnectionManager {
     const basePrompt = ConnectionManager.getBasePrompt?.(this.config.cwd) ?? ''
     this.send({
       type: 'session:resume',
+      ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
       noSpawnOnNotFound: true,
       token: this.config.token,
       conversationId,
@@ -1841,6 +1895,10 @@ export class ConnectionManager {
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
+      noteClaudePermissions: (value, id) => {
+        if (id === undefined || (id === this.getSessionId() && this.getEngine() === 'claude')) this.claudePermissions = value
+      },
+      noteCollaboration: (value, id) => { if (!id || id === this.getSessionId()) this.codexCollaboration = value },
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
       settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),
       notifyAgentPreferences: (engine) => ConnectionManager.onAgentPreferences?.(this.tabId, engine),

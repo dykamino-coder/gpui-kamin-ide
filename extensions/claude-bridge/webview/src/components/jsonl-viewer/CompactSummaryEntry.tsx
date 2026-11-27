@@ -26,7 +26,7 @@ export function CompactSummaryEntry({ entry }: { entry: JsonlEntryData }): JSX.E
       </div>
       <div style="padding:8px 12px;background:var(--bg-primary);border:1px solid var(--bg-surface);border-radius:var(--radius-sm);margin-top:4px;color:var(--text-primary);font-size:12px">
         {expanded ? (
-          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(text, { workspaceLinks: true }) }} />
         ) : (
           <>
             <div style="color:var(--text-secondary);line-height:1.55;white-space:pre-wrap">{preview}{text.length > preview.length ? '…' : ''}</div>

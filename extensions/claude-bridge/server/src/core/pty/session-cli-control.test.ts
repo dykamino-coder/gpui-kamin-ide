@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { PtySession } from './types'
-import type { CliModTransport } from './cli-mod-transport'
+import { CLI_MOD_VERSION, type CliModTransport } from './cli-mod-transport'
 import { SessionCliControl } from './session-cli-control'
 import { submitTextToSession, writeInputToSession } from './session-io'
 import { applyDeterministicStatus } from '../hooks/bridge-status-hooks'
@@ -43,6 +43,27 @@ describe('interactive CLI control', () => {
       vi.clearAllTimers()
       vi.useRealTimers()
       vi.unstubAllEnvs()
+    }
+  })
+  it('keeps CLI diagnostics and status with the engine that owns the terminal', () => {
+    vi.useFakeTimers()
+    try {
+      const old = fixture()
+      const live = fixture()
+      vi.spyOn(old.mod, 'healthy').mockReturnValue(false)
+      vi.spyOn(live.mod, 'healthy').mockReturnValue(false)
+      old.session.isRestarting = true
+      old.mod.onUnavailable()
+      old.mod.onUncertain()
+      old.mod.onTurn('previous-turn')
+      vi.advanceTimersByTime(15_000)
+      expect(old.frames).toEqual([])
+      expect(live.frames.filter((frame) => frame.type === 'session:output')).toEqual([
+        expect.objectContaining({ data: expect.stringContaining(CLI_MOD_VERSION) }),
+      ])
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
     }
   })
   it('submits text including editor context without PTY input and aborts by turn ID', () => {
