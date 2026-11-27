@@ -29,6 +29,7 @@ pub struct Browser {
     pub preset_width: Option<u32>,
     pub viewport: (f32, f32),
     pub stamp: Option<(SystemTime, u64)>,
+    pub hud: crate::hud::Hud,
     #[cfg(feature = "why-profiler")]
     pub journal: Option<kamin_html::why::WindowJournal>,
     #[cfg(feature = "why-profiler")]
@@ -37,6 +38,7 @@ pub struct Browser {
     pub timing_plain: bool,
     _bounds: Subscription,
     _poll: Task<()>,
+    _hud: Task<()>,
 }
 
 impl Browser {
@@ -68,6 +70,8 @@ impl Browser {
                 }
             }
         });
+        let hud = crate::hud::Hud::new(window, cx);
+        let hud_task = crate::hud::start(window, cx);
         let mut this = Self {
             fonts,
             page: None,
@@ -87,6 +91,7 @@ impl Browser {
             preset_width: None,
             viewport: (0., 0.),
             stamp: None,
+            hud,
             #[cfg(feature = "why-profiler")]
             journal: None,
             #[cfg(feature = "why-profiler")]
@@ -95,6 +100,7 @@ impl Browser {
             timing_plain: false,
             _bounds: bounds,
             _poll: poll,
+            _hud: hud_task,
         };
         this.resize(window, cx);
         if let Some(path) = path {

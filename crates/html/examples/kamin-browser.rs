@@ -18,6 +18,8 @@ mod cli;
 mod dialog;
 #[path = "kamin-browser/folder.rs"]
 mod folder;
+#[path = "kamin-browser/hud.rs"]
+mod hud;
 #[path = "kamin-browser/page.rs"]
 mod page;
 #[path = "kamin-browser/paths.rs"]
