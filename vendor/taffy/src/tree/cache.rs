@@ -124,6 +124,15 @@ impl CacheKey {
         let entry_axis = self.requested_axis_bits();
         entry_axis == BOTH_SIGN_BITS_MASK || entry_axis == other.requested_axis_bits()
     }
+
+    /// KaminIDE patch: every field folded into one word (FNV-1a over the words).
+    fn digest(&self) -> u64 {
+        let definite = self.known_dimensions_are_definite;
+        let flags = definite.width as u64 | (definite.height as u64) << 1 | (self.mode.0 as u64) << 2;
+        [self.kd_available_space, self.parent_size, flags]
+            .iter()
+            .fold(0xcbf2_9ce4_8422_2325, |hash, word| (hash ^ word).wrapping_mul(0x0000_0100_0000_01b3))
+    }
 }
 
 impl From<&LayoutInput> for CacheKey {
@@ -277,6 +286,13 @@ impl Cache {
         self.final_layout_entry
             .as_ref()
             .map(|entry| entry.content.clone())
+    }
+
+    /// KaminIDE patch: a digest of the inputs of the most recent full layout (definite sizes,
+    /// available space, parent size, sizing mode, margin collapsibility): equal digests of a
+    /// box in two passes mean it was laid out with the same constraints. For the engine journal.
+    pub(crate) fn performed_input_key(&self) -> Option<u64> {
+        self.final_layout_entry.as_ref().map(|entry| entry.key.digest())
     }
 
     /// Create a new empty cache
