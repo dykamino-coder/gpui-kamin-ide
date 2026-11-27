@@ -1176,7 +1176,7 @@ impl Style {
 /// horizontal, a fraction of the box's width, `y` vertical, of its height.
 /// Blink draws such a box as one rounded rectangle with elliptical radii
 /// (`SkRRect`), not through a mask.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct EllipseRadii {
     /// Horizontal radius per corner.
     pub x: [DefiniteLength; 4],
