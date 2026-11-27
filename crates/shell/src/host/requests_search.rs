@@ -82,7 +82,7 @@ pub fn request_workspace_symbols(tx: Sender<ShellEvent>, query: String) {
 }
 
 /// Фоновое чтение файла → ShellEvent::Ed(EdEvent::FileOpened). Крупные файлы усечём.
-pub fn request_read_file(tx: Sender<ShellEvent>, path: String, target: Option<u32>) {
+pub fn request_read_file(tx: Sender<ShellEvent>, path: String, target: Option<(u32, u32)>) {
     std::thread::spawn(move || {
         // Напрямую с диска (как listDir): мгновенно, не зависит от готовности
         // WS/хоста и не голодает под индексером.

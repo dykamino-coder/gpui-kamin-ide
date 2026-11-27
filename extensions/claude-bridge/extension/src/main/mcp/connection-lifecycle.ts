@@ -8,6 +8,7 @@ import { wsJsonRpc } from './transports/ws'
 import { sseJsonRpcRequest } from './transports/sse-legacy'
 import { httpJsonRpcAuth } from './transports/http'
 import { stdioJsonRpc } from './transports/stdio'
+import { rejectPendingMcpRequests } from './transports/request-deadline'
 
 /** Tear down a server's transport + clear all in-flight state. Idempotent —
  *  safe to call when the server is already disconnected (state mutation is
@@ -30,11 +31,7 @@ export function teardownServer(state: McpServerState | undefined): void {
     state.sseMessageEndpoint = undefined
   }
 
-  for (const pending of state.pendingRequests.values()) {
-    if (pending.timer) clearTimeout(pending.timer)
-    pending.reject(new Error('Server disconnected'))
-  }
-  state.pendingRequests.clear()
+  rejectPendingMcpRequests(state, new Error('Server disconnected'))
   state.status = 'disconnected'
   state.tools = []
   state.toolSchemas.clear()

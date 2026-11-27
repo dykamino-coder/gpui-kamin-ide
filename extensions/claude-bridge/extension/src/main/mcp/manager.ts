@@ -47,7 +47,7 @@ import {
   type McpTestLogEntry,
 } from './test-log'
 import { connectStdio, callStdioTool, stdioJsonRpc, stdioWorkingDirectory } from './transports/stdio'
-import { connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
+import { retryableHttpHandshake, connectHttp, callHttpTool, httpJsonRpcAuth } from './transports/http'
 import { connectSseLegacy, sseJsonRpcRequest } from './transports/sse-legacy'
 import { connectWs, callWsTool, wsJsonRpc } from './transports/ws'
 import type { McpServerState, TransportContext } from './transports/context'
@@ -310,15 +310,16 @@ export class McpServerManager {
       console.error('[MCP OAuth] Legacy token migration failed:', err)
     }
 
-    // Connect all enabled servers (fire and forget — individual failures are logged).
+    // Await the initial handshakes; individual failures reach their server status.
     // Skip any that already SPENT their reconnect budget on an unchanged config:
     // initAll is also the reload path (plugin install / data sync re-runs it), so
     // without this a permanently-broken server would be re-attempted on every sync,
     // re-arming the exact churn the give-up cap exists to stop. At startup nothing
     // has spent its budget, so every enabled server is still tried.
-    const promises: Promise<void>[] = []
+    const network: Promise<void>[] = []
+    const coldStdio: string[] = []
     for (const [id, state] of this.servers) {
-      if (state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
+      if (!state.permanentFailure && state.config.enabled && (state.reconnectAttempts ?? 0) < MAX_RECONNECT_ATTEMPTS) {
         // Ленивый stdio: схемы уже в диск-кэше → процесс НЕ поднимаем, тулы
         // отдаются из кэша, спавн случится при первом tools/call
         // (ensureLazyServerFor). Экономит ~сотни MB private на idle.
@@ -330,12 +331,21 @@ export class McpServerManager {
         ) {
           continue
         }
-        promises.push(this.connectServer(id).catch((err) => {
-          console.error(`[MCP] Failed to connect "${state.config.name}":`, err instanceof Error ? err.message : err)
-        }))
+        if (isStdio(state.config)) coldStdio.push(id)
+        else network.push(this.connectServer(id))
       }
     }
-    await Promise.allSettled(promises)
+    // Each stdio initialization may launch a package manager. Keep them off
+    // the bare host activation path and bound simultaneous cold launches.
+    const pending = coldStdio.values()
+    const startStdio = async () => {
+      for (const id of pending) {
+        if (this.disposed) break
+        const state = this.servers.get(id)
+        if (state?.config.enabled && state.status !== 'connected') await this.connectServer(id)
+      }
+    }
+    await Promise.allSettled([...network, startStdio(), startStdio(), startStdio()])
   }
 
   // ─── Auto-discovery ─────────────────────────────────
@@ -377,11 +387,12 @@ export class McpServerManager {
     // the give-up cap instead of being handed a clean budget on every re-scan —
     // which is how a dead server logged a failed connect + fired a churn of
     // `mcp-servers-changed` every ~60s for the life of the app.
-    const prevBudget = new Map<string, { attempts: number; fp: string }>()
+    const prevBudget = new Map<string, { attempts: number; fp: string; permanentFailure?: string }>()
     for (const [, state] of this.servers) {
       if (state.config.autoDiscovered) {
         prevBudget.set(state.config.name, {
           attempts: state.reconnectAttempts ?? 0,
+          permanentFailure: state.permanentFailure,
           fp: mcpConnectionFingerprint(state.config),
         })
       }
@@ -424,7 +435,11 @@ export class McpServerManager {
       if (prev && prev.fp === mcpConnectionFingerprint(config)) {
         const st = this.servers.get(stableId)!
         st.reconnectAttempts = prev.attempts
-        if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
+        if (prev.permanentFailure) {
+          st.permanentFailure = prev.permanentFailure
+          st.status = 'error'
+          st.error = prev.permanentFailure
+        } else if (prev.attempts >= MAX_RECONNECT_ATTEMPTS) {
           st.status = 'error'
           st.error = `Auto-reconnect gave up after ${MAX_RECONNECT_ATTEMPTS} attempts (config unchanged since). Toggle the server off/on or fix its config to retry.`
         }
@@ -578,7 +593,7 @@ export class McpServerManager {
    *  stdio, не connected/connecting, кэш по fingerprint есть). */
   private lazyCachedSchemasFor(state: McpServerState): CachedToolSchema[] | null {
     if (!LAZY_STDIO_MCP) return null
-    if (!state.config.enabled || !isStdio(state.config)) return null
+    if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) return null
     if (state.status === 'connected' || state.status === 'connecting') return null
     return this.lazySchemaCache[mcpConnectionFingerprint(state.config)] ?? null
   }
@@ -834,7 +849,7 @@ export class McpServerManager {
     // тулы «оживали» только после ручного Test сервера (прод-репорт).
     if (LAZY_STDIO_MCP) {
       for (const state of this.servers.values()) {
-        if (!state.config.enabled || !isStdio(state.config)) continue
+        if (state.permanentFailure || !state.config.enabled || !isStdio(state.config)) continue
         const cached = this.lazySchemaCache[mcpConnectionFingerprint(state.config)]
         if (cached?.some((t) => exposedToolName(state, t.name) === toolName)) return true
       }
@@ -1016,8 +1031,15 @@ export class McpServerManager {
       if (cause instanceof Error && cause.message && !baseMsg.includes(cause.message)) {
         extras.push(`cause="${cause.message}"`)
       }
-      const fullMsg = extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg
+      // An exit callback may already have diagnosed the current attempt or
+      // recorded that its reconnect budget was exhausted.
+      const fullMsg = state.error ?? state.permanentFailure ?? (extras.length ? `${baseMsg} [${extras.join(' · ')}]` : baseMsg)
       state.error = fullMsg
+      // A failed HTTP handshake has no child exit or socket close callback.
+      // Reuse the same capped backoff only for an explicitly transient failure.
+      if (state.config.type === 'http' && !state.reconnectTimer && retryableHttpHandshake(err)) {
+        this.scheduleReconnect(id, baseMsg)
+      }
       this.appendLog(id, 'error', `[connect] failed — ${fullMsg}`)
       if (hint) this.appendLog(id, 'warn', `[connect] hint: ${hint}`)
       // `cause` is optional; passing it unconditionally printed a literal

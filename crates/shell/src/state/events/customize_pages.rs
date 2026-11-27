@@ -147,7 +147,8 @@ impl RootView {
                 }
                 self.cz.customize_pages = pages;
             }
-            ShellEvent::Tree(TreeEvent::RevealView(container, view)) => {
+            ShellEvent::Tree(TreeEvent::RevealView(container, view, keyboard_focus)) => {
+                self.pending_keyboard_view = view.clone().filter(|_| keyboard_focus);
                 // `ipc.ts:290-317`: у customize-контейнера reveal = открыть
                 // Customize на КОНКРЕТНОЙ странице (`p.view ?? container`),
                 // у остальных — пин/активация слота
@@ -158,46 +159,18 @@ impl RootView {
                         .tx
                         .try_send(ShellEvent::Cz(CzEvent::SetCustomizeContribPage(page)));
                 } else {
-                    use crate::activity::PanelSlot;
-                    // Порядок предпочтения слотов при дублирующем пине
-                    // (`ipc.ts:309`); отсутствие пина — дефолт по location
-                    const PREF: [PanelSlot; 6] = [
-                        PanelSlot::Main,
-                        PanelSlot::MainBottom,
-                        PanelSlot::CentralBottom,
-                        PanelSlot::RightTop,
-                        PanelSlot::RightBottom,
-                        PanelSlot::Sidebar,
-                    ];
-                    let containing: Vec<PanelSlot> = PanelSlot::ALL
-                        .into_iter()
-                        .filter(|s| self.activity.is_pinned(*s, &container))
-                        .collect();
-                    let target = match containing.first() {
-                        Some(first) => PREF
-                            .into_iter()
-                            .find(|s| containing.contains(s))
-                            .unwrap_or(*first),
-                        None => match crate::activity::dyn_tool(&container)
-                            .as_ref()
-                            .map(|t| t.location.as_str())
-                        {
-                            Some("auxiliarybar") => PanelSlot::RightTop,
-                            Some("panel") => PanelSlot::CentralBottom,
-                            _ => PanelSlot::Sidebar,
-                        },
-                    };
-                    // Дубли пина рисуют вебвью ДВАЖДЫ — схлопываем в один слот
-                    for s in containing {
-                        if s != target {
-                            self.activity.unpin(s, &container);
-                        }
-                    }
-                    self.activity.pin(target, &container);
-                    if target == PanelSlot::Sidebar {
-                        self.sidebar_visible = true;
-                    }
+                    let tool = crate::activity::dyn_tool(&container);
+                    let opened = crate::state::reveal_slot::reveal(
+                        &mut self.activity,
+                        &mut self.layout,
+                        &mut self.sidebar_visible,
+                        &container,
+                        tool.as_ref().map(|tool| tool.location.as_str()),
+                    );
                     self.save_activity();
+                    if opened {
+                        self.persist_active_session_layout();
+                    }
                 }
             }
             ShellEvent::Cz(CzEvent::SetCustomizeContribPage(id)) => {

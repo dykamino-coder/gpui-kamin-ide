@@ -21,6 +21,7 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
                 let _ = on_event_tx.try_send(ShellEvent::Tree(TreeEvent::RevealView(
                     container.to_string(),
                     view,
+                    payload.get("keyboardFocus").and_then(Value::as_bool) == Some(true),
                 )));
             }
         }

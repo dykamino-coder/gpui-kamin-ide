@@ -1,5 +1,6 @@
 import hljs from 'highlight.js/lib/common'
 import '../theme/components/markdown.css'
+import { isBrowserHost } from '../lib/webview-api'
 import { extractBlockquotes } from './render-markdown-quotes'
 
 // Bounded LRU cache so repeatedly re-rendering the same message text
@@ -110,7 +111,18 @@ function withTagsMasked(html: string, run: (masked: string) => string): string {
   return run(masked).replace(unmask, (_m, i: string) => tags[Number(i)] ?? '')
 }
 
-function linkify(text: string): string {
+function linkify(text: string, workspaceLinks: boolean): string {
+  const locations: string[] = []
+  if (workspaceLinks) {
+    text = text.replace(
+      /\[([^\]\n]+)\]\((?:&lt;((?:file:\/\/\/|\/)?[a-z]:[\\/][^<>\n]*?)&gt;|((?:file:\/\/\/|\/)?[a-z]:[\\/][^()<>\n]+))\)/gi,
+      (_match, label: string, wrapped: string | undefined, plain: string | undefined) => {
+        const target = escapeAttr((wrapped ?? plain ?? '').trim())
+        locations.push('<a href="#" data-workspace-location="' + target + '" class="workspace-location">' + label + '</a>')
+        return '\x00WORKSPACE' + (locations.length - 1) + '\x00'
+      },
+    )
+  }
   text = text.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|www\.[^)\s]+)\)/g,
     (_m, label: string, url: string) => extAnchor(stripUrlTrail(url), label),
@@ -122,15 +134,17 @@ function linkify(text: string): string {
     const clean = stripUrlTrail(url)
     return pre + extAnchor(clean, clean) + url.slice(clean.length)
   })
-  return text
+  return text.replace(/\x00WORKSPACE(\d+)\x00/g, (_match, index: string) => locations[Number(index)] ?? '')
 }
 
 /** Simple markdown to HTML renderer for skill/agent content with syntax highlighting */
-export function renderMarkdown(md: string): string {
+export function renderMarkdown(md: string, options?: { workspaceLinks?: boolean }): string {
   // Limit input size to prevent ReDoS and excessive rendering
   if (md.length > 100000) return '<p>Content too large to render</p>'
 
-  const cached = cacheGet(md)
+  const workspaceLinks = options?.workspaceLinks === true && !isBrowserHost()
+  const key = (workspaceLinks ? 'chat:' : 'text:') + md
+  const cached = cacheGet(key)
   if (cached !== undefined) return cached
 
   // Normalize line endings — mixed CRLF/CR causes the paragraph splitter to
@@ -145,18 +159,18 @@ export function renderMarkdown(md: string): string {
   // Strip YAML frontmatter
   text = text.replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '')
 
-  const rendered = renderBlocks(text, 0)
-  cacheSet(md, rendered)
+  const rendered = renderBlocks(text, 0, workspaceLinks)
+  cacheSet(key, rendered)
   return rendered
 }
 
-function renderBlocks(text: string, quoteDepth: number): string {
+function renderBlocks(text: string, quoteDepth: number, workspaceLinks: boolean): string {
   // Цитаты разбираются до inline-разметки и хранятся так же, как блоки кода:
   // последующие замены не должны менять уже отрендеренное содержимое контейнера.
   const codeBlocks: string[] = []
   if (quoteDepth < 64) {
     text = extractBlockquotes(text, (body) => {
-      codeBlocks.push(`<blockquote>${renderBlocks(body, quoteDepth + 1)}</blockquote>`)
+      codeBlocks.push(`<blockquote>${renderBlocks(body, quoteDepth + 1, workspaceLinks)}</blockquote>`)
       return `\x00CODEBLOCK${codeBlocks.length - 1}\x00`
     })
   }
@@ -181,6 +195,7 @@ function renderBlocks(text: string, quoteDepth: number): string {
 
   const CODE_STYLE =
     'font-family:var(--font-mono);font-size:13px;color:var(--markdown-inline-code);background:var(--bg-surface);padding:2px 10px;border-radius:var(--radius-xs);'
+  const inlineCode: string[] = []
   text = text.replace(/`([^`]+)`/g, (_m, inner: string) => {
     // A URL sealed in a backtick — `http://localhost:3094/...` — is the ONE code
     // span worth making clickable: the model wraps action URLs this way, and the
@@ -193,14 +208,15 @@ function renderBlocks(text: string, quoteDepth: number): string {
       const href = /^www\./i.test(inner) ? `https://${inner}` : inner
       return `<a data-ext-link href="${href}" title="${href}" style="${CODE_STYLE}text-decoration:underline;cursor:pointer;">${inner}</a>`
     }
-    return `<code style="${CODE_STYLE}">${inner}</code>`
+    inlineCode.push(`<code style="${CODE_STYLE}">${inner}</code>`)
+    return `\x00INLINE${inlineCode.length - 1}\x00`
   })
 
   // Links: markdown [text](url) + bare URLs → external anchors (data-ext-link).
   // Runs after inline-code so a NON-URL code span stays literal; a URL-only span
   // was already turned into an anchor above, and linkify's preceding-char guard
   // keeps it from being re-linked.
-  text = linkify(text)
+  text = linkify(text, workspaceLinks)
 
   // Headers
   text = text.replace(/^#### (.+)$/gm, '<h4 style="font-size:13px;color:var(--text-primary);margin:8px 0 2px;">$1</h4>')
@@ -356,5 +372,5 @@ function renderBlocks(text: string, quoteDepth: number): string {
   // Восстановить контейнеры одним проходом, не разбирая их содержимое повторно.
   text = text.replace(/\x00CODEBLOCK(\d+)\x00/g, (_m, idx) => codeBlocks[Number(idx)] ?? '')
 
-  return text
+  return text.replace(/\x00INLINE(\d+)\x00/g, (_m, i: string) => inlineCode[Number(i)] ?? '')
 }

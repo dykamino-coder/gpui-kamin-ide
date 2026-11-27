@@ -37,7 +37,10 @@ export function registerViewFocusCommand(
 ): Disposable {
   return registry.registerCommand(
     `${viewId}.focus`,
-    () => { broadcast?.("kamin:view:reveal", { container: containerId, view: viewId }) },
+    (options?: unknown) => {
+      const keyboardFocus = !!options && typeof options === "object" && "keyboardFocus" in options && options.keyboardFocus === true
+      broadcast?.("kamin:view:reveal", { container: containerId, view: viewId, ...(keyboardFocus ? { keyboardFocus } : {}) })
+    },
     { title: `Focus ${viewId}` },
   )
 }

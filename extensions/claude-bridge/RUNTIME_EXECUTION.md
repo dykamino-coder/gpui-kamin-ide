@@ -46,6 +46,26 @@ merge Diagnostic PR. Отсутствие PR реализации или стр�
 - `observation` — только заранее определённая полевая проверка;
 - `none` — новых PR по задаче сейчас не требуется.
 
+## Целевая пачка `RC-2026-11-27-BRIDGE-INTEGRATION`
+
+Исходный срез после 1.0.131 / 6.3.208 зафиксирован в [#1244](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1244) на `c239fbfccb58901d5101c2014a40c59c7e1d1aab`. Пачка охватывает запуск инструментов, изоляцию настроек по чатам и приёмку клиента. Исполнитель ведёт один согласованный выпуск клиента и Bridge. HTML и GPUI performance остаются в очереди их авторов.
+
+| Задачи | В составе main | Результат и остаток |
+| --- | --- | --- |
+| 0131, 0146, 0147 | [#1244](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1244) (`9103ce340`), [#1245](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1245) (`00e0e7638`), [#1251](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1251) (`6ba062ae4`) | Тесты переключения движка, каталога навыков и запуска клиентских MCP при подключении. Выбор конкретного навыка моделью и установленные у оператора компоненты ожидают полевой проверки. |
+| 0144 | [#1243](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1243) (`94babc033`), [#1268](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1268) (`8be773bcb`) | Windows с временным профилем прошла штатное обновление ранее выпущенной 1.0.130 до 1.0.131, запуск GPUI, CEF и Extension Host и ход на loopback Bridge. Отдельный прогон установщика текущего кандидата относится к release PR. [Протокол проверки](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/185a6f8c3503a83467f747fe053bff4b3fd1fba6/incidents/INC-2026-0144). |
+| 0145 | [#1253](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1253) (`47e3c0009`) | Проверены запуск разрешённой команды в Windows, отклонение вызова, обработка ошибки и разграничение чатов. Установленный защитный hook проверяет оператор. |
+| 0148 | [#1252](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1252) (`f347f3844`) | В Windows CEF клик по ссылке в чате открыл ожидаемый файл нативного редактора на строке 4, столбце 2. [Протокол проверки](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/2f52b3237bbac187ec2bdb2d8e48665faa6aa8b2/incidents/INC-2026-0148). |
+| 0149, 0150, 0151 | [#1254](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1254) (`36b4ec56d`), [#1255](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1255) (`377c6b5b7`), [#1256](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1256) (`7ae498d2b`), [#1264](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1264) (`05786348a`) | Проверены завершение хода, разные транспортные ошибки WebFetch, сохранение результата discovery и закрытие stdin у работающего дочернего процесса. |
+| 0141, 0152 | [#1258](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1258) (`3160fb765`), [#1259](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1259) (`ff6714411`) | Проверены поздний отказ авторизации и выбор квот основного аккаунта при наличии нескольких окон. Реальные окна и время сброса проверяет оператор. |
+| 0143 | [#1257](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1257) (`1f1c7a9de`), [#1262](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1262) (`a6557c318`), [#1263](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1263) (`344ffd5da`) | Проверены контракт режимов Claude и Codex, независимая политика инструментов хоста, переключение в обе стороны и запрос фокуса для активного чата. Нативный Windows-клиент принял Shift+Tab в xterm как при первом раскрытии, так и при повторном. [Протокол проверки](https://github.com/dykamino-coder/gpui-kamin-ide-priv-evidence/tree/773b741a3b7951e8cd1ff3651237c99161a4dd56/incidents/INC-2026-0143). |
+| 0139 | [#1265](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1265) (`d66e1975c`) | Два protocol E2E для первой локальной команды /status. |
+| Проектные инструкции | [#1261](https://github.com/dykamino-coder/gpui-kamin-ide/pull/1261) (`b2e020775`) | Проверены фактические инструкции двух одновременных проектов при запуске, смене движка и восстановлении. |
+| 0079, 0037, 0129–0132 | Ранее опубликованные изменения | Windows normal buffer прошёл проверку колесом и перетаскиванием scrollbar в 1.0.131. Остатки INC-0079 и полевые критерии остальных карточек остаются открытыми. |
+
+Изменения вошли в main. Публикацию пары версий и проверку финальных артефактов фиксирует release PR. Оператор принимает сценарии, которым нужны его настройки, подписки и сетевой маршрут.
+
+
 ## Целевая пачка `RC-2026-11-26-BRIDGE-INTEGRATION`
 
 Published in [kaminide-v1.0.130](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.130). Deployment observations remain with the owner.

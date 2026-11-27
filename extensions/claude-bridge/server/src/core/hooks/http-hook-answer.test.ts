@@ -89,7 +89,7 @@ describe('http hook route', () => {
       readyState: 1,
       send: vi.fn((raw: string) => {
         const frame = JSON.parse(raw)
-        handleLocalHookResponse(frame.requestId, done(2, '', 'denied'))
+        handleLocalHookResponse(ws, frame.requestId, done(2, '', 'denied'))
       }),
     })
     sessions.set(id, { id, ws, mcpToken: 'synthetic', cwd: '/client', state: 'running' } as unknown as PtySession)
