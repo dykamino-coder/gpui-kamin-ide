@@ -46,3 +46,24 @@ fn a_frame_reads_as_verdict_cause_line_and_cache_reason() {
     assert!(s.contains("frame  draws=1 renders=2; requested after the first render: notify at crates/html/src/x.rs:5\n"));
     assert!(s.contains("frame    render at crates/engine-bench/src/view.rs:99\n"));
 }
+
+#[test]
+fn a_captured_frame_reads_its_wait_submission_and_the_bench_copy_apart() {
+    let out = json!({"schema": 1, "frames": [{
+        "frame": 1, "mode": "edit", "step": "edit", "verdict": "replayed", "built": 0, "replayed": 1,
+        "raster": {"plan": "within", "full_by": null, "shift_miss": "redraw_whole", "rects_count": 1,
+            "raster_px": 1024, "rects": [[0, 0, 32, 32]], "gpu_wait_ms": 1.5, "submit_ms": 0.25,
+            "capture_copy_ms": 1.125},
+    }]});
+    let s = render(&out);
+    assert!(
+        s.contains(
+            "  raster within (not a move: redraw_whole) rects 1 raster_px 1024 [0,0 32x32]\n"
+        ),
+        "{s}"
+    );
+    assert!(
+        s.contains("  gpu_wait 1.500 ms submit 0.250 ms capture_copy 1.125 ms\n"),
+        "{s}"
+    );
+}

@@ -15,11 +15,8 @@ impl DirectXRenderer {
         );
         let resources = self.res();
         let device = &self.dev().device;
-        let (texture, _) = create_path_intermediate_texture(device, width, height)?;
-        let mut view = None;
-        unsafe { device.CreateRenderTargetView(&texture, None, Some(&mut view))? };
-        let (path, path_srv) = create_path_intermediate_texture(device, width, height)?;
-        let (msaa, msaa_view) =
+        let (texture, view) = create_offscreen_target_and_its_view(device, width, height)?;
+        let (msaa, msaa_view, path_srv) =
             create_path_intermediate_msaa_texture_and_view(device, width, height)?;
         let isolated = DirectXResources {
             swap_chain: resources.swap_chain.clone(),
@@ -27,7 +24,6 @@ impl DirectXRenderer {
             render_target: Some(texture),
             render_target_view: view,
             back_buffer: None,
-            path_intermediate_texture: path,
             path_intermediate_srv: path_srv,
             path_intermediate_msaa_texture: msaa,
             path_intermediate_msaa_view: msaa_view,

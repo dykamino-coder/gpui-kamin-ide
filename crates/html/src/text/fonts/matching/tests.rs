@@ -12,6 +12,7 @@ fn face(name: &str, width: f32, weight: f32, slope: u8, angle: f32) -> Face {
         family: name.into(),
         adjust: 1.0,
         features: Vec::new(),
+        ranges: Vec::new(),
     }
 }
 
