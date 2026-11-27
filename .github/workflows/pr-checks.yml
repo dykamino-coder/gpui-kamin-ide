@@ -506,7 +506,8 @@ jobs:
           "KAMIN_RG_PATH=$(Join-Path $env:RUNNER_TEMP 'ripgrep-15.2.0-x86_64-pc-windows-msvc\rg.exe')" >> $env:GITHUB_ENV
 
       - run: cargo test --workspace --features kamin-html/why-profiler
-      - run: cargo test -p engine-bench --bin engine_bench --features timing-only,kamin-html/why-profiler why::
+      - run: >-
+          cargo test -p engine-bench --bin engine_bench --features timing-only,kamin-html/why-profiler why::
       - run: cargo test -p kamin-html --example kamin-browser --features why-profiler cli::tests
       - name: Acceptance environment is inert without debug assertions
         shell: pwsh
