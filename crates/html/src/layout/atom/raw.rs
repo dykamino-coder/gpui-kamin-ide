@@ -45,14 +45,10 @@ pub(super) fn atom_element_raw(
     });
     let opts = &*atom_opts;
     let build = &opts.cx.contracts.build;
-    // Элементу формы нужен СЛИТЫЙ стиль: в своём у него единицы шрифта ещё не
-    // разрешены (`width: 3ch` считался бы по базовому кеглю, а не по своему),
-    // да и наследуемое до поля иначе не доходит.
-    if let Some(el) = build.control(e, &box_style(inherited, &e.style, vcx), opts) {
-        // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
-        // эталон сдвигал (transform-input-001..019).
-        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, frame)));
-    }
+    // Positioning is decided BEFORE the form-control branch: an absolutely
+    // positioned control is an out-of-flow box like any other (CSS 2.1 §9.3.1),
+    // placed by its insets against the containing block. Otherwise a checkbox
+    // with `left: -9999px` painted at its static position and took line space.
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама
     // строка, поэтому в неё встаёт пустышка нулевого размера, а элемент висит
@@ -78,6 +74,14 @@ pub(super) fn atom_element_raw(
             | Some(crate::style::computed::Position::Fixed)
     ) {
         return absolute_atom(inherited, e, opts);
+    }
+    // A form control needs the MERGED style: its own style has unresolved font
+    // units (`width: 3ch` would use the base font size, not its own),
+    // and inherited values would not reach the control otherwise.
+    if let Some(el) = build.control(e, &box_style(inherited, &e.style, vcx), opts) {
+        // Transforms of form controls bypassed the wrapper: inputs stayed upright
+        // while the reference moved them (transform-input-001..019).
+        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, frame)));
     }
     if let Some(math) = crate::layout::mathml::element(e, inherited, opts) {
         return Some(build.effects(math, Effect::group(&e.style.used(), frame)));
