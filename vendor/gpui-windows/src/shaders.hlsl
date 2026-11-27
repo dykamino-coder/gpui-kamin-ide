@@ -815,7 +815,10 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
         float4 blended_border = over(background_color, border_color);
         color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
     }
-    return color * float4(1.0, 1.0, 1.0, saturate(0.5 - outer_sdf));
+    // The coverage in the mask's 8-bit steps, so the quad draws the bytes of
+    // the masked group it replaces.
+    float coverage = round(saturate(0.5 - outer_sdf) * 255.0) / 255.0;
+    return color * float4(1.0, 1.0, 1.0, coverage);
 }
 float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
                           float4 input_border_color) {

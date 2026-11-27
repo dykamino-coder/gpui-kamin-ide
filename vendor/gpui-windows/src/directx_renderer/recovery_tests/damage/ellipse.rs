@@ -105,15 +105,21 @@ fn drawn(device: &DirectXDevices, scene: Scene) -> Vec<u8> {
 fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
     let gpu = DirectXDevices::new().unwrap();
     let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
+    let mut failures = Vec::new();
     for color in [hsla(0.6, 0.7, 0.5, 1.), hsla(0.1, 0.8, 0.45, 0.6)] {
         let mut frames = Vec::new();
         for (name, device) in [("gpu", &gpu), ("warp", &warp)] {
             let got = drawn(device, elliptical(color));
             let want = drawn(device, masked(color));
-            let worst = got.iter().zip(&want).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
-            assert!(got == want, "{name}: {} pixels differ from the masked group (at most {worst} codes)", differing(&got, &want));
+            if got != want {
+                let worst = got.iter().zip(&want).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
+                failures.push(format!("{name} alpha {}: {} pixels differ from the masked group (at most {worst} codes)", color.a, differing(&got, &want)));
+            }
             frames.push(got);
         }
-        assert!(frames[0] == frames[1], "{} pixels differ between the adapters", differing(&frames[0], &frames[1]));
+        if frames[0] != frames[1] {
+            failures.push(format!("alpha {}: {} pixels differ between the adapters", color.a, differing(&frames[0], &frames[1])));
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("; "));
 }
