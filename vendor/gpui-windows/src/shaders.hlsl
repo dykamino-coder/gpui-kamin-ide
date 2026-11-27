@@ -1268,30 +1268,33 @@ struct PathSprite {
 
 struct PathSpriteVertexOutput {
     float4 position: SV_Position;
-    float2 texture_coords: TEXCOORD0;
 };
 
 StructuredBuffer<PathSprite> path_sprites: register(t1);
+// KaminIDE patch: the batch's 4x multisampled paths, read sample by sample
+// (`path_pass.rs`); no resolved copy of the intermediate exists.
+Texture2DMS<float4, 4> t_path_samples: register(t7);
 
 PathSpriteVertexOutput path_sprite_vertex(uint vertex_id: SV_VertexID, uint sprite_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     PathSprite sprite = path_sprites[sprite_id];
 
     // Don't apply content mask because it was already accounted for when rasterizing the path
-    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
-
-    float2 screen_position = sprite.bounds.origin + unit_vertex * sprite.bounds.size;
-    float2 texture_coords = screen_position / global_viewport_size;
-
     PathSpriteVertexOutput output;
-    output.position = device_position;
-    output.texture_coords = texture_coords;
+    output.position = to_device_position(unit_vertex, sprite.bounds);
     return output;
 }
 
+// KaminIDE patch: the resolve of the pixel's samples, in integers: each
+// 8-bit sample once, their sum rounded half up. The same bytes on every
+// adapter and in every frame, whatever part of the intermediate a batch used.
 float4 path_sprite_fragment(PathSpriteVertexOutput input): SV_Target {
-    input.position.xy += global_origin;
-    return t_sprite.Sample(s_sprite, input.texture_coords);
+    int2 texel = int2(input.position.xy);
+    uint4 sum = uint4(0, 0, 0, 0);
+    [unroll] for (int i = 0; i < 4; i++) {
+        sum += uint4(round(t_path_samples.Load(texel, i) * 255.0));
+    }
+    return float4((sum + 2u) / 4u) / 255.0;
 }
 
 /*
