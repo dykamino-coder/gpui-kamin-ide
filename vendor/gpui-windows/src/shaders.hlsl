@@ -856,14 +856,18 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
             // `BoxBorderPainter` clips each side to that miter): the signed
             // distance to it weighs the two colours.
             precise float2 from_edge = half_size - abs(center_to_point);
+            // `precise` throughout (the colour conversion included): one
+            // rounding per operation, so GPU and WARP pick the same bytes.
             float2 width = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
-            precise float miter = (from_edge.x * width.y - from_edge.y * width.x) / max(length(width), 1e-6);
-            float4 horizontal = hsla_to_rgba(quad.ellipse.side_colors[top ? 0 : 2]);
-            float4 vertical = hsla_to_rgba(quad.ellipse.side_colors[left ? 3 : 1]);
-            border_color = lerp(vertical, horizontal, saturate(0.5 + miter));
+            precise float miter = (from_edge.x * width.y - from_edge.y * width.x) / max(sqrt(width.x * width.x + width.y * width.y), 1e-6);
+            precise float4 horizontal = hsla_to_rgba(quad.ellipse.side_colors[top ? 0 : 2]);
+            precise float4 vertical = hsla_to_rgba(quad.ellipse.side_colors[left ? 3 : 1]);
+            precise float4 mixed = lerp(vertical, horizontal, saturate(0.5 + miter));
+            border_color = mixed;
         }
-        float4 blended_border = over(background_color, border_color);
-        color = lerp(background_color, blended_border, saturate(ring / covered));
+        precise float4 blended_border = over(background_color, border_color);
+        precise float4 ringed = lerp(background_color, blended_border, saturate(ring / covered));
+        color = ringed;
     }
     // Premultiplied output, drawn with the premultiplied blender
     // (`draw_quads`): the values the masked group it replaces hands the
