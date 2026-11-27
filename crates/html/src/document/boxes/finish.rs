@@ -57,18 +57,20 @@ impl BoxTree {
     /// Addresses only select records of this published adapter; no pointer is dereferenced.
     pub(crate) fn finish(&mut self, nodes: &[Node], root: &BoxStyle, changed: bool) {
         if !changed
-            && self
-                .finished
-                .as_ref()
-                .is_some_and(|(epoch, old)| *epoch == self.epoch && old.matches(root))
+            && self.finished.as_ref().is_some_and(|(epoch, old)| {
+                *epoch == self.epoch && old.matches(root, root.reset_text_box.ruby_suppress_breaks)
+            })
         {
             return;
         }
         let same_root = self
             .finished
             .as_ref()
-            .is_some_and(|(_, old)| old.matches(root));
-        self.finished = Some((self.epoch, Inputs::of(root)));
+            .is_some_and(|(_, old)| old.matches(root, root.reset_text_box.ruby_suppress_breaks));
+        self.finished = Some((
+            self.epoch,
+            Inputs::of(root, root.reset_text_box.ruby_suppress_breaks),
+        ));
         let visited = std::mem::take(&mut self.visited);
         if !changed && same_root {
             // A new publication under the same computed styles: only the preparation
@@ -143,7 +145,11 @@ impl BoxTree {
     pub(crate) fn normalized_inline(&self, id: BoxId, style: &Computed) -> Option<InlineContent> {
         let record = self.get(id)?;
         let prepared = record.prepared.as_ref()?;
-        if !(prepared.ready && prepared.inputs.matches(style)) {
+        if !(prepared.ready
+            && prepared
+                .inputs
+                .matches(style, style.reset_text_box.ruby_suppress_breaks))
+        {
             return None;
         }
         prepared.text.as_ref().or(record.inline.as_ref()).cloned()
@@ -173,7 +179,8 @@ impl BoxTree {
             return;
         }
         if record.prepared.as_ref().is_some_and(|p| {
-            p.inputs.matches(style)
+            p.inputs
+                .matches(style, style.reset_text_box.ruby_suppress_breaks)
                 && mixed::matches(p.dependencies.as_deref().unwrap_or_default(), styles)
         }) {
             self.arena.prepared_ready(id, true);
@@ -194,7 +201,11 @@ impl BoxTree {
                 self.arena.prepared_ready(id, false);
                 return;
             };
-            let run = normalizer.text(&source.text()[range], input);
+            let run = normalizer.text(
+                &source.text()[range],
+                input,
+                input.reset_text_box.ruby_suppress_breaks,
+            );
             let start = inline::offset(text.len());
             text.push_str(&run);
             items.push(Item {
@@ -208,7 +219,7 @@ impl BoxTree {
         let same = text == source.text() && items == source.items();
         let prepared = Prepared {
             ready: true,
-            inputs: Inputs::of(style),
+            inputs: Inputs::of(style, style.reset_text_box.ruby_suppress_breaks),
             dependencies: (!dependencies.is_empty()).then(|| dependencies.into()),
             text: (!same).then(|| InlineContent::single(text, items)),
         };

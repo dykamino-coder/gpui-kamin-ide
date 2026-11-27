@@ -26,6 +26,8 @@ pub struct DecorationInput {
     pub background_paint: BackgroundPaint,
     pub paint: Option<std::rc::Rc<super::decoration_paint::DecorationPaint>>,
     pub canvas: Option<super::canvas_background::CanvasBackgroundSource>,
+    /// Propagated text decorations (`BoxStyle::decors`).
+    pub decors: std::rc::Rc<[super::computed::Decor]>,
 }
 
 impl DecorationInput {
@@ -42,7 +44,11 @@ impl DecorationInput {
             background_paint: _,
             paint,
             canvas: _,
+            decors,
         } = self;
+        if *decors != other.decors {
+            return false;
+        }
         let super::inline_decoration::InlineDecoration {
             band_color: _,
             border_stroke,
@@ -92,6 +98,7 @@ impl DecorationInput {
             background_paint,
             paint,
             canvas,
+            decors,
         } = self;
         let paint = match (paint, &other.paint) {
             (None, None) => true,
@@ -102,5 +109,6 @@ impl DecorationInput {
             && *inline == other.inline
             && *background_paint == other.background_paint
             && *canvas == other.canvas
+            && *decors == other.decors
     }
 }

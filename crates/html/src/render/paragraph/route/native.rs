@@ -102,8 +102,8 @@ pub(crate) fn native_paragraph(
         .rel_spans(rotate_rel_spans(inline::rel_spans(&pieces), inherited))
         .ruby_justify(
             inherited.inh.text_flow.ruby_justify == Some(true),
-            inherited.reset_text_box.ruby_unit,
-            inherited.wm().turned(),
+            inherited.tree.ruby_unit,
+            inherited.turned_line(),
             line_atoms.iter().any(|atom| !atom.3.is_empty()),
         )
         .justify_chars(inherited.inh.text_flow.justify_chars.unwrap_or(1))
@@ -139,7 +139,11 @@ pub(crate) fn native_paragraph(
             (opts.cx.clamp.input.is_none()
                 && !crate::text::clamp::clamp_context(&opts.cx).is_some_and(|(_, skip)| skip)
                 && opts.cx.clamp.atom_depth == 0)
-                .then(|| inherited.clamp_lines().map(|n| n as usize))
+                .then(|| {
+                    inherited
+                        .clamp_applies(inherited.tree.line_clamp)
+                        .map(|n| n as usize)
+                })
                 .flatten()
         }))
         .clamp_marked(clamp_budget.is_some())

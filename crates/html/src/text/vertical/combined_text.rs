@@ -19,7 +19,7 @@ pub(crate) fn piece(
     opts: &RenderOpts,
 ) -> Option<inline::Piece> {
     let vcx = opts.cx.vcx();
-    if !inherited.wm().turned()
+    if !inherited.turned_line()
         || inherited.wm().sideways()
         || element.style.used().reset_box_layout.display.is_some()
     {

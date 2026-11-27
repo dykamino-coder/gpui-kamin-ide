@@ -10,10 +10,15 @@ impl Computed {
     /// Активный кламп строк: стандартный `line-clamp` всегда, а
     /// `-webkit-line-clamp` — только в паре с `-webkit-box` по вертикали.
     pub fn clamp_lines(&self) -> Option<u32> {
+        self.clamp_applies(self.reset_fragmentation.line_clamp)
+    }
+
+    /// The clamp lines (own or handed down, `TreeFacts::line_clamp`) as this
+    /// style applies it.
+    pub fn clamp_applies(&self, lines: Option<u32>) -> Option<u32> {
         let legacy_ok = self.reset_flex.webkit_box == Some(true)
             && self.inh.text_flow.webkit_box_vertical == Some(true);
-        self.reset_fragmentation
-            .line_clamp
+        lines
             .filter(|_| self.inh.text_flow.clamp_legacy != Some(true) || legacy_ok)
             .filter(|_| self.clamp_block_container())
     }

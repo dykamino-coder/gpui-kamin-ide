@@ -36,15 +36,15 @@ fn line_height(style: &Computed, size: f32, fallback: f32) -> f32 {
 
 /// A plain span: no box decoration in either axis and a vertical-align that
 /// is `baseline` or `middle`.
-fn plain_span(own: &Computed, declared: &Computed) -> bool {
+fn plain_span(own: &crate::style::box_input::BoxStyleInput, declared: &Computed) -> bool {
     let none = crate::style::computed::Sides::default();
     own.reset_background.background.is_none()
         && own.reset_background.bg_image.is_none()
         && own.reset_box_layout.padding == none
         && own.reset_box_layout.margin == none
         && own.borders() == none
-        && own.reset_text_box.underline.is_none()
-        && own.reset_text_box.decors.is_empty()
+        && own.reset_text_box.td_lines.is_none()
+        && own.decors.is_empty()
         && declared.inh.text_ink.text_shadow.is_none()
         && own.reset_positioned.position.is_none()
         && own.reset_text_box.vertical_shift.is_none()
