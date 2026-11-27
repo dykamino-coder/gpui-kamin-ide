@@ -419,7 +419,7 @@ impl DirectWriteState {
                         font,
                         font_collection,
                         components,
-                        &this.system_font_collection,
+                        &[&this.custom_font_collection, &this.system_font_collection],
                     )
                 })?;
 
@@ -535,7 +535,7 @@ impl DirectWriteState {
         }: &Font,
         collection: &IDWriteFontCollection1,
         components: &DirectWriteComponents,
-        system_font_collection: &IDWriteFontCollection1,
+        fallback_collections: &[&IDWriteFontCollection1],
     ) -> Option<FontInfo> {
         const SYSTEM_UI_FONT_NAME: &str = ".SystemUIFont";
         let factory = &components.factory;
@@ -658,14 +658,9 @@ impl DirectWriteState {
                 let direct_write_features =
                     unsafe { Self::generate_font_features(factory, features).log_err()? };
                 let fallbacks = font_fallbacks.as_ref().and_then(|fallbacks| {
-                    Self::generate_font_fallbacks(
-                        fallbacks,
-                        None,
-                        factory,
-                        system_font_collection,
-                    )
-                    .log_err()
-                    .flatten()
+                    Self::generate_font_fallbacks(fallbacks, None, factory, fallback_collections)
+                        .log_err()
+                        .flatten()
                 });
                 // KaminIDE patch: те же подстановки, но только для своего
                 // семейства — для строк из нескольких семейств (`layout_fallbacks`).
@@ -674,7 +669,7 @@ impl DirectWriteState {
                         fallbacks,
                         Some(family_name),
                         factory,
-                        system_font_collection,
+                        fallback_collections,
                     )
                     .log_err()
                     .flatten()
@@ -760,6 +755,7 @@ impl DirectWriteState {
                     && x.font_collection == y.font_collection
                     && x.face_key == y.face_key
                     && x.features_key == y.features_key
+                    && x.fallback_key == y.fallback_key
             });
             if !joins {
                 ranges += 1;
@@ -937,6 +933,7 @@ impl DirectWriteState {
                     && font_info.font_collection == base.font_collection
                     && font_info.face_key == base.face_key
                     && font_info.features_key == base.features_key
+                    && font_info.fallback_key == base.fallback_key
                 {
                     if run.font_id != applied {
                         folded.push((run_utf8_start, run.len, run.font_id));

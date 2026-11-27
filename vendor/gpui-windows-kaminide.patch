@@ -4946,7 +4946,7 @@ index 1db95715e26daf9ab0ca5097183a763cf3aa8340..1b1df44eb6b3d4f9179366a8ec0d799e
 +            // KaminIDE patch: group composites blended by the output merger
 +            "group_tiles",
 diff --git a/vendor/gpui-windows/src/direct_write.rs b/vendor/gpui-windows/src/direct_write.rs
-index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310d2b85100
+index 304dc38663b1c9a52c4cc2266d70d61f25472a79..9f089bd9b8a4a01349385f8d63231b5b6dd10a1d
 --- a/vendor/gpui-windows/src/direct_write.rs
 +++ b/vendor/gpui-windows/src/direct_write.rs
 @@ -0,0 +1,7 @@
@@ -5058,11 +5058,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        if self.pixel_exact_glyphs(font_id) {
 +            return TextRenderingMode::Grayscale;
 +        }
-@@ -326 +421 @@
+@@ -326,3 +421,2 @@
 -                        &components.factory,
-+                        components,
-@@ -328 +422,0 @@
+-                        &this.system_font_collection,
 -                        &components.system_ui_font_name,
++                        components,
++                        &[&this.custom_font_collection, &this.system_font_collection],
 @@ -333 +427,2 @@
 -            let font_face_key = info.font_face.cast::<IUnknown>().unwrap().as_raw().addr();
 +            let font_face = info.font_face.clone();
@@ -5207,11 +5208,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            // широкое начертание — это ОТДЕЛЬНЫЙ шрифт семейства, поэтому
 +            // выбирается здесь, при подборе, а не включается возможностью.
 +            stretch,
-@@ -474 +537 @@
+@@ -474,3 +537,2 @@
 -        factory: &IDWriteFactory5,
-+        components: &DirectWriteComponents,
-@@ -476 +538,0 @@
+-        system_font_collection: &IDWriteFontCollection1,
 -        system_ui_font_name: &SharedString,
++        components: &DirectWriteComponents,
++        fallback_collections: &[&IDWriteFontCollection1],
 @@ -478,0 +541,2 @@
 +        let factory = &components.factory;
 +        let system_ui_font_name = &components.system_ui_font_name;
@@ -5328,20 +5330,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                // шейпинга через границу коробок и признак Ahem.
 +                let postscript_name =
 +                    get_postscript_name(&font_face, &components.locale).log_err()?;
-@@ -503,4 +660,21 @@
+@@ -503,2 +660,2 @@
 -                let fallbacks = fallbacks.as_ref().and_then(|fallbacks| {
 -                    Self::generate_font_fallbacks(fallbacks, factory, system_font_collection)
--                        .log_err()
--                        .flatten()
 +                let fallbacks = font_fallbacks.as_ref().and_then(|fallbacks| {
-+                    Self::generate_font_fallbacks(
-+                        fallbacks,
-+                        None,
-+                        factory,
-+                        system_font_collection,
-+                    )
-+                    .log_err()
-+                    .flatten()
++                    Self::generate_font_fallbacks(fallbacks, None, factory, fallback_collections)
+@@ -506,0 +664,12 @@
 +                });
 +                // KaminIDE patch: те же подстановки, но только для своего
 +                // семейства — для строк из нескольких семейств (`layout_fallbacks`).
@@ -5350,11 +5344,11 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        fallbacks,
 +                        Some(family_name),
 +                        factory,
-+                        system_font_collection,
++                        fallback_collections,
 +                    )
 +                    .log_err()
 +                    .flatten()
-@@ -513 +687,18 @@
+@@ -513 +682,18 @@
 -                    font_collection: collection.clone(),
 +                    scoped_fallbacks,
 +                    fallback_key: font_fallbacks.clone(),
@@ -5374,7 +5368,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        (None, Some(pick)) => Some(pick.layout_weight),
 +                        _ => None,
 +                    },
-@@ -536,0 +728,79 @@
+@@ -536,0 +723,80 @@
 +        // KaminIDE patch: the glyph run list is sized at its first run
 +        // (`RendererContext::reserve`): a line that draws no glyph run keeps
 +        // no list, as before.
@@ -5410,6 +5404,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    && x.font_collection == y.font_collection
 +                    && x.face_key == y.face_key
 +                    && x.features_key == y.features_key
++                    && x.fallback_key == y.fallback_key
 +            });
 +            if !joins {
 +                ranges += 1;
@@ -5454,7 +5449,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                size.as_f32()
 +            }
 +        };
-@@ -540,0 +811,33 @@
+@@ -540,0 +807,33 @@
 +
 +            // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
 +            // продвижение возьмётся из вертикальных метрик в отрисовщике.
@@ -5488,12 +5483,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    u16_at += len16;
 +                }
 +            }
-@@ -553 +856,3 @@
+@@ -553 +852,3 @@
 -                        font_info.font_face.GetWeight(),
 +                        font_info
 +                            .layout_weight
 +                            .unwrap_or_else(|| font_info.font_face.GetWeight()),
-@@ -555,2 +860,5 @@
+@@ -555,2 +856,5 @@
 -                        DWRITE_FONT_STRETCH_NORMAL,
 -                        font_size.as_f32(),
 +                        // KaminIDE patch: ширина уже учтена при подборе начертания.
@@ -5501,7 +5496,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
 +                        // у прогонов он теперь свой.
 +                        shaping_size(0, None),
-@@ -560,2 +868,7 @@
+@@ -560,2 +864,7 @@
 -                if let Some(ref fallbacks) = font_info.fallbacks {
 -                    format.SetFontFallback(fallbacks)?;
 +                let fallbacks = if adjust_fallbacks {
@@ -5511,12 +5506,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                };
 +                if let Some(fallbacks) = fallbacks {
 +                    format.SetFontFallback(&fallbacks)?;
-@@ -570 +883,3 @@
+@@ -570 +879,3 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + first_run.len))
 +                    .unwrap_or("");
-@@ -583,11 +898,27 @@
+@@ -583,11 +894,27 @@
 -            let (ascent, descent) = {
 -                let mut first_metrics = [DWRITE_LINE_METRICS::default(); 4];
 -                let mut line_count = 0u32;
@@ -5555,13 +5550,13 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            let mut applied_size = shaping_size(0, None);
 +            let mut prev_size = applied_size;
 +            for (run_index, run) in font_runs.iter().enumerate().skip(1) {
-@@ -595 +926,4 @@
+@@ -595 +922,4 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + run.len))
 +                    .unwrap_or("");
 +                let run_utf8_start = utf8_offset;
-@@ -597,0 +932,17 @@
+@@ -597,0 +928,18 @@
 +                let base = &self.fonts[applied.0];
 +                let run_size = shaping_size(run_index, Some(prev_size));
 +                prev_size = run_size;
@@ -5570,6 +5565,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    && font_info.font_collection == base.font_collection
 +                    && font_info.face_key == base.face_key
 +                    && font_info.features_key == base.features_key
++                    && font_info.fallback_key == base.fallback_key
 +                {
 +                    if run.font_id != applied {
 +                        folded.push((run_utf8_start, run.len, run.font_id));
@@ -5579,20 +5575,20 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                }
 +                applied = run.font_id;
 +                applied_size = run_size;
-@@ -607,2 +958,4 @@
+@@ -607,2 +955,4 @@
 -                let font_size = if break_ligatures {
 -                    font_size.as_f32().next_up()
 +                // Upstream's alternating nudge prevents ligatures spanning style runs.
 +                // Browser callers opt out to retain CSS boundary shaping (§7.4).
 +                let size = if run.break_ligatures && run_index % 2 == 1 {
 +                    run_size.next_up()
-@@ -610 +963 @@
+@@ -610 +960 @@
 -                    font_size.as_f32()
 +                    run_size
-@@ -612 +965 @@
+@@ -612 +962 @@
 -                text_layout.SetFontSize(font_size, text_range)?;
 +                text_layout.SetFontSize(size, text_range)?;
-@@ -614 +967,6 @@
+@@ -614 +964,6 @@
 -                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
 +                text_layout.SetFontWeight(
 +                    font_info
@@ -5600,10 +5596,10 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        .unwrap_or_else(|| font_info.font_face.GetWeight()),
 +                    text_range,
 +                )?;
-@@ -616,2 +973,0 @@
+@@ -616,2 +970,0 @@
 -
 -                break_ligatures = !break_ligatures;
-@@ -620 +976,56 @@
+@@ -620 +973,56 @@
 -            let mut runs = Vec::new();
 +            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
 +            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
@@ -5661,22 +5657,22 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            // отрисовщика мутирует его через указатель, а указатель,
 +            // производный от &T, мутировать нельзя (UB по правилам
 +            // алиасинга: оптимизатор вправе счесть width нулём).
-@@ -625 +1036,3 @@
+@@ -625 +1033,3 @@
 -                runs: &mut runs,
 +                runs: &mut *out,
 +                reserve,
 +                index_base,
-@@ -626,0 +1040,2 @@
+@@ -626,0 +1037,2 @@
 +                vert_ranges,
 +                blank_ranges,
-@@ -628 +1043 @@
+@@ -628 +1040 @@
 -            text_layout.Draw(
 +            let drawn = text_layout.Draw(
-@@ -633 +1048,2 @@
+@@ -633 +1045,2 @@
 -            )?;
 +            );
 +            drawn?;
-@@ -635,9 +1051,44 @@
+@@ -635,9 +1048,44 @@
 -
 -            Ok(LineLayout {
 -                font_size,
@@ -5730,7 +5726,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            }
 +
 +            Ok((width, ascent, descent))
-@@ -694,0 +1146,19 @@
+@@ -694,0 +1143,19 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) is placed at its full sub-pixel
 +        // position on both axes (`Window::paint_glyph` quantizes y on the x
 +        // grid for it) and rasterized bi-level by pixel-centre sampling: a
@@ -5750,31 +5746,31 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        // применяется — точная растеризация только в оттенках серого.
 +        let exact = font.pixel_exact && !params.subpixel_rendering;
 +        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
-@@ -696 +1166 @@
+@@ -696 +1163 @@
 -            m11: params.scale_factor,
 +            m11: params.scale_factor * k,
-@@ -699 +1169 @@
+@@ -699 +1166 @@
 -            m22: params.scale_factor,
 +            m22: params.scale_factor * k,
-@@ -702,0 +1173,5 @@
+@@ -702,0 +1170,5 @@
 +        let variants_y = if exact {
 +            SUBPIXEL_VARIANTS_X
 +        } else {
 +            SUBPIXEL_VARIANTS_Y
 +        };
-@@ -705,3 +1180,2 @@
+@@ -705,3 +1177,2 @@
 -        let baseline_origin_y = params.subpixel_variant.y as f32
 -            / gpui::SUBPIXEL_VARIANTS_Y as f32
 -            / params.scale_factor;
 +        let baseline_origin_y =
 +            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
-@@ -726,0 +1201 @@
+@@ -726,0 +1198 @@
 +            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
-@@ -729,0 +1205,3 @@
+@@ -729,0 +1202,3 @@
 +        if exact {
 +            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
 +        }
-@@ -765 +1243,15 @@
+@@ -765 +1240,15 @@
 -        let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
@@ -5791,7 +5787,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                bottom: (bounds.bottom + k - 1).div_euclid(k),
 +            };
 +        }
-@@ -832,0 +1325,30 @@
+@@ -832,0 +1322,30 @@
 +            if self.fonts[params.font_id.0].pixel_exact {
 +                // KaminIDE patch: sample the supersampled bi-level raster at each
 +                // device pixel's centre, taken just above/left of it (k/2 - 1):
@@ -5822,7 +5818,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                }
 +                return Ok(bitmap_data);
 +            }
-@@ -1269,16 +1790,0 @@
+@@ -1269,16 +1787,0 @@
 -    fn get_advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
 -        unsafe {
 -            let font = &self.fonts[font_id.0].font_face;
@@ -5839,23 +5835,23 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 -        }
 -    }
 -
-@@ -1384 +1890,4 @@
+@@ -1384 +1887,4 @@
 -struct TextRendererWrapper(IDWriteTextRenderer);
 +// KaminIDE patch: обработчик версии 1 — вертикальная раскладка строки
 +// (стоячее письмо, `vert`) зовёт ТОЛЬКО его; со старым интерфейсом Draw
 +// падает с DWRITE_E_TEXTRENDERERINCOMPATIBLE.
 +struct TextRendererWrapper(IDWriteTextRenderer1);
-@@ -1393 +1902 @@
+@@ -1393 +1899 @@
 -#[implement(IDWriteTextRenderer)]
 +#[implement(IDWriteTextRenderer1)]
-@@ -1408,0 +1918,6 @@
+@@ -1408,0 +1915,6 @@
 +    /// KaminIDE patch: glyph runs the line draws at least (its shaping
 +    /// ranges); the empty list takes room for them, rounded to the power of
 +    /// two that doubling from empty would reach, at its first run. 0: grow.
 +    reserve: usize,
 +    /// KaminIDE patch: added to every glyph index (the line is a piece of a longer text).
 +    index_base: usize,
-@@ -1409,0 +1925,16 @@
+@@ -1409,0 +1922,16 @@
 +    /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
 +    /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
 +    vert_ranges: Vec<(u32, u32)>,
@@ -5872,29 +5868,29 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            | 0x180B..=0x180F | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F
 +            | 0x3164 | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xFFF0..=0xFFF8
 +            | 0x1D173..=0x1D17A | 0xE0000..=0xE0FFF)
-@@ -1514,0 +2046,5 @@
+@@ -1514,0 +2043,5 @@
 +        // KaminIDE patch: MSDN допускает NULL в glyphRunDescription (и сам
 +        // прогон) — разыменование без проверки было бы AV на чужом шрифте.
 +        if glyphrun.is_null() || glyphrundescription.is_null() {
 +            return Ok(());
 +        }
-@@ -1521,0 +2058,3 @@
+@@ -1521,0 +2055,3 @@
 +        if blank_runs::in_blank(&context.blank_ranges, desc.textPosition) {
 +            return Ok(());
 +        }
-@@ -1525,2 +2064,3 @@
+@@ -1525,2 +2061,3 @@
 -        // This `cast()` action here should never fail since we are running on Win10+, and
 -        // `IDWriteFontFace3` requires Win10
 +        // KaminIDE patch: cast не «не может упасть» — на удалённом или
 +        // экзотическом шрифте лучше молча пропустить прогон, чем уронить всю
 +        // раскладку строки (upstream возвращает здесь ошибку).
-@@ -1528,4 +2068 @@
+@@ -1528,4 +2065 @@
 -            return Err(Error::new(
 -                DWRITE_E_UNSUPPORTEDOPERATION,
 -                "Failed to cast font face",
 -            ));
 +            return Ok(());
-@@ -1535,5 +2072,2 @@
+@@ -1535,5 +2069,2 @@
 -        let font_id = context
 -            .text_system
 -            .font_info_cache
@@ -5902,7 +5898,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 -            .copied()
 +        let font_id = match context.text_system.font_info_cache.get(&font_face_key) {
 +            Some(&(font_id, _)) => font_id,
-@@ -1542,7 +2076,10 @@
+@@ -1542,7 +2073,10 @@
 -            .map_or_else(
 -                || {
 -                    let font = font_face_to_font(font_face, &self.locale)
@@ -5920,7 +5916,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    Some(&font_id) => font_id,
 +                    None => {
 +                        let Some(font_id) = context
-@@ -1551,10 +2088,13 @@
+@@ -1551,10 +2085,13 @@
 -                            .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
 -                    };
 -                    context
@@ -5944,7 +5940,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                font_id
 +            }
 +        };
-@@ -1576,0 +2117,31 @@
+@@ -1576,0 +2114,31 @@
 +        };
 +        // KaminIDE patch: стоячее вертикальное письмо (`vert`) продвигается
 +        // вертикальной метрикой глифа — advanceHeight подставленного глифа
@@ -5976,7 +5972,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            })
 +        } else {
 +            None
-@@ -1599,0 +2171,13 @@
+@@ -1599,0 +2168,13 @@
 +            // KaminIDE patch: знак-указание своего изображения не имеет.
 +            // Форму соседних букв он уже определил (соединитель, разделитель
 +            // направления), но шрифт его чаще всего не содержит — и подмена
@@ -5990,7 +5986,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                glyph_idx += cluster_glyph_count;
 +                continue;
 +            }
-@@ -1613 +2197,9 @@
+@@ -1613 +2194,9 @@
 -                        px(-glyph_offsets[this_glyph_idx].ascenderOffset),
 +                        // upstream: вертикальное смещение глифа (огласовки, метки).
 +                        // KaminIDE patch: у стоячего вертикального письма смещение
@@ -6001,15 +5997,15 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        } else {
 +                            px(-glyph_offsets[this_glyph_idx].ascenderOffset)
 +                        },
-@@ -1615 +2207 @@
+@@ -1615 +2204 @@
 -                    index: context.index_converter.utf8_ix,
 +                    index: context.index_converter.utf8_ix + context.index_base,
-@@ -1618 +2210,3 @@
+@@ -1618 +2207,3 @@
 -                context.width += glyph_advances[this_glyph_idx];
 +                context.width += vert_advances
 +                    .as_ref()
 +                    .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
-@@ -1622 +2216,11 @@
+@@ -1622 +2213,11 @@
 -        context.runs.push(ShapedRun { font_id, glyphs });
 +        if context.reserve > 0 && context.runs.capacity() == 0 {
 +            context
@@ -6022,7 +6018,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            glyphs,
 +            font_size: px(glyphrun.fontEmSize),
 +        });
-@@ -1667,0 +2272,90 @@
+@@ -1667,0 +2269,90 @@
 +    }
 +}
 +
@@ -6113,7 +6109,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            isrighttoleft,
 +            clientdrawingeffect,
 +        )
-@@ -1781,0 +2476,19 @@
+@@ -1781,0 +2473,19 @@
 +/// KaminIDE patch: PostScript-имя грани — ключ физической грани (у
 +/// синтетических bold/oblique оно то же) и признак тестового шрифта Ahem.
 +/// upstream убрал эту функцию вместе с `FontIdentifier`.
@@ -6133,9 +6129,9 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +    get_name(info, locale)
 +}
 +
-@@ -1791,0 +2505 @@
+@@ -1791,0 +2502 @@
 +        stretch: FontStretch::default(),
-@@ -2016,0 +2731,42 @@
+@@ -2016,0 +2728,42 @@
 +    /// KaminIDE patch: `font-size: 0` text shapes as blank runs (`blank_runs`).
 +    #[test]
 +    fn zero_size_runs_shape_blank() -> Result<()> {
@@ -6178,7 +6174,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        Ok(())
 +    }
 +
-@@ -2170,0 +2927,16 @@
+@@ -2170,0 +2924,16 @@
 +
 +/// KaminIDE patch: ступень ширины начертания в термины DirectWrite.
 +fn to_dwrite_stretch(stretch: FontStretch) -> DWRITE_FONT_STRETCH {
@@ -6456,7 +6452,7 @@ index 0000000000000000000000000000000000000000..efd051bfe946f3f31d817498523ed74c
 +}
 diff --git a/vendor/gpui-windows/src/direct_write/fallbacks.rs b/vendor/gpui-windows/src/direct_write/fallbacks.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b274769b1ad12e
+index 0000000000000000000000000000000000000000..cc2528a7b73bd9dc3335bdcbb94c6ee09901d751
 --- /dev/null
 +++ b/vendor/gpui-windows/src/direct_write/fallbacks.rs
 @@ -0,0 +1,136 @@
@@ -6472,7 +6468,7 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +        fallbacks: &FontFallbacks,
 +        base_family: Option<&str>,
 +        factory: &IDWriteFactory5,
-+        system_font_collection: &IDWriteFontCollection1,
++        collections: &[&IDWriteFontCollection1],
 +    ) -> Result<Option<IDWriteFontFallback>> {
 +        if fallbacks.fallback_list().is_empty() {
 +            return Ok(None);
@@ -6480,7 +6476,6 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +        unsafe {
 +            let builder = factory.CreateFontFallbackBuilder()?;
 +            let base_family = base_family.map(HSTRING::from);
-+            let font_set = &system_font_collection.GetFontSet()?;
 +            for entry in fallbacks.fallback_list() {
 +                // KaminIDE patch: запись `Семейство@3000-30FF,31F0-31FF`
 +                // ограничивает подстановку семейства этими диапазонами
@@ -6488,20 +6483,21 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +                // только под свою письменность, остальное по-прежнему идёт
 +                // системной подстановкой. Запись без `@` — как раньше.
 +                let (family_name, only) = FontFallbacks::split_restricted(entry);
-+                let Some(fonts) = font_set
-+                    .GetMatchingFonts(
-+                        &HSTRING::from(family_name),
-+                        DWRITE_FONT_WEIGHT_NORMAL,
-+                        DWRITE_FONT_STRETCH_NORMAL,
-+                        DWRITE_FONT_STYLE_NORMAL,
-+                    )
-+                    .log_err()
-+                else {
-+                    continue;
-+                };
-+                // upstream: семейства нет — запись пропускается, а не роняет
-+                // весь список подстановок.
-+                let Ok(font_face) = fonts.GetFontFaceReference(0) else {
++                // Authored fallback families use the same collection order as
++                // primary selection: downloaded faces precede installed faces.
++                let Some((collection, font_face)) = collections.iter().find_map(|collection| {
++                    let fonts = collection
++                        .GetFontSet()
++                        .ok()?
++                        .GetMatchingFonts(
++                            &HSTRING::from(family_name),
++                            DWRITE_FONT_WEIGHT_NORMAL,
++                            DWRITE_FONT_STRETCH_NORMAL,
++                            DWRITE_FONT_STYLE_NORMAL,
++                        )
++                        .ok()?;
++                    Some((*collection, fonts.GetFontFaceReference(0).ok()?))
++                }) else {
 +                    continue;
 +                };
 +                let font = font_face.CreateFontFace()?;
@@ -6537,7 +6533,7 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +                builder.AddMapping(
 +                    &unicode_ranges,
 +                    &[target_family_name.as_ptr()],
-+                    None,
++                    collection,
 +                    None,
 +                    base_family
 +                        .as_ref()
