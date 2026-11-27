@@ -26,6 +26,9 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
     }
     let journal = WindowJournal::new(window, cx);
     view.update(cx, |view, cx| {
+        if view.hud.visible {
+            view.toggle_hud(window, cx);
+        }
         view.folder = Some(root);
         view.base_only = options.base_only;
         view.all_files = files;
@@ -53,6 +56,17 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
                             journal.metadata(serde_json::json!({
                                 "viewport": {"width": options.width, "height": options.height},
                                 "plain": options.plain,
+                                "geometry": {
+                                    "physical_client": {
+                                        "width": (f32::from(window.viewport_size().width) * window.scale_factor()).round(),
+                                        "height": (f32::from(window.viewport_size().height) * window.scale_factor()).round(),
+                                    },
+                                    "css_client": {
+                                        "width": f32::from(window.viewport_size().width),
+                                        "height": f32::from(window.viewport_size().height),
+                                    },
+                                    "scale": window.scale_factor(),
+                                },
                             }));
                         } else if action <= 10 {
                             journal.step("wheel", action);

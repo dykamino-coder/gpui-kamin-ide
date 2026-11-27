@@ -162,21 +162,36 @@ impl Hud {
     }
 }
 
-/// One wake-up a second while the panel is shown; a hidden panel wakes and leaves.
+/// The host owns this task only while the panel is visible.
 pub fn start(window: &mut Window, cx: &mut Context<Browser>) -> Task<()> {
     cx.spawn_in(window, async move |this, cx| {
         loop {
             cx.background_executor().timer(Duration::from_secs(1)).await;
             let alive = this.update_in(cx, |this, window, cx| {
-                if this.hud.visible {
-                    let viewport = this.viewport;
-                    this.hud.sample(viewport, window, cx);
-                    cx.notify();
+                if !this.hud.visible {
+                    return false;
                 }
+                let viewport = this.viewport;
+                this.hud.sample(viewport, window, cx);
+                cx.notify();
+                true
             });
-            if alive.is_err() {
+            if !matches!(alive, Ok(true)) {
                 break;
             }
         }
     })
+}
+
+impl Browser {
+    pub fn toggle_hud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.hud.toggle();
+        // Dropping the task cancels its pending timer instead of parking a loop.
+        self.hud_task = if self.hud.visible {
+            Some(start(window, cx))
+        } else {
+            None
+        };
+        cx.notify();
+    }
 }

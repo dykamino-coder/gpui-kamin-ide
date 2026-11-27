@@ -93,10 +93,8 @@ impl Browser {
                     .on_click(cx.listener(|this, _, window, cx| this.reload(window, cx))),
             )
             .child(
-                button("Profiler (F3)", "profiler").on_click(cx.listener(|this, _, _, cx| {
-                    this.hud.toggle();
-                    cx.notify();
-                })),
+                button("Profiler (F3)", "profiler")
+                    .on_click(cx.listener(|this, _, window, cx| this.toggle_hud(window, cx))),
             )
             .child(
                 button("Open in Chrome", "chrome").on_click(cx.listener(|this, _, _, cx| {

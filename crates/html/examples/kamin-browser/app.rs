@@ -1,7 +1,9 @@
 //! Viewer state, window lifecycle, folder selection, and native file notifications.
 
 use crate::{paths, viewport};
-use gpui::{Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task, Window, px, size};
+use gpui::{
+    Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task, Window, px, size,
+};
 use kamin_html::{host::document_view::DocumentView, metrics::FontContext};
 use std::{path::PathBuf, time::SystemTime};
 
@@ -33,7 +35,7 @@ pub struct Browser {
     pub timing_plain: bool,
     _bounds: Subscription,
     pub file_watch: Option<crate::file_watch::FileWatch>,
-    _hud: Task<()>,
+    pub hud_task: Option<Task<()>>,
 }
 
 impl Browser {
@@ -74,7 +76,7 @@ impl Browser {
             timing_plain: false,
             _bounds: bounds,
             file_watch: None,
-            _hud: hud_task,
+            hud_task: Some(hud_task),
         };
         this.resize(window, cx);
         if let Some(path) = path {

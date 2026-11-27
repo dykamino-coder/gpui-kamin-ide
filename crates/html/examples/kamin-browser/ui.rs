@@ -75,10 +75,7 @@ impl Browser {
 
     fn shortcut(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         match (event.keystroke.modifiers.alt, event.keystroke.key.as_str()) {
-            (_, "f3") => {
-                self.hud.toggle();
-                cx.notify();
-            }
+            (_, "f3") => self.toggle_hud(window, cx),
             (_, "f5") => self.reload(window, cx),
             (_, "f11") => {
                 self.preset_width = None;

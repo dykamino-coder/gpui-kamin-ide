@@ -1,4 +1,4 @@
-//! Counts of the existing foreground journal, scoped to one host window.
+//! Existing journal activity: host frames and explicitly process-wide input receipts.
 
 use gpui::profiler::journal::{
     ForegroundEvent, ForegroundJournalEntry as Entry, FrameSkipReason, IntervalBoundary,
@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 #[derive(Default)]
 pub(super) struct Activity {
     callbacks: u64,
+    process_inputs: [u64; 4],
     draws: u64,
     presentations: u64,
     skips: [u64; 3],
@@ -22,6 +23,15 @@ impl Activity {
 
     pub fn observe(&mut self, entry: Entry, window: gpui::WindowId) {
         match entry {
+            // InputTiming is process-wide in the existing journal, without a window id.
+            Entry::Event(ForegroundEvent::Input(input)) => {
+                self.process_inputs[0] += 1;
+                self.process_inputs[1] += u64::from(input.caused_invalidation);
+                if input.kind == "mouse_move" {
+                    self.process_inputs[2] += 1;
+                    self.process_inputs[3] += u64::from(input.caused_invalidation);
+                }
+            }
             Entry::PlatformSignal(signal) if signal.window_id == window => self.callbacks += 1,
             Entry::Event(ForegroundEvent::Draw(draw)) if draw.window_id == window => {
                 self.draws += 1
@@ -46,6 +56,7 @@ impl Activity {
 
     pub fn quiet(&self) -> bool {
         self.callbacks == 0
+            && self.process_inputs == [0; 4]
             && self.draws == 0
             && self.presentations == 0
             && self.skips == [0; 3]
@@ -55,6 +66,9 @@ impl Activity {
 
     pub fn to_json(&self) -> Value {
         json!({
+            "process_input_events": {"all": self.process_inputs[0],
+                "invalidating": self.process_inputs[1], "mouse_move": self.process_inputs[2],
+                "invalidating_mouse_move": self.process_inputs[3]},
             "platform_callbacks": self.callbacks, "draws": self.draws,
             "presentations": self.presentations, "frame_skips": self.skips.iter().sum::<u64>(),
             "frame_skip_reasons": {"no_render_needed": self.skips[0],
@@ -74,6 +88,37 @@ mod tests {
             journal::{FrameSkipped, PlatformSignal, PresentedFrame},
         },
     };
+
+    #[test]
+    fn input_receipt_uses_the_existing_process_journal_and_keeps_invalidations() {
+        let mut activity = Activity::default();
+        let now = Instant::now();
+        for (kind, caused_invalidation) in [
+            ("mouse_move", false),
+            ("mouse_move", true),
+            ("key_down", true),
+        ] {
+            activity.observe(
+                Entry::Event(ForegroundEvent::Input(
+                    gpui::profiler::journal::InputTiming {
+                        kind,
+                        start: now,
+                        end: now,
+                        caused_invalidation,
+                    },
+                )),
+                WindowId::from(1),
+            );
+        }
+        assert_eq!(
+            activity.to_json()["process_input_events"],
+            json!({
+                "all": 3, "invalidating": 2, "mouse_move": 2, "invalidating_mouse_move": 1
+            })
+        );
+        assert_eq!(activity.to_json()["draws"], 0);
+        assert!(!activity.quiet());
+    }
 
     #[test]
     fn activity_keeps_platform_events_and_reasons_without_counting_other_windows() {

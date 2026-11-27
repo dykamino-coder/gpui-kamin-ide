@@ -26,6 +26,7 @@ pub(super) struct Recording {
     lost: u64,
     request: u64,
     idle: Option<Observation>,
+    idle_frame: usize,
     activity: Activity,
     _trace: gpui::profiler::TraceGuard,
 }
@@ -48,6 +49,7 @@ impl Recording {
             lost: 0,
             request: 0,
             idle: None,
+            idle_frame: 0,
             activity: Activity::default(),
             _trace: trace,
         }
@@ -184,16 +186,18 @@ impl Recording {
 
     pub fn begin_idle(&mut self) {
         self.poll();
+        self.idle_frame = self.report.frames().len();
         self.idle = Some(Observation::new());
     }
 
     pub fn finish_idle(&mut self, cpu: IdleCpuWindow) -> Result<(), &'static str> {
         self.poll();
-        let sample = self
+        let mut sample = self
             .idle
             .take()
             .ok_or("idle observation was not started")?
             .finish(cpu)?;
+        super::idle::document_frames(&mut sample, &self.report.frames()[self.idle_frame..]);
         self.report.idle_sample(sample);
         Ok(())
     }

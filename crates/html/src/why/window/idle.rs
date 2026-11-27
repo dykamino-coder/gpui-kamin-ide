@@ -82,6 +82,8 @@ impl Observation {
             "journal_duration_ms": observed_ms, "cpu_duration_ms": cpu.duration_ms,
             "cpu_raw": cpu.raw, "process_cycles": cpu.cycles,
             "process_kernel_100ns": cpu.kernel, "process_user_100ns": cpu.user,
+            "process_cpu_one_core_percent": (cpu.kernel as f64 + cpu.user as f64)
+                / (cpu.duration_ms * 100.),
             "quiet": self.activity.quiet() && cpu.cycles == 0 && cpu.kernel == 0 && cpu.user == 0,
         });
         result
@@ -92,9 +94,46 @@ impl Observation {
     }
 }
 
+/// Aggregate already recorded document frames; no independent frame counter.
+pub(super) fn document_frames(sample: &mut Value, frames: &[Value]) {
+    sample["document_frames"] = json!(frames.len());
+    for (output, input) in [
+        ("document_builds", "built"),
+        ("document_replays", "replayed"),
+        ("builds_inside_draw", "builds_inside_draw"),
+    ] {
+        sample[output] = json!(
+            frames
+                .iter()
+                .filter_map(|frame| frame[input].as_u64())
+                .sum::<u64>()
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn idle_document_counts_come_from_recorded_frame_verdicts() {
+        let mut sample = json!({"draws": 3});
+        document_frames(
+            &mut sample,
+            &[
+                json!({"built": 1, "replayed": 0, "builds_inside_draw": 1}),
+                json!({"built": 0, "replayed": 2, "builds_inside_draw": 0}),
+            ],
+        );
+        assert_eq!(
+            sample,
+            json!({"draws": 3, "document_frames": 2,
+            "document_builds": 1, "document_replays": 2, "builds_inside_draw": 1})
+        );
+        document_frames(&mut sample, &[]);
+        assert_eq!(sample["document_frames"], 0);
+        assert_eq!(sample["document_builds"], 0);
+    }
 
     fn raw() -> Value {
         json!({"pid": 7, "creation_100ns": 13, "qpc_frequency": 1000,
@@ -120,6 +159,19 @@ mod tests {
         let mut sample = raw();
         sample["qpc_frequency"] = json!(0);
         assert!(IdleCpuWindow::from_json(sample, 7, 13).is_err());
+    }
+
+    #[test]
+    fn cpu_percentage_uses_one_core_and_the_raw_cpu_span() {
+        let mut raw = raw();
+        raw["end"]["kernel_100ns"] = json!(500_020);
+        let mut observation = Observation::new();
+        observation.start -= std::time::Duration::from_secs(6);
+        let result = observation
+            .finish(IdleCpuWindow::from_json(raw, 7, 13).unwrap())
+            .unwrap();
+        assert_eq!(result["process_cpu_one_core_percent"], 1.);
+        assert_eq!(result["quiet"], false);
     }
 
     #[test]
