@@ -22,9 +22,6 @@ pub struct ResetFragmentation {
     /// `column-gap` — зазор между колонками многоколоночного потока.
     /// Умолчание CSS — `normal`, то есть один кегль.
     pub column_gap: Option<Len>,
-    /// An ancestor is a multi-column container: the box may be fragmented
-    /// across columns (css-break-3 §box-splitting). Set by inheritance.
-    pub in_multicol: bool,
     /// `column-fill: auto` — колонки заполняются по очереди, без баланса.
     pub column_fill_auto: Option<bool>,
     /// `column-span: all` — блок растянут на все колонки.

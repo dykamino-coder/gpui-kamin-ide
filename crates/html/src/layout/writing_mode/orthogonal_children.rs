@@ -5,12 +5,12 @@
 //! `auto` (§7.3.2) либо нативный `fit-content` через `orthogonal_horizontal`.
 use crate::dom::Node;
 use crate::layout::box_kind::in_flow;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, BoxStyle, Display};
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 
 pub(crate) fn orthogonal_children(
     children: Vec<Node>,
-    container: &Computed,
+    container: &BoxStyle,
     icb_w: f32,
 ) -> Vec<Node> {
     let mut out = children;

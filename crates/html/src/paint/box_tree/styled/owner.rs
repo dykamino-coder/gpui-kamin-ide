@@ -62,9 +62,7 @@ pub(super) fn painter(
         Some(Refusal::Clone)
     } else if c.reset_effects.filter_ref.is_some() || c.reset_effects.backdrop_color.is_some() {
         Some(Refusal::Filter)
-    } else if band
-        && (c.reset_transforms.transform.is_some() || c.reset_transforms.transform_ancestor)
-    {
+    } else if band && (c.reset_transforms.transform.is_some() || c.tree.transform_ancestor) {
         // Band pieces on a transformed line keep refusing.
         Some(Refusal::BandEffect)
     } else {

@@ -84,13 +84,10 @@ fn lifted_float_takes_tree_values_from_the_inline_and_box_facts_from_the_block()
         .unwrap();
     let lifted_box = box_style(&block_box, &lifted.style, vcx);
     // css-ui-4 §6.1: the used `user-select` follows the parent element.
-    assert_eq!(in_place.reset_context.no_select, Some(true));
-    assert_eq!(
-        lifted_box.reset_context.no_select,
-        in_place.reset_context.no_select
-    );
+    assert_eq!(in_place.tree.no_select, Some(true));
+    assert_eq!(lifted_box.tree.no_select, in_place.tree.no_select);
     // CSS 2 §9.5, §10.1: the block is the box parent; its clip encloses the float.
-    assert!(lifted_box.reset_context.fragment_clip_ancestor);
+    assert!(lifted_box.tree.fragment_clip_ancestor);
 }
 
 #[test]

@@ -79,7 +79,7 @@ pub(in crate::style::cascade::compute) fn inherit_decoration_values(
 ) {
     use crate::style::computed::DecorLen;
     let family = decor_family(c, vcx);
-    let vp = c.viewport_cx(vcx.viewport);
+    let vp = c.viewport_cx(vcx.viewport, vcx);
     c.inh.text_ink.underline_offset = own
         .inh
         .text_ink

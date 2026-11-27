@@ -45,7 +45,7 @@ pub(crate) enum Effect<'a> {
     /// reference box shared by the cells of a table row or row group
     /// (`ref_box`) or the box's own one (`None`).
     Transform {
-        style: &'a Computed,
+        style: &'a crate::style::computed::BoxStyle,
         parent: &'a Computed,
         ref_box: Option<RefBox>,
         frame: FrameCx<'a>,
@@ -70,7 +70,11 @@ impl<'a> Effect<'a> {
 
     /// The transform of `style` under `parent` against the box's own
     /// reference box.
-    pub(crate) fn transform(style: &'a Computed, parent: &'a Computed, frame: FrameCx<'a>) -> Self {
+    pub(crate) fn transform(
+        style: &'a crate::style::computed::BoxStyle,
+        parent: &'a Computed,
+        frame: FrameCx<'a>,
+    ) -> Self {
         Effect::Transform {
             style,
             parent,
