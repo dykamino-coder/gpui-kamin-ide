@@ -96,7 +96,7 @@ pub(crate) fn atom_line_align(
     let orthogonal_block = st.reset_box_layout.display == Some(Display::InlineBlock)
         && st.wm().vertical()
         && !inherited.wm().vertical()
-        && !inherited.wm().turned();
+        && !inherited.turned_line();
     // Своё письмо атома — объявленное (вычисленное наследуется).
     if (e.style.cascaded().inh.writing.writing_mode.is_some()
         && !box_layout(st)

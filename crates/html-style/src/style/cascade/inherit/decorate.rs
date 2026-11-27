@@ -17,14 +17,15 @@ pub(super) fn decorate(
     own_px: f32,
     vcx: ValueCx<'_>,
 ) {
-    use crate::style::computed::{DECOR_THROUGH, DECOR_UNDER, Decor, DecorFont, DecorLen};
+    use crate::style::computed::{Decor, DecorFont, DecorLen};
     let over_lang = c.inh.text_flow.lang.as_deref().is_some_and(|l| {
         let l = l.to_ascii_lowercase();
         ["ja", "ko", "mn"]
             .iter()
             .any(|p| l == *p || l.starts_with(&format!("{p}-")))
     });
-    set!(c.reset_text_box.decors, input.inherited.to_vec());
+    // The parent's list is shared as is; a box that changes it owns a copy.
+    let mut decors = input.inherited.cloned().unwrap_or_default();
     // Линии, пришедшие в блок, используют метрики его анонимной строчной коробки.
     if input.block {
         let font = DecorFont {
@@ -36,16 +37,17 @@ pub(super) fn decorate(
             size: own_px,
         };
         let position = c.inh.text_ink.underline_pos.unwrap_or(0);
-        if c.reset_text_box
-            .decors
+        if decors
             .iter()
             .any(|d| d.font != font || d.position != position || d.over_lang != over_lang)
         {
-            for d in c.reset_text_box.decors.iter_mut() {
+            let mut list = decors.to_vec();
+            for d in list.iter_mut() {
                 d.font = font.clone();
                 d.position = position;
                 d.over_lang = over_lang;
             }
+            decors = list.into();
         }
     }
     if let Some(lines) = c.reset_text_box.td_lines.filter(|l| *l != 0)
@@ -96,26 +98,11 @@ pub(super) fn decorate(
         };
         // Повторное слияние того же стиля (`inherit(merged, own)`) не должно
         // класть линию второй раз.
-        if c.reset_text_box.decors.last() != Some(&d) {
-            c.reset_text_box.decors.push(d);
+        if decors.last() != Some(&d) {
+            let mut list = decors.to_vec();
+            list.push(d);
+            decors = list.into();
         }
     }
-    // Отсутствие линии — `None` или `Some(false)`: равные по смыслу значения
-    // стиль коробки не копируют.
-    let under = c
-        .reset_text_box
-        .decors
-        .iter()
-        .any(|d| d.lines & DECOR_UNDER != 0);
-    if c.reset_text_box.underline.unwrap_or(false) != under {
-        c.reset_text_box.underline = Some(under);
-    }
-    let through = c
-        .reset_text_box
-        .decors
-        .iter()
-        .any(|d| d.lines & DECOR_THROUGH != 0);
-    if c.reset_text_box.line_through.unwrap_or(false) != through {
-        c.reset_text_box.line_through = Some(through);
-    }
+    c.decors = decors;
 }

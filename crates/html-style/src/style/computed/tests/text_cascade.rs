@@ -147,15 +147,18 @@ fn text_decoration_shorthand_resets_and_validates_whole() {
         c.reset_text_box.td_style,
         Some(crate::style::computed::DecorStyle::Solid)
     );
-    assert_eq!(c.reset_text_box.underline, Some(true));
+    assert_eq!(underline(&c), Some(true));
     let c = style("text-decoration: underline; text-decoration: diagonal");
-    assert_eq!(c.reset_text_box.underline, Some(true));
+    assert_eq!(underline(&c), Some(true));
     let c = style("text-decoration: underline red overline");
-    assert_eq!(
-        c.reset_text_box.underline, None,
-        "line words must be contiguous"
-    );
+    assert_eq!(underline(&c), None, "line words must be contiguous");
     let c = style("text-emphasis: open red; text-emphasis-color: blue");
     assert_eq!(c.inh.text_ink.text_emphasis.as_deref(), Some("\u{25CB}"));
     assert!(c.inh.text_ink.emphasis_color.is_some());
+}
+
+fn underline(c: &Computed) -> Option<bool> {
+    c.reset_text_box
+        .td_lines
+        .map(|l| l & crate::style::computed::DECOR_UNDER != 0)
 }

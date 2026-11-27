@@ -2,7 +2,7 @@
 
 use crate::defaults::MEDIUM_FONT_SIZE_PX;
 use crate::style::computed::FontCx;
-use crate::style::computed::{Computed, TextAlign};
+use crate::style::computed::TextAlign;
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 use gpui::{Div, Styled, px, relative};
@@ -13,7 +13,7 @@ use gpui::{Div, Styled, px, relative};
 /// свойства пункта сам не получает.
 pub fn apply_text(
     mut d: Div,
-    c: &Computed,
+    c: &crate::style::computed::BoxStyle,
     ink: Option<crate::style::values::value::Color>,
     decorations: bool,
     vcx: ValueCx<'_>,
@@ -21,14 +21,14 @@ pub fn apply_text(
     // Оформление текста нужно и на блоке: в ветке «строка из кусков» текст
     // рисуется обычными `div`, и подчёркивание, живущее только в прогонах,
     // там пропадало.
-    if decorations && c.reset_text_box.underline == Some(true) {
+    if decorations && c.underline() {
         d.style().text.underline = Some(gpui::UnderlineStyle {
             thickness: px(1.),
             color: ink.map(|col| col.to_hsla()),
             wavy: false,
         });
     }
-    if decorations && c.reset_text_box.line_through == Some(true) {
+    if decorations && c.line_through() {
         d.style().text.strikethrough = Some(gpui::StrikethroughStyle {
             thickness: px(1.),
             color: ink.map(|col| col.to_hsla()),

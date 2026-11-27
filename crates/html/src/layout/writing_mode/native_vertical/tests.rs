@@ -105,33 +105,35 @@ fn authored_inline_size_remains_definite_without_an_orthogonal_boundary() {
 
 #[test]
 fn parallel_table_track_keeps_min_content_and_own_limits() {
-    let mut style = {
-        let mut with_inherited = Computed {
-            reset_context: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetContext {
-                    ortho_col: true,
-                    ortho_limit: Some(200.0),
-                    ..Default::default()
-                },
-            ),
-            reset_box_layout: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetBoxLayout {
-                    min_height: Some(Len::Px(40.0)),
-                    ..Default::default()
-                },
-            ),
-            ..Computed::default()
-        };
-        with_inherited.inh.writing.writing_mode = Some(
-            crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
-        );
-        with_inherited
-    };
-    let value = constraint(&style, 200.0).unwrap();
+    let mut style = limited(
+        {
+            let mut with_inherited = Computed {
+                reset_context: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetContext {
+                        ortho_col: true,
+                        ..Default::default()
+                    },
+                ),
+                reset_box_layout: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetBoxLayout {
+                        min_height: Some(Len::Px(40.0)),
+                        ..Default::default()
+                    },
+                ),
+                ..Computed::default()
+            };
+            with_inherited.inh.writing.writing_mode = Some(
+                crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
+            );
+            with_inherited
+        },
+        200.0,
+    );
+    let value = super::constraint(&style, 200.0).unwrap();
     assert_eq!(value.used_keyword(keyword(&style), 30.0, 900.0), 40.0);
     style.reset_box_layout.height = Some(Len::Px(80.0));
     assert_eq!(
-        constraint(&style, 200.0)
+        super::constraint(&style, 200.0)
             .unwrap()
             .used_keyword(keyword(&style), 30.0, 900.0),
         80.0
@@ -140,7 +142,7 @@ fn parallel_table_track_keeps_min_content_and_own_limits() {
 
 #[test]
 fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
-    let style = {
+    let style = crate::style::computed::BoxStyle::new({
         let mut with_inherited = Computed {
             reset_box_layout: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetBoxLayout {
@@ -154,24 +156,26 @@ fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
-    };
+    });
     let value = constraint(&style, 200.0).unwrap();
     assert_eq!(value.used_keyword(keyword(&style), 30.0, 900.0), 900.0);
     let intrinsic_table = {
-        let style_base = style;
-        Computed {
-            reset_context: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetContext {
-                    ortho_col: true,
-                    ortho_limit: Some(200.0),
-                    ..(*style_base.reset_context).clone()
-                },
-            ),
-            ..style_base
-        }
+        let style_base = style.into_computed();
+        limited(
+            Computed {
+                reset_context: crate::style::computed::StyleGroup::new(
+                    crate::style::computed::ResetContext {
+                        ortho_col: true,
+                        ..(*style_base.reset_context).clone()
+                    },
+                ),
+                ..style_base
+            },
+            200.0,
+        )
     };
     assert_eq!(
-        constraint(&intrinsic_table, 200.0).unwrap().used_keyword(
+        super::constraint(&intrinsic_table, 200.0).unwrap().used_keyword(
             keyword(&intrinsic_table),
             30.0,
             900.0
@@ -188,4 +192,11 @@ fn ordinary_intrinsic_height_does_not_become_a_table_minimum() {
         ..Computed::default()
     };
     assert!(constraint(&table, 200.0).is_none());
+}
+
+/// A style under an orthogonal-flow limit (`TreeFacts::ortho_limit`).
+fn limited(style: Computed, limit: f32) -> crate::style::computed::BoxStyle {
+    let mut style = crate::style::computed::BoxStyle::new(style);
+    style.tree.ortho_limit = Some(limit);
+    style
 }

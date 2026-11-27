@@ -9,9 +9,9 @@ pub(super) type Styles = HashMap<BoxId, (Rc<Computed>, bool)>;
 
 pub(super) fn matches(dependencies: &[(BoxId, Inputs)], styles: &Styles) -> bool {
     dependencies.iter().all(|(id, input)| {
-        styles
-            .get(id)
-            .is_some_and(|(style, ready)| *ready && input.matches(style))
+        styles.get(id).is_some_and(|(style, ready)| {
+            *ready && input.matches(style, style.reset_text_box.ruby_suppress_breaks)
+        })
     })
 }
 
@@ -30,7 +30,7 @@ pub(super) fn input<'a>(
         return None;
     }
     if dependencies.last().is_none_or(|(last, _)| *last != id) {
-        dependencies.push((id, Inputs::of(style)));
+        dependencies.push((id, Inputs::of(style, style.reset_text_box.ruby_suppress_breaks)));
     }
     Some(style)
 }
