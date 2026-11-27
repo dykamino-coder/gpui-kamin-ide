@@ -162,13 +162,27 @@ mod tests {
         let again = noted.pass(&tree);
         assert_eq!((again.boxes, again.same, again.whole, again.skips), (4, 4, 4, 1));
 
-        // The root sees the new width and its items a new percentage base
-        // (their parent size), though only one of them resolves a percentage;
-        // the leaf of the fixed box keeps its inputs: one skippable subtree.
+        // Only the root sees the new available width: its auto width shrinks
+        // to its 40 px content at both widths, so its items keep their sizes
+        // and percentage base. Its two item subtrees are kept whole.
         layout(&mut tree, root, 300.0);
         noted.roots.push(root);
         let wider = noted.pass(&tree);
-        assert_eq!((wider.boxes, wider.same, wider.whole, wider.skips), (4, 1, 1, 1));
+        assert_eq!((wider.boxes, wider.same, wider.whole, wider.skips), (4, 3, 3, 2));
+
+        // A root of the window's width hands the new width to its items as
+        // their percentage base: fewer boxes keep their inputs.
+        let mut style = tree.style(root).unwrap().clone();
+        style.size.width = percent(1.0);
+        tree.set_style(root, style).unwrap();
+        layout(&mut tree, root, 200.0);
+        noted.roots.push(root);
+        noted.pass(&tree);
+        layout(&mut tree, root, 300.0);
+        noted.roots.push(root);
+        let full = noted.pass(&tree);
+        assert_eq!(full.boxes, 4);
+        assert!(full.same < wider.same, "{full:?}");
     }
 
     #[test]
