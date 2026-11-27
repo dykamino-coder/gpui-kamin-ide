@@ -79,6 +79,8 @@ pub mod scroll;
 pub mod snap;
 mod used_color;
 pub use crate::style::computed::box_style::BoxStyle;
+/// What a box's ancestors establish and the used values layout hands down.
+pub type TreeFacts = crate::box_facts::TreeFacts<crate::style::values::value::Color>;
 pub use crate::style::computed::box_style::{ElementStyle, InlineFormat};
 pub use crate::style::computed::fields::*;
 pub(super) mod transform;

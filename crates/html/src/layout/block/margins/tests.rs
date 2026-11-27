@@ -70,7 +70,7 @@ fn float_only_block_preserves_auto_for_orthogonal_intrinsic_sizing() {
         let parent = crate::style::computed::BoxStyle::shared(block.style.used());
         orthogonal_inline::resolve(&mut child, &parent, (800.0, 600.0), false);
         let available = child
-            .reset_context
+            .tree
             .orthogonal_inline
             .expect("root constraint")
             .available;
