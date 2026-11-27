@@ -42,7 +42,7 @@ fn opts() -> RenderOpts {
 /// Every box of a frame tree built by `doc`, laid out as the frame lays it out.
 fn boxes(doc: &Document, window: &mut Window, cx: &mut App) -> Vec<Bounds<Pixels>> {
     let builder: Builder = doc.frame_builder(&opts(), &FrameKey::of(&opts()));
-    let (mut tree, _) = builder.build(false, false);
+    let (mut tree, _) = builder.build(false, false, window.hover_view(cx));
     let id = tree.request_layout(window, cx);
     let space = size(
         AvailableSpace::Definite(px(400.)),

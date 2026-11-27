@@ -122,7 +122,10 @@ pub(super) fn plain(
             inherited.reset_context.cq_size,
             inherited.reset_context.cq_box,
         )
-        && lists.all(nodes, |e| inert_node(e, vcx) && window_free(e))
+        // An image replays while its request keeps its state (`ImageStore::replay_reads`).
+        && lists.all(nodes, |e| {
+            (inert_node(e, vcx) || super::super::plain::store_image(e, vcx)) && window_free(e)
+        })
 }
 
 /// The style of `e` folded no viewport length at the cascade
@@ -134,22 +137,24 @@ fn window_free(e: &Element) -> bool {
     !e.style.slot().reads_viewport() && no_query_container(context.cq_size, context.cq_box)
 }
 
-/// The container's inline size follows the width it gets from outside: it
-/// is not a definite length of its own (`width: auto`, a percentage, a
-/// shrink-to-fit box) and not a table cell or the anonymous block of a
-/// cell's content (the container is a cell's BFC root), whose width the table
-/// layout sets (`BoxTree::resized_by_siblings`). Its content lays out in that
-/// width without reading it through `BoxConstraints`, so the record holds
-/// only at the same widths, and while the window is resized it is not
-/// written: the root flow's rule for a block that fills the width
-/// (`plain::fills_width`).
-pub(super) fn follows_width(inherited: &BoxStyle, outer: &RenderOpts) -> bool {
+/// The container's inline size follows the width it gets from outside: an
+/// ancestor distributes its width over its children by their content
+/// (`distributed`, `BoxTree::distributed`: an auto-layout table's columns, a
+/// flex line, grid tracks), so the container gets a share of a width that
+/// follows the window's; or its width is not a definite length of its own
+/// (`width: auto`, a percentage, a shrink-to-fit box). A table cell (or the
+/// anonymous block of a cell's content, the container being a cell's BFC
+/// root) of a fixed-layout table keeps its column's width, which the table
+/// sets (`BoxTree::resized_by_siblings`). The content lays out in that width
+/// without reading it through `BoxConstraints`, so the record holds only at
+/// the same widths, and while the window is resized it is not written: the
+/// root flow's rule for a block that fills the width (`plain::fills_width`).
+pub(super) fn follows_width(inherited: &BoxStyle, outer: &RenderOpts, distributed: bool) -> bool {
     use crate::style::computed::Display;
     use crate::style::values::value::Len;
     let layout = &inherited.reset_box_layout;
-    !outer.cx.constraints.cell_bfc
-        && !matches!(layout.display, Some(Display::TableCell))
-        && !matches!(layout.width, Some(Len::Px(_)))
+    let cell = outer.cx.constraints.cell_bfc || matches!(layout.display, Some(Display::TableCell));
+    distributed || !(cell || matches!(layout.width, Some(Len::Px(_))))
 }
 
 /// No query container size reaches the style (ResetContext::cq_size, cq_box).

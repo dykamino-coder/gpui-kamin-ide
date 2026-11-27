@@ -8,7 +8,8 @@
 //! run's draw. Paths and surfaces (group composites, backdrop passes) read
 //! or write beyond their instances, so they stay rectangle by rectangle under
 //! the scissor, as before, without the group composites whose region misses
-//! the rectangle (`composite_region`). A layer drawn this way keeps its cached buffers
+//! the rectangle (`composite_region`) and the path batches that miss it
+//! (`path_pass`). A layer drawn this way keeps its cached buffers
 //! for the next whole frame (`LayerCache::keep`).
 
 use super::super::{
@@ -304,10 +305,9 @@ impl DirectXRenderer {
                         self.set_scissor(region(r));
                         self.blur.frame_within = Some(region(r));
                         match &batch {
+                            // Works within the rectangle only (`path_pass`).
                             PrimitiveBatch::Paths(range) => {
-                                let paths = &scene.paths[range.clone()];
-                                self.draw_paths_to_intermediate(paths)?;
-                                self.draw_paths_from_intermediate(paths)?;
+                                self.draw_paths(&scene.paths[range.clone()])?
                             }
                             PrimitiveBatch::Surfaces(range) => {
                                 // A group composite writes only within its
