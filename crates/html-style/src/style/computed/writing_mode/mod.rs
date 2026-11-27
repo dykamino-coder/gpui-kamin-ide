@@ -13,7 +13,7 @@
 //! бокс раскладывается горизонтально («уложен плашмя»), а режим письма (направление блоков и
 //! `sideways`) остаётся абзацевым. Поэтому значение различает `vertical()` (раскладка вертикальна
 //! в текущей системе координат) и блочный поток режима (`block_rl()`, `sideways()`) и помнит,
-//! что бокс стоит в повёрнутой строке (`BoxStyle::turned_line`).
+//! whether the box sits in a turned line: that is the box fact `BoxStyle::turned_line`.
 use super::Computed;
 
 mod keyword;

@@ -220,10 +220,7 @@ pub(super) async fn collect_element(
     };
     let anchors = &cx.layout.layout().anchors;
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, anchors);
-    let line = merged
-        .turned_line()
-        .then(|| st.wm().on_line(st.tree.turned_line));
-    out.extend(shift_overlays(kids, &st, line));
+    out.extend(shift_overlays(kids, &st, merged.turned_line()));
     if let Some(mark) = close {
         out.push(piece(mark.to_string(), control()));
     }

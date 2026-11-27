@@ -3,7 +3,6 @@
 //! (`shift_overlays`; CSS 2.1 §9.4.3) и перевод физического смещения в до-поворотный кадр
 //! повёрнутой вертикальной строки (`to_rotated_frame`; css-writing-modes-4 §7.1).
 
-use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
@@ -59,12 +58,13 @@ pub(crate) fn overlay_in_row(
 /// `css-position/static-position/v{lr,rl}-*`. Поэтому сдвиг по y не идёт
 /// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
 /// одним округлением вместе с местом в строке.
-/// `rotated`: the writing mode of the turned line the pieces sit in.
+/// `rotated`: the pieces sit in a turned line.
 pub(super) fn shift_overlays(
     pieces: Vec<Piece>,
-    style: &Computed,
-    rotated: Option<crate::style::computed::writing_mode::WritingMode>,
+    style: &crate::style::box_input::BoxStyleInput,
+    rotated: bool,
 ) -> Vec<Piece> {
+    let rotated = rotated.then(|| style.wm().on_line(style.tree.turned_line));
     if style.reset_positioned.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }

@@ -1,7 +1,7 @@
 //! Стадия коробки, контекст родителя-коробки: признаки руби, повёрнутой строки и ортогонального
 //! потока, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
-//! предка, подавление маркера, чернила тени текста. Всё это — used-значения
-//! дерева коробок (`TreeFacts`): общий вычисленный стиль они не копируют.
+//! предка, подавление маркера, чернила тени текста.
+//! These are used values of the box tree (`TreeFacts`): they never copy the shared computed style.
 
 use super::*;
 use crate::style::computed::BoxStyle;
@@ -9,7 +9,7 @@ use crate::style::computed::BoxStyle;
 pub(super) fn inherit_context(f: &ParentFacts<'_>, own: &Computed, c: &mut BoxStyle) {
     // Распространяемое по дереву элементов — от его родителя, ограничения
     // ортогонального потока и `line-clamp` — от коробки-родителя.
-    // `c.tree` несёт used-значения, которые раскладка дала самой коробке.
+    // `c.tree` holds the used values layout gave the box itself.
     let (layout, parent) = (&f.layout, &f.tree);
     inline_contents(c, parent);
     let own_clamp = c.reset_fragmentation.line_clamp;
