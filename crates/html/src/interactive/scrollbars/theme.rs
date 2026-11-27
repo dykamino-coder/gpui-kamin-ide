@@ -40,7 +40,7 @@ mod tests {
                 }
                 "author" => {
                     assert!(!super::super::uses_modern(&style));
-                    let vcx = parsed.state.values();
+                    let vcx = parsed.values();
                     assert_eq!(
                         style.used_scrollbar_colors(),
                         Some([
