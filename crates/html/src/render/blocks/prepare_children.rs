@@ -81,14 +81,6 @@ pub(crate) fn prepare_children(
         )
         .into_owned()
     };
-    // Не снимать АВТОРСКИЙ `align-self` у блока в обычном потоке здесь, в
-    // начале `blocks()` («до внутренних постановщиков»): замещаемому
-    // абсолюту `align_self` нужен ещё ДО `blocks()`
-    // (`absolute-replaced-width-020`, `left-offset-003`,
-    // `left-offset-percentage-001`, `anchor-position-inline-005/-006`), хотя
-    // `align-self-013`, `flexbox-align-self-vert-001`, `-horiz-002` этого
-    // ждут. Вернуть можно только с явным признаком «значение авторское»
-    // в `Computed`.
     // §10.3.3: у блока в потоке с `width: auto` боковое `auto`-поле
     // используется НУЛЁМ, а коробка занимает всю ширину. У нас блок — гибкая
     // колонка, и любое auto-поле на поперечной оси отменяет растяжение до
@@ -216,7 +208,7 @@ pub(crate) fn prepare_children(
 /// Свойства самого контейнера, от детей не зависящие: упорядоченный контекст
 /// (гибкий контейнер, сетка) и барьер `fixed` (правила — в `prepare_children`).
 pub(super) fn container_flags(inherited: &BoxStyle) -> (bool, bool) {
-    let under_tf = inherited.reset_transforms.transform_ancestor
+    let under_tf = inherited.tree.transform_ancestor
         || inherited.reset_transforms.transform.is_some()
         || inherited.reset_transforms.perspective.is_some()
         || inherited.reset_context.contain_layout == Some(true)

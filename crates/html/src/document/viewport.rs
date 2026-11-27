@@ -21,6 +21,7 @@ pub(crate) use root_scroll::RootScroll;
 pub(super) use wrapper::wrap;
 
 pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
+    vcx.doc.viewport.set_unit_insets([0.0; 2]);
     let root = nodes.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "html" => Some(e),
         _ => None,
@@ -52,11 +53,13 @@ pub(super) fn policy(nodes: &[Node], vcx: ValueCx<'_>) -> Option<Computed> {
         c.reset_box_layout.scroll.forced,
     );
     // Blink StyleCascade::ApplyViewportUnitAffecting skips custom scrollbar styles.
-    c.reset_positioned.viewport_unit_insets = Some(if c.reset_box_layout.custom_scrollbar {
-        [0.0; 2]
-    } else {
-        model.total()
-    });
+    vcx.doc
+        .viewport
+        .set_unit_insets(if c.reset_box_layout.custom_scrollbar {
+            [0.0; 2]
+        } else {
+            model.total()
+        });
     let visible = |v| matches!(v, None | Some(Overflow::Visible));
     if let Some(body) = root.children.iter().find_map(|node| match node {
         Node::Element(e) if e.tag == "body" => Some(e),

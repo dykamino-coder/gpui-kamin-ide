@@ -79,6 +79,13 @@ impl FontContext {
             ..Self::default()
         }
         .with_loader(move |bytes| {
+            // Every file under a family of its own (`sfnt_rename`): subsets of
+            // one family must not collapse into one platform family.
+            let unique = crate::text::fonts::unique_family(&bytes);
+            if let Some(renamed) = crate::text::fonts::renamed_sfnt(&bytes, &unique) {
+                fonts.add_fonts(vec![renamed.into()]).ok()?;
+                return Some(unique);
+            }
             let named = crate::text::fonts::sfnt_family(&bytes);
             let before: HashSet<_> = fonts.all_font_names().into_iter().collect();
             fonts.add_fonts(vec![bytes.into()]).ok()?;

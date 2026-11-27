@@ -38,6 +38,7 @@ pub(crate) fn block_axis(parent: &Computed) -> AxisSizes {
 mod tests {
     use super::*;
     use crate::layout::writing_mode::orthogonal_inline::resolve;
+    use crate::style::computed::BoxStyle;
 
     #[test]
     fn ratio_parent_resolves_orthogonal_percentage_before_content_expands() {
@@ -71,7 +72,7 @@ mod tests {
             );
             with_inherited
         };
-        let mut child = crate::style::computed::BoxStyle::from(child);
+        let (mut child, parent) = (BoxStyle::from(child), BoxStyle::from(parent));
         resolve(&mut child, &parent, (800.0, 600.0), false);
         assert_eq!(child.reset_box_layout.height, Some(Len::Px(100.0)));
         assert_eq!(

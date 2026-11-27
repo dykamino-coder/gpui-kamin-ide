@@ -112,6 +112,10 @@ pub struct BoxStyle {
     /// percentage height calculation quirk» — ближайший предок с не-`auto`
     /// высотой). `None` — квирка нет или опоры не нашлось.
     pub quirk_pct_base: Option<f32>,
+    /// Block layout's placement of the box (`BoxStyleInput::flow_align`).
+    pub flow_align: Option<super::Align>,
+    /// What the box's ancestors establish (`box_facts::TreeFacts`).
+    pub tree: crate::box_facts::TreeFacts,
 }
 
 impl BoxStyle {
@@ -135,9 +139,10 @@ impl BoxStyle {
             paint,
             try_source,
             decor_box,
+            flow_align,
+            tree,
         } = input.into();
-        // Определённость высоты и квирк-опора доли, которые раскладка положила
-        // в стиль элемента-копии, — исходные значения контекста его коробки.
+        // Height definiteness and the quirk basis start from the copy's hints.
         Self {
             context: context.as_deref().cloned().unwrap_or_default(),
             inline_decoration,
@@ -148,8 +153,6 @@ impl BoxStyle {
             cb_height_def: style.reset_context.cb_height_def_hint,
             quirk_pct_base: style.reset_context.quirk_pct_base_hint,
             style,
-            // `Self::default()` выделяет Rc<Computed>, который здесь сразу
-            // отбрасывался. Конструктор коробки сохраняет переданный стиль.
             inline_format: None,
             element_style: None,
             self_node: 0,
@@ -164,6 +167,8 @@ impl BoxStyle {
             cb_depth: 0,
             sc_ancestor: false,
             inline_definite: None,
+            flow_align,
+            tree,
         }
     }
 

@@ -13,6 +13,21 @@ import type { TransportContext } from './context'
 import { fetchDeadline, fetchDispatcher } from './fetch-deadline'
 import { mcpRequestDeadline, withProgressToken } from './request-deadline'
 
+class HttpStatusError extends Error {
+  constructor(readonly status: number, detail: string) { super(`HTTP ${status}: ${detail}`) }
+}
+
+/** A bad URL, policy/auth refusal or JSON-RPC schema error needs attention.
+ * Connection reset/refusal, temporary DNS and unavailable gateways can recover. */
+export function retryableHttpHandshake(error: unknown): boolean {
+  if (error instanceof HttpStatusError) return [502, 503, 504].includes(error.status)
+  const temporary = ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET']
+  for (const candidate of [error, error instanceof Error ? error.cause : null]) {
+    if (candidate instanceof Error && temporary.includes((candidate as NodeJS.ErrnoException).code ?? '')) return true
+  }
+  return false
+}
+
 export async function connectHttp(ctx: TransportContext, id: string): Promise<void> {
   const state = ctx.servers.get(id)!
   const url = state.config.url
@@ -136,7 +151,7 @@ export async function httpJsonRpcAuth(
 
   if (res.status === 202) return {}
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+    throw new HttpStatusError(res.status, await res.text())
   }
 
   const contentType = res.headers.get('content-type') || ''

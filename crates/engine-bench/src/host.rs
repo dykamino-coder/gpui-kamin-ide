@@ -102,6 +102,8 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut instrumentation = kamin_html::host::instrumentation::from_env();
     instrumentation.scale_factor = Some(1.);
+    // The journal names the element types that spend request_layout.
+    instrumentation.request_layout = args.why.is_some();
     let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
     let outcome = Rc::new(RefCell::new(None));
     let result = outcome.clone();
@@ -121,6 +123,10 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     startup.mark("gpui_application");
     application.run(move |cx| {
         startup.mark("event_loop_entry");
+        #[cfg(feature = "work-counters")]
+        cx.instrumentation()
+            .request_layout
+            .set_costs(kamin_html::work::style_copy_costs);
         // Как приложение: простой без кадров отдаёт свободную память системе.
         cx.on_idle(
             kamin_alloc::IDLE_RELEASE_DELAY,

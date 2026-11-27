@@ -30,7 +30,7 @@ pub(crate) fn border_layer(
     // belongs above the backdrop (Filter Effects 2 §backdrop-filter).
     let backdrop = (c.reset_effects.backdrop_color.is_some()
         || c.reset_effects.backdrop_ref.is_some())
-        && !c.reset_effects.backdrop_root_above;
+        && !c.tree.backdrop_root_above;
     if (!c.background_paint.paints()
         || c.paint_background().top.image.is_none() && !c.gradient_as_tile())
         && !backdrop

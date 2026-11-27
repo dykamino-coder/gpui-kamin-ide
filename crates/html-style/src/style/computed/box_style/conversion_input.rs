@@ -49,8 +49,12 @@ impl BoxStyle {
             inline_definite,
             cb_height_def,
             quirk_pct_base,
+            flow_align,
+            tree,
         } = self;
         *stretched == other.stretched
+            && *flow_align == other.flow_align
+            && *tree == other.tree
             && *cb_ancestor == other.cb_ancestor
             && *cb_depth == other.cb_depth
             && *sc_ancestor == other.sc_ancestor

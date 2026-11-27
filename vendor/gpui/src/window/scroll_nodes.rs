@@ -18,7 +18,7 @@ use crate::ScrollHandle;
 use crate::scene::{PaintOperation, scroll_marks::SceneSpace};
 
 /// The scenes of the layers `operations` draw (`scene::layer`).
-fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
+pub(crate) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
     operations
         .iter()
         .filter_map(|operation| match operation {
@@ -87,6 +87,9 @@ pub(crate) struct ScrollNodeRecord {
     /// Deferred paint of the children landed in another scene than `paint`:
     /// a scrolled replay cannot move it.
     pub(crate) torn: bool,
+    /// Marked a primitive drawn through a matrix a shift cannot move exactly,
+    /// without its pivot (`Scene::pivot_of`): replayed only unmoved.
+    pub(crate) unpivoted: bool,
     /// Paired with a paint that has not ended yet.
     pub(crate) pending: bool,
 }
@@ -107,6 +110,7 @@ impl ScrollNodeRecord {
     }
 }
 
+mod anchor_trace;
 mod source;
 pub(crate) use source::NodeSource;
 
@@ -306,6 +310,7 @@ impl Window {
             painted_in: None,
             more: Vec::new(),
             torn: false,
+            unpivoted: false,
             pending: false,
         });
         self.next_frame.scroll_node_stack.push(index);
@@ -612,26 +617,6 @@ fn trace_pairing(frame: &Frame, elements: &[ElementId], id: ScrollNodeId, cursor
     });
 }
 
-impl Window {
-    /// KaminIDE patch (DevTools `why`): anchors of the frame just drawn whose
-    /// children never painted (`paint` none): prepaint opened them, paint did
-    /// not pair them.
-    #[track_caller]
-    pub(crate) fn trace_unpainted_anchors(&self) {
-        if !crate::dirty_sources::trace::enabled() {
-            return;
-        }
-        let site = core::panic::Location::caller();
-        for (at, node) in self.rendered_frame.scroll_nodes.iter().enumerate() {
-            if node.anchored && node.paint.is_none() {
-                crate::dirty_sources::trace::push_with("scroll_node.anchor_unpainted", site, || {
-                    format!("node {at} id {} chain {:?} clip {:?} parent {:?}", node.id.0, node.chain, node.clip, node.parent)
-                });
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -773,19 +758,22 @@ mod tests {
         let window = cx.add_window(|_, _| Nested);
         let trace = trace::Trace::start();
         trace::take();
+        let (token, other) = (Rc::new(()), Rc::new(()));
+        let (id, unknown) = (ScrollNodeId::of_token(&token), ScrollNodeId::of_token(&other));
         window
             .update(cx, |_, window, _| {
-                let token = Rc::new(());
-                let id = ScrollNodeId::of_token(&token);
                 window.invalidator.set_phase(DrawPhase::Prepaint);
                 window.with_scroll_anchor_prepaint(id, Rc::new(|| point(px(0.), px(0.))), |_| {});
                 window.invalidator.set_phase(DrawPhase::Paint);
-                window.with_scroll_node_paint(ScrollNodeId::of_token(&Rc::new(())), |_| {});
+                window.with_scroll_node_paint(unknown, |_| {});
                 window.with_scroll_node_paint(id, |_| {});
             })
             .unwrap();
         let (events, _) = trace::take();
         drop(trace);
+        // The trace is shared by the tests running at once: keep this test's ids.
+        let mine = |detail: &str| [id, unknown].iter().any(|id| detail.contains(&format!("id {} ", id.0)));
+        let events: Vec<_> = events.into_iter().filter(|e| mine(&e.detail)).collect();
         let kinds: Vec<_> = events.iter().map(|e| e.kind).filter(|k| k.starts_with("scroll_node.")).collect();
         assert_eq!(kinds, ["scroll_node.open_anchor", "scroll_node.paint_unpaired", "scroll_node.paint_paired"]);
         let unpaired = events.iter().find(|e| e.kind == "scroll_node.paint_unpaired").unwrap();

@@ -1,30 +1,11 @@
-//! Точные начала матрицы трансформа до привязки к устройству (CSS Transforms 1 §3): поправка
-//! матрицы заливки коробки на разницу привязанного и точного начала, выбор неокруглённого
-//! начала для диагонального масштаба и классификация линейной части как поворота на кратное 90°
-//! или отражения, у которых свой путь привязки краёв.
+//! Exact transform origins before device snapping (CSS Transforms 1 §3): the
+//! unrounded origin of a diagonal scale, and the linear part classified as a
+//! quarter turn or reflection, whose edges snap their own way.
 
 use crate::paint::effects::transformed_element::Transformed;
 use gpui::{Pixels, Point};
 
 impl Transformed {
-    pub(crate) fn exact_fill_matrix(
-        &self,
-        mut matrix: gpui::TransformationMatrix,
-        snapped: Point<Pixels>,
-        exact: Point<Pixels>,
-        sf: f32,
-    ) -> gpui::TransformationMatrix {
-        // CSS Transforms 1 §3 resolves origins before device snapping.
-        // Glyphs and images retain the existing quarter-turn correction,
-        // while box fills snap both edges from this original CSS map.
-        let [[a, b], [c, d]] = matrix.rotation_scale;
-        let dx = f32::from(exact.x - snapped.x) * sf;
-        let dy = f32::from(exact.y - snapped.y) * sf;
-        matrix.translation[0] += (1.0 - a) * dx - b * dy;
-        matrix.translation[1] += -c * dx + (1.0 - d) * dy;
-        matrix
-    }
-
     pub(crate) fn scaled_origin(&self, origin: Point<Pixels>) -> Point<Pixels> {
         let [[a, b], [c, d]] = self.lin;
         let eps = 1e-5;

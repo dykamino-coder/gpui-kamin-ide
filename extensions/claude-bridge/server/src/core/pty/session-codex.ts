@@ -13,6 +13,7 @@
 // codex's own rollout (CODEX_HOME) stays the source of truth for resume.
 // ============================================================================
 
+import { hasWorkspaceSkills } from './host-declaration'
 import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
@@ -46,6 +47,8 @@ import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { HOOK_SYNC_ERROR, refreshCodexToolHooks } from '../hooks/codex-tool-hooks'
+import { clearSession as clearHooks } from '../hooks/registry'
 import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
@@ -277,17 +280,12 @@ export function codexModel(model: string | null | undefined): string | undefined
  *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
  *  windows take the ids the Claude status line uses, so the row labels them
  *  alike; context fields stay null (codex reports its window per response). */
-export function codexPlanUsage(
-  limits: CodexRateLimits,
-  model: string | null,
-  effort: string | null,
-): SessionUsage | null {
-  const account = limits.buckets[0]
-  if (!account) return null
+export function codexPlanUsage(limits: CodexRateLimits, model: string | null, effort: string | null): SessionUsage {
+  const account = limits.buckets.find((b) => b.id === 'codex') ?? limits.buckets.find((b) => b.id === null)
   const windows: SessionUsageWindow[] = []
   for (const [slot, w] of [
-    ['primary', account.primary],
-    ['secondary', account.secondary],
+    ['primary', account?.primary],
+    ['secondary', account?.secondary],
   ] as const) {
     if (!w) continue
     const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
@@ -298,7 +296,6 @@ export function codexPlanUsage(
       resetsAt: w.resetsAt === null ? null : new Date(w.resetsAt).toISOString(),
     })
   }
-  if (windows.length === 0) return null
   const at = new Date(limits.readAt).toISOString()
   return {
     windows,
@@ -337,6 +334,8 @@ function developerInstructions(config: SessionConfig): string {
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
+    hasWorkspaceSkills('codex', config.host) &&
+      'At the start of a task, use mcp__bridge__ListWorkspaceSkills to discover current user, project and enabled plugin skills on the client. For a matching skill, use mcp__bridge__Read on its file_path and follow the applicable instructions. Resolve references from that file on the client. All ordinary tool permissions continue to apply.',
     syncedInstructions(config.bearerHash, config.cwd),
   ]
     .filter(Boolean)
@@ -353,6 +352,7 @@ export async function createCodexSession(
   deps: CodexSessionDeps,
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  if (config.hookSyncFailed) throw new Error(HOOK_SYNC_ERROR)
   const sessionId = randomUUID()
   const mcpToken = randomUUID()
   const { settingsDir } = placement
@@ -478,6 +478,7 @@ export async function createCodexSession(
     launchConfig: { ...config, carryRegistrations: undefined },
     ...(config.conversation ? { conversation: config.conversation } : {}),
   }
+  await refreshCodexToolHooks(session, signal)
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
   let freshThread = false
@@ -511,6 +512,7 @@ export async function createCodexSession(
     }
   } catch (error) {
     releaseEndpoint()
+    clearHooks(session.id)
     throw error
   }
   const threadId = agent.conversationId()!
@@ -575,6 +577,7 @@ export async function createCodexSession(
   attachSessionJsonlWatcher(session, config, resumed ? 0 : Date.now(), {
     recordCompactLink: deps.recordCompactLink,
     engine: 'codex',
+    fixedTranscript: transcript,
   })
 
   vpty.onExit(({ exitCode }) => {
@@ -823,7 +826,7 @@ export class CodexSessionBinding {
       .then((limits) => {
         if (this.disposed) return
         const usage = codexPlanUsage(limits, this.session.model ?? null, this.session.effort ?? null)
-        if (usage) sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
+        sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
       })
       .catch(() => undefined)
   }

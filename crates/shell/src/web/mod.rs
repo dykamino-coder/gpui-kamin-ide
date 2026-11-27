@@ -69,7 +69,7 @@ mod visibility;
 pub(crate) use availability::recovery;
 pub use availability::{Unavailable, unavailable};
 pub use diag::{ctx_took, draw_took, drawn, rows_built};
-pub use element::{ensure_focus_handles, web_view};
+pub use element::{ensure_focus_handles, focus_mounted_view, web_view};
 pub use process::{exit_if_child_process, init, shutdown};
 pub use profile_gate::Outcome;
 pub(crate) use profile_gate::Recovery;

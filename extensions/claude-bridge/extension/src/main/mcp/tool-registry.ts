@@ -8,6 +8,7 @@ import { askUserQuestion, enterPlanMode, exitPlanMode, skillLoad } from './tools
 import { pushNotification, todoWrite, todoList } from './tools/notifications'
 import { showWidget } from './tools/widget'
 import { previewMount, previewUpdate, previewUnmount } from './tools/preview'
+import { listWorkspaceSkills } from './tools/workspace-skills'
 import { toolSearch } from './tools/search-tools'
 import { lspDiagnostics, lspHover, lspDefinition, lspReferences } from './tools/lsp'
 
@@ -25,6 +26,7 @@ export type ToolHandler = (input: Record<string, unknown>, context?: ToolContext
 export const toolRegistry: Map<string, ToolHandler> = new Map<string, ToolHandler>([
   // ── File system ─────────────────────────────────────
   ['Read', readFile],
+  ['ListWorkspaceSkills', listWorkspaceSkills],
   ['Write', writeFile],
   ['Edit', editFile],
   ['Glob', globSearch],

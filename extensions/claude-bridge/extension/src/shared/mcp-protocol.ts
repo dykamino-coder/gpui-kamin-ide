@@ -8,6 +8,8 @@ export type ClientMessage =
   | { type: 'jsonl:subagent-select'; agentId: string | null }
   | {
       type: 'session:create'
+      hookSyncFailed?: boolean
+      codexHookProtocol?: 1
       token: string
       cwd?: string
       cols?: number
@@ -51,6 +53,8 @@ export type ClientMessage =
     }
   | {
       type: 'session:resume'
+      hookSyncFailed?: boolean
+      codexHookProtocol?: 1
       noSpawnOnNotFound?: boolean
       token: string
       conversationId: string
@@ -61,6 +65,7 @@ export type ClientMessage =
       history?: { mode: 'paged' }
       engine?: import('./types').AgentEngine
     }
+  | { type: 'session:change-claude-permission-mode'; sessionId: string; mode: string }
   | { type: 'session:codex-collaboration'; sessionId: string; mode: 'default' | 'plan' }
   | { type: 'session:change-effort'; effort: string }
   | { type: 'session:change-model'; model: string }
@@ -107,6 +112,7 @@ export type ClientMessage =
 
 // Server → VSIX bridge host
 export type ServerMessage =
+  | { type: 'session:claude-permissions'; sessionId: string; available: string[]; selected?: string; requested?: string; reason?: string }
   | { type: 'commands:request' }
   | {
       type: 'commands:snapshot'

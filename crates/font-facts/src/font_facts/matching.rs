@@ -15,6 +15,8 @@ pub struct Face {
     pub family: String,
     pub adjust: f32,
     pub features: Vec<(String, u32)>,
+    /// The rule's `unicode-range` (`coverage::ranges`); empty is every code point.
+    pub ranges: Vec<(u32, u32)>,
 }
 
 pub fn range(value: Option<&str>, default: f32) -> (f32, f32) {
@@ -149,31 +151,32 @@ fn style(face: &Face, request: &FontRequest<'_>) -> (u8, f32) {
     }
 }
 
+/// The section 5.2 rank of `face` for `request`: width, then style, then weight.
+pub(super) fn rank(face: &Face, request: &FontRequest<'_>) -> [(u8, f32); 3] {
+    let width = request.width;
+    [
+        directed(width, face.width, width > 100.0),
+        style(face, request),
+        weight(request.weight, face.weight),
+    ]
+}
+
+/// Compare two ranks: the first differing criterion decides.
+pub(super) fn order(a: &[(u8, f32); 3], b: &[(u8, f32); 3]) -> std::cmp::Ordering {
+    a.iter()
+        .zip(b)
+        .map(|(a, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
+        .find(|order| !order.is_eq())
+        .unwrap_or(std::cmp::Ordering::Equal)
+}
+
+/// The face that sets the metrics: the lead of the family's composite
+/// (`coverage::composite`), so a later subset without U+0020 does not win.
 pub fn select(faces: &[Face], request: &FontRequest<'_>) -> Option<Face> {
-    {
-        let width = request.width;
-        let rank = |face: &Face| {
-            [
-                directed(width, face.width, width > 100.0),
-                style(face, request),
-                weight(request.weight, face.weight),
-            ]
-        };
-        // Later declarations win equal capabilities (composite subsets remain
-        // ordered here; character coverage is handled separately by fallback).
-        faces
-            .iter()
-            .rev()
-            .min_by(|a, b| {
-                rank(a)
-                    .into_iter()
-                    .zip(rank(b))
-                    .map(|(a, b)| a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)))
-                    .find(|order| !order.is_eq())
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-            .cloned()
-    }
+    super::coverage::composite(faces, request)
+        .into_iter()
+        .next()
+        .cloned()
 }
 
 /// Descriptor capabilities override binary style metadata: an oblique/bold

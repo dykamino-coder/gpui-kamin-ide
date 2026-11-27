@@ -27,10 +27,6 @@ pub struct ResetEffects {
     /// Слоёв композитора у нас нет, поэтому от обещания остаётся ровно то,
     /// что дало бы само свойство: содержащий блок и контекст наложения.
     pub will_change: u8,
-    /// Есть ли выше по дереву корень подложки (filter-effects-2
-    /// §BackdropRoot): прозрачность, фильтр, маска, clip-path, смешивание,
-    /// `backdrop-filter`, `will-change` с ними. Ставится при наследовании.
-    pub backdrop_root_above: bool,
     /// `will-change` называет свойство, создающее корень подложки.
     pub will_change_root: bool,
     /// `backdrop-filter` задан (не `none`): корень подложки при ЛЮБОМ списке,

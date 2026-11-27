@@ -10,8 +10,9 @@
 //! совпадают (`style::values::value::units`).
 
 use super::len_px::FontCx;
+use super::math_lengths::fold_math;
 use crate::style::computed::Computed;
-use crate::style::values::value::{Len, calc_get};
+use crate::style::values::value::{Len, Sum, calc_get};
 use crate::values::ValueCx;
 
 /// Окно для единиц окна: размер (уже без полос прокрутки), ось письма самой
@@ -95,6 +96,10 @@ impl<'a> LenCx<'a> {
                 };
                 if k == 0.0 { add } else { pct(k)? + add }
             }
+            Len::Math(_) => {
+                let (k, add) = self.math_terms(l, vcx)?;
+                if k == 0.0 { add } else { pct(k)? + add }
+            }
             Len::Vw(k) => {
                 crate::values::viewport_reads::note(vcx);
                 k * self.viewport?.size.0
@@ -169,6 +174,10 @@ impl Len {
                 return sum.collapse_mixed(vcx).unwrap_or(self);
             }
         }
+        if let Len::Math(_) = self {
+            let container = vp.container.unwrap_or(vp.size);
+            return fold_math(self, vcx, |s| s.fold_container(container, vp.vertical));
+        }
         self
     }
 
@@ -195,6 +204,9 @@ impl Len {
                     self
                 }
             }
+            Len::Math(_) => fold_math(self, vcx, |s| {
+                s.fold_viewport(vp.size, vp.vertical, vp.container)
+            }),
             other => other,
         }
     }
@@ -204,20 +216,19 @@ impl Len {
         match self {
             Len::Vw(_) | Len::Vh(_) => true,
             Len::Calc(i) => calc_get(i, vcx).has_viewport_terms(),
+            Len::Math(_) => self.math_any(vcx, Sum::has_viewport_terms),
             _ => false,
         }
     }
 }
 
 impl Computed {
-    /// Окно единиц окна для этой коробки: размер без полос прокрутки
-    /// (`viewport_unit_insets`), ось её письма, контейнер запросов размера
-    /// (недостающая ось — окно).
-    pub fn viewport_cx(&self, raw: (f32, f32)) -> ViewportCx {
-        let insets = self
-            .reset_positioned
-            .viewport_unit_insets
-            .unwrap_or_default();
+    /// The viewport of viewport units for this box: the document's viewport
+    /// without the scrollbars units exclude (`ViewportFacts::unit_insets`),
+    /// the box's writing axis and its size query container (the viewport for
+    /// a missing axis).
+    pub fn viewport_cx(&self, raw: (f32, f32), vcx: ValueCx<'_>) -> ViewportCx {
+        let insets = vcx.doc.viewport.unit_insets();
         let size = ((raw.0 - insets[0]).max(0.0), (raw.1 - insets[1]).max(0.0));
         ViewportCx::for_box(size, self)
     }

@@ -11,18 +11,21 @@
 # 9. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
 # 10. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
 # 11. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 12. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 13. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 14. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
-# 15. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 16. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 17. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
-# 18. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
-# 19. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
-# 20. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
-# 21. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
-# 22. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
-# 23. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
+# 12. Zero em size: a run at font-size 0 is shaped blank (no glyph, no advance, zero extent); a line of such runs is not shaped, a mixed line shapes them at a stand-in size no neighbour uses and drops their glyph runs.
+# 13. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 14. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 15. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
+# 16. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 17. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 18. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 19. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
+# 20. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
+# 21. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
+# 22. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
+# 23. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
+# 24. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
+# 25. Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.
+# 26. Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -4942,16 +4945,17 @@ index 1db95715e26daf9ab0ca5097183a763cf3aa8340..1b1df44eb6b3d4f9179366a8ec0d799e
 +            // KaminIDE patch: group composites blended by the output merger
 +            "group_tiles",
 diff --git a/vendor/gpui-windows/src/direct_write.rs b/vendor/gpui-windows/src/direct_write.rs
-index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b9889bb43c35
+index 304dc38663b1c9a52c4cc2266d70d61f25472a79..41cef89d072cc7a5312784e8bc0dca1ba53aa44b
 --- a/vendor/gpui-windows/src/direct_write.rs
 +++ b/vendor/gpui-windows/src/direct_write.rs
-@@ -0,0 +1,5 @@
+@@ -0,0 +1,6 @@
 +//! Windows text shaping, font selection and glyph rasterization through DirectWrite.
 +
++mod blank_runs;
 +mod css_weight;
 +mod fallbacks;
 +
-@@ -34,0 +40,19 @@
+@@ -34,0 +41,19 @@
 +    scoped_fallbacks: Option<IDWriteFontFallback>,
 +    fallback_key: Option<FontFallbacks>,
 +    /// KaminIDE patch: возможность `vert` запрошена — глифы стоячего
@@ -4971,7 +4975,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    /// `create_glyph_run_analysis`).
 +    pixel_exact: bool,
 +    /// Коллекция, из которой взята грань (upstream; заменяет прежний `is_system_font`).
-@@ -36 +60,9 @@
+@@ -36 +61,9 @@
 -}
 +    /// KaminIDE patch: вес для раскладки, когда грань выбрана по CSS
 +    /// (`css_weight`); иначе — вес самой грани.
@@ -4982,7 +4986,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +/// of `SUBPIXEL_VARIANTS_X`, so every quantized glyph origin is a whole pixel
 +/// of the supersampled grid.
 +const EXACT_SUPERSAMPLE: i32 = 8;
-@@ -80 +112,6 @@
+@@ -80 +113,6 @@
 -    font_info_cache: HashMap<usize, FontId>,
 +    /// KaminIDE patch: keyed by the face's COM address, so each entry retains
 +    /// its face. A fallback face DirectWrite served and then released could
@@ -4990,7 +4994,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    /// of the same family), which would inherit the stale FontId: the
 +    /// glyph run is then rendered with the wrong face, per process.
 +    font_info_cache: HashMap<usize, (FontId, IDWriteFontFace3)>,
-@@ -288,0 +326,8 @@
+@@ -288,0 +327,8 @@
 +    fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
 +        self.state
 +            .read()
@@ -4999,7 +5003,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            .is_some_and(|font| font.pixel_exact)
 +    }
 +
-@@ -299,0 +345,43 @@
+@@ -299,0 +346,43 @@
 +    fn layout_line_into(
 +        &self,
 +        text: &str,
@@ -5043,28 +5047,28 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            || x.features_key != y.features_key
 +    }
 +
-@@ -302 +390 @@
+@@ -302 +391 @@
 -        _font_id: FontId,
 +        font_id: FontId,
-@@ -304,0 +393,5 @@
+@@ -304,0 +394,5 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) растеризуется только точно и
 +        // только в оттенках серого — ClearType ему не предлагается.
 +        if self.pixel_exact_glyphs(font_id) {
 +            return TextRenderingMode::Grayscale;
 +        }
-@@ -326 +419 @@
+@@ -326 +420 @@
 -                        &components.factory,
 +                        components,
-@@ -328 +420,0 @@
+@@ -328 +421,0 @@
 -                        &components.system_ui_font_name,
-@@ -333 +425,2 @@
+@@ -333 +426,2 @@
 -            let font_face_key = info.font_face.cast::<IUnknown>().unwrap().as_raw().addr();
 +            let font_face = info.font_face.clone();
 +            let font_face_key = font_face.cast::<IUnknown>().unwrap().as_raw().addr();
-@@ -335 +428 @@
+@@ -335 +429 @@
 -            this.font_info_cache.insert(font_face_key, font_id);
 +            this.font_info_cache.insert(font_face_key, (font_id, font_face));
-@@ -354,0 +448,24 @@
+@@ -354,0 +449,24 @@
 +        // KaminIDE patch: недостающее семейство заменяется системным шрифтом
 +        // интерфейса С ТЕМИ ЖЕ весом/начертанием/шириной/возможностями, а не
 +        // общим запасным стеком `TextSystem` (тот теряет вес и курсив). Прежде
@@ -5089,7 +5093,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        if font_id.is_none() && !self.fonts.is_empty() {
 +            font_id = Some(FontId(0));
 +        }
-@@ -366,23 +483,21 @@
+@@ -366,23 +484,21 @@
 -            match font_data {
 -                Cow::Borrowed(data) => unsafe {
 -                    let font_file = components
@@ -5134,7 +5138,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        None,
 +                    )?;
 +                components.builder.AddFontFile(&font_file)?;
-@@ -396,58 +510,0 @@
+@@ -396,58 +511,0 @@
 -    }
 -
 -    fn generate_font_fallbacks(
@@ -5193,35 +5197,35 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 -            builder.AddMappings(&system_fallbacks)?;
 -            Ok(Some(builder.CreateFontFallback()?))
 -        }
-@@ -469 +526 @@
+@@ -469 +527 @@
 -            ref fallbacks,
 +            fallbacks: ref font_fallbacks,
-@@ -471,0 +529,4 @@
+@@ -471,0 +530,4 @@
 +            // KaminIDE patch: ширина начертания (`font-stretch`). Узкое или
 +            // широкое начертание — это ОТДЕЛЬНЫЙ шрифт семейства, поэтому
 +            // выбирается здесь, при подборе, а не включается возможностью.
 +            stretch,
-@@ -474 +535 @@
+@@ -474 +536 @@
 -        factory: &IDWriteFactory5,
 +        components: &DirectWriteComponents,
-@@ -476 +536,0 @@
+@@ -476 +537,0 @@
 -        system_ui_font_name: &SharedString,
-@@ -478,0 +539,2 @@
+@@ -478,0 +540,2 @@
 +        let factory = &components.factory;
 +        let system_ui_font_name = &components.system_ui_font_name;
-@@ -482,2 +544,3 @@
+@@ -482,2 +545,3 @@
 -            gpui::font_name_with_fallbacks_shared(&family, &system_ui_font_name)
 -        };
 +            gpui::font_name_with_fallbacks_shared(family, system_ui_font_name)
 +        };
 +        let family_name = family.as_str();
-@@ -485 +548 @@
+@@ -485 +549 @@
 -        let font_family_h = HSTRING::from(family.as_str());
 +        let font_family_h = HSTRING::from(family_name);
-@@ -491 +554 @@
+@@ -491 +555 @@
 -                    DWRITE_FONT_STRETCH_NORMAL,
 +                    to_dwrite_stretch(stretch),
-@@ -495,0 +559,50 @@
+@@ -495,0 +560,50 @@
 +        // KaminIDE patch: запрет подмены начертания (`font-synthesis-weight`
 +        // и `-style`, css-fonts-4 §6.5) приходит своими тегами возможностей
 +        // `nsyw`/`nsys`: настоящих тегов OpenType для этого нет, а иного
@@ -5272,7 +5276,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        } else {
 +            font
 +        };
-@@ -497 +610,22 @@
+@@ -497 +611,22 @@
 -        for index in 0..total_number {
 +        // KaminIDE patch: документ просит подбор веса по CSS (тег `cssw`, см.
 +        // `css_weight`) — выбранная грань идёт первой, с подделкой жирного,
@@ -5296,7 +5300,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            .map(|_| None)
 +            .chain((0..total_number).map(Some));
 +        for slot in order {
-@@ -499,2 +633,23 @@
+@@ -499,2 +634,23 @@
 -                let font_face_ref = unsafe { font.GetFontFaceReference(index).log_err()? };
 -                let font_face = unsafe { font_face_ref.CreateFontFace().log_err()? };
 +                let font_face_ref = match (slot, css_pick.as_ref()) {
@@ -5322,7 +5326,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                // шейпинга через границу коробок и признак Ahem.
 +                let postscript_name =
 +                    get_postscript_name(&font_face, &components.locale).log_err()?;
-@@ -503,4 +658,21 @@
+@@ -503,4 +659,21 @@
 -                let fallbacks = fallbacks.as_ref().and_then(|fallbacks| {
 -                    Self::generate_font_fallbacks(fallbacks, factory, system_font_collection)
 -                        .log_err()
@@ -5348,7 +5352,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    )
 +                    .log_err()
 +                    .flatten()
-@@ -513 +685,18 @@
+@@ -513 +686,18 @@
 -                    font_collection: collection.clone(),
 +                    scoped_fallbacks,
 +                    fallback_key: font_fallbacks.clone(),
@@ -5368,7 +5372,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        (None, Some(pick)) => Some(pick.layout_weight),
 +                        _ => None,
 +                    },
-@@ -536,0 +726,58 @@
+@@ -536,0 +727,79 @@
 +        // KaminIDE patch: the glyph run list is sized at its first run
 +        // (`RendererContext::reserve`): a line that draws no glyph run keeps
 +        // no list, as before.
@@ -5392,7 +5396,11 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    fn shaping_ranges(&self, font_runs: &[FontRun]) -> usize {
 +        let mut ranges = 0;
 +        let mut applied: Option<&FontRun> = None;
-+        for run in font_runs.iter().filter(|r| r.len > 0) {
++        // KaminIDE patch: blank runs draw no glyph run (`blank_runs`).
++        for run in font_runs
++            .iter()
++            .filter(|r| r.len > 0 && !blank_runs::is_blank(r.font_size))
++        {
 +            let joins = applied.is_some_and(|a| {
 +                let (x, y) = (&self.fonts[run.font_id.0], &self.fonts[a.font_id.0]);
 +                !run.break_ligatures
@@ -5412,26 +5420,45 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    /// KaminIDE patch: `layout_line` appending its glyph runs to `out`, glyph
 +    /// indices offset by `index_base`; returns width, ascent and descent.
 +    /// `own`: `out` holds only this line, so runs split back from folded
-+    /// ranges go into a list sized like the drawn one.
++    /// ranges go into a list sized like the drawn one. Every run carries its
++    /// own em size, so the line size is not consulted.
 +    #[allow(clippy::too_many_arguments)]
 +    fn layout_line_into(
 +        &mut self,
 +        components: &DirectWriteComponents,
 +        text: &str,
-+        font_size: Pixels,
++        _font_size: Pixels,
 +        font_runs: &[FontRun],
 +        index_base: usize,
 +        out: &mut Vec<ShapedRun>,
 +        own: bool,
 +    ) -> Result<(Pixels, Pixels, Pixels)> {
-+        if font_runs.is_empty() {
++        // KaminIDE patch: a line of blank runs has no glyph, advance or
++        // extent and is not shaped (`blank_runs`).
++        if font_runs
++            .iter()
++            .all(|run| blank_runs::is_blank(run.font_size))
++        {
 +            return Ok((px(0.), px(0.), px(0.)));
 +        }
-@@ -540,0 +788,22 @@
++        // KaminIDE patch: the em size each run is shaped at; `prev` is the
++        // size of the run before it (`blank_runs::stand_in`).
++        let shaping_size = |index: usize, prev: Option<f32>| {
++            let size = font_runs[index].font_size;
++            if blank_runs::is_blank(size) {
++                let next = font_runs.get(index + 1).map(|run| run.font_size.as_f32());
++                blank_runs::stand_in(prev, next)
++            } else {
++                size.as_f32()
++            }
++        };
+@@ -540,0 +810,27 @@
 +
 +            // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
 +            // продвижение возьмётся из вертикальных метрик в отрисовщике.
 +            let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
++            // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
++            let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
 +            {
 +                let mut u8_at = 0usize;
 +                let mut u16_at = 0u32;
@@ -5446,34 +5473,37 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    if self.fonts[run.font_id.0].vert_advance {
 +                        vert_ranges.push((u16_at, len16));
 +                    }
++                    if blank_runs::is_blank(run.font_size) && len16 > 0 {
++                        blank_ranges.push((u16_at, len16));
++                    }
 +                    u8_at += run.len;
 +                    u16_at += len16;
 +                }
 +            }
-@@ -553 +822,3 @@
+@@ -553 +849,3 @@
 -                        font_info.font_face.GetWeight(),
 +                        font_info
 +                            .layout_weight
 +                            .unwrap_or_else(|| font_info.font_face.GetWeight()),
-@@ -555,2 +826,5 @@
+@@ -555,2 +853,5 @@
 -                        DWRITE_FONT_STRETCH_NORMAL,
 -                        font_size.as_f32(),
 +                        // KaminIDE patch: ширина уже учтена при подборе начертания.
 +                        font_info.font_face.GetStretch(),
 +                        // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
 +                        // у прогонов он теперь свой.
-+                        first_run.font_size.as_f32(),
-@@ -560,2 +834,2 @@
++                        shaping_size(0, None),
+@@ -560,2 +861,2 @@
 -                if let Some(ref fallbacks) = font_info.fallbacks {
 -                    format.SetFontFallback(fallbacks)?;
 +                if let Some(fallbacks) = self.layout_fallbacks(components, font_runs)? {
 +                    format.SetFontFallback(&fallbacks)?;
-@@ -570 +844,3 @@
+@@ -570 +871,3 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + first_run.len))
 +                    .unwrap_or("");
-@@ -583,11 +859,26 @@
+@@ -583,11 +886,27 @@
 -            let (ascent, descent) = {
 -                let mut first_metrics = [DWRITE_LINE_METRICS::default(); 4];
 -                let mut line_count = 0u32;
@@ -5509,18 +5539,21 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            // Настоящая другая грань (свой файл) рвёт шейпинг, как и прежде.
 +            let mut folded: Vec<(usize, usize, FontId)> = Vec::new();
 +            let mut applied = font_runs[0].font_id;
-+            let mut applied_size = font_runs[0].font_size;
++            let mut applied_size = shaping_size(0, None);
++            let mut prev_size = applied_size;
 +            for (run_index, run) in font_runs.iter().enumerate().skip(1) {
-@@ -595 +886,4 @@
+@@ -595 +914,4 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + run.len))
 +                    .unwrap_or("");
 +                let run_utf8_start = utf8_offset;
-@@ -597,0 +892,15 @@
+@@ -597,0 +920,17 @@
 +                let base = &self.fonts[applied.0];
++                let run_size = shaping_size(run_index, Some(prev_size));
++                prev_size = run_size;
 +                if !run.break_ligatures
-+                    && run.font_size == applied_size
++                    && run_size == applied_size
 +                    && font_info.font_collection == base.font_collection
 +                    && font_info.face_key == base.face_key
 +                    && font_info.features_key == base.features_key
@@ -5532,21 +5565,21 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    continue;
 +                }
 +                applied = run.font_id;
-+                applied_size = run.font_size;
-@@ -607,2 +916,4 @@
++                applied_size = run_size;
+@@ -607,2 +946,4 @@
 -                let font_size = if break_ligatures {
 -                    font_size.as_f32().next_up()
 +                // Upstream's alternating nudge prevents ligatures spanning style runs.
 +                // Browser callers opt out to retain CSS boundary shaping (§7.4).
 +                let size = if run.break_ligatures && run_index % 2 == 1 {
-+                    run.font_size.as_f32().next_up()
-@@ -610 +921 @@
++                    run_size.next_up()
+@@ -610 +951 @@
 -                    font_size.as_f32()
-+                    run.font_size.as_f32()
-@@ -612 +923 @@
++                    run_size
+@@ -612 +953 @@
 -                text_layout.SetFontSize(font_size, text_range)?;
 +                text_layout.SetFontSize(size, text_range)?;
-@@ -614 +925,6 @@
+@@ -614 +955,6 @@
 -                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
 +                text_layout.SetFontWeight(
 +                    font_info
@@ -5554,10 +5587,10 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        .unwrap_or_else(|| font_info.font_face.GetWeight()),
 +                    text_range,
 +                )?;
-@@ -616,2 +931,0 @@
+@@ -616,2 +961,0 @@
 -
 -                break_ligatures = !break_ligatures;
-@@ -620 +934,57 @@
+@@ -620 +964,56 @@
 -            let mut runs = Vec::new();
 +            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
 +            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
@@ -5595,15 +5628,14 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            // `FontMetrics::descent` знаковый (DirectWrite отдаёт со знаком
 +            // минус, `direct_write.rs:897`) — берём модуль.
 +            let (mut ascent, mut descent) = (px(0.), px(0.));
-+            for run in font_runs {
++            // KaminIDE patch: a blank run's metrics are scaled to zero.
++            for run in font_runs
++                .iter()
++                .filter(|run| !blank_runs::is_blank(run.font_size))
++            {
 +                let m = self.font_metrics(run.font_id);
-+                let size = if run.font_size > px(0.) {
-+                    run.font_size
-+                } else {
-+                    font_size
-+                };
-+                ascent = ascent.max(m.ascent(size));
-+                descent = descent.max(m.descent(size).abs());
++                ascent = ascent.max(m.ascent(run.font_size));
++                descent = descent.max(m.descent(run.font_size).abs());
 +            }
 +
 +            let first = out.len();
@@ -5616,21 +5648,22 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            // отрисовщика мутирует его через указатель, а указатель,
 +            // производный от &T, мутировать нельзя (UB по правилам
 +            // алиасинга: оптимизатор вправе счесть width нулём).
-@@ -625 +995,3 @@
+@@ -625 +1024,3 @@
 -                runs: &mut runs,
 +                runs: &mut *out,
 +                reserve,
 +                index_base,
-@@ -626,0 +999 @@
+@@ -626,0 +1028,2 @@
 +                vert_ranges,
-@@ -628 +1001 @@
++                blank_ranges,
+@@ -628 +1031 @@
 -            text_layout.Draw(
 +            let drawn = text_layout.Draw(
-@@ -633 +1006,2 @@
+@@ -633 +1036,2 @@
 -            )?;
 +            );
 +            drawn?;
-@@ -635,9 +1009,44 @@
+@@ -635,9 +1039,44 @@
 -
 -            Ok(LineLayout {
 -                font_size,
@@ -5684,7 +5717,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            }
 +
 +            Ok((width, ascent, descent))
-@@ -694,0 +1104,19 @@
+@@ -694,0 +1134,19 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) is placed at its full sub-pixel
 +        // position on both axes (`Window::paint_glyph` quantizes y on the x
 +        // grid for it) and rasterized bi-level by pixel-centre sampling: a
@@ -5704,31 +5737,31 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        // применяется — точная растеризация только в оттенках серого.
 +        let exact = font.pixel_exact && !params.subpixel_rendering;
 +        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
-@@ -696 +1124 @@
+@@ -696 +1154 @@
 -            m11: params.scale_factor,
 +            m11: params.scale_factor * k,
-@@ -699 +1127 @@
+@@ -699 +1157 @@
 -            m22: params.scale_factor,
 +            m22: params.scale_factor * k,
-@@ -702,0 +1131,5 @@
+@@ -702,0 +1161,5 @@
 +        let variants_y = if exact {
 +            SUBPIXEL_VARIANTS_X
 +        } else {
 +            SUBPIXEL_VARIANTS_Y
 +        };
-@@ -705,3 +1138,2 @@
+@@ -705,3 +1168,2 @@
 -        let baseline_origin_y = params.subpixel_variant.y as f32
 -            / gpui::SUBPIXEL_VARIANTS_Y as f32
 -            / params.scale_factor;
 +        let baseline_origin_y =
 +            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
-@@ -726,0 +1159 @@
+@@ -726,0 +1189 @@
 +            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
-@@ -729,0 +1163,3 @@
+@@ -729,0 +1193,3 @@
 +        if exact {
 +            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
 +        }
-@@ -765 +1201,15 @@
+@@ -765 +1231,15 @@
 -        let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
@@ -5745,7 +5778,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                bottom: (bounds.bottom + k - 1).div_euclid(k),
 +            };
 +        }
-@@ -832,0 +1283,30 @@
+@@ -832,0 +1313,30 @@
 +            if self.fonts[params.font_id.0].pixel_exact {
 +                // KaminIDE patch: sample the supersampled bi-level raster at each
 +                // device pixel's centre, taken just above/left of it (k/2 - 1):
@@ -5776,26 +5809,29 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                }
 +                return Ok(bitmap_data);
 +            }
-@@ -1384 +1864,4 @@
+@@ -1384 +1894,4 @@
 -struct TextRendererWrapper(IDWriteTextRenderer);
 +// KaminIDE patch: обработчик версии 1 — вертикальная раскладка строки
 +// (стоячее письмо, `vert`) зовёт ТОЛЬКО его; со старым интерфейсом Draw
 +// падает с DWRITE_E_TEXTRENDERERINCOMPATIBLE.
 +struct TextRendererWrapper(IDWriteTextRenderer1);
-@@ -1393 +1876 @@
+@@ -1393 +1906 @@
 -#[implement(IDWriteTextRenderer)]
 +#[implement(IDWriteTextRenderer1)]
-@@ -1408,0 +1892,6 @@
+@@ -1408,0 +1922,6 @@
 +    /// KaminIDE patch: glyph runs the line draws at least (its shaping
 +    /// ranges); the empty list takes room for them, rounded to the power of
 +    /// two that doubling from empty would reach, at its first run. 0: grow.
 +    reserve: usize,
 +    /// KaminIDE patch: added to every glyph index (the line is a piece of a longer text).
 +    index_base: usize,
-@@ -1409,0 +1899,13 @@
+@@ -1409,0 +1929,16 @@
 +    /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
 +    /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
 +    vert_ranges: Vec<(u32, u32)>,
++    /// KaminIDE patch: UTF-16 ranges of blank runs (`blank_runs`); their
++    /// glyph runs add neither glyphs nor advance.
++    blank_ranges: Vec<(u32, u32)>,
 +}
 +
 +/// KaminIDE patch: знак «умолчательно игнорируемый» по Юникоду — служебный,
@@ -5806,25 +5842,29 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            | 0x180B..=0x180F | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F
 +            | 0x3164 | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xFFF0..=0xFFF8
 +            | 0x1D173..=0x1D17A | 0xE0000..=0xE0FFF)
-@@ -1514,0 +2017,5 @@
+@@ -1514,0 +2050,5 @@
 +        // KaminIDE patch: MSDN допускает NULL в glyphRunDescription (и сам
 +        // прогон) — разыменование без проверки было бы AV на чужом шрифте.
 +        if glyphrun.is_null() || glyphrundescription.is_null() {
 +            return Ok(());
 +        }
-@@ -1525,2 +2032,3 @@
+@@ -1521,0 +2062,3 @@
++        if blank_runs::in_blank(&context.blank_ranges, desc.textPosition) {
++            return Ok(());
++        }
+@@ -1525,2 +2068,3 @@
 -        // This `cast()` action here should never fail since we are running on Win10+, and
 -        // `IDWriteFontFace3` requires Win10
 +        // KaminIDE patch: cast не «не может упасть» — на удалённом или
 +        // экзотическом шрифте лучше молча пропустить прогон, чем уронить всю
 +        // раскладку строки (upstream возвращает здесь ошибку).
-@@ -1528,4 +2036 @@
+@@ -1528,4 +2072 @@
 -            return Err(Error::new(
 -                DWRITE_E_UNSUPPORTEDOPERATION,
 -                "Failed to cast font face",
 -            ));
 +            return Ok(());
-@@ -1535,5 +2040,2 @@
+@@ -1535,5 +2076,2 @@
 -        let font_id = context
 -            .text_system
 -            .font_info_cache
@@ -5832,7 +5872,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 -            .copied()
 +        let font_id = match context.text_system.font_info_cache.get(&font_face_key) {
 +            Some(&(font_id, _)) => font_id,
-@@ -1542,7 +2044,10 @@
+@@ -1542,7 +2080,10 @@
 -            .map_or_else(
 -                || {
 -                    let font = font_face_to_font(font_face, &self.locale)
@@ -5850,7 +5890,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                    Some(&font_id) => font_id,
 +                    None => {
 +                        let Some(font_id) = context
-@@ -1551,10 +2056,13 @@
+@@ -1551,10 +2092,13 @@
 -                            .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
 -                    };
 -                    context
@@ -5874,7 +5914,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                font_id
 +            }
 +        };
-@@ -1576,0 +2085,31 @@
+@@ -1576,0 +2121,31 @@
 +        };
 +        // KaminIDE patch: стоячее вертикальное письмо (`vert`) продвигается
 +        // вертикальной метрикой глифа — advanceHeight подставленного глифа
@@ -5906,7 +5946,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            })
 +        } else {
 +            None
-@@ -1599,0 +2139,13 @@
+@@ -1599,0 +2175,13 @@
 +            // KaminIDE patch: знак-указание своего изображения не имеет.
 +            // Форму соседних букв он уже определил (соединитель, разделитель
 +            // направления), но шрифт его чаще всего не содержит — и подмена
@@ -5920,7 +5960,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                glyph_idx += cluster_glyph_count;
 +                continue;
 +            }
-@@ -1613 +2165,9 @@
+@@ -1613 +2201,9 @@
 -                        px(-glyph_offsets[this_glyph_idx].ascenderOffset),
 +                        // upstream: вертикальное смещение глифа (огласовки, метки).
 +                        // KaminIDE patch: у стоячего вертикального письма смещение
@@ -5931,15 +5971,15 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +                        } else {
 +                            px(-glyph_offsets[this_glyph_idx].ascenderOffset)
 +                        },
-@@ -1615 +2175 @@
+@@ -1615 +2211 @@
 -                    index: context.index_converter.utf8_ix,
 +                    index: context.index_converter.utf8_ix + context.index_base,
-@@ -1618 +2178,3 @@
+@@ -1618 +2214,3 @@
 -                context.width += glyph_advances[this_glyph_idx];
 +                context.width += vert_advances
 +                    .as_ref()
 +                    .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
-@@ -1622 +2184,11 @@
+@@ -1622 +2220,11 @@
 -        context.runs.push(ShapedRun { font_id, glyphs });
 +        if context.reserve > 0 && context.runs.capacity() == 0 {
 +            context
@@ -5952,7 +5992,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            glyphs,
 +            font_size: px(glyphrun.fontEmSize),
 +        });
-@@ -1667,0 +2240,90 @@
+@@ -1667,0 +2276,90 @@
 +    }
 +}
 +
@@ -6043,7 +6083,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +            isrighttoleft,
 +            clientdrawingeffect,
 +        )
-@@ -1781,0 +2444,19 @@
+@@ -1781,0 +2480,19 @@
 +/// KaminIDE patch: PostScript-имя грани — ключ физической грани (у
 +/// синтетических bold/oblique оно то же) и признак тестового шрифта Ahem.
 +/// upstream убрал эту функцию вместе с `FontIdentifier`.
@@ -6063,9 +6103,52 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +    get_name(info, locale)
 +}
 +
-@@ -1791,0 +2473 @@
+@@ -1791,0 +2509 @@
 +        stretch: FontStretch::default(),
-@@ -2170,0 +2853,16 @@
+@@ -2016,0 +2735,42 @@
++    /// KaminIDE patch: `font-size: 0` text shapes as blank runs (`blank_runs`).
++    #[test]
++    fn zero_size_runs_shape_blank() -> Result<()> {
++        use gpui::FontRun;
++        let text_system = DirectWriteTextSystem::new(None)?;
++        let font_id = text_system.font_id(&Font {
++            family: "Arial".into(),
++            ..Default::default()
++        })?;
++        let run = |len: usize, size: f32| FontRun {
++            break_ligatures: false,
++            len,
++            font_id,
++            font_size: px(size),
++        };
++        let all_blank = text_system.layout_line("abcd", px(0.), &[run(4, 0.)]);
++        assert_eq!(all_blank.width, px(0.));
++        assert_eq!((all_blank.ascent, all_blank.descent), (px(0.), px(0.)));
++        assert!(all_blank.runs.is_empty());
++        assert_eq!(all_blank.len, 4);
++
++        let glyphs = |line: &gpui::LineLayout| -> Vec<usize> {
++            let runs = line.runs.iter();
++            runs.flat_map(|r| r.glyphs.iter().map(|g| g.index)).collect()
++        };
++        let ab = text_system.layout_line("ab", px(16.), &[run(2, 16.)]);
++        let ef = text_system.layout_line("ef", px(16.), &[run(2, 16.)]);
++        let mixed =
++            text_system.layout_line("abcdef", px(16.), &[run(2, 16.), run(2, 0.), run(2, 16.)]);
++        assert_eq!(glyphs(&mixed), vec![0, 1, 4, 5]);
++        assert!((mixed.width - (ab.width + ef.width)).abs() < px(0.01));
++        assert_eq!((mixed.ascent, mixed.descent), (ab.ascent, ab.descent));
++        // The `e` starts where `b` ends: the blank run adds no advance.
++        let e = mixed.runs.iter().flat_map(|r| &r.glyphs).nth(2).unwrap();
++        assert!((e.position.x - ab.width).abs() < px(0.01));
++
++        let leading = text_system.layout_line("cdab", px(0.), &[run(2, 0.), run(2, 16.)]);
++        assert_eq!(glyphs(&leading), vec![2, 3]);
++        assert!((leading.width - ab.width).abs() < px(0.01));
++        Ok(())
++    }
++
+@@ -2170,0 +2931,16 @@
 +
 +/// KaminIDE patch: ступень ширины начертания в термины DirectWrite.
 +fn to_dwrite_stretch(stretch: FontStretch) -> DWRITE_FONT_STRETCH {
@@ -6080,6 +6163,95 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..217c22d2217066db6363693a9e51b988
 +        S::Expanded => DWRITE_FONT_STRETCH_EXPANDED,
 +        S::ExtraExpanded => DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
 +        S::UltraExpanded => DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
++    }
++}
+diff --git a/vendor/gpui-windows/src/direct_write/blank_runs.rs b/vendor/gpui-windows/src/direct_write/blank_runs.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb48e07c5d08bbe8aec2d19b6cf89bb90b9c4cee
+--- /dev/null
++++ b/vendor/gpui-windows/src/direct_write/blank_runs.rs
+@@ -0,0 +1,83 @@
++//! KaminIDE patch: shaping of runs with a zero em size.
++//!
++//! `font-size: 0` is a valid computed value (css-fonts-4 §2.5: negative
++//! lengths are invalid, zero is not), so its text reaches the backend at em
++//! size 0. A text format or range at em size 0 is outside what DirectWrite
++//! lays out, and such a line once hung shaping. A zero-size run has zero
++//! advances and no ink at any scale, so it is a blank run: Gecko returns a
++//! blank text run for a size-0 font group without shaping, Blink shapes it
++//! through HarfBuzz at scale 0.
++//!
++//! A line made only of blank runs is not shaped at all. In a mixed line a
++//! blank run keeps its place in the text (bidi, clusters and indices of the
++//! other runs are unchanged) and is shaped at a stand-in em size that differs
++//! from both neighbours, so DirectWrite gives it glyph runs of its own; the
++//! renderer drops those glyph runs, which adds neither glyphs nor advance.
++
++use gpui::Pixels;
++
++/// A run whose em size is zero (or not a positive number) shapes as blank.
++pub(super) fn is_blank(size: Pixels) -> bool {
++    let size = size.as_f32();
++    size.is_nan() || size <= 0.0
++}
++
++/// Em size a blank run is shaped at between runs of `prev` and `next` em
++/// sizes. Equal sizes (or sizes one ulp apart, the upstream ligature nudge)
++/// would let DirectWrite merge the blank run into a neighbour's glyph run.
++pub(super) fn stand_in(prev: Option<f32>, next: Option<f32>) -> f32 {
++    let close = |a: f32, b: f32| a == b || a.next_up() == b || b.next_up() == a;
++    let mut size = 1.0f32;
++    // Each neighbour rules out at most one power of two: at most two steps.
++    while [prev, next].into_iter().flatten().any(|n| close(n, size)) {
++        size *= 2.0;
++    }
++    size
++}
++
++/// Whether the glyph run starting at `position` (UTF-16) belongs to a blank
++/// run; a blank run never shares a glyph run with its neighbours.
++pub(super) fn in_blank(ranges: &[(u32, u32)], position: u32) -> bool {
++    ranges
++        .iter()
++        .any(|&(start, len)| position >= start && position < start + len)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use gpui::px;
++
++    #[test]
++    fn zero_and_non_positive_sizes_are_blank() {
++        assert!(is_blank(px(0.)));
++        assert!(is_blank(px(-0.)));
++        assert!(is_blank(px(f32::NAN)));
++        assert!(!is_blank(px(0.01)));
++        assert!(!is_blank(px(16.)));
++    }
++
++    #[test]
++    fn stand_in_differs_from_both_neighbours() {
++        assert_eq!(stand_in(None, None), 1.0);
++        assert_eq!(stand_in(Some(16.), Some(12.)), 1.0);
++        assert_eq!(stand_in(Some(1.), None), 2.0);
++        assert_eq!(stand_in(Some(1.), Some(2.)), 4.0);
++        assert_eq!(stand_in(Some(2.), Some(1.)), 4.0);
++        // The upstream ligature nudge moves a size by one ulp.
++        assert_eq!(stand_in(Some(1.0f32.next_down()), None), 2.0);
++        assert_eq!(stand_in(None, Some(1.0f32.next_up())), 2.0);
++    }
++
++    #[test]
++    fn glyph_runs_inside_blank_ranges_are_found() {
++        let ranges = [(3, 2), (9, 1)];
++        assert!(!in_blank(&ranges, 0));
++        assert!(in_blank(&ranges, 3));
++        assert!(in_blank(&ranges, 4));
++        assert!(!in_blank(&ranges, 5));
++        assert!(in_blank(&ranges, 9));
++        assert!(!in_blank(&ranges, 10));
++        assert!(!in_blank(&[], 0));
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/direct_write/css_weight.rs b/vendor/gpui-windows/src/direct_write/css_weight.rs
@@ -7220,7 +7392,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc09c7a078
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..8e7c9ea925ac9207bb92e3f30ecac9e966eb5d18
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -7228,7 +7400,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +
 @@ -1,0 +4 @@
 +    collections::HashMap,
-@@ -38,0 +42,28 @@
+@@ -38,0 +42,30 @@
 +mod scene_capture;
 +mod canvas;
 +mod cover_shape;
@@ -7237,6 +7409,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +mod gpu_wait;
 +mod group_region;
 +mod group_stage;
++// KaminIDE patch: a path batch works within the pixels its paths reach.
++mod path_pass;
 +mod gaussian;
 +mod group_atlas;
 +mod group_batch;
@@ -7257,12 +7431,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +pub use damage_audit::{damage_audit_mismatches, set_damage_audit};
 +use group_region::Region;
 +
-@@ -46,0 +78,4 @@
+@@ -46,0 +80,4 @@
 +    disable_direct_composition: bool,
 +    /// KaminIDE patch: frames go to an offscreen texture, never presented
 +    /// (`WindowsPlatform::set_offscreen_windows`).
 +    offscreen: bool,
-@@ -47,0 +83,22 @@
+@@ -47,0 +85,22 @@
 +    /// KaminIDE patch: скретч backdrop blur (см. draw_surfaces).
 +    blur: BlurScratch,
 +    /// KaminIDE patch: куда идёт отрисовка сейчас. Пока рисуется группа
@@ -7285,11 +7459,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// KaminIDE patch: composite runs drawn in one pass (`group_tiles`;
 +    /// `GPUI_GROUP_TILES=0` keeps the composite levels, for comparison runs).
 +    group_tiles: bool,
-@@ -50,0 +108,3 @@
+@@ -50,0 +110,3 @@
 +    /// KaminIDE patch: цвет фона окна, которым очищен кадр вместо первого
 +    /// квада сцены (`backdrop`); `Some` — этот квад не рисуется.
 +    backdrop: Option<[f32; 4]>,
-@@ -56,0 +117,299 @@
+@@ -56,0 +119,299 @@
 +    /// KaminIDE patch (INC-2026-0001, диагностика): цена кадра по пачкам.
 +    gpu_timer: batch_cost::GpuTimer,
 +    capture: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>,
@@ -7589,13 +7763,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    group_stage::downsample_clip(dc, dest.width, dest.height, || {
 +        pipeline.draw_with_texture_blended(dc, src, &viewport, globals, sampler, 1, blend)
 +    })
-@@ -61,0 +421,2 @@
+@@ -61,0 +423,2 @@
 +    // KaminIDE patch: immutable snapshot belongs to these device resources.
 +    context: gpui::frame_capture::GpuDeviceContext,
-@@ -69,0 +431,2 @@
+@@ -69,0 +433,2 @@
 +use present_gate::FrameLatencyGate;
 +
-@@ -72 +435,6 @@
+@@ -72 +437,6 @@
 -    swap_chain: IDXGISwapChain1,
 +    /// KaminIDE patch: `None` for an offscreen target (`new_offscreen`).
 +    swap_chain: Option<IDXGISwapChain1>,
@@ -7603,34 +7777,40 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    frame_gate: Option<FrameLatencyGate>,
 +    /// KaminIDE patch: the frame's canvas (`canvas`): with a swap chain a
 +    /// texture of its own, offscreen the target itself.
-@@ -74,0 +443,3 @@
+@@ -75,3 +445,6 @@
+-
+-    // Path intermediate textures (with MSAA)
+-    path_intermediate_texture: ID3D11Texture2D,
 +    /// KaminIDE patch: the swap chain's back buffer, which receives the
 +    /// canvas's changes before each present (`canvas`).
 +    back_buffer: Option<ID3D11Texture2D>,
-@@ -88,0 +460 @@
++
++    // Path intermediate texture (with MSAA). KaminIDE patch: the path sprites
++    // read its samples (`path_pass`); there is no resolved copy.
+@@ -88,0 +462 @@
 +    quad_gradient: analytic_gradient::GradientProgram,
-@@ -94,0 +467,6 @@
+@@ -94,0 +469,6 @@
 +    /// KaminIDE patch: backdrop blur (даунсемплы + композит с маской углов).
 +    blur_pipeline: PipelineState<BlurQuad>,
 +    /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +    clear_pipeline: PipelineState<quad_clear::ClearColor>,
 +    /// KaminIDE patch: a run of group composites in one pass (`group_tiles`).
 +    group_tiles_pipeline: PipelineState<BlurQuad>,
-@@ -100,0 +479,2 @@
+@@ -100,0 +481,2 @@
 +    // KaminIDE patch: WRAP для полных осей, прозрачная граница для обрезанных.
 +    group_samplers: [Option<ID3D11SamplerState>; 4],
-@@ -121,0 +502 @@
+@@ -121,0 +504 @@
 +    comp_root: IDCompositionVisual,
-@@ -133,0 +515 @@
+@@ -133,0 +517 @@
 +            ..
-@@ -142,0 +525 @@
+@@ -142,0 +527 @@
 +            context: directx_devices.context.clone(),
-@@ -153,0 +537,4 @@
+@@ -153,0 +539,4 @@
 +    pub(crate) fn set_frame_capture(&mut self, sink: Option<Box<dyn gpui::frame_capture::FrameCaptureSink>>) {
 +        self.capture = sink;
 +    }
 +
-@@ -159 +546,23 @@
+@@ -159 +548,23 @@
 -        if disable_direct_composition {
 +        Self::build(hwnd, directx_devices, disable_direct_composition, false)
 +    }
@@ -7655,7 +7835,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        offscreen: bool,
 +    ) -> Result<Self> {
 +        if disable_direct_composition && !offscreen {
-@@ -164,0 +574,8 @@
+@@ -164,0 +576,8 @@
 +        // KaminIDE patch: a frame comparison pays only when it costs less
 +        // than the raster it saves. A hardware adapter rasters the window in
 +        // less CPU than reading its primitives, so frames keep the damage of
@@ -7664,7 +7844,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        let software = unsafe { devices.adapter.GetDesc1() }
 +            .is_ok_and(|desc| (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32) != 0);
 +        gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
-@@ -167,2 +584,6 @@
+@@ -167,2 +586,6 @@
 -        let resources = DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 -            .context("Creating DirectX resources")?;
 +        let resources = if offscreen {
@@ -7673,13 +7853,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
 +        }
 +        .context("Creating DirectX resources")?;
-@@ -180 +601 @@
+@@ -180 +603 @@
 -                .set_swap_chain(&resources.swap_chain)
 +                .set_swap_chain(resources.swap_chain()?)
-@@ -192,0 +614,2 @@
+@@ -192,0 +616,2 @@
 +            disable_direct_composition,
 +            offscreen,
-@@ -193,0 +617,11 @@
+@@ -193,0 +619,11 @@
 +            blur: BlurScratch::default(),
 +            gpu_timer: batch_cost::GpuTimer::new(directx_devices.instrumentation.clone()),
 +            capture: None,
@@ -7691,12 +7871,12 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            blend_premultiplied: None,
 +            blend_replace: None,
 +            group_tiles: group_tiles::enabled(),
-@@ -195,0 +630 @@
+@@ -195,0 +632 @@
 +            backdrop: None,
-@@ -196,0 +632,2 @@
+@@ -196,0 +634,2 @@
 +            unpresented: false,
 +            retained: Default::default(),
-@@ -197,0 +635,39 @@
+@@ -197,0 +637,39 @@
 +    }
 +
 +    /// KaminIDE patch: raw ID3D11Device окна (AddRef) — по нему открывается
@@ -7736,18 +7916,18 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +
 +    pub fn unregister_external_texture(&self, id: AtlasTextureId) {
 +        self.atlas.unregister_external(id);
-@@ -204 +680,2 @@
+@@ -204 +682,2 @@
 -    fn pre_draw(&self, clear_color: &[f32; 4]) -> Result<()> {
 +    fn pre_draw(&mut self, clear_color: &[f32; 4], clear: bool) -> Result<()> {
 +        let clear_color = *self.backdrop.as_ref().unwrap_or(clear_color);
-@@ -220 +697,2 @@
+@@ -220 +699,2 @@
 -                _pad: [0; 3],
 +                origin: [0.0; 2],
 +                _pad: 0,
-@@ -222,0 +701,2 @@
+@@ -222,0 +703,2 @@
 +        // KaminIDE patch: the clear is a draw, issued once the target, the
 +        // viewport and the frame parameters are bound (quad_clear).
-@@ -224,7 +703,0 @@
+@@ -224,7 +705,0 @@
 -            device_context.ClearRenderTargetView(
 -                resources
 -                    .render_target_view
@@ -7755,7 +7935,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -                    .context("missing render target view")?,
 -                clear_color,
 -            );
-@@ -241 +714,6 @@
+@@ -241 +716,6 @@
 -        Ok(())
 +        // KaminIDE patch: a frame drawn within a rectangle clears it later,
 +        // under the scissor (`render`).
@@ -7763,7 +7943,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            return Ok(());
 +        }
 +        self.clear_frame(clear_color)
-@@ -246,6 +724,12 @@
+@@ -246,6 +726,12 @@
 -        let result = unsafe {
 -            self.resources
 -                .as_ref()
@@ -7782,7 +7962,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        else {
 +            self.unpresented = false;
 +            return Ok(());
-@@ -253 +737,46 @@
+@@ -253 +739,46 @@
 -        result.ok().context("Presenting swap chain failed")
 +        // KaminIDE patch (canvas.rs): the buffer takes what it lacks from the canvas.
 +        let copied = self.copy_to_back_buffer()?;
@@ -7830,10 +8010,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// must present even if the scene is unchanged.
 +    pub(crate) fn needs_presentation(&self) -> bool {
 +        self.unpresented
-@@ -256,0 +786,2 @@
+@@ -256,0 +788,2 @@
 +        // KaminIDE patch: layer buffers die with the device.
 +        self.layer_cache.clear();
-@@ -263,65 +794,33 @@
+@@ -263,65 +796,33 @@
 -    fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
 -        let disable_direct_composition = self.direct_composition.is_none();
 -
@@ -7932,7 +8112,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            Some(target) => &target[..],
 +            None => slice::from_ref(&self.res().render_target_view),
 +        }
-@@ -340 +839,65 @@
+@@ -340 +841,65 @@
 -        self.render(scene, background_appearance)?;
 +        self.ensure_drawable_resources()?;
 +        // KaminIDE patch (retained.rs): unite this frame's damage into every
@@ -7999,22 +8179,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                log::warn!("frame capture failed: {e}");
 +            }
 +        }
-@@ -348,0 +912,5 @@
+@@ -348,0 +914,5 @@
 +    ///
 +    /// KaminIDE patch: with `within`, the target keeps the last frame and only
 +    /// those rectangles are cleared and drawn (scissor, `retained.rs`), one
 +    /// after another from the instances uploaded once; groups whose composite
 +    /// cannot reach their bounds are not drawn.
-@@ -352,0 +921 @@
+@@ -352,0 +923 @@
 +        within: Option<&[Region]>,
-@@ -354 +923,5 @@
+@@ -354 +925,5 @@
 -        self.pre_draw(&match background_appearance {
 +        self.ensure_drawable_resources()?;
 +        self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
 +        self.backdrop_pending = self.backdrop.is_some();
 +        self.layer_cache.begin_frame();
 +        let clear_color = match background_appearance {
-@@ -357,2 +930,65 @@
+@@ -357,2 +932,65 @@
 -        })?;
 -        self.upload_scene_buffers(scene)?;
 +        };
@@ -8082,7 +8262,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            self.upload_scene_buffers(scene)?;
 +        }
 +        let b = base.unwrap_or_default();
-@@ -365,0 +1002,17 @@
+@@ -365,0 +1004,17 @@
 +            // KaminIDE patch: a layer draws its own batches from its buffers.
 +            if let PrimitiveBatch::Layer(index) = batch {
 +                self.draw_layer(scene, index)?;
@@ -8100,28 +8280,32 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                }
 +                _ => batch_area(scene, &batch),
 +            });
-@@ -370,2 +1023,4 @@
+@@ -370,6 +1025,3 @@
 -                PrimitiveBatch::Shadows(range) => self.draw_shadows(range.start, range.len()),
 -                PrimitiveBatch::Quads(range) => self.draw_quads(range.start, range.len()),
+-                PrimitiveBatch::Paths(range) => {
+-                    let paths = &scene.paths[range];
+-                    self.draw_paths_to_intermediate(paths)?;
+-                    self.draw_paths_from_intermediate(paths)
 +                PrimitiveBatch::Shadows(range) => self.draw_shadows(b[0] + range.start, range.len()),
 +                PrimitiveBatch::Quads(range) => {
 +                    self.draw_quads(&scene.quads[range.clone()], b[1] + range.start)
-+                }
-@@ -377 +1032 @@
+@@ -377 +1029,2 @@
 -                PrimitiveBatch::Underlines(range) => self.draw_underlines(range.start, range.len()),
++                PrimitiveBatch::Paths(range) => self.draw_paths(&scene.paths[range]),
 +                PrimitiveBatch::Underlines(range) => self.draw_underlines(b[2] + range.start, range.len()),
-@@ -379 +1034 @@
+@@ -379 +1032 @@
 -                    self.draw_monochrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_monochrome_sprites(texture_id, b[3] + range.start, range.len())
-@@ -382 +1037 @@
+@@ -382 +1035 @@
 -                    self.draw_subpixel_sprites(texture_id, range.start, range.len())
 +                    self.draw_subpixel_sprites(texture_id, b[4] + range.start, range.len())
-@@ -385 +1040 @@
+@@ -385 +1038 @@
 -                    self.draw_polychrome_sprites(texture_id, range.start, range.len())
 +                    self.draw_polychrome_sprites(texture_id, b[5] + range.start, range.len())
-@@ -387,0 +1043 @@
+@@ -387,0 +1041 @@
 +                PrimitiveBatch::Layer(_) => Ok(()),
-@@ -402,0 +1059,404 @@
+@@ -402,0 +1057,404 @@
 +            if let Some((kind, prims, area)) = cost {
 +                self.gpu_timer.instrumentation.batches.count(kind, prims, area);
 +                let (device, ctx) = (self.dev().device.clone(), self.dev().device_context.clone());
@@ -8526,19 +8710,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                .VSSetConstantBuffers(1, Some(slice::from_ref(&self.globals.batch_params_buffer)));
 +            device_context
 +                .PSSetConstantBuffers(0, Some(slice::from_ref(&self.globals.global_params_buffer)));
-@@ -412 +1471,0 @@
+@@ -412 +1469,0 @@
 -    #[cfg(any(test, feature = "test-support"))]
-@@ -425 +1484,4 @@
+@@ -425 +1482,4 @@
 -        self.render(scene, background_appearance)?;
 +        // KaminIDE patch: the target now holds a frame outside the window's
 +        // sequence of compared scenes (`retained.rs`).
 +        self.forget_frames();
 +        self.render(scene, background_appearance, None)?;
-@@ -488 +1550,2 @@
+@@ -488 +1548,2 @@
 -        if self.width == width && self.height == height {
 +        if self.width == width && self.height == height && self.ensure_drawable_resources().is_ok()
 +        {
-@@ -494 +1557,24 @@
+@@ -494 +1555,24 @@
 -        // Clear the render target before resizing
 +        self.resize_with(|resources, devices| {
 +            // KaminIDE patch: an offscreen target is simply recreated.
@@ -8564,7 +8748,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    ) -> Result<()> {
 +        // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
 +        self.forget_target();
-@@ -500,19 +1586,3 @@
+@@ -500,19 +1584,3 @@
 -
 -        // Resizing the swap chain requires a call to the underlying DXGI adapter, which can return the device removed error.
 -        // The app might have moved to a monitor that's attached to a different graphics device.
@@ -8587,10 +8771,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        // KaminIDE patch: ResizeBuffers needs every reference to the buffers released.
 +        resources.back_buffer.take();
 +        recreate(resources, devices)?;
-@@ -539,0 +1610,2 @@
+@@ -539,0 +1608,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,4 +1671,9 @@
+@@ -599,4 +1669,9 @@
 -    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
 -        if len == 0 {
 -            return Ok(());
@@ -8604,7 +8788,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            self.backdrop_pending = false;
 +        }
 +        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-@@ -604,9 +1681,21 @@
+@@ -604,71 +1679,20 @@
 -        self.pipelines.quad_pipeline.draw_range(
 -            &devices.device_context,
 -            self.globals
@@ -8614,6 +8798,68 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -            start as u32,
 -            len as u32,
 -        )
+-    }
+-
+-    fn draw_paths_to_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
+-        if paths.is_empty() {
+-            return Ok(());
+-        }
+-
+-        let devices = self.devices.as_ref().context("devices missing")?;
+-        let resources = self.resources.as_ref().context("resources missing")?;
+-        // Clear intermediate MSAA texture
+-        unsafe {
+-            devices.device_context.ClearRenderTargetView(
+-                resources.path_intermediate_msaa_view.as_ref().unwrap(),
+-                &[0.0; 4],
+-            );
+-            // Set intermediate MSAA texture as render target
+-            devices.device_context.OMSetRenderTargets(
+-                Some(slice::from_ref(&resources.path_intermediate_msaa_view)),
+-                None,
+-            );
+-        }
+-
+-        // Collect all vertices and sprites for a single draw call
+-        let mut vertices = Vec::new();
+-
+-        for path in paths {
+-            vertices.extend(path.vertices.iter().map(|v| PathRasterizationSprite {
+-                xy_position: v.xy_position,
+-                st_position: v.st_position,
+-                color: path.color,
+-                bounds: path.clipped_bounds(),
+-            }));
+-        }
+-
+-        self.pipelines.path_rasterization_pipeline.update_buffer(
+-            &devices.device,
+-            &devices.device_context,
+-            &vertices,
+-        )?;
+-
+-        self.pipelines.path_rasterization_pipeline.draw(
+-            &devices.device_context,
+-            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,
+-            vertices.len() as u32,
+-            1,
+-        )?;
+-
+-        // Resolve MSAA to non-MSAA intermediate texture
+-        unsafe {
+-            devices.device_context.ResolveSubresource(
+-                &resources.path_intermediate_texture,
+-                0,
+-                &resources.path_intermediate_msaa_texture,
+-                0,
+-                RENDER_TARGET_FORMAT,
+-            );
+-            // Restore main render target
+-            devices
+-                .device_context
+-                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
+-        }
+-
 +        let params = self
 +            .globals
 +            .batch_params_buffer
@@ -8634,29 +8880,57 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
 +            }
 +        }
-+        Ok(())
-@@ -621,0 +1711,6 @@
-+        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
-+        unsafe {
-+            devices
-+                .device_context
-+                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
-+        }
-@@ -643,0 +1739,2 @@
-+                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
-+                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1769,4 @@
--                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
-+                .OMSetRenderTargets(Some(self.current_target()), None);
-+            devices
-+                .device_context
-+                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1916,4 @@
+@@ -676,44 +1699,0 @@
+-    }
+-
+-    fn draw_paths_from_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
+-        let Some(first_path) = paths.first() else {
+-            return Ok(());
+-        };
+-
+-        // When copying paths from the intermediate texture to the drawable,
+-        // each pixel must only be copied once, in case of transparent paths.
+-        //
+-        // If all paths have the same draw order, then their bounds are all
+-        // disjoint, so we can copy each path's bounds individually. If this
+-        // batch combines different draw orders, we perform a single copy
+-        // for a minimal spanning rect.
+-        let sprites = if paths.last().unwrap().order == first_path.order {
+-            paths
+-                .iter()
+-                .map(|path| PathSprite {
+-                    bounds: path.clipped_bounds(),
+-                })
+-                .collect::<Vec<_>>()
+-        } else {
+-            let mut bounds = first_path.clipped_bounds();
+-            for path in paths.iter().skip(1) {
+-                bounds = bounds.union(&path.clipped_bounds());
+-            }
+-            vec![PathSprite { bounds }]
+-        };
+-
+-        let devices = self.devices.as_ref().context("devices missing")?;
+-        let resources = self.resources.as_ref().context("resources missing")?;
+-        self.pipelines.path_sprite_pipeline.update_buffer(
+-            &devices.device,
+-            &devices.device_context,
+-            &sprites,
+-        )?;
+-
+-        // Draw the sprites with the path texture
+-        self.pipelines.path_sprite_pipeline.draw_with_texture(
+-            &devices.device_context,
+-            slice::from_ref(&resources.path_intermediate_srv),
+-            slice::from_ref(&self.globals.sampler),
+-            sprites.len() as u32,
+-        )
+@@ -815,0 +1796,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1924,40 @@
+@@ -819,0 +1804,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8697,7 +8971,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1967,366 @@
+@@ -822,0 +1847,366 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -9064,10 +9338,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        group_region::narrow_composite(&mut quad, vw, vh);
 +        Some((quad, place.page))
 +    }
-@@ -840 +2350 @@
+@@ -840 +2230 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2401,12 @@
+@@ -890,0 +2281,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9080,19 +9354,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -893 +2415 @@
+@@ -893 +2295 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -900 +2422 @@
+@@ -895 +2296,0 @@
+-            path_intermediate_texture,
+@@ -900 +2301 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2426,2 @@
+@@ -904 +2305,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -906,0 +2430 @@
+@@ -907 +2309 @@
+-            path_intermediate_texture,
 +            back_buffer,
-@@ -912,0 +2437,32 @@
+@@ -912,0 +2315,30 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9101,7 +9378,6 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        let (
 +            (render_target, back_buffer),
 +            render_target_view,
-+            path_intermediate_texture,
 +            path_intermediate_srv,
 +            path_intermediate_msaa_texture,
 +            path_intermediate_msaa_view,
@@ -9114,7 +9390,6 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            render_target: Some(render_target),
 +            render_target_view,
 +            back_buffer,
-+            path_intermediate_texture,
 +            path_intermediate_msaa_texture,
 +            path_intermediate_msaa_view,
 +            path_intermediate_srv,
@@ -9125,17 +9400,20 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -923 +2479 @@
+@@ -923 +2355 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -930 +2486 @@
+@@ -925 +2356,0 @@
+-            path_intermediate_texture,
+@@ -930 +2361 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -932,0 +2489 @@
+@@ -933 +2364 @@
+-        self.path_intermediate_texture = path_intermediate_texture;
 +        self.back_buffer = back_buffer;
-@@ -957,0 +2515 @@
+@@ -957,0 +2389 @@
 +        let quad_gradient = analytic_gradient::GradientProgram::new()?;
-@@ -999,0 +2558,22 @@
+@@ -999,0 +2432,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9158,27 +9436,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2582 @@
+@@ -1001,0 +2456 @@
 +            group_tiles_pipeline,
-@@ -1003,0 +2585 @@
+@@ -1003,0 +2459 @@
 +            quad_gradient,
-@@ -1009,0 +2592,2 @@
+@@ -1009,0 +2466,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2603,4 @@
+@@ -1018,0 +2477,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2612 @@
+@@ -1023,0 +2486 @@
 +            comp_root,
-@@ -1030 +2619,2 @@
+@@ -1030 +2493,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2654 @@
+@@ -1063,0 +2528 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2667,16 @@
+@@ -1076 +2541,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9196,11 +9474,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2696,3 @@
+@@ -1089,0 +2570,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2708,0 @@
+@@ -1100,30 +2582,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9231,7 +9509,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        })
 -    }
 -
-@@ -1190,0 +2770,45 @@
+@@ -1190,0 +2644,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9277,10 +9555,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2821 @@
+@@ -1197 +2695 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1214,0 +2839,19 @@
+@@ -1214,0 +2713,19 @@
 +    ) -> Result<()> {
 +        self.draw_range_with_program(
 +            device_context,
@@ -9300,29 +9578,34 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        first_instance: u32,
 +        instance_count: u32,
 +        fragment: &ID3D11PixelShader,
-@@ -1227 +2870 @@
+@@ -1227 +2744 @@
 -            &self.fragment,
 +            fragment,
-@@ -1275,0 +2919,2 @@
+@@ -1275,0 +2793,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2964,2 @@
+@@ -1319 +2838,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2993,2 @@
+@@ -1347 +2867,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +3005 @@
+@@ -1358 +2879 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1362 +3009 @@
+@@ -1362 +2883 @@
 -    ID3D11Texture2D,
 +    (ID3D11Texture2D, Option<ID3D11Texture2D>),
-@@ -1370,2 +3017,8 @@
+@@ -1364 +2884,0 @@
+-    ID3D11Texture2D,
+@@ -1370,5 +2890,9 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
+-    let (path_intermediate_texture, path_intermediate_srv) =
+-        create_path_intermediate_texture(&devices.device, width, height)?;
+-    let (path_intermediate_msaa_texture, path_intermediate_msaa_view) =
 +    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
 +    // into the back buffer before present (`canvas`).
 +    let (render_target, render_target_view) = create_offscreen_target_and_its_view(&devices.device, width, height)?;
@@ -9331,7 +9614,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        None => None,
 +    };
 +    let render_target = (render_target, back_buffer);
-@@ -1395,3 +3048,22 @@
++    let (path_intermediate_msaa_texture, path_intermediate_msaa_view, path_intermediate_srv) =
+@@ -1387 +2910,0 @@
+-        path_intermediate_texture,
+@@ -1395,3 +2918,22 @@
 -#[inline]
 -fn create_render_target_and_its_view(
 -    swap_chain: &IDXGISwapChain1,
@@ -9357,17 +9643,69 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +}
 +
 +fn create_offscreen_target_and_its_view(
-@@ -1398,0 +3071,2 @@
+@@ -1398,0 +2941,2 @@
 +    width: u32,
 +    height: u32,
-@@ -1400 +3074,5 @@
+@@ -1400 +2944,5 @@
 -    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
 +    let mut render_target = None;
 +    unsafe {
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3171,33 @@
+@@ -1406,33 +2954,3 @@
+-#[inline]
+-fn create_path_intermediate_texture(
+-    device: &ID3D11Device,
+-    width: u32,
+-    height: u32,
+-) -> Result<(ID3D11Texture2D, Option<ID3D11ShaderResourceView>)> {
+-    let texture = unsafe {
+-        let mut output = None;
+-        let desc = D3D11_TEXTURE2D_DESC {
+-            Width: width,
+-            Height: height,
+-            MipLevels: 1,
+-            ArraySize: 1,
+-            Format: RENDER_TARGET_FORMAT,
+-            SampleDesc: DXGI_SAMPLE_DESC {
+-                Count: 1,
+-                Quality: 0,
+-            },
+-            Usage: D3D11_USAGE_DEFAULT,
+-            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+-            CPUAccessFlags: 0,
+-            MiscFlags: 0,
+-        };
+-        device.CreateTexture2D(&desc, None, Some(&mut output))?;
+-        output.unwrap()
+-    };
+-
+-    let mut shader_resource_view = None;
+-    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut shader_resource_view))? };
+-
+-    Ok((texture, Some(shader_resource_view.unwrap())))
+-}
+-
++/// KaminIDE patch: the path sprites read the samples themselves
++/// (`path_pass`), so the texture is a shader resource too and has no
++/// resolved single-sample copy.
+@@ -1444 +2962,5 @@
+-) -> Result<(ID3D11Texture2D, Option<ID3D11RenderTargetView>)> {
++) -> Result<(
++    ID3D11Texture2D,
++    Option<ID3D11RenderTargetView>,
++    Option<ID3D11ShaderResourceView>,
++)> {
+@@ -1458 +2980 @@
+-            BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
++            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+@@ -1467 +2989,3 @@
+-    Ok((msaa_texture, Some(msaa_view.unwrap())))
++    let mut samples = None;
++    unsafe { device.CreateShaderResourceView(&msaa_texture, None, Some(&mut samples))? };
++    Ok((msaa_texture, Some(msaa_view.unwrap()), Some(samples.unwrap())))
+@@ -1492,0 +3017,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9401,7 +9739,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    }
 +}
 +
-@@ -1701,7 +3412 @@
+@@ -1701,7 +3258 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9410,22 +9748,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1711,0 +3417,2 @@
+@@ -1711,0 +3263,2 @@
 +        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
 +        QuadGradient,
-@@ -1719,0 +3427,6 @@
+@@ -1719,0 +3273,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1763,0 +3477,4 @@
+@@ -1763,0 +3323,4 @@
 +                },
 +                ShaderModule::QuadGradient => match target {
 +                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
-@@ -1796,0 +3514,12 @@
+@@ -1796,0 +3360,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9438,9 +9776,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3531 @@
+@@ -1801,0 +3377 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3533 @@
+@@ -1803,64 +3379 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9506,13 +9844,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1875,0 +3543 @@
+@@ -1875,0 +3389 @@
 +                ShaderModule::QuadGradient => "quad_gradient",
-@@ -1883,0 +3552,3 @@
+@@ -1883,0 +3398,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3725,40 @@
+@@ -2054,17 +3571,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -10734,10 +11072,10 @@ index 0000000000000000000000000000000000000000..4f0caf4aa4914ad7bd2ff3e467bd5051
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/cull/pass.rs b/vendor/gpui-windows/src/directx_renderer/cull/pass.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8dd4a29ac
+index 0000000000000000000000000000000000000000..e5829845ce1e7c40f428f0f273fecce70482b1ce
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/cull/pass.rs
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,374 @@
 +//! KaminIDE patch: the redraw rectangles of a frame drawn in one pass from
 +//! the instances that reach them (`cull`).
 +//!
@@ -10748,7 +11086,8 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +//! run's draw. Paths and surfaces (group composites, backdrop passes) read
 +//! or write beyond their instances, so they stay rectangle by rectangle under
 +//! the scissor, as before, without the group composites whose region misses
-+//! the rectangle (`composite_region`). A layer drawn this way keeps its cached buffers
++//! the rectangle (`composite_region`) and the path batches that miss it
++//! (`path_pass`). A layer drawn this way keeps its cached buffers
 +//! for the next whole frame (`LayerCache::keep`).
 +
 +use super::super::{
@@ -10756,7 +11095,7 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +};
 +use super::{bounds, disjoint, extent, gather, region};
 +use anyhow::Result;
-+use gpui::{AtlasTextureId, GradientData, PrimitiveBatch, Quad, Scene};
++use gpui::{AtlasTextureId, ContentMask, GradientData, PrimitiveBatch, Quad, ScaledPixels, Scene};
 +use std::ops::Range;
 +
 +/// What one draw of the pass draws: an instance kind and its atlas texture.
@@ -10793,6 +11132,9 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +    },
 +    /// A batch drawn within each rectangle in turn.
 +    Each(&'s Scene, PrimitiveBatch),
++    /// Gathered instances `range` of one kind, uncut, drawn within each
++    /// rectangle in turn under the scissor (`gather_runs`).
++    Scissored { kind: Kind, range: Range<usize> },
 +}
 +
 +/// The pass being gathered.
@@ -10826,6 +11168,41 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +            range: end - n..end,
 +            area,
 +        });
++    }
++
++    /// Gather `items` in paint order: a run whose extent is known as cut
++    /// copies (`gather`), a run that a transformation moves (no extent) once
++    /// each with its own mask, drawn within each rectangle under the scissor.
++    /// A mask cut through a transformed instance clips its triangles anew
++    /// (`SV_ClipDistance`, clipped as geometry on WARP), moving the edge
++    /// pixels the whole frame draws; the scissor tests pixels only.
++    fn gather_runs<T: Copy>(
++        &mut self,
++        kind: Kind,
++        out: &mut Vec<T>,
++        items: &[T],
++        rects: &[[f32; 4]],
++        extent: impl Fn(&T) -> Option<[f32; 4]>,
++        mask: impl Fn(&mut T) -> &mut ContentMask<ScaledPixels>,
++    ) {
++        let mut at = 0;
++        while at < items.len() {
++            let moved = extent(&items[at]).is_none();
++            let run = items[at..].iter().take_while(|item| extent(item).is_none() == moved).count();
++            let part = &items[at..at + run];
++            if moved {
++                let start = out.len();
++                out.extend_from_slice(part);
++                match self.ops.last_mut() {
++                    Some(Op::Scissored { kind: k, range }) if *k == kind && range.end == start => range.end = out.len(),
++                    _ => self.ops.push(Op::Scissored { kind, range: start..out.len() }),
++                }
++            } else {
++                let got = gather(out, part, rects, &extent, &mask);
++                self.push(kind, got, out.len());
++            }
++            at += run;
++        }
 +    }
 +
 +    fn gradient_base(&mut self, scene: &Scene, gradients: &mut GradientData) -> u32 {
@@ -10907,7 +11284,8 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +                    let skip = std::mem::take(&mut g.first_quads) && g.backdrop && r.start == 0;
 +                    let start = all.quads.len();
 +                    let items = &scene.quads[r.start + usize::from(skip)..r.end];
-+                    let got = gather(
++                    g.gather_runs(
++                        Kind::Quads,
 +                        &mut all.quads,
 +                        items,
 +                        rects,
@@ -10920,7 +11298,6 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +                            .iter_mut()
 +                            .for_each(|q| q.offset_gradient(base));
 +                    }
-+                    g.push(Kind::Quads, got, all.quads.len());
 +                }
 +                PrimitiveBatch::Underlines(r) => {
 +                    let got = gather(
@@ -10934,36 +11311,36 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +                }
 +                PrimitiveBatch::MonochromeSprites { texture_id, range } => {
 +                    let items = &scene.monochrome_sprites[range];
-+                    let got = gather(
++                    g.gather_runs(
++                        Kind::Mono(texture_id),
 +                        &mut all.mono,
 +                        items,
 +                        rects,
 +                        |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
 +                        |s| &mut s.content_mask,
 +                    );
-+                    g.push(Kind::Mono(texture_id), got, all.mono.len());
 +                }
 +                PrimitiveBatch::SubpixelSprites { texture_id, range } => {
 +                    let items = &scene.subpixel_sprites[range];
-+                    let got = gather(
++                    g.gather_runs(
++                        Kind::Subpixel(texture_id),
 +                        &mut all.subpixel,
 +                        items,
 +                        rects,
 +                        |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
 +                        |s| &mut s.content_mask,
 +                    );
-+                    g.push(Kind::Subpixel(texture_id), got, all.subpixel.len());
 +                }
 +                PrimitiveBatch::PolychromeSprites { texture_id, range } => {
 +                    let items = &scene.polychrome_sprites[range];
-+                    let got = gather(
++                    g.gather_runs(
++                        Kind::Poly(texture_id),
 +                        &mut all.poly,
 +                        items,
 +                        rects,
 +                        |s| extent(s.bounds, &s.content_mask, Some(&s.transformation), 1.0),
 +                        |s| &mut s.content_mask,
 +                    );
-+                    g.push(Kind::Poly(texture_id), got, all.poly.len());
 +                }
 +            }
 +        }
@@ -10989,29 +11366,26 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +        for op in ops {
 +            let cost = match &op {
 +                Op::Draw { kind, range, area } => (kind.index(), range.len(), *area),
++                Op::Scissored { kind, range } => (kind.index(), range.len() * rects.len(), 0.0),
 +                Op::Each(scene, batch) => batch_area(scene, batch),
 +            };
 +            match op {
-+                Op::Draw { kind, range, .. } => {
-+                    let (start, len) = (range.start, range.len());
-+                    match kind {
-+                        Kind::Shadows => self.draw_shadows(start, len),
-+                        Kind::Quads => self.draw_quads(&instances.quads[range], start),
-+                        Kind::Underlines => self.draw_underlines(start, len),
-+                        Kind::Mono(t) => self.draw_monochrome_sprites(t, start, len),
-+                        Kind::Subpixel(t) => self.draw_subpixel_sprites(t, start, len),
-+                        Kind::Poly(t) => self.draw_polychrome_sprites(t, start, len),
-+                    }?
++                Op::Draw { kind, range, .. } => self.draw_kind(kind, range, instances)?,
++                Op::Scissored { kind, range } => {
++                    for r in rects {
++                        self.set_scissor(region(r));
++                        self.draw_kind(kind, range.clone(), instances)?;
++                    }
++                    self.set_scissor(all);
 +                }
 +                Op::Each(scene, batch) => {
 +                    for r in rects {
 +                        self.set_scissor(region(r));
 +                        self.blur.frame_within = Some(region(r));
 +                        match &batch {
++                            // Works within the rectangle only (`path_pass`).
 +                            PrimitiveBatch::Paths(range) => {
-+                                let paths = &scene.paths[range.clone()];
-+                                self.draw_paths_to_intermediate(paths)?;
-+                                self.draw_paths_from_intermediate(paths)?;
++                                self.draw_paths(&scene.paths[range.clone()])?
 +                            }
 +                            PrimitiveBatch::Surfaces(range) => {
 +                                // A group composite writes only within its
@@ -11045,6 +11419,21 @@ index 0000000000000000000000000000000000000000..bd8f5de4d81563beb498d98f57b922d8
 +            }
 +        }
 +        Ok(())
++    }
++}
++
++impl DirectXRenderer {
++    /// Draw the gathered instances `range` of `kind`.
++    fn draw_kind(&mut self, kind: Kind, range: Range<usize>, instances: &LayerInstances) -> Result<()> {
++        let (start, len) = (range.start, range.len());
++        match kind {
++            Kind::Shadows => self.draw_shadows(start, len),
++            Kind::Quads => self.draw_quads(&instances.quads[range], start),
++            Kind::Underlines => self.draw_underlines(start, len),
++            Kind::Mono(t) => self.draw_monochrome_sprites(t, start, len),
++            Kind::Subpixel(t) => self.draw_subpixel_sprites(t, start, len),
++            Kind::Poly(t) => self.draw_polychrome_sprites(t, start, len),
++        }
 +    }
 +}
 +
@@ -11712,10 +12101,10 @@ index 0000000000000000000000000000000000000000..9c6d6912db30686f6411de1815f8167a
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs b/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1759bb502d92edea1932e7c5416c47afd042cce1
+index 0000000000000000000000000000000000000000..c450db1394fe4d7363ff61ce02e6a63cd63f0ec9
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/gpu_memory.rs
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,111 @@
 +//! KaminIDE patch: GPU memory the renderer holds, by owner, for the engine bench's memory
 +//! report (`Window::gpu_memory`). Sizes come from the texture descriptions: what the pixels
 +//! take, not what the driver reserved around them. Not walked: the swap chain's other
@@ -11768,7 +12157,6 @@ index 0000000000000000000000000000000000000000..1759bb502d92edea1932e7c5416c47af
 +            if let Some(back) = &resources.back_buffer {
 +                whole("gpu/target/back-buffer", back);
 +            }
-+            whole("gpu/target/path", &resources.path_intermediate_texture);
 +            whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
 +        }
 +        if let Some((_, _, scratch)) = &self.retained.scratch {
@@ -14499,6 +14887,365 @@ index 0000000000000000000000000000000000000000..b917c453c6bc3c2fd028152804ea5485
 +        drawn
 +    }
 +}
+diff --git a/vendor/gpui-windows/src/directx_renderer/path_pass.rs b/vendor/gpui-windows/src/directx_renderer/path_pass.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..468e20b31dbc3b651ce289c138ba36527053ef33
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/path_pass.rs
+@@ -0,0 +1,250 @@
++//! KaminIDE patch: a path batch costs the pixels its paths can reach, not the
++//! window.
++//!
++//! Paths rasterize with 4x MSAA into a window-sized intermediate, and the
++//! sprite pass then writes each covered pixel's samples, averaged, into the
++//! target. Upstream cleared and resolved the whole intermediate for every
++//! batch, and a frame redrawn within a rectangle did so for every path batch
++//! of the scene: a fixed cost of the window's area times the batch count,
++//! whatever the damage. Here a batch works within its area only: the pixels
++//! its paths' clipped bounds cover, within the target and the bound scissor
++//! (the redraw rectangle, a group's stage region). Only that area is cleared
++//! and rasterized, a batch whose area is empty draws nothing, and the sprite
++//! pass reads the samples itself (`path_sprite_fragment`), so the
++//! intermediate has no resolved copy. Every pixel the sprites read lies in
++//! the area just cleared and drawn: their rectangles are the clipped bounds,
++//! or the union of them for a batch of several draw orders.
++
++use super::*;
++use windows::Win32::Foundation::RECT;
++
++impl DirectXRenderer {
++    /// Draw one path batch into the current target.
++    pub(super) fn draw_paths(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
++        let dc = self.dev().device_context.clone();
++        let mut old = [RECT::default(); 16];
++        let mut count = old.len() as u32;
++        let state = unsafe { dc.RSGetState()? };
++        let mut desc = D3D11_RASTERIZER_DESC::default();
++        unsafe {
++            state.GetDesc(&mut desc);
++            dc.RSGetScissorRects(&mut count, Some(old.as_mut_ptr()));
++        }
++        let old = &old[..count as usize];
++        let scissor = desc.ScissorEnable.as_bool().then(|| scissor_bounds(old));
++        let area = path_area(paths, (self.width, self.height), scissor);
++        if self.timing_main {
++            let px = area.map_or(0.0, |a| f64::from(a.width) * f64::from(a.height));
++            self.gpu_timer.instrumentation.batches.intermediate(px);
++        }
++        let Some(area) = area else {
++            return Ok(());
++        };
++        let original = self.begin_scissor(area)?;
++        let drawn = self
++            .draw_paths_to_intermediate(paths, area)
++            .and_then(|()| self.draw_paths_from_intermediate(paths));
++        unsafe {
++            dc.RSSetState(&original);
++            dc.RSSetScissorRects(Some(old));
++        }
++        drawn
++    }
++
++    /// Clear `area` of the multisampled intermediate and rasterize the
++    /// batch into it, under the scissor on `area`.
++    fn draw_paths_to_intermediate(
++        &mut self,
++        paths: &[Path<ScaledPixels>],
++        area: Region,
++    ) -> Result<()> {
++        let devices = self.devices.as_ref().context("devices missing")?;
++        let resources = self.resources.as_ref().context("resources missing")?;
++        let view = resources
++            .path_intermediate_msaa_view
++            .as_ref()
++            .context("path view missing")?;
++        let dc1: ID3D11DeviceContext1 = devices.device_context.cast()?;
++        unsafe {
++            devices
++                .device_context
++                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
++            dc1.ClearView(view, &[0.0; 4], Some(&[area_rect(area)]));
++            devices.device_context.OMSetRenderTargets(
++                Some(slice::from_ref(&resources.path_intermediate_msaa_view)),
++                None,
++            );
++        }
++        let mut vertices = Vec::new();
++        for path in paths {
++            vertices.extend(path.vertices.iter().map(|v| {
++                PathRasterizationSprite {
++                    xy_position: v.xy_position,
++                    st_position: v.st_position,
++                    color: path.color,
++                    bounds: path.clipped_bounds(),
++                    color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
++                    color_transform: path
++                        .color_mapping
++                        .map_or(TransformationMatrix::unit(), |m| m.1),
++                }
++            }));
++        }
++        self.pipelines.path_rasterization_pipeline.update_buffer(
++            &devices.device,
++            &devices.device_context,
++            &vertices,
++        )?;
++        self.pipelines.path_rasterization_pipeline.draw(
++            &devices.device_context,
++            D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,
++            vertices.len() as u32,
++            1,
++        )?;
++        unsafe {
++            devices
++                .device_context
++                .OMSetRenderTargets(Some(self.current_target()), None);
++            devices
++                .device_context
++                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
++        }
++        Ok(())
++    }
++
++    fn draw_paths_from_intermediate(&mut self, paths: &[Path<ScaledPixels>]) -> Result<()> {
++        let Some(first_path) = paths.first() else {
++            return Ok(());
++        };
++        // When copying paths from the intermediate texture to the drawable,
++        // each pixel must only be copied once, in case of transparent paths.
++        //
++        // If all paths have the same draw order, then their bounds are all
++        // disjoint, so we can copy each path's bounds individually. If this
++        // batch combines different draw orders, we perform a single copy
++        // for a minimal spanning rect.
++        let sprites = if paths.last().unwrap().order == first_path.order {
++            paths
++                .iter()
++                .map(|path| PathSprite {
++                    bounds: path.clipped_bounds(),
++                })
++                .collect::<Vec<_>>()
++        } else {
++            let mut bounds = first_path.clipped_bounds();
++            for path in paths.iter().skip(1) {
++                bounds = bounds.union(&path.clipped_bounds());
++            }
++            vec![PathSprite { bounds }]
++        };
++        let devices = self.devices.as_ref().context("devices missing")?;
++        let resources = self.resources.as_ref().context("resources missing")?;
++        self.pipelines.path_sprite_pipeline.update_buffer(
++            &devices.device,
++            &devices.device_context,
++            &sprites,
++        )?;
++        let dc = &devices.device_context;
++        unsafe {
++            dc.PSSetShaderResources(
++                PATH_SAMPLES_SLOT,
++                Some(slice::from_ref(&resources.path_intermediate_srv)),
++            )
++        };
++        let drawn = self.pipelines.path_sprite_pipeline.draw_with_texture(
++            dc,
++            &[None],
++            slice::from_ref(&self.globals.sampler),
++            sprites.len() as u32,
++        );
++        // The next batch renders into the intermediate: unbind it as an input.
++        unsafe { dc.PSSetShaderResources(PATH_SAMPLES_SLOT, Some(&[None])) };
++        drawn
++    }
++}
++
++/// The shader register of the intermediate's samples (`t_path_samples`).
++const PATH_SAMPLES_SLOT: u32 = 7;
++
++fn area_rect(r: Region) -> RECT {
++    RECT {
++        left: r.x as i32,
++        top: r.y as i32,
++        right: (r.x + r.width) as i32,
++        bottom: (r.y + r.height) as i32,
++    }
++}
++
++/// The bounds of the bound scissor rectangles; `None` when they cover nothing.
++fn scissor_bounds(rects: &[RECT]) -> Option<Region> {
++    let r = rects
++        .iter()
++        .filter(|r| r.right > r.left && r.bottom > r.top)
++        .copied()
++        .reduce(|a, b| RECT {
++            left: a.left.min(b.left),
++            top: a.top.min(b.top),
++            right: a.right.max(b.right),
++            bottom: a.bottom.max(b.bottom),
++        })?;
++    let (x, y) = (r.left.max(0) as u32, r.top.max(0) as u32);
++    Some(Region {
++        x,
++        y,
++        width: (r.right.max(0) as u32).saturating_sub(x),
++        height: (r.bottom.max(0) as u32).saturating_sub(y),
++    })
++}
++
++/// The whole pixels the batch's clipped bounds reach, within the target of
++/// `width` x `height` and the scissor; `None` when that is nothing. With the
++/// scissor on but no rectangle bound, nothing passes it.
++pub(super) fn path_area(
++    paths: &[Path<ScaledPixels>],
++    (width, height): (u32, u32),
++    scissor: Option<Option<Region>>,
++) -> Option<Region> {
++    let bounds = paths
++        .iter()
++        .map(|p| p.clipped_bounds())
++        .reduce(|a, b| a.union(&b))?;
++    let [x0, y0, x1, y1] = [
++        bounds.origin.x.0,
++        bounds.origin.y.0,
++        bounds.origin.x.0 + bounds.size.width.0,
++        bounds.origin.y.0 + bounds.size.height.0,
++    ];
++    // Unknown bounds reach the whole target.
++    let (mut left, mut top, mut right, mut bottom) = if [x0, y0, x1, y1].iter().any(|v| v.is_nan())
++    {
++        (0, 0, width, height)
++    } else {
++        let edge = |v: f32, limit: u32| v.clamp(0.0, limit as f32) as u32;
++        (
++            edge(x0.floor(), width),
++            edge(y0.floor(), height),
++            edge(x1.ceil(), width),
++            edge(y1.ceil(), height),
++        )
++    };
++    match scissor {
++        None => {}
++        Some(None) => return None,
++        Some(Some(s)) => {
++            left = left.max(s.x);
++            top = top.max(s.y);
++            right = right.min(s.x + s.width);
++            bottom = bottom.min(s.y + s.height);
++        }
++    }
++    (right > left && bottom > top).then(|| Region {
++        x: left,
++        y: top,
++        width: right - left,
++        height: bottom - top,
++    })
++}
++
++#[cfg(test)]
++#[path = "path_pass_tests.rs"]
++mod tests;
+diff --git a/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs b/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fb06a6036815a9942d1535704bef9b6b117bb4e2
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs
+@@ -0,0 +1,97 @@
++//! KaminIDE patch: the area a path batch works in (`path_area`).
++
++use super::{Region, path_area, scissor_bounds};
++use gpui::{Bounds, ContentMask, Path, Pixels, ScaledPixels, point, px, size};
++use windows::Win32::Foundation::RECT;
++
++/// A triangle spanning `x0..x1` by `y0..y1`, its content mask `mask`.
++fn path(x0: f32, y0: f32, x1: f32, y1: f32, mask: [f32; 4]) -> Path<ScaledPixels> {
++    let mut p = Path::<Pixels>::new(point(px(x0), px(y0)));
++    p.line_to(point(px(x1), px(y0)));
++    p.line_to(point(px(x0), px(y1)));
++    p.content_mask = ContentMask {
++        bounds: Bounds {
++            origin: point(px(mask[0]), px(mask[1])),
++            size: size(px(mask[2]), px(mask[3])),
++        },
++    };
++    p.scale(1.)
++}
++
++const OPEN: [f32; 4] = [0., 0., 1000., 1000.];
++
++fn region(x: u32, y: u32, width: u32, height: u32) -> Region {
++    Region {
++        x,
++        y,
++        width,
++        height,
++    }
++}
++
++#[test]
++fn the_area_is_the_whole_pixels_of_the_clipped_bounds_of_every_path() {
++    let paths = [
++        path(10.5, 20.25, 30.5, 40., OPEN),
++        path(50., 5.75, 60.2, 9., OPEN),
++    ];
++    assert_eq!(
++        path_area(&paths, (200, 100), None),
++        Some(region(10, 5, 51, 35))
++    );
++    // The content mask clips the bounds before rounding.
++    let masked = [path(10., 10., 90., 90., [20., 30., 10.5, 5.])];
++    assert_eq!(
++        path_area(&masked, (200, 100), None),
++        Some(region(20, 30, 11, 5))
++    );
++}
++
++#[test]
++fn the_target_and_the_scissor_cut_the_area() {
++    let paths = [path(-20., -10., 300., 50., OPEN)];
++    assert_eq!(
++        path_area(&paths, (200, 100), None),
++        Some(region(0, 0, 200, 50))
++    );
++    let scissor = Some(Some(region(150, 40, 32, 32)));
++    assert_eq!(
++        path_area(&paths, (200, 100), scissor),
++        Some(region(150, 40, 32, 10))
++    );
++}
++
++#[test]
++fn a_batch_that_reaches_nothing_has_no_area() {
++    let paths = [path(10., 10., 40., 40., OPEN)];
++    // A redraw rectangle elsewhere.
++    assert_eq!(
++        path_area(&paths, (200, 100), Some(Some(region(100, 60, 32, 32)))),
++        None
++    );
++    // The scissor on with no rectangle passes nothing.
++    assert_eq!(path_area(&paths, (200, 100), Some(None)), None);
++    // Outside the target, and no paths at all.
++    assert_eq!(
++        path_area(&[path(300., 10., 320., 40., OPEN)], (200, 100), None),
++        None
++    );
++    assert_eq!(path_area(&[], (200, 100), None), None);
++}
++
++#[test]
++fn bound_scissor_rectangles_unite_and_empty_ones_count_for_nothing() {
++    let r = |left, top, right, bottom| RECT {
++        left,
++        top,
++        right,
++        bottom,
++    };
++    assert_eq!(
++        scissor_bounds(&[r(10, 20, 30, 40), r(5, 30, 12, 60), r(50, 50, 50, 90)]),
++        Some(region(5, 20, 25, 40))
++    );
++    assert_eq!(scissor_bounds(&[r(-5, -5, 8, 4)]), Some(region(0, 0, 8, 4)));
++    assert_eq!(scissor_bounds(&[r(4, 4, 4, 9)]), None);
++    assert_eq!(scissor_bounds(&[]), None);
++}
 diff --git a/vendor/gpui-windows/src/directx_renderer/present_gate.rs b/vendor/gpui-windows/src/directx_renderer/present_gate.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..4ee46e9e406f8db89d10d2ec8d3098415b79d0b8
@@ -14850,10 +15597,10 @@ index 0000000000000000000000000000000000000000..7c415a7e31aaf60596ce59bd82631fc5
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..aaaf0a621be530bbcf3e18d66fcfd9adae1e4553
+index 0000000000000000000000000000000000000000..383f1b732c7438613b8c943a21e1829ade40fe34
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests.rs
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,215 @@
 +//! Headless COM ownership regressions; never create a HWND. Only `present`
 +//! hands frames to a composition swap chain that no visual shows.
 +
@@ -14862,7 +15609,7 @@ index 0000000000000000000000000000000000000000..aaaf0a621be530bbcf3e18d66fcfd9ad
 +    BUFFER_COUNT, BlurScratch, DirectXAtlas, DirectXDevices, DirectXGlobalElements,
 +    DirectXRenderPipelines, DirectXRenderer, DirectXRendererDevices, DirectXResources, FontInfo,
 +    RENDER_TARGET_FORMAT, create_blur_texture, create_path_intermediate_msaa_texture_and_view,
-+    create_path_intermediate_texture, try_to_recover_from_device_lost,
++    try_to_recover_from_device_lost,
 +};
 +use gpui::{DevicePixels, ImageId, Scene, Size, WindowBackgroundAppearance};
 +use std::sync::Arc;
@@ -14976,7 +15723,7 @@ index 0000000000000000000000000000000000000000..aaaf0a621be530bbcf3e18d66fcfd9ad
 +fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
 +    let device = DirectXDevices::new().unwrap();
 +    let mut r = renderer(&device);
-+    for (size, stage) in [(16, 0), (24, 1), (24, 2), (32, 3), (32, 4)] {
++    for (size, stage) in [(16, 0), (24, 1), (24, 2), (32, 3)] {
 +        r.width = size;
 +        r.height = size;
 +        r.resize_with(|resources, devices| {
@@ -15001,10 +15748,6 @@ index 0000000000000000000000000000000000000000..aaaf0a621be530bbcf3e18d66fcfd9ad
 +                    .GetBuffer::<windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>(0)
 +            }?;
 +            if stage == 2 {
-+                anyhow::bail!("injected intermediate failure");
-+            }
-+            let _path = create_path_intermediate_texture(&devices.device, size, size)?;
-+            if stage == 3 {
 +                anyhow::bail!("injected MSAA failure");
 +            }
 +            let _msaa =
@@ -15318,10 +16061,10 @@ index 0000000000000000000000000000000000000000..876c5122f48207dee9389bb512736cb5
 \ No newline at end of file
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9b5dc9162b551b033863f74e79f0190ea5b65e95
+index 0000000000000000000000000000000000000000..ac7fdfd59084bcbc8e323acea853c87518e73edb
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage.rs
-@@ -0,0 +1,270 @@
+@@ -0,0 +1,268 @@
 +//! KaminIDE patch (R4): the retained target redrawn only within a frame's
 +//! damage (`retained.rs`) holds byte for byte what a whole redraw of that
 +//! frame draws, for every kind of edit the damage diff must see: a changed,
@@ -15336,8 +16079,9 @@ index 0000000000000000000000000000000000000000..9b5dc9162b551b033863f74e79f0190e
 +use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE};
 +
 +mod groups;
-+// KaminIDE patch: a scroll step drawn as the canvas moved.
++// KaminIDE patch: a scroll step drawn as the canvas moved; path batches in a rectangle.
 +mod moved;
++mod paths;
 +// KaminIDE patch: a colour sprite reads the same pixels at any atlas place.
 +mod sprites;
 +// KaminIDE patch: output-merger blend series equal their formulas.
@@ -15347,10 +16091,7 @@ index 0000000000000000000000000000000000000000..9b5dc9162b551b033863f74e79f0190e
 +const H: u32 = 192;
 +
 +fn b(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
-+    Bounds {
-+        origin: point(ScaledPixels(x), ScaledPixels(y)),
-+        size: size(ScaledPixels(w), ScaledPixels(h)),
-+    }
++    Bounds::new(point(ScaledPixels(x), ScaledPixels(y)), size(ScaledPixels(w), ScaledPixels(h)))
 +}
 +
 +fn mask() -> ContentMask<ScaledPixels> {
@@ -16059,6 +16800,137 @@ index 0000000000000000000000000000000000000000..ff34ba852e1ef3e3fb18ec3213530951
 +            differing(&got, &want)
 +        );
 +    }
++}
+diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/paths.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/paths.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..adabf8ae96b464b5b0368228853b444bf93668f3
+--- /dev/null
++++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/paths.rs
+@@ -0,0 +1,125 @@
++//! KaminIDE patch: path batches redrawn within a rectangle (`path_pass`): a
++//! batch that misses the rectangle leaves its intermediate untouched, and the
++//! frame holds byte for byte what a whole redraw of it draws.
++
++use super::*;
++use gpui::{Path, Pixels, px};
++
++/// A closed shape with a curved edge, `side` pixels wide, at (`x`, `y`).
++fn shape(x: f32, y: f32, side: f32, order: u32, color: Hsla) -> Path<ScaledPixels> {
++    let at = |dx: f32, dy: f32| point(px(x + dx), px(y + dy));
++    let mut p = Path::<Pixels>::new(at(0., 0.));
++    p.line_to(at(side, 0.));
++    p.curve_to(at(side, side), at(side * 1.3, side * 0.5));
++    p.line_to(at(0., side));
++    p.line_to(at(0., 0.));
++    p.color = Background::from(color);
++    p.content_mask = ContentMask {
++        bounds: Bounds {
++            origin: point(px(0.), px(0.)),
++            size: size(px(W as f32), px(H as f32)),
++        },
++    };
++    let mut p = p.scale(1.);
++    p.order = order;
++    p
++}
++
++/// What a frame paints: quads under and between two path batches. Edits
++/// change `color`, the quad at the top right, or move the second path.
++#[derive(Clone, Copy)]
++struct Spec {
++    color: Hsla,
++    second_x: f32,
++}
++
++impl Spec {
++    fn scene(self) -> Scene {
++        let mut s = Scene::default();
++        for (r, c, order) in [
++            ([0., 0., W as f32, H as f32], hsla(0., 0., 1., 1.), 1),
++            ([60., 30., 40., 40.], hsla(0.3, 0.8, 0.5, 0.7), 3),
++            ([200., 20., 30., 30.], self.color, 5),
++        ] {
++            let mut q = quad(r, c);
++            q.order = order;
++            s.quads.push(q);
++        }
++        s.paths
++            .push(shape(10., 10., 50., 2, hsla(0.6, 0.8, 0.4, 0.8)));
++        s.paths
++            .push(shape(self.second_x, 100., 40., 4, hsla(0.0, 0.8, 0.5, 1.)));
++        s
++    }
++}
++
++/// Draw `frames` in sequence; the target after the last one and the
++/// `[gpu]` line of the last one.
++fn chain(device: &DirectXDevices, frames: &[Spec]) -> (Vec<u8>, String) {
++    let mut r = offscreen(device, W, H);
++    let mut previous = Scene::default();
++    let mut line = String::new();
++    for (i, f) in frames.iter().enumerate() {
++        let mut s = f.scene();
++        s.note_frame_damage(&previous, i as u64 + 1, (W, H));
++        let _ = r.gpu_timer.instrumentation.batches.take_line();
++        r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
++        line = r
++            .gpu_timer
++            .instrumentation
++            .batches
++            .take_line()
++            .unwrap_or_default();
++        previous = s;
++    }
++    (target_bytes(&mut r), line)
++}
++
++const BASE: Spec = Spec {
++    color: Hsla {
++        h: 0.1,
++        s: 0.8,
++        l: 0.5,
++        a: 1.,
++    },
++    second_x: 120.,
++};
++
++#[test]
++fn a_rectangle_away_from_the_paths_skips_their_batches_and_equals_the_whole_frame() {
++    let device = DirectXDevices::new().unwrap();
++    let edit = Spec {
++        color: hsla(0.6, 0.9, 0.5, 1.),
++        ..BASE
++    };
++    let (got, line) = chain(&device, &[BASE, edit]);
++    let (want, whole) = chain(&device, &[edit]);
++    assert!(line.contains("within=1"), "{line}");
++    assert!(
++        line.contains("b=2 mid_kpx=0"),
++        "both path batches skipped: {line}"
++    );
++    assert!(
++        !whole.contains("mid_kpx=0"),
++        "the whole frame draws the paths: {whole}"
++    );
++    assert!(got == want, "{} pixels differ", differing(&got, &want));
++}
++
++#[test]
++fn a_rectangle_across_a_path_redraws_its_part_and_equals_the_whole_frame() {
++    let device = DirectXDevices::new().unwrap();
++    // The edit moves the second path; its old and new places are the damage.
++    let moved = Spec {
++        second_x: 127.,
++        ..BASE
++    };
++    let (got, line) = chain(&device, &[BASE, moved]);
++    let (want, _) = chain(&device, &[moved]);
++    assert!(line.contains("within=1"), "{line}");
++    assert!(
++        !line.contains("mid_kpx=0"),
++        "the moved path is drawn: {line}"
++    );
++    assert!(got == want, "{} pixels differ", differing(&got, &want));
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sprites.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/sprites.rs
 new file mode 100644
@@ -17254,10 +18126,10 @@ index 0000000000000000000000000000000000000000..e5fd452f05762f6863104f6791ecf5f4
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/scene_capture.rs b/vendor/gpui-windows/src/directx_renderer/scene_capture.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fa1992bfbb19706baf59562fb9a0ecf561c28e4e
+index 0000000000000000000000000000000000000000..c551c417ac46830a0a42f62d031a406c216b6e40
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/scene_capture.rs
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,50 @@
 +//! Transparent offscreen targets for embedded document scenes.
 +use super::*;
 +
@@ -17275,11 +18147,8 @@ index 0000000000000000000000000000000000000000..fa1992bfbb19706baf59562fb9a0ecf5
 +        );
 +        let resources = self.res();
 +        let device = &self.dev().device;
-+        let (texture, _) = create_path_intermediate_texture(device, width, height)?;
-+        let mut view = None;
-+        unsafe { device.CreateRenderTargetView(&texture, None, Some(&mut view))? };
-+        let (path, path_srv) = create_path_intermediate_texture(device, width, height)?;
-+        let (msaa, msaa_view) =
++        let (texture, view) = create_offscreen_target_and_its_view(device, width, height)?;
++        let (msaa, msaa_view, path_srv) =
 +            create_path_intermediate_msaa_texture_and_view(device, width, height)?;
 +        let isolated = DirectXResources {
 +            swap_chain: resources.swap_chain.clone(),
@@ -17287,7 +18156,6 @@ index 0000000000000000000000000000000000000000..fa1992bfbb19706baf59562fb9a0ecf5
 +            render_target: Some(texture),
 +            render_target_view: view,
 +            back_buffer: None,
-+            path_intermediate_texture: path,
 +            path_intermediate_srv: path_srv,
 +            path_intermediate_msaa_texture: msaa,
 +            path_intermediate_msaa_view: msaa_view,
@@ -18931,7 +19799,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae650bc8a2
+index ba89c6873354fb7449b8294878e080a68c3dd29b..67c198a1f78b38c75f931601eade0391d4ec0062
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -19334,11 +20202,37 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
 +        + sprite.color_transform.translation;
 +    float4 color = gradient_color(background, color_position, bounds,
-@@ -1055,0 +1293 @@
+@@ -1034 +1270,0 @@
+-    float2 texture_coords: TEXCOORD0;
+@@ -1037,0 +1274,3 @@
++// KaminIDE patch: the batch's 4x multisampled paths, read sample by sample
++// (`path_pass.rs`); no resolved copy of the intermediate exists.
++Texture2DMS<float4, 4> t_path_samples: register(t7);
+@@ -1044,5 +1282,0 @@
+-    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
+-
+-    float2 screen_position = sprite.bounds.origin + unit_vertex * sprite.bounds.size;
+-    float2 texture_coords = screen_position / global_viewport_size;
+-
+@@ -1050,2 +1284 @@
+-    output.position = device_position;
+-    output.texture_coords = texture_coords;
++    output.position = to_device_position(unit_vertex, sprite.bounds);
+@@ -1054,0 +1288,3 @@
++// KaminIDE patch: the resolve of the pixel's samples, in integers: each
++// 8-bit sample once, their sum rounded half up. The same bytes on every
++// adapter and in every frame, whatever part of the intermediate a batch used.
+@@ -1056 +1292,6 @@
+-    return t_sprite.Sample(s_sprite, input.texture_coords);
++    int2 texel = int2(input.position.xy);
++    uint4 sum = uint4(0, 0, 0, 0);
++    [unroll] for (int i = 0; i < 4; i++) {
++        sum += uint4(round(t_path_samples.Load(texel, i) * 255.0));
++    }
++    return float4((sum + 2u) / 4u) / 255.0;
+@@ -1107,0 +1349 @@
 +    input.position.xy += global_origin;
-@@ -1107,0 +1346 @@
-+    input.position.xy += global_origin;
-@@ -1116,3 +1355,10 @@
+@@ -1116,3 +1358,10 @@
 -        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
 -        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
 -        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
@@ -19352,24 +20246,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        float2 st = (local / height) - float2(0., 0.5);
 +        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
 +        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
-@@ -1123 +1369 @@
+@@ -1123 +1372 @@
 -        float distance_in_pixels = distance * underline.bounds.size.y;
 +        float distance_in_pixels = distance * height;
-@@ -1150,0 +1397 @@
+@@ -1150,0 +1400 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1152 +1398,0 @@
+@@ -1152 +1401,0 @@
 -    float2 tile_position: POSITION;
-@@ -1157,0 +1404 @@
+@@ -1157,0 +1407 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1159 +1405,0 @@
+@@ -1159 +1408,0 @@
 -    float2 tile_position: POSITION;
-@@ -1173 +1418,0 @@
+@@ -1173 +1421,0 @@
 -    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
-@@ -1176,0 +1422 @@
+@@ -1176,0 +1425 @@
 +    output.sprite_id = sprite_id;
-@@ -1178 +1423,0 @@
+@@ -1178 +1426,0 @@
 -    output.tile_position = tile_position;
-@@ -1183,0 +1429,10 @@
+@@ -1183,0 +1432,10 @@
 +// KaminIDE patch: a glyph is read in its tile's own texels (`tile_texel`),
 +// as an image is: normalized atlas coordinates gave a glyph other filter
 +// weights wherever the atlas put its tile, so the same glyph in two tiles
@@ -19380,20 +20274,20 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +    return tile_texel(local_position, sprite.bounds, sprite.tile);
 +}
 +
-@@ -1185 +1440,2 @@
+@@ -1185 +1443,2 @@
 -    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
 +    input.position.xy += global_origin;
 +    float sample = sprite_texel(input).r;
-@@ -1195 +1451,2 @@
+@@ -1195 +1454,2 @@
 -    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
 +    input.position.xy += global_origin;
 +    float3 sample = sprite_texel(input).rgb;
-@@ -1221,0 +1479,4 @@
+@@ -1221,0 +1482,4 @@
 +    // KaminIDE patch: cell size of a repeated image (`PolychromeSprite::pattern`); zero: none.
 +    float2 pattern;
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1504,6 @@
+@@ -1243,3 +1507,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -19403,9 +20297,9 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1256,0 +1521 @@
+@@ -1256,0 +1524 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1523,26 @@
+@@ -1258,2 +1526,26 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -19434,7 +20328,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..67eb91465ada7409c500c9676b8919ae
 +        sample = tile_texel(local_position, cell, sprite.tile);
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1558,572 @@
+@@ -1268,0 +1561,572 @@
 +
 +/*
 +**

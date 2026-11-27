@@ -34,7 +34,12 @@ fn round_strategies_follow_values_4() {
     assert_eq!(px("round(to-zero, -13px, 5px)", vcx), -10.0);
     assert_eq!(number("round(2.5)", vcx), Some(3.0));
     assert_eq!(number("round(-2.5)", vcx), Some(-2.0));
-    assert_eq!(Len::parse("round(1em, 3px)", vcx), None);
+    // Mixed units round once the cascade knows the font size (§10.10).
+    let mixed = Len::parse("round(1em, 3px)", vcx).unwrap();
+    assert_eq!(
+        mixed.resolve_math(vcx, |s| s.fold_font(16.0, || [0.0; 4])),
+        Len::Px(15.0)
+    );
 }
 
 #[test]

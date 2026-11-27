@@ -57,7 +57,7 @@ return await window.bridgeCmd.{call}(...{args});"
             };
             let ev = match slot(req) {
                 Some(s) => ShellEvent::PinTool(s, id.to_string()),
-                None => ShellEvent::Tree(TreeEvent::RevealView(id.to_string(), None)),
+                None => ShellEvent::Tree(TreeEvent::RevealView(id.to_string(), None, false)),
             };
             send(ev)
         }

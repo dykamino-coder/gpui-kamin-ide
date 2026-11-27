@@ -126,7 +126,6 @@ overlay!(
     justify_self_own_axis,
     justify_self_physical,
     align_self_last,
-    align_self_decl,
     justify_self_last,
     align_items_last,
     justify_items_last,

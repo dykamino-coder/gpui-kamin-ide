@@ -85,7 +85,7 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
         opts.viewport.1,
     );
     if e.tag == "html-viewport" {
-        merged.reset_positioned.icb_scroll_insets = Some(gutters.used);
+        vcx.doc.viewport.set_icb_scroll_insets(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
     merged

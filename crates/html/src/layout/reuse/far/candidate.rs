@@ -21,7 +21,9 @@ pub(in crate::layout::reuse) fn far_replayable(
 ) -> bool {
     use crate::style::computed::Display;
     within(e, |e| {
+        // A far stand-in keeps no note of the hover it paints.
         plain::replayable_node(e, vcx)
+            && plain::hover_free(e)
             && !plain::table(e)
             && matches!(
                 e.style.used().reset_box_layout.display,

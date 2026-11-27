@@ -14,6 +14,7 @@ pub(crate) fn ordered_element(
     inherited: &BoxStyle,
     opts: &RenderOpts,
 ) -> Node {
+    grid_table_stretch(&mut e, inherited);
     e.style.used_mut().reset_box_layout.float = None;
     e.style.used_mut().reset_box_layout.clear = None;
     e.style.used_mut().inh.text_flow.vertical_align = None;
@@ -118,4 +119,43 @@ pub(crate) fn ordered_element(
     // недостижимы по построению, и компенсация основы не действовала
     // (`flex2-colbasis-*`).
     item_sizing(e, inherited, opts)
+}
+
+/// A table that is a GRID item keeps the stretch to its area.
+///
+/// css-align-3 §6.2: the initial `align-self: normal` of a grid item
+/// "behaves as stretch", and a stretched item takes the size of its AREA.
+/// The table's shrink-to-fit (CSS 2.1 §17.5.2.2) is expressed by
+/// `layout::table::finish` as a start alignment, which in a grid is the
+/// BLOCK axis: the table stopped growing to its track (an empty table came
+/// out zero high and dropped the container baseline,
+/// `grid-container-baseline-synthesized-001…004`), while the inline axis is
+/// led by `justify-self` there. The used stretch lifts the shrink in a grid
+/// only: not in grid lanes (their own track pass), not for out-of-flow
+/// boxes (no grid items, css-grid-1 §9), and never over the container's
+/// `align-items` or the author's `align-self`.
+fn grid_table_stretch(e: &mut crate::dom::Element, inherited: &BoxStyle) {
+    use crate::style::computed::{Align, Position};
+    let table = e.tag == "table"
+        || matches!(
+            e.style.used().reset_box_layout.display,
+            Some(Display::Table | Display::InlineTable)
+        );
+    if table
+        && matches!(
+            inherited.reset_box_layout.display,
+            Some(Display::Grid | Display::InlineGrid)
+        )
+        && matches!(
+            inherited.reset_flex.align_items,
+            None | Some(Align::Stretch)
+        )
+        && !matches!(
+            e.style.used().reset_positioned.position,
+            Some(Position::Absolute | Position::Fixed)
+        )
+        && e.style.used().reset_flex.align_self.is_none()
+    {
+        e.style.used_mut().reset_flex.align_self = Some(Align::Stretch);
+    }
 }
