@@ -45,6 +45,7 @@ pub(crate) mod hover_pill;
 mod loader_cover;
 mod loader_schedule;
 mod loader_tick;
+mod reveal_slot;
 pub(crate) mod rename_transition;
 pub(crate) mod session_stash;
 pub mod splitters;
