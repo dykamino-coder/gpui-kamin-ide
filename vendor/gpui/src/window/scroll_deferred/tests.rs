@@ -55,6 +55,28 @@ fn an_owned_deferred_draw_paints_under_its_scroll_node(cx: &mut TestAppContext) 
         .unwrap();
 }
 
+/// DevTools names the command of an owned draw that no node marks: the
+/// draw, the line that deferred it, its element and the command.
+#[crate::test]
+fn an_unmarked_command_of_a_deferred_draw_is_named(cx: &mut TestAppContext) {
+    let window = draw(cx, true);
+    window
+        .update(cx, |_, window, _| {
+            let end = PrepaintStateIndex { deferred_draws_index: window.rendered_frame.deferred_draws.len(), ..Default::default() };
+            let whole = PrepaintStateIndex::default()..end;
+            assert_eq!(window.deferred_refusal_detail(&whole), None, "every command of the draw is marked");
+            let frame = &mut window.rendered_frame;
+            let paint = &frame.deferred_draws[0].paint_range;
+            let painted = paint.start.scene_index..paint.end.scene_index;
+            frame.scene.scroll.marks.retain(|mark| !painted.contains(&(mark.op as usize)));
+            let detail = window.deferred_refusal_detail(&whole).expect("the unmarked command is named");
+            for part in ["deferred draw 0", "window/scroll_deferred/tests.rs:", "Name(\"scroller\")", "Unmarked: command", "quad at"] {
+                assert!(detail.contains(part), "{part} in {detail}");
+            }
+        })
+        .unwrap();
+}
+
 /// A plain draw (a popover escaping its scroller) stays outside the node,
 /// and a record holding it cannot be replayed scrolled.
 #[crate::test]

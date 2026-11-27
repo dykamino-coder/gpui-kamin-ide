@@ -195,12 +195,13 @@ impl Window {
             | ScrollRefusal::ForeignMark
             | ScrollRefusal::RetainedLayer
             | ScrollRefusal::LayerReservoir => {
-                // The record's own nodes in its scene; a deferred draw's are not named.
+                // The record's own nodes in its scene, then its deferred draws'.
                 let nodes = &self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index];
                 let content = layer.map(LayerHandle::content);
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
                 source
                     .scroll_refusal_detail(nodes.iter().flat_map(|node| node.ranges()))
+                    .or_else(|| self.deferred_refusal_detail(&range))
                     .unwrap_or_else(|| "in a deferred draw of the record".into())
             }
             ScrollRefusal::Groups => {
