@@ -11,16 +11,9 @@ pub(super) fn inherit_fonts(parent: &Computed, own: &Computed, c: &mut Computed)
     // Детям уходит ВЫЧИСЛЕННЫЙ кегль, а не подогнанный `font-size-adjust`:
     // «child elements inherit the computed font-size value (otherwise, the
     // effect of font-size-adjust would compound)» (css-fonts-4 §2.5).
+    // `font-size: 0` stays zero (css-fonts-4 §2.5): em units and children
+    // inherit 0; the text backend shapes zero-size runs as blank runs.
     c.inh.font.font_size = c.inh.font.font_size.or(parent.inh.font.font_size);
-    // Кегль НОЛЬ вешает набор намертво (DirectWrite-цикл: `font: 0 Ahem` из
-    // vars-font-shorthand-001 замораживал страницу навсегда) — клэмп к
-    // микроскопическому: визуально то же «ничего», формулы живы.
-    // TRANSITIONAL(cascade-7b-R11): Клэмп font-size:0 до 0.01 меняет computed значение, em и наследование ради text backend; удалить после безопасного shaping нулевого размера на границе backend.
-    if let Some(Len::Px(v)) = c.inh.font.font_size
-        && v <= 0.0
-    {
-        c.inh.font.font_size = Some(Len::Px(0.01));
-    }
     crate::style::computed::font_weight::inherit(c, parent, own);
     c.inh.font.italic = own.inh.font.italic.or(parent.inh.font.italic);
     c.inh.font.oblique = own.inh.font.oblique.or(parent.inh.font.oblique);

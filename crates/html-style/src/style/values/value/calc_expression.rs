@@ -66,6 +66,14 @@ impl Calc<'_> {
     pub(super) fn record_value(&mut self, value: Val) -> Option<Val> {
         if let Some(nodes) = &mut self.recording {
             nodes.push(Node::Value(value));
+            if self.typing {
+                // A zero length is compatible with a length of any unit: the check
+                // is by type, and the leaf value lives in the recorded node.
+                return Some(match value {
+                    Val::Len(_) => Val::Len(Sum::default()),
+                    other => other,
+                });
+            }
             value.with_basis(1.0)
         } else {
             Some(value)

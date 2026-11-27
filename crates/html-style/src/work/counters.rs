@@ -86,4 +86,10 @@ vocabulary!(Counter {
     ParagraphSpacerSteps => "paragraph_spacer_steps",
     ParagraphsKept => "paragraphs_kept", ParagraphsResumed => "paragraphs_resumed",
     KeptAtomsBuilt => "kept_atoms_built", SheetsParsed => "sheets_parsed",
+    TextMeasureNs => "text_measure_ns", TextShapeNs => "text_shape_ns",
+    LineBreakNs => "line_break_ns", LayoutUnits => "layout_units",
+    LayoutUnitsRepeatedInFrame => "layout_units_repeated_in_frame",
+    LayoutUnitsSameAsLastFrame => "layout_units_same_as_last_frame",
+    LayoutRepeatedInFrameNs => "layout_repeated_in_frame_ns",
+    LayoutSameAsLastFrameNs => "layout_same_as_last_frame_ns",
 });

@@ -15,6 +15,7 @@
   {"id":"handler:killBackgroundShell","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/shell.ts":1}},
   {"id":"handler:lspDefinition","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/lsp.ts":1}},
   {"id":"handler:lspDiagnostics","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/lsp.ts":1}},
+  {"id":"handler:listWorkspaceSkills","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/workspace-skills.ts":1}},
   {"id":"handler:lspHover","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/lsp.ts":1}},
   {"id":"handler:lspReferences","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/lsp.ts":1}},
   {"id":"handler:notebookEdit","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/mcp/tools/notebook.ts":1}},

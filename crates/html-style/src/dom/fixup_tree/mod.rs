@@ -1,13 +1,10 @@
-//! Правки дерева после разбора: quirks-проценты, цвета правил, run-in, флоаты во флексе,
-//! выравнивание, руби.
+//! Tree fixups after parsing: quirks percentages, rule colors, run-in, floats
+//! in flex containers, ruby.
 
-mod alignment;
 mod flow_items;
 mod orthogonal_inline;
 mod ruby_boxes;
 pub mod ruby_normalize;
-pub(super) use crate::dom::fixup_tree::alignment::align_self_from_dom_parent;
-pub(super) use crate::dom::fixup_tree::alignment::grid_table_items_keep_stretch;
 pub(super) use crate::dom::fixup_tree::flow_items::flex_items_lose_float;
 pub(super) use crate::dom::fixup_tree::flow_items::fold_run_ins;
 pub(super) use crate::dom::fixup_tree::orthogonal_inline::orthogonal_inlines_become_flow_roots;

@@ -64,8 +64,10 @@ pub enum EdEvent {
     OpenFile(String),
     /// Открыть файл на строке (1-based) — из поиска.
     OpenFileAt(String, u32),
+    /// Файл, строка и столбец (1-based) по ссылке из чата.
+    OpenTextLocation(String, u32, u32),
     /// Содержимое файла прочитано: (path, text, целевая строка 1-based).
-    FileOpened(String, String, Option<u32>),
+    FileOpened(String, String, Option<(u32, u32)>),
     /// Чтение файла не удалось — вкладка рисует карточку `.error`
     /// вместо редактора (`MonacoEditor.tsx:345`).
     FileOpenFailed(String, String),

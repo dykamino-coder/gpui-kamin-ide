@@ -92,6 +92,7 @@ describe('private mod transport', () => {
     expect(await createCliModTransport('unused')).toBeUndefined()
   })
   socketIt('disposes a transport whose socket cannot listen', async () => {
+    vi.stubGlobal('process', { ...process, platform: 'linux' })
     versionProbe.mockImplementation((_cmd, _args, _options, callback) => callback(null, '2.1.328 (Claude Code)'))
     vi.spyOn(CliModTransport.prototype, 'listen').mockRejectedValue(new Error('socket unavailable'))
     const dispose = vi.spyOn(CliModTransport.prototype, 'dispose')

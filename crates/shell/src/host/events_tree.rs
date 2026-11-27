@@ -50,7 +50,7 @@ pub enum TreeEvent {
         command: Option<(String, Vec<Value>)>,
     },
     /// `kamin:view:reveal` — (container, view?): раскрыть contributed-вью.
-    RevealView(String, Option<String>),
+    RevealView(String, Option<String>, bool),
     /// `kamin:tree:reveal` — раскрыть предков, выделить и проскроллить узел.
     /// `tries` — счётчик повторов, пока уровни ещё грузятся.
     TreeReveal {

@@ -6,6 +6,7 @@
 // the exact `ipcMain.handle/.on` calls the vendored handlers expect, and turns
 // every `window.webContents.send(channel,...args)` into an outbound
 // `{kind:'event',channel,args}` frame the renderer's subscribers dispatch.
+import { mcpStartup } from './main/mcp/startup'
 import * as vscode from "vscode"
 import path from "node:path"
 import { ResyncTracker } from "./resync-tracker"
@@ -120,8 +121,7 @@ export class BridgeHost {
   private readonly deferredReplies = new DeferredReplies<vscode.Webview>()
   private onResyncNeeded: (() => void) | undefined
   private disposed = false
-  private readonly startupTimers = new Set<ReturnType<typeof setTimeout>>()
-  private releaseMcpReady: (() => void) | undefined
+  private readonly mcpStartup: ReturnType<typeof mcpStartup>
   private cancelMarketplaceStartup: (() => void) | undefined
   private readonly sink: BrowserWindow
   private readonly event: { sender: WebContents }
@@ -181,8 +181,7 @@ export class BridgeHost {
   cmdSetPermissionMode(mode: string): boolean {
     const a = this.activeConn()
     if (!a?.conn) return false
-    a.conn.setPermissionMode(mode as Parameters<typeof a.conn.setPermissionMode>[0])
-    return true
+    return a.conn.setPermissionMode(mode)
   }
   cmdCloseSession(): boolean {
     const id = this.tabManager.getActiveTabId()
@@ -195,6 +194,7 @@ export class BridgeHost {
 
   constructor(context: vscode.ExtensionContext, opts?: {
     onOpenChat?: () => void
+    onOpenPermissionConsole?: (tabId: string) => void
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
     sessionInstructions?: (cwd?: string) => string
@@ -251,82 +251,10 @@ export class BridgeHost {
     this.mcpManager = new McpServerManager(this.sink)
     setExternalMcpManager(this.mcpManager)
     setHookEmitConfigStore(this.configStore)
-    // Kick off external MCP discovery and expose a "settled" gate. A session's
-    // create/resume waits on this (bounded) so the CLI's initial tool set is
-    // complete — see ConnectionManager.whenExternalToolsReady. stdio servers can
-    // take a few seconds to spawn on a cold launch; the cap keeps a hung server
-    // from ever stalling session start, and the flag makes every later session
-    // (servers already up) skip the wait entirely.
-    // Cold-launch stdio servers (npx spawn) can take ~6s to all connect; the
-    // wait overlaps the app's own boot (GPUI/CEF + extension host), so the
-    // perceived cost on the first session is near-zero. Bounded so a hung
-    // server never stalls session start past this.
-    // Сессия стартует ПОСЛЕ первого прохода `initAll` (mcpReady), а не по
-    // короткому таймеру: инструменты должны быть в первом контексте CLI.
-    // Крышка — только страховка от сервера, который висит вечно; ретраи с
-    // backoff в неё уже не попадают, их ждёт deferred-tools путь.
-    const READY_WAIT_MS = 6000
-    // Defer the MCP spawn storm off the critical boot window. `initAll` fires a
-    // concurrent `shell:true` spawn per configured server plus, for a broken one
-    // (missing pipe/module — common in the wild), a stderr FLOOD; each line fans
-    // out as a postMessage to every attached webview. That storm shares the ONE
-    // exthost thread with the webview's four startup invokes (getConfig/listTabs/
-    // restoreTabsState/getActiveTab) that clear the "Restoring your session…"
-    // spinner — head-of-line blocking them for SECONDS on a box with flaky MCP
-    // servers. Letting the UI's invokes go first, then starting MCP, makes the
-    // spinner clear fast; the tools just settle a beat later (still within the
-    // whenExternalToolsReady cap below).
-    // Старт MCP держим РАННИМ: очередь ответов хоста забивал не он, а обход
-    // дерева наблюдателем (chokidar на профильном корне) — это исправлено в
-    // `services/index.ts`. Отсрочка в 5 с только задерживала инструменты и
-    // старт сессии, поэтому вернул минимальную.
-    // Внешние MCP больше НЕ в стартовом окне: их инициализация (spawn npx +
-    // сломанные сервера юзера с 30с-таймаутами и краш-циклами) душила exthost
-    // на минуты, и «чат не подключается, пока всё не прогрузится» — доказано
-    // бисекцией KAMIN_DISABLE_EXTERNAL_MCP=1 (без MCP коннект за секунды).
-    // Теперь: сессия стартует сразу; MCP поднимаются ПОСЛЕ первой
-    // authenticated-сессии (+пауза), а их тулы дорегистрируются на лету через
-    // mcp:register-external-tools (onToolsChanged) — механизм уже существует.
-    // Фолбэк-таймер покрывает случай «токена нет, сессий не будет» — страница
-    // MCP Servers в настройках всё равно должна показать список.
-    const MCP_AFTER_AUTH_MS = 2000
-    const MCP_FALLBACK_MS = 30_000
-    let mcpSettled = false
-    let mcpKicked = false
-    let resolveReady!: () => void
-    const mcpReady = new Promise<void>((r) => { resolveReady = r })
-    this.releaseMcpReady = resolveReady
-    const scheduleStartup = (run: () => void, delay: number): void => {
-      const timer = setTimeout(() => {
-        this.startupTimers.delete(timer)
-        if (!this.disposed) run()
-      }, delay)
-      this.startupTimers.add(timer)
-    }
-    const kickMcp = (delay: number): void => {
-      if (mcpKicked || this.disposed) return
-      mcpKicked = true
-      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP === '1') {
-        mcpSettled = true
-        resolveReady()
-        return
-      }
-      scheduleStartup(() => {
-        this.mcpManager.initAll()
-          .catch(() => { /* best-effort discovery */ })
-          .finally(() => { mcpSettled = true; resolveReady() })
-      }, delay)
-    }
-    scheduleStartup(() => kickMcp(0), MCP_FALLBACK_MS)
-    ConnectionManager.whenExternalToolsReady = () => {
-      // Сессию MCP не держат: не начали подниматься — не ждём их вовсе;
-      // уже поднимаются — даём им добежать, но не дольше короткой крышки.
-      if (mcpSettled || !mcpKicked) return Promise.resolve()
-      return new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, READY_WAIT_MS)
-        void mcpReady.finally(() => { clearTimeout(t); resolve() })
-      })
-    }
+    this.mcpStartup = mcpStartup(async () => {
+      if (process.env.KAMIN_DISABLE_EXTERNAL_MCP !== '1') await this.mcpManager.initAll()
+    })
+    ConnectionManager.whenExternalToolsReady = this.mcpStartup.beforeAdmission
 
     registerSessionsIPC(ctx)
     registerConfigIPC(ctx)
@@ -393,7 +321,7 @@ export class BridgeHost {
         return [...this.tabManager.getDistinctCwds(), ...(cwd ? [cwd] : [])]
       },
     })
-    registerCoreIpc(context, this.configStore)
+    registerCoreIpc(context, this.configStore, this.tabManager)
 
     // Feed external MCP tool schemas into every session at create/auth, and
     // re-register on all authenticated connections when the server set changes.
@@ -432,8 +360,6 @@ export class BridgeHost {
         }
         break
       }
-      // Первая живая сессия поднялась — теперь можно тратить exthost на MCP.
-      kickMcp(MCP_AFTER_AUTH_MS)
       const schemas = buildPayload()
       if (schemas.length > 0) connection.sendRaw({ type: "mcp:register-external-tools", tools: schemas })
       sendMcpCatalog(connection)
@@ -464,6 +390,11 @@ export class BridgeHost {
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text))
 
     // The sidebar asks to reveal the center chat panel when a session activates.
+    if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id: string) => {
+      if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === 'claude') {
+        opts.onOpenPermissionConsole?.(id)
+      }
+    })
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.())
   }
 
@@ -544,10 +475,8 @@ export class BridgeHost {
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
-    for (const timer of this.startupTimers) clearTimeout(timer)
-    this.startupTimers.clear()
     this.cancelMarketplaceStartup?.()
-    this.releaseMcpReady?.()
+    this.mcpStartup.dispose()
     for (const tab of this.tabManager.listTabs()) stopMonitorsForTab(tab.id)
     this.tabManager.dispose()
     this.mcpManager.dispose()

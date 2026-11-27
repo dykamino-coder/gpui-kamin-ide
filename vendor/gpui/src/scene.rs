@@ -9,7 +9,7 @@ pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, Layer
 pub(crate) use layer::no_run;
 mod damage;
 pub(crate) mod image_resources;
-mod record; mod group_replay;
+mod record; mod group_replay; pub(crate) use group_replay::GroupLabel;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
 mod vector_transform;
@@ -18,6 +18,8 @@ pub use projected::homography_image;
 pub(crate) mod affine_transform;
 pub(crate) mod segments;
 pub(crate) mod scroll_marks;
+mod transform_pivot;
+pub use transform_pivot::{QuarterSnap, TransformBuild, TransformPivot};
 impl Scene {
     /// KaminIDE patch: the display list's buffers for the engine bench's memory report
     /// (`crate::heap_report`). Paths' vertices and the bounds tree nodes are not walked.
@@ -138,6 +140,9 @@ pub struct PaintGroup {
     /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
     /// многоугольник на каждую метку (`PaintSurface::fragment`).
     pub fragments: Vec<Vec<Point<ScaledPixels>>>,
+    /// KaminIDE patch: its label, painted under a scroll node, fell outside its own
+    /// mask there, so it shows at no offset a scrolled replay accepts (Scene::group_labels).
+    pub label_dropped: bool,
 }
 
 impl PaintGroup {
@@ -428,10 +433,15 @@ impl Scene {
             surface.group += base;
         }
         for operation in &mut self.paint_operations {
-            if let PaintOperation::Primitive(Primitive::Surface(surface)) = operation {
-                if surface.group > 0 {
-                    surface.group += base;
+            match operation {
+                PaintOperation::Primitive(Primitive::Surface(surface)) if surface.group > 0 => surface.group += base,
+                // KaminIDE patch: a dormant label names its group as a drawn one does.
+                PaintOperation::Dormant(primitive) if matches!(&**primitive, Primitive::Surface(s) if s.group > 0) => {
+                    if let Primitive::Surface(surface) = std::rc::Rc::make_mut(primitive) {
+                        surface.group += base;
+                    }
                 }
+                _ => {}
             }
         }
     }
@@ -528,6 +538,10 @@ impl Scene {
 
         if clipped_bounds.is_empty() {
             return;
+        }
+        // KaminIDE patch: a record keeps the pivot of what it paints unmarked.
+        if ordered.is_none() {
+            self.note_record_pivot(&primitive);
         }
         self.add_primitive_ink(clipped_bounds);
 
@@ -676,11 +690,13 @@ impl Scene {
         // KaminIDE patch: under a scroll node, what the record marked under it.
         let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
         let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
-        if !self.replay_shifted(operations, source, &scene.book.images, |_| true) {
-            for operation in operations {
-                self.replay_image_operation(operation.clone(), &scene.book.images);
+        self.copying_pivots(scene, Point::default(), |this| {
+            if !this.replay_shifted(operations, source, &scene.book.images, |_| true) {
+                for operation in operations {
+                    this.replay_image_operation(operation.clone(), &scene.book.images);
+                }
             }
-        }
+        });
     }
 
     /// KaminIDE patch: `replay` of `range` of the rendered `prev_scene` moved
@@ -744,7 +760,7 @@ impl Scene {
         // KaminIDE patch: under a scroll node, what the record marked under it.
         let restored = self.scroll.open.and_then(|(node, _)| scene.unscrolled_under(node));
         let operations = restored.as_deref().unwrap_or(&scene.paint_operations);
-        self.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
+        self.copying_pivots(scene, offset, |this| this.replay_shifted(operations, source, &scene.book.images, |operation| match operation {
             PaintOperation::Primitive(primitive) => {
                 record::geometry::primitive(primitive, offset, clip);
                 !placed_bounds(primitive)
@@ -759,7 +775,7 @@ impl Scene {
             // stay as drawn, unmarked, so a scrolled replay builds instead.
             PaintOperation::Reservoir(_) => false,
             _ => true,
-        })
+        }))
     }
 
     /// KaminIDE patch: whether every order in `operations` comes from the
@@ -870,18 +886,28 @@ impl Scene {
         // clipped record copies only what is visible), and a frame keeps its
         // capacity for the next frame, so a reservation for every recorded
         // command would stay as dead capacity in both frames.
-        for operation in operations {
+        for (index, operation) in operations.iter().enumerate() {
             let mut operation = self.relabeled(operation);
+            // KaminIDE patch: the mark of a node the record opened inside itself.
+            let carried = self.carried(index);
             if !place(&mut operation) {
                 layer::PlacedMap::skip(&mut self.book.placed_map);
+                self.land_carried(None, None, shift);
                 continue;
+            }
+            // KaminIDE patch: a moved copy builds its matrices from the moved pivots.
+            if let PaintOperation::Primitive(primitive) = &mut operation
+                && self.scroll.open.is_none()
+            {
+                self.copied_pivot(primitive, index, false);
             }
             // KaminIDE patch: a copy landing under a scroll node is marked
             // there, ordered by its own mask, dormant where the chain hides it.
-            if self.scroll.open.is_some() && self.mark_copied(&mut operation, shift) {
+            if carried.is_none() && self.scroll.open.is_some() && self.mark_copied(&mut operation, shift, index) {
                 let at = self.paint_operations.len();
                 layer::PlacedMap::land(&mut self.book.placed_map, at, None);
                 self.paint_operations.push(operation);
+                self.land_carried(Some(at), None, shift);
                 continue;
             }
             let mut quad = None;
@@ -913,6 +939,7 @@ impl Scene {
                     layer.order += shift;
                     if !self.push_layer_slot(layer) {
                         layer::PlacedMap::skip(&mut self.book.placed_map);
+                        self.land_carried(None, None, shift);
                         continue;
                     }
                 }
@@ -921,6 +948,7 @@ impl Scene {
             let at = self.paint_operations.len();
             layer::PlacedMap::land(&mut self.book.placed_map, at, quad);
             self.paint_operations.push(operation);
+            self.land_carried(Some(at), carried, shift);
         }
         Self::count_copied(copied);
         if let Some(ink) = ink {
@@ -1018,10 +1046,22 @@ impl Scene {
         // moved and clipped as the commands are, so a copy placed under the
         // node gives them back (`unscrolled_under`).
         let mut marks = self.scroll.marks.iter().peekable();
+        let mut unmarked = self.scroll.pivots.iter().peekable();
         for (at, operation) in self.paint_operations.iter().enumerate() {
             let mark = marks.next_if(|mark| mark.op as usize == at);
             let mut operation = operation.clone();
             place(&mut operation);
+            // A placed primitive takes the matrix its moved pivot builds, the
+            // bits a fresh paint there builds; a dormant one keeps its own.
+            let dormant = matches!(operation, PaintOperation::Dormant(_));
+            let own_pivot = unmarked.next_if(|(op, _)| *op as usize == at).map(|(_, pivot)| pivot);
+            let pivot = match mark.and_then(|mark| mark.pivot.as_ref()).or(own_pivot) {
+                Some(pivot) if !dormant && offset != Point::default() => Some(std::rc::Rc::new(pivot.moved(offset))),
+                pivot => pivot.cloned(),
+            };
+            if let (PaintOperation::Primitive(primitive), Some(pivot)) = (&mut operation, &pivot) {
+                scroll_marks::pivots::set_matrix(primitive, pivot.matrix());
+            }
             if let PaintOperation::Primitive(primitive) = &mut operation {
                 let clipped = placed_bounds(primitive).intersect(&primitive.content_mask().bounds);
                 if clipped.is_empty() {
@@ -1037,7 +1077,6 @@ impl Scene {
                     clip.map_or(bounds, |clip| bounds.intersect(&clip))
                 };
                 // A dormant command was not placed: its mark carries the shift.
-                let dormant = matches!(operation, PaintOperation::Dormant(_));
                 let shift = if dormant { mark.moved + offset } else { mark.moved };
                 let op = scene.paint_operations.len() as u32;
                 scene.scroll.marks.push(scroll_marks::ScrollMark {
@@ -1045,8 +1084,11 @@ impl Scene {
                     own: moved(mark.own),
                     placed: record::geometry::bounds(mark.placed, offset),
                     moved: shift,
+                    pivot,
                     ..*mark
                 });
+            } else if let Some(pivot) = pivot {
+                scene.scroll.pivots.push((scene.paint_operations.len() as u32, pivot));
             }
             scene.paint_operations.push(operation);
         }
@@ -1360,6 +1402,18 @@ impl Primitive {
             Primitive::SubpixelSprite(p) => &mut p.order,
             Primitive::PolychromeSprite(p) => &mut p.order,
             Primitive::Surface(p) => &mut p.order,
+        }
+    }
+
+    /// KaminIDE patch: the matrix a primitive is drawn through, if it has one.
+    pub(crate) fn transformation(&self) -> Option<&TransformationMatrix> {
+        match self {
+            Primitive::Quad(p) => Some(&p.transformation),
+            Primitive::Gradient(p) => Some(&p.quad.transformation),
+            Primitive::MonochromeSprite(p) => Some(&p.transformation),
+            Primitive::SubpixelSprite(p) => Some(&p.transformation),
+            Primitive::PolychromeSprite(p) => Some(&p.transformation),
+            Primitive::Shadow(_) | Primitive::Path(_) | Primitive::Underline(_) | Primitive::Surface(_) => None,
         }
     }
 }

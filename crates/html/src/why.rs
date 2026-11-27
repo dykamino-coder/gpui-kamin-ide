@@ -43,6 +43,7 @@ pub const CODES: &[&str] = &[
     "frame_unpublished",
     "layout_retry.container_size",
     "layout_retry.flow_refused",
+    "layout_retry.replay_input",
     "layout_retry.replay_refused",
     "no_layer.painted_environment",
     "no_layer.painted_ink",

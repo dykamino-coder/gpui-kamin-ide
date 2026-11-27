@@ -2,7 +2,7 @@
 
 ## Integration batch source acceptance, 2026-11-26
 
-The automated merge gates passed for the following fixes. The deployment owner will check the last column after publication.
+The following fixes shipped in [kaminide-v1.0.130](https://github.com/dykamino-coder/gpui-kamin-ide/releases/tag/kaminide-v1.0.130). The automated merge gates passed. The deployment owner will check the last column after publication.
 
 | Incident | Merged fix | Verified scenario | Deployment observation |
 | --- | --- | --- | --- |

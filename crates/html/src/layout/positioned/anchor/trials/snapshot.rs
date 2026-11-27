@@ -43,7 +43,6 @@ pub(super) struct Accepted {
     last: [bool; 2],
     flex_kw: bool,
     physical: Option<bool>,
-    align_decl: Option<Option<Align>>,
     inherit: [bool; 16],
 }
 
@@ -80,7 +79,6 @@ impl Accepted {
             last: [c.reset_flex.align_self_last, c.reset_flex.justify_self_last],
             flex_kw: c.reset_flex.align_self_flex_kw,
             physical: c.reset_flex.justify_self_physical,
-            align_decl: c.reset_flex.align_self_decl,
             inherit: INHERITED.map(|id| c.reset_cascade.inherit_longhands.contains(id)),
         }
     }
@@ -135,7 +133,6 @@ impl Accepted {
         [c.reset_flex.align_self_last, c.reset_flex.justify_self_last] = self.last;
         c.reset_flex.align_self_flex_kw = self.flex_kw;
         c.reset_flex.justify_self_physical = self.physical;
-        c.reset_flex.align_self_decl = self.align_decl;
         for (id, on) in INHERITED.into_iter().zip(self.inherit) {
             c.reset_cascade.inherit_longhands.set(id, on);
         }

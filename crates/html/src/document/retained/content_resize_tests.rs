@@ -1,5 +1,6 @@
 //! Content records across a change of the window width (`layout::reuse::content`):
-//! the content of a cell whose column keeps its width replays, and a content
+//! the content of a cell whose column keeps its width replays, a cell of an
+//! auto-layout table follows the window, and a content
 //! whose result follows the window (viewport and container lengths, a column
 //! sized from the window, a media query on the width) is built. Every frame
 //! equals a fresh document's at the same width.
@@ -104,6 +105,58 @@ fn cells_of_a_table_sized_by_the_window_are_built(cx: &mut TestAppContext) {
     for span in ["", "display:inline-block;width:50%"] {
         let table = "table-layout:fixed;width:50%";
         assert_eq!(resized(cx, &cells(table, span, "")), 0, "{span}");
+    }
+}
+
+/// Open `html` and resize to 640, then to 400: the frame at 400, the first to
+/// find records written at another width (a refusal bans a record), tries no
+/// replay before layout that it refuses after it (`layout_retry.replay*`),
+/// which would build the frame twice, and equals a fresh document's.
+fn built_once(cx: &mut TestAppContext, html: &str) {
+    let (_one, _sub) = crate::why::test_reader();
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, html);
+    frame(vcx);
+    resize(&view, vcx, 640.);
+    crate::why::take();
+    resize(&view, vcx, 400.);
+    let journal = crate::why::take().journal;
+    let retried = journal
+        .causes
+        .iter()
+        .filter(|c| c.code.starts_with("layout_retry.replay"))
+        .count();
+    assert_eq!(retried, 0, "replays refused after layout: {journal:?}");
+    assert_eq!(
+        scene(vcx),
+        fresh(cx, html, 400.),
+        "the frame at 400 differs from a fresh one"
+    );
+}
+
+#[gpui::test]
+fn cells_of_an_auto_table_sized_by_the_window_are_built_once(cx: &mut TestAppContext) {
+    // An auto-layout table shares its width among its columns by their
+    // content: the cells follow the window.
+    built_once(cx, &cells("width:100%", "", ""));
+}
+
+#[gpui::test]
+fn items_of_a_flex_line_and_grid_tracks_are_built_once(cx: &mut TestAppContext) {
+    // A growing flex item and an `fr` track take a share of their
+    // container's width, even with a width of their own.
+    for parent in [
+        "display:flex",
+        "display:grid;grid-template-columns:repeat(3,1fr)",
+    ] {
+        let items: String = (0..3)
+            .map(|i| format!("<div style='width:100px;flex-grow:1'>item {i} with some words</div>"))
+            .collect();
+        let html = format!(
+            "<!doctype html><html><head><style>body{{margin:0}}</style></head>\
+             <body><div><div style='{parent}'>{items}</div></div></body></html>"
+        );
+        built_once(cx, &html);
     }
 }
 

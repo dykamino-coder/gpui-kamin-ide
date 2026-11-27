@@ -69,7 +69,6 @@ async function chromium() {
     try {
       const pg = await ctx.newPage(); await pg.goto('about:blank');
       const cdp = op.trace ? await ctx.newCDPSession(pg) : null;
-      let done = null;
       if (cdp) {
         await cdp.send('Tracing.start', { categories: op.traceCategories || TRACE_CATEGORIES, transferMode: 'ReturnAsStream' });
         await pg.evaluate(() => console.timeStamp('nav'));
@@ -156,7 +155,7 @@ async function servo() {
   let driver = null;
   for (let i = 0; i < 100 && !driver; i++) {
     try { driver = await new selenium.Builder().usingServer(`http://127.0.0.1:${port}`).withCapabilities({ browserName: 'servo' }).build(); }
-    catch (e) { if (child.exitCode !== null) throw new Error('servoshell exited: ' + child.exitCode); await sleep(200); }
+    catch (e) { if (child.exitCode !== null) throw new Error('servoshell exited: ' + child.exitCode, { cause: e }); await sleep(200); }
   }
   if (!driver) throw new Error('servoshell WebDriver did not answer within 20 s');
   await driver.manage().setTimeouts({ pageLoad: 180000, script: 300000 }).catch(() => {});
@@ -200,7 +199,7 @@ async function servo() {
     for (const c of op.cpuCases || []) { await mark('cpu_' + c + '_0'); cpu[c] = await run(LOOP(c, op.cpuFrames)); await mark('cpu_' + c + '_1'); }
     return { navWallMs, probeWallMs, shotWallMs, cpuWallMs: clock.now() - c0, pageWallMs: clock.now() - w0, ...metrics, probe, shots, cpu };
   }
-  const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch (e) { /* gone */ } });
+  const quit = () => Promise.race([driver.quit().catch(() => {}), sleep(5000)]).then(() => { try { child.kill(); } catch { /* gone */ } });
   return { info, page, quit };
 }
 
@@ -209,7 +208,7 @@ async function servo() {
   catch (e) { out('READY', { error: String(e && e.stack || e) }); process.exit(2); }
   while (true) {
     const l = await nextLine(); let op;
-    try { op = JSON.parse(l); } catch (e) { continue; }
+    try { op = JSON.parse(l); } catch { continue; }
     if (op.op === 'quit') break;
     if (op.op !== 'page') continue;
     let r;

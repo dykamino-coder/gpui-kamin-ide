@@ -14,7 +14,7 @@ pub fn calc_store(s: Sum, vcx: ValueCx<'_>) -> CalcId {
 
 /// The hash of the bits of a sum: equal sums (but for the sign of a zero)
 /// hash alike.
-fn sum_hash(s: &Sum) -> u64 {
+pub(super) fn sum_hash(s: &Sum) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     let units = [s.lh, s.px, s.pct, s.em, s.ch, s.ex, s.ic, s.cap, s.vh, s.vw];

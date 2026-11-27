@@ -38,6 +38,8 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  padding: 16px;
+  text-align: center;
   background: var(--term-bg);
   color: var(--text-muted, #838aa0);
   font-size: var(--fs-sm, 12px);

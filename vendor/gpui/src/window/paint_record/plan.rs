@@ -127,7 +127,7 @@ impl PaintPlan {
                     // A copy under a scroll node is marked under it (`with_copies_marked`).
                     if presentation.is_none()
                         && window.with_copies_marked(|window| {
-                            window.replay_placed_carrying(&record.0.scene, Point::default(), Some(mask.bounds))
+                            window.replay_placed_landing(&record.0.scene, Point::default(), Some(mask.bounds))
                         })
                     {
                         continue;
