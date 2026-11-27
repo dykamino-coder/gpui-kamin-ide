@@ -113,8 +113,7 @@ pub(crate) fn parse_embedded_sized(
         failure.scope = super::FailureScope::EmbeddedDocument;
         failure
     })?;
-    let used =
-        crate::text::fonts::used_chars::UsedChars::of_document(&input.dom.document, &sheets);
+    let used = crate::text::fonts::used_chars::UsedChars::of_document(&input.dom.document, &sheets);
     crate::text::fonts::load_faces_sheets(&sheets, None, &state.text, vcx, &used)
         .map_err(embedded_failure)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, None, vcx)
