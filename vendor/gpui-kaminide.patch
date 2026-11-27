@@ -11648,7 +11648,7 @@ index 0000000000000000000000000000000000000000..ccb6b56a6851ba50653d4de0ccae3d0e
 +    pub gpu_wait: Duration,
 +}
 diff --git a/vendor/gpui/src/geometry.rs b/vendor/gpui/src/geometry.rs
-index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc735734d33460
+index 1c87031c7aad8df10827152debe6f74672d7c07f..fe3f459338aef64597040aa5390905dfc81cf94c
 --- a/vendor/gpui/src/geometry.rs
 +++ b/vendor/gpui/src/geometry.rs
 @@ -3476,0 +3477,4 @@
@@ -11668,7 +11668,7 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc7357
 +            DefiniteLength::Calc(add, fraction) => {
 +                write!(f, "calc({}% + {}px)", fraction * 100.0, add)
 +            }
-@@ -3802,0 +3817,144 @@
+@@ -3802,0 +3817,154 @@
 +/// KaminIDE patch: одна дорожка сетки.
 +///
 +/// Штатный путь умеет только «N равных колонок» (`grid_cols`), хотя taffy под
@@ -11687,7 +11687,12 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc7357
 +    /// сводились к равным долям, и колонки расходились с браузером.
 +    Percent(f32),
 +    /// Grid-axis fraction plus logical pixels, before display scaling.
-+    Calc { fraction: f32, add: Pixels },
++    Calc {
++        /// Fraction of the grid container's corresponding axis.
++        fraction: f32,
++        /// Logical pixels added before conversion to device coordinates.
++        add: Pixels,
++    },
 +    /// Ширина по содержимому: `auto`.
 +    Auto,
 +    /// Минимально возможная ширина содержимого: `min-content`.
@@ -11700,7 +11705,12 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc7357
 +    /// KaminIDE patch: `fit-content(N%)`.
 +    FitContentPercent(f32),
 +    /// Intrinsic size limit expressed as a mixed length.
-+    FitContentCalc { fraction: f32, add: Pixels },
++    FitContentCalc {
++        /// Fraction of the grid container's corresponding axis.
++        fraction: f32,
++        /// Logical pixels added before conversion to device coordinates.
++        add: Pixels,
++    },
 +    /// `minmax(min, max)` — пара из двух дорожек выше.
 +    MinMax(Box<(GridTrack, GridTrack)>),
 +    /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
@@ -11813,7 +11823,7 @@ index 1c87031c7aad8df10827152debe6f74672d7c07f..e156f5a9bdbf17fa63ccb46390cc7357
 +    pub area_size: (u16, u16),
 +}
 +
-@@ -3936,0 +4095 @@
+@@ -3936,0 +4105 @@
 +            DefiniteLength::Calc(add, fraction) => *add == 0. && *fraction == 0.,
 diff --git a/vendor/gpui/src/gpui.rs b/vendor/gpui/src/gpui.rs
 index d4da5aa34c01debb2ffb6330e5da3bc7d7a77063..ca79eab6b89b977eca232a24bafd3d6da81f8d36

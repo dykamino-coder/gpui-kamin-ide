@@ -3832,7 +3832,12 @@ pub enum GridTrack {
     /// сводились к равным долям, и колонки расходились с браузером.
     Percent(f32),
     /// Grid-axis fraction plus logical pixels, before display scaling.
-    Calc { fraction: f32, add: Pixels },
+    Calc {
+        /// Fraction of the grid container's corresponding axis.
+        fraction: f32,
+        /// Logical pixels added before conversion to device coordinates.
+        add: Pixels,
+    },
     /// Ширина по содержимому: `auto`.
     Auto,
     /// Минимально возможная ширина содержимого: `min-content`.
@@ -3845,7 +3850,12 @@ pub enum GridTrack {
     /// KaminIDE patch: `fit-content(N%)`.
     FitContentPercent(f32),
     /// Intrinsic size limit expressed as a mixed length.
-    FitContentCalc { fraction: f32, add: Pixels },
+    FitContentCalc {
+        /// Fraction of the grid container's corresponding axis.
+        fraction: f32,
+        /// Logical pixels added before conversion to device coordinates.
+        add: Pixels,
+    },
     /// `minmax(min, max)` — пара из двух дорожек выше.
     MinMax(Box<(GridTrack, GridTrack)>),
     /// KaminIDE patch: `repeat(auto-fill | auto-fit, …)` — сколько дорожек
