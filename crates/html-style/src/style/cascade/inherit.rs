@@ -12,7 +12,6 @@
 
 use crate::values::ValueCx;
 
-use crate::style::computed::box_predicates::{backdrop_root, establishes_cb};
 use crate::style::computed::{BoxStyle, Computed};
 
 /// Запись стадии коробки в общий вычисленный стиль — только изменившегося
@@ -33,6 +32,7 @@ mod flow_align;
 mod fragment;
 mod marker;
 mod paint;
+mod parent_facts;
 mod quirks;
 mod self_align;
 mod unwrapped;
@@ -46,6 +46,8 @@ pub use fragment::group as fragment_group_style;
 pub use marker::content as marker_content;
 pub use marker::symbol as marker_symbol;
 use paint::inherit_paint;
+pub use parent_facts::ParentFacts;
+use parent_facts::transformed;
 pub use unwrapped::Unwrapped;
 
 // `zoom` (css-viewport-1) не делать домножением использованных длин здесь,
@@ -132,20 +134,37 @@ pub fn box_stage(
     paint_filter: bool,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
-    let BoxParents { layout, tree } = parents;
+    let facts = ParentFacts::of(parents, vcx);
+    let mut c = box_stage_from(&facts, declared, own, computed, element, paint_filter, vcx);
+    reidentify(parents.layout, &mut c);
+    c
+}
+
+/// The box stage under parents known by their facts alone: what the stage reads of them,
+/// the key of a remembered stage (`materialize::stage_memo`). The registry keys of the frame
+/// (`cb_node`, `fixed_cb_node`) are not set: the caller takes them from the parent
+/// (`reidentify`).
+pub(crate) fn box_stage_from(
+    f: &ParentFacts<'_>,
+    declared: &Computed,
+    own: &Computed,
+    computed: impl Into<crate::style::box_input::BoxStyleInput>,
+    element: Option<crate::style::computed::ElementStyle>,
+    paint_filter: bool,
+    vcx: ValueCx<'_>,
+) -> BoxStyle {
     let mut c = BoxStyle::shared(computed);
     c.element_style = element;
-    c.set_parent_context(layout);
-    context::inherit_context(parents, own, &mut c);
-    inherit_containing(parents, own, &mut c, vcx);
-    quirks::percentage_height(layout, own, &mut c, vcx);
+    c.context = f.layout.context.clone();
+    context::inherit_context(f, own, &mut c);
+    inherit_containing(f, own, &mut c);
+    quirks::percentage_height(&f.layout, own, &mut c, vcx);
     let applicability = c.context.applicability;
     self_align::self_alignment(applicability, own, &mut c);
-    flow_align::resolve(layout, &mut c);
-    inherit_paint(tree, declared, own, &mut c, paint_filter, vcx);
-    let parent_px = super::compute::parent_font_px(tree);
-    let own_px = super::compute::own_font_px(&c, parent_px);
-    let decoration = tree.decoration_inputs(own);
+    flow_align::resolve(f.layout.reversed_axes, &mut c);
+    inherit_paint(&f.tree, declared, own, &mut c, paint_filter, vcx);
+    let own_px = super::compute::own_font_px(&c, f.tree.font_px);
+    let decoration = f.tree.decoration_inputs(own);
     decorate(decoration, own, &mut c, own_px, vcx);
     c
 }

@@ -3,6 +3,7 @@
 
 use super::{stage_memo, used};
 use crate::dom::SharedStyle;
+use crate::style::cascade::inherit::{BoxParents, ParentFacts, reidentify};
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use std::rc::Rc;
@@ -20,25 +21,38 @@ pub(super) fn styled(
     // Перенесённая раскладкой коробка остаётся ребёнком своего родителя по
     // дереву элементов (css-cascade-5 §7.2); `parent` — её новая коробка-родитель.
     let moved = own.moved_from();
+    let tree = moved.as_deref().unwrap_or(parent);
+    // What the stage reads of the parents: the key, and the stage's only view of them.
+    let facts = ParentFacts::of(
+        BoxParents {
+            layout: parent,
+            tree,
+        },
+        vcx,
+    );
+    let own_key = own.stage_own();
+    let materialized = own_key.materialized();
     let query = stage_memo::Query {
         paint,
-        layout: parent,
-        tree: moved.as_deref(),
-        own: own.stage_own(),
+        moved: moved.is_some(),
+        parent: &facts,
+        element_parent: tree.element_style.as_ref().filter(|_| materialized),
+        anonymous: (!materialized).then(|| parent.style_rc()),
+        own: own_key,
         vcx,
     };
     let memo = own.stage_memo();
     match memo.find(&query) {
         Ok(mut boxed) => {
             crate::work::add!(BoxStageHits, 1);
-            crate::style::cascade::inherit::reidentify(parent, &mut boxed);
+            reidentify(parent, &mut boxed);
             return boxed;
         }
         Err(miss) => miss.note(),
     }
     let arenas = vcx.doc.frame_arena_mark();
-    let (boxed, read_viewport) = crate::values::viewport_reads::track(vcx.doc, || {
-        stage(parent, own, moved.as_deref().unwrap_or(parent), paint, vcx)
+    let (mut boxed, read_viewport) = crate::values::viewport_reads::track(vcx.doc, || {
+        stage(parent, own, tree, &facts, paint, vcx)
     });
     // Handles into the frame region of the arenas and a position-try source (a style
     // handle) are valid for this frame only or would hold the records alive.
@@ -47,13 +61,18 @@ pub(super) fn styled(
     } else {
         crate::work::add!(BoxStageUncached, 1);
     }
+    reidentify(parent, &mut boxed);
     boxed
 }
 
+/// The stage itself. It reads the parents through `facts`, apart from the element stages
+/// of the element parent (`tree.element_style`) and, for an anonymous box, the layout
+/// parent's computed style — the other inputs of a remembered stage (`stage_memo::Query`).
 fn stage(
     parent: &BoxStyle,
     own: &SharedStyle,
     tree: &BoxStyle,
+    facts: &ParentFacts<'_>,
     paint: bool,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
@@ -91,11 +110,8 @@ fn stage(
         Some(_) => cascaded,
         None => &*view,
     };
-    let mut boxed = crate::style::cascade::inherit::box_stage(
-        crate::style::cascade::inherit::BoxParents {
-            layout: parent,
-            tree,
-        },
+    let mut boxed = crate::style::cascade::inherit::box_stage_from(
+        facts,
         declared,
         &view,
         crate::style::box_input::BoxStyleInput {

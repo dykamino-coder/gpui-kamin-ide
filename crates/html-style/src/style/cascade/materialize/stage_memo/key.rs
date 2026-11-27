@@ -1,5 +1,6 @@
 //! Входы записи стадии коробки: стадии своего стиля, документ, окно; причина промаха.
 
+use crate::style::computed::ElementStyle;
 use crate::style::values::value::Scheme;
 use crate::values::ValueCx;
 use std::any::Any;
@@ -24,6 +25,12 @@ pub struct OwnKey {
 impl OwnKey {
     pub(crate) fn new(stages: [Identity; 5], container: (Option<f32>, Option<f32>)) -> Self {
         Self { stages, container }
+    }
+
+    /// The style has a materialized computed stage: else the box is anonymous and computes
+    /// its values from its layout parent's.
+    pub(crate) fn materialized(&self) -> bool {
+        self.stages[1].is_some()
     }
 
     pub(super) fn same_stages(&self, other: &Self) -> bool {
@@ -64,6 +71,21 @@ pub(super) fn viewport(vcx: ValueCx<'_>) -> Viewport {
         [vcx.viewport.0.to_bits(), vcx.viewport.1.to_bits()],
         [insets[0].to_bits(), insets[1].to_bits()],
     )
+}
+
+/// The same element stages of the element parent: the child reads its variant by identity.
+pub(super) fn same_element(a: Option<&ElementStyle>, b: Option<&ElementStyle>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => {
+            Rc::ptr_eq(&a.original, &b.original)
+                && Rc::ptr_eq(&a.computed, &b.computed)
+                && match (&a.parent, &b.parent) {
+                    (Some(x), Some(y)) => Rc::ptr_eq(x, y),
+                    (x, y) => x.is_none() && y.is_none(),
+                }
+        }
+        (a, b) => a.is_none() && b.is_none(),
+    }
 }
 
 /// Why a stage was computed again: the first input that differs.

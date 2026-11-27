@@ -13,7 +13,8 @@
 //! идентичностью элемента. Ключи реестров кадра (`self_node` → `cb_node`) в запись не
 //! входят: попадание переносит их от родителя этого кадра (`inherit::reidentify`).
 
-use crate::style::computed::BoxStyle;
+use crate::style::cascade::inherit::ParentFacts;
+use crate::style::computed::{BoxStyle, Computed, ElementStyle};
 use crate::values::ValueCx;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,23 +24,31 @@ const ENTRIES: usize = 4;
 
 mod key;
 pub use key::OwnKey;
-use key::{DocInputs, Viewport, doc_inputs, viewport};
+use key::{DocInputs, Viewport, doc_inputs, same_element, viewport};
 pub(crate) use key::{Identity, Miss, identity};
 
 /// The inputs of one stage request.
 pub(crate) struct Query<'a> {
     pub paint: bool,
-    pub layout: &'a BoxStyle,
-    /// The box parent by the element tree, for a box layout moved under `layout`.
-    pub tree: Option<&'a BoxStyle>,
+    /// Layout moved the box under another box than its element parent's.
+    pub moved: bool,
+    /// What the stage reads of the parents (`inherit::ParentFacts`).
+    pub parent: &'a ParentFacts<'a>,
+    /// The element stages of the element parent, which the element's computed variant
+    /// follows (`ElementStyle::variant_for`).
+    pub element_parent: Option<&'a ElementStyle>,
+    /// The layout parent's computed style: an anonymous box computes its own from it.
+    pub anonymous: Option<&'a Rc<Computed>>,
     pub own: OwnKey,
     pub vcx: ValueCx<'a>,
 }
 
 struct Entry {
     paint: bool,
-    layout: Rc<BoxStyle>,
-    tree: Option<Rc<BoxStyle>>,
+    moved: bool,
+    parent: Rc<ParentFacts<'static>>,
+    element_parent: Option<ElementStyle>,
+    anonymous: Option<Rc<Computed>>,
     own: OwnKey,
     doc: DocInputs,
     viewport: Option<Viewport>,
@@ -60,11 +69,14 @@ impl Entry {
         if self.doc != doc {
             return Err(Miss::Document);
         }
-        let tree = match (&self.tree, q.tree) {
-            (Some(a), Some(b)) => a.same_stage_parent(b),
+        let anonymous = match (&self.anonymous, q.anonymous) {
+            (Some(a), Some(b)) => BoxStyle::same_computed_values(a, b),
             (a, b) => a.is_none() && b.is_none(),
         };
-        if !tree || !self.layout.same_stage_parent(q.layout) {
+        if *self.parent != *q.parent
+            || !same_element(self.element_parent.as_ref(), q.element_parent)
+            || !anonymous
+        {
             return Err(Miss::Parent);
         }
         if self.viewport.is_some_and(|v| v != viewport(q.vcx)) {
@@ -73,7 +85,6 @@ impl Entry {
         Ok(())
     }
 }
-
 /// The remembered box stages of one style, shared by the copies of its element: the table
 /// exists from the start, so a copy made before the first stage (render works on copies of
 /// the document's elements) still reads and fills the document's records.
@@ -94,7 +105,7 @@ impl StageMemo {
         let doc = doc_inputs(q.vcx);
         let mut reason = Miss::First;
         let entries = entries.borrow();
-        let same_kind = |e: &&Entry| e.paint == q.paint && e.tree.is_some() == q.tree.is_some();
+        let same_kind = |e: &&Entry| e.paint == q.paint && e.moved == q.moved;
         for entry in entries.iter().filter(same_kind) {
             match entry.check(q, doc) {
                 Ok(()) => {
@@ -116,8 +127,10 @@ impl StageMemo {
     pub(crate) fn store(&self, q: Query<'_>, read_viewport: bool, out: &BoxStyle) {
         let entry = Entry {
             paint: q.paint,
-            layout: shared_parent(q.vcx, q.layout),
-            tree: q.tree.map(|t| shared_parent(q.vcx, t)),
+            moved: q.moved,
+            parent: shared_parent(q.vcx, q.parent),
+            element_parent: q.element_parent.cloned(),
+            anonymous: q.anonymous.cloned(),
             doc: doc_inputs(q.vcx),
             viewport: read_viewport.then(|| viewport(q.vcx)),
             own: q.own,
@@ -125,9 +138,7 @@ impl StageMemo {
         };
         let mut entries = self.0.borrow_mut();
         let same = entries.iter().position(|e| {
-            e.paint == entry.paint
-                && e.tree.is_some() == entry.tree.is_some()
-                && e.own.same_stages(&entry.own)
+            e.paint == entry.paint && e.moved == entry.moved && e.own.same_stages(&entry.own)
         });
         match same {
             Some(i) => entries[i] = entry,
@@ -153,31 +164,26 @@ impl StageMemo {
                 return block;
             }
             let parents: usize = (entries.iter())
-                .flat_map(|e| std::iter::once(&e.layout).chain(&e.tree))
-                .map(|p| ops.shallow(Rc::as_ptr(p)))
+                .map(|e| ops.shallow(Rc::as_ptr(&e.parent)))
                 .sum();
             block + ops.shallow(entries.as_ptr()) + parents
         })
     }
 }
 
-/// The parent as a key, shared with the siblings keyed by an equal one (children are styled
-/// one after another under one parent). Its own position-try source is no input of the child,
-/// and a style handle there would keep that element's records alive from this one.
-fn shared_parent(vcx: ValueCx<'_>, parent: &BoxStyle) -> Rc<BoxStyle> {
+/// The parent facts as a key, shared with the siblings keyed by equal ones: children are
+/// styled one after another under one parent, so one copy serves a run of siblings.
+fn shared_parent(vcx: ValueCx<'_>, parent: &ParentFacts<'_>) -> Rc<ParentFacts<'static>> {
     let mut last = vcx.doc.traversal.stage_parent.borrow_mut();
     if let Some(shared) = &*last
-        && shared.same_stage_parent(parent)
+        && **shared == *parent
     {
         return shared.clone();
     }
-    let mut key = parent.clone();
-    key.try_style = None;
-    let key = Rc::new(key);
+    let key = Rc::new(parent.clone().into_owned());
     *last = Some(key.clone());
     key
 }
-
 /// The size of one record.
 #[cfg(test)]
 pub(crate) const fn entry_bytes() -> usize {

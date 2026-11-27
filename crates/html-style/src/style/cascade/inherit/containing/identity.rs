@@ -1,9 +1,10 @@
 //! Идентичность ближайших CB: absolute и fixed имеют разные цепочки владельцев.
 
+use crate::style::computed::box_predicates::establishes_cb;
 use crate::style::computed::{BoxStyle, stacking::fixed_cb_layer_box};
 
 pub(crate) fn inherit(parent: &BoxStyle, child: &mut BoxStyle) {
-    child.cb_node = if super::establishes_cb(parent) {
+    child.cb_node = if establishes_cb(parent) {
         parent.self_node
     } else {
         parent.cb_node
