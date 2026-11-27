@@ -8,7 +8,8 @@ CPU per frame = process CPU (user + kernel, every thread) over the series / fram
 series (cycle time as an extra field); cold CPU = the process from its creation to the first RGBA.
 More cold samples: cold-only processes (no phases, no hold) until the policy's repeats.
 Memory: peak = highest working set of the process; steady = median working set while the engine holds the page after
-its READY file (``skip_ms`` after it).
+its READY file (``skip_ms`` after it); the same for private bytes (peak = highest sample or the process's lifetime
+peak commit); ``blank`` = the same on an empty page, once per build and class (cached in the store).
 A phase the engine cannot run carries the harness's named reason (status unsupported / incomplete), never a zero.
 Config: {"adapter": "native", "exe", "label", "env": {...}, "manifest": resource manifest of the page set,
          "hold_ms": 2000, "skip_ms": 500, "timeout_s": 180, "series_ms": 500, "version": optional label}
@@ -24,10 +25,10 @@ from .. import metrics as M
 from .. import records as REC
 from .. import winproc as W
 from ..config import file_version
-from . import last_error
+from . import BLANK, last_error
 from .ours import edit_input
 
-DEF = 'native-1'
+DEF = 'native-2'  # 2: private peak/steady and the empty page
 ORDER = ('R', 'C', 'D', 'Cvis', 'Dvis', 'S')
 SECRET = re.compile(r'TOKEN|SECRET|PASSWORD|API_?KEY|CREDENTIAL|AUTH', re.I)
 
@@ -108,13 +109,14 @@ class Native:
         env.update({k: str(v) for k, v in (self.e.get('env') or {}).items()})
         return env
 
-    def launch(self, lane, cls, page, phases, hold):
-        """One harness process; (report | None, reason | None, peak_bytes, steady_bytes)."""
+    def launch(self, lane, cls, page, phases, hold, input_file=None):
+        """One harness process; (report | None, reason | None, (peak, peak private), (steady, steady private))."""
         with self.lock:
             self.seq += 1; n = self.seq
         work = lane.work / f'{self.name}-{lane.id}-{os.getpid()}-{n}'
         shutil.rmtree(work, ignore_errors=True); work.mkdir(parents=True)
-        plan = {'input': str(page.file('base.html')), 'page_id': page.id, 'width': 800, 'height': 600,
+        plan = {'input': str(input_file or page.file('base.html')), 'page_id': page.id if page else '_blank',
+                'width': 800, 'height': 600,
                 'series_ms': int(self.e.get('series_ms', 500)), 'min_runs': 3, 'phases': phases}
         if self.e.get('manifest'):
             plan['manifest'] = self.e['manifest']
@@ -135,10 +137,13 @@ class Native:
         rd.join(5)
         peaks = tree.finish(); root = W.proc_mem(p.handle)
         peak = max([v for _, v in peaks.values() if v] + ([root.PeakWorkingSetSize] if root else []), default=None)
-        steady = None
+        # private peak: the highest sample, or the process's lifetime peak commit when it lived shorter than a period
+        pv = max([s[3] for s in tree.samples if s[3]] + ([root.PeakPagefileUsage] if root else []), default=None)
+        steady = sp = None
         if seen and hold:
             a = seen[0] + float(self.e.get('skip_ms', 500)) / 1000
-            steady = M.med([s[2] for s in tree.samples if a <= s[0] < ended - 0.05 and s[2]])
+            win = [s for s in tree.samples if a <= s[0] < ended - 0.05]
+            steady = M.med([s[2] for s in win if s[2]]); sp = M.med([s[3] for s in win if s[3]])
         p.close()
         rep, why = None, None
         try:
@@ -156,7 +161,21 @@ class Native:
             why = f'crashed: exit code {code}: {last_error(msg)}'; rep = None
         if not self.e.get('keep_output'):
             shutil.rmtree(work, ignore_errors=True)
-        return rep, why, peak, steady
+        return rep, why, (peak, pv), (steady, sp)
+
+    def _blank(self, lane, cls):
+        """Memory on the empty page, once per engine build x class (cached in the store)."""
+        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-mem-v1.json'
+        with self.lock:
+            if f.exists():
+                return json.loads(f.read_text(encoding='utf-8'))
+        page = lane.work / f'{self.name}-blank.html'; page.write_text(BLANK, encoding='utf-8')
+        rep, why, (pk, pv), (sd, sp) = self.launch(lane, cls, None, [], self.e.get('hold_ms', 2000), page)
+        b = {'peak_bytes': pk, 'steady_bytes': sd, 'peak_private_bytes': pv, 'steady_private_bytes': sp}
+        if why:
+            return dict(b, empty=why)  # not cached: the next page tries again
+        f.parent.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(b), encoding='utf-8')
+        return b
 
     def measure(self, lane, page, cls, part, policy, phases=None):
         phases = phases or M.PHASES
@@ -172,7 +191,7 @@ class Native:
         steps = M.scroll_steps(page.meta)
         if 'S' in order and steps == 0:  # the same scenario as every engine: nothing to scroll
             REC.row(rec, 'S')['empty'] = M.NO_SCROLL; order.remove('S')
-        rep, why, peak, steady = self.launch(lane, cls, page, [phase_plan(page, ph, steps) for ph in order],
+        rep, why, (peak, pv), (steady, sp) = self.launch(lane, cls, page, [phase_plan(page, ph, steps) for ph in order],
                                              self.e.get('hold_ms', 2000))
         cold = REC.row(rec, 'cold')
         if why:
@@ -199,7 +218,8 @@ class Native:
                 cold['cpu_empty'] = f'{self.label}: the harness build reports no cold CPU'
         else:
             cold['empty'] = f'{self.label}: no cold frame in the harness report'
-        rec['memory'] = {'peak_bytes': peak, 'steady_bytes': steady, 'empty': None if peak else 'no working set sampled'}
+        rec['memory'] = {'peak_bytes': peak, 'steady_bytes': steady, 'empty': None if peak else 'no working set sampled',
+                         'peak_private_bytes': pv, 'steady_private_bytes': sp, 'blank': self._blank(lane, cls)}
         if steady is None:
             rec['memory']['steady_empty'] = 'the engine exited before its hold window was sampled'
         if rep.get('complete') is False:

@@ -77,5 +77,25 @@ class Table(unittest.TestCase):
             self.assertEqual((n, nb), (5, 2))
 
 
+class NativeBlank(unittest.TestCase):
+    def test_empty_page_measured_once_and_failures_not_cached(self):
+        from types import SimpleNamespace
+        from ec.adapters.native import Native
+        with tempfile.TemporaryDirectory() as d:
+            cfg = SimpleNamespace(store=Path(d) / 'store')
+            lane = SimpleNamespace(work=Path(d) / 'work'); lane.work.mkdir()
+            n = Native('kite', cfg, {'exe': 'x.exe', 'version': 'v1'}); calls = []
+
+            def launch(lane, cls, page, phases, hold, input_file=None):
+                calls.append(input_file)
+                return ({}, 'crashed' if len(calls) == 1 else None, (5 * MB, 3 * MB), (4 * MB, 2 * MB))
+            n.launch = launch
+            self.assertEqual(n._blank(lane, 'soft2')['empty'], 'crashed')  # a failed empty page is retried
+            b = n._blank(lane, 'soft2'); n._blank(lane, 'soft2')
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(b, {'peak_bytes': 5 * MB, 'steady_bytes': 4 * MB,
+                                 'peak_private_bytes': 3 * MB, 'steady_private_bytes': 2 * MB})
+            self.assertTrue(str(calls[-1]).endswith('kite-blank.html'))
+
 if __name__ == '__main__':
     unittest.main()
