@@ -31,6 +31,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import memprof_guard  # noqa: E402
+from memprof_ws_trend import Trend  # noqa: E402
 
 MEM_COMMIT, MEM_IMAGE, MEM_MAPPED, MEM_PRIVATE = 0x1000, 0x1000000, 0x40000, 0x20000
 PAGE_GUARD, PAGE_NOCACHE, PAGE_WRITECOMBINE = 0x100, 0x200, 0x400
@@ -144,12 +145,14 @@ def sample(pid, interval_ms, step_mb, deadline):
     if not h:
         raise OSError(ctypes.get_last_error(), f"OpenProcess {pid}")
     best, best_ws, peak, pmc = None, 0, 0, PMC()
+    trend, started = Trend(), time.monotonic()
     pmc.cb = ctypes.sizeof(pmc)
     try:
         while time.monotonic() < deadline:
             if not psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb):
                 break
             ws = pmc.WorkingSetSize
+            trend.observe(time.monotonic() - started, ws, pmc.PrivateUsage)
             if ws >= best_ws + (step_mb << 20):
                 try:
                     b = breakdown(h)
@@ -164,6 +167,7 @@ def sample(pid, interval_ms, step_mb, deadline):
                 break
         if best is not None:
             best["process_peak_working_set"] = peak
+            best["trend"] = trend.report()
     finally:
         k32.CloseHandle(h)
     return best
@@ -213,6 +217,12 @@ def render(cand, base, out=sys.stdout):
     for name, b in sides:
         print(f"{name}: working set at peak {mb(b['working_set']):.1f} MB, process peak "
               f"{mb(b['process_peak_working_set']):.1f} MB, private usage {mb(b['private_usage']):.1f} MB", file=out)
+        if trend := b.get("trend"):
+            first, last = trend["first"], trend["last"]
+            print(f"  observed {last['elapsed_s'] - first['elapsed_s']:.2f} s: "
+                  f"working set {mb(first['working_set']):.1f} -> {mb(last['working_set']):.1f} MB, "
+                  f"private usage {mb(first['private_usage']):.1f} -> {mb(last['private_usage']):.1f} MB "
+                  f"(bounded samples in ws.json)", file=out)
     print("\nresident at the peak by category (MB):", file=out)
     keys = sorted(set(cand["categories"]) | set(base["categories"] if base else {}),
                   key=lambda k: -cand["categories"].get(k, 0))
