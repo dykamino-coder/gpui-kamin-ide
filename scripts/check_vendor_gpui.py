@@ -44,10 +44,13 @@ def crate_features(manifest: dict) -> dict[str, str]:
 
 # Forks checked by named test modules only: the rest of the gpui-windows suite
 # needs an interactive desktop (keyboard layout, clipboard). The renderer
-# tests are headless and draw on the default D3D11 adapter (WARP on CI).
+# tests are headless and draw on the default D3D11 adapter (WARP on CI);
+# the DirectWrite shaping tests need no device.
 # A filter skips the all-targets build, which the full fork check owns.
 TEST_FILTERS = {
     "gpui-windows": [
+        "direct_write::blank_runs::",
+        "direct_write::tests::zero_size_runs_shape_blank",
         "directx_atlas::",
         "directx_renderer::cover_shape::",
         "directx_renderer::cull::",

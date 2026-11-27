@@ -226,6 +226,8 @@ export class ConnectionManager {
   private readonly stateAuthoritySequence = ++lastConnectionAuthoritySequence
   /** Orders every state publication for this tab across async WS callbacks. */
   private stateRevision = 0
+  prepareHookSnapshot?: () => Promise<boolean>
+  private hookSyncFailed = false
   private config: ConnectionConfig
   private window: BrowserWindow
 
@@ -402,7 +404,13 @@ export class ConnectionManager {
   getSettingsDir(): string | null {
     return this.settingsDir
   }
+  claudePermissions: TabInfo['claudePermissions']
   codexCollaboration: TabInfo['codexCollaboration']
+
+  changeClaudePermissionMode(mode: string, sessionId: string): void {
+    if (this.state.status !== 'authenticated' || this.getEngine() !== 'claude' || !sessionId || sessionId !== this.getSessionId()) return
+    if (this.claudePermissions?.available.includes(mode)) this.send({ type: 'session:change-claude-permission-mode', sessionId, mode })
+  }
 
   changeCodexCollaboration(mode: string, sessionId: string): void {
     if (this.getEngine() === 'codex' && sessionId === this.getSessionId() &&
@@ -610,6 +618,13 @@ export class ConnectionManager {
         /* no declaration: the server keeps its legacy full tool set */
       }
     }
+    // Warm tabs and reconnects can enter here without TabManager's initial
+    // upload. Its successful sync is debounced; a failed upload gets a retry.
+    if (this.prepareHookSnapshot) {
+      const ready = await this.prepareHookSnapshot().catch(() => false)
+      if (this.ws !== sock || sock.readyState !== WebSocket.OPEN) return
+      this.hookSyncFailed = !ready
+    }
     const host = ConnectionManager.hostDeclaration
     // A replacement child has no in-memory Agent projection. A disk cursor
     // alone can return an empty delta and never rebuild the retained panels.
@@ -631,6 +646,7 @@ export class ConnectionManager {
     if (this.conversationId && !this.pendingNewConversation) {
       this.sendRaw({
         type: 'session:resume',
+        ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
         noSpawnOnNotFound: true,
         token: this.config.token,
         conversationId: this.conversationId,
@@ -651,6 +667,7 @@ export class ConnectionManager {
       if (this.chosenModel) this.pendingModel = this.chosenModel
       this.sendRaw({
         type: 'session:create',
+        ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
         token: this.config.token,
         cwd: this.config.cwd,
         cols: 120,
@@ -1481,6 +1498,7 @@ export class ConnectionManager {
     const basePrompt = ConnectionManager.getBasePrompt?.(this.config.cwd) ?? ''
     this.send({
       type: 'session:resume',
+      ...(this.prepareHookSnapshot ? { codexHookProtocol: 1 as const, hookSyncFailed: this.hookSyncFailed } : {}),
       noSpawnOnNotFound: true,
       token: this.config.token,
       conversationId,
@@ -1877,6 +1895,9 @@ export class ConnectionManager {
       notifyElicitationRequest: (p) => ConnectionManager.onElicitationRequest?.(this.tabId, p),
       notifySessionTitle: (t) => ConnectionManager.onSessionTitle?.(this.tabId, t),
       notifyConversationId: (id) => ConnectionManager.onConversationId?.(this.tabId, id),
+      noteClaudePermissions: (value, id) => {
+        if (id === undefined || (id === this.getSessionId() && this.getEngine() === 'claude')) this.claudePermissions = value
+      },
       noteCollaboration: (value, id) => { if (!id || id === this.getSessionId()) this.codexCollaboration = value },
       noteSessionEngine: (engine, model) => this.noteSessionEngine(engine, model),
       settleEngineSwitch: (ok) => this.settleEngineSwitch(ok),

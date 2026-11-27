@@ -111,15 +111,15 @@ describe('plugin harness discovery', () => {
     })
   })
 
-  it('maps native tool matchers to the bridge user-tools server', () => {
+  it('preserves native names for the server matcher and maps Bridge-only tools', () => {
     const rewritten = rewritePluginMcpMatchers('sample', {
       PreToolUse: [{
-        matcher: 'Bash|Read|mcp__user-tools__Write|NotBash',
+        matcher: 'Bash|Read|mcp__user-tools__Write|NotBash|ShowWidget',
         hooks: [{ type: 'command', command: 'guard' }],
       }],
     })
     expect((rewritten.PreToolUse?.[0] as any).matcher).toBe(
-      'mcp__user-tools__Bash|mcp__user-tools__Read|mcp__user-tools__Write|NotBash',
+      'Bash|Read|mcp__user-tools__Write|NotBash|mcp__user-tools__ShowWidget',
     )
   })
 

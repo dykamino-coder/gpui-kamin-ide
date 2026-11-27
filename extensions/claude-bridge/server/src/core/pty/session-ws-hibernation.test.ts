@@ -46,6 +46,7 @@ vi.mock('./effort-selection', () => ({
 }))
 vi.mock('../server/ws', () => ({ registerWsRoute: vi.fn() }))
 vi.mock('./session-hibernation', () => ({
+  hibernationBlocker: () => null,
   acquireWakeSlot: (_limit: unknown, ticket: unknown) => h.acquire(ticket),
   promoteWake: (ticket: { urgent: boolean }) => h.promote(ticket),
   registerHibernationHandle: (handle: any) => {
@@ -139,6 +140,8 @@ vi.mock('./transcript-archive', () => ({ archiveTranscriptForSession: vi.fn(), d
 import { WebSocket } from 'ws'
 import { attachSessionWebSocket, getSessionWs, sleepAction } from './session-ws'
 import { sendToClient } from './session-io'
+import { observeClaudePermission } from './claude-permissions'
+import * as dbLifecycle from '../stats/database/lifecycle'
 import { SessionCliControl } from './session-cli-control'
 import { setSessionPromptReady } from './session-input-coordinator'
 
@@ -216,6 +219,60 @@ async function asleepChat(extra: Record<string, unknown> = {}) {
 }
 
 describe('idle hibernation on the session socket', () => {
+  it('changes mode on the bound idle transcript exactly once and resumes without terminal input', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mode-ws-'))
+    const store = vi.spyOn(dbLifecycle, 'getDataDir').mockReturnValue(dir)
+    try {
+      const file = path.join(dir, 'conv-1.jsonl')
+      fs.writeFileSync(file, JSON.stringify({ type: 'assistant', message: { stop_reason: 'end_turn' } }) + '\n')
+      const original = makeSession('s-mode', socket, { jsonlWatcher: { getFilePath: () => file } })
+      h.sessions.set(original.id, original)
+      h.create.mockResolvedValueOnce(original)
+      await socket.message({ type: 'session:create', token: 'synthetic' })
+      const ctl = new SessionCliControl(original as any)
+      const mode = (requested: string, id = original.id) =>
+        socket.message({ type: 'session:change-claude-permission-mode', sessionId: id, mode: requested })
+      observeClaudePermission(original as any, {
+        session_id: 'conv-1',
+        hook_event_name: 'Stop',
+        permission_mode: 'default',
+      })
+      ctl.parser.feed('\x1b]7501;state=blocked:app=claude-code\x07')
+      await mode('plan')
+      ctl.parser.feed('\x1b]7501;state=idle:app=claude-code\x07')
+      await mode('plan', 'other')
+      await mode('bypassPermissions')
+      expect(h.hibernate).not.toHaveBeenCalled()
+      const fresh = makeSession('s-resumed', socket)
+      h.create.mockImplementationOnce(async (...args) => {
+        fresh.launchConfig = args[3]
+        h.sessions.set(fresh.id, fresh)
+        return fresh
+      })
+      const first = mode('plan')
+      const second = mode('acceptEdits')
+      await Promise.all([first, second])
+      expect(h.hibernate).toHaveBeenCalledTimes(1)
+      expect(h.create.mock.calls[1]![3]).toMatchObject({
+        claudePermissionMode: 'plan',
+        resumeConversationId: 'conv-1',
+        reuseSettingsDir: original.settingsDir,
+      })
+      expect(sent(socket)).toContainEqual(expect.objectContaining({ type: 'session:restarted', sessionId: fresh.id }))
+      expect(vi.mocked(sendToClient).mock.calls.map(([, m]) => m)).toContainEqual(
+        expect.objectContaining({
+          type: 'session:claude-permissions',
+          sessionId: fresh.id,
+          requested: 'plan',
+          selected: undefined,
+        }),
+      )
+      expect(h.write).not.toHaveBeenCalled()
+    } finally {
+      store.mockRestore()
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
   it('stops the CLI without telling the client the session ended', async () => {
     const { handle } = await asleepChat()
     expect(h.hibernate).toHaveBeenCalledWith('s-old')

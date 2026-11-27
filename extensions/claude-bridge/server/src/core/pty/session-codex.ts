@@ -47,6 +47,8 @@ import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { HOOK_SYNC_ERROR, refreshCodexToolHooks } from '../hooks/codex-tool-hooks'
+import { clearSession as clearHooks } from '../hooks/registry'
 import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
@@ -350,6 +352,7 @@ export async function createCodexSession(
   deps: CodexSessionDeps,
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  if (config.hookSyncFailed) throw new Error(HOOK_SYNC_ERROR)
   const sessionId = randomUUID()
   const mcpToken = randomUUID()
   const { settingsDir } = placement
@@ -475,6 +478,7 @@ export async function createCodexSession(
     launchConfig: { ...config, carryRegistrations: undefined },
     ...(config.conversation ? { conversation: config.conversation } : {}),
   }
+  await refreshCodexToolHooks(session, signal)
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
   let freshThread = false
@@ -508,6 +512,7 @@ export async function createCodexSession(
     }
   } catch (error) {
     releaseEndpoint()
+    clearHooks(session.id)
     throw error
   }
   const threadId = agent.conversationId()!
@@ -572,6 +577,7 @@ export async function createCodexSession(
   attachSessionJsonlWatcher(session, config, resumed ? 0 : Date.now(), {
     recordCompactLink: deps.recordCompactLink,
     engine: 'codex',
+    fixedTranscript: transcript,
   })
 
   vpty.onExit(({ exitCode }) => {

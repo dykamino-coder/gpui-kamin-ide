@@ -194,7 +194,7 @@ export class BridgeHost {
 
   constructor(context: vscode.ExtensionContext, opts?: {
     onOpenChat?: () => void
-    onOpenPermissionConsole?: () => void
+    onOpenPermissionConsole?: (tabId: string) => void
     onRegenerateTitle?: (tabId: string) => void
     persistConnectionToken?: boolean
     sessionInstructions?: (cwd?: string) => string
@@ -321,7 +321,7 @@ export class BridgeHost {
         return [...this.tabManager.getDistinctCwds(), ...(cwd ? [cwd] : [])]
       },
     })
-    registerCoreIpc(context, this.configStore)
+    registerCoreIpc(context, this.configStore, this.tabManager)
 
     // Feed external MCP tool schemas into every session at create/auth, and
     // re-register on all authenticated connections when the server set changes.
@@ -392,7 +392,7 @@ export class BridgeHost {
     // The sidebar asks to reveal the center chat panel when a session activates.
     if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id: string) => {
       if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === 'claude') {
-        opts.onOpenPermissionConsole?.()
+        opts.onOpenPermissionConsole?.(id)
       }
     })
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.())

@@ -113,3 +113,19 @@ describe('Claude effort line', () => {
     expect(line).toContain('Bridge note in a user message')
   })
 })
+
+it('starts a retained native permission mode directly and rejects ambiguous launch flags', () => {
+  const retained: SessionConfig = { ...session(), resumeConversationId: 'existing', claudePermissionMode: 'plan' }
+  expect(buildClaudeArgs(session())).toContain('--dangerously-skip-permissions')
+  const args = buildClaudeArgs(retained)
+  expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+  expect(args[args.indexOf('--resume') + 1]).toBe('existing')
+  expect(args).not.toContain('--dangerously-skip-permissions')
+  for (const flag of [
+    '--permission-mode=default',
+    '--permission-mode',
+    '--dangerously-skip-permissions',
+    '--allow-dangerously-skip-permissions',
+  ])
+    expect(() => buildClaudeArgs({ ...retained, extraArgs: [flag] })).toThrow('Conflicting')
+})

@@ -172,6 +172,7 @@ export const SEND: Record<string, string> = {
   respondAskUser: 'ask-user-response',
   requestTreeUpdate: 'tree:request',
   openPermissionConsole: 'bridge:open-console',
+  changeClaudePermissionMode: 'claude:change-permission-mode',
   changeCodexCollaboration: 'codex:change-collaboration',
   changePermissionMode: 'change-permission-mode',
   changeEffort: 'change-effort',
