@@ -37766,14 +37766,14 @@ index 0000000000000000000000000000000000000000..c316c467fb6b10da4b67d583df5629e8
 +}
 diff --git a/vendor/gpui/src/window/frame_demand_tests.rs b/vendor/gpui/src/window/frame_demand_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc5c0649ecfce9fcfcc8a8a4816c16dfd4ba2223
+index 0000000000000000000000000000000000000000..74ae14370d7d47205f1a02a2d976d753279554f7
 --- /dev/null
 +++ b/vendor/gpui/src/window/frame_demand_tests.rs
 @@ -0,0 +1,119 @@
 +//! Demand survives reentry and ends when high-rate input sustain expires.
 +
 +use super::*;
-+use crate::{Empty, Render, TestAppContext};
++use crate::{Empty, Render, RequestFrameOptions, TestAppContext};
 +
 +struct EmptyView;
 +

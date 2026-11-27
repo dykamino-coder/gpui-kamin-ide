@@ -5268,10 +5268,10 @@ index 0000000000000000000000000000000000000000..edf10836b4e3dba80196705e9d136494
 +}
 diff --git a/vendor/gpui-windows/src/direct_manipulation/status.rs b/vendor/gpui-windows/src/direct_manipulation/status.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..720029e990c4dfa1a855292f3b5e9812639e3ab1
+index 0000000000000000000000000000000000000000..1baf57fc74e46442af6c0d17bd06f13ef7500a2c
 --- /dev/null
 +++ b/vendor/gpui-windows/src/direct_manipulation/status.rs
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,117 @@
 +//! Gesture status retains paced updates until inertia and queued events end.
 +
 +use super::*;
@@ -5332,7 +5332,15 @@ index 0000000000000000000000000000000000000000..720029e990c4dfa1a855292f3b5e9812
 +
 +#[cfg(test)]
 +mod tests {
-+    use super::*;
++    use super::DirectManipulationEventHandler;
++    use crate::{FrameDemand, FramePacer};
++    use gpui::{Modifiers, PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase, point, px};
++    use std::{
++        cell::{Cell, RefCell},
++        rc::Rc,
++        sync::Arc,
++    };
++    use windows::Win32::{Foundation::HWND, Graphics::DirectManipulation::*};
 +
 +    #[test]
 +    fn inertia_retains_demand_and_ready_without_events_stops_it() {

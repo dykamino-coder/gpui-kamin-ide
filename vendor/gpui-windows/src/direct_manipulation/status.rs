@@ -58,7 +58,15 @@ impl DirectManipulationEventHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::DirectManipulationEventHandler;
+    use crate::{FrameDemand, FramePacer};
+    use gpui::{Modifiers, PlatformInput, ScrollDelta, ScrollWheelEvent, TouchPhase, point, px};
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+        sync::Arc,
+    };
+    use windows::Win32::{Foundation::HWND, Graphics::DirectManipulation::*};
 
     #[test]
     fn inertia_retains_demand_and_ready_without_events_stops_it() {

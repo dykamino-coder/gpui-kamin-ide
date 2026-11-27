@@ -1,7 +1,7 @@
 //! Demand survives reentry and ends when high-rate input sustain expires.
 
 use super::*;
-use crate::{Empty, Render, TestAppContext};
+use crate::{Empty, Render, RequestFrameOptions, TestAppContext};
 
 struct EmptyView;
 
