@@ -2,6 +2,28 @@
 use super::*;
 
 #[test]
+fn dependency_observer_is_optional_and_reports_native_retries() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static EVENTS: AtomicUsize = AtomicUsize::new(0);
+    fn observe(event: crate::tree::LayoutDependencyEvent) {
+        assert_eq!(event.kind, "layout.dependency_retry");
+        assert!(event.own_gutter || event.descendant_gutter);
+        EVENTS.fetch_add(1, Ordering::Relaxed);
+    }
+    let (mut tree, root, _, _, child) = intrinsic_fixture(false);
+    tree.set_layout_observer(Some(observe));
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    let recorded = EVENTS.load(Ordering::Relaxed);
+    assert!(recorded > 0);
+    tree.set_layout_observer(None);
+    let mut style = tree.style(child).unwrap().clone();
+    style.size.height = length(20.0);
+    tree.set_style(child, style).unwrap();
+    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
+    assert_eq!(EVENTS.load(Ordering::Relaxed), recorded);
+}
+
+#[test]
 fn explicit_ancestor_width_survives_a_descendant_gutter_change() {
     let (mut tree, root, positioned, scroller, _) = intrinsic_fixture(false);
     let mut style = tree.style(positioned).unwrap().clone();

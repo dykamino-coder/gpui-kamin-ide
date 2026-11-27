@@ -29,6 +29,7 @@ pub const CODES: &[&str] = &[
     "draw",
     "render",
     "layout_retry",
+    "layout.dependency_retry",
     // Scroll node pairing (gpui `window/scroll_nodes.rs`).
     "scroll_node.open_anchor",
     "scroll_node.paint_paired",
@@ -108,14 +109,16 @@ pub fn take() -> Entry {
 }
 
 /// Non-consuming diagnostic view, including passes which have not returned.
-/// Frame trace events remain owned by `take`; this observer samples no events.
+/// Frame trace events remain owned by `take`; this observer copies the bounded trace.
 pub fn snapshot() -> Value {
     let progress = kamin_style::journal::snapshot();
+    let (frames, frames_dropped) = trace::snapshot();
     let mut value = to_json(&Entry {
         journal: progress.journal,
-        ..Entry::default()
+        frames,
+        frames_dropped,
     });
-    value["frames_scope"] = json!("not sampled; frame trace is consumed only by take");
+    value["frames_scope"] = json!("pending events; non-consuming snapshot");
     value["active_intervals"] = progress
         .active
         .into_iter()

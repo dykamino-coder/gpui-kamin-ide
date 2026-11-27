@@ -8,7 +8,15 @@ fn progress_keeps_the_frame_journal_and_reports_unfinished_intervals() {
     let (_one, _sub) = test_reader();
     let pass = Span::new("test.running_pass");
     drop(Span::new("test.completed_pass"));
+    trace::mark("layout.dependency_retry");
     let value = std::thread::spawn(snapshot).join().unwrap();
+    assert!(
+        value["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["kind"] == "layout.dependency_retry")
+    );
     assert!(
         value["active_intervals"]
             .as_array()
@@ -17,7 +25,14 @@ fn progress_keeps_the_frame_journal_and_reports_unfinished_intervals() {
             .any(|span| { span["name"] == "test.running_pass" && span["elapsed_ms"].is_number() })
     );
     assert_eq!(value["timings_ms"]["test.completed_pass"]["calls"], 1);
-    assert_eq!(take().journal.timings["test.completed_pass"].calls, 1);
+    let pending = take();
+    assert!(
+        pending
+            .frames
+            .iter()
+            .any(|event| event.kind == "layout.dependency_retry")
+    );
+    assert_eq!(pending.journal.timings["test.completed_pass"].calls, 1);
     drop(pass);
     assert_eq!(take().journal.timings["test.running_pass"].calls, 1);
 }
