@@ -12727,7 +12727,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f8207320990f56
+index 160587a4ad924f80c2dd01b90a8300febbc13105..e632a2cb0c47e69464b81a0dfa246949046bc4ee
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,45 @@
@@ -13429,7 +13429,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    fn shiftable(operations: &[PaintOperation]) -> bool {
 +        let mut layers = 0usize;
 +        for operation in operations {
-@@ -144,4 +788,344 @@
+@@ -144,4 +788,357 @@
 -                PaintOperation::Primitive(primitive) => self.insert_primitive(primitive.clone()),
 -                PaintOperation::StartLayer(bounds) => self.push_layer(*bounds),
 -                PaintOperation::EndLayer => self.pop_layer(),
@@ -13539,14 +13539,27 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +            let mut operation = self.relabeled(operation);
 +            // KaminIDE patch: the mark of a node the record opened inside itself.
 +            let carried = self.carried(index);
-+            if !place(&mut operation) {
-+                layer::PlacedMap::skip(&mut self.book.placed_map);
-+                self.land_carried(None, None, shift);
-+                continue;
-+            }
++            let shown = place(&mut operation);
++            let carried = match carried {
++                Some(mark) => match self.carried_landing(&mut operation, mark, shown, index) {
++                    Some(mark) => Some(mark),
++                    None => {
++                        layer::PlacedMap::skip(&mut self.book.placed_map);
++                        self.land_gone();
++                        continue;
++                    }
++                },
++                None if !shown => {
++                    layer::PlacedMap::skip(&mut self.book.placed_map);
++                    self.land_carried(None, None, shift);
++                    continue;
++                }
++                None => None,
++            };
 +            // KaminIDE patch: a moved copy builds its matrices from the moved pivots.
 +            if let PaintOperation::Primitive(primitive) = &mut operation
 +                && self.scroll.open.is_none()
++                && carried.is_none()
 +            {
 +                self.copied_pivot(primitive, index, false);
 +            }
@@ -13778,7 +13791,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +            // KaminIDE patch: kept as it is, not drawn.
 +            PaintOperation::Dormant(primitive) => self.paint_operations.push(PaintOperation::Dormant(primitive)),
 +            PaintOperation::Reservoir(reservoir) => self.paint_operations.push(PaintOperation::Reservoir(reservoir)),
-@@ -156,6 +1140,8 @@
+@@ -156,6 +1153,8 @@
 -        self.monochrome_sprites
 -            .sort_by_key(|sprite| (sprite.order, sprite.tile.tile_id));
 -        self.subpixel_sprites
@@ -13793,9 +13806,9 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +        self.monochrome_sprites.sort_by_key(|sprite| sprite.order);
 +        self.subpixel_sprites.sort_by_key(|sprite| sprite.order);
 +        self.polychrome_sprites.sort_by_key(|sprite| sprite.order);
-@@ -162,0 +1149 @@
+@@ -162,0 +1162 @@
 +        self.finish_layers();
-@@ -190,2 +1177,97 @@
+@@ -190,2 +1190,97 @@
 -        }
 -    }
 +            layers: &self.book.layers,
@@ -13895,7 +13908,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +            }
 +            _ => *primitive.bounds(),
 +        }
-@@ -212,2 +1294,5 @@
+@@ -212,2 +1307,5 @@
 -}
 -
 +    /// KaminIDE patch: a retained layer, one batch each.
@@ -13903,13 +13916,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +}
 +
 +#[derive(Clone)]
-@@ -216 +1301,4 @@
+@@ -216 +1314,4 @@
 -    StartLayer(Bounds<ScaledPixels>),
 +    /// KaminIDE patch: with the layer's order, so a copy can shift it.
 +    StartLayer(Bounds<ScaledPixels>, DrawOrder),
 +    /// KaminIDE patch: начало нижнего слоя (см. `push_bottom_layer`).
 +    StartBottomLayer,
-@@ -217,0 +1306,12 @@
+@@ -217,0 +1319,12 @@
 +    StartDepthContext,
 +    EndDepthContext,
 +    StartDepthPlane(f32),
@@ -13922,13 +13935,13 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    /// KaminIDE patch: the primitives of one scroll node kept across frames;
 +    /// the `drawn` commands after it are the ones it shows now (`scroll_marks`).
 +    Reservoir(Box<scroll_marks::ReservoirOp>),
-@@ -224,0 +1325 @@
+@@ -224,0 +1338 @@
 +    Gradient(GradientQuad),
-@@ -238,0 +1340 @@
+@@ -238,0 +1353 @@
 +            Primitive::Gradient(p) => &p.quad.bounds,
-@@ -251,0 +1354 @@
+@@ -251,0 +1367 @@
 +            Primitive::Gradient(p) => &p.quad.content_mask,
-@@ -259,0 +1363,84 @@
+@@ -259,0 +1376,84 @@
 +
 +    /// KaminIDE patch: the draw order assigned when it was inserted.
 +    pub(crate) fn order(&self) -> DrawOrder {
@@ -14013,20 +14026,20 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    /// A graft of the tree that indexed them (`None`: nothing visible) and
 +    /// whether that tree belongs to the scene the commands come from.
 +    Graft(Option<crate::bounds_tree::Graft<ScaledPixels>>, bool),
-@@ -285,0 +1473,2 @@
+@@ -285,0 +1486,2 @@
 +    layers: &'a [LayerSlot],
 +    layers_iter: Peekable<slice::Iter<'a, u32>>,
-@@ -318,0 +1508,4 @@
+@@ -318,0 +1521,4 @@
 +            (
 +                self.layers_iter.peek().map(|&&at| self.layers[at as usize].order),
 +                PrimitiveKind::Layer,
 +            ),
-@@ -463,0 +1657 @@
+@@ -463,0 +1670 @@
 +            PrimitiveKind::Layer => self.layers_iter.next().map(|&at| PrimitiveBatch::Layer(at as usize)),
-@@ -495,0 +1690,2 @@
+@@ -495,0 +1703,2 @@
 +    /// KaminIDE patch: retained layer `index` (`Scene::layer`), drawn from its own batches.
 +    Layer(usize),
-@@ -528,5 +1724,6 @@
+@@ -528,5 +1737,6 @@
 -        }
 -    }
 -}
@@ -14038,7 +14051,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1741,10 @@
+@@ -543,0 +1754,10 @@
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
 +    ///
 +    /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -14049,25 +14062,25 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
 +    /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
 +    pub transformation: TransformationMatrix,
-@@ -552 +1759 @@
+@@ -552 +1772 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1778 @@
+@@ -571 +1791 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1788,5 @@
+@@ -580,0 +1801,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1815,5 @@
+@@ -602,0 +1828,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1867,12 @@
+@@ -649,0 +1880,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -14080,19 +14093,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1937 @@
+@@ -708 +1950 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1956 @@
+@@ -727 +1969 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1975 @@
+@@ -746 +1988 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +1980 @@
+@@ -751 +1993 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +1987,59 @@
+@@ -757,0 +2000,59 @@
 +    /// KaminIDE patch: a repeated image (`Window::with_sprite_pattern`): the
 +    /// image fills cells of this size laid from `bounds.origin` over all of
 +    /// `bounds`, each cell exactly as a sprite of that cell would draw it.
@@ -14152,7 +14165,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +2062,23 @@
+@@ -773,0 +2075,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14176,19 +14189,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..95504853bf3029c098e7cb7d83f82073
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2107,2 @@
+@@ -795,0 +2120,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2129 @@
+@@ -815,0 +2142 @@
 +            color_mapping: None,
-@@ -835,0 +2150,6 @@
+@@ -835,0 +2163,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2270,63 @@
+@@ -949,0 +2283,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -23368,34 +23381,46 @@ index 0000000000000000000000000000000000000000..22d6115725e49114d4b3ce7eebb7cbf6
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks/carry.rs b/vendor/gpui/src/scene/scroll_marks/carry.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..51cd89a59256ea39adee3ba3e72136f0097c8948
+index 0000000000000000000000000000000000000000..6c867ce20ef48be05b1231fbaf91d991b165aaef
 --- /dev/null
 +++ b/vendor/gpui/src/scene/scroll_marks/carry.rs
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,126 @@
 +//! KaminIDE patch: the marks of the scroll nodes a paint record opened inside
 +//! itself, carried to its copy where it lands (`Window::paint_plan`).
 +//!
 +//! A node opened while a record records paints into the record's scene:
 +//! its commands are marked there, under it, and its ranges index that scene.
-+//! The copy landing in the frame keeps those marks, and tells where each
-+//! command landed, so the node's ranges move into the frame's scene and a
-+//! scrolled replay moves the node as one it painted itself.
++//! The copy landing in the frame keeps those marks, moved and clipped as the
++//! copy is, and tells where each command landed, so the node's ranges move
++//! into the frame's scene and a scrolled replay moves the node as one it
++//! painted itself. A command the landing clip hides at every offset of its
++//! node is gone, as `mark_scrolled` drops one outside its own mask.
 +
 +use super::*;
 +
-+/// The marks still to carry, in command order, and where the commands of
-+/// the source landed (`u32::MAX`: dropped by the copy).
-+#[derive(Default)]
++/// A source command the copy dropped, though its node may show it.
++const DROPPED: u32 = u32::MAX;
++/// A source command its node can no longer show where the copy lands.
++const GONE: u32 = u32::MAX - 1;
++
++/// The marks still to carry, in command order, where the copy lands
++/// (`offset`, `clip`), and where the commands of the source landed.
 +pub(crate) struct Carry {
 +    marks: Vec<ScrollMark>,
 +    next: usize,
++    offset: Point<ScaledPixels>,
++    clip: Option<Bounds<ScaledPixels>>,
 +    pub(crate) landed: Vec<u32>,
++    /// The nodes of the carried marks the copy kept (repeated per mark).
++    pub(crate) kept: Vec<ScrollNodeId>,
 +}
 +
 +impl Carry {
-+    /// Carry the marks of `source`, a finished record's scene.
-+    pub(crate) fn of(source: &Scene) -> Box<Self> {
-+        Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, landed: Vec::with_capacity(source.paint_operations.len()) })
++    /// Carry the marks of `source`, a finished record's scene, landing
++    /// moved by `offset` and clipped by `clip`.
++    pub(crate) fn of(source: &Scene, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
++        let landed = Vec::with_capacity(source.paint_operations.len());
++        Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, offset, clip, landed, kept: Vec::new() })
 +    }
 +
 +    /// The mark of source command `index`, taken in order.
@@ -23405,22 +23430,24 @@ index 0000000000000000000000000000000000000000..51cd89a59256ea39adee3ba3e72136f0
 +        mark
 +    }
 +
-+    /// Where `range` of the source landed: all its commands kept, in order.
-+    /// An empty range lands before the first command kept after it.
++    /// Where `range` of the source landed: all its commands kept or gone, in
++    /// order. An empty landing lies before the first command kept after it.
 +    pub(crate) fn range(&self, range: &Range<usize>) -> Option<Range<usize>> {
-+        let kept = self.landed.get(range.clone())?;
-+        if kept.iter().any(|&at| at == u32::MAX) {
++        let landed = self.landed.get(range.clone())?;
++        if landed.contains(&DROPPED) {
 +            return None;
 +        }
-+        let start = match kept.first() {
++        let kept = |at: &&u32| **at < GONE;
++        let len = landed.iter().filter(kept).count();
++        let start = match landed.iter().find(kept) {
 +            Some(&at) => at as usize,
 +            None => {
-+                let after = self.landed.get(range.start..)?.iter().find(|&&at| at != u32::MAX).copied();
-+                let before = self.landed[..range.start].iter().rev().find(|&&at| at != u32::MAX).map(|&at| at + 1);
++                let after = self.landed.get(range.start..)?.iter().find(kept).copied();
++                let before = self.landed[..range.start].iter().rev().find(kept).map(|&at| at + 1);
 +                after.or(before)? as usize
 +            }
 +        };
-+        Some(start..start + kept.len())
++        Some(start..start + len)
 +    }
 +}
 +
@@ -23430,18 +23457,61 @@ index 0000000000000000000000000000000000000000..51cd89a59256ea39adee3ba3e72136f0
 +        self.scroll.carry.as_mut().and_then(|carry| carry.take(index))
 +    }
 +
++    /// The carried `mark` of source command `index`, which the copy placed
++    /// (`shown`: visible there): moved and clipped as the copy, its pivot
++    /// moved with it. A primitive the clip hides turns dormant; `None` when
++    /// its node can no longer show it there (gone, `land_gone`).
++    pub(in crate::scene) fn carried_landing(
++        &mut self,
++        operation: &mut PaintOperation,
++        mark: ScrollMark,
++        shown: bool,
++        index: usize,
++    ) -> Option<ScrollMark> {
++        let (offset, clip) = self.scroll.carry.as_ref().map(|carry| (carry.offset, carry.clip))?;
++        let moved = |bounds: Bounds<ScaledPixels>| Bounds { origin: bounds.origin + offset, size: bounds.size };
++        let own = clip.map_or(moved(mark.own), |clip| moved(mark.own).intersect(&clip));
++        let mut mark = ScrollMark { own, placed: moved(mark.placed), ..mark };
++        match operation {
++            PaintOperation::Primitive(primitive) => {
++                if mark.placed.intersect(&own).is_empty() {
++                    return None;
++                }
++                let pivot = mark.pivot.take().filter(|_| offset == Point::default());
++                mark.pivot = self.copied_pivot(primitive, index, false).or(pivot);
++                if !shown {
++                    *operation = PaintOperation::Dormant(std::rc::Rc::new(primitive.clone()));
++                }
++            }
++            // It takes the copy's shift when it wakes, as a scrolled replay's.
++            PaintOperation::Dormant(_) if mark.placed.intersect(&own).is_empty() => return None,
++            PaintOperation::Dormant(_) => mark.moved = mark.moved + offset,
++            _ => {}
++        }
++        Some(mark)
++    }
++
++    /// Note that the source command just handled is gone where it lands.
++    pub(in crate::scene) fn land_gone(&mut self) {
++        if let Some(carry) = self.scroll.carry.as_mut() {
++            carry.landed.push(GONE);
++        }
++    }
++
 +    /// Note where the source command just handled landed (`None`: dropped),
 +    /// and give it its carried mark, raised as the copy raised its orders.
 +    pub(in crate::scene) fn land_carried(&mut self, at: Option<usize>, mark: Option<ScrollMark>, raise: DrawOrder) {
 +        let Some(carry) = self.scroll.carry.as_mut() else { return };
-+        carry.landed.push(at.map_or(u32::MAX, |at| at as u32));
++        carry.landed.push(at.map_or(DROPPED, |at| at as u32));
 +        if let (Some(at), Some(mark)) = (at, mark) {
++            carry.kept.push(mark.node);
 +            let dormant = matches!(self.paint_operations.get(at), Some(PaintOperation::Dormant(_)));
 +            let raised = mark.raised + if dormant { raise } else { 0 };
 +            self.scroll.marks.push(ScrollMark { op: at as u32, raised, ..mark });
 +        }
 +    }
 +}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/scene/scroll_marks/check.rs b/vendor/gpui/src/scene/scroll_marks/check.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..dbdf2acd3c24ae8af06847970cb88b80ba8e04ac
@@ -39096,27 +39166,31 @@ index 0000000000000000000000000000000000000000..086264246f9da359379c9ffb095d5d22
 +}
 diff --git a/vendor/gpui/src/window/paint_record/landing.rs b/vendor/gpui/src/window/paint_record/landing.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..64c4377e1ea502ef0b4aeab5ce8d4c0f55101850
+index 0000000000000000000000000000000000000000..26beaffe9f2fc7e08ab5af180fd55731b8c30209
 --- /dev/null
 +++ b/vendor/gpui/src/window/paint_record/landing.rs
-@@ -0,0 +1,72 @@
+@@ -0,0 +1,102 @@
 +//! KaminIDE patch: a paint record lands with the scroll nodes it painted.
 +//!
 +//! A node opened while a record records has its ranges in the record's
 +//! scene (`Window::begin_scroll_node_paint`), a scene the frame never draws.
-+//! When the record lands where it was recorded (no offset), its copy keeps
-+//! those nodes' marks (`scene::scroll_marks::carry`) and the nodes take
-+//! their ranges in the scene it lands in, so a scrolled replay of the frame
-+//! moves them as the nodes the frame painted itself. Landed elsewhere, or
-+//! with a command of their ranges dropped by the copy, they stay in the
-+//! record's scene (torn): a scrolled replay then builds, as before.
++//! Where the record lands, moved and clipped (a column of a multicol flow),
++//! its copy keeps those nodes' marks moved with it (`scene::scroll_marks::
++//! carry`), and a node whose commands the copy shows takes its ranges in the
++//! scene it lands in, its clips moved and clipped as the copy, so a scrolled
++//! replay of the frame moves it as a node the frame painted itself. A node
++//! shown by two landings, or with a command of its ranges dropped by the
++//! copy, stays where it was (torn): a scrolled replay then builds.
 +
 +use super::*;
 +use crate::scene::scroll_marks::{SceneSpace, carry::Carry};
 +
++#[cfg(test)]
++mod tests;
++
 +impl Window {
 +    /// `replay_placed_carrying` of the record `scene`, landing the nodes it
-+    /// painted when it lands where it was recorded.
++    /// painted where it lands.
 +    pub(super) fn replay_placed_landing(
 +        &mut self,
 +        scene: &Scene,
@@ -39124,42 +39198,68 @@ index 0000000000000000000000000000000000000000..64c4377e1ea502ef0b4aeab5ce8d4c0f
 +        clip: Option<Bounds<ScaledPixels>>,
 +    ) -> bool {
 +        let from = scene.scroll.space;
-+        let painted = self.next_frame.scroll_nodes.iter().any(|node| node.painted_in == Some(from));
-+        let carry = painted && offset == Point::default();
-+        if carry {
-+            self.next_frame.scene.scroll.carry = Some(Carry::of(scene));
++        // A record's marks are those of the nodes it opened (`ScrollBook::record_base`).
++        let marked = !scene.scroll.marks.is_empty();
++        if marked {
++            self.next_frame.scene.scroll.carry = Some(Carry::of(scene, offset, clip));
 +        }
 +        let done = self.replay_placed_carrying(scene, offset, clip);
 +        let carry = self.next_frame.scene.scroll.carry.take();
-+        let landed = carry.as_ref().is_some_and(|carry| done && carry.landed.len() == scene.paint_operations.len());
-+        if painted && crate::dirty_sources::trace::enabled() && !landed {
++        let carry = carry.filter(|carry| done && carry.landed.len() == scene.paint_operations.len());
++        if marked && carry.is_none() && crate::dirty_sources::trace::enabled() {
 +            // DevTools `why`: the nodes stay in the record's scene, and the frame builds.
-+            let why = if offset != Point::default() {
-+                format!("lands moved by {offset:?}")
-+            } else if !done {
-+                format!("copied, not placed ({} groups)", scene.groups.len())
-+            } else {
-+                "placed per primitive".to_string()
++            let why = match done {
++                false => format!("copied, not placed ({} groups)", scene.groups.len()),
++                true => "placed per primitive".to_string(),
 +            };
 +            crate::dirty_sources::trace::push_with("scroll_node.record_unlanded", core::panic::Location::caller(), || why);
 +        }
-+        if let Some(carry) = carry.filter(|_| landed) {
-+            self.land_carried_nodes(from, &carry);
++        if let Some(carry) = carry {
++            self.land_carried_nodes(from, &carry, offset, clip);
 +        }
 +        done
 +    }
 +
-+    /// Move the ranges of the nodes painted in scene `from` to where
-+    /// `carry` says its commands landed in the scene painted now.
-+    fn land_carried_nodes(&mut self, from: SceneSpace, carry: &Carry) {
++    /// Move the ranges of the nodes painted in scene `from` that the copy
++    /// shows to where `carry` says their commands landed in the scene
++    /// painted now, their clips moved by `offset` and clipped by `clip`.
++    fn land_carried_nodes(&mut self, from: SceneSpace, carry: &Carry, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) {
++        let scale = self.scale_factor();
++        let unscaled = |v: ScaledPixels| px(v.0 / scale);
++        let shift = point(unscaled(offset.x), unscaled(offset.y));
++        let clip = clip.map(|clip| {
++            let origin = point(unscaled(clip.origin.x), unscaled(clip.origin.y));
++            Bounds { origin, size: size(unscaled(clip.size.width), unscaled(clip.size.height)) }
++        });
++        let place = |bounds: Bounds<Pixels>| {
++            let moved = Bounds { origin: bounds.origin + shift, size: bounds.size };
++            clip.map_or(moved, |clip| moved.intersect(&clip))
++        };
 +        let frame = &mut self.next_frame;
 +        let here = frame.scene.scroll.space;
-+        for node in frame.scroll_nodes.iter_mut().filter(|node| node.painted_in == Some(from)) {
++        for at in 0..frame.scroll_nodes.len() {
++            // Its real clip is its parent's, not moved by the copy, cut by its moved mask.
++            let parent = frame.scroll_nodes[at].parent.map(|parent| frame.scroll_nodes[parent as usize].clip);
++            let node = &mut frame.scroll_nodes[at];
++            let shown = carry.kept.contains(&node.id);
++            if node.painted_in != Some(from) {
++                // Its commands landed already elsewhere: two landings cannot move as one node.
++                node.torn |= shown && node.painted_in.is_some();
++                continue;
++            }
++            // A node the copy hides lands where another copy of the record shows it.
++            if !shown && node.ranges().any(|range| !range.is_empty()) {
++                continue;
++            }
 +            let paint = node.paint.as_ref().map(|range| carry.range(range));
 +            let more: Option<Vec<_>> = node.more.iter().map(|range| carry.range(range)).collect();
 +            match (paint, more) {
 +                (Some(Some(paint)), Some(more)) => {
 +                    (node.paint, node.more, node.painted_in) = (Some(paint), more, Some(here));
++                    node.chain = place(node.chain);
++                    node.clip = parent.map_or_else(|| place(node.clip), |parent| parent.intersect(&node.chain));
++                    node.interest.origin += shift;
++                    node.children_offset += shift;
 +                }
 +                _ => node.torn = true,
 +            }
@@ -39172,6 +39272,102 @@ index 0000000000000000000000000000000000000000..64c4377e1ea502ef0b4aeab5ce8d4c0f
 +        }
 +    }
 +}
+\ No newline at end of file
+diff --git a/vendor/gpui/src/window/paint_record/landing/tests.rs b/vendor/gpui/src/window/paint_record/landing/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..080823acc58728bae33fdc4ba20408b08018d797
+--- /dev/null
++++ b/vendor/gpui/src/window/paint_record/landing/tests.rs
+@@ -0,0 +1,88 @@
++//! A record landed moved and clipped, once per column of a flow: the node it
++//! opened inside itself lands with the column that shows it.
++
++use super::super::*;
++use crate::scene::{PaintOperation, Primitive};
++use crate::{Context, IntoElement, Quad, Render, ScrollHandle, ScrollNodeId, TestAppContext, div};
++
++struct Empty;
++impl Render for Empty {
++    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
++        div()
++    }
++}
++
++fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
++    Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
++}
++
++/// The placed quads of the next frame's scene, drawn ones only.
++fn quads(window: &Window) -> Vec<Bounds<ScaledPixels>> {
++    let operations = &window.next_frame.scene.paint_operations;
++    let quad = |op: &PaintOperation| match op {
++        PaintOperation::Primitive(p @ Primitive::Quad(_)) => Some(crate::scene::placed_bounds(p)),
++        _ => None,
++    };
++    operations.iter().filter_map(quad).collect()
++}
++
++#[crate::test]
++fn a_node_inside_a_record_lands_with_the_moved_column_that_shows_it(cx: &mut TestAppContext) {
++    cx.add_window(|_, _| Empty)
++        .update(cx, |_, window, cx| {
++            window.scroll_interest_margin = px(100.);
++            let (outer, inner) = (ScrollHandle::new(), ScrollHandle::new());
++            outer.set_max_offset(point(px(0.), px(10_000.)));
++            let (outer_id, inner_id) = (ScrollNodeId::of(&outer), ScrollNodeId::of(&inner));
++            window.invalidator.set_phase(DrawPhase::Prepaint);
++            let (_, prepaint) = window.record_retained_prepaint(|window| {
++                window.with_scroll_node_prepaint(&outer, rect(0., 0., 220., 50.), |window| {
++                    window.with_scroll_node_prepaint(&inner, rect(0., 0., 100., 120.), |_| {});
++                });
++            });
++            window.invalidator.set_phase(DrawPhase::Paint);
++            let extent = rect(0., 0., 100., 120.);
++            let (_, paint) = window.with_paint_pass(|window| {
++                window.record_retained_paint(|window| {
++                    window.with_scroll_node_paint(outer_id, |window| {
++                        let (_, record) = window
++                            .record_paint(extent, cx, |window, _| {
++                                window.with_scroll_node_paint(inner_id, |window| {
++                                    let scale = window.scale_factor();
++                                    // In the second column's part, below the outer clip: dormant.
++                                    window.insert_scene_primitive(Quad {
++                                        bounds: rect(10., 110., 10., 10.).scale(scale),
++                                        content_mask: window.content_mask().scale(scale),
++                                        ..Default::default()
++                                    });
++                                });
++                            })
++                            .unwrap();
++                        let plan = PaintPlan::record(record);
++                        // Two columns of the flow: its top half in place, its bottom half beside it.
++                        let first = PaintPlacement { source: point(px(0.), px(0.)), destination: point(px(0.), px(0.)), clip: rect(0., 0., 100., 60.) };
++                        let second = PaintPlacement { source: point(px(0.), px(60.)), destination: point(px(110.), px(0.)), clip: rect(110., 0., 100., 60.) };
++                        window.paint_plan(&plan, first).unwrap();
++                        window.paint_plan(&plan, second).unwrap();
++                    });
++                })
++            });
++            let frame_space = window.next_frame.scene.scroll.space;
++            let node = window.next_frame.scroll_nodes.iter().find(|node| node.id == inner_id).unwrap();
++            assert_eq!((node.painted_in, node.torn), (Some(frame_space), false), "the inner node lands with the second column");
++            assert_eq!(node.chain, rect(110., 0., 100., 60.), "its mask moved and clipped as the column");
++            std::mem::swap(&mut window.rendered_frame, &mut window.next_frame);
++            window.next_frame.clear();
++            outer.set_offset(point(px(0.), px(-40.)));
++            let plan = window
++                .plan_scrolled_replay(&prepaint, &paint, None)
++                .expect("the moved record's node replays scrolled");
++            window.invalidator.set_phase(DrawPhase::Prepaint);
++            window.replay_retained_prepaint_scrolled(&prepaint, &plan);
++            window.invalidator.set_phase(DrawPhase::Paint);
++            window.replay_retained_paint_scrolled(&paint, &plan);
++            let scale = window.scale_factor();
++            assert_eq!(quads(window), vec![rect(120., 10., 10., 10.).scale(scale)], "the step shows the quad in the column");
++        })
++        .unwrap();
++}
+\ No newline at end of file
 diff --git a/vendor/gpui/src/window/paint_record/mod.rs b/vendor/gpui/src/window/paint_record/mod.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..6d1530a5a660a6617cb11d7e983d8798bccf318d
@@ -42678,10 +42874,10 @@ index 0000000000000000000000000000000000000000..acb6311084a1fa2aa73a360b52bd034e
 +}
 diff --git a/vendor/gpui/src/window/retained_layout_inputs.rs b/vendor/gpui/src/window/retained_layout_inputs.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f3eba8201e5f8ac5b602f605b4968340d822651
+index 0000000000000000000000000000000000000000..60d02e155b1ecd1c2d95383b1827885af96393d3
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained_layout_inputs.rs
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,150 @@
 +//! Keyed state used during request_layout belongs to the recorded subtree even
 +//! when layout precedes its prepaint range. Scroll positions can change between
 +//! frames without dispatching an input event.
@@ -42716,6 +42912,24 @@ index 0000000000000000000000000000000000000000..1f3eba8201e5f8ac5b602f605b496834
 +                    .handle
 +                    .as_ref()
 +                    .is_some_and(ScrollHandle::has_pending_scroll)
++        })
++    }
++
++    /// The first scroll read whose position changed or whose handle has a
++    /// pending scroll (`scroll_unchanged` false), for the `why` journal: its
++    /// node, what the layout read and what it is now.
++    pub fn scroll_change(&self) -> Option<String> {
++        self.scroll.iter().enumerate().find_map(|(at, input)| {
++            let now = *input.offset.borrow();
++            let pending = input.handle.as_ref().is_some_and(ScrollHandle::has_pending_scroll);
++            (now != input.position || pending).then(|| {
++                let node = input.handle.as_ref().map(super::ScrollNodeId::of);
++                format!(
++                    "scroll read {at} of {} (node {node:?}): read {:?}, now {now:?}, pending scroll {pending}",
++                    self.scroll.len(),
++                    input.position
++                )
++            })
 +        })
 +    }
 +}
@@ -42792,6 +43006,26 @@ index 0000000000000000000000000000000000000000..1f3eba8201e5f8ac5b602f605b496834
 +        if let Some(outer) = &mut self.layout_scroll_inputs {
 +            outer.extend_from_slice(&inputs.scroll);
 +        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::{point, px};
++
++    /// DevTools names the scroll read that keeps a record from replaying.
++    #[test]
++    fn a_changed_scroll_read_is_named() {
++        let offset = Rc::new(RefCell::new(point(px(0.), px(-40.))));
++        let read = ScrollInput { offset: offset.clone(), position: point(px(0.), px(-40.)), handle: None };
++        let inputs = RetainedLayoutInputs { states: Cell::default(), scroll: vec![read] };
++        assert!(inputs.scroll_unchanged() && inputs.scroll_change().is_none());
++        *offset.borrow_mut() = point(px(0.), px(0.));
++        let change = inputs.scroll_change().expect("the read changed");
++        assert!(!inputs.scroll_unchanged());
++        assert!(change.starts_with("scroll read 0 of 1 (node None): read"), "{change}");
++        assert!(change.contains("pending scroll false"), "{change}");
 +    }
 +}
 diff --git a/vendor/gpui/src/window/scene_capture.rs b/vendor/gpui/src/window/scene_capture.rs
@@ -43205,10 +43439,10 @@ index 0000000000000000000000000000000000000000..c63e084b94a6344306491f7a2dea173f
 +}
 diff --git a/vendor/gpui/src/window/scroll_deferred.rs b/vendor/gpui/src/window/scroll_deferred.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc759cb117b049c843f268a6d2a7485a487768a5
+index 0000000000000000000000000000000000000000..22903bae94e0472ef33e1cd16306cf2a480b0eb9
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_deferred.rs
-@@ -0,0 +1,213 @@
+@@ -0,0 +1,248 @@
 +//! KaminIDE patch: deferred draws that belong to a scroll node.
 +//!
 +//! A deferred draw paints after the whole tree, in priority order, but its
@@ -43391,6 +43625,41 @@ index 0000000000000000000000000000000000000000..fc759cb117b049c843f268a6d2a7485a
 +        Ok((nodes, paint.start.scene_index..paint.end.scene_index, nested))
 +    }
 +
++    /// Why a deferred draw of the rendered record `range` (its own draws,
++    /// then the draws nested in them, as `plan_scrolled_replay` takes them)
++    /// refuses a scrolled replay by its commands, for DevTools: the first
++    /// draw whose paint range holds a command no node marks, the line that
++    /// deferred it, its element, its owner node and the command
++    /// (`Scene::scroll_refusal_detail`).
++    pub(super) fn deferred_refusal_detail(&self, range: &Range<PrepaintStateIndex>) -> Option<String> {
++        let frame = &self.rendered_frame;
++        let space = frame.scene.scroll.space;
++        let mut draws: Vec<usize> = (range.start.deferred_draws_index..range.end.deferred_draws_index).collect();
++        let mut next = 0;
++        while let Some(&index) = draws.get(next) {
++            next += 1;
++            let Some(draw) = frame.deferred_draws.get(index) else { continue };
++            let (prepaint, paint) = (&draw.prepaint_range, &draw.paint_range);
++            draws.extend(prepaint.start.deferred_draws_index..prepaint.end.deferred_draws_index);
++            let painted = paint.start.scene_index..paint.end.scene_index;
++            let nodes = frame.scroll_nodes.get(prepaint.start.scroll_nodes_index..prepaint.end.scroll_nodes_index);
++            let nodes = nodes.unwrap_or_default().iter().filter(|node| node.painted_in == Some(space));
++            let Some(detail) = frame.scene.scroll_refusal_detail(std::iter::once(painted).chain(nodes.flat_map(|node| node.ranges()))) else {
++                continue;
++            };
++            let owner = draw.scroll.owner.and_then(|at| frame.scroll_nodes.get(at as usize)).map(|node| node.id);
++            let element: Vec<String> = draw.element_id_stack.iter().rev().take(3).map(|id| format!("{id:?}")).collect();
++            return Some(format!(
++                "deferred draw {index} (priority {}) deferred at {}:{} under {}, owner node {owner:?}: {detail}",
++                draw.priority,
++                draw.site.file().replace('\\', "/"),
++                draw.site.line(),
++                element.join(" < ")
++            ));
++        }
++        None
++    }
++
 +    /// The nodes of the rendered frame's deferred draws registered in
 +    /// `range` (a record's prepaint range).
 +    pub(super) fn deferred_scroll_nodes(&self, range: &Range<PrepaintStateIndex>) -> impl Iterator<Item = &ScrollNodeRecord> {
@@ -43424,10 +43693,10 @@ index 0000000000000000000000000000000000000000..fc759cb117b049c843f268a6d2a7485a
 +mod tests;
 diff --git a/vendor/gpui/src/window/scroll_deferred/tests.rs b/vendor/gpui/src/window/scroll_deferred/tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6bdb8f7a22a111b7b077559814b8635e5c042821
+index 0000000000000000000000000000000000000000..426ba07daa8b01a9a2b11163a5cc2f9d19ce2fdf
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_deferred/tests.rs
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,98 @@
 +use super::*;
 +use crate::{ScrollHandle, TestAppContext, deferred, div, prelude::*, px};
 +
@@ -43481,6 +43750,28 @@ index 0000000000000000000000000000000000000000..6bdb8f7a22a111b7b077559814b8635e
 +            assert!(!hitboxes.is_empty());
 +            let marked = frame.scroll_hitboxes.iter().filter(|mark| hitboxes.contains(&(mark.index as usize)));
 +            assert!(marked.clone().count() == hitboxes.len() && marked.into_iter().all(|mark| mark.node == node.id));
++        })
++        .unwrap();
++}
++
++/// DevTools names the command of an owned draw that no node marks: the
++/// draw, the line that deferred it, its element and the command.
++#[crate::test]
++fn an_unmarked_command_of_a_deferred_draw_is_named(cx: &mut TestAppContext) {
++    let window = draw(cx, true);
++    window
++        .update(cx, |_, window, _| {
++            let end = PrepaintStateIndex { deferred_draws_index: window.rendered_frame.deferred_draws.len(), ..Default::default() };
++            let whole = PrepaintStateIndex::default()..end;
++            assert_eq!(window.deferred_refusal_detail(&whole), None, "every command of the draw is marked");
++            let frame = &mut window.rendered_frame;
++            let paint = &frame.deferred_draws[0].paint_range;
++            let painted = paint.start.scene_index..paint.end.scene_index;
++            frame.scene.scroll.marks.retain(|mark| !painted.contains(&(mark.op as usize)));
++            let detail = window.deferred_refusal_detail(&whole).expect("the unmarked command is named");
++            for part in ["deferred draw 0", "window/scroll_deferred/tests.rs:", "Name(\"scroller\")", "Unmarked: command", "quad at"] {
++                assert!(detail.contains(part), "{part} in {detail}");
++            }
 +        })
 +        .unwrap();
 +}
@@ -44862,10 +45153,10 @@ index 0000000000000000000000000000000000000000..f79f1792eea18cee4f2a7ff008a6bd4a
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2a57b01161d9d325cd96b52393620ed2f1ed050e
+index 0000000000000000000000000000000000000000..ed9498630ead7e8c8c69248f5ea684211da81e8e
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,558 @@
+@@ -0,0 +1,559 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -45063,12 +45354,13 @@ index 0000000000000000000000000000000000000000..2a57b01161d9d325cd96b52393620ed2
 +            | ScrollRefusal::ForeignMark
 +            | ScrollRefusal::RetainedLayer
 +            | ScrollRefusal::LayerReservoir => {
-+                // The record's own nodes in its scene; a deferred draw's are not named.
++                // The record's own nodes in its scene, then its deferred draws'.
 +                let nodes = &self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index];
 +                let content = layer.map(LayerHandle::content);
 +                let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
 +                source
 +                    .scroll_refusal_detail(nodes.iter().flat_map(|node| node.ranges()))
++                    .or_else(|| self.deferred_refusal_detail(&range))
 +                    .unwrap_or_else(|| "in a deferred draw of the record".into())
 +            }
 +            ScrollRefusal::Groups => {
