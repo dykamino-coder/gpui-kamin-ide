@@ -22,9 +22,11 @@ pub(crate) enum NodeSource {
 }
 
 impl NodeSource {
-    /// The offset now: a handle's clamped to its scroll range, as prepaint
-    /// clamps it (written back, so the handle reads what is shown).
-    pub(crate) fn offset(&self) -> Point<Pixels> {
+    /// The offset now at device `scale`: a handle's clamped to its scroll
+    /// range, as prepaint clamps it (written back, so the handle reads what
+    /// is shown), then the translation a frame paints for it, aligned to
+    /// whole device pixels (`ScrollHandle::painted`), as prepaint moves by.
+    pub(crate) fn offset(&self, scale: f32) -> Point<Pixels> {
         match self {
             NodeSource::Handle(handle) => {
                 let (offset, max) = (handle.offset(), handle.max_offset());
@@ -35,11 +37,11 @@ impl NodeSource {
                 if clamped != offset {
                     handle.set_offset(clamped);
                 }
-                clamped
+                ScrollHandle::painted(clamped, max, scale)
             }
             NodeSource::Viewport { .. } => Point::default(),
             NodeSource::Anchor(offset) => offset(),
-            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
+            NodeSource::Follow { on, base, at } => at(on.offset(scale) - *base),
         }
     }
 }

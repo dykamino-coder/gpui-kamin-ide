@@ -160,7 +160,7 @@ impl Window {
         clip: Bounds<Pixels>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.offset());
+        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.painted_offset(self.scale_factor()));
         let result = f(self);
         self.end_scroll_node_prepaint(open);
         result
@@ -240,7 +240,7 @@ impl Window {
                 None => return f(self),
             },
         };
-        let (chain, base) = (self.content_mask().bounds, on.offset());
+        let (chain, base) = (self.content_mask().bounds, on.offset(self.scale_factor()));
         let now = at(Point::default());
         self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at });
         let result = f(self);

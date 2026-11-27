@@ -33,6 +33,8 @@ pub(super) struct PlannedNode {
     offset: Point<Pixels>,
     /// Shift of the node's children since the record (window pixels).
     shift: Point<Pixels>,
+    /// The shift is whole device pixels (not a follower's own function).
+    whole: bool,
     clip: Bounds<Pixels>,
     chain: Bounds<Pixels>,
     interest: Bounds<Pixels>,
@@ -51,7 +53,9 @@ impl ScrollReplay {
     /// A planned node's shift and clip in scene pixels (`Scene::replay_scrolled`).
     pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
         let node = self.node(id);
-        (node.shift.scale(scale), node.clip.scale(scale))
+        let shift = node.shift.scale(scale);
+        let shift = if node.whole { shift.map(|v| ScaledPixels(v.0.round())) } else { shift };
+        (shift, node.clip.scale(scale))
     }
 }
 
@@ -71,7 +75,7 @@ impl Window {
         self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
             .iter()
             .chain(self.deferred_scroll_nodes(&range))
-            .any(|node| node.source.offset() != node.offset)
+            .any(|node| node.source.offset(self.scale_factor()) != node.offset)
     }
 
     /// Plan the replay of a record made in the rendered frame with each of its
@@ -149,7 +153,7 @@ impl Window {
                     node.id,
                     refused.unwrap_or_default(),
                     node.offset,
-                    node.source.offset()
+                    node.source.offset(self.scale_factor())
                 ),
                 None => String::new(),
             },
@@ -184,7 +188,7 @@ impl Window {
                     refused.unwrap_or_default(),
                     node.anchored,
                     node.offset,
-                    node.source.offset(),
+                    node.source.offset(self.scale_factor()),
                     node.chain,
                     node.clip,
                     node.parent
@@ -344,7 +348,7 @@ impl Window {
                 if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
                     return Err(at(ScrollRefusal::NodeRange));
                 }
-                let new = node.source.offset();
+                let new = node.source.offset(self.scale_factor());
                 let parent = node.parent.and_then(|parent| slots.get(&parent)).map(|&parent| plan.nodes[parent]);
                 let parent_shift = parent.map_or(Point::default(), |parent| parent.shift);
                 // An anchor's mask stays in the viewport; a node's moves with its parent.
@@ -364,7 +368,10 @@ impl Window {
                 // own function of the offset, unsnapped, so it moves exactly.
                 let device = shift.scale(self.scale_factor());
                 let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { .. });
-                if !follower && (device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0) {
+                // Painted offsets are whole device pixels (`ScrollHandle::painted`)
+                // up to the f32 error of their CSS values.
+                let off = |v: f32| (v - v.round()).abs() > 1e-3;
+                if !follower && (off(device.x.0) || off(device.y.0)) {
                     return Err(at_node(ScrollRefusal::Fractional, index));
                 }
                 // A node whose children painted nothing as it (hidden, or painted
@@ -384,7 +391,7 @@ impl Window {
                 }
                 slots.insert(index as u32, plan.nodes.len());
                 plan.by_id.insert(node.id, plan.nodes.len());
-                plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
+                plan.nodes.push(PlannedNode { offset: new, shift, whole: !follower, clip, chain, interest });
             }
         }
         // Paint that follows a moved node's offset outside it (a thumb).

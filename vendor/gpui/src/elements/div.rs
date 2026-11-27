@@ -2854,7 +2854,9 @@ impl Interactivity {
                 scroll_handle_state.bounds = bounds;
             }
 
-            *scroll_offset
+            // KaminIDE patch: the children move by the translation the frame
+            // paints, whole device pixels; the position stays exact.
+            ScrollHandle::painted(*scroll_offset, scroll_max, window.scale_factor())
         } else {
             Point::default()
         }
@@ -4721,6 +4723,40 @@ impl ScrollHandle {
         *self.0.borrow().offset.borrow()
     }
 
+    /// KaminIDE patch: the scroll translation a frame paints for this handle
+    /// at device `scale` (`Self::painted`).
+    pub fn painted_offset(&self, scale: f32) -> Point<Pixels> {
+        let state = self.0.borrow();
+        let offset = *state.offset.borrow();
+        Self::painted(offset, state.max_offset, scale)
+    }
+
+    /// KaminIDE patch: the scroll offset `offset` (within `0..=max` up and
+    /// left) aligned to whole device pixels at `scale`. The scroll position
+    /// itself stays exact (CSSOM View §6 fractional positions; sub-pixel input
+    /// adds up), but the translation a frame paints moves by whole device
+    /// pixels only, so the frame at any offset is the frame at 0 moved pixel
+    /// for pixel: no box edge, ring or glyph lands between the pixels it snaps
+    /// to on its own. cc snaps a scroll translation the same way in screen
+    /// space (`TransformTree::UpdateSnapping`); Gecko aligns the position.
+    /// An end of the range between two device pixels stays where it is.
+    pub fn painted(offset: Point<Pixels>, max: Point<Pixels>, scale: f32) -> Point<Pixels> {
+        if scale.is_nan() || scale <= 0.0 {
+            return offset;
+        }
+        let align = |v: Pixels, max: Pixels| {
+            let (exact, lo) = (v.0 * scale, -max.0.max(0.0) * scale);
+            let mut d = exact.round();
+            // Toward the inside of the range rather than past its end (an
+            // offset outside a range not measured yet is left to the clamp).
+            if d < lo && exact >= lo {
+                d = lo.ceil();
+            }
+            if d == exact { v } else { px(d / scale) }
+        };
+        point(align(offset.x, max.x), align(offset.y, max.y))
+    }
+
     pub(crate) fn has_pending_scroll(&self) -> bool {
         let state = self.0.borrow();
         state.scroll_to_bottom || state.active_item.is_some()
@@ -4967,6 +5003,23 @@ mod tests {
             std::mem::size_of::<InteractivityListeners>()
                 >= 18 * std::mem::size_of::<Vec<()>>()
         );
+    }
+
+    #[test]
+    fn a_painted_scroll_offset_is_whole_device_pixels_within_the_range() {
+        let p = |y: f32, max: f32, s: f32| {
+            ScrollHandle::painted(point(px(0.), px(y)), point(px(0.), px(max)), s).y.0 * s
+        };
+        let whole = |d: f32| (d - d.round()).abs() < 1e-4;
+        // 53 CSS px at 1.25 are 66.25 device px: the frame moves by 66.
+        assert!((p(-53.0, 500.0, 1.25) + 66.0).abs() < 1e-4);
+        assert_eq!(p(-53.0, 500.0, 1.0), -53.0);
+        assert!((p(-10.3, 500.0, 1.5) + 15.0).abs() < 1e-4);
+        // The end of the range between two device pixels: inside it, not past.
+        let end = p(-100.5, 100.5, 1.25);
+        assert!(whole(end) && end >= -100.5 * 1.25, "{end}");
+        // An offset outside a range not measured yet is left to the clamp.
+        assert!((p(-40.4, 0.0, 1.25) + 51.0).abs() < 1e-4);
     }
 
     struct GroupHoverTestView {
