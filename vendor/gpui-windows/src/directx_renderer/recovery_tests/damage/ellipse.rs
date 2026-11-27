@@ -114,11 +114,10 @@ fn compare(a: &[u8], b: &[u8]) -> (usize, u8) {
 }
 
 /// Opaque and translucent fills with elliptical corners draw the bytes of
-/// their masked groups on the default adapter, and WARP draws the same
-/// frame: the quad rounds every value to the target's 8-bit steps itself,
-/// where the masked group leaves the rounding of its shader output to the
-/// adapter (a GPU rounds before blending, WARP does not). The masked group
-/// and a circular quad on the two adapters are counted for comparison;
+/// their masked groups on the default adapter and on WARP, and the two
+/// adapters draw the same frame: the quad hands the blender the values the
+/// group's composite hands it (8-bit buffer and mask, premultiplied). A
+/// circular quad on the two adapters is counted for comparison;
 /// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 #[test]
 fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
@@ -148,5 +147,5 @@ fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
         std::fs::write(path, lines.join("\n")).unwrap();
     }
     let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
-    assert!(exact("gpu alpha") && exact("quad gpu vs warp"), "{}", lines.join("; "));
+    assert!(exact("quad vs mask") && exact("quad gpu vs warp"), "{}", lines.join("; "));
 }

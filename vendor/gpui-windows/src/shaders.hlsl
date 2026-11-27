@@ -826,17 +826,14 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
         color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
     }
     // Premultiplied output, drawn with the premultiplied blender
-    // (`draw_quads`). Every value is rounded to the target's 8-bit steps in
-    // the order the masked group it replaces rounds them: the colour as the
-    // shader hands it to the blender, the group buffer's `colour * alpha`, the
-    // mask's coverage, then the composite's product. A GPU rounds the shader
-    // output to the target format before blending and WARP does not; with
-    // the steps taken here both blend the same bytes.
-    precise float4 c8 = q8(color);
-    precise float3 p8 = q8(float4(c8.rgb * c8.a, 0.0)).rgb;
+    // (`draw_quads`): the values the masked group it replaces hands the
+    // blender. Its buffer stores `colour * alpha` and alpha in 8-bit steps,
+    // its mask the coverage in 8-bit steps, and its composite multiplies the
+    // two (`group_source_with`).
+    precise float4 p8 = q8(float4(color.rgb * color.a, color.a));
     precise float m8 = q8(float4(saturate(0.5 - outer_sdf), 0.0, 0.0, 0.0)).x;
-    precise float4 out8 = q8(float4(p8 * m8, c8.a * m8));
-    return out8;
+    precise float4 source = p8 * m8;
+    return source;
 }
 float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
                           float4 input_border_color) {
