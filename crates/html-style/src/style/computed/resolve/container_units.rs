@@ -38,7 +38,7 @@ impl Computed {
         let moves = |l: Len| l.needs_container_context(vcx);
         self.resolve_unit_lengths(moves, fix, vcx);
         self.resolve_container_other_lengths(vp, vcx);
-        // Только при cq-слагаемом: запись отцепляет общую группу и без изменения значения.
+        // Only with a cq term: the write detaches the shared group even without a value change.
         let columns = &self.reset_fragmentation;
         if [
             columns.column_width,
@@ -58,7 +58,7 @@ impl Computed {
                 fix(length);
             }
         }
-        // Без cq-слагаемых общую группу наследуемых копировать не нужно.
+        // Without cq terms the shared inherited group need not be copied.
         if [
             self.inh.text_flow.letter_spacing,
             self.inh.text_flow.word_spacing,

@@ -1,5 +1,5 @@
-//! Память стадии коробки: попадание при неизменных входах, промах по причине, правка стиля
-//! видна синхронно, без кадра.
+//! Box stage memory: a hit while the inputs hold, a miss by its reason, a style edit
+//! seen synchronously, without a frame.
 
 use super::super::tests::element;
 use super::super::{box_style, materialize};

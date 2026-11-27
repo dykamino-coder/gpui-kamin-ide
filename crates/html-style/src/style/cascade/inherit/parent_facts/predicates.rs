@@ -1,5 +1,5 @@
-//! Предикаты коробки-родителя для её детей: обрезка, многоколонность, барьер `fixed`,
-//! трансформ и определённость высоты содержащего блока.
+//! Predicates of a parent box for its children: clipping, multicol, the `fixed` barrier,
+//! transforms and the definiteness of the containing block height.
 
 use crate::style::computed::{Computed, Display as D, Overflow, Position as P};
 use crate::style::values::value::Len as L;
@@ -44,7 +44,7 @@ pub(super) fn fixed_barrier(parent: &Computed) -> bool {
         || parent.reset_context.contain_layout == Some(true)
         || parent.reset_context.contain_paint == Some(true)
         || crate::style::computed::filter_contains_fixed(parent)
-        // css-will-change-1 §2.1: блок для `fixed` — и от обещанного свойства.
+        // css-will-change-1 §2.1: a promised property makes the `fixed` block too.
         || parent.reset_effects.will_change & crate::style::computed::wc::CB_FIXED != 0
 }
 
@@ -70,7 +70,7 @@ pub(super) fn child_height_definite(
     let ratio_height = parent.reset_shapes.aspect_ratio.is_some()
         && matches!(parent.reset_box_layout.height, None | Some(L::Auto))
         && matches!(parent.reset_box_layout.width, Some(L::Px(_)));
-    // Соотношение сторон само даёт главный размер (Blink
+    // The aspect ratio itself gives the main size (Blink
     // `AspectRatioProvidesBlockMainSize`; `flex-aspect-ratio-032/033`).
     let indefinite_column_item = parent.reset_flex.flex_main_def == Some(false)
         && !matches!(parent.reset_box_layout.height, Some(L::Px(_)))
@@ -97,8 +97,8 @@ pub(super) fn child_height_definite(
                     true
                 }
                 Some(L::Pct(_) | L::Calc(_)) => parent.cb_height_def || absolute,
-                // Доля высоты у абсолютной коробки решается всегда (§10.5: оговорка
-                // «not absolutely positioned»), её высота для детей определена.
+                // A percentage height of an absolute box always resolves (§10.5: the
+                // "not absolutely positioned" clause), so its height is definite for children.
                 _ => absolute,
             })
 }

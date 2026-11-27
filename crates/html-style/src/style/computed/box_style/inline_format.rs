@@ -1,5 +1,5 @@
-//! Физическая раскладка текста внутри одного строчного контекста (её кладёт на содержимое строки
-//! cascade::inherit::context): computed оси и шрифтовые единицы элемента сохраняются.
+//! Physical text layout inside one inline formatting context (cascade::inherit::context
+//! puts it on the line's contents): the element's computed axes and font units are kept.
 
 use super::*;
 

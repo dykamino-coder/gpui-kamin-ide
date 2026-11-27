@@ -1,4 +1,4 @@
-//! Входы записи стадии коробки: стадии своего стиля, документ, окно; причина промаха.
+//! Inputs of a box stage record: its own style stages, the document, the viewport; the miss reason.
 
 use crate::style::computed::ElementStyle;
 use crate::style::values::value::Scheme;

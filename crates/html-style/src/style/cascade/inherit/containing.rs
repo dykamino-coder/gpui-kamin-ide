@@ -1,5 +1,5 @@
-//! Стадия коробки, содержащий блок: признаки cb_* (многоколонность, подложка, трансформ, письмо),
-//! растяжение и определённость высоты. Родитель читается только через `ParentFacts`.
+//! Box stage, containing block: the cb_* facts (multicol, backdrop, transform, writing mode),
+//! stretching and height definiteness. The parent is read only through `ParentFacts`.
 
 use super::*;
 use crate::style::computed::BoxStyle;
@@ -18,8 +18,8 @@ pub(super) fn inherit_containing(f: &ParentFacts<'_>, own: &Computed, c: &mut Bo
     c.tree.fragment_clip_ancestor = parent.fragment_clip_ancestor;
     c.tree.in_multicol = parent.in_multicol;
     c.tree.backdrop_root_above = parent.backdrop_root_above;
-    // Барьер содержащего блока для `position: fixed` — не только трансформ
-    // (css-contain-1 §containment-layout п.1, §containment-paint;
+    // The containing block barrier for `position: fixed` is not only a transform
+    // (css-contain-1 §containment-layout item 1, §containment-paint;
     // `contain-layout-containing-block-fixed-001`).
     c.tree.transform_ancestor = parent.transform_ancestor;
     // css-transforms-1 §6: «Fixed backgrounds on the root element are affected
@@ -36,10 +36,10 @@ pub(super) fn inherit_containing(f: &ParentFacts<'_>, own: &Computed, c: &mut Bo
     {
         set!(c.reset_background.bg_fixed, Some(false));
     }
-    // `will-change: z-index` — контекст наложения ровно там, где `z-index`
-    // действует: у позиционированной коробки и у элемента flex/grid
-    // (css-flexbox-1 §5.4, css-grid-2 §6.2) — `-stacking-context-z-index-2/3`;
-    // у простого блока — нет (`-z-index-4` зелёный и обязан остаться).
+    // `will-change: z-index` makes a stacking context exactly where `z-index`
+    // applies: on a positioned box and on a flex/grid item
+    // (css-flexbox-1 §5.4, css-grid-2 §6.2), `-stacking-context-z-index-2/3`;
+    // a plain block gets none (`-z-index-4` passes and must keep passing).
     if own.reset_effects.will_change & crate::style::computed::wc::STACK_Z != 0
         && (matches!(
             own.reset_positioned.position,
@@ -61,17 +61,17 @@ pub(super) fn inherit_containing(f: &ParentFacts<'_>, own: &Computed, c: &mut Bo
     if c.reset_positioned.box_shift.is_none() {
         set!(c.reset_positioned.box_shift, parent.box_shift);
     }
-    // Элемент гибкого контейнера, сетки и содержимое ячейки получают
-    // определённую высоту от РАСКЛАДКИ (css-flexbox-1 §9.8 растяжение,
-    // css-grid-2 дорожки, §17.5.3 ячейка). Растяжение передаётся дальше: у
-    // растянутой коробки высота от полосы, и для её потомков блок определён
+    // A flex item, a grid item and cell contents get a definite height from
+    // LAYOUT (css-flexbox-1 §9.8 stretching, css-grid-2 tracks, §17.5.3 cells).
+    // Stretching carries on: a stretched box takes its height from the line,
+    // and the block is definite for its descendants
     // (`column-align-items-005`).
     c.stretched = parent.laid_out
         && !matches!(
             own.reset_box_layout.height,
             Some(crate::style::values::value::Len::Px(_))
         );
-    // §10.5: доля высоты считается только от ОПРЕДЕЛЁННОЙ высоты содержащего блока.
+    // §10.5: a percentage height resolves only against a DEFINITE containing block height.
     c.cb_height_def = parent.child_cb_height_def;
 }
 

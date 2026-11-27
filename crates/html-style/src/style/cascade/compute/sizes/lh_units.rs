@@ -8,8 +8,8 @@ pub(super) fn inherit_lh_units(
     c: &mut Computed,
     vcx: crate::values::ValueCx<'_>,
 ) {
-    // Нечего разрешать — ни строку, ни шрифт не мерить: записи ниже отцепляют
-    // общие группы стиля (копия при записи) даже без изменения значения.
+    // Nothing to resolve, so neither the line nor the font is measured: the writes
+    // below detach shared style groups (copy on write) even without a value change.
     if !reads_lh_units(c) {
         return;
     }

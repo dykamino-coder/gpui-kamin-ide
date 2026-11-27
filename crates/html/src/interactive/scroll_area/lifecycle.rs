@@ -37,12 +37,7 @@ impl Element for ScrollArea {
             state.extent.set_handle(state.handle.clone());
             let (layout_id, el) = {
                 let frame = state.extent.begin(self.tree.as_deref());
-                let mut el = {
-                    // Element construction of the scroll subtree, style included (`scroll_build_ns`);
-                    // nested scroll areas build in their own request_layout, outside this window.
-                    crate::work::time!(_build, ScrollBuildNs);
-                    build(&state.handle, h, v, frame)
-                };
+                let mut el = super::timed_build(&build, &state.handle, (h, v), frame);
                 let layout_id = el.request_layout(window, cx);
                 (layout_id, el)
             };

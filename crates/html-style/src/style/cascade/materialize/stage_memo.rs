@@ -1,17 +1,18 @@
-//! Память стадии коробки на слоте стиля узла. Стадия коробки (`inherit::box_stage`) —
-//! функция своих входов: коробки-родителя (и родителя по дереву элементов у перенесённой
-//! коробки), стадий своего стиля, поколения шрифтов, схемы и метрик корня документа и размера
-//! окна — последнего, только если значения его прочитали (`values::viewport_reads`). Запись
-//! живёт при стиле узла (`dom::SharedStyle`) и годна, пока равны все входы: смена ширины окна
-//! пересчитывает только коробки, читавшие окно, и коробки под изменившимся родителем; правка
-//! стиля или DOM даёт новые стадии стиля и промах при следующем запросе — синхронный запрос
-//! геометрии видит новый стиль без кадра.
+//! Memory of the box stage on a node's style slot. The box stage (`inherit::box_stage`) is a
+//! function of its inputs: the facts of its parents (`inherit::ParentFacts`; the element-tree
+//! parent too for a moved box), its own style stages, the document's font generation, color
+//! scheme and root metrics, and the viewport size, the last only if the values read it
+//! (`values::viewport_reads`). A record lives with the node's style (`dom::SharedStyle`) and
+//! holds while all inputs are equal: a viewport width change recomputes only the boxes that
+//! read the viewport and the boxes under a changed parent; a style or DOM edit gives new style
+//! stages and a miss on the next query, so a synchronous geometry query sees the new style
+//! without a frame.
 //!
-//! Так же устроены лучшие движки: Blink держит `ComputedStyle` на элементе и пересчитывает
-//! его по `StyleRecalcChange`, Stylo — в данных элемента по restyle hints; общий результат
-//! переиспользуется сравнением входов (`MatchedPropertiesCache`, sharing cache), а не
-//! идентичностью элемента. Ключи реестров кадра (`self_node` → `cb_node`) в запись не
-//! входят: попадание переносит их от родителя этого кадра (`inherit::reidentify`).
+//! The best engines work the same way: Blink keeps `ComputedStyle` on the element and
+//! recomputes it by `StyleRecalcChange`, Stylo keeps it in element data by restyle hints;
+//! shared results are reused by comparing inputs (`MatchedPropertiesCache`, the sharing
+//! cache), not by element identity. Frame registry keys (`self_node` -> `cb_node`) are not
+//! part of a record: a hit takes them from this frame's parent (`inherit::reidentify`).
 
 use crate::style::cascade::inherit::ParentFacts;
 use crate::style::computed::{BoxStyle, Computed, ElementStyle};

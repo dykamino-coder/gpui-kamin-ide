@@ -18,8 +18,8 @@ pub(super) fn styled(
 ) -> BoxStyle {
     // Style share of a frame, hits included (`box_stage_ns` in the journal).
     crate::work::time!(_stage, BoxStageNs);
-    // Перенесённая раскладкой коробка остаётся ребёнком своего родителя по
-    // дереву элементов (css-cascade-5 §7.2); `parent` — её новая коробка-родитель.
+    // A box layout moved stays a child of its element-tree parent
+    // (css-cascade-5 §7.2); `parent` is its new parent box.
     let moved = own.moved_from();
     let tree = moved.as_deref().unwrap_or(parent);
     // What the stage reads of the parents: the key, and the stage's only view of them.
@@ -78,8 +78,8 @@ fn stage(
 ) -> BoxStyle {
     let cascaded = own.cascaded();
     let element = own.slot().with_parent().map(|(original, element_parent)| {
-        // Только новая computed-стадия родителя-элемента (например, источник
-        // position-try) требует вычислить ребёнка заново. Used-копия её не меняет.
+        // Only a new computed stage of the element parent (a position-try
+        // source, for example) recomputes the child. A used copy does not change it.
         let context = tree.element_style.as_ref();
         let computed = context
             .and_then(|p| p.variant_for(&element_parent))
@@ -101,11 +101,11 @@ fn stage(
             }
             None => e.computed.clone(),
         },
-        // Анонимная коробка наследует от своей коробки-родителя.
+        // An anonymous box inherits from its parent box.
         None => crate::style::cascade::compute::compute(parent, cascaded, vcx).legacy,
     };
     let view = own.used();
-    // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
+    // Whether colors are set comes from the cascade; a style without materialization has one stage.
     let declared = match own.slot().any() {
         Some(_) => cascaded,
         None => &*view,
@@ -123,9 +123,9 @@ fn stage(
         vcx,
     );
     if !boxed.reset_positioned.position_try_fallbacks.is_empty() {
-        // Варианты коробки, созданной раскладкой из стадии элемента, пересчитывают
-        // каскад этого элемента под его родителем-элементом (css-anchor-position-1
-        // §fallback-rule, css-cascade-5 §7.3.1), а не значения коробки под коробкой-родителем.
+        // Variants of a box layout made from an element stage recompute that
+        // element's cascade under its element parent (css-anchor-position-1
+        // §fallback-rule, css-cascade-5 §7.3.1), not the box values under the parent box.
         boxed.try_style = Some(view.try_source.clone().unwrap_or_else(|| own.clone()));
     }
     boxed

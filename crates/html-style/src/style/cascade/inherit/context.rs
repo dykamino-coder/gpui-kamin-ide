@@ -1,14 +1,14 @@
-//! Стадия коробки, контекст родителя-коробки: признаки руби, повёрнутой строки и ортогонального
-//! потока, сетка/flex родителя, предел строк `line-clamp`, строчные украшения
-//! предка, подавление маркера, чернила тени текста.
+//! Box stage, the parent box context: ruby, turned line and orthogonal flow facts, the
+//! parent's grid/flex, the `line-clamp` limit, an ancestor's inline decorations, marker
+//! suppression, text shadow ink.
 //! These are used values of the box tree (`TreeFacts`): they never copy the shared computed style.
 
 use super::*;
 use crate::style::computed::BoxStyle;
 
 pub(super) fn inherit_context(f: &ParentFacts<'_>, own: &Computed, c: &mut BoxStyle) {
-    // Распространяемое по дереву элементов — от его родителя, ограничения
-    // ортогонального потока и `line-clamp` — от коробки-родителя.
+    // What propagates through the element tree comes from its parent; orthogonal
+    // flow limits and `line-clamp` come from the parent box.
     // `c.tree` holds the used values layout gave the box itself.
     let (layout, parent) = (&f.layout, &f.tree);
     inline_contents(c, parent);
@@ -38,9 +38,9 @@ pub(super) fn inherit_context(f: &ParentFacts<'_>, own: &Computed, c: &mut BoxSt
     // (`line-clamp-029`).
     tree.line_clamp = own_clamp.or(layout.line_clamp);
     c.inline_decoration = c.inline_decoration.under(parent.inline_decoration);
-    // css-ui-4 §6.1: `user-select` не наследуется; используемое значение
-    // `auto` — `none` под коробкой с используемым `none`, иначе выделяемое
-    // (`all` родителя тоже выделяемо).
+    // css-ui-4 §6.1: `user-select` is not inherited; the used value of `auto`
+    // is `none` under a box whose used value is `none`, selectable otherwise
+    // (a parent's `all` is selectable too).
     use crate::style::computed::UserSelect as U;
     c.tree.no_select = match c.reset_context.user_select {
         Some(U::None) => Some(true),
@@ -49,8 +49,8 @@ pub(super) fn inherit_context(f: &ParentFacts<'_>, own: &Computed, c: &mut BoxSt
     };
 }
 
-/// Содержимое той же строки использует её физические оси; атомарная коробка
-/// и внепоточный элемент начинают собственную раскладку (css-display-3 §2).
+/// Contents of the same line use its physical axes; an atomic box and an
+/// out-of-flow element start their own layout (css-display-3 §2).
 fn inline_contents(c: &mut BoxStyle, parent: &super::parent_facts::TreeFacts<'_>) {
     use crate::style::computed::{Display, InlineFormat, Position};
     use crate::style::values::value::Len;

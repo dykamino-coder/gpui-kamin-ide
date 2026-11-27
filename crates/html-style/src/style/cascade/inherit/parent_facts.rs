@@ -1,10 +1,11 @@
-//! Факты коробок-родителей, которые читает стадия коробки ребёнка, — и только они. Стадия
-//! читает родителей лишь через эту проекцию (`box_stage`), поэтому проекция — полный ключ
-//! родителя в памяти стадии (`materialize::stage_memo`) по построению: used-значения,
-//! которые сборка пишет в стиль родителя после его стадии (ширина окна у `html-viewport`,
-//! разрешённые `vw`, полосы прокрутки), ребёнка не задевают, пока не меняют прочитанного.
-//! Так же Blink решает, пересчитывать ли детей: `StyleRecalcChange` по разнице старого и
-//! нового стиля родителя, а не по равенству всего стиля; Stylo — `ChildCascadeRequirement`.
+//! The facts of the parent boxes that a child's box stage reads, and only those. The stage
+//! reads its parents only through this projection (`box_stage`), so the projection is the
+//! complete parent key of the stage memory (`materialize::stage_memo`) by construction: used
+//! values the build writes into the parent's style after its stage (the viewport width of
+//! `html-viewport`, resolved `vw`, scrollbars) do not touch the child unless they change what
+//! it read. Blink decides whether to recompute children the same way, by
+//! `StyleRecalcChange` from the difference of the parent's old and new style rather than the
+//! equality of the whole style; Stylo by `ChildCascadeRequirement`.
 
 use super::BoxParents;
 use crate::box_facts::{AxisSizes, BoxContext};
