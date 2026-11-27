@@ -160,7 +160,9 @@ impl Render for Browser {
             root = root.child(self.selector(cx));
         }
         if self.hud.visible {
-            root = root.child(self.hud.panel());
+            // Page boxes lifted in paint order are window-level deferred layers
+            // with their z-index as priority; the panel must stay above all.
+            root = root.child(gpui::deferred(self.hud.panel()).with_priority(usize::MAX));
         }
         root.into_any_element()
     }
