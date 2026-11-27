@@ -33,7 +33,7 @@ impl Hud {
         let _ = (window, cx);
         Self {
             visible: true,
-            lines: vec!["Профилировщик: первая выборка через секунду".into()],
+            lines: vec!["Profiler: first sample in one second".into()],
             last: None,
             gpu: gpu::Counters::open(),
             cores: std::thread::available_parallelism().map_or(1., |n| n.get() as f64),
@@ -46,7 +46,7 @@ impl Hud {
         self.visible = !self.visible;
         // A hidden panel takes no samples; the next one starts a fresh interval.
         self.last = None;
-        self.lines = vec!["Профилировщик: первая выборка через секунду".into()];
+        self.lines = vec!["Profiler: first sample in one second".into()];
     }
 
     fn sample(&mut self, viewport: (f32, f32), window: &Window, cx: &App) {
@@ -62,28 +62,28 @@ impl Hud {
             let frames = self.frames.drain();
             let fps = elapsed.map_or(0., |seconds| f64::from(frames.presented) / seconds);
             lines.push(format!(
-                "КАДРЫ   {fps:.0} к/с   интервал ср/макс {} мс",
+                "FRAMES  {fps:.0} FPS   interval avg/max {} ms",
                 frames.interval.text()
             ));
             lines.push(format!(
-                "        отрисовка {} мс   выдача {} мс",
+                "        draw {} ms   present {} ms",
                 frames.draw.text(),
                 frames.present.text()
             ));
             lines.push(format!(
-                "        от правки до экрана {} мс   пропущено {}   потеряно записей {}",
+                "        dirty to present {} ms   skipped {}   lost entries {}",
                 frames.dirty_to_present.text(),
                 frames.skipped,
                 frames.lost
             ));
         }
         #[cfg(not(feature = "why-profiler"))]
-        lines.push("КАДРЫ   сборка без журнала движка (why-profiler)".to_owned());
+        lines.push("FRAMES  built without engine journal (why-profiler)".to_owned());
         match (process, self.last, elapsed) {
             (Some(process), Some((_, before)), Some(seconds)) => {
                 let cpu = process.cpu_100ns.saturating_sub(before.cpu_100ns) as f64 / 1e7 / seconds;
                 lines.push(format!(
-                    "CPU     {:.1} % одного ядра   {:.1} % машины ({:.0} лог. ядер)",
+                    "CPU     {:.1} % of one core   {:.1} % of machine ({:.0} logical cores)",
                     cpu * 100.,
                     cpu * 100. / self.cores,
                     self.cores
@@ -93,7 +93,7 @@ impl Hud {
         }
         if let Some(process) = process {
             lines.push(format!(
-                "ПАМЯТЬ  частная {:.0} МБ   рабочий набор {:.0} МБ (пик {:.0})",
+                "MEMORY  private {:.0} MB   working set {:.0} MB (peak {:.0})",
                 mb(process.private),
                 mb(process.working),
                 mb(process.peak_working)
@@ -106,34 +106,33 @@ impl Hud {
             .unwrap_or_default();
         let value = |bytes: Option<u64>| bytes.map_or("-".to_owned(), |b| format!("{:.0}", mb(b)));
         lines.push(format!(
-            "GPU     загрузка {} %   память выделенная {} МБ, общая {} МБ",
+            "GPU     load {} %   dedicated {} MB, shared {} MB",
             gpu.load.map_or("-".to_owned(), |load| format!("{load:.0}")),
             value(gpu.dedicated),
             value(gpu.shared)
         ));
         let mut textures = 0;
         window.gpu_memory(&mut |_, bytes, _| textures += bytes);
-        let device = window.gpu_specs().map_or(
-            "устройство неизвестно".to_owned(),
-            |specs| {
+        let device = window
+            .gpu_specs()
+            .map_or("unknown device".to_owned(), |specs| {
                 if specs.is_software_emulated {
-                    format!("{} (программный растр)", specs.device_name)
+                    format!("{} (software rasterizer)", specs.device_name)
                 } else {
                     specs.device_name
                 }
-            },
-        );
+            });
         lines.push(format!(
-            "        текстуры движка {:.1} МБ   {device}",
+            "        engine textures {:.1} MB   {device}",
             mb(textures)
         ));
         lines.push(format!(
-            "ОКНО    страница {:.0} x {:.0}   масштаб {:.2}",
+            "WINDOW  page {:.0} x {:.0}   scale {:.2}",
             viewport.0,
             viewport.1,
             window.scale_factor()
         ));
-        lines.push("F3 - скрыть. Панель сама рисует 1 кадр/с.".to_owned());
+        lines.push("F3 - hide. The panel itself draws 1 frame/s.".to_owned());
         self.lines = lines.into_iter().map(SharedString::from).collect();
         if let Some(process) = process {
             self.last = Some((now, process));
