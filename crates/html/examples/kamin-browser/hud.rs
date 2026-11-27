@@ -49,7 +49,7 @@ impl Hud {
         self.lines = vec!["Profiler: first sample in one second".into()];
     }
 
-    fn sample(&mut self, viewport: (f32, f32), window: &Window, cx: &App) {
+    fn sample(&mut self, viewport: (f32, f32), window: &Window) {
         let now = Instant::now();
         let process = process::sample();
         let elapsed = self
@@ -171,7 +171,7 @@ pub fn start(window: &mut Window, cx: &mut Context<Browser>) -> Task<()> {
                     return false;
                 }
                 let viewport = this.viewport;
-                this.hud.sample(viewport, window, cx);
+                this.hud.sample(viewport, window);
                 cx.notify();
                 true
             });
