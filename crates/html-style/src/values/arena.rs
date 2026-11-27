@@ -57,6 +57,15 @@ impl<T> Arena<T> {
     }
 }
 
+impl DocumentValues {
+    /// Clears the frame region of every expression arena.
+    pub(super) fn clear_frame_arenas(&self) {
+        self.calc.clear_frame();
+        self.anchor.clear_frame();
+        self.math.clear_frame();
+    }
+}
+
 static NEXT_OWNER: AtomicU32 = AtomicU32::new(1);
 
 /// Новый номер области.

@@ -36,13 +36,16 @@ impl RootView {
 
     pub(crate) fn frame_editor_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.ed.pending_editor.is_none()
-            && let Some((path, line)) = self.ed.pending_goto.take()
+            && let Some((path, line, column)) = self.ed.pending_goto.take()
             && let Some(tab) = self.ed.editor_tabs.iter().find(|t| t.path == path)
         {
             let input = tab.input.clone();
             input.update(cx, |st, cx| {
                 st.set_cursor_position(
-                    gpui_component::input::Position::new(line.saturating_sub(1), 0),
+                    gpui_component::input::Position::new(
+                        line.saturating_sub(1),
+                        column.saturating_sub(1),
+                    ),
                     window,
                     cx,
                 );

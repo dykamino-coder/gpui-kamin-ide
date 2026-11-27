@@ -46,6 +46,40 @@ fn shifted_geometry(
     matrix.translation[1] += -m[1][0] * x + (1.0 - m[1][1]) * y;
 }
 
+/// A scroll move of a marked primitive by `offset` (`scroll_marks`): an
+/// identity matrix moves with its translation, as `primitive` moves it;
+/// another is built again from its `pivot`, moved, by the function a fresh
+/// paint at the new offset runs, so both give the same bits. Returns the
+/// pivot of the moved geometry. A marked primitive without the pivot its
+/// matrix needs refused the move (`ScrollRefusal::Transform`).
+pub(in crate::scene) fn scrolled(
+    primitive: &mut Primitive,
+    offset: Point<ScaledPixels>,
+    pivot: Option<&TransformPivot>,
+) -> Option<TransformPivot> {
+    if offset == Point::default() {
+        return pivot.cloned();
+    }
+    let exact = primitive.transformation().is_none_or(TransformationMatrix::moves_exactly);
+    let Some(moved) = pivot.map(|pivot| pivot.moved(offset)).filter(|_| !exact) else {
+        debug_assert!(exact, "a scroll move of a matrix without its pivot");
+        self::primitive(primitive, offset, None);
+        return pivot.map(|pivot| pivot.moved(offset));
+    };
+    let (rect, matrix) = match primitive {
+        Primitive::Gradient(g) => (&mut g.quad.bounds, &mut g.quad.transformation),
+        Primitive::Quad(p) => (&mut p.bounds, &mut p.transformation),
+        Primitive::MonochromeSprite(p) => (&mut p.bounds, &mut p.transformation),
+        Primitive::SubpixelSprite(p) => (&mut p.bounds, &mut p.transformation),
+        Primitive::PolychromeSprite(p) => (&mut p.bounds, &mut p.transformation),
+        _ => unreachable!("a primitive without a matrix moves exactly"),
+    };
+    rect.origin += offset;
+    *matrix = moved.matrix();
+    mask(primitive.content_mask_mut(), offset, None);
+    Some(moved)
+}
+
 pub(in crate::scene) fn primitive(
     primitive: &mut Primitive,
     offset: Point<ScaledPixels>,
@@ -156,6 +190,37 @@ mod tests {
         // The transform origin's x is unchanged by vertical scrolling:
         // a fresh skewY has this exact matrix, without -1680 in its inverse.
         assert_eq!(quad.transformation, matrix);
+    }
+
+    /// A scroll move conjugating the finished `f32` matrix rounds again and
+    /// misses the fresh bits; the pivot builds them.
+    #[test]
+    fn a_scrolled_rotation_takes_the_fresh_bits_from_its_pivot() {
+        let (c, s) = (0.9575, 0.2883);
+        let linear = [[c, -s], [s, c]];
+        let pivot_at = |y: f32| TransformPivot::new(linear, [0.0; 2], (point(px(73.0), px(y)), [27.0, 42.0]), 1.0, (None, None));
+        let mut conjugation_missed = 0;
+        for d in [-40.0_f32, -120.0, -360.0, -1680.0, 80.0] {
+            let pivot = pivot_at(486.0);
+            let quad = |matrix| Primitive::Quad(Quad {
+                bounds: Bounds { origin: point(ScaledPixels(73.0), ScaledPixels(486.0)), size: size(ScaledPixels(90.0), ScaledPixels(60.0)) },
+                transformation: matrix,
+                ..Default::default()
+            });
+            let offset = point(ScaledPixels(0.0), ScaledPixels(d));
+            let fresh = pivot_at(486.0 + d).matrix();
+            let mut conjugated = quad(pivot.matrix());
+            primitive(&mut conjugated, offset, None);
+            let Primitive::Quad(conjugated) = conjugated else { unreachable!() };
+            conjugation_missed += (conjugated.transformation.translation.map(f32::to_bits) != fresh.translation.map(f32::to_bits)) as usize;
+            let mut moved = quad(pivot.matrix());
+            let held = scrolled(&mut moved, offset, Some(&pivot));
+            let Primitive::Quad(moved) = moved else { unreachable!() };
+            assert_eq!(moved.transformation.translation.map(f32::to_bits), fresh.translation.map(f32::to_bits), "step {d}");
+            assert_eq!(moved.bounds.origin.y.0, 486.0 + d);
+            assert_eq!(held.map(|held| held.matrix()), Some(fresh));
+        }
+        assert!(conjugation_missed > 0, "the conjugated matrix should miss the fresh bits");
     }
 
     #[test]

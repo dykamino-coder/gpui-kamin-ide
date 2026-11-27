@@ -114,7 +114,6 @@ pub(super) fn flex(g: &ResetFlex) -> bool {
         justify_self_own_axis: _,
         justify_self_physical: _,
         align_self_last: _,
-        align_self_decl: _,
         justify_self_last: _,
         align_items_last: _,
         justify_items_last: _,

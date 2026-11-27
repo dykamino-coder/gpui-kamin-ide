@@ -1,5 +1,6 @@
 //! Windows text shaping, font selection and glyph rasterization through DirectWrite.
 
+mod blank_runs;
 mod css_weight;
 mod fallbacks;
 
@@ -746,7 +747,11 @@ impl DirectWriteState {
     fn shaping_ranges(&self, font_runs: &[FontRun]) -> usize {
         let mut ranges = 0;
         let mut applied: Option<&FontRun> = None;
-        for run in font_runs.iter().filter(|r| r.len > 0) {
+        // KaminIDE patch: blank runs draw no glyph run (`blank_runs`).
+        for run in font_runs
+            .iter()
+            .filter(|r| r.len > 0 && !blank_runs::is_blank(r.font_size))
+        {
             let joins = applied.is_some_and(|a| {
                 let (x, y) = (&self.fonts[run.font_id.0], &self.fonts[a.font_id.0]);
                 !run.break_ligatures
@@ -766,21 +771,38 @@ impl DirectWriteState {
     /// KaminIDE patch: `layout_line` appending its glyph runs to `out`, glyph
     /// indices offset by `index_base`; returns width, ascent and descent.
     /// `own`: `out` holds only this line, so runs split back from folded
-    /// ranges go into a list sized like the drawn one.
+    /// ranges go into a list sized like the drawn one. Every run carries its
+    /// own em size, so the line size is not consulted.
     #[allow(clippy::too_many_arguments)]
     fn layout_line_into(
         &mut self,
         components: &DirectWriteComponents,
         text: &str,
-        font_size: Pixels,
+        _font_size: Pixels,
         font_runs: &[FontRun],
         index_base: usize,
         out: &mut Vec<ShapedRun>,
         own: bool,
     ) -> Result<(Pixels, Pixels, Pixels)> {
-        if font_runs.is_empty() {
+        // KaminIDE patch: a line of blank runs has no glyph, advance or
+        // extent and is not shaped (`blank_runs`).
+        if font_runs
+            .iter()
+            .all(|run| blank_runs::is_blank(run.font_size))
+        {
             return Ok((px(0.), px(0.), px(0.)));
         }
+        // KaminIDE patch: the em size each run is shaped at; `prev` is the
+        // size of the run before it (`blank_runs::stand_in`).
+        let shaping_size = |index: usize, prev: Option<f32>| {
+            let size = font_runs[index].font_size;
+            if blank_runs::is_blank(size) {
+                let next = font_runs.get(index + 1).map(|run| run.font_size.as_f32());
+                blank_runs::stand_in(prev, next)
+            } else {
+                size.as_f32()
+            }
+        };
         unsafe {
             self.layout_line_scratch.clear();
             self.layout_line_scratch.extend(text.encode_utf16());
@@ -789,6 +811,8 @@ impl DirectWriteState {
             // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
             // продвижение возьмётся из вертикальных метрик в отрисовщике.
             let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
+            // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
+            let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
             {
                 let mut u8_at = 0usize;
                 let mut u16_at = 0u32;
@@ -802,6 +826,9 @@ impl DirectWriteState {
                         .count() as u32;
                     if self.fonts[run.font_id.0].vert_advance {
                         vert_ranges.push((u16_at, len16));
+                    }
+                    if blank_runs::is_blank(run.font_size) && len16 > 0 {
+                        blank_ranges.push((u16_at, len16));
                     }
                     u8_at += run.len;
                     u16_at += len16;
@@ -827,7 +854,7 @@ impl DirectWriteState {
                         font_info.font_face.GetStretch(),
                         // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
                         // у прогонов он теперь свой.
-                        first_run.font_size.as_f32(),
+                        shaping_size(0, None),
                         &components.locale,
                     )?
                     .cast()?;
@@ -880,7 +907,8 @@ impl DirectWriteState {
             // Настоящая другая грань (свой файл) рвёт шейпинг, как и прежде.
             let mut folded: Vec<(usize, usize, FontId)> = Vec::new();
             let mut applied = font_runs[0].font_id;
-            let mut applied_size = font_runs[0].font_size;
+            let mut applied_size = shaping_size(0, None);
+            let mut prev_size = applied_size;
             for (run_index, run) in font_runs.iter().enumerate().skip(1) {
                 let font_info = &self.fonts[run.font_id.0];
                 let current_text = text
@@ -890,8 +918,10 @@ impl DirectWriteState {
                 utf8_offset += run.len;
                 let current_text_utf16_length = current_text.encode_utf16().count() as u32;
                 let base = &self.fonts[applied.0];
+                let run_size = shaping_size(run_index, Some(prev_size));
+                prev_size = run_size;
                 if !run.break_ligatures
-                    && run.font_size == applied_size
+                    && run_size == applied_size
                     && font_info.font_collection == base.font_collection
                     && font_info.face_key == base.face_key
                     && font_info.features_key == base.features_key
@@ -903,7 +933,7 @@ impl DirectWriteState {
                     continue;
                 }
                 applied = run.font_id;
-                applied_size = run.font_size;
+                applied_size = run_size;
 
                 let collection = &font_info.font_collection;
                 let text_range = DWRITE_TEXT_RANGE {
@@ -916,9 +946,9 @@ impl DirectWriteState {
                 // Upstream's alternating nudge prevents ligatures spanning style runs.
                 // Browser callers opt out to retain CSS boundary shaping (§7.4).
                 let size = if run.break_ligatures && run_index % 2 == 1 {
-                    run.font_size.as_f32().next_up()
+                    run_size.next_up()
                 } else {
-                    run.font_size.as_f32()
+                    run_size
                 };
                 text_layout.SetFontSize(size, text_range)?;
                 text_layout.SetFontStyle(font_info.font_face.GetStyle(), text_range)?;
@@ -967,15 +997,14 @@ impl DirectWriteState {
             // `FontMetrics::descent` знаковый (DirectWrite отдаёт со знаком
             // минус, `direct_write.rs:897`) — берём модуль.
             let (mut ascent, mut descent) = (px(0.), px(0.));
-            for run in font_runs {
+            // KaminIDE patch: a blank run's metrics are scaled to zero.
+            for run in font_runs
+                .iter()
+                .filter(|run| !blank_runs::is_blank(run.font_size))
+            {
                 let m = self.font_metrics(run.font_id);
-                let size = if run.font_size > px(0.) {
-                    run.font_size
-                } else {
-                    font_size
-                };
-                ascent = ascent.max(m.ascent(size));
-                descent = descent.max(m.descent(size).abs());
+                ascent = ascent.max(m.ascent(run.font_size));
+                descent = descent.max(m.descent(run.font_size).abs());
             }
 
             let first = out.len();
@@ -997,6 +1026,7 @@ impl DirectWriteState {
                 index_base,
                 width: 0.0,
                 vert_ranges,
+                blank_ranges,
             };
             let drawn = text_layout.Draw(
                 Some((&raw mut renderer_context).cast::<c_void>().cast_const()),
@@ -1899,6 +1929,9 @@ struct RendererContext<'t, 'a, 'b> {
     /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
     /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
     vert_ranges: Vec<(u32, u32)>,
+    /// KaminIDE patch: UTF-16 ranges of blank runs (`blank_runs`); their
+    /// glyph runs add neither glyphs nor advance.
+    blank_ranges: Vec<(u32, u32)>,
 }
 
 /// KaminIDE patch: знак «умолчательно игнорируемый» по Юникоду — служебный,
@@ -2026,6 +2059,9 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         }
         let desc = unsafe { &*glyphrundescription };
         let context = unsafe { &mut *(clientdrawingcontext.cast::<RendererContext>().cast_mut()) };
+        if blank_runs::in_blank(&context.blank_ranges, desc.textPosition) {
+            return Ok(());
+        }
         let Some(font_face) = glyphrun.fontFace.as_ref() else {
             return Ok(());
         };
@@ -2694,6 +2730,48 @@ mod tests {
         assert_eq!(next, Some((5, 1)));
         let next = analyzer.next();
         assert_eq!(next, None);
+    }
+
+    /// KaminIDE patch: `font-size: 0` text shapes as blank runs (`blank_runs`).
+    #[test]
+    fn zero_size_runs_shape_blank() -> Result<()> {
+        use gpui::FontRun;
+        let text_system = DirectWriteTextSystem::new(None)?;
+        let font_id = text_system.font_id(&Font {
+            family: "Arial".into(),
+            ..Default::default()
+        })?;
+        let run = |len: usize, size: f32| FontRun {
+            break_ligatures: false,
+            len,
+            font_id,
+            font_size: px(size),
+        };
+        let all_blank = text_system.layout_line("abcd", px(0.), &[run(4, 0.)]);
+        assert_eq!(all_blank.width, px(0.));
+        assert_eq!((all_blank.ascent, all_blank.descent), (px(0.), px(0.)));
+        assert!(all_blank.runs.is_empty());
+        assert_eq!(all_blank.len, 4);
+
+        let glyphs = |line: &gpui::LineLayout| -> Vec<usize> {
+            let runs = line.runs.iter();
+            runs.flat_map(|r| r.glyphs.iter().map(|g| g.index)).collect()
+        };
+        let ab = text_system.layout_line("ab", px(16.), &[run(2, 16.)]);
+        let ef = text_system.layout_line("ef", px(16.), &[run(2, 16.)]);
+        let mixed =
+            text_system.layout_line("abcdef", px(16.), &[run(2, 16.), run(2, 0.), run(2, 16.)]);
+        assert_eq!(glyphs(&mixed), vec![0, 1, 4, 5]);
+        assert!((mixed.width - (ab.width + ef.width)).abs() < px(0.01));
+        assert_eq!((mixed.ascent, mixed.descent), (ab.ascent, ab.descent));
+        // The `e` starts where `b` ends: the blank run adds no advance.
+        let e = mixed.runs.iter().flat_map(|r| &r.glyphs).nth(2).unwrap();
+        assert!((e.position.x - ab.width).abs() < px(0.01));
+
+        let leading = text_system.layout_line("cdab", px(0.), &[run(2, 0.), run(2, 16.)]);
+        assert_eq!(glyphs(&leading), vec![2, 3]);
+        assert!((leading.width - ab.width).abs() < px(0.01));
+        Ok(())
     }
 
     #[test]

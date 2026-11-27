@@ -53,16 +53,18 @@ export function usageItems(usage: SessionUsage | undefined, now: number = Date.n
   const items: UsageItem[] = []
   const reported = reportedNote(usage.limitsObservedAt, now)
   for (const w of usage.windows) {
-    if (Date.parse(w.resetsAt) <= now) continue
+    if (w.resetsAt && Date.parse(w.resetsAt) <= now) continue
     const label = SHORT[w.id] ?? w.label
-    const reset = formatReset(w.resetsAt, now)
+    const reset = w.resetsAt ? formatReset(w.resetsAt, now) : ''
+    const remaining = formatPercent(Math.max(0, 100 - w.percent))
+    const resetNotice = w.resetsAt ? `, resets ${new Date(w.resetsAt).toLocaleString()}` : ''
     items.push({
       key: w.id,
       label,
       percent: w.percent,
       reset,
       level: usageLevel(w.percent),
-      title: `${w.label} limit: ${formatPercent(w.percent)} used, resets ${new Date(w.resetsAt).toLocaleString()}${reported}`,
+      title: `${w.label} limit: ${formatPercent(w.percent)} used, ${remaining} remaining${resetNotice}${reported}`,
     })
   }
   if (usage.contextPercent !== null) {

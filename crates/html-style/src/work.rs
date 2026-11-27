@@ -122,6 +122,21 @@ macro_rules! work_cache {
 }
 pub use crate::work_cache as cache;
 
+/// Note a layout unit by the hash of its node and inputs (`inputs::repeat`);
+/// the key is not computed in a normal build.
+#[cfg(feature = "work-counters")]
+#[macro_export]
+macro_rules! work_inputs {
+    ($guard:ident, $key:expr) => {
+        let $guard = $crate::work::repeat($key);
+    };
+}
+#[cfg(not(feature = "work-counters"))]
+#[macro_export]
+macro_rules! work_inputs {
+    ($guard:ident, $key:expr) => {};
+}
+pub use crate::work_inputs as inputs;
 #[cfg(all(test, not(feature = "work-counters")))]
 mod tests {
     #[test]
@@ -131,6 +146,7 @@ mod tests {
         crate::work::switch!(NotEvenAPhase);
         crate::work::cache!(unresolved_value, NotAHit, NotAMiss);
         crate::work::time!(_timer, NotEvenACounter);
+        crate::work::inputs!(_unit, panic!("must disappear"));
     }
 
     #[test]

@@ -118,7 +118,7 @@ impl ImageStore {
         }
     }
 
-    fn free_slot(&mut self, id: ImageId) {
+    pub(super) fn free_slot(&mut self, id: ImageId) {
         let cell = &mut self.slots[id.slot as usize];
         let Some(Entry { request, .. }) = cell.entry.take() else {
             return;

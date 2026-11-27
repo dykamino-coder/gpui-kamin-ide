@@ -60,3 +60,22 @@ describe('INC-2026-0051: разметка не протекает в адрес 
     expect(hrefOf(html)).toBe('https://example.com/plain?a=1&amp;b=2')
   })
 })
+
+describe('Windows project links', () => {
+  it('keeps the file location and cursor separate from external browser links', () => {
+    const html = renderMarkdown('[Example](<C:/Fixture/пример file.ts:4:2>) and [site](https://example.test/)', { workspaceLinks: true })
+    expect(html).toContain('data-workspace-location="C:/Fixture/пример file.ts:4:2"')
+    expect(html).toContain('>Example</a>')
+    expect(html).toContain('data-ext-link href="https://example.test/"')
+  })
+  it('keeps an example inside inline code literal', () => {
+    const html = renderMarkdown('`[Example](C:/Fixture/sample.ts)`', { workspaceLinks: true })
+    expect(html).toContain('[Example](C:/Fixture/sample.ts)</code>')
+    expect(html).not.toContain('data-workspace-location')
+  })
+  it('accepts a local file URL and leaves network shares without workspace navigation', () => {
+    expect(renderMarkdown('[Sample](file:///C:/Fixture/test.ts#L2)', { workspaceLinks: true })).toContain('data-workspace-location="file:///C:/Fixture/test.ts#L2"')
+    expect(renderMarkdown('[Sample](file:///C:/Fixture/test.ts#L2)')).not.toContain('data-workspace-location')
+    expect(renderMarkdown('[Share](file://other-host/Fixture/test.ts)', { workspaceLinks: true })).not.toContain('data-workspace-location')
+  })
+})

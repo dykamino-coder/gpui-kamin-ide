@@ -7,6 +7,7 @@ export interface OpenSession {
   cwd: string
   conversationId?: string
   sessionTitle?: string
+  workspacePermission?: string
   label: string
   createdAt: string
 }
@@ -54,8 +55,8 @@ export class WorkspaceSessionState {
 
   save(tabs: OpenSession[], active: string | null): void {
     const state: SessionState = { version: 1, scope: this.scope, active,
-      tabs: tabs.map(({ id, cwd, conversationId, sessionTitle, label, createdAt }) =>
-        ({ id, cwd, conversationId, sessionTitle, label, createdAt })) }
+      tabs: tabs.map(({ id, cwd, conversationId, sessionTitle, label, createdAt, workspacePermission }) =>
+        ({ id, cwd, conversationId, sessionTitle, label, createdAt, workspacePermission })) }
     const temporary = `${this.file}.tmp`
     fs.writeFileSync(temporary, JSON.stringify(state), { mode: 0o600 })
     fs.renameSync(temporary, this.file)

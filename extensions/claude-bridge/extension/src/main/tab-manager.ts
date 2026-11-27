@@ -31,6 +31,7 @@ export interface Tab {
 /** Trusted host restoration metadata; never accepted directly from renderer IPC. */
 interface TabCreationOptions {
   background?: boolean
+  workspacePermission?: unknown
   restored?: Pick<Tab, 'id' | 'label' | 'createdAt'>
 }
 
@@ -108,8 +109,9 @@ export class TabManager {
     this.folderCounters.set(folderName, counter)
     const label = opts.restored?.label ?? `#${counter}`
 
-    const connection = new ConnectionManager(config, this.window, tabId)
+    const connection = new ConnectionManager(config, this.window, tabId, undefined, opts.workspacePermission)
 
+    connection.prepareHookSnapshot = () => this.triggerSync(config, false)
     const tab: Tab = {
       id: tabId,
       config,
@@ -392,8 +394,9 @@ export class TabManager {
     this.folderCounters.set(folderName, counter)
     const label = opts.restored?.label ?? `#${counter}`
 
-    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId)
+    const connection = new ConnectionManager(config, this.window, tabId, config.conversationId, opts.workspacePermission)
 
+    connection.prepareHookSnapshot = () => this.triggerSync(config, false)
     const tab: Tab = {
       id: tabId,
       config,
@@ -496,20 +499,23 @@ export class TabManager {
    * Sync user-level and project-level data to the bridge server.
    * Called before WS connect; debounced internally (60s).
    */
-  private async triggerSync(config: ConnectionConfig): Promise<void> {
-    if (!config.serverUrl || !config.token) return
+  private async triggerSync(config: ConnectionConfig, fresh = true): Promise<boolean> {
+    if (!config.serverUrl || !config.token) return false
     try {
       // Every new chat resets the debounce so skills/agents/commands the user
       // just added in the UI hit the server before the session actually starts.
-      resetSyncTimers()
+      if (fresh) resetSyncTimers()
       // Sync user data (skills, agents, CLAUDE.md, settings.json)
-      await syncUserData(config.serverUrl, config.token)
+      const user = await syncUserData(config.serverUrl, config.token)
       // Sync project data if CWD is set
       if (config.cwd) {
-        await syncProjectData(config.serverUrl, config.token, config.cwd)
+        const project = await syncProjectData(config.serverUrl, config.token, config.cwd)
+        return user.ok && project.ok
       }
+      return user.ok
     } catch (err) {
       tabLog(`triggerSync error: ${err instanceof Error ? err.message : String(err)}`)
+      return false
     }
   }
 
@@ -568,6 +574,9 @@ export class TabManager {
       effort: tab.effort,
       model: tab.model,
       engine: tab.connection.getEngine(),
+      workspacePermission: tab.connection.getWorkspacePermission(),
+      claudePermissions: tab.connection.claudePermissions,
+      codexCollaboration: tab.connection.codexCollaboration,
       sessionTitle: tab.sessionTitle,
       conversationId: tab.conversationId,
       sessionId: connection.sessionId,

@@ -73,7 +73,15 @@ impl Scene {
 
     pub(crate) fn insert_group_surface(&mut self, surface: PaintSurface, unbounded: bool) {
         let before = self.paint_operations.len();
+        let (group, marked) = (surface.group as usize, self.scroll.open.is_some());
         self.insert_primitive(surface);
+        // KaminIDE patch: under a node a label is dropped only outside its own
+        // mask (`mark_scrolled`), which moves with it: it shows at no offset.
+        if marked && !self.scroll.lost && self.paint_operations.len() == before {
+            if let Some(dropped) = group.checked_sub(1).and_then(|at| self.groups.get_mut(at)) {
+                dropped.label_dropped = true;
+            }
+        }
         if unbounded && self.paint_operations.len() > before {
             if let Some(capture) = &mut self.segment_capture {
                 capture.unclipped_groups.push(capture.primitives.len() - 1);

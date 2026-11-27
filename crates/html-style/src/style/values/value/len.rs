@@ -31,6 +31,11 @@ pub enum Len {
     /// сумма внутри варианта раздувала `Len` с 12 до 40 байт, и рекурсивный
     /// рендер вложенного документа переполнял стек (vh-support-transform-*).
     Calc(CalcId),
+    /// A math function over units that are comparable only once their bases
+    /// exist (`clamp(2rem, 1rem + 5vw, 4rem)`, css-values-4 §10.10): an INDEX
+    /// of the tree in the arena (`calc_tree`). It folds in the same cascade
+    /// steps as `Calc` and is a plain length by the computed value.
+    Math(MathId),
     /// `1.5vh`, `50vw` — доля высоты и ширины окна. Размер окна известен
     /// только сборщику дерева, поэтому единица доживает до него как есть.
     Vh(f32),
@@ -96,7 +101,10 @@ impl Len {
     pub fn parse_mixed(raw: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let s = raw.trim();
         if let Some(inner) = s.strip_prefix("calc(").and_then(|r| r.strip_suffix(')')) {
-            return eval_calc(inner, vcx)?.collapse_mixed(vcx);
+            return match eval_calc(inner, vcx) {
+                Some(sum) => sum.collapse_mixed(vcx),
+                None => super::calc_tree::deferred(inner, vcx),
+            };
         }
         Len::parse(s, vcx)
     }

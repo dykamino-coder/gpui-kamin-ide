@@ -100,7 +100,7 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Result<ScrollReplay, ScrollRefusal> {
-        self.located_scroll_plan(prepaint, paint, layer).map_err(|(refusal, _)| refusal)
+        self.located_scroll_plan(prepaint, paint, layer).map_err(|(refusal, _, _)| refusal)
     }
 
     /// Why `scroll_replay_plan` refuses, for DevTools: the refusal, the line
@@ -112,7 +112,7 @@ impl Window {
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
     ) -> Option<(ScrollRefusal, &'static core::panic::Location<'static>, String)> {
-        let (refusal, site) = self.located_scroll_plan(prepaint, paint, layer).err()?;
+        let (refusal, site, refused) = self.located_scroll_plan(prepaint, paint, layer).err()?;
         let range = prepaint.range();
         let detail = match refusal {
             ScrollRefusal::DeferredDraws => {
@@ -135,26 +135,60 @@ impl Window {
                 let sites: Vec<String> = sites.into_iter().map(|(site, n)| format!("{n} x {site}")).collect();
                 format!("{} deferred draws in the record, refused: {}", draws.len(), sites.join("; "))
             }
+            ScrollRefusal::Transform => match refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) {
+                Some(node) => format!(
+                    "scroll node {:?} (frame node {}) moves a primitive drawn through a matrix a shift cannot move exactly, without the inputs of that matrix (painted under another transform, or copied from a record)",
+                    node.id,
+                    refused.unwrap_or_default()
+                ),
+                None => String::new(),
+            },
+            ScrollRefusal::Fractional => match refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) {
+                Some(node) => format!(
+                    "scroll node {:?} (frame node {}) moves by a fraction of a device pixel: offset {:?} -> {:?}",
+                    node.id,
+                    refused.unwrap_or_default(),
+                    node.offset,
+                    node.source.offset()
+                ),
+                None => String::new(),
+            },
             ScrollRefusal::Node => {
-                let first = range.start.scroll_nodes_index;
-                let nodes = &self.rendered_frame.scroll_nodes[first..range.end.scroll_nodes_index];
+                // The node the plan refused, wherever it is (the record's, or a
+                // deferred draw's), and what decided it.
+                let Some(node) = refused.and_then(|at| self.rendered_frame.scroll_nodes.get(at)) else {
+                    return Some((refusal, site, String::new()));
+                };
                 let content = layer.map(LayerHandle::content);
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
-                let space = source.scroll.space;
-                nodes
-                    .iter()
-                    .find_map(|node| {
-                        let why = match () {
-                            _ if node.paint.is_none() && (node.anchored || node.source.offset() != node.offset) => {
-                                "no paint, and it moves apart from its parent"
-                            }
-                            _ if node.torn => "torn",
-                            _ if node.paint.is_some() && node.painted_in != Some(space) => "painted in another scene",
-                            _ => return None,
-                        };
-                        Some(format!("scroll node {:?}: {why}", node.id))
-                    })
-                    .unwrap_or_default()
+                let groups = source.groups.get(paint.groups()).unwrap_or_default();
+                let scene = match node.painted_in {
+                    None => "no paint".to_string(),
+                    Some(space) if space == source.scroll.space => "the record's scene".into(),
+                    Some(space) if space == self.rendered_frame.scene.scroll.space => "the frame's scene".into(),
+                    Some(space) => match groups.iter().position(|group| group.scene.scroll.space == space) {
+                        Some(at) => format!("the scene of group {at} of {}", groups.len()),
+                        None => self.describe_space(space),
+                    },
+                };
+                let why = if node.torn {
+                    "torn"
+                } else if node.paint.is_none() {
+                    "no paint, and it moves apart from its parent into a clip that shows"
+                } else {
+                    "painted in a scene the part does not own"
+                };
+                format!(
+                    "scroll node {:?} (frame node {}): {why}; painted in {scene}, anchored {}, offset {:?} -> {:?}, chain {:?}, clip {:?}, parent {:?}",
+                    node.id,
+                    refused.unwrap_or_default(),
+                    node.anchored,
+                    node.offset,
+                    node.source.offset(),
+                    node.chain,
+                    node.clip,
+                    node.parent
+                )
             }
             ScrollRefusal::Unmarked
             | ScrollRefusal::UnmarkedLayer
@@ -174,16 +208,43 @@ impl Window {
                 let source = content.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
                 let groups = paint.groups();
                 let scenes = paint.range().start.scene_index..paint.range().end.scene_index;
-                let labels = source.group_label_nodes(scenes, groups.clone());
+                let labels = source.group_labels(scenes.clone(), groups.clone());
                 // The first group whose scene a moved copy cannot take, and why.
                 let refused = source.groups.get(groups.clone()).unwrap_or_default().iter().zip(&labels).enumerate().find_map(
                     |(at, (group, label))| {
                         let scene = &group.scene;
                         let all = 0..scene.paint_operations.len();
                         let why = match label {
-                            None if !scene.scroll.marks.is_empty() => "its label is under no node, its commands are".into(),
-                            None => return None,
-                            Some(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
+                            crate::scene::GroupLabel::Unmarked if !scene.scroll.marks.is_empty() => {
+                                // Where the group is and whose commands it holds, so the
+                                // journal ties it to the nodes listed for the frame.
+                                let mut nodes: Vec<_> = scene.scroll.marks.iter().map(|mark| mark.node).collect();
+                                nodes.dedup();
+                                nodes.truncate(4);
+                                // Where its label is: in the record's commands, in a group's, or neither.
+                                let number = (groups.start + at + 1) as u32;
+                                use crate::scene::{PaintOperation as Op, Primitive as P};
+                                let label_of = |scene: &crate::scene::Scene| {
+                                    scene.paint_operations.iter().enumerate().find_map(|(op, operation)| {
+                                        let kind = match operation {
+                                            Op::Primitive(P::Surface(s)) if s.group == number => "drawn",
+                                            Op::Dormant(p) if matches!(&**p, P::Surface(s) if s.group == number) => "dormant",
+                                            Op::Reservoir(r) if r.run.items.iter().any(|item| matches!(&item.piece, crate::scene::scroll_marks::Piece::Primitive(P::Surface(s)) if s.group == number)) => "in a reservoir",
+                                            _ => return None,
+                                        };
+                                        let marked = scene.scroll.marks.iter().any(|mark| mark.op as usize == op);
+                                        Some(format!("{kind} label at command {op} (marked {marked})"))
+                                    })
+                                };
+                                let found = match label_of(source) {
+                                    Some(op) => format!("{op} of the frame's scene (record {scenes:?})"),
+                                    None => source.groups.iter().enumerate().find_map(|(k, g)| label_of(&g.scene).map(|op| format!("{op} of group {k} (its label {:?})", labels.get(k.wrapping_sub(groups.start)))))
+                                        .unwrap_or_else(|| "label in no command".into()),
+                                };
+                                format!("its label is under no node ({found}), its commands are: bounds {:?}, nodes {nodes:?}", group.bounds)
+                            }
+                            crate::scene::GroupLabel::Unmarked | crate::scene::GroupLabel::Hidden => return None,
+                            crate::scene::GroupLabel::Under(_) => match scene.scroll_check(&all, std::iter::once(all.clone())) {
                                 Ok(()) => return None,
                                 Err(_) => scene.scroll_refusal_detail(std::iter::once(all.clone())).unwrap_or_default(),
                             },
@@ -204,10 +265,15 @@ impl Window {
         prepaint: &RetainedPrepaint,
         paint: &RetainedPaint,
         layer: Option<&LayerHandle>,
-    ) -> Result<ScrollReplay, (ScrollRefusal, &'static core::panic::Location<'static>)> {
+    ) -> Result<ScrollReplay, (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>)> {
         #[track_caller]
-        fn at(refusal: ScrollRefusal) -> (ScrollRefusal, &'static core::panic::Location<'static>) {
-            (refusal, core::panic::Location::caller())
+        fn at(refusal: ScrollRefusal) -> (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>) {
+            (refusal, core::panic::Location::caller(), None)
+        }
+        // A refusal by one node names it (`explain_scroll_refusal`).
+        #[track_caller]
+        fn at_node(refusal: ScrollRefusal, index: usize) -> (ScrollRefusal, &'static core::panic::Location<'static>, Option<usize>) {
+            (refusal, core::panic::Location::caller(), Some(index))
         }
         let (prepaints, paints) = (prepaint.range(), paint.range());
         let scene = &self.next_frame.scene;
@@ -225,7 +291,7 @@ impl Window {
         // deferred draw it registered (`scroll_deferred`), in the frame's scene:
         // the deferred pass paints outside the layer the record may paint in.
         let main = prepaints.start.scroll_nodes_index..prepaints.end.scroll_nodes_index;
-        let mut parts = vec![(main.clone(), scenes.clone(), source)];
+        let mut parts = vec![(main.clone(), scenes.clone(), source, paint.groups())];
         // Draws nested in a draw (registered while it prepainted) follow it.
         let mut owners = vec![None];
         let mut draws: Vec<usize> = (prepaints.start.deferred_draws_index..prepaints.end.deferred_draws_index).collect();
@@ -235,14 +301,21 @@ impl Window {
             let draw = &self.rendered_frame.deferred_draws[index];
             let (nodes, painted, nested) = self.deferred_scroll_part(draw).map_err(|refusal| at(refusal))?;
             plan.draws.insert(index, parts.len() - 1);
-            parts.push((nodes, painted, &self.rendered_frame.scene));
+            parts.push((nodes, painted, &self.rendered_frame.scene, draw.groups.clone()));
             owners.push(Some(draw.scroll.owner));
             draws.extend(nested);
             next += 1;
         }
         plan.main = main.len();
         let mut slots = FxHashMap::<u32, usize>::default();
-        for (part, (indices, span, scene)) in parts.iter().enumerate() {
+        // Nodes replayed unmoved in a retained layer the parts draw.
+        let mut layered_ids = Vec::new();
+        for (part, (indices, span, scene, groups)) in parts.iter().enumerate() {
+            // A node painted inside one of the part's composition groups has
+            // its ranges in the group's scene: the group's copy moves its
+            // commands (`groups_scrollable` checks them) and lands it (`replay_groups`).
+            let grouped = scene.groups.get(groups.clone()).unwrap_or_default();
+            let group_of = |node: &super::scroll_nodes::ScrollNodeRecord| grouped.iter().find(|group| Some(group.scene.scroll.space) == node.painted_in);
             if let Some(owner) = owners[part] {
                 // The owner moves the draw: it must be planned before it.
                 if owner.is_some_and(|owner| !slots.contains_key(&owner)) {
@@ -250,13 +323,25 @@ impl Window {
                 }
                 plan.deferred.push(plan.nodes.len()..plan.nodes.len() + indices.len());
             }
+            let mut drawn = None;
             for (index, node) in indices.clone().zip(&self.rendered_frame.scroll_nodes[indices.clone()]) {
-                // Every paint range of the node in its part's scene, deferred ones too.
+                // Every paint range of the node in its part's scene, deferred ones too,
+                // or in the scene of a retained layer the part's commands draw: the copy
+                // draws the layer as it was, so the node replays there only unmoved, and
+                // the layer only when all it holds stays (`still_layers`).
                 let painted = node.paint.is_some();
-                if (painted && node.painted_in != Some(scene.scroll.space)) || node.torn {
-                    return Err(at(ScrollRefusal::Node));
+                let group = group_of(node);
+                let foreign = painted && node.painted_in != Some(scene.scroll.space) && group.is_none();
+                let layered = foreign
+                    && node.painted_in.is_some_and(|space| {
+                        let drawn = drawn.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
+                        drawn.contains(&space)
+                    });
+                if (foreign && !layered) || node.torn {
+                    return Err(at_node(ScrollRefusal::Node, index));
                 }
-                if !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
+                let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());
+                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
                     return Err(at(ScrollRefusal::NodeRange));
                 }
                 let new = node.source.offset();
@@ -269,15 +354,33 @@ impl Window {
                     None => node.clip,
                 };
                 let shift = node.source.replay_shift(parent_shift, node.offset, new);
+                // A matrix without its pivot is drawn only where it was built.
+                if node.unpivoted && shift != Point::default() {
+                    return Err(at_node(ScrollRefusal::Transform, index));
+                }
+                // A move by a fraction of a device pixel lands its paint between
+                // the pixels a fresh paint there snaps to: it is built. A
+                // follower (a scrollbar thumb, a sticky box) is placed by its
+                // own function of the offset, unsnapped, so it moves exactly.
+                let device = shift.scale(self.scale_factor());
+                let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { .. });
+                if !follower && (device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0) {
+                    return Err(at_node(ScrollRefusal::Fractional, index));
+                }
                 // A node whose children painted nothing as it (hidden, or painted
                 // under the node open around them) is replayed only moving with its
                 // parent: whatever it shows then moves as its parent's commands.
-                if !painted && shift != parent_shift {
-                    return Err(at(ScrollRefusal::Node));
+                // Moving apart, it shows nothing while its clip stays empty (an
+                // anchor past the viewport edge, whose children were never painted).
+                if (!painted && shift != parent_shift && !clip.is_empty()) || (layered && (shift != Point::default() || clip != node.clip)) {
+                    return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let interest = moved(node.interest, shift);
                 if !inside(clip, interest) {
                     return Err(at(ScrollRefusal::Interest));
+                }
+                if layered {
+                    layered_ids.push(node.id);
                 }
                 slots.insert(index as u32, plan.nodes.len());
                 plan.by_id.insert(node.id, plan.nodes.len());
@@ -286,13 +389,20 @@ impl Window {
         }
         // Paint that follows a moved node's offset outside it (a thumb).
         let moved = |id: ScrollNodeId| plan.by_id.get(&id).is_some_and(|&at| plan.nodes[at].shift != Point::default());
-        if parts.iter().any(|(_, span, scene)| self.scroll_dependents_moved(scene.scroll.space, span, moved)) {
+        // In the part's scene, or in the scene of one of its groups.
+        let dependents = |(_, span, scene, groups): &(_, Range<usize>, &crate::scene::Scene, Range<usize>)| {
+            self.scroll_dependents_moved(scene.scroll.space, span, moved)
+                || scene.groups.get(groups.clone()).unwrap_or_default().iter().any(|group| {
+                    self.scroll_dependents_moved(group.scene.scroll.space, &(0..group.scene.paint_operations.len()), moved)
+                })
+        };
+        if parts.iter().any(dependents) {
             return Err(at(ScrollRefusal::Dependent));
         }
         // The groups the record made move with their labels' nodes (`group_replay`).
         let groups = paint.groups();
         if !groups.is_empty() {
-            let labels = source.group_label_nodes(scenes.clone(), groups.clone());
+            let labels = source.group_labels(scenes.clone(), groups.clone());
             if layer.is_some() || !source.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                 return Err(at(ScrollRefusal::Groups));
             }
@@ -304,18 +414,21 @@ impl Window {
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             let groups = draw.groups.clone();
             if !groups.is_empty() {
-                let labels = frame.scene.group_label_nodes(painted, groups.clone());
+                let labels = frame.scene.group_labels(painted, groups.clone());
                 if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                     return Err(at(ScrollRefusal::Groups));
                 }
             }
         }
-        for (part, (indices, span, scene)) in parts.iter().enumerate() {
-            let nodes = self.rendered_frame.scroll_nodes[indices.clone()].iter().flat_map(|node| node.ranges());
+        let still = super::scroll_still::still_layers(&layered_ids, parts.iter().map(|(_, span, scene, _)| &scene.paint_operations[span.clone()]));
+        for (part, (indices, span, scene, _)) in parts.iter().enumerate() {
+            // Nodes painted in a group are checked with its scene (`groups_scrollable`).
+            let nodes = self.rendered_frame.scroll_nodes[indices.clone()].iter();
+            let nodes = nodes.filter(|node| node.painted_in == Some(scene.scroll.space)).flat_map(|node| node.ranges());
             // A deferred draw's commands are all under its owner or its nodes.
             let whole = (part > 0).then(|| span.clone());
             // The scene's check (`scene::scroll_marks::check`) decided: its caller is the site.
-            scene.scroll_check(span, whole.into_iter().chain(nodes)).map_err(|refusal| at(refusal))?;
+            scene.scroll_check_still(span, whole.into_iter().chain(nodes), &|space| still.contains(&space)).map_err(|refusal| at(refusal))?;
         }
         Ok(plan)
     }
@@ -372,7 +485,7 @@ impl Window {
         let scale = self.scale_factor();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         // Groups come from the rendered frame (`plan_scrolled_replay` refuses a layer's).
-        let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), record.groups());
+        let labels = self.rendered_frame.scene.group_labels(scenes.clone(), record.groups());
         let groups = self.replay_groups(record.groups(), Some((&labels, &node)));
         self.replay_scenes_scrolled(scenes, plan);
         self.next_frame.scene.relabel = 0;
@@ -408,6 +521,7 @@ impl Window {
         edges.dedup();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
+        let from = self.next_frame.scene.paint_operations.len();
         self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
@@ -415,6 +529,26 @@ impl Window {
         for (index, paint, _, main) in mine {
             self.next_frame.scroll_nodes[index as usize].land(land(paint.start)..land(paint.end), here, main);
         }
+        self.land_in_drawn_layers(from);
+    }
+
+    /// Ranges and dependents in the scene of a retained layer the copy from
+    /// command `from` on draws stay where they are: the layer holds them as
+    /// they were (`scroll_still`), as `land_scroll_paint` keeps them.
+    fn land_in_drawn_layers(&mut self, from: usize) {
+        let frame = &mut self.next_frame;
+        let drawn = super::scroll_nodes::layer_spaces(&frame.scene.paint_operations[from..]);
+        if drawn.is_empty() {
+            return;
+        }
+        let landing = std::mem::take(&mut frame.scroll_paint.landing);
+        let (held, rest): (Vec<_>, Vec<_>) = landing.into_iter().partition(|entry| drawn.contains(&entry.2));
+        frame.scroll_paint.landing = rest;
+        for (index, paint, space, main) in held {
+            frame.scroll_nodes[index as usize].land(paint, space, main);
+        }
+        let kept: Vec<_> = self.rendered_frame.scroll_dependents.iter().filter(|entry| drawn.contains(&entry.2)).copied().collect();
+        self.next_frame.scroll_dependents.extend(kept);
     }
 }
 

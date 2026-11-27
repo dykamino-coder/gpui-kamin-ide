@@ -46,6 +46,7 @@ mod loader_cover;
 mod loader_schedule;
 mod loader_tick;
 pub(crate) mod rename_transition;
+mod reveal_slot;
 pub(crate) mod session_stash;
 pub mod splitters;
 pub mod term_grid;
