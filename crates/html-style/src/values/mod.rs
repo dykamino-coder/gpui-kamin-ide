@@ -119,7 +119,8 @@ impl DocumentValues {
     }
 
     /// The values of the next revision of the document of `previous`: new
-    /// in everything but its initial style groups (`InitialStyles`).
+    /// in everything but its initial style groups (`InitialStyles`) and the
+    /// SVG rasters of its image store (`ImageStore::continuing`).
     pub fn continuing(
         previous: &Self,
         media: Media,
@@ -127,7 +128,9 @@ impl DocumentValues {
             Weak<DocumentValues>,
         ) -> Rc<dyn kamin_font_facts::font_facts::FontFactsProvider>,
     ) -> Rc<Self> {
-        Self::with_initial(media, fonts, previous.initial_styles.clone())
+        let next = Self::with_initial(media, fonts, previous.initial_styles.clone());
+        next.images.replace(previous.images.borrow().continuing());
+        next
     }
 
     fn with_initial(
