@@ -1,6 +1,6 @@
 //! Исходный normal layout при известной ширине; снимок отделён от живых LayoutId.
 
-use crate::dom::Element;
+use crate::dom::{Element, Node};
 use crate::hooks::{IntoHooked, Wrap};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
@@ -10,7 +10,33 @@ use std::rc::Rc;
 mod native;
 mod source;
 pub(crate) use native::Native;
-pub(crate) use source::{collect, collect_paged, contains_oof_box, contains_positioned};
+pub(crate) use source::{collect, collect_nodes, collect_paged};
+
+pub(crate) fn contains_positioned(e: &Element) -> bool {
+    any_box(e, |e| crate::layout::box_kind::out_of_flow(&e.style.used()))
+}
+
+/// An absolute or fixed box (an independent continuation flow) in 's subtree.
+pub(crate) fn contains_oof_box(e: &Element) -> bool {
+    any_box(e, |e| {
+        crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
+    })
+}
+
+/// A box of 's subtree,  included, that satisfies hit.
+pub(super) fn any_box(e: &Element, hit: impl Fn(&Element) -> bool) -> bool {
+    let mut pending = vec![e];
+    while let Some(e) = pending.pop() {
+        if hit(e) {
+            return true;
+        }
+        pending.extend(e.children.iter().filter_map(|n| match n {
+            Node::Element(c) => Some(c),
+            _ => None,
+        }));
+    }
+    false
+}
 
 pub(crate) type PageSource = Rc<dyn Fn((f32, f32), &mut Window, &mut App) -> Rc<super::Snapshot>>;
 
@@ -18,14 +44,16 @@ type Build = Box<dyn FnOnce(RenderOpts) -> AnyElement>;
 
 /// Построение, которому нужен Window, переносится в request_layout, без prepaint.
 pub(crate) fn defer(
-    kids: Vec<Element>,
+    kids: Vec<Node>,
     parent: BoxStyle,
     width: Option<f32>,
     mut opts: RenderOpts,
     build: impl FnOnce(RenderOpts) -> AnyElement + 'static,
 ) -> AnyElement {
     if opts.cx.position.geometry_record.is_some()
-        || !kids.iter().any(contains_positioned)
+        || !kids
+            .iter()
+            .any(|n| matches!(n, Node::Element(e) if contains_positioned(e)))
         || width.is_none()
     {
         return build(opts);
@@ -45,7 +73,7 @@ pub(crate) fn defer(
 }
 
 struct Original {
-    kids: Vec<Element>,
+    kids: Vec<Node>,
     parent: BoxStyle,
     width: f32,
     opts: RenderOpts,
@@ -60,7 +88,7 @@ impl Wrap for Original {
             .expect("original layout built the fragment tree")
     }
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let geometry = collect(&self.kids, &self.parent, self.width, &self.opts, window, cx);
+        let geometry = collect_nodes(&self.kids, &self.parent, self.width, &self.opts, window, cx);
         self.opts.cx.position.geometry = Some(geometry);
         let build = self
             .build
@@ -103,7 +131,7 @@ mod tests {
                 let built = Rc::new(Cell::new(false));
                 let observed = built.clone();
                 let mut deferred = defer(
-                    vec![kid],
+                    vec![Node::Element(kid)],
                     opts.root_style(),
                     Some(100.),
                     opts,

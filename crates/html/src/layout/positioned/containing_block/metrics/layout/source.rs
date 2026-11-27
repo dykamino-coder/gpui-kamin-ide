@@ -1,6 +1,7 @@
 //! Исходная native-раскладка: обычный flow либо page area с собственным ICB.
 
 use super::super::{Snapshot, record::Recorder};
+use super::{any_box, contains_oof_box};
 use crate::dom::{Element, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
@@ -8,35 +9,6 @@ use gpui::{
     App, AvailableSpace, Bounds, Div, IntoElement, ParentElement, Styled, Window, div, px, size,
 };
 use std::rc::Rc;
-
-pub(crate) fn contains_positioned(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if crate::layout::box_kind::out_of_flow(&e.style.used()) {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            crate::dom::Node::Element(c) => Some(c),
-            _ => None,
-        }));
-    }
-    false
-}
-
-/// An absolute or fixed box (an independent continuation flow) in 's subtree.
-pub(crate) fn contains_oof_box(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position) {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            crate::dom::Node::Element(c) => Some(c),
-            _ => None,
-        }));
-    }
-    false
-}
 
 pub(crate) fn collect(
     kids: &[Element],
@@ -55,6 +27,18 @@ pub(crate) fn collect(
         window,
         cx,
     )
+}
+
+/// A host's child list in normal flow, which records direct positioned children's static positions.
+pub(crate) fn collect_nodes(
+    kids: &[Node],
+    parent: &BoxStyle,
+    width: f32,
+    opts: &RenderOpts,
+    window: &mut Window,
+    cx: &mut App,
+) -> Rc<Snapshot> {
+    collect_in(Children::Nodes(kids), parent, width, None, opts, window, cx)
 }
 
 pub(crate) fn collect_paged(
@@ -158,17 +142,9 @@ fn collect_in(
 
 /// An anchor-positioned box (`anchor::resolve::needs_deferred`) in the subtree.
 fn contains_anchored(e: &Element) -> bool {
-    let mut pending = vec![e];
-    while let Some(e) = pending.pop() {
-        if crate::layout::positioned::anchor::resolve::needs_deferred(&e.style.used()) {
-            return true;
-        }
-        pending.extend(e.children.iter().filter_map(|n| match n {
-            crate::dom::Node::Element(c) => Some(c),
-            _ => None,
-        }));
-    }
-    false
+    any_box(e, |e| {
+        crate::layout::positioned::anchor::resolve::needs_deferred(&e.style.used())
+    })
 }
 
 /// One source tree laid out at `width` with its own recorder.
@@ -203,7 +179,20 @@ fn build(
         .as_ref()
         .map(|_| crate::layout::page::paged::PagedBuild::begin());
     opts.frag.paged = paged.clone();
-    let children = kids.build(parent, &opts);
+    let host_cb = (page.is_none()
+        && matches!(kids, Children::Nodes(_))
+        && crate::text::inline::establishes_cb(parent))
+    .then(|| {
+        crate::layout::positioned::containing_block::LayerScope::cb(
+            &opts.cx.position.state,
+            crate::style::computed::stacking::fixed_cb_layer_box(parent),
+            None,
+        )
+    });
+    let mut children = kids.build(parent, &opts);
+    if let Some(scope) = host_cb {
+        children.extend(scope.finish());
+    }
     let is_page = page.is_some();
     let mut frame = match page {
         Some((height, frame)) => frame()

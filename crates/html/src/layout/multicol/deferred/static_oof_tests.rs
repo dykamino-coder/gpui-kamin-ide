@@ -39,11 +39,19 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
             assert_eq!(measured.source.len(), 6);
             assert_eq!(measured.stackable.as_ref().unwrap().len(), 2);
             assert_eq!(measured.oof_static.iter().map(|(at, _)| *at).collect::<Vec<_>>(), [0, 1, 2, 2]);
-            let geometry = crate::layout::positioned::containing_block::metrics::layout::collect(
+            let geometry = crate::layout::positioned::containing_block::metrics::layout::collect_nodes(
                 &measured.source, &merged, 100., &opts, window, app,
             );
             assert_eq!(geometry.flows.len(), 4);
-            assert_eq!(geometry.flows[1].metrics.static_rect.unwrap().origin.y, px(first_height));
+            // Block flow records the static position as the box's normal
+            // place; `static_rect` is the alignment rectangle of flex and grid.
+            let asides: Vec<_> = host.children.iter().filter_map(|n| match n {
+                Node::Element(c) if c.tag == "aside" => Some(c.node_id), _ => None,
+            }).collect();
+            let flow = |id: u64| geometry.flows.iter().find(|f| f.id == id).expect("positioned flow");
+            for (id, y) in asides.iter().zip([0., first_height, first_height + 20., 7.]) {
+                assert_eq!(flow(*id).metrics.normal_rect().origin.y, px(y), "static position of {id}");
+            }
             let recipe = Recipe::new(&host, &merged, &opts, 2, Some(70.), StackAxis::Horizontal, None).unwrap();
             let mut stack = ColumnStack::new(Vec::new(), 2, 10., Some(70.), None, None, None, Default::default());
             recipe.prepare(&mut stack, 100., window, app);
@@ -64,13 +72,13 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
             let oof = stack.oof.plan.borrow();
             assert_eq!(oof.failure, None);
             assert_eq!(oof.completion, Completion::Complete);
-            for (source, expected) in stack.oof.geometry.flows.iter().zip([
+            for (id, expected) in asides.iter().zip([
                 (0, 0., 0., 85.), (0, first_height, 0., 85.),
                 (1, 20., 0., 85.), (0, 7., 0., 85.),
             ]) {
-                let fragments: Vec<_> = oof.iter().filter(|f| f.kid == source.id as usize)
+                let fragments: Vec<_> = oof.iter().filter(|f| f.kid == *id as usize)
                     .map(|f| (f.col, f.y, f.from, f.h)).collect();
-                assert_eq!(fragments, [expected]);
+                assert_eq!(fragments, [expected], "fragments of {id}");
             }
         }
         gpui::div()

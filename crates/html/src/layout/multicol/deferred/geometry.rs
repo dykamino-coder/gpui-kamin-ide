@@ -15,17 +15,9 @@ impl Recipe {
             && self.rows.is_none()
             && opts.cx.position.geometry_record.is_none()
         {
-            let source = host
-                .children
-                .iter()
-                .filter_map(|n| match n {
-                    Node::Element(c) => Some(c.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>();
             opts.cx.position.geometry = Some(
-                crate::layout::positioned::containing_block::metrics::layout::collect(
-                    &source,
+                crate::layout::positioned::containing_block::metrics::layout::collect_nodes(
+                    &host.children,
                     &self.merged,
                     width,
                     &opts,

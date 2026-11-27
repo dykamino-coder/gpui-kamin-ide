@@ -4,7 +4,7 @@
 //! `GapRulePainter`, щупы статической позиции внепоточных детей и их заместители после
 //! стопки, слой содержащего блока `position: fixed` и флоаты соседями стопки.
 
-use crate::dom::Element;
+use crate::dom::{Element, Node};
 use crate::layout::build_contracts::Layer;
 use crate::layout::fragment::FlowMargins;
 use crate::layout::multicol::gap_rules::multicol_gap_rule_spec;
@@ -46,7 +46,7 @@ pub(crate) fn multicol_column_stack(
     nest_rows: Option<f32>,
     nest_phase: f32,
     nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
-    source: Vec<Element>,
+    source: Vec<Node>,
     direct_oof: Vec<Element>,
     oof_static: Vec<(usize, Element)>,
     nested_whole: std::cell::RefCell<Vec<u64>>,

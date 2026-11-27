@@ -17,7 +17,8 @@ pub(crate) struct StackPlan {
     /// Ширина колонки для раскладки копии таблицы-ребёнка до укладки
     /// (`column_layout_width`).
     pub(crate) layout_col_w: Option<f32>,
-    pub(crate) source: Vec<Element>,
+    /// The host's child list for the containing-block source layout.
+    pub(crate) source: Vec<Node>,
     pub(crate) direct_oof: Vec<Element>,
     pub(crate) oof_static: Vec<(usize, Element)>,
     pub(crate) nested_whole: std::cell::RefCell<Vec<u64>>,
@@ -220,13 +221,7 @@ pub(crate) fn plan_at(
         });
     let oof_static = positioned::statics(ge, stackable.as_deref());
     let source = if !col_vert && rows.is_none() {
-        ge.children
-            .iter()
-            .filter_map(|n| match n {
-                Node::Element(c) => Some(c.clone()),
-                _ => None,
-            })
-            .collect()
+        ge.children.to_vec()
     } else {
         Vec::new()
     };
