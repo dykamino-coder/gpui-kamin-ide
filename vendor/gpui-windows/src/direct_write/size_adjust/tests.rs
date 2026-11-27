@@ -1,6 +1,12 @@
 //! Native DirectWrite shaping with different primary and fallback metrics.
 
-use super::*;
+use super::super::DirectWriteTextSystem;
+use super::aspect;
+use anyhow::Result;
+use gpui::{
+    FontFallbacks, FontId, FontRun, FontSizeAdjustment, FontSizeMetric, GlyphId, LineLayout,
+    PlatformTextSystem, px,
+};
 use std::borrow::Cow;
 
 fn system() -> Result<DirectWriteTextSystem> {
