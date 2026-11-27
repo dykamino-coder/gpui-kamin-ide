@@ -1,11 +1,11 @@
-//! Единицы окна в стиле коробки: решаются без копии общего вычисленного стиля,
-//! когда решать нечего; отступы распространённых линий оформления (`decors`)
-//! решаются в собственном списке коробки.
+//! Viewport units of a box style: resolved without copying the shared computed style when
+//! nothing needs resolving; the insets of propagated decorations (`decors`) are resolved in
+//! the box's own list.
 
 use super::*;
 
 impl BoxStyle {
-    /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
+    /// `Computed::resolve_viewport` without a copy of the shared style when nothing needs resolving.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
         // A paint with no lengths to resolve stays shared (`SharedPaints`).
         if let Some(paint) = &mut self.paint
@@ -21,7 +21,7 @@ impl BoxStyle {
         self.resolve_decors_viewport(viewport, vcx);
     }
 
-    /// `Computed::resolve_decor_inset_viewport` без копии общего стиля, когда решать нечего.
+    /// `Computed::resolve_decor_inset_viewport` without a copy of the shared style when nothing needs resolving.
     pub fn resolve_decor_inset_viewport(
         &mut self,
         viewport: (f32, f32),

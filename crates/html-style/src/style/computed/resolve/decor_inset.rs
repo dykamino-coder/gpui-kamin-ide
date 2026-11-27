@@ -104,7 +104,7 @@ pub(super) fn walk_decor_inset_lengths<T: Target>(
     );
 }
 
-// Запись меняет отступ, если длина сворачивается или ещё не приведена к точкам и долям.
+// A write changes an inset whose length folds or is not yet reduced to pixels and percentages.
 fn pending(pair: &[DecorLen; 2], moves: impl Fn(Len) -> bool, vcx: ValueCx<'_>) -> bool {
     pair.iter().any(|&value| {
         matches!(value, DecorLen::Raw(raw) if moves(raw)) || map_length(value, |_| {}, vcx) != value
