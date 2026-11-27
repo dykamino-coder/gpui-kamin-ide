@@ -18,6 +18,8 @@ use taffy::{TaffyTree, TraversePartialTree as _, tree::NodeId};
 pub(super) struct Noted {
     /// Roots laid out in this pass, in their order (`compute_layout`).
     pub(super) roots: Vec<NodeId>,
+    /// Full layouts this pass's roots computed (`taffy::compute::performed_layouts`).
+    pub(super) performed: u64,
     last: FxHashMap<u64, u64>,
 }
 
@@ -33,6 +35,7 @@ impl Noted {
     pub(super) fn pass<T>(&mut self, tree: &TaffyTree<T>) -> LayoutInputCounts {
         let mut counts = LayoutInputCounts {
             passes: 1,
+            performed: std::mem::take(&mut self.performed),
             ..Default::default()
         };
         let mut now = FxHashMap::with_capacity_and_hasher(self.last.len(), Default::default());
@@ -197,5 +200,33 @@ mod tests {
         noted.roots.push(root_two);
         let other_nodes = noted.pass(&two);
         assert_eq!((other_nodes.boxes, other_nodes.same), (4, 4));
+    }
+
+    /// Full layouts a pass at `width` performs after a pass at `200`, for the
+    /// window-wide root of `tree` whose fixed box has width `fixed`.
+    fn performed_after_a_width_change(fixed: Dimension, width: f32) -> u64 {
+        let (mut tree, root, _) = tree();
+        let mut style = tree.style(root).unwrap().clone();
+        style.size.width = percent(1.0);
+        tree.set_style(root, style).unwrap();
+        let fixed_box = tree.child_at_index(root, 0).unwrap();
+        let mut style = tree.style(fixed_box).unwrap().clone();
+        style.size.width = fixed;
+        tree.set_style(fixed_box, style).unwrap();
+        layout(&mut tree, root, 200.0);
+        let before = taffy::compute::performed_layouts();
+        layout(&mut tree, root, width);
+        taffy::compute::performed_layouts() - before
+    }
+
+    #[test]
+    fn a_width_change_lays_out_again_only_the_boxes_that_read_the_width() {
+        // The root and its half-width item follow the window; the 40 px box and
+        // its leaf read nothing of it and keep their cached layout.
+        assert_eq!(performed_after_a_width_change(length(40.0), 300.0), 2);
+        // A box of a percentage width follows it too; its 40 px leaf does not.
+        assert_eq!(performed_after_a_width_change(percent(0.2), 300.0), 3);
+        // The same width again performs nothing.
+        assert_eq!(performed_after_a_width_change(length(40.0), 200.0), 0);
     }
 }

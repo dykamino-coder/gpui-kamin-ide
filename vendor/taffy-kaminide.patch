@@ -15577,7 +15577,7 @@ index 0000000000000000000000000000000000000000..ad64f34ac49f5d9d825e41a0f21fe0cb
 +    }
 +}
 diff --git a/vendor/taffy/src/compute/mod.rs b/vendor/taffy/src/compute/mod.rs
-index 1366d8349f1668c19f04bd2d85e88422918b6604..780b2639d5ab2abf013364aaf9373f1b3f151e78
+index 1366d8349f1668c19f04bd2d85e88422918b6604..68490cc0b8f9f647839d3f0e4f4bcdee94048926
 --- a/vendor/taffy/src/compute/mod.rs
 +++ b/vendor/taffy/src/compute/mod.rs
 @@ -24,0 +25,3 @@
@@ -15846,10 +15846,27 @@ index 1366d8349f1668c19f04bd2d85e88422918b6604..780b2639d5ab2abf013364aaf9373f1b
 +
 @@ -311,0 +256 @@
 +        relative_offset: Point::ZERO,
-@@ -355 +300 @@
+@@ -351,0 +297,4 @@
++    #[cfg(feature = "std")]
++    if inputs.run_mode == RunMode::PerformLayout {
++        PERFORMED.with(|count| count.set(count.get() + 1));
++    }
+@@ -355 +304 @@
 -    tree.cache_store(node, &inputs, computed_size_and_baselines.clone());
 +    store_cached_layout(tree, node, &inputs, &computed_size_and_baselines);
-@@ -360,0 +306,13 @@
+@@ -360,0 +310,25 @@
++}
++
++#[cfg(feature = "std")]
++std::thread_local! {
++    static PERFORMED: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
++}
++
++/// KaminIDE patch: full layouts this thread computed rather than took from a node's cache
++/// (`compute_cached_layout`), since the thread began: the layout work, by box.
++#[cfg(feature = "std")]
++pub fn performed_layouts() -> u64 {
++    PERFORMED.with(core::cell::Cell::get)
 +}
 +
 +// KaminIDE patch: cloning/moving the large output is a completion operation,
@@ -16716,7 +16733,7 @@ index 0000000000000000000000000000000000000000..157032f11f2667247413377829edc088
 +    }
 +}
 diff --git a/vendor/taffy/src/style/mod.rs b/vendor/taffy/src/style/mod.rs
-index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912fb2f607c
+index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..4499e1f9ee9813d07897c8dc7d3ad2d07ce6d6ed
 --- a/vendor/taffy/src/style/mod.rs
 +++ b/vendor/taffy/src/style/mod.rs
 @@ -5,0 +6 @@
@@ -17079,7 +17096,34 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    /// KaminIDE patch: `<line-name-list>` подсеточных рядов.
 +    #[cfg(feature = "grid")]
 +    pub subgrid_row_names: Option<SubgridLineNames<S>>,
-@@ -880,0 +1217,8 @@
+@@ -874,0 +1211,26 @@
++    /// KaminIDE patch: whether this box's own layout reads the size of its parent: anything
++    /// but a length or `auto` in its sizes, padding, border or margins (a percentage or
++    /// `calc()` resolves against the parent), or a percentage basis it takes from the
++    /// parent (`percent_basis_from_parent`). Its children read its own size instead, so a
++    /// box that reads nothing of it lays out the same under a parent of any size
++    /// (`TaffyTree` keys its cache without it).
++    pub fn reads_parent_size(&self) -> bool {
++        fn read(value: CompactLength) -> bool {
++            !matches!(value.tag(), CompactLength::LENGTH_TAG | CompactLength::AUTO_TAG)
++        }
++        let sizes = [self.size.width.into_raw(), self.size.height.into_raw()];
++        let limits = [self.min_size, self.max_size].map(|s| [s.width.into_raw(), s.height.into_raw()]);
++        let rect = |r: Rect<CompactLength>| [r.left, r.right, r.top, r.bottom];
++        let edges = [
++            rect(self.margin.map(|v| v.into_raw())),
++            rect(self.padding.map(|v| v.into_raw())),
++            rect(self.border.map(|v| v.into_raw())),
++        ];
++        #[cfg(feature = "flexbox")]
++        let from_parent = self.percent_basis_from_parent;
++        #[cfg(not(feature = "flexbox"))]
++        let from_parent = false;
++        from_parent
++            || sizes.into_iter().chain(limits.into_iter().flatten()).chain(edges.into_iter().flatten()).any(read)
++    }
++
+@@ -880,0 +1243,8 @@
 +        item_max_size_keywords: Size {
 +            width: None,
 +            height: None,
@@ -17088,7 +17132,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +            width: None,
 +            height: None,
 +        },
-@@ -884 +1228,7 @@
+@@ -884 +1254,7 @@
 -        overflow: Point { x: Overflow::Visible, y: Overflow::Visible },
 +        grid_axis_reversed: None,
 +        #[cfg(feature = "block_layout")]
@@ -17097,20 +17141,20 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +            x: Overflow::Visible,
 +            y: Overflow::Visible,
 +        },
-@@ -885,0 +1236 @@
+@@ -885,0 +1262 @@
 +        kamin_scrollbars: ScrollbarLayout::NONE,
-@@ -886,0 +1238 @@
+@@ -886,0 +1264 @@
 +        contained_intrinsic_size: Size::NONE,
-@@ -899,0 +1252 @@
+@@ -899,0 +1278 @@
 +        aspect_ratio_preferred_size: Size::NONE,
-@@ -902,0 +1256,6 @@
+@@ -902,0 +1282,6 @@
 +        #[cfg(any(feature = "flexbox", feature = "grid"))]
 +        safe_alignment: (false, false, false, false),
 +        calc_size: [None; 4],
 +        calc_size_content_box: false,
 +        calc_size_basis: [Dimension::auto(); 6],
 +        calc_size_max: [None; 2],
-@@ -923,0 +1283,20 @@
+@@ -923,0 +1309,20 @@
 +        flex_balance_lines: 0,
 +        #[cfg(feature = "flexbox")]
 +        flex_cross_reverse: false,
@@ -17131,12 +17175,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        #[cfg(feature = "grid")]
 +        subgrid: 0,
 +        #[cfg(feature = "flexbox")]
-@@ -940,0 +1320,4 @@
+@@ -940,0 +1346,4 @@
 +        subgrid_column_names: None,
 +        #[cfg(feature = "grid")]
 +        subgrid_row_names: None,
 +        #[cfg(feature = "grid")]
-@@ -962,0 +1346,7 @@
+@@ -962,0 +1372,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        self.calc_size
 +    }
@@ -17144,13 +17188,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    fn calc_size_content_box(&self) -> bool { self.calc_size_content_box }
 +
 +    #[inline(always)]
-@@ -974,0 +1365,5 @@
+@@ -974,0 +1391,5 @@
 +    #[cfg(feature = "block_layout")]
 +    fn is_flow_root(&self) -> bool {
 +        matches!(self.display, Display::FlowRoot)
 +    }
 +    #[inline(always)]
-@@ -989,0 +1385,7 @@
+@@ -989,0 +1411,7 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        self.grid_axis_reversed
 +    }
@@ -17158,12 +17202,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        self.block_flow
 +    }
-@@ -1018,0 +1421,4 @@
+@@ -1018,0 +1447,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        self.aspect_ratio_preferred_size
 +    }
 +    #[inline(always)]
-@@ -1034,0 +1441,33 @@
+@@ -1034,0 +1467,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        self.safe_alignment
 +    }
@@ -17197,12 +17241,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        self.subgrid
 +    }
 +    #[inline(always)]
-@@ -1036,0 +1476,4 @@
+@@ -1036,0 +1502,4 @@
 +    }
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        self.contained_intrinsic_size
-@@ -1070,0 +1514,7 @@
+@@ -1070,0 +1540,7 @@
 +    fn calc_size(&self) -> [Option<(f32, f32, f32, f32)>; 4] {
 +        (*self).calc_size()
 +    }
@@ -17210,12 +17254,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    fn calc_size_content_box(&self) -> bool { (*self).calc_size_content_box() }
 +
 +    #[inline(always)]
-@@ -1078,0 +1529,4 @@
+@@ -1078,0 +1555,4 @@
 +    fn is_flow_root(&self) -> bool {
 +        (*self).is_flow_root()
 +    }
 +    #[inline(always)]
-@@ -1093,0 +1548,7 @@
+@@ -1093,0 +1574,7 @@
 +    fn grid_axis_reversed(&self) -> Option<Size<bool>> {
 +        (*self).grid_axis_reversed()
 +    }
@@ -17223,12 +17267,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    fn block_flow(&self) -> Option<BlockFlow> {
 +        (*self).block_flow()
 +    }
-@@ -1126,0 +1588,4 @@
+@@ -1126,0 +1614,4 @@
 +    fn aspect_ratio_preferred_size(&self) -> Size<Option<f32>> {
 +        (*self).aspect_ratio_preferred_size()
 +    }
 +    #[inline(always)]
-@@ -1142,0 +1608,33 @@
+@@ -1142,0 +1634,33 @@
 +    fn safe_alignment(&self) -> (bool, bool, bool, bool) {
 +        (*self).safe_alignment()
 +    }
@@ -17262,17 +17306,17 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        (*self).subgrid()
 +    }
 +    #[inline(always)]
-@@ -1145,0 +1644,4 @@
+@@ -1145,0 +1670,4 @@
 +    #[inline(always)]
 +    fn contained_intrinsic_size(&self) -> Size<Option<f32>> {
 +        (*self).contained_intrinsic_size()
 +    }
-@@ -1281,0 +1784,4 @@
+@@ -1281,0 +1810,4 @@
 +    fn is_table_container(&self) -> bool {
 +        self.item_is_table
 +    }
 +    #[inline(always)]
-@@ -1294,0 +1801,16 @@
+@@ -1294,0 +1827,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        self.flex_balance_lines
 +    }
@@ -17289,12 +17333,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1314,0 +1837,4 @@
+@@ -1314,0 +1863,4 @@
 +    fn is_table_container(&self) -> bool {
 +        (*self).is_table_container()
 +    }
 +    #[inline(always)]
-@@ -1327,0 +1854,16 @@
+@@ -1327,0 +1880,16 @@
 +    fn flex_balance_lines(&self) -> u16 {
 +        (*self).flex_balance_lines()
 +    }
@@ -17311,12 +17355,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        (*self).percent_basis_from_parent()
 +    }
 +    #[inline(always)]
-@@ -1351,0 +1894,4 @@
+@@ -1351,0 +1920,4 @@
 +    fn is_line_row(&self) -> bool {
 +        self.percent_basis_from_parent
 +    }
 +    #[inline(always)]
-@@ -1362,0 +1909,13 @@
+@@ -1362,0 +1935,13 @@
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
 +        self.item_is_table
@@ -17330,12 +17374,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        self.item_min_size_keywords
 +    }
-@@ -1371,0 +1931,4 @@
+@@ -1371,0 +1957,4 @@
 +    fn is_line_row(&self) -> bool {
 +        (*self).is_line_row()
 +    }
 +    #[inline(always)]
-@@ -1381,0 +1945,13 @@
+@@ -1381,0 +1971,13 @@
 +    }
 +    #[inline(always)]
 +    fn is_table_item(&self) -> bool {
@@ -17349,13 +17393,13 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +    #[inline(always)]
 +    fn min_size_keywords(&self) -> Size<Option<AvailableSpace>> {
 +        (*self).min_size_keywords()
-@@ -1407 +1983,4 @@
+@@ -1407 +2009,4 @@
 -        = core::iter::Map<core::slice::Iter<'a, GridTrackVec<S>>, fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>>
 +        = core::iter::Map<
 +        core::slice::Iter<'a, GridTrackVec<S>>,
 +        fn(&GridTrackVec<S>) -> core::slice::Iter<'_, S>,
 +    >
-@@ -1482 +2061,14 @@
+@@ -1482 +2087,14 @@
 -        Some(self.grid_template_row_names.iter().map(|names| names.iter()))
 +        Some(
 +            self.grid_template_row_names
@@ -17371,12 +17415,12 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        } else {
 +            self.subgrid_row_names.clone()
 +        }
-@@ -1577,0 +2170,4 @@
+@@ -1577,0 +2196,4 @@
 +    #[inline(always)]
 +    fn subgrid_line_names(&self, columns: bool) -> Option<SubgridLineNames<Self::CustomIdent>> {
 +        (*self).subgrid_line_names(columns)
 +    }
-@@ -1635,0 +2232,30 @@
+@@ -1635,0 +2258,30 @@
 +            #[cfg(any(feature = "flexbox", feature = "grid"))]
 +            safe_alignment: (false, false, false, false),
 +            calc_size: [None; 4],
@@ -17407,7 +17451,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +            subgrid_column_names: None,
 +            #[cfg(feature = "grid")]
 +            subgrid_row_names: None,
-@@ -1639,0 +2266,8 @@
+@@ -1639,0 +2292,8 @@
 +            item_max_size_keywords: Size {
 +                width: None,
 +                height: None,
@@ -17416,17 +17460,17 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +                width: None,
 +                height: None,
 +            },
-@@ -1646,0 +2281,3 @@
+@@ -1646,0 +2307,3 @@
 +            grid_axis_reversed: None,
 +            #[cfg(feature = "block_layout")]
 +            block_flow: None,
-@@ -1648,0 +2286 @@
+@@ -1648,0 +2312 @@
 +            kamin_scrollbars: Default::default(),
-@@ -1649,0 +2288 @@
+@@ -1649,0 +2314 @@
 +            contained_intrinsic_size: Size::NONE,
-@@ -1683,0 +2323 @@
+@@ -1683,0 +2349 @@
 +            aspect_ratio_preferred_size: Size::NONE,
-@@ -1808 +2448,10 @@
+@@ -1808 +2474,10 @@
 -        assert_type_size::<Style<String>>(560);
 +        // KaminIDE patch: account for the fork's calc-size basis/max payloads,
 +        // containment, subgrid names, lanes, and writing-mode/baseline hints.
@@ -17438,7 +17482,7 @@ index a9e57f33ddda0d2c8bc4d1aea48b082c3e1f3b6f..fa4c4fd131b67f900742dc35b183b912
 +        assert_type_size::<Option<(f32, bool)>>(8);
 +        assert_type_size::<Size<Option<f32>>>(16);
 +        assert_type_size::<Style<String>>(1016);
-@@ -1814,3 +2463,3 @@
+@@ -1814,3 +2489,3 @@
 -        assert_type_size::<Style<Arc<str>>>(528);
 -    }
 -}
@@ -27552,7 +27596,7 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a830472a003a4
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..f5b50e69da4ef438e5d4acd656a77e476746d0e9
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
 @@ -7,0 +8,22 @@
@@ -27933,10 +27977,35 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +611 @@
+@@ -213,0 +565,14 @@
++/// KaminIDE patch: the input a node's cached results are keyed by. A node whose own
++/// layout reads nothing of its parent's size (`Style::reads_parent_size`) is the same
++/// under a parent of any size, so its key leaves that size out: a width change of the
++/// window lays out again only the boxes that follow it, not a fixed box and all inside
++/// it (Blink `CalculateSizeBasedLayoutCacheStatus`, decided here by what the box reads).
++/// A measured leaf's function is opaque (it is handed the parent size) and keeps it.
++fn cache_key(node: &NodeData, input: &LayoutInput) -> LayoutInput {
++    let mut key = *input;
++    if !node.has_context && !node.style.reads_parent_size() {
++        key.parent_size = Size::NONE;
++    }
++    key
++}
++
+@@ -217 +582,3 @@
+-        self.nodes[node_id.into()].cache.get(input)
++        let node = &mut self.nodes[node_id.into()];
++        let key = cache_key(node, input);
++        node.cache.get(&key)
+@@ -221 +588,3 @@
+-        self.nodes[node_id.into()].cache.store(input, layout_output)
++        let node = &mut self.nodes[node_id.into()];
++        let key = cache_key(node, input);
++        node.cache.store(&key, layout_output)
+@@ -260 +629 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -277,0 +629,20 @@
+@@ -277,0 +647,20 @@
 +    /// Nodes touched by gutter settling; reset when this layout/query view ends.
 +    pub(crate) scrollbar_touched: kamin_scrollbar_dependencies::ScrollbarTouched,
 +    /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
@@ -27957,7 +28026,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        self.0.capacity() * core::mem::size_of::<(NodeId, crate::compute::ContributionMemo)>()
 +            + self.0.iter().map(|(_, memo)| memo.heap_bytes()).sum::<usize>()
 +    }
-@@ -283,0 +655,19 @@
+@@ -283,0 +673,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -27977,10 +28046,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        )
 +    }
 +
-@@ -287 +677 @@
+@@ -287 +695 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +690,13 @@
+@@ -299,0 +708,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -27994,7 +28063,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            }
 +        }
 +
-@@ -306,33 +709,28 @@
+@@ -306,33 +727,28 @@
 -            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
 -            let has_children = tree.child_count(node_id) > 0;
 -
@@ -28056,7 +28125,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +738,36 @@
+@@ -340,3 +756,36 @@
 -
 -            output
 -        })
@@ -28096,7 +28165,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -397,6 +828,12 @@
+@@ -397,6 +846,12 @@
 -        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
 -    }
 -
@@ -28115,7 +28184,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline(always)]
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -419,0 +857,7 @@
+@@ -419,0 +875,7 @@
 +    fn take_intrinsic_size_change(&mut self, node_id: NodeId) -> bool {
 +        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
 +        let changed = *state & kamin_scrollbar_dependencies::SIZE_DIRTY != 0;
@@ -28123,7 +28192,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        changed
 +    }
 +
-@@ -442,0 +887,12 @@
+@@ -442,0 +905,12 @@
 +    }
 +
 +    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
@@ -28136,7 +28205,17 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline(always)]
 +    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
 +        self.taffy.nodes[node_id.into()].style.kamin_scrollbars.proxy()
-@@ -520,0 +977,34 @@
+@@ -451 +925,3 @@
+-        self.taffy.nodes[node_id.into()].cache.get(input)
++        let node = &mut self.taffy.nodes[node_id.into()];
++        let key = cache_key(node, input);
++        node.cache.get(&key)
+@@ -455 +931,3 @@
+-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
++        let node = &mut self.taffy.nodes[node_id.into()];
++        let key = cache_key(node, input);
++        node.cache.store(&key, layout_output)
+@@ -520,0 +999,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -28171,7 +28250,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -541,0 +1032,22 @@
+@@ -541,0 +1054,22 @@
 +    fn take_contribution_memo(&mut self, node_id: NodeId) -> Option<crate::compute::ContributionMemo> {
 +        #[cfg(test)]
 +        if self.taffy.contribution_memo_use.off {
@@ -28194,7 +28273,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        self.grid_memos.0.push((node_id, memo));
 +    }
 +
-@@ -544,0 +1057,21 @@
+@@ -544,0 +1079,21 @@
 +    }
 +
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
@@ -28216,10 +28295,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            node.subgrid_tracks = tracks.map(Box::new);
 +            node.cache.clear();
 +        }
-@@ -565 +1098 @@
+@@ -565 +1120 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1120,25 @@
+@@ -586,0 +1142,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -28245,7 +28324,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        })
 +    }
 +
-@@ -606 +1164,34 @@
+@@ -606 +1186,34 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -28281,12 +28360,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1211,2 @@
+@@ -620,2 +1233,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1222,6 @@
+@@ -631,2 +1244,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -28295,12 +28374,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1240,2 @@
+@@ -645,2 +1262,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1262,115 @@
+@@ -666,0 +1284,115 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -28416,7 +28495,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1584,23 @@
+@@ -873,0 +1606,23 @@
 +    /// KaminIDE patch: the digest of the inputs of the node's most recent full layout
 +    /// (`Cache::performed_input_key`), `None` before its first one or for a removed node.
 +    pub fn performed_input_key(&self, node: NodeId) -> Option<u64> {
@@ -28440,12 +28519,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        }
 +    }
 +
-@@ -897,2 +1630,2 @@
+@@ -897,2 +1652,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1642,31 @@
+@@ -908,0 +1664,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -28477,10 +28556,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1677 @@
+@@ -913 +1699 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1681,8 @@
+@@ -916,0 +1703,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -28489,7 +28568,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1749,10 @@
+@@ -977 +1771,10 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -28501,7 +28580,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            grid_memos: Default::default(),
 +            measure_function,
 +        };
-@@ -984,0 +1766,26 @@
+@@ -984,0 +1788,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -28528,10 +28607,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1795 @@
+@@ -988 +1817 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1810,6 @@
+@@ -1003 +1832,6 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
@@ -28539,7 +28618,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1842,54 @@
+@@ -1029,0 +1864,54 @@
 +    }
 +
 +    #[test]
@@ -28594,7 +28673,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2409,81 @@
+@@ -1543 +2431,81 @@
 -}
 +
 +    #[test]

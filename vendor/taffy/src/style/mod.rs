@@ -1208,6 +1208,32 @@ pub struct Style<S: CheapCloneStr = DefaultCheapStr> {
 }
 
 impl<S: CheapCloneStr> Style<S> {
+    /// KaminIDE patch: whether this box's own layout reads the size of its parent: anything
+    /// but a length or `auto` in its sizes, padding, border or margins (a percentage or
+    /// `calc()` resolves against the parent), or a percentage basis it takes from the
+    /// parent (`percent_basis_from_parent`). Its children read its own size instead, so a
+    /// box that reads nothing of it lays out the same under a parent of any size
+    /// (`TaffyTree` keys its cache without it).
+    pub fn reads_parent_size(&self) -> bool {
+        fn read(value: CompactLength) -> bool {
+            !matches!(value.tag(), CompactLength::LENGTH_TAG | CompactLength::AUTO_TAG)
+        }
+        let sizes = [self.size.width.into_raw(), self.size.height.into_raw()];
+        let limits = [self.min_size, self.max_size].map(|s| [s.width.into_raw(), s.height.into_raw()]);
+        let rect = |r: Rect<CompactLength>| [r.left, r.right, r.top, r.bottom];
+        let edges = [
+            rect(self.margin.map(|v| v.into_raw())),
+            rect(self.padding.map(|v| v.into_raw())),
+            rect(self.border.map(|v| v.into_raw())),
+        ];
+        #[cfg(feature = "flexbox")]
+        let from_parent = self.percent_basis_from_parent;
+        #[cfg(not(feature = "flexbox"))]
+        let from_parent = false;
+        from_parent
+            || sizes.into_iter().chain(limits.into_iter().flatten()).chain(edges.into_iter().flatten()).any(read)
+    }
+
     /// The [`Default`] layout, in a form that can be used in const functions
     pub const DEFAULT: Style<S> = Style {
         dummy: core::marker::PhantomData,
