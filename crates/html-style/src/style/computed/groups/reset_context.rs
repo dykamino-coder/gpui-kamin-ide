@@ -154,8 +154,6 @@ pub struct ResetContext {
     pub inline_display: Option<bool>,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
-    /// CSS ancestor clipping inside a continuous fragmentation copy.
-    pub fragment_clip_ancestor: bool,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
     /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех

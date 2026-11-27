@@ -17,6 +17,8 @@ pub(super) struct BoxFacts {
     pub(super) decor_box: Option<u64>,
     /// Block layout's used cross-axis placement of the box (`set_flow_align`).
     pub(super) flow_align: Option<Align>,
+    /// What the ancestors of a layout-made box establish (TreeFacts).
+    pub(super) tree: crate::box_facts::TreeFacts,
 }
 
 /// Equal box facts: shared parts by identity, the plain values by value. Block
@@ -39,7 +41,8 @@ pub(super) fn same(a: &Option<Rc<BoxFacts>>, b: &Option<Rc<BoxFacts>>) -> bool {
                     && a.try_source.is_none()
                     && b.try_source.is_none()
                     && a.decor_box == b.decor_box
-                    && a.flow_align == b.flow_align)
+                    && a.flow_align == b.flow_align
+                    && a.tree == b.tree)
         }
         _ => false,
     }

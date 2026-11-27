@@ -35,14 +35,6 @@ pub struct ResetTransforms {
     /// ждёт своего кегля и разбирается в `resolve_em` (css-transforms-1
     /// §computed value: относительные длины становятся абсолютными).
     pub transform_raw: Option<String>,
-    /// Есть ли выше трансформированный предок: он — содержащий блок и для
-    /// `position: fixed` (css-transforms-1 §transform-rendering: «…for all
-    /// of its absolute-position descendants, fixed-position descendants»).
-    pub transform_ancestor: bool,
-    /// Transformed ancestor in the strict css-transforms-1 sense (a transform,
-    /// not containment or filters): `background-attachment: fixed` below it
-    /// behaves as `scroll` (css-transforms-1 §6 Transform Rendering Model).
-    pub transformed_ancestor: bool,
     pub transform_origin_raw: Option<String>,
     /// Точка отсчёта преобразования В ТОЧКАХ по осям — когда записана длиной,
     /// а не долей. Долю из неё делает отрисовка: размер коробки известен там.

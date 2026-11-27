@@ -99,7 +99,6 @@ overlay!(
     flow_root,
     inline_display,
     run_in,
-    fragment_clip_ancestor,
     is_caption,
     row_group_kind,
     col_role,
