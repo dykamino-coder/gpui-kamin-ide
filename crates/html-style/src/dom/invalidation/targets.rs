@@ -207,6 +207,13 @@ fn pseudo<'s>(sel: &'s Selector, raw: &str, changed: &Changed) -> Vec<Reach<'s>>
             true => vec![(Vec::new(), None)],
             false => Vec::new(),
         },
+        PseudoKind::Disabled(_) => {
+            if among(&["disabled"]) {
+                vec![(Vec::new(), None), (vec![Move::Descendants], None)]
+            } else {
+                Vec::new()
+            }
+        }
         // The language and direction of an element come from its ancestors.
         PseudoKind::Lang | PseudoKind::Dir(_) => {
             if among(&["lang", "dir", "xml:lang"]) || text() {
