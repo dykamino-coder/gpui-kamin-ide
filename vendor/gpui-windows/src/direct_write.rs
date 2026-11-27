@@ -3,6 +3,7 @@
 mod blank_runs;
 mod css_weight;
 mod fallbacks;
+mod size_adjust;
 
 use std::{
     borrow::Cow,
@@ -813,10 +814,16 @@ impl DirectWriteState {
             let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
             // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
             let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
+            let mut adjust_fallbacks = false;
             {
                 let mut u8_at = 0usize;
                 let mut u16_at = 0u32;
                 for run in font_runs {
+                    adjust_fallbacks |= self.fonts[run.font_id.0]
+                        .fallback_key
+                        .as_ref()
+                        .and_then(FontFallbacks::size_adjustment)
+                        .is_some();
                     // KaminIDE patch: контракт «len на границе знака» ничем
                     // не гарантирован — кривой прогон не должен ронять кадр.
                     let len16 = text
@@ -858,7 +865,12 @@ impl DirectWriteState {
                         &components.locale,
                     )?
                     .cast()?;
-                if let Some(fallbacks) = self.layout_fallbacks(components, font_runs)? {
+                let fallbacks = if adjust_fallbacks {
+                    Some(size_adjust::for_layout(self, components, text, font_runs)?)
+                } else {
+                    self.layout_fallbacks(components, font_runs)?
+                };
+                if let Some(fallbacks) = fallbacks {
                     format.SetFontFallback(&fallbacks)?;
                 }
 
@@ -1772,22 +1784,6 @@ impl DirectWriteState {
                     width: width as f32,
                     height: height as f32,
                 },
-            })
-        }
-    }
-
-    fn get_advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
-        unsafe {
-            let font = &self.fonts[font_id.0].font_face;
-            let glyph_indices = [glyph_id.0 as u16];
-            let mut metrics = [DWRITE_GLYPH_METRICS::default()];
-            font.GetDesignGlyphMetrics(glyph_indices.as_ptr(), 1, metrics.as_mut_ptr(), false)?;
-
-            let metrics = &metrics[0];
-
-            Ok(Size {
-                width: metrics.advanceWidth as f32,
-                height: 0.0,
             })
         }
     }

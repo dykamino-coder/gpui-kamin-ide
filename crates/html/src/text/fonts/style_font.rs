@@ -39,5 +39,6 @@ fn derive(c: &Computed, mut font: gpui::Font, vcx: ValueCx<'_>) -> gpui::Font {
         font.style = gpui::FontStyle::Italic;
     }
     font.features = crate::text::fonts::with_css_weight(&font.features);
+    super::size_adjust::apply(c, &mut font, vcx);
     font
 }

@@ -25,6 +25,7 @@ pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
 mod sfnt_rename;
+pub(crate) mod size_adjust;
 mod stretch;
 pub(crate) mod style_font;
 pub(crate) mod used_chars;
