@@ -158,13 +158,15 @@ mod tests {
 
     #[test]
     fn family_records_take_the_unique_name_and_style_names_stay() {
-        let bytes = font(&[
+        let records = [
             name_record(1, "Hanken Grotesk"),
             name_record(2, "Bold"),
             name_record(16, "Hanken Grotesk"),
-        ]);
+        ];
+        let bytes = font(&records);
         let unique = unique_family(&bytes);
-        assert_eq!(unique, unique_family(&bytes.clone()));
+        // The same file always gets the same name.
+        assert_eq!(unique, unique_family(&font(&records)));
         let out = renamed(&bytes, &unique).unwrap();
         assert_eq!(
             crate::text::fonts::sfnt_family(&out).as_deref(),
