@@ -520,13 +520,15 @@ impl Window {
             .map(|&(id, at, _)| (id, at))
             .collect();
         edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
+        edges.extend(self.local_deferred_edges(&scenes, space));
         edges.sort_unstable();
         edges.dedup();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
         let from = self.next_frame.scene.paint_operations.len();
-        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
+        self.next_frame.scene.replay_scrolled(scenes.clone(), source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
+        self.land_local_deferred(&scenes, space, here, land);
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
         self.next_frame.scroll_dependents.extend(landed);
         for (index, paint, _, main) in mine {

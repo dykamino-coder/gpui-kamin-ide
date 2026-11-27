@@ -86,6 +86,7 @@ mod retained; mod group_replay;
 mod hover_view;
 pub use hover_view::HoverView;
 mod scroll_deferred;
+mod local_deferred;
 mod scroll_masks;
 mod scroll_nodes;
 mod scroll_replay; mod scroll_refusal; mod scroll_still;
@@ -1073,6 +1074,8 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: local draws move with copies of their containing scene.
+    paint_space: Option<crate::scene::scroll_marks::SceneSpace>,
     // KaminIDE patch: the composition groups its paint made in the frame's
     // list; a reused draw copies them (`scroll_deferred::reuse_deferred_paint`).
     pub(crate) groups: Range<usize>,
@@ -4581,6 +4584,7 @@ impl Window {
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
+            deferred_draw.paint_space = Some(self.next_frame.scene.scroll.space);
             deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
         }
         self.next_frame.deferred_draws = deferred_draws;
@@ -4667,6 +4671,7 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    paint_space: deferred_draw.paint_space,
                     groups: deferred_draw.groups.clone(),
                     isolated: deferred_draw.isolated.clone(),
                     scroll: owners.copy(&deferred_draw.scroll),
@@ -4756,6 +4761,8 @@ impl Window {
                 self.rendered_frame.scene.scroll.space
             }
         };
+        let here = self.next_frame.scene.scroll.space;
+        self.land_local_deferred(&scenes, from, here, |at| landed + at - scenes.start);
         self.land_scroll_paint(scenes, landed, from);
     }
 
@@ -5500,6 +5507,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            paint_space: None,
             groups: 0..0,
             isolated: None,
             scroll,
@@ -9887,7 +9895,7 @@ mod tests {
             platform_window.simulate_frame_request(RequestFrameOptions {
                 signal_at,
                 signal_source: source,
-                require_presentation: true,
+                require_presentation: false,
                 ..Default::default()
             });
             let entries = collector.collect_unseen().entries;

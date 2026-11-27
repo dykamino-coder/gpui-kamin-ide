@@ -29,12 +29,13 @@ fn reentrant_forced_presentation_is_retained_without_borrowing_app(cx: &mut Test
     let arena = RefCell::new(Arena::new(1024));
     {
         let _borrowed_app = cx.app.borrow_mut();
-        let _draw = ElementArenaScope::enter(&arena);
+        let draw = ElementArenaScope::enter(&arena);
         platform.simulate_frame_request(RequestFrameOptions {
             force_render: true,
             require_presentation: true,
             ..Default::default()
         });
+        drop(draw.exit(&arena));
     }
     assert!(platform.frame_wake_count() > wakes);
     window
@@ -102,8 +103,7 @@ fn high_rate_input_presents_and_rearms_until_sustain_ends(cx: &mut TestAppContex
     );
     window
         .update(cx, |_, window, _| {
-            window.input_rate_tracker.borrow_mut().sustain_until =
-                Instant::now() - Duration::from_secs(3600)
+            window.input_rate_tracker.borrow_mut().sustain_until = Instant::now()
         })
         .unwrap();
     let wakes = platform.frame_wake_count();
