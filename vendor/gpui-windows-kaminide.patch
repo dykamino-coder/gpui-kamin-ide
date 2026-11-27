@@ -15841,10 +15841,10 @@ index 0000000000000000000000000000000000000000..917474ee4445ec198c1eb87c893eb16b
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0846d8628b90d56b4eaeb1c0ef07156e37b4e8ae
+index 0000000000000000000000000000000000000000..3a832d49fac5d782bd90db63bc1030c5e0fae8be
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
-@@ -0,0 +1,237 @@
+@@ -0,0 +1,267 @@
 +//! KaminIDE patch: a quad with elliptical corners (`CornerEllipse`) draws
 +//! the pixels that a group of its square fill drew through the coverage
 +//! mask it replaces (`contour_dist` in kamin-html, corner shape 1).
@@ -16027,16 +16027,44 @@ index 0000000000000000000000000000000000000000..0846d8628b90d56b4eaeb1c0ef07156e
 +    s
 +}
 +
++/// The frame the elliptical quad must draw over the backdrop of `frame` by
++/// the fixed-function premultiplied blender: the shader's source
++/// (`colour * alpha` and alpha in 8-bit steps, times the mask's coverage
++/// byte) reaches the blender in the target's 8-bit steps, and the blend
++/// rounds once more. Where the masked group's composite mixes in its shader
++/// and rounds once, a translucent edge pixel lands one code apart.
++fn fixed_blend(color: Hsla, frame: &[u8]) -> Vec<u8> {
++    let rgba = gpui::Rgba::from(color);
++    let step = |v: f32| (v.clamp(0., 1.) * 255.).round();
++    let a8 = step(rgba.a);
++    let p8 = [rgba.b, rgba.g, rgba.r].map(|c| step(c * rgba.a));
++    let mut out = frame.to_vec();
++    let (w, h) = (BOX[2] as usize, BOX[3] as usize);
++    for y in 0..h {
++        for x in 0..w {
++            let m = step(coverage(x as f32 + 0.5, y as f32 + 0.5, BOX[2], BOX[3]));
++            let at = ((y + BOX[1] as usize) * W as usize + x + BOX[0] as usize) * 4;
++            let sa = (a8 * m / 255.).round();
++            for c in 0..3 {
++                let s = (p8[c] * m / 255.).round();
++                let d = f32::from(frame[at + c]);
++                out[at + c] = (s + d * (1. - sa / 255.)).round() as u8;
++            }
++        }
++    }
++    out
++}
++
 +/// Pixels that differ and the largest difference, in codes.
 +fn compare(a: &[u8], b: &[u8]) -> (usize, u8) {
 +    (differing(a, b), a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0))
 +}
 +
-+/// Opaque and translucent fills with elliptical corners draw the bytes of
-+/// their masked groups on the default adapter and on WARP, and the two
-+/// adapters draw the same frame: the quad hands the blender the values the
-+/// group's composite hands it (8-bit buffer and mask, premultiplied). A
-+/// circular quad on the two adapters is counted for comparison;
++/// An opaque fill with elliptical corners draws the bytes of its masked
++/// group on the default adapter and on WARP; a translucent one draws the
++/// fixed-function blend of the same source (`fixed_blend`); the two adapters
++/// draw the same frame. The masked group and a circular quad on the two
++/// adapters are counted for comparison;
 +/// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 +#[test]
 +fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
@@ -16049,6 +16077,8 @@ index 0000000000000000000000000000000000000000..0846d8628b90d56b4eaeb1c0ef07156e
 +            let got = drawn(device, elliptical(color));
 +            let want = drawn(device, masked(color));
 +            let circle = drawn(device, circular(color));
++            let blended = fixed_blend(color, &drawn(device, Scene::default()));
++            stats.push((format!("{name} alpha {} quad vs fixed blend", color.a), compare(&got, &blended)));
 +            // The first pixel that differs, with its mask byte, for the report.
 +            let first = (0..got.len() / 4).find(|i| got[i * 4..i * 4 + 4] != want[i * 4..i * 4 + 4]).map(|i| {
 +                let (x, y) = ((i % W as usize) as f32, (i / W as usize) as f32);
@@ -16080,7 +16110,7 @@ index 0000000000000000000000000000000000000000..0846d8628b90d56b4eaeb1c0ef07156e
 +        std::fs::write(path, lines.join("\n")).unwrap();
 +    }
 +    let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
-+    assert!(exact("quad vs mask") && exact("quad gpu vs warp"), "{}", lines.join("; "));
++    assert!(exact("alpha 1 quad vs mask") && exact("quad vs fixed blend") && exact("quad gpu vs warp"), "{}", lines.join("; "));
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
