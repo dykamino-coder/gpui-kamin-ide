@@ -54,6 +54,7 @@ impl Builder {
         );
         let mut allow = bounds.origin == Default::default() && window.retained_root_environment();
         loop {
+            let _pass = crate::why::Span::new("frame.document_layout_pass");
             let retry = self.counters.get().is_some();
             let (mut tree, flow) = {
                 let _span = crate::why::Span::new("frame.build_elements");

@@ -10,9 +10,11 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> LayoutId {
+        let _request = crate::why::Span::new("frame.viewport_request");
         if std::mem::take(&mut self.unbuilt) {
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
+            let _build = crate::why::Span::new("frame.build_elements");
             let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
             self.tree = Some(tree);
             self.flow = flow;
@@ -54,6 +56,7 @@ impl Retained {
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
+            let _build = crate::why::Span::new("frame.build_elements");
             let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
             self.tree = Some(tree);
             self.flow = flow;

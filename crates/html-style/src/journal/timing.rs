@@ -14,6 +14,7 @@ pub struct Timing {
 pub struct Span {
     name: &'static str,
     started: Option<Instant>,
+    active: Option<u64>,
 }
 
 impl Span {
@@ -24,15 +25,20 @@ impl Span {
 
     #[inline]
     fn with_clock(name: &'static str, clock: impl FnOnce() -> Instant) -> Self {
+        let started = (super::enabled() && super::kept_here()).then(clock);
         Self {
             name,
-            started: (super::enabled() && super::kept_here()).then(clock),
+            active: started.and_then(|at| super::progress::begin(name, at)),
+            started,
         }
     }
 }
 
 impl Drop for Span {
     fn drop(&mut self) {
+        if let Some(id) = self.active {
+            super::progress::end(id);
+        }
         if let Some(started) = self.started {
             // The subscription may have ended before this interval.
             if super::enabled() && super::kept_here() {

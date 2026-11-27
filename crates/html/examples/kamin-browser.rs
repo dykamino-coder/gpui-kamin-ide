@@ -12,7 +12,9 @@ use gpui::{
     TitlebarOptions, Window, WindowBounds, WindowOptions, div, px, size,
 };
 use kamin_html::{BROWSER_CSS, Document, host::document_view::DocumentView};
-use std::{collections::HashSet, path::PathBuf};
+use std::collections::HashSet;
+#[path = "kamin-browser/args.rs"]
+mod args;
 
 struct Browser {
     page: Result<Entity<DocumentView>, kamin_html::DocumentFailure>,
@@ -30,10 +32,24 @@ impl Render for Browser {
 }
 
 fn main() {
-    let Some(path) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("Usage: kamin-browser <page.html>");
-        return;
+    let args = match args::Args::parse(std::env::args_os().skip(1)) {
+        Ok(args) => args,
+        Err(error) => {
+            eprintln!(
+                "{error}\nUsage: kamin-browser <page.html> [--viewport WIDTHxHEIGHT] [--why DIR]"
+            );
+            return;
+        }
     };
+    let progress = match kamin_html::host::journal::start(args.why.as_deref()) {
+        Ok(progress) => progress,
+        Err(error) => {
+            eprintln!("Cannot start journal: {error}");
+            return;
+        }
+    };
+    let path = args.path;
+    let reading = kamin_html::why::Span::new("host.read_document");
     let html = match std::fs::read_to_string(&path) {
         Ok(html) => html,
         Err(error) => {
@@ -41,9 +57,16 @@ fn main() {
             return;
         }
     };
+    drop(reading);
     gpui_platform::application()
         .with_instrumentation(kamin_html::host::instrumentation::from_env())
         .run(move |cx| {
+            cx.on_window_closed(|cx, _| {
+                if cx.windows().is_empty() {
+                    cx.quit();
+                }
+            })
+            .detach();
             cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
             let system = cx.text_system().clone();
             let fonts =
@@ -55,7 +78,11 @@ fn main() {
                         .into_iter()
                         .find(|name| !before.contains(name))
                 });
-            let bounds = Bounds::centered(None, size(px(1280.), px(900.)), cx);
+            let bounds = Bounds::centered(
+                None,
+                size(px(args.viewport.0 as f32), px(args.viewport.1 as f32)),
+                cx,
+            );
             let opened = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -97,4 +124,9 @@ fn main() {
             }
             cx.activate(true);
         });
+    if let Some(progress) = progress
+        && let Err(error) = progress.finish()
+    {
+        eprintln!("Cannot finish journal: {error}");
+    }
 }

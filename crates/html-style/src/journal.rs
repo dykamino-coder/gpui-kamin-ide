@@ -15,6 +15,8 @@ use std::panic::Location;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 mod timing;
 pub use timing::{Span, Timing};
+mod progress;
+pub use progress::{ActiveSpan, Progress, snapshot};
 
 /// Version of the journal's shape and codes for protocol readers.
 pub const SCHEMA: u32 = 1;

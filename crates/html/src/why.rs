@@ -107,6 +107,24 @@ pub fn take() -> Entry {
     }
 }
 
+/// Non-consuming diagnostic view, including passes which have not returned.
+/// Frame trace events remain owned by `take`; this observer samples no events.
+pub fn snapshot() -> Value {
+    let progress = kamin_style::journal::snapshot();
+    let mut value = to_json(&Entry {
+        journal: progress.journal,
+        ..Entry::default()
+    });
+    value["frames_scope"] = json!("not sampled; frame trace is consumed only by take");
+    value["active_intervals"] = progress
+        .active
+        .into_iter()
+        .map(|span| json!({"name": span.name, "elapsed_ms": span.elapsed.as_secs_f64() * 1000.}))
+        .collect();
+    value["active_intervals_dropped"] = json!(progress.active_dropped);
+    value
+}
+
 fn site(site: &std::panic::Location<'_>) -> String {
     format!("{}:{}", site.file().replace('\\', "/"), site.line())
 }

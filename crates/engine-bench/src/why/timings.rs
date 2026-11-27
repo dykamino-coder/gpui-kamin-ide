@@ -40,6 +40,13 @@ pub(super) fn render(out: &Value) -> String {
         }
     }
     for frame in out["frames"].as_array().into_iter().flatten() {
+        if let Some(passes) = frame["root_layout_passes"].as_f64() {
+            let _ = writeln!(
+                text,
+                "  layout #{} root_passes={passes:.0} retries={}",
+                frame["frame"], frame["layout_retries"]
+            );
+        }
         for (name, value) in frame["native_intervals_ms"]
             .as_object()
             .into_iter()
@@ -72,10 +79,11 @@ mod tests {
         assert!(render(&json!({"frames": []})).is_empty());
         let rendered = render(&json!({
             "process_cold": {"scope": "whole process", "clock": "bridge", "process_to_capture_ms": 25., "host_stages_ms": {"device": 8.}},
-            "frames": [{"frame": 1, "timings_ms": {"fonts": {"calls": 2, "inclusive_ms": 3.}}}],
+            "frames": [{"frame": 1, "root_layout_passes": 3.0, "layout_retries": 2.0, "timings_ms": {"fonts": {"calls": 2, "inclusive_ms": 3.}}}],
         }));
         assert!(rendered.contains("process_to_capture_ms=25.000"));
         assert!(rendered.contains("host device=8.0"));
         assert!(rendered.contains("interval #1 fonts: calls=2 inclusive_ms=3.0"));
+        assert!(rendered.contains("layout #1 root_passes=3 retries=2.0"));
     }
 }

@@ -130,6 +130,8 @@ impl Watch {
             "error": error,
             "paint_path": path,
             "phases_ms": phases,
+            "root_layout_passes": part("root_layout_passes"),
+            "layout_retries": part("layout_retries"),
             "paint_work": work.map(super::work::Sample::paint_profile),
             "layout_work": work.map(super::work::Sample::layout_profile),
             "raster": raster.map(|r| json!({

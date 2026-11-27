@@ -4,6 +4,25 @@
 use super::*;
 
 #[test]
+fn progress_keeps_the_frame_journal_and_reports_unfinished_intervals() {
+    let (_one, _sub) = test_reader();
+    let pass = Span::new("test.running_pass");
+    drop(Span::new("test.completed_pass"));
+    let value = std::thread::spawn(snapshot).join().unwrap();
+    assert!(
+        value["active_intervals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|span| { span["name"] == "test.running_pass" && span["elapsed_ms"].is_number() })
+    );
+    assert_eq!(value["timings_ms"]["test.completed_pass"]["calls"], 1);
+    assert_eq!(take().journal.timings["test.completed_pass"].calls, 1);
+    drop(pass);
+    assert_eq!(take().journal.timings["test.running_pass"].calls, 1);
+}
+
+#[test]
 fn cold_document_stages_have_one_authoritative_pass() {
     let (_one, _sub) = test_reader();
     let _doc = crate::Document::builder(

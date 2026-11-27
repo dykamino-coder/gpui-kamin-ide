@@ -88,6 +88,7 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
         // A count, not a time: renders of a layout retry inside the draw,
         // whose time the phases above already hold.
         ("layout_retries", Some(phases.layout_retries as f64)),
+        ("root_layout_passes", Some(phases.renders as f64)),
     ]);
     for (name, scope) in [
         ("build_elements", &phases.build),
@@ -206,6 +207,7 @@ mod tests {
         assert_eq!(phases.frame_renders(), 1);
         let result = partition(input(), &phases).expect("one draw");
         assert_eq!(result.diagnostics["layout_retries"], Some(2.0));
+        assert_eq!(result.diagnostics["root_layout_passes"], Some(3.0));
         let total = result.phases["first_frame_total"].expect("total");
         assert!((total - 0.060).abs() < 1e-12, "the whole draw: {total}");
     }
