@@ -43961,6 +43961,63 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 var vscode9 = __toESM(require("vscode"), 1);
+
+// src/permission-console-focus.ts
+var PermissionConsoleFocus = class {
+  constructor(activeClaudeSession, reveal, focus) {
+    this.activeClaudeSession = activeClaudeSession;
+    this.reveal = reveal;
+    this.focus = focus;
+  }
+  activeClaudeSession;
+  reveal;
+  focus;
+  pending;
+  view;
+  request(tabId) {
+    const sessionId = this.activeClaudeSession(tabId);
+    if (!sessionId) return;
+    this.pending = { tabId, sessionId };
+    this.reveal();
+    this.offer();
+  }
+  currentRequest() {
+    if (this.pending && this.activeClaudeSession(this.pending.tabId) !== this.pending.sessionId) this.pending = void 0;
+    return this.pending;
+  }
+  offer() {
+    const request = this.currentRequest();
+    if (!request || !this.view?.visible) return;
+    void this.view.webview.postMessage({ kind: "event", channel: "permission-console:requested", args: [request.tabId, request.sessionId] });
+  }
+  attach(view) {
+    this.view = view;
+    const visibility = view.onDidChangeVisibility(() => {
+      if (this.view !== view) return;
+      if (view.visible) this.offer();
+      else this.pending = void 0;
+    });
+    const ready = view.webview.onDidReceiveMessage((message) => {
+      if (message?.kind !== "send" || message.channel !== "permission-console:ready" || this.view !== view || !view.visible) return;
+      const request = this.currentRequest();
+      if (!request || message.args?.[0] !== request.tabId || message.args?.[1] !== request.sessionId) return;
+      this.pending = void 0;
+      this.focus();
+      void view.webview.postMessage({ kind: "event", channel: "permission-console:focus", args: [request.tabId, request.sessionId] });
+    });
+    view.onDidDispose(() => {
+      visibility.dispose();
+      ready.dispose();
+      if (this.view === view) {
+        this.view = void 0;
+        this.pending = void 0;
+      }
+    });
+    this.offer();
+  }
+};
+
+// src/index.ts
 var kaminide2 = __toESM(require("kaminide"), 1);
 var import_fs37 = __toESM(require("fs"), 1);
 var import_path37 = __toESM(require("path"), 1);
@@ -56486,7 +56543,7 @@ var BridgeHost = class {
     setupUiTools(this.sink, () => this.tabManager.getActiveTabId(), (tabId, text) => this.tabManager.sendInput(tabId, text));
     if (opts?.onOpenPermissionConsole) ipcMain.on("bridge:open-console", (_event, id) => {
       if (id === this.tabManager.getActiveTabId() && this.tabManager.getConnection(id)?.getEngine() === "claude") {
-        opts.onOpenPermissionConsole?.();
+        opts.onOpenPermissionConsole?.(id);
       }
     });
     if (opts?.onOpenChat) ipcMain.on("bridge:open-chat", () => opts.onOpenChat?.());
@@ -57209,11 +57266,22 @@ function activate(context) {
   };
   const host = new BridgeHost(context, {
     onOpenChat: openChat,
-    onOpenPermissionConsole: () => {
-      void vscode9.commands.executeCommand("claudeBridgeConsoleView.focus");
-    },
+    onOpenPermissionConsole: (id) => permissionConsole.request(id),
     onRegenerateTitle: (tabId) => sessionsBridge.regenerateTitleByTab(tabId)
   });
+  const permissionConsole = new PermissionConsoleFocus(
+    (id) => {
+      const tabs = host.getTabManager();
+      const connection = tabs.getConnection(id);
+      return tabs.getActiveTabId() === id && connection?.getEngine() === "claude" ? connection.getSessionId() : void 0;
+    },
+    () => {
+      void vscode9.commands.executeCommand("workbench.view.extension.claudeBridgeConsole");
+    },
+    () => {
+      void vscode9.commands.executeCommand("claudeBridgeConsoleView.focus", { keyboardFocus: true });
+    }
+  );
   const sessionsBridge = new SessionsBridge(host, openChat, context.globalStorageUri.fsPath);
   sessionsBridge.install();
   context.subscriptions.push({ dispose: () => {
@@ -57229,6 +57297,7 @@ function activate(context) {
         view.webview.options = { enableScripts: true, localResourceRoots: [] };
         view.webview.html = loadWebviewHtml(context, htmlFile);
         const attached = host.attach(view.webview, role);
+        if (viewId === "claudeBridgeConsoleView") permissionConsole.attach(view);
         view.onDidDispose(() => attached.dispose());
         context.subscriptions.push(attached);
         if (trackVisibility) {
