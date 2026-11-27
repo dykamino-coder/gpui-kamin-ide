@@ -29,9 +29,6 @@ pub struct ResetPositioned {
     /// (начальное значение Blink; спека просит `anchor-visible`, но без
     /// явного свойства гасить коробки по обрезке якоря слишком дорого).
     pub position_visibility: u8,
-    pub icb_scroll_insets: Option<[f32; 4]>,
-    /// Root unconditional gutters reduce viewport units, independently of body overflow.
-    pub viewport_unit_insets: Option<[f32; 2]>,
     /// Коробка АБСОЛЮТНА, но позиционирование с неё снято ради статической
     /// позиции (`render::blocks::positioned`). Само `position` там обнуляется, а знать о нём
     /// нужно: размер по свободной строчной оси у абсолюта считается по

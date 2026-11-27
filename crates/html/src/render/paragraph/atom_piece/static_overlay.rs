@@ -52,7 +52,14 @@ pub(crate) fn static_overlay(
         let mut copy = e.clone();
         copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
         copy.style.used_mut().reset_positioned.position = None;
-        crate::svg::element_with_html(&copy, opts).unwrap_or_else(|| image(&copy, &opts.cx))
+        crate::svg::element_with_html(
+            crate::layout::build_contracts::SvgContent {
+                element: &copy,
+                root_paint: crate::resources::images::svg_raster::RootPaint::Svg,
+            },
+            opts,
+        )
+        .unwrap_or_else(|| image(&copy, &opts.cx))
     } else if e.tag == "img" {
         let mut copy = e.clone();
         copy.style.used_mut().inh.ui.image_orient_none = merged.inh.ui.image_orient_none;
@@ -86,8 +93,12 @@ pub(crate) fn static_overlay(
     };
     // Transform the actual out-of-flow box before anchoring it; the
     // paragraph overlay has zero advance and is not a transform reference box.
-    let inner =
-        crate::paint::effects::transform::transformed(inner, &e.style.used(), inherited, frame);
+    let inner = crate::paint::effects::transform::transformed(
+        inner,
+        &crate::style::computed::BoxStyle::shared(e.style.used()),
+        inherited,
+        frame,
+    );
     // Сторона, которой коробка вешается на статическую точку. При
     // `direction: ltr` — левый край (текстовый путь так и кладёт,
     // `lines.rs: prepaint_at(origin)`), при `rtl` — ПРАВЫЙ:

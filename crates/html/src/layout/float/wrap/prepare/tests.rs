@@ -1,7 +1,7 @@
 //! Тесты: поля float используют вычисленные метрики шрифта до приведения к band-хосту.
 
 use super::*;
-use crate::style::computed::BoxStyle;
+use crate::style::computed::{BoxStyle, Computed};
 
 #[test]
 fn font_relative_float_margins_are_computed_without_changing_percentage_bases() {

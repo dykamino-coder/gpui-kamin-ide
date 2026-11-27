@@ -9,6 +9,8 @@
 //! [`BuildContext::build`]: crate::layout::cx::BuildContext::build
 
 mod adapters;
+mod svg;
+pub(crate) use svg::SvgContent;
 mod flow;
 pub(crate) use flow::FlowBuild;
 mod boxes;
@@ -55,7 +57,7 @@ pub(crate) struct ChildBuild {
     boxes: BoxBuild,
     replaced: BuildReplaced,
     control: fn(&Element, &BoxStyle, &RenderOpts) -> Option<AnyElement>,
-    svg: fn(&Element, &RenderOpts) -> Option<AnyElement>,
+    svg: fn(SvgContent<'_>, &RenderOpts) -> Option<AnyElement>,
     effects: EffectBuild,
     layer: BuildLayer,
 }
@@ -69,7 +71,7 @@ impl ChildBuild {
         boxes: BoxBuild,
         replaced: BuildReplaced,
         control: fn(&Element, &BoxStyle, &RenderOpts) -> Option<AnyElement>,
-        svg: fn(&Element, &RenderOpts) -> Option<AnyElement>,
+        svg: fn(SvgContent<'_>, &RenderOpts) -> Option<AnyElement>,
         effects: EffectBuild,
         layer: BuildLayer,
     ) -> Self {

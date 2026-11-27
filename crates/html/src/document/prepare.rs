@@ -28,7 +28,8 @@ pub(super) fn parse_document(
     let vcx = state.values();
     fonts.install(&state.text, vcx);
     let sheets = crate::dom::style_sources::collect(input, theme_css)?;
-    crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx)?;
+    let used = crate::text::fonts::used_chars::UsedChars::of_document(&input.dom.document, &sheets);
+    crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx, &used)?;
     crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
     #[cfg(feature = "engine-bench")]
     let style_started = crate::work::Clock::now();

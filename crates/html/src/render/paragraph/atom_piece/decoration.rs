@@ -61,7 +61,12 @@ pub(crate) fn decorate_atom(
     ) {
         el
     } else {
-        transformed(el, &e.style.used(), inherited, frame)
+        transformed(
+            el,
+            &crate::style::computed::BoxStyle::shared(e.style.used()),
+            inherited,
+            frame,
+        )
     };
     // `vertical-align` НА САМОМ куске (`img { vertical-align: top }`):
     // ряд строит базовую линию, а кускам с top/middle/bottom нужен

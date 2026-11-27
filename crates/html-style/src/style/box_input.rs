@@ -28,6 +28,8 @@ pub struct BoxStyleInput {
     /// (`SharedStyle::set_flow_align`). A fact of the box, not `align-self`:
     /// the author's `align-self` stays in the computed values.
     pub flow_align: Option<Align>,
+    /// What the box's ancestors establish (`box_facts::TreeFacts`).
+    pub tree: crate::box_facts::TreeFacts,
 }
 
 impl BoxStyleInput {
@@ -49,6 +51,7 @@ impl BoxStyleInput {
             canvas_background,
             try_source: None,
             flow_align: None,
+            tree: Default::default(),
         }
     }
 }

@@ -13,6 +13,7 @@ use super::{AId, Attribute, Document, EId, NodeData, NodeId, NodeKind, ShortRang
 mod attributes;
 mod css;
 mod elements;
+mod root;
 mod external;
 mod owned;
 mod storage;
@@ -31,6 +32,7 @@ impl<'input> Document<'input> {
     pub fn parse_tree(
         xml: &roxmltree::Document<'input>,
         injected_stylesheet: Option<&'input str>,
+        root_opacity: Option<crate::Opacity>,
     ) -> Result<Document<'input>, Error> {
         // KaminIDE patch: count the original XML arena as part of the same session.
         if xml.input_text().len() > super::SOURCE_BYTE_LIMIT {
@@ -38,7 +40,7 @@ impl<'input> Document<'input> {
         }
         let remaining = super::NODE_LIMIT.checked_sub(xml.descendants().count())
             .ok_or(Error::NodesLimitReached)?;
-        parse_with_limit(xml, injected_stylesheet, false, remaining)
+        parse_with_limit(xml, injected_stylesheet, false, remaining, root_opacity)
     }
 }
 
@@ -48,11 +50,13 @@ fn parse_with_limit<'input>(
     injected_stylesheet: Option<&'input str>,
     resource: bool,
     node_limit: usize,
+    root_opacity: Option<crate::Opacity>,
 ) -> Result<Document<'input>, Error> {
     if node_limit == 0 {
         return Err(Error::NodesLimitReached);
     }
     let mut doc = Document {
+        root_opacity,
         node_limit,
         nodes: Vec::new(),
         attrs: Vec::new(),

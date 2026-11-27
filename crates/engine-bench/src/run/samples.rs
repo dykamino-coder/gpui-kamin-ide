@@ -47,7 +47,7 @@ pub(crate) async fn sample_with(
     let seq = capture.sequence();
     let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await;
     if let Some(watch) = watch {
-        let measurements = out.as_ref().ok().map(|out| (&out.0.phases, &out.2));
+        let measurements = out.as_ref().ok().map(|out| (&out.0, &out.2));
         let error = out.as_ref().err().map(|e| e.to_string());
         // The raster of a frame this sample captured, not of an earlier one.
         let raster = (capture.sequence() > seq)

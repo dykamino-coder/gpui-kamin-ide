@@ -89,6 +89,23 @@ impl FontRegistrySnapshot {
         matching::select(faces, &request)
     }
 
+    /// Every face of `family`'s composite for `request` as (backend family,
+    /// `unicode-range`), the leading face first (`coverage::composite`).
+    pub fn composite_for(
+        &self,
+        family: &str,
+        request: FontRequest<'_>,
+    ) -> Vec<(String, Vec<(u32, u32)>)> {
+        key::with(family, |family| self.registry.faces.get(family))
+            .map(|faces| {
+                super::coverage::composite(faces, &request)
+                    .into_iter()
+                    .map(|face| (face.family.clone(), face.ranges.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
         self.matching_face(family, request)
             .map(|f| f.family)
@@ -109,13 +126,21 @@ impl FontRegistrySnapshot {
     }
 }
 
-/// Семейство за родовое `sans-serif`; оно же — умолчание документа.
-pub const GENERIC_SANS: &str = "Segoe UI";
+/// The family behind the generic `sans-serif` on this platform.
+pub const GENERIC_SANS: &str = "Arial";
 
+/// The platform's generic family table (css-fonts-4 section 4.2.1), as Chrome on
+/// Windows resolves it: its default font settings name Times New Roman, Arial,
+/// Comic Sans MS and Impact, and `system-ui` is the system message font.
+/// `monospace` is resolved later by language (`mono_family`). `ui-serif`,
+/// `ui-sans-serif`, `ui-monospace` and `ui-rounded` have no face on Windows:
+/// such a generic "does not match any font", so the list walk goes on to the
+/// next family instead of borrowing a neighbour's face.
 pub fn generic_family(lower: &str) -> Option<&'static str> {
     match lower {
-        "system-ui" | "sans-serif" | "ui-sans-serif" | "ui-rounded" => Some(GENERIC_SANS),
-        "serif" | "ui-serif" => Some("Times New Roman"),
+        "sans-serif" => Some(GENERIC_SANS),
+        "system-ui" => Some("Segoe UI"),
+        "serif" => Some("Times New Roman"),
         "cursive" => Some("Comic Sans MS"),
         "fantasy" => Some("Impact"),
         _ => None,

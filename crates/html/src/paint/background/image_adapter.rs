@@ -12,10 +12,15 @@ type UploadedPixels = (u32, u32, Arc<[u8]>);
 
 // Два уровня делят прежний бюджет 128 МиБ. Быстрый путь не хэширует точки
 // повторно в каждом кадре; ключ удерживает Arc от повторного адреса.
+// IDENTITIES is an index over PIXELS: its values are PIXELS' own images, so
+// their count always includes the sibling cache. With `held_elsewhere` on both
+// levels each kept the other's entries «held» and neither ever evicted (every
+// new raster stayed for the life of the process). Only PIXELS keeps entries a
+// frame holds; this index evicts by its budget, and an evicted identity finds
+// the image again in PIXELS by its bytes.
 static IDENTITIES: BoundedCache<RasterIdentity, Image> =
     BoundedCache::new(64 * MIB, crate::paint::cache::optional_image_bytes)
         .with_key_weight(|key: &RasterIdentity| key.0.bytes.len())
-        .with_holders(crate::paint::cache::held_elsewhere)
         .for_paint();
 // Только готовые точки: ни URL, ни политика, ни ресурсы документа здесь не
 // переиспользуются. Полное равенство байт исключает коллизии короткого хэша.
