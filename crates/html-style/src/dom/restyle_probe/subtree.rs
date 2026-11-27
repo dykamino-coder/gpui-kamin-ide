@@ -2,7 +2,7 @@
 //! with the probe's rules, `:has()` marks and kept contexts, and the passes
 //! of a full build over a list of boxes (`finish_document`).
 
-use super::{RestyleCache, RestyleProbe, scheme};
+use super::{RestyleCache, RestyleProbe};
 use crate::dom::Node;
 use crate::dom::input::Admitted;
 use crate::dom::outcome::DocumentFailure;
@@ -66,7 +66,7 @@ impl RestyleCache {
         if !probe.has_args.is_empty() {
             self.marks(document, &probe.has_args, &mut tree)?;
         }
-        let vcx = values.values().with_scheme(scheme(probe.media));
+        let vcx = values.values().with_scheme(probe.scheme);
         let mut built = Vec::with_capacity(roots.len());
         for root in roots {
             built.push(walk(

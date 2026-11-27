@@ -57,7 +57,15 @@ impl<'a> DocumentBuilder<'a> {
 
     /// Выбрать печатный носитель (иначе экранный).
     pub fn print(&mut self, print: bool) -> &mut Self {
+        let dark = self.media.dark;
         self.media = Media::for_medium(print);
+        self.media.dark = dark;
+        self
+    }
+
+    /// Supply the embedding host preference, independently of page support.
+    pub fn preferred_color_scheme(&mut self, dark: bool) -> &mut Self {
+        self.media.dark = dark;
         self
     }
 
