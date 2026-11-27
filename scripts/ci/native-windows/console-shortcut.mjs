@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
@@ -9,6 +10,12 @@ import { geometry, readLayout, view } from "./console-layout.mjs";
 const invoke = promisify(execFile);
 const options = { timeout: 10000, windowsHide: true };
 const shiftTab = fileURLToPath(new URL("./shift-tab.ps1", import.meta.url));
+
+async function windowState(action) {
+  const powershell = path.join(process.env.SystemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+  const { stdout } = await invoke(powershell, ["-NoProfile", "-NonInteractive", "-File", shiftTab, "-Action", action], options);
+  return JSON.parse(stdout.trim());
+}
 
 const terminalState = `const terminal=Array.from(document.querySelectorAll('.bridge-console')).find(el=>el.getClientRects().length);
   const input=terminal?.querySelector('textarea.xterm-helper-textarea');
@@ -52,9 +59,14 @@ export async function checkPermissionConsoleShortcut(driver, label, name) {
     }
   }, true);
   await step(name + "-active-window", async () => {
-    await invoke("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-      "$w=New-Object -ComObject WScript.Shell; if (!$w.AppActivate([int]$env:SMOKE_APP_PID)) { exit 1 }"], options);
-  });
+    // AppActivate can report false for a detached updater launch. The HWND
+    // is independently verifiable, even when the activation reply is false.
+    result.activation ??= await windowState("Activate");
+    if (result.activation.after) return;
+    await probe({ cmd: "focusWindow" });
+    result.afterClientActivation = await windowState("Observe");
+    assert.ok(result.afterClientActivation.after);
+  }, true);
   await clickElement(driver, name + "-trigger", byText("button.perm-trigger", label), { native: true });
   actionStarted = Date.now();
   await clickElement(driver, name + "-action", menuOption("Change mode in Console"), { native: true });
@@ -79,8 +91,7 @@ export async function checkPermissionConsoleShortcut(driver, label, name) {
     result.observations.beforeKey = s;
   }, true);
   await step(name + "-windows-shift-tab", async () => {
-    const { stdout } = await invoke("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", shiftTab], options);
-    const receipt = JSON.parse(stdout.trim());
+    const receipt = await windowState("Send");
     result.foreground = { before: receipt.before === true, after: receipt.after === true };
     assert.ok(result.foreground.before && result.foreground.after);
   });
