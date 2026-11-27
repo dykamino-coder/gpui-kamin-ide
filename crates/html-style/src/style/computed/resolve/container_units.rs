@@ -38,15 +38,25 @@ impl Computed {
         let moves = |l: Len| l.needs_container_context(vcx);
         self.resolve_unit_lengths(moves, fix, vcx);
         self.resolve_container_other_lengths(vp, vcx);
-        for length in {
+        // Только при cq-слагаемом: запись отцепляет общую группу и без изменения значения.
+        let columns = &self.reset_fragmentation;
+        if [
+            columns.column_width,
+            columns.column_height,
+            columns.column_gap,
+        ]
+        .into_iter()
+        .flatten()
+        .any(moves)
+        {
             let group_0 = &mut *self.reset_fragmentation;
-            [
+            for length in [
                 &mut group_0.column_width,
                 &mut group_0.column_height,
                 &mut group_0.column_gap,
-            ]
-        } {
-            fix(length);
+            ] {
+                fix(length);
+            }
         }
         // Без cq-слагаемых общую группу наследуемых копировать не нужно.
         if [
@@ -74,7 +84,13 @@ impl Computed {
                 fix(length);
             }
         }
-        if let Some(outline) = self.reset_border.outline.as_mut() {
+        if let Some(outline) = &self.reset_border.outline
+            && [outline.width, outline.offset]
+                .into_iter()
+                .flatten()
+                .any(moves)
+            && let Some(outline) = self.reset_border.outline.as_mut()
+        {
             fix(&mut outline.width);
             fix(&mut outline.offset);
         }

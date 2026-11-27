@@ -5,6 +5,7 @@ use super::*;
 use crate::style::computed::{BoxStyle, Display as D, Overflow};
 use crate::values::ValueCx;
 mod identity;
+pub(crate) use identity::inherit as reidentify;
 
 pub(super) fn inherit_containing(
     parents: super::BoxParents<'_>,

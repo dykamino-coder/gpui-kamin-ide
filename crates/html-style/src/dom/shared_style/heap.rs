@@ -19,5 +19,6 @@ impl HeapSize for SharedStyle {
             + self.computed.heap_size(ops)
             + self.used.heap_size(ops)
             + facts
+            + self.stage.heap_size(ops)
     }
 }

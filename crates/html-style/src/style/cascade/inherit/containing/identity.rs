@@ -2,7 +2,7 @@
 
 use crate::style::computed::{BoxStyle, stacking::fixed_cb_layer_box};
 
-pub(super) fn inherit(parent: &BoxStyle, child: &mut BoxStyle) {
+pub(crate) fn inherit(parent: &BoxStyle, child: &mut BoxStyle) {
     child.cb_node = if super::establishes_cb(parent) {
         parent.self_node
     } else {

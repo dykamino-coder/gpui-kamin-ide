@@ -37,6 +37,9 @@ mod quirks;
 mod self_align;
 mod unwrapped;
 use containing::inherit_containing;
+/// The registry keys a box stage copies from its layout parent: a remembered stage
+/// takes them from the parent of this frame (`materialize::stage_memo`).
+pub(crate) use containing::reidentify;
 use decorate::decorate;
 pub use flow_align::note as note_flow_align;
 pub use fragment::group as fragment_group_style;

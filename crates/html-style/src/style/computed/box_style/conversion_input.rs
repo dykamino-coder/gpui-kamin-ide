@@ -90,7 +90,7 @@ impl BoxStyle {
 /// Equal computed values apart from `decor_box`: the identity of the box whose text
 /// decorations the element propagates (css-text-decor-3 §2.1), read only by the cascade
 /// that propagates them. Exhaustive, like `same_box_values`.
-fn same_values(a: &Computed, b: &Computed) -> bool {
+pub(super) fn same_values(a: &Computed, b: &Computed) -> bool {
     let Computed {
         decor_box: _,
         block_tag,
@@ -138,7 +138,7 @@ fn same_values(a: &Computed, b: &Computed) -> bool {
         && *inh == b.inh
 }
 
-fn same_rc<T: PartialEq>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
+pub(super) fn same_rc<T: PartialEq>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => Rc::ptr_eq(a, b) || **a == **b,
         (a, b) => a.is_none() && b.is_none(),
