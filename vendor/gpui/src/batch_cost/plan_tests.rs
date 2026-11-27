@@ -39,3 +39,14 @@ fn path_batches_report_their_count_and_the_intermediate_area_they_used() {
     assert!(line.contains("paths: n=6 kpx=2 b=2 mid_kpx=3;"), "{line}");
     assert!(line.contains("quads: n=7 kpx=9 b=1;"), "{line}");
 }
+
+#[test]
+fn resource_events_report_exact_bytes_even_without_a_drawn_frame() {
+    let cost = BatchCost::default();
+    cost.path_target_created(16 * 64 * 48);
+    cost.path_target_created(16 * 32 * 24);
+    cost.path_target_dropped();
+    let line = cost.take_line().unwrap();
+    assert!(line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"), "{line}");
+    assert!(cost.take_line().is_none());
+}
