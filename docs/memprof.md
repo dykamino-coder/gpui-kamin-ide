@@ -145,8 +145,11 @@ rebuilt with `memprof.py build`.
   `big-res` for reservations of 16 MiB or more such as allocator arenas, `small-res`, and shared
   pages apart) and listing the largest private reservations. `ws.txt`/`ws.json` hold the breakdown
   at each side's sampled peak and the process peak; a peak shorter than one interval shows only in
-  the process peak. With the hidden-desktop launcher the child pid is read from its first line, and
-  the bench JSON goes to `cand.json`/`base.json`.
+  the process peak. `ws.json` also retains the first and last working-set/private-commit samples
+  and a bounded five-minute tail at one-second resolution (plus the final sample). This records
+  memory changes even when working set does not reach a new peak; it is an observed process-memory
+  trend, not a live-allocation or leak proof. With the hidden-desktop launcher the child pid is read
+  from its first line, and the bench JSON goes to `cand.json`/`base.json`.
 
 ## Probe environment (set by `run`)
 

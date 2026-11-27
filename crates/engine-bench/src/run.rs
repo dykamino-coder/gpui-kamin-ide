@@ -59,6 +59,10 @@ pub(super) async fn prepare(
     startup_timings.mark("initial_empty_gpu_frame");
     // Замер начинается в покое платформы (без презентов буста после WM_SIZE).
     startup_timings.settle(cx).await;
+    if args.why.is_some() {
+        let native = cx.update(|cx| cx.instrumentation().startup.take());
+        super::why::cold::startup(startup_timings.report(), native);
+    }
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let adapter = work::Adapter::open((identity.luid_high_part, identity.luid_low_part));
@@ -94,7 +98,7 @@ pub(super) fn header(
     } = prepared;
     Ok(
         json!({"schema_version": 3, "work_counters_enabled": cfg!(feature = "work-counters"), "input": args.path, "viewport_css_px": args.viewport,
-        "device_scale_factor": 1, "surface": args.surface.name(), "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
+        "device_scale_factor": args.scale_factor, "root_scroller": args.uses_root_scroller(), "surface": args.surface.name(), "profile": "release", "wpt_harness": kamin_html::BuildTimings::WPT_HARNESS_ENABLED,
         "os": std::env::consts::OS, "arch": std::env::consts::ARCH, "gpu": gpu,
         "engine_version": env!("CARGO_PKG_VERSION"),
         "runs_per_mode": args.runs,

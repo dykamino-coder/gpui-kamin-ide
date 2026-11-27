@@ -126,8 +126,15 @@ fn entry() -> Result<(), Box<dyn std::error::Error>> {
     if args.trace_frames {
         diagnostics::trace_frames();
     }
+    if !args.permits_profile(cfg!(debug_assertions)) {
+        return Err(
+            "measurement requires --profile release; debug diagnosis requires --why DIR".into(),
+        );
+    }
     if cfg!(debug_assertions) {
-        return Err("measurement requires --profile release (debug assertions are enabled)".into());
+        eprintln!(
+            "engine_bench: diagnostic build; timings are unsuitable for performance comparisons"
+        );
     }
     if kamin_html::BuildTimings::WPT_HARNESS_ENABLED {
         return Err("measure with engine-bench only; disable wpt-harness".into());

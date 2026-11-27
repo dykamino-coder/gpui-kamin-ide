@@ -93,12 +93,29 @@ it is the GPU's time, not CPU work of the frame. A production present never wait
 No GPU timestamp or pure style/layout algorithm time is inferred from these labels.
 
 The root adapter forwards the same element layout ID and introduces no layout
-node. The only engine hooks are `Instant` measurements at existing parse/style
-boundaries, with storage owned by `Document`. Their module, fields, arguments,
-clock reads and public API are all `#[cfg(feature = "engine-bench")]`; ordinary
-builds compile them out. Enabled timers and the root adapter have measurement
-overhead, which is not subtracted. The existing GPUI counters/capture are reused
-without changing their measurement boundaries.
+node. The budget's parse/style hooks, with storage owned by `Document`, are
+`#[cfg(feature = "engine-bench")]`; ordinary builds compile them out.
+
+`--why` additionally records nested journal intervals in `timings_ms`, including
+font/resource preparation, cascade and box construction, element construction,
+layout requests and measured layout callbacks. Each entry has `calls` and
+`inclusive_ms`: parent and child intervals overlap and must not be added as
+exclusive phases. Native intervals use the same shape in `native_intervals_ms`.
+Constructor work belongs to `process_cold`; work after preparation belongs to its
+sample, and work between samples belongs to `between`. In particular, the initial
+empty frame cannot inflate the first sample's element or GPU work counters.
+An inactive journal reads no interval clock and allocates no interval record;
+an inactive native profile also retains no shared profile storage. Enabled
+measurements have overhead, which is not subtracted.
+
+`process_cold` describes OS process creation through the first input document's
+completed readback, including loader/CLI time, host preparation and the initial
+empty frame. `GetProcessTimes` supplies process creation time, bridged once from
+`SystemTime` to `Instant`; subsequent intervals use the monotonic clock. Launcher
+suspended time is included. `process_to_capture_ms` is a readback boundary:
+capture completes before DXGI Present, and the default offscreen surface has no
+swap chain or DWM presentation. The journal explicitly marks presentation time
+unavailable. This diagnostic does not change the document-cold budget below.
 
 ## Cold, warm and statistics
 

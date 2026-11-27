@@ -30,7 +30,7 @@ impl RecoveryResources {
         .context("Creating DirectX resources")?;
         let globals = DirectXGlobalElements::new(&devices.device)
             .context("Creating DirectXGlobalElements")?;
-        let pipelines = DirectXRenderPipelines::new(&devices.device)
+        let pipelines = DirectXRenderPipelines::new(&devices.device, &directx_devices.instrumentation.startup)
             .context("Creating DirectXRenderPipelines")?;
         let direct_composition = if disable_direct_composition || offscreen {
             None

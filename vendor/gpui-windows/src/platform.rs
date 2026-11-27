@@ -199,12 +199,23 @@ impl WindowsPlatform {
 
     /// KaminIDE patch: choose a GPU for this platform and subsequent device recovery.
     pub fn with_gpu_adapter(headless: bool, preference: GpuAdapterPreference) -> Result<Self> {
+        Self::with_gpu_adapter_and_instrumentation(headless, preference, gpui::Instrumentation::default())
+    }
+
+    /// KaminIDE patch: share startup instrumentation before DirectWrite construction.
+    pub fn with_gpu_adapter_and_instrumentation(
+        headless: bool,
+        preference: GpuAdapterPreference,
+        instrumentation: gpui::Instrumentation,
+    ) -> Result<Self> {
+        let _platform = instrumentation.startup.span("platform.constructor");
         unsafe {
             OleInitialize(None).context("unable to initialize Windows OLE")?;
         }
         // A platform that can become windowed needs the real text system from the start: the app
         // keeps the one it's created with. It gets DirectX devices when it becomes windowed.
         let (text_system, direct_write_text_system) = if !headless {
+            let _text = instrumentation.startup.span("platform.directwrite");
             let dw_text_system = Arc::new(
                 DirectWriteTextSystem::new(None).context("Error creating DirectWriteTextSystem")?,
             );
@@ -257,6 +268,7 @@ impl WindowsPlatform {
             .inner
             .take()
             .context("CreateWindowExW did not run correctly")??;
+        inner.state.instrumentation.replace(instrumentation);
         let dispatcher = context
             .dispatcher
             .take()
@@ -445,8 +457,15 @@ impl WindowsPlatform {
 
     /// Creates the DirectX devices that windows draw with, and starts vsync.
     fn attach_gpu(&self) -> Result<()> {
-        let devices = DirectXDevices::with_instrumentation(self.gpu_adapter_preference.clone(), self.inner.state.instrumentation.borrow().clone()).context("Creating DirectX devices")?;
+        let instrumentation = self.inner.state.instrumentation.borrow().clone();
+        let _attach = instrumentation.startup.span("platform.attach_gpu");
+        let devices = {
+            let _device = instrumentation.startup.span("platform.device");
+            DirectXDevices::with_instrumentation(self.gpu_adapter_preference.clone(), instrumentation.clone())
+                .context("Creating DirectX devices")?
+        };
         if let Some(text_system) = &self.direct_write_text_system {
+            let _text = instrumentation.startup.span("platform.text_device_attach");
             text_system.handle_gpu_lost(&devices)?;
         }
         *self.inner.state.directx_devices.borrow_mut() = Some(devices);
@@ -817,6 +836,7 @@ impl Platform for WindowsPlatform {
         handle: AnyWindowHandle,
         options: WindowParams,
     ) -> Result<Box<dyn PlatformWindow>> {
+        let _window = self.inner.state.instrumentation.borrow().startup.span("platform.open_window");
         if !self.is_windowed() {
             return Err(anyhow!("cannot open windows while headless"));
         }

@@ -95,7 +95,7 @@ impl IntoElement for Retained {
 }
 
 impl Element for Retained {
-    type RequestLayoutState = ();
+    type RequestLayoutState = Option<crate::why::Span>;
     type PrepaintState = ();
 
     /// Use the document store's identity across edits to the element tree.
@@ -113,8 +113,9 @@ impl Element for Retained {
         _: Option<&InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (LayoutId, ()) {
-        (self.request_viewport_layout(window, cx), ())
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let pass = crate::why::enabled().then(|| crate::why::Span::new("frame.viewport_layout"));
+        (self.request_viewport_layout(window, cx), pass)
     }
 
     fn prepaint(
@@ -122,10 +123,12 @@ impl Element for Retained {
         id: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         bounds: Bounds<Pixels>,
-        _: &mut (),
+        pass: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
     ) {
+        drop(pass.take());
+        let _prepaint = crate::why::Span::new("frame.viewport_prepaint");
         let Some(id) = id else { return };
         if let Some(root) = &self.builder.state.root_scroll {
             root.hosted.set(true);
@@ -149,11 +152,12 @@ impl Element for Retained {
         id: Option<&GlobalElementId>,
         _: Option<&InspectorElementId>,
         _: Bounds<Pixels>,
-        _: &mut (),
+        _: &mut Self::RequestLayoutState,
         _: &mut (),
         window: &mut Window,
         cx: &mut App,
     ) {
+        let _paint = crate::why::Span::new("frame.viewport_paint");
         let Some(id) = id else { return };
         self.paint_record(id, window, cx);
         if let Some((bars, hits)) = self.root_bars.take() {

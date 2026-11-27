@@ -1,7 +1,8 @@
 //! Exclusive request_layout cost of a sample by element type (gpui
 //! instrumentation): self-time outside child elements and the style copies
-//! made there. Self-times add up to the measured part of the phase; each one
-//! also carries the profiler's own cost for that element.
+//! made there. Lazy child requests can run inside measured layout callbacks,
+//! so the sum belongs to both the request and layout phases. Each entry also
+//! carries the profiler's own cost for that element.
 
 use gpui::prepaint_prof::ElementCost;
 use serde_json::{Value, json};

@@ -18,6 +18,7 @@ pub(crate) fn measured_layout(
     window: &mut Window,
     _cx: &mut App,
 ) -> gpui::MeasuredContent {
+    let _span = crate::why::Span::new("layout.paragraph_measure");
     let vertical = probe.vertical;
     let vertical_inline = probe.vertical_inline.is_some();
     let line_height = probe.line_height;

@@ -4,14 +4,61 @@
 use super::*;
 
 #[test]
+fn progress_keeps_the_frame_journal_and_reports_unfinished_intervals() {
+    let (_one, _sub) = test_reader();
+    let pass = Span::new("test.running_pass");
+    drop(Span::new("test.completed_pass"));
+    let value = std::thread::spawn(snapshot).join().unwrap();
+    assert!(
+        value["active_intervals"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|span| { span["name"] == "test.running_pass" && span["elapsed_ms"].is_number() })
+    );
+    assert_eq!(value["timings_ms"]["test.completed_pass"]["calls"], 1);
+    assert_eq!(take().journal.timings["test.completed_pass"].calls, 1);
+    drop(pass);
+    assert_eq!(take().journal.timings["test.running_pass"].calls, 1);
+}
+
+#[test]
+fn cold_document_stages_have_one_authoritative_pass() {
+    let (_one, _sub) = test_reader();
+    let _doc = crate::Document::builder(
+        "<!doctype html><style>p { color: red }</style><p>text</p>",
+        "",
+    )
+    .build()
+    .unwrap();
+    let value = to_json(&take());
+    for name in [
+        "document.font_context_install",
+        "document.style_sources",
+        "document.font_faces",
+        "document.color_profiles",
+        "document.viewport_resources",
+        "style.rules",
+        "style.selector_preparation",
+        "style.cascade_and_box_walk",
+        "style.box_normalization",
+    ] {
+        assert_eq!(value["timings_ms"][name]["calls"], 1, "{name}");
+    }
+}
+
+#[test]
 fn json_carries_the_schema_codes_sites_and_frame_events() {
     let (_one, _sub) = test_reader();
     let line = line!() + 1;
     note("frame_unpublished", || "frame_miss.key".into());
     kamin_style::journal::cache_miss("gradient_tiles", "evicted", || "800x600 tile".into());
     trace::mark("render");
+    drop(Span::new("test.phase"));
     let value = to_json(&take());
     assert_eq!(value["schema"], SCHEMA);
+    assert_eq!(value["timings_ms"]["test.phase"]["calls"], 1);
+    assert!(value["timings_ms"]["test.phase"]["inclusive_ms"].is_f64());
     let here = format!("crates/html/src/why/tests.rs:{line}");
     let cause = value["causes"]
         .as_array()

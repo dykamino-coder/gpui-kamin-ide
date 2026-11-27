@@ -90,6 +90,10 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
 }
 
 pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    let progress = kamin_html::host::journal::start(args.why.as_deref())?;
+    if args.why.is_some() {
+        super::why::cold::start()?;
+    }
     let mut startup = super::startup::Startup::new();
     let preference = super::gpu::preference(&args.gpu)?;
     // Ошибки имени возвращаем до входа в событийный цикл платформы.
@@ -101,15 +105,23 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         std::env::set_var("GPUI_NO_ERROR_DIALOG", "1");
     }
     let mut instrumentation = kamin_html::host::instrumentation::from_env();
-    instrumentation.scale_factor = Some(1.);
+    instrumentation.scale_factor = Some(args.scale_factor);
     // The journal names the element types that spend request_layout.
     instrumentation.request_layout = args.why.is_some();
+    instrumentation.startup = args.why.is_some();
+    let instrumentation = gpui::Instrumentation::new(instrumentation);
     let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
     let outcome = Rc::new(RefCell::new(None));
     let result = outcome.clone();
-    let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
-        false, preference,
-    )?);
+    let platform_pass = kamin_html::why::Span::new("host.platform_device");
+    let platform = Rc::new(
+        gpui_windows::WindowsPlatform::with_gpu_adapter_and_instrumentation(
+            false,
+            preference,
+            instrumentation.clone(),
+        )?,
+    );
+    drop(platform_pass);
     // Offscreen: текстура message-only окна, DWM не видит ни окна, ни кадров.
     let offscreen = args.surface == super::args::Surface::Offscreen;
     platform.set_offscreen_windows(offscreen);
@@ -118,8 +130,8 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         std::env::var_os("ENGINE_BENCH_DAMAGE_AUDIT").is_some_and(|v| v == "1"),
     );
     startup.mark("platform_device_text_and_host_setup");
-    let application =
-        gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);
+    let application = gpui::Application::with_platform(platform.clone())
+        .with_instrumentation_instance(instrumentation);
     startup.mark("gpui_application");
     application.run(move |cx| {
         startup.mark("event_loop_entry");
@@ -135,11 +147,14 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 
         let setup = || -> Result<_, Box<dyn std::error::Error>> {
             cx.set_text_rendering_mode(gpui::TextRenderingMode::Grayscale);
+            let font_pass = kamin_html::why::Span::new("host.font_context");
             let fonts = kamin_html::metrics::FontContext::new(cx.text_system().clone());
+            drop(font_pass);
             startup.mark("font_context");
             let empty = Document::builder("", BROWSER_CSS).fonts(&fonts).build()?;
             empty.set_animation_elapsed(args.animation_time(0));
             startup.mark("empty_document");
+            let window_pass = kamin_html::why::Span::new("host.window_surface");
             let window = cx.open_window(
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -165,7 +180,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         doc: empty,
                         animation_elapsed: args.animation_time(0),
                         phases: Rc::new(RefCell::new(Phases::default())),
-                        viewport: None,
+                        viewport: Some(args.viewport),
                         step: None,
                         step_opts: None,
                         fresh_scroll: None,
@@ -175,6 +190,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     view
                 },
             )?;
+            drop(window_pass);
             startup.mark("window_surface_pipeline");
             if !offscreen {
                 window.update(cx, |_, window, _| park(window))??;
@@ -217,6 +233,9 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    if let Some(progress) = progress {
+        progress.finish()?;
+    }
     outcome
         .borrow_mut()
         .take()

@@ -13,6 +13,7 @@ use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
+pub use kamin_style::journal::Span;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
 pub(crate) use kamin_style::journal::{note, note_at};
 
@@ -106,6 +107,24 @@ pub fn take() -> Entry {
     }
 }
 
+/// Non-consuming diagnostic view, including passes which have not returned.
+/// Frame trace events remain owned by `take`; this observer samples no events.
+pub fn snapshot() -> Value {
+    let progress = kamin_style::journal::snapshot();
+    let mut value = to_json(&Entry {
+        journal: progress.journal,
+        ..Entry::default()
+    });
+    value["frames_scope"] = json!("not sampled; frame trace is consumed only by take");
+    value["active_intervals"] = progress
+        .active
+        .into_iter()
+        .map(|span| json!({"name": span.name, "elapsed_ms": span.elapsed.as_secs_f64() * 1000.}))
+        .collect();
+    value["active_intervals_dropped"] = json!(progress.active_dropped);
+    value
+}
+
 fn site(site: &std::panic::Location<'_>) -> String {
     format!("{}:{}", site.file().replace('\\', "/"), site.line())
 }
@@ -128,6 +147,9 @@ pub fn to_json(entry: &Entry) -> Value {
         }))).collect::<serde_json::Map<_, _>>(),
         "frames": entry.frames.iter().map(|e| json!({"kind": e.kind, "site": site(e.site), "detail": e.detail})).collect::<Vec<_>>(),
         "frames_dropped": entry.frames_dropped,
+        "timings_ms": j.timings.iter().map(|(name, t)| ((*name).to_string(), json!({
+            "calls": t.calls, "inclusive_ms": t.elapsed.as_secs_f64() * 1000.,
+        }))).collect::<serde_json::Map<_, _>>(),
     })
 }
 

@@ -85,6 +85,7 @@ pub fn convert_restyling(
         .set(dom.quirks_mode.get() == html5ever::tree_builder::QuirksMode::Quirks && !xhtml);
 
     let values = doc;
+    let rules_span = crate::journal::Span::new("style.rules");
     let super::document_rules::DocumentRules {
         agent,
         doc,
@@ -92,6 +93,8 @@ pub fn convert_restyling(
         mut layers,
         reads_attr,
     } = super::document_rules::document_rules(input, extra_css, media, &admission, vcx)?;
+    drop(rules_span);
+    let preparation_span = crate::journal::Span::new("style.selector_preparation");
     let vars = VarMap::new();
     let mut out = vec![];
     let mut tree = TreeIndex::new(values.clone(), xhtml);
@@ -144,6 +147,8 @@ pub fn convert_restyling(
     // Счётчики документа: имя → текущее значение. Обход идёт в порядке
     // разметки, поэтому значение на узле — это то же, что видит браузер.
     let mut counters = crate::style::generated::counters::Counters::default();
+    drop(preparation_span);
+    let walk_span = crate::journal::Span::new("style.cascade_and_box_walk");
     walk_children(
         &dom.document,
         &tree,
@@ -156,6 +161,8 @@ pub fn convert_restyling(
         vcx,
         invalidation,
     )?;
+    drop(walk_span);
+    let _span = crate::journal::Span::new("style.box_normalization");
     let nodes = super::finish_document::finish(&tree, &admission, out, vcx)?;
     if let Some(keep) = marked {
         keep.keep_has(tree.take_has());

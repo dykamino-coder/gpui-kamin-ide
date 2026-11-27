@@ -21,6 +21,7 @@ fn instrumentation() -> gpui::InstrumentationConfig {
     gpui::InstrumentationConfig {
         prepaint: std::env::var("KAMIN_PREPAINT_PROF").as_deref() == Ok("1"),
         request_layout: false,
+        startup: false,
         gpu_timing: std::env::var("KAMIN_DIAG_GPU_TIMING").as_deref() == Ok("1"),
         scale_factor: std::env::var("KAMIN_FORCE_SCALE")
             .ok()

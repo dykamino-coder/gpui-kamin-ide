@@ -85,6 +85,7 @@ impl Hooks for BandFlow {
                             geometry: gpui::MeasuredBox,
                             window: &mut Window,
                             cx: &mut App| {
+            let _span = crate::why::Span::new("layout.block_flow_measure");
             // A final layout pass whose parent already fixed the inline size
             // lays the children out at that size: shrink-to-fit would only
             // re-derive it from min/max-content probes.
@@ -124,6 +125,7 @@ impl Hooks for BandFlow {
                         // (`layout_box.h`) because its algorithms may receive
                         // a definite one; these probes cannot.
                         let (min, max) = intrinsic.get().unwrap_or_else(|| {
+                            let _span = crate::why::Span::new("layout.block_flow_intrinsics");
                             window.with_nested_layout(|window| {
                                 let p = &mut Probe::new(
                                     window,
@@ -164,6 +166,7 @@ impl Hooks for BandFlow {
                 let mut engine = gpui::RetainedLayout::default();
                 let retained = engine.clone();
                 let p = window.with_retained_layout(&mut engine, |window| {
+                    let _span = crate::why::Span::new("layout.block_flow_plan");
                     let mut p = Probe::new(
                         window,
                         cx,

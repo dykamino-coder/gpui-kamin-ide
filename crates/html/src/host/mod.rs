@@ -3,3 +3,4 @@
 pub mod capture;
 pub mod document_view;
 pub mod instrumentation;
+pub mod journal;

@@ -67,6 +67,9 @@ pub(super) async fn sample_once(
                 timings = Some(view.doc.build_timings());
             }
             if let Step::Cold(markup) = step {
+                if args.why.is_some() {
+                    crate::why::cold::sample_started(started);
+                }
                 let t = kamin_html::work::Clock::now();
                 let mut source = Vec::new();
                 let html = {
@@ -84,9 +87,9 @@ pub(super) async fn sample_once(
                     .path(&args.path)
                     .fonts(fonts)
                     .viewport((args.viewport.0 as f32, args.viewport.1 as f32));
-                // Scroll measures the standalone browser view, whose root scroller
-                // takes the wheel (`host::DocumentView`).
-                let doc = if args.mode == Mode::Scroll {
+                // Match the standalone browser's root scrollport for scroll
+                // samples and for explicit cold-opening reproductions.
+                let doc = if args.uses_root_scroller() {
                     builder.build_root_scroller()?
                 } else {
                     builder.build()?
@@ -184,7 +187,7 @@ pub(super) async fn sample_once(
         ).into());
     }
     let pixels = &frame.pixels;
-    if (pixels.width, pixels.height) != args.viewport {
+    if (pixels.width, pixels.height) != args.capture_size() {
         return Err(format!(
             "capture size {}x{} differs from requested viewport",
             pixels.width, pixels.height

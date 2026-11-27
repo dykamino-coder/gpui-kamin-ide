@@ -14,6 +14,7 @@ pub fn from_env() -> InstrumentationConfig {
         prepaint: std::env::var("KAMIN_PREPAINT_PROF").as_deref() == Ok("1"),
         // Enabled by the host that journals layout (engine_bench --why).
         request_layout: false,
+        startup: false,
         gpu_timing: std::env::var("KAMIN_DIAG_GPU_TIMING").as_deref() == Ok("1"),
         scale_factor: std::env::var("KAMIN_FORCE_SCALE")
             .ok()
@@ -29,6 +30,25 @@ pub fn from_env() -> InstrumentationConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_measurements_survive_handoff_and_are_instance_owned() {
+        let first = gpui::Instrumentation::new(InstrumentationConfig {
+            startup: true,
+            ..Default::default()
+        });
+        let clone = first.clone();
+        let second = gpui::Instrumentation::new(first.config());
+        drop(first.startup.span("platform.device"));
+        drop(clone.startup.span("platform.device"));
+        assert_eq!(clone.startup.take()["platform.device"].calls, 2);
+        assert!(first.startup.take().is_empty());
+        assert!(second.startup.take().is_empty());
+        let disabled = gpui::Instrumentation::default();
+        let span = disabled.startup.span("off");
+        drop(span);
+        assert!(disabled.startup.take().is_empty());
+    }
+
     #[test]
     fn explicit_instances_isolate_prepaint_and_batch_measurements() {
         let a = gpui::Instrumentation::new(InstrumentationConfig {

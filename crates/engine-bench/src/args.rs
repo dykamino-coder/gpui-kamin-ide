@@ -11,23 +11,10 @@ pub(super) const MEMORY_STEADY_WINDOW_MS: u64 = 2_000;
 
 mod usage;
 pub(super) use usage::USAGE;
-/// Куда рисует стенд: текстура message-only окна (DWM его не видит) или
-/// прежнее презентуемое окно за краем экрана — только для сверки путей.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Surface {
-    Offscreen,
-    Window,
-}
-
-#[cfg(windows)]
-impl Surface {
-    pub(super) fn name(self) -> &'static str {
-        match self {
-            Self::Offscreen => "offscreen",
-            Self::Window => "window",
-        }
-    }
-}
+mod surface;
+pub(super) use surface::Surface;
+mod profile;
+mod scale;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Mode {
@@ -63,6 +50,8 @@ pub(super) struct Args {
     pub(super) path: PathBuf,
     pub(super) gpu: String,
     pub(super) viewport: (u32, u32),
+    pub(super) scale_factor: f32,
+    pub(super) root_scroller: bool,
     pub(super) runs: usize,
     pub(super) animation_step: Option<std::time::Duration>,
     pub(super) mode: Mode,
@@ -111,6 +100,8 @@ impl Args {
             path: path.into(),
             gpu: "default".into(),
             viewport: (800, 600),
+            scale_factor: 1.0,
+            root_scroller: false,
             runs: 30,
             animation_step: None,
             mode: Mode::Both,
@@ -145,8 +136,13 @@ impl Args {
                 out.trace_frames = true;
                 continue;
             }
+            if flag == "--root-scroller" {
+                out.root_scroller = true;
+                continue;
+            }
             let value = args.next().ok_or("missing option value")?;
             match flag.as_str() {
+                "--scale-factor" => out.scale_factor = scale::parse(&value)?,
                 "--viewport" => {
                     let (w, h) = value.split_once('x').ok_or("viewport must be WxH")?;
                     out.viewport = (w.parse()?, h.parse()?);
@@ -235,6 +231,7 @@ impl Args {
         }
         out.animation_step
             .get_or_insert(std::time::Duration::from_micros(16_667));
+        scale::validate_capture(&out)?;
         animation::validate(&out)?;
         out.path = out.path.canonicalize()?;
         if !out.path.is_file()

@@ -57,6 +57,7 @@ mod texture_pool;
 mod gpu_memory;
 pub(crate) use gpu_memory::texture_bytes;
 mod shader_identity;
+mod deferred_shader;
 #[cfg(debug_assertions)]
 mod shader_compilation;
 mod present_gate;
@@ -567,6 +568,8 @@ impl DirectXRenderer {
         disable_direct_composition: bool,
         offscreen: bool,
     ) -> Result<Self> {
+        let profile = &directx_devices.instrumentation.startup;
+        let _renderer = profile.span("renderer.create");
         if disable_direct_composition && !offscreen {
             log::info!("Direct Composition is disabled.");
         }
@@ -583,15 +586,21 @@ impl DirectXRenderer {
         gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
-        let resources = if offscreen {
-            DirectXResources::new_offscreen(&devices, 1, 1)
-        } else {
-            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
-        }
-        .context("Creating DirectX resources")?;
-        let globals = DirectXGlobalElements::new(&devices.device)
-            .context("Creating DirectX global elements")?;
-        let pipelines = DirectXRenderPipelines::new(&devices.device)
+        let resources = {
+            let _surface = profile.span("renderer.surface");
+            if offscreen {
+                DirectXResources::new_offscreen(&devices, 1, 1)
+            } else {
+                DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
+            }
+            .context("Creating DirectX resources")?
+        };
+        let globals = {
+            let _globals = profile.span("renderer.globals");
+            DirectXGlobalElements::new(&devices.device)
+                .context("Creating DirectX global elements")?
+        };
+        let pipelines = DirectXRenderPipelines::new(&devices.device, profile)
             .context("Creating DirectX render pipelines")?;
 
         let direct_composition = if disable_direct_composition {
@@ -1690,7 +1699,7 @@ impl DirectXRenderer {
                     params,
                     first as u32,
                     len as u32,
-                    self.pipelines.quad_gradient.fragment(&devices.device)?,
+                    self.pipelines.quad_gradient.fragment(&devices.device_context)?,
                 )?;
             } else {
                 pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
@@ -2371,9 +2380,11 @@ impl DirectXResources {
 }
 
 impl DirectXRenderPipelines {
-    pub fn new(device: &ID3D11Device) -> Result<Self> {
+    pub fn new(device: &ID3D11Device, profile: &gpui::StartupProfile) -> Result<Self> {
+        let _pipelines = profile.span("renderer.pipelines");
         let shadow_pipeline = PipelineState::new(
             device,
+            profile,
             "shadow_pipeline",
             ShaderModule::Shadow,
             4,
@@ -2381,14 +2392,16 @@ impl DirectXRenderPipelines {
         )?;
         let quad_pipeline = PipelineState::new(
             device,
+            profile,
             "quad_pipeline",
             ShaderModule::Quad,
             64,
             create_blend_state(device)?,
         )?;
-        let quad_gradient = analytic_gradient::GradientProgram::new()?;
+        let quad_gradient = analytic_gradient::GradientProgram::new(profile)?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
+            profile,
             "path_rasterization_pipeline",
             ShaderModule::PathRasterization,
             32,
@@ -2396,6 +2409,7 @@ impl DirectXRenderPipelines {
         )?;
         let path_sprite_pipeline = PipelineState::new(
             device,
+            profile,
             "path_sprite_pipeline",
             ShaderModule::PathSprite,
             4,
@@ -2403,6 +2417,7 @@ impl DirectXRenderPipelines {
         )?;
         let underline_pipeline = PipelineState::new(
             device,
+            profile,
             "underline_pipeline",
             ShaderModule::Underline,
             4,
@@ -2410,6 +2425,7 @@ impl DirectXRenderPipelines {
         )?;
         let mono_sprites = PipelineState::new(
             device,
+            profile,
             "monochrome_sprite_pipeline",
             ShaderModule::MonochromeSprite,
             512,
@@ -2417,6 +2433,7 @@ impl DirectXRenderPipelines {
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
+            profile,
             "subpixel_sprite_pipeline",
             ShaderModule::SubpixelSprite,
             512,
@@ -2424,6 +2441,7 @@ impl DirectXRenderPipelines {
         )?;
         let poly_sprites = PipelineState::new(
             device,
+            profile,
             "polychrome_sprite_pipeline",
             ShaderModule::PolychromeSprite,
             16,
@@ -2431,6 +2449,7 @@ impl DirectXRenderPipelines {
         )?;
         let blur_pipeline = PipelineState::new(
             device,
+            profile,
             "blur_pipeline",
             ShaderModule::Blur,
             4,
@@ -2439,6 +2458,7 @@ impl DirectXRenderPipelines {
 
         let clear_pipeline = PipelineState::new(
             device,
+            profile,
             "clear_pipeline",
             ShaderModule::Clear,
             1,
@@ -2446,6 +2466,7 @@ impl DirectXRenderPipelines {
         )?;
         let group_tiles_pipeline = PipelineState::new(
             device,
+            profile,
             "group_tiles_pipeline",
             ShaderModule::GroupTiles,
             4,
@@ -2570,8 +2591,8 @@ struct PipelineState<T> {
     gradients: Option<analytic_gradient::GradientBuffers>,
     // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
     shader_executables: [String; 2],
-    vertex: ID3D11VertexShader,
-    fragment: ID3D11PixelShader,
+    vertex: deferred_shader::Shader<ID3D11VertexShader>,
+    fragment: deferred_shader::Shader<ID3D11PixelShader>,
     buffer: ID3D11Buffer,
     buffer_size: usize,
     view: Option<ID3D11ShaderResourceView>,
@@ -2624,8 +2645,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             topology,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             &self.blend_state,
         );
         unsafe {
@@ -2690,8 +2711,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             blend_override.unwrap_or(&self.blend_state),
         );
         unsafe {
@@ -2716,7 +2737,7 @@ impl<T> PipelineState<T> {
             batch_params_buffer,
             first_instance,
             instance_count,
-            &self.fragment,
+            self.fragment.get(device_context)?,
         )
     }
 
@@ -2740,7 +2761,7 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
+            self.vertex.get(device_context)?,
             fragment,
             &self.blend_state,
         );
@@ -2769,8 +2790,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             &self.blend_state,
         );
         unsafe {
@@ -3310,7 +3331,7 @@ pub(crate) mod shader_resources {
             }
         }
 
-        pub(crate) fn as_bytes(&'t self) -> &'t [u8] {
+        pub(crate) fn as_bytes(&self) -> &[u8] {
             self.inner
         }
 
