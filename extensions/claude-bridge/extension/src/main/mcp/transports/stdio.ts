@@ -9,7 +9,7 @@ import { spawn } from 'child_process'
 import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
-import { awaitMcpReply, withProgressToken } from './request-deadline'
+import { awaitMcpReply, rejectPendingMcpRequests, withProgressToken } from './request-deadline'
 import { stdioLaunch } from './stdio-launch'
 import { resolveWorkingDirectory } from '../../utils/working-directory'
 import type { ExternalMcpServerConfig } from '../../../shared/types'
@@ -20,6 +20,12 @@ import type { ExternalMcpServerConfig } from '../../../shared/types'
  *  the installed app is the application directory (INC-2026-0108). */
 export function stdioWorkingDirectory(config: Pick<ExternalMcpServerConfig, 'workingDirectory' | 'projectRoot'>): string {
   return resolveWorkingDirectory(config.workingDirectory, config.projectRoot)
+}
+
+/** MCP peers use stderr for ordinary logging as well as transport failures. */
+function stderrFailure(line: string): boolean {
+  if (/^\s*\[?(?:trace|debug|info)\b/i.test(line)) return false
+  return /\b(?:error|fatal|panic|exception|failed|refused|ENOENT|ECONNREFUSED|EPIPE|MODULE_NOT_FOUND)\b|cannot find module/i.test(line)
 }
 
 export async function connectStdio(ctx: TransportContext, id: string): Promise<void> {
@@ -74,6 +80,16 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
 
     state.process = proc
     state.inputBuffer = ''
+    // ChildProcess 'error' covers spawn/kill; stdin emits its own error when
+    // the peer closes its read end between the writable check and the write.
+    proc.stdin.on('error', err => {
+      if (state.process !== proc) return
+      const failure = new Error(`[stdio] stdin write failed: ${err.message}`)
+      ctx.appendLog(id, 'error', failure.message)
+      rejectPendingMcpRequests(state, failure)
+      finish(false, failure)
+      proc.kill()
+    })
     // Decode across chunk boundaries: a multi-byte UTF-8 character split
     // between two reads would otherwise turn into two U+FFFD in the JSON-RPC
     // frame (Cyrillic tool results arrived corrupted).
@@ -86,7 +102,7 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
     // internal reconnect loop and dump identical errors several times per
     // second when the upstream (named pipe / socket / external app) is
     // offline. Kill the child after either:
-    //   (a) a sustained burst — N total stderr lines in W seconds, or
+    //   (a) a sustained burst — N stderr errors in W seconds, or
     //   (b) the SAME error line repeated R times in a row.
     const STDERR_BURST_LIMIT = 20     // lines
     const STDERR_BURST_WINDOW = 10000 // 10s
@@ -121,18 +137,23 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
         const line = stderrBuf.slice(0, idx).replace(/\r$/, '')
         stderrBuf = stderrBuf.slice(idx + 1)
         if (!line) continue
-        const now = Date.now()
-        stderrTimes = stderrTimes.filter(t => now - t < STDERR_BURST_WINDOW)
-        stderrTimes.push(now)
-        if (line === lastLine) lastLineCount++
-        else { lastLine = line; lastLineCount = 1 }
-        if (stderrTimes.length > STDERR_BURST_LIMIT) {
-          tripCircuit(`${stderrTimes.length} stderr lines in ${STDERR_BURST_WINDOW / 1000}s`)
-          return
-        }
-        if (lastLineCount > STDERR_REPEAT_LIMIT) {
-          tripCircuit(`identical line repeated ${lastLineCount}× ("${line.slice(0, 80)}")`)
-          return
+        const failure = stderrFailure(line)
+        if (failure) {
+          const now = Date.now()
+          stderrTimes = stderrTimes.filter(t => now - t < STDERR_BURST_WINDOW)
+          stderrTimes.push(now)
+          if (line === lastLine) lastLineCount++
+          else { lastLine = line; lastLineCount = 1 }
+          if (stderrTimes.length > STDERR_BURST_LIMIT) {
+            tripCircuit(`${stderrTimes.length} stderr errors in ${STDERR_BURST_WINDOW / 1000}s`)
+            return
+          }
+          if (lastLineCount > STDERR_REPEAT_LIMIT) {
+            tripCircuit(`identical line repeated ${lastLineCount}× ("${line.slice(0, 80)}")`)
+            return
+          }
+        } else {
+          lastLineCount = 0
         }
         // В КОНСОЛЬ — только первые строки: каждая идёт через IPC ребёнок →
         // родитель → stdout → клиент, и на холодном старте сломанный сервер
@@ -140,14 +161,15 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
         // пишем ВСЁ — там оно и нужно.
         // Файл сервера отсутствует (плагин снесли, запись осталась) — это не
         // лечится ретраями; exit-хендлер увидит диагноз и не станет реконнектить.
-        if (line.includes('Cannot find module') || line.includes('MODULE_NOT_FOUND')) {
+        if (!state.permanentFailure && (line.includes('Cannot find module') || line.includes('MODULE_NOT_FOUND'))) {
           state.permanentFailure = line.trim()
         }
         stderrConsoleCount += 1
         if (stderrConsoleCount <= STDERR_CONSOLE_LIMIT) {
-          console.error(`[MCP ${state.config.name}] stderr:`, line)
+          const log = failure ? console.error : console.info
+          log(`[MCP ${state.config.name}] stderr:`, line)
         } else if (stderrConsoleCount === STDERR_CONSOLE_LIMIT + 1) {
-          console.error(`[MCP ${state.config.name}] stderr: …дальше только в панель логов`)
+          console.info(`[MCP ${state.config.name}] stderr: …дальше только в панель логов`)
         }
         ctx.appendLog(id, 'stderr', line)
       }
@@ -182,15 +204,15 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
     })
 
     proc.on('exit', (code, signal) => {
+      const failure = new Error(`Process exited early (code=${code ?? 'null'})`)
+      finish(false, failure)
+      if (state.process !== proc) return
+      rejectPendingMcpRequests(state, failure)
       ctx.appendLog(id, code === 0 ? 'info' : 'warn', `[stdio] process exited code=${code} signal=${signal ?? 'none'}`)
       state.status = 'disconnected'
       state.tools = []
       ctx.notifyChanged()
       ctx.onToolsChanged?.()
-      // If the child died before initialize came back, fail the connect
-      // *now* instead of waiting for the 30s timeout. Much better UX — the
-      // user sees `failed — process exited code=1` the moment it happens.
-      finish(false, new Error(`Process exited early (code=${code ?? 'null'})`))
       // Перманентная поломка (MODULE_NOT_FOUND и т.п.): реконнект гонял бы
       // пустые спавны node на каждом буте — сразу error без ретраев.
       if (state.permanentFailure) {
@@ -318,6 +340,7 @@ function stdioRequest(
   method: string,
   params: Record<string, unknown>,
 ): Promise<any> {
+  if (!state.process?.stdin?.writable) return Promise.reject(new Error('MCP server stdin is closed'))
   const reqId = state.nextRequestId++
   const reply = awaitMcpReply<any>(state, reqId, {
     method,

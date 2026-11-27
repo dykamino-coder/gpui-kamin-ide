@@ -88,7 +88,7 @@ pub use hover_view::HoverView;
 mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
-mod scroll_replay; mod scroll_refusal;
+mod scroll_replay; mod scroll_refusal; mod scroll_still;
 pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
 pub use scroll_replay::ScrollReplay; pub use scroll_refusal::ScrollRefusal;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
@@ -1440,6 +1440,9 @@ pub struct Window {
     /// текст и картинки. Раскладка её не видит — элемент занимает своё место,
     /// а рисуется преобразованным, ровно как в CSS.
     transformation_stack: Vec<TransformationMatrix>,
+    /// KaminIDE patch: the inputs of the flat transform painted now
+    /// (`Window::with_transform_pivot`).
+    transform_pivot: Option<std::rc::Rc<crate::TransformPivot>>,
     /// KaminIDE patch: подобие для масок содержимого — `(начало, коэффициент)`.
     /// Шейдер сравнивает маску с УЖЕ преобразованной позицией
     /// (`shaders.hlsl` `distance_from_clip_rect_transformed`), поэтому маска,
@@ -2444,6 +2447,7 @@ impl Window {
             exact_element_offset_depth: 0,
             raster_frame: RasterFrame::default(),
             transformation_stack: Vec::new(),
+            transform_pivot: None,
             mask_scale: None,
             mask_map: None,
             plane_contexts: Vec::new(),
@@ -6453,6 +6457,7 @@ impl Window {
             mask_clip,
             projection: None,
             fragments: Vec::new(),
+            label_dropped: false,
         });
         self.adopt_group_runs(runs, index, base);
         // Поднятые подложки ложатся ПЕРЕД меткой группы: проход подложки

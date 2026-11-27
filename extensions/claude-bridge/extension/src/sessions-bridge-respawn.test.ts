@@ -29,6 +29,7 @@ vi.mock('./main/ws/connection-manager', () => ({ ConnectionManager: class {
   setRendererMuted = vi.fn()
   getState = () => ({ status: this.status, authority: 'synthetic', revision: 1 })
   getExtendedState = () => ({ status: this.status })
+  getWorkspacePermission = () => 'bypassPermissions' as const
   getEngine = () => this.config.engine ?? 'claude'
   replayJsonlToRenderer = vi.fn()
 } }))

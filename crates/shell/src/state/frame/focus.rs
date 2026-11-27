@@ -8,6 +8,12 @@ use gpui::{Context, Window, px};
 
 impl RootView {
     pub(crate) fn frame_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(view) = self.pending_keyboard_view.take() {
+            #[cfg(windows)]
+            crate::web::focus_mounted_view(&view, window, cx);
+            #[cfg(not(windows))]
+            let _ = view;
+        }
         // Апдейт готов к установке: закрываем окно ШТАТНО — main() после
         // цикла сделает web::shutdown(), CEF-кэш останется чистым.
         if self.pending_quit {

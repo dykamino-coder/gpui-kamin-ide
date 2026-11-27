@@ -50,7 +50,7 @@ describe('Bash hook conditions in the CLI environment', () => {
       readyState: 1,
       send: vi.fn((raw: string) => {
         const frame = JSON.parse(raw)
-        handleLocalHookResponse(frame.requestId, {
+        handleLocalHookResponse(ws, frame.requestId, {
           stdout: '',
           stderr: '',
           exitCode: 0,

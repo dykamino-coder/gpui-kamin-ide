@@ -31,7 +31,7 @@ function answer(ws: ReturnType<typeof client>) {
   ws.send.mockImplementation((raw: string) => {
     const frame = JSON.parse(raw)
     if (frame.type === 'hook:execute')
-      handleLocalHookResponse(frame.requestId, {
+      handleLocalHookResponse(ws, frame.requestId, {
         stdout: 'ok',
         stderr: '',
         exitCode: 0,
@@ -177,7 +177,7 @@ describe('local SessionStart relay while the IDE disconnects', () => {
     ws.send.mockImplementation((raw: string) => {
       const frame = JSON.parse(raw)
       if (frame.type === 'hook:execute')
-        handleLocalHookResponse(frame.requestId, {
+        handleLocalHookResponse(ws, frame.requestId, {
           stdout: 'ok',
           stderr: '',
           exitCode: 0,

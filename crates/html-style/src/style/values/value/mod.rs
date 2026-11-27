@@ -21,6 +21,8 @@ mod calc;
 mod calc_arguments;
 mod calc_expression;
 mod calc_function;
+mod calc_tree;
+pub use calc_tree::{MathId, MathTree};
 mod calc_value;
 pub use calc_expression::LengthExpression;
 mod calc_math;

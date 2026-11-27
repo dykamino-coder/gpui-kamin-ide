@@ -1,0 +1,225 @@
+name: Native Windows smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Full commit SHA to build (defaults to the selected ref)
+        type: string
+      installer_source:
+        description: For installed-client, release-candidate PR checks run ID or published kaminide-vX.Y.Z tag
+        type: string
+      installed_scenario:
+        description: Scenario after upgrading the verified installed client
+        type: choice
+        options: [native-client, bridge-roundtrip, workspace-link, console-scroll, engine-menus, engine-receipts]
+        default: native-client
+      scenario:
+        description: Last boundary to exercise
+        type: choice
+        options: [bridge-roundtrip, native-client, workspace-link, console-scroll, engine-menus, engine-receipts, extension-hooks, installed-client]
+        default: bridge-roundtrip
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-smoke-${{ inputs.candidate || github.sha }}-${{ inputs.scenario || 'bridge-roundtrip' }}
+  cancel-in-progress: false
+
+jobs:
+  installed:
+    name: Install and launch the release package
+    if: github.event_name == 'workflow_dispatch' && inputs.scenario == 'installed-client'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+    env:
+      SMOKE_SHA: ${{ inputs.candidate }}
+      DRIVER_SHA: ${{ github.sha }}
+      INSTALLER_SOURCE: ${{ inputs.installer_source }}
+      INSTALLED_SCENARIO: ${{ inputs.installed_scenario }}
+    steps:
+      - name: Validate release inputs
+        run: |
+          if ($env:SMOKE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'Full release-candidate SHA required' }
+          if ($env:INSTALLER_SOURCE -notmatch '^(?:[0-9]+|kaminide-v[0-9]+[.][0-9]+[.][0-9]+)$') { throw 'A checks run ID or release tag is required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.SMOKE_SHA }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.DRIVER_SHA }}
+          path: .native-smoke-harness
+          sparse-checkout: scripts/ci/native-windows
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Retrieve the existing candidate package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $source = $env:INSTALLER_SOURCE
+          $dir = Join-Path $env:RUNNER_TEMP 'installer-package'
+          if ($source -match '^[0-9]+$') {
+            $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$source" | ConvertFrom-Json
+            if ($run.path -ne '.github/workflows/pr-checks.yml' -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY) { throw 'Expected same-repository PR checks' }
+            gh run download $source --name "kaminide-release-$env:SMOKE_SHA" --dir $dir
+          } else {
+            gh release download $source --pattern '*_x64-setup.exe' --pattern '*_provenance.json' --dir $dir
+          }
+          if ($LASTEXITCODE) { throw 'Installer download failed' }
+          $candidate = Get-Content -Raw (Get-ChildItem $dir -Filter '*_provenance.json').FullName | ConvertFrom-Json
+          $tags = gh release list --limit 100 --json tagName,isDraft,isPrerelease | ConvertFrom-Json
+          $previous = $tags | Where-Object { !$_.isDraft -and !$_.isPrerelease -and $_.tagName -match '^kaminide-v[0-9]+[.][0-9]+[.][0-9]+$' } |
+            ForEach-Object { [Version]($_.tagName -replace '^kaminide-v','') } | Where-Object { $_ -lt [Version]$candidate.versions.app } |
+            Sort-Object -Descending | Select-Object -First 1
+          if (!$previous) { throw 'Previous published release could not be determined' }
+          $baselineDir = Join-Path $dir baseline
+          $name = "KaminIDE_${previous}_x64-setup.exe"
+          $assets = gh release view "kaminide-v$previous" --json assets | ConvertFrom-Json
+          $digest = ($assets.assets | Where-Object { $_.name -eq $name }).digest
+          if ($digest -notmatch '^sha256:[a-f0-9]{64}$') { throw 'Previous release has no GitHub asset digest' }
+          gh release download "kaminide-v$previous" --pattern $name --dir $baselineDir
+          if ($LASTEXITCODE -or ('sha256:' + (Get-FileHash (Join-Path $baselineDir $name)).Hash.ToLowerInvariant()) -ne $digest) { throw 'Previous release digest mismatch' }
+          $previous.ToString() | Set-Content (Join-Path $baselineDir 'version.txt')
+      - name: Install isolated Bridge dependencies for the selected scenario
+        if: env.INSTALLED_SCENARIO != 'native-client'
+        working-directory: extensions/claude-bridge/server
+        run: npm ci --no-audit --no-fund
+      - name: Verify, install and exercise the shipped client
+        run: ./.native-smoke-harness/scripts/ci/native-windows/installed.ps1 -PackageDir (Join-Path $env:RUNNER_TEMP 'installer-package')
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: installed-client-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/installed-client-report/pipeline.json
+            ${{ runner.temp }}/installed-client-report/upgrade.json
+            ${{ runner.temp }}/installed-client-report/version.png
+            ${{ runner.temp }}/installed-client-report/report.json
+            ${{ runner.temp }}/installed-client-report/window.png
+          retention-days: 3
+          if-no-files-found: warn
+  hooks:
+    name: Windows hook command integration (no GUI)
+    if: github.event_name == 'workflow_dispatch' && inputs.scenario == 'extension-hooks'
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      SMOKE_SHA: ${{ inputs.candidate || github.sha }}
+    steps:
+      - name: Validate immutable candidate
+        run: if ($env:SMOKE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'Full commit SHA required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.SMOKE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Run the candidate's synthetic hook fixture
+        working-directory: extensions/claude-bridge/extension
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SMOKE_SHA"
+          test -f src/main/hooks/verify-codex-tool-hook.test.ts
+          npm ci --no-audit --no-fund
+          npm test -- src/main/hooks/verify-codex-tool-hook.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hook-report.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-hook-integration-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hook-report.json
+          retention-days: 3
+  native:
+    if: inputs.scenario != 'installed-client' && inputs.scenario != 'extension-hooks'
+    runs-on: windows-2022
+    timeout-minutes: 65
+    env:
+      SMOKE_SHA: ${{ inputs.candidate || github.sha }}
+      DRIVER_SHA: ${{ github.sha }}
+      SMOKE_SCENARIO: ${{ inputs.scenario || 'bridge-roundtrip' }}
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_DEV_OPT_LEVEL: '0'
+      CARGO_INCREMENTAL: '0'
+      CARGO_BUILD_JOBS: '4'
+    steps:
+      - name: Validate immutable candidate
+        run: if ($env:SMOKE_SHA -notmatch '^[0-9a-fA-F]{40}$') { throw 'Full commit SHA required' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.SMOKE_SHA }}
+          persist-credentials: false
+      - name: Verify checkout
+        run: if ((git rev-parse HEAD) -ne $env:SMOKE_SHA) { throw 'Checkout SHA mismatch' }
+      # A manually selected candidate can predate the harness or live on an
+      # independent fix branch. Always use the harness matching this workflow.
+      - name: Check out the scenario driver
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.DRIVER_SHA }}
+          path: .native-smoke-harness
+          sparse-checkout: scripts/ci/native-windows
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      # Node 22's bundled node-gyp supports the VS 2022 toolchain on this image.
+      - name: Install isolated Bridge dependencies
+        id: bridge_deps
+        if: env.SMOKE_SCENARIO != 'native-client'
+        working-directory: extensions/claude-bridge/server
+        run: npm ci --no-audit --no-fund
+      - name: Restore Cargo sources
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: windows-cargo-inputs-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: windows-cargo-inputs-v1-
+      - name: Build debug shell and CEF helper
+        id: shell_build
+        run: cargo build --locked -p kaminide-gpui -p kaminide-web-helper
+      - name: Build the candidate Extension Host
+        id: host_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund
+          npm run build:host
+      - name: Exercise native client
+        id: native_test
+        run: ./.native-smoke-harness/scripts/ci/native-windows/run.ps1 -Scenario $env:SMOKE_SCENARIO
+      - name: Record build and launch outcomes
+        if: always()
+        env:
+          BUILD_SHELL: ${{ steps.shell_build.outcome }}
+          BUILD_HOST: ${{ steps.host_build.outcome }}
+          INSTALL_BRIDGE: ${{ steps.bridge_deps.outcome }}
+          RUN_NATIVE: ${{ steps.native_test.outcome }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'native-smoke-report'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; scenario = $env:SMOKE_SCENARIO; runner = $env:ImageVersion
+            shell = $env:BUILD_SHELL; host = $env:BUILD_HOST; bridge = $env:INSTALL_BRIDGE; native = $env:RUN_NATIVE
+            linuxCapability = & ./.native-smoke-harness/scripts/ci/native-windows/linux-capability.ps1
+          } | ConvertTo-Json | Set-Content (Join-Path $dir 'pipeline.json')
+      - name: Upload synthetic report and window capture
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-windows-${{ env.SMOKE_SCENARIO }}-${{ env.SMOKE_SHA }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/native-smoke-report/pipeline.json
+            ${{ runner.temp }}/native-smoke-report/runtime.json
+            ${{ runner.temp }}/native-smoke-report/report.json
+            ${{ runner.temp }}/native-smoke-report/window.png
+          retention-days: 3
+          if-no-files-found: warn

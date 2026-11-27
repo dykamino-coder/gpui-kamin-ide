@@ -1,6 +1,16 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { codexPlanUsage, isCompactCommand, modelLine, sessionContextFor, startedContext } from './session-codex'
-import type { CodexRateLimits } from '../../shared/codex-rate-limits'
+import {
+  codexPlanUsage,
+  isCompactCommand,
+  loadCodexChoice,
+  modelLine,
+  sessionContextFor,
+  startedContext,
+} from './session-codex'
+import { parseCodexRateLimits, type CodexRateLimits } from '../../shared/codex-rate-limits'
 
 const limits = (primary: number | null, secondary: number | null): CodexRateLimits => ({
   buckets: [
@@ -40,15 +50,40 @@ describe('codex plan windows for the chat status row', () => {
     })
   })
 
-  it('sends nothing when the account reports no window', () => {
-    expect(codexPlanUsage(limits(null, null), 'gpt-5.5', null)).toBeNull()
-    expect(codexPlanUsage({ ...limits(1, 1), buckets: [] }, null, null)).toBeNull()
+  it('keeps feature limits in the dashboard and shows only the ordinary account in chat', () => {
+    const feature = { primary: { usedPercent: 99, windowDurationMins: 10080, resetsAt: 1900000000 } }
+    const account = { secondary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: 1900100000 } }
+    const onlyFeature = parseCodexRateLimits({ rateLimits: {}, rateLimitsByLimitId: { review: feature } })
+    expect(onlyFeature.buckets).toHaveLength(1)
+    expect(codexPlanUsage(onlyFeature, null, null).windows).toEqual([])
+    const mixed = parseCodexRateLimits({ rateLimits: {}, rateLimitsByLimitId: { review: feature, codex: account } })
+    expect(codexPlanUsage(mixed, null, null)?.windows).toEqual([
+      {
+        id: 'seven_day',
+        label: 'Weekly limit',
+        percent: 12,
+        resetsAt: new Date(1900100000000).toISOString(),
+      },
+    ])
+    const named = { ...feature, limitId: 'code_review' }
+    const featureFallback = parseCodexRateLimits({ rateLimits: named, rateLimitsByLimitId: { code_review: named } })
+    expect(codexPlanUsage(featureFallback, null, null).windows).toEqual([])
+    expect(featureFallback.buckets.map((b) => b.id)).toEqual(['code_review'])
+    const legacy = parseCodexRateLimits({ rateLimits: account })
+    expect(codexPlanUsage(legacy, null, null).windows[0]?.percent).toBe(12)
+    const explicit = parseCodexRateLimits({ rateLimits: feature, rateLimitsByLimitId: { codex: account } })
+    expect(codexPlanUsage(explicit, null, null).windows[0]?.percent).toBe(12)
+  })
+
+  it('clears earlier windows when an account read succeeds without a current window', () => {
+    expect(codexPlanUsage(limits(null, null), 'gpt-5.5', null).windows).toEqual([])
+    expect(codexPlanUsage({ ...limits(1, 1), buckets: [] }, null, null).windows).toEqual([])
   })
 })
 
 describe('session context a codex thread has not seen', () => {
   const base = '# Session\n\n## User Instructions\n\nAnswer tersely.'
-  const line = modelLine('gpt-6.2-sol', 'max')
+  const line = modelLine('gpt-6.2-sol', 'xhigh')
 
   it('names the exact model and the codex effort', () => {
     expect(line).toContain('This chat runs on the model `gpt-6.2-sol` with reasoning effort `xhigh`.')
@@ -70,6 +105,23 @@ describe('session context a codex thread has not seen', () => {
     const switched = sessionContextFor(startedContext(base, modelLine('gpt-6.2', 'high')), base, line)!
     expect(switched.text).toContain('`gpt-6.2-sol`')
     expect(switched.text).not.toContain('Answer tersely.')
+  })
+})
+
+describe('effort choices saved across Bridge versions', () => {
+  it('restores the legacy Extra high alias and the native Max selection', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-choice-'))
+    const filename = path.join(root, 'codex-choice-thread.json')
+    try {
+      fs.writeFileSync(filename, JSON.stringify({ effort: 'max' }))
+      expect(loadCodexChoice(root, 'thread')?.effort).toBe('xhigh')
+      fs.writeFileSync(filename, JSON.stringify({ effort: 'max', nativeEffort: true }))
+      expect(loadCodexChoice(root, 'thread')?.effort).toBe('max')
+      fs.writeFileSync(filename, JSON.stringify({ model: 'gpt-fixture' }))
+      expect(loadCodexChoice(root, 'thread')).toEqual({ model: 'gpt-fixture' })
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 

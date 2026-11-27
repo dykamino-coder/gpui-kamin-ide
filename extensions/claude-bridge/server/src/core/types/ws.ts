@@ -9,6 +9,8 @@ import type { ToolDefinition, TreeNode } from './pty'
 
 export interface WsMsgSessionCreate {
   type: 'session:create'
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
   token: string
   /** Optional working directory for Claude CLI */
   cwd?: string
@@ -108,6 +110,8 @@ export interface WsMsgSessionEnd {
 /** Client requests session resume */
 export interface WsMsgSessionResume {
   type: 'session:resume'
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
   /** Missing transcript returns session:resume-not-found without spawning. */
   noSpawnOnNotFound?: boolean
   token: string
@@ -249,6 +253,8 @@ export type ClientToServerMsg =
   | WsMsgMcpDenied
   | WsMsgElicitationResponse
   | WsMsgSessionResume
+  | { type: 'session:change-claude-permission-mode'; sessionId: string; mode: string }
+  | { type: 'session:codex-collaboration'; sessionId: string; mode: 'default' | 'plan' }
   | WsMsgSessionChangeEffort
   | WsMsgSessionChangeModel
   | WsMsgSessionSwitchEngine
@@ -423,6 +429,14 @@ export interface WsMsgJsonlDownloadResponse {
 }
 
 export type ServerToClientMsg =
+  | {
+      type: 'session:claude-permissions'
+      sessionId: string
+      available: readonly string[]
+      selected?: string
+      requested?: string
+      reason?: string
+    }
   | { type: 'commands:request' }
   | { type: 'commands:snapshot'; snapshot: import('../../shared/commands').CommandSnapshot }
   | { type: 'commands:output'; id: string; output: string }

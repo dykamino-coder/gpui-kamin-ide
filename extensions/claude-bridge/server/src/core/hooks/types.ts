@@ -121,6 +121,8 @@ export type HookSettings = Partial<Record<HookEvent, HookMatcher[]>>
  *  inserted into the proxy URL so an incoming webhook can be matched back to
  *  its original handler. */
 export interface RegisteredHook {
+  /** The host verifies this scoped declaration before executing it for Codex. */
+  codexToolHook?: true
   id: string // uuid, unique per (session, event, handler) tuple
   sessionId: string
   event: HookEvent

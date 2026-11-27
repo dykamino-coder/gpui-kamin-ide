@@ -115,6 +115,7 @@ fn placed_replay_declines_records_with_groups_and_open_layers() {
         mask_clip: None,
         projection: None,
         fragments: Vec::new(),
+        label_dropped: false,
     });
     let mut scene = destination();
     let before = scene.paint_operations.len();

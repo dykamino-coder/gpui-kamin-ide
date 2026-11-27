@@ -88,7 +88,7 @@ export type AgentEvent = Base &
         contextWindow: number | null
       }
     | { kind: 'model.rerouted'; turnId: string; from: string; to: string; reason: string }
-    | { kind: 'notice'; level: 'warning' | 'error'; message: string; turnId?: string; willRetry?: boolean }
+    | { kind: 'notice'; level: 'info' | 'warning' | 'error'; message: string; turnId?: string; willRetry?: boolean }
     /** An engine item Bridge does not render yet; surfaced instead of silently dropped. */
     | { kind: 'item.unsupported'; id?: string; turnId: string; itemType: string }
     | { kind: 'session.exited'; code: number | null; signal: string | null; reason?: string }

@@ -12,11 +12,11 @@ interface PromptTextareaProps {
 }
 
 export function getPlaceholder(mcp: boolean, connStatus: string, promptReady: boolean, refusal?: ConnectionRefusal): string {
-  if (mcp) return 'Loading MCP tools...'
   // A refused tab keeps retrying; say why instead of a bare "Connecting" (BR-05B).
   if (refusal === 'session-limit' && connStatus !== 'connected') {
-    return 'Session limit reached on the Bridge server — close another chat; this one connects when a slot frees'
+    return 'Session limit reached. You can draft a message while waiting.'
   }
+  if (mcp) return 'Loading MCP tools...'
   if (connStatus === 'disconnected' || connStatus === 'error') return 'Disconnected — waiting for bridge...'
   if (connStatus === 'connecting') return 'Connecting to bridge...'
   if (!promptReady) return 'Claude is working...'

@@ -1241,7 +1241,8 @@ pub struct FontRun {
     /// Кегль был один на всю строку, и кусок другого размера внутри абзаца
     /// собрать в общий текстовый блок было нельзя: разметка уходила в
     /// запасную ветку из отдельных слов, где строки наезжали друг на друга.
-    /// Ноль означает «кегль строки».
+    /// Zero is a zero em size (CSS `font-size: 0`): the run has no ink and
+    /// no advance, and the backend shapes it blank.
     pub font_size: Pixels,
 }
 

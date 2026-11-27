@@ -12,6 +12,8 @@ export interface SessionAgentInput {
   /** A whole user message; the engine sends receipts itself, carrying
    *  `userText` (what the user wrote, without Bridge's hidden context). */
   submit(text: string, submissionId?: string, userText?: string): void
+  /** Show cached engine status without submitting a model turn. */
+  showStatus?(text: string, submissionId?: string): void
   /** Raw terminal input. Only Ctrl+C (interrupt) has a meaning; false = ignored. */
   input(data: string): boolean
   /** Re-send the engine's live turn state to a newly attached client: an edge
@@ -262,6 +264,12 @@ export interface ExternalPromptDefinition {
 // ---------------------------------------------------------------------------
 
 export interface SessionConfig {
+  hookSyncFailed?: boolean
+  codexHookProtocol?: 1
+  /** Preserve an untouched CLI session's native identity during the first mode change. */
+  pristineClaudeId?: string
+  /** Explicit, per-conversation selection accepted by Bridge for the native CLI launch. */
+  claudePermissionMode?: import('../pty/claude-permissions').ClaudeMode
   /** Working directory for Claude CLI */
   cwd?: string
   /** Initial terminal dimensions */
@@ -376,6 +384,7 @@ export interface SyncPluginFile {
 }
 
 export interface SyncUserData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string> // relativePath → fileContent
   agents: Record<string, string>
   commands: Record<string, string> // ~/.claude/commands/*.md — custom slash commands
@@ -386,6 +395,7 @@ export interface SyncUserData {
 }
 
 export interface SyncProjectData {
+  toolHookPlugins?: Array<{ id: string; sourceRoot: string; hooks: Record<string, unknown[]> }>
   skills: Record<string, string>
   rules: Record<string, string>
   agents: Record<string, string>

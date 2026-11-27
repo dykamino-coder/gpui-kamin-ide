@@ -66,7 +66,7 @@ export function GoalResultBlock({ result }: { result: GoalResult }): JSX.Element
           {open && (
             <div
               style="margin-top:6px;font-size:12.5px;color:var(--text-secondary);line-height:1.55"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(rest) }}
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(rest, { workspaceLinks: true }) }}
             />
           )}
         </>
