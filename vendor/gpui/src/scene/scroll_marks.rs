@@ -12,12 +12,14 @@
 //! order raise still to apply, so a step costs a rectangle test per dormant
 //! command, not a copy of it.
 
+pub(crate) mod carry;
 mod check;
+pub(crate) mod pivots;
 use super::*;
 use crate::ScrollNodeId;
 
 /// The scroll node and own mask of one command (a primitive or a dormant one).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScrollMark {
     /// Index of the command in `paint_operations`.
     pub(crate) op: u32,
@@ -29,6 +31,10 @@ pub(crate) struct ScrollMark {
     pub(crate) moved: Point<ScaledPixels>,
     /// Of a dormant primitive: the order raise it has not taken yet.
     pub(crate) raised: DrawOrder,
+    /// Of a primitive drawn through a matrix a shift cannot move exactly:
+    /// the inputs of that matrix at the geometry the primitive holds, so a
+    /// move builds it again as a fresh paint there does (`TransformPivot`).
+    pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
 }
 
 /// Which scene a command index counts in: each scene has its own, kept by
@@ -66,12 +72,33 @@ pub(crate) struct ScrollBook {
     /// where it lands (`Window::with_copies_marked`); a node opened inside
     /// the record marks its commands as usual.
     pub(crate) record_base: Option<usize>,
+    /// While a paint record lands: the marks of the nodes it opened inside
+    /// itself, carried to its copy (carry).
+    pub(crate) carry: Option<Box<carry::Carry>>,
+    /// Around one insert (`Window::insert_scene_primitive`): the pivot of
+    /// the flat transform painted now.
+    pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
+    /// A primitive marked under the open node is drawn through a matrix a
+    /// shift cannot move exactly, without its pivot: the node cannot be
+    /// replayed moved (`Window::note_unpivoted`).
+    pub(crate) unpivoted: bool,
+    /// Of a paint record's scene: the pivots of the unmarked primitives it
+    /// holds (painted under the nodes open before it began), by command, so
+    /// a copy marked where it lands keeps them (`copying`).
+    pub(crate) pivots: Vec<(u32, std::rc::Rc<TransformPivot>)>,
+    /// While a finished scene is copied under the open node: the pivots of
+    /// its commands and the offset the copy lands at (`mark_copied`).
+    pub(crate) copying: Option<Box<pivots::Copying>>,
 }
 
 impl ScrollBook {
     pub(crate) fn clear(&mut self) {
         self.marks.clear();
         self.open = None;
+        self.carry = None;
+        (self.pivot, self.unpivoted) = (None, false);
+        self.pivots.clear();
+        self.copying = None;
     }
 
     /// Marks of the commands in `range`.
@@ -98,6 +125,7 @@ impl Scene {
         let placed = placed_bounds(primitive);
         let ordered = placed.intersect(&own);
         let at = self.paint_operations.len() as u32;
+        let pivot = self.pivot_of(primitive);
         if placed.intersect(&primitive.content_mask().bounds).is_empty() {
             if ordered.is_empty() {
                 return None;
@@ -116,26 +144,43 @@ impl Scene {
             };
             *primitive.order_mut() = order;
             self.paint_operations.push(PaintOperation::Dormant(std::rc::Rc::new(primitive.clone())));
-            self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0 });
+            self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0, pivot });
             return None;
         }
-        self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0 });
+        self.scroll.marks.push(ScrollMark { op: at, node, own, placed, moved: Point::default(), raised: 0, pivot });
         Some(ordered)
+    }
+
+    /// The pivot a mark of `primitive` inserted now keeps: the open one when
+    /// the primitive holds its matrix. A primitive a shift cannot move
+    /// exactly without one notes its node (`ScrollBook::unpivoted`).
+    fn pivot_of(&mut self, primitive: &Primitive) -> Option<std::rc::Rc<TransformPivot>> {
+        // A primitive without a matrix (a shadow, path, underline or surface)
+        // is placed by its bounds alone: a shift moves it exactly.
+        let matrix = primitive.transformation();
+        if matrix.is_none_or(TransformationMatrix::moves_exactly) {
+            return None;
+        }
+        let pivot = self.scroll.pivot.as_ref().filter(|pivot| matrix == Some(&pivot.matrix())).cloned();
+        self.scroll.unpivoted |= pivot.is_none();
+        pivot
     }
 
     /// `replay_shifted` of a copy under the open node: mark a primitive (its
     /// mask now is its own: the order came from it) and draw it with own ∩
     /// chain, or turn it dormant (`true`, raised by `raise`: the caller keeps
-    /// it as it is); mark a layer.
-    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder) -> bool {
+    /// it as it is); mark a layer. `index`: the command copied, in its source.
+    pub(super) fn mark_copied(&mut self, operation: &mut PaintOperation, raise: DrawOrder, index: usize) -> bool {
         let Some((node, chain)) = self.scroll.open else { return false };
         let op = self.paint_operations.len() as u32;
         match operation {
             PaintOperation::Primitive(primitive) => {
+                // The pivot of source command `index` (`copying_pivots`) builds its matrix.
+                let pivot = self.copied_pivot(primitive, index, true);
                 let own = primitive.content_mask().bounds;
                 primitive.content_mask_mut().bounds = own.intersect(&chain);
                 let placed = placed_bounds(primitive);
-                self.scroll.marks.push(ScrollMark { op, node, own, placed, moved: Point::default(), raised: 0 });
+                self.scroll.marks.push(ScrollMark { op, node, own, placed, moved: Point::default(), raised: 0, pivot });
                 if !placed.intersect(&primitive.content_mask().bounds).is_empty() {
                     return false;
                 }
@@ -144,7 +189,7 @@ impl Scene {
                 true
             }
             PaintOperation::StartLayer(bounds, _) => {
-                let mark = ScrollMark { op, node, own: *bounds, placed: *bounds, moved: Point::default(), raised: 0 };
+                let mark = ScrollMark { op, node, own: *bounds, placed: *bounds, moved: Point::default(), raised: 0, pivot: None };
                 self.scroll.marks.push(mark);
                 false
             }
@@ -157,7 +202,7 @@ impl Scene {
     pub(super) fn mark_layer(&mut self, bounds: Bounds<ScaledPixels>) {
         if let Some((node, _)) = self.scroll.open {
             let op = self.paint_operations.len() as u32;
-            let mark = ScrollMark { op, node, own: bounds, placed: bounds, moved: Point::default(), raised: 0 };
+            let mark = ScrollMark { op, node, own: bounds, placed: bounds, moved: Point::default(), raised: 0, pivot: None };
             self.scroll.marks.push(mark);
         }
     }
@@ -175,7 +220,7 @@ impl Scene {
         self.scroll.marks.extend(marks.iter().map(|mark| {
             let op = shift(mark.op);
             let dormant = matches!(ops[op as usize], PaintOperation::Dormant(_));
-            ScrollMark { op, raised: mark.raised + if dormant { raise } else { 0 }, ..*mark }
+            ScrollMark { op, raised: mark.raised + if dormant { raise } else { 0 }, ..mark.clone() }
         }));
     }
 
@@ -344,7 +389,7 @@ const SPREAD: usize = 16;
 
 /// One command of a reservoir, as of the frame it was made in.
 #[derive(Clone)]
-pub(super) enum Piece {
+pub(crate) enum Piece {
     Primitive(Primitive),
     /// A layer (a text line) and its order; its commands follow up to `end`.
     Layer(DrawOrder),
@@ -354,11 +399,13 @@ pub(super) enum Piece {
 /// One command of a reservoir with its own mask and where it lands.
 #[derive(Clone)]
 pub(crate) struct Item {
-    pub(super) piece: Piece,
+    pub(crate) piece: Piece,
     own: Bounds<ScaledPixels>,
     placed: Bounds<ScaledPixels>,
     /// Of a layer: the index past its `End`.
     end: u32,
+    /// The pivot of the primitive's matrix at the geometry it holds.
+    pivot: Option<std::rc::Rc<TransformPivot>>,
 }
 
 impl Item {
@@ -369,11 +416,12 @@ impl Item {
             PaintOperation::Dormant(primitive) => Primitive::clone(primitive),
             _ => unreachable!("a scroll mark on a command that is not a primitive"),
         };
-        if mark.moved != Point::default() {
-            record::geometry::primitive(&mut primitive, mark.moved, None);
-        }
+        let pivot = match mark.moved == Point::default() {
+            true => mark.pivot.clone(),
+            false => record::geometry::scrolled(&mut primitive, mark.moved, mark.pivot.as_deref()).map(std::rc::Rc::new),
+        };
         *primitive.order_mut() += mark.raised;
-        Item { piece: Piece::Primitive(primitive), own: mark.own, placed: mark.placed, end: 0 }
+        Item { piece: Piece::Primitive(primitive), own: mark.own, placed: mark.placed, end: 0, pivot }
     }
 
     /// The marked commands of node `id` from `at` on (`Scene::scrollable`
@@ -397,10 +445,10 @@ impl Item {
             match (&operations[here], mark) {
                 (PaintOperation::StartLayer(bounds, order), Some(mark)) => {
                     open.push(items.len());
-                    items.push(Item { piece: Piece::Layer(*order), own: mark.own, placed: *bounds, end: 0 });
+                    items.push(Item { piece: Piece::Layer(*order), own: mark.own, placed: *bounds, end: 0, pivot: None });
                 }
                 (PaintOperation::EndLayer, None) if !open.is_empty() => {
-                    items.push(Item { piece: Piece::End, own: Bounds::default(), placed: Bounds::default(), end: 0 });
+                    items.push(Item { piece: Piece::End, own: Bounds::default(), placed: Bounds::default(), end: 0, pivot: None });
                     let start = open.pop().unwrap_or_default();
                     items[start].end = items.len() as u32;
                 }
@@ -419,8 +467,8 @@ impl Item {
 /// The primitives one node painted between other commands, in paint order,
 /// with a tile grid over where they land (CSR: `cells` offsets into `tiled`).
 #[derive(Clone)] pub(crate) struct Run {
-    pub(super) node: ScrollNodeId,
-    pub(super) items: Vec<Item>,
+    pub(crate) node: ScrollNodeId,
+    pub(crate) items: Vec<Item>,
     origin: Point<ScaledPixels>,
     columns: usize,
     rows: usize,
@@ -521,7 +569,7 @@ impl Run {
             match &item.piece {
                 Piece::Primitive(primitive) => {
                     let mut primitive = primitive.clone();
-                    record::geometry::primitive(&mut primitive, shift, None);
+                    record::geometry::scrolled(&mut primitive, shift, item.pivot.as_deref());
                     *primitive.order_mut() += raised;
                     primitive.content_mask_mut().bounds = record::geometry::bounds(item.own, shift);
                     out.push(PaintOperation::Primitive(primitive));
@@ -588,7 +636,7 @@ impl Item {
                     return;
                 }
                 let mut primitive = primitive.clone();
-                record::geometry::primitive(&mut primitive, shift, None);
+                record::geometry::scrolled(&mut primitive, shift, self.pivot.as_deref());
                 *primitive.order_mut() += raised;
                 primitive.content_mask_mut().bounds = record::geometry::bounds(mask, shift);
                 out.push(PaintOperation::Primitive(primitive));
