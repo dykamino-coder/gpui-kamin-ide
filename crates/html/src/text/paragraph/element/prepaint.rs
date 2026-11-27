@@ -38,29 +38,29 @@ impl Paragraph {
                 d
             }
         };
-        let limit = if self.vertical {
+        let snapped = if self.vertical {
             bounds.size.height
         } else {
             bounds.size.width
         };
-        // Restore the device pixel lost by downward snapping so a line that
-        // fitted the fractional measured width does not wrap during prepaint.
-        let scale = window.scale_factor().max(1.0);
-        let limit = limit + px(1.0 / scale);
-        self.indent_basis = {
-            let exact = window.layout_size_unrounded(*state);
-            let exact = if self.vertical {
-                exact.height
-            } else {
-                exact.width
-            };
-            let snapped = if self.vertical {
-                bounds.size.height
-            } else {
-                bounds.size.width
-            };
-            (f32::from(exact - snapped).abs() <= 1.0 / scale + 1e-4).then_some(exact)
+        let exact = window.layout_size_unrounded(*state);
+        let exact = if self.vertical {
+            exact.height
+        } else {
+            exact.width
         };
+        let scale = window.scale_factor().max(1.0);
+        let laid_out = f32::from(exact - snapped).abs() <= 1.0 / scale + 1e-4;
+        // The painted box is the laid out one: its lines are those of the
+        // layout's final measure, split at the same unrounded width (the
+        // split memo answers). A box painted at other bounds splits at them,
+        // with the device pixel lost by downward snapping restored.
+        let limit = if laid_out {
+            exact
+        } else {
+            snapped + px(1.0 / scale)
+        };
+        self.indent_basis = laid_out.then_some(exact);
         self.apply_measured_fit();
         if !self.vertical {
             let avail = f32::from(window.layout_size_unrounded(*state).width);

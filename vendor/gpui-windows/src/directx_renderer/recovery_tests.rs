@@ -6,7 +6,7 @@ use super::{
     BUFFER_COUNT, BlurScratch, DirectXAtlas, DirectXDevices, DirectXGlobalElements,
     DirectXRenderPipelines, DirectXRenderer, DirectXRendererDevices, DirectXResources, FontInfo,
     RENDER_TARGET_FORMAT, create_blur_texture, create_path_intermediate_msaa_texture_and_view,
-    create_path_intermediate_texture, try_to_recover_from_device_lost,
+    try_to_recover_from_device_lost,
 };
 use gpui::{DevicePixels, ImageId, Scene, Size, WindowBackgroundAppearance};
 use std::sync::Arc;
@@ -120,7 +120,7 @@ fn failed_recovery_releases_slots_and_preserves_composition_policy() {
 fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
     let device = DirectXDevices::new().unwrap();
     let mut r = renderer(&device);
-    for (size, stage) in [(16, 0), (24, 1), (24, 2), (32, 3), (32, 4)] {
+    for (size, stage) in [(16, 0), (24, 1), (24, 2), (32, 3)] {
         r.width = size;
         r.height = size;
         r.resize_with(|resources, devices| {
@@ -145,10 +145,6 @@ fn failed_resize_is_unavailable_and_same_or_different_size_retry_repairs_it() {
                     .GetBuffer::<windows::Win32::Graphics::Direct3D11::ID3D11Texture2D>(0)
             }?;
             if stage == 2 {
-                anyhow::bail!("injected intermediate failure");
-            }
-            let _path = create_path_intermediate_texture(&devices.device, size, size)?;
-            if stage == 3 {
                 anyhow::bail!("injected MSAA failure");
             }
             let _msaa =

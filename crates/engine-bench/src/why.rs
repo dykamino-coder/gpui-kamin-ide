@@ -73,11 +73,14 @@ impl Watch {
         cx: &mut AsyncApp,
         window: WindowHandle<View>,
         step: Step<'_>,
-        measurements: Option<(&super::report::Sample, &super::work::Sample)>,
+        measurements: Option<(&super::accounting::Measured, &super::work::Sample)>,
         raster: Option<gpui::frame_capture::RasterReport>,
         error: Option<String>,
     ) -> Result<()> {
-        let (phases, work) = measurements.unzip();
+        let (measured, work) = measurements.unzip();
+        let phases = measured.map(|m| &m.phases);
+        // The capture's parts that are not the GPU wait (ccounting::partition).
+        let part = |k: &str| measured.and_then(|m| m.diagnostics.get(k).copied().flatten());
         let (frames, mut memory) = window.update(cx, |view, window, cx| {
             (
                 (view.doc.frame_counters(), frames(&view.doc)),
@@ -126,7 +129,7 @@ impl Watch {
             "raster": raster.map(|r| json!({
                 "plan": r.plan, "full_by": r.full_by, "shift_miss": r.shift_miss, "shift_compare": r.shift_compare, "delta": r.delta, "moved_px": r.moved_px,
                 "rects_count": r.rects.len(), "raster_px": r.raster_px, "rects": r.rects,
-                "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3,
+                "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3, "submit_ms": part("raster_submit"), "capture_copy_ms": part("capture_copy"),
             })),
             "gpu_batches": gpu_batches,
             "request_layout_kinds": kinds,
