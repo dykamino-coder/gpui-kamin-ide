@@ -201,7 +201,7 @@ impl Hooks for Placeholder {
             let (origin, offset) = self.slot.placed.get();
             let (deferred, paint) = window.record_retained_paint(|window| {
                 window.replay_retained_paint_moved(&paint, offset);
-                crate::hooks::replay_deferred_moved(window, &deferred, offset)
+                crate::hooks::replay_deferred_moved(window, &deferred, offset, false)
             });
             self.update(|r| {
                 r.paint = paint;

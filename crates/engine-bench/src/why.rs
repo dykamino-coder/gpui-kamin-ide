@@ -52,20 +52,33 @@ impl Watch {
         cx: &mut AsyncApp,
         window: WindowHandle<View>,
         step: Step<'_>,
-        measurements: Option<(&super::report::Sample, &super::work::Sample)>,
+        measurements: Option<(&super::accounting::Measured, &super::work::Sample)>,
         raster: Option<gpui::frame_capture::RasterReport>,
         error: Option<String>,
     ) -> Result<()> {
-        let (phases, work) = measurements.unzip();
+        let (measured, work) = measurements.unzip();
+        let phases = measured.map(|m| &m.phases);
+        let part = |key: &str| measured.and_then(|m| m.diagnostics.get(key).copied().flatten());
         let private = super::process::Snapshot::read()?.commit;
         let gpu_batches = cx.update(|cx| cx.instrumentation().batches.take_line());
         let cold = matches!(step, Step::Cold(_));
+        let kinds = cx.update(|cx| {
+            kamin_html::why::request_layout_kinds(cx.instrumentation().request_layout.take())
+        });
+        let raster = raster.map(|r| {
+            let mut fields = kamin_html::why::raster(r);
+            fields["submit_ms"] = json!(part("raster_submit"));
+            fields["capture_copy_ms"] = json!(part("capture_copy"));
+            fields
+        });
         let fields = json!({
             "mode": format!("{:?}", args.mode).to_lowercase(),
             "step": match step { Step::Cold(_) => "cold", Step::Warm => "warm", Step::Edit(_) => "edit" },
             "error": error, "phases_ms": phases,
             "paint_work": work.map(super::work::Sample::paint_profile),
-            "raster": raster.map(kamin_html::why::raster),
+            "layout_work": work.map(super::work::Sample::layout_profile),
+            "raster": raster,
+            "request_layout_kinds": kinds,
             "gpu_batches": gpu_batches,
             "memory": {"process_private_bytes": private},
         });

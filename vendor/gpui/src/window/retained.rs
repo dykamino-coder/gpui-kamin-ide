@@ -159,9 +159,16 @@ impl Window {
     /// whose subtree now lies `offset` from where it was prepainted: its
     /// hitboxes move by the offset, their masks clipped by the current one.
     pub fn replay_retained_prepaint_moved(&mut self, record: &RetainedPrepaint, offset: Point<Pixels>) -> RetainedPrepaint {
+        self.replay_retained_prepaint_clipped(record, offset, false)
+    }
+
+    /// KaminIDE patch: `replay_retained_prepaint_moved` whose hitbox masks
+    /// are clipped by the current one at zero offset too when `clip`
+    /// (`replay_retained_paint_clipped`).
+    pub fn replay_retained_prepaint_clipped(&mut self, record: &RetainedPrepaint, offset: Point<Pixels>, clip: bool) -> RetainedPrepaint {
         let start = self.prepaint_index();
         self.reuse_prepaint(record.range());
-        if offset != Point::default() {
+        if clip || offset != Point::default() {
             let clip = self.content_mask().bounds;
             for hitbox in &mut self.next_frame.hitboxes[start.hitboxes_index..] {
                 hitbox.bounds.origin += offset;
@@ -275,6 +282,19 @@ impl Window {
         if offset == Point::default() {
             return self.replay_retained_paint(record);
         }
+        self.replay_retained_paint_clipped(record, offset)
+    }
+
+    /// KaminIDE patch: `replay_retained_paint_moved` that clips by the
+    /// current content mask at any offset, zero included: a record drawn
+    /// under another clip than the one it now lies under (an ancestor's clip
+    /// changed while the record stayed) draws what that clip lets through.
+    /// The caller guarantees what `replay_retained_paint_moved` requires.
+    pub fn replay_retained_paint_clipped(
+        &mut self,
+        record: &RetainedPaint,
+        offset: Point<Pixels>,
+    ) -> RetainedPaint {
         debug_assert!(record.replayable, "non-replayable paint record");
         let start = self.paint_index();
         let scale = self.scale_factor();

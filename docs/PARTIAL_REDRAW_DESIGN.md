@@ -113,9 +113,13 @@ of the current renderer specifically.
   rectangle set `RSSetScissorRects` and draw the batches whose primitives
   intersect it (query `BoundsTree`, keep draw order). Instances outside every
   rectangle are not uploaded.
-- `draw_paths_to_intermediate` and the group buffers clear and draw under the
-  same rectangles mapped into their space; group buffers whose bounds do not
-  intersect damage are neither re-rendered nor composited.
+- A path batch clears and rasterizes its multisampled intermediate only
+  within its area (its paths' clipped bounds within the bound scissor), a
+  batch whose area misses the rectangle draws nothing, and the path sprites
+  average the samples themselves, so there is no whole-window resolve
+  (`path_pass.rs`). Group buffers clear and draw under the same rectangles
+  mapped into their space; group buffers whose bounds do not intersect damage
+  are neither re-rendered nor composited.
 - The same shaders and draw order run inside the scissor as in a full frame,
   so pixels inside damage are identical to a full repaint, and pixels outside
   are the retained previous content.

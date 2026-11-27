@@ -34,6 +34,9 @@ pub(super) struct Retained {
     laid_out: Option<gpui::ElementPlace>,
     checked: Option<super::prepared::CheckedRoot>,
     layout_inputs: gpui::RetainedLayoutInputs,
+    /// No replay candidate: the tree is built at `request_layout`, where the
+    /// hover the window shows is known (`Builder::build`).
+    unbuilt: bool,
 }
 
 impl Retained {
@@ -62,22 +65,15 @@ impl Retained {
                 laid_out: Some(prepared.parent),
                 checked: Some(prepared.checked),
                 layout_inputs: prepared.layout_inputs,
+                unbuilt: false,
             };
         }
-        let (tree, flow) = if candidate {
-            (None, None)
-        } else {
-            slot.builds.set(slot.builds.get() + 1);
-            slot.inside_draw.set(slot.inside_draw.get() + 1);
-            let (tree, flow) = builder.build(true, false);
-            (Some(tree), flow)
-        };
         Self {
             slot,
             key,
             builder,
-            tree,
-            flow,
+            tree: None,
+            flow: None,
             scheduled: 0,
             replay: false,
             same_prepaint: false,
@@ -86,6 +82,7 @@ impl Retained {
             laid_out: None,
             checked: None,
             layout_inputs: Default::default(),
+            unbuilt: !candidate,
         }
     }
 }

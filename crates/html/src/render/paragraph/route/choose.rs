@@ -88,7 +88,7 @@ pub(crate) fn route_pieces(
         let native = wrap_rules.is_some()
             && native_request
                 .is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
-        let selectable = inherited.reset_context.no_select != Some(true)
+        let selectable = inherited.tree.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
             let text = gpui::StyledText::new(super::finish::own_text(text, shared))

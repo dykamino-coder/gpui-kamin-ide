@@ -13,6 +13,9 @@ pub(in crate::layout::reuse) struct ReplaySlot {
     /// How far the block lies from where it painted (`valid`): a content
     /// record whose output moves (`Ranges::movable`) replays moved.
     pub(super) offset: Cell<Point<Pixels>>,
+    /// The copy meets another mask than its record's and is clipped by it
+    /// (`Replay::prepaint`).
+    pub(super) cut: Cell<bool>,
 }
 
 impl ReplaySlot {
@@ -21,6 +24,7 @@ impl ReplaySlot {
             record,
             layout: Cell::new(None),
             offset: Cell::new(Point::default()),
+            cut: Cell::new(false),
         }
     }
 
@@ -61,7 +65,8 @@ impl ReplaySlot {
                 _ if r.serial + 1 != serial => Some("serial"),
                 _ if !r.lines.complete() => Some("lines"),
                 _ if r.scale != scale => Some("scale"),
-                _ if r.mask != mask => Some("mask"),
+                // A clipped copy meets its clip in prepaint (`Replay`).
+                _ if r.mask != mask && !r.clipped => Some("mask"),
                 _ if r.size != size => Some("size"),
                 _ if moved
                     && !(moves
@@ -75,6 +80,16 @@ impl ReplaySlot {
                 }
                 _ => None,
             };
+            if let Some(why) = refusal {
+                let kind = if content { "content" } else { "block" };
+                let flags = (r.movable, r.clipped, r.hovers.len());
+                note_input(
+                    (kind, self.node(), why),
+                    (r.origin, r.size),
+                    (origin, size),
+                    flags,
+                );
+            }
             (refusal, origin - r.origin)
         });
         match placed {
@@ -86,5 +101,71 @@ impl ReplaySlot {
             Some((refusal, _)) => refusal,
             None => Some("ranges"),
         }
+    }
+}
+
+/// Unrounded layout positions of one placement differ by float noise only;
+/// their device edges round alike (`raster_phase_matches`).
+fn near(a: Pixels, b: Pixels) -> bool {
+    (a - b).abs() < gpui::px(1.0 / 64.0)
+}
+
+/// `inner` lies inside `outer` but for float noise (`near`).
+pub(super) fn within(inner: gpui::Bounds<Pixels>, outer: gpui::Bounds<Pixels>) -> bool {
+    let (a, b) = (inner, outer);
+    let ge = |x: Pixels, y: Pixels| x > y || near(x, y);
+    ge(a.origin.x, b.origin.x)
+        && ge(a.origin.y, b.origin.y)
+        && ge(b.origin.x + b.size.width, a.origin.x + a.size.width)
+        && ge(b.origin.y + b.size.height, a.origin.y + a.size.height)
+}
+
+/// `a` and `b` are the same bounds but for float noise (`near`).
+pub(super) fn same(a: gpui::Bounds<Pixels>, b: gpui::Bounds<Pixels>) -> bool {
+    within(a, b) && within(b, a)
+}
+
+/// The `why` journal of a refused replay (`layout_retry.replay_input`):
+/// which block or content (`ReplaySlot::node`), the refusal, where and how
+/// large its record painted and its box lies now, and whether its output
+/// moves, is clipped and holds hover boxes. Built only for a reader.
+fn note_input(
+    (kind, node, why): (&str, u64, &str),
+    (was_at, was): (Point<Pixels>, gpui::Size<Pixels>),
+    (at, size): (Point<Pixels>, gpui::Size<Pixels>),
+    (movable, clipped, hovers): (bool, bool, usize),
+) {
+    crate::why::note("layout_retry.replay_input", || {
+        format!(
+            "{kind} {node:x} {why}: origin {was_at:?} -> {at:?}, size {was:?} -> {size:?}, \
+             movable {movable}, clipped {clipped}, hover boxes {hovers}"
+        )
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{point, px, size};
+
+    #[test]
+    fn a_refused_replay_names_the_input_that_differed() {
+        let _reader = crate::why::test_reader();
+        crate::why::take();
+        let input = |w| (point(px(0.), px(10.)), size(px(w), px(20.)));
+        super::note_input(
+            ("content", 0x2a, "size"),
+            input(100.),
+            input(80.),
+            (true, false, 1),
+        );
+        let journal = crate::why::take().journal;
+        let cause = journal
+            .causes
+            .iter()
+            .find(|c| c.code == "layout_retry.replay_input")
+            .expect("no replay input in the journal");
+        let detail = format!("{cause:?}");
+        assert!(detail.contains("content 2a size"), "{detail}");
+        assert!(detail.contains("hover boxes 1"), "{detail}");
     }
 }

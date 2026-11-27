@@ -77,6 +77,14 @@ mod tests {
         let split = p.split_key(Some(px(40.)));
         p.indent_basis = Some(px(200.));
         assert_ne!(p.split_key(Some(px(40.))), split);
+        // Prepaint of the laid out box names the limit as its basis: the
+        // layout's split of that limit is the same one.
+        p.indent_basis = Some(px(40.));
+        assert_eq!(p.split_key(Some(px(40.))), split);
+        // Clamp markers of an unclamped paragraph are read by no split.
+        p.clamp_marker = Some("".into());
+        p.marker_size = Some(px(16.));
+        assert_eq!(p.split_key(Some(px(40.))), split);
     }
 
     #[test]
@@ -143,8 +151,10 @@ impl Paragraph {
             .get_or_init(|| self.split_key_uncached())
             .hash(&mut h);
         limit.map(|l| f32::from(l).to_bits()).hash(&mut h);
-        self.indent_basis
-            .map(|l| f32::from(l).to_bits())
+        // The percentage basis of text-indent as the split reads it
+        // (`line_padding`): an explicit basis equal to the limit is no basis.
+        limit
+            .map(|l| f32::from(self.indent_basis.unwrap_or(l)).to_bits())
             .hash(&mut h);
         h.finish()
     }
@@ -180,11 +190,16 @@ impl Paragraph {
         self.clamp.hash(&mut h);
         self.clamp_force.hash(&mut h);
         self.text_overflow.hash(&mut h);
-        self.overflow_marker.hash(&mut h);
-        self.clamp_marker.hash(&mut h);
-        self.marker_size
-            .map(|s| f32::from(s).to_bits())
-            .hash(&mut h);
+        // The markers are read only by a split that truncates
+        // (`text-overflow`) or clamps (`line-clamp`): a probe that carries
+        // none of them makes the same split of an unclamped paragraph.
+        if self.text_overflow || self.clamp.is_some() {
+            self.overflow_marker.hash(&mut h);
+            self.clamp_marker.hash(&mut h);
+            self.marker_size
+                .map(|s| f32::from(s).to_bits())
+                .hash(&mut h);
+        }
         self.hyphen.hash(&mut h);
         self.hyphen_limit_lines.hash(&mut h);
         self.spacers.hash(&mut h);

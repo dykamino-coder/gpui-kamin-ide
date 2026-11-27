@@ -1,12 +1,12 @@
 //! `backdrop-filter` цветовой матрицей (filter-effects-2 §BackdropFilterProperty).
 
 use crate::paint::effects::mask::svg_filter_matrix;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::px_lossy_zero;
 use crate::values::ValueCx;
 use gpui::{IntoElement, Styled, px};
 
-pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
+pub(super) fn backdrop_matrix(c: &BoxStyle, out: &mut Vec<gpui::AnyElement>, vcx: ValueCx<'_>) {
     // `backdrop-filter` с цветовыми функциями (filter-effects-2
     // §BackdropFilterProperty: `<filter-value-list>` как у `filter`) — матрица
     // 4×5 тем же проходом подложки. Область — border-box со скруглением
@@ -31,7 +31,7 @@ pub(super) fn backdrop_matrix(c: &Computed, out: &mut Vec<gpui::AnyElement>, vcx
                 .and_then(|id| vcx.doc.masks.markup(&format!("filter:{id}")))
                 .and_then(|def| svg_filter_matrix(&def))
         })
-        .filter(|_| !c.reset_effects.backdrop_root_above);
+        .filter(|_| !c.tree.backdrop_root_above);
     if let Some(m) = matrix {
         let side = px_lossy_zero;
         let radius = c.reset_effects.backdrop_blur.unwrap_or(0.0);

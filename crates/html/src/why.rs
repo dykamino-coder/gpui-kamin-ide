@@ -12,7 +12,10 @@
 use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
+mod element_kinds;
+mod layout_work;
 mod memory;
+pub use element_kinds::to_json as request_layout_kinds;
 mod paint_work;
 mod report;
 pub(crate) mod root;
@@ -55,6 +58,7 @@ pub const CODES: &[&str] = &[
     "frame_unpublished",
     "layout_retry.container_size",
     "layout_retry.flow_refused",
+    "layout_retry.replay_input",
     "layout_retry.replay_refused",
     "no_layer.painted_environment",
     "no_layer.painted_ink",

@@ -171,7 +171,9 @@ impl Recorder {
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
                     anchored: anchored(e),
-                    transform: crate::style::computed::FlatTransform::of(&e.style.used()),
+                    transform: crate::style::computed::FlatTransform::of(
+                        &crate::style::computed::BoxStyle::shared(e.style.used()),
+                    ),
                 });
                 parent = Some(index);
             }

@@ -18,13 +18,16 @@ mod animation_tests;
 mod box_repaint;
 #[cfg(test)]
 mod box_repaint_tests;
-mod builder;
 #[cfg(test)]
 mod child_removal_tests;
+#[cfg(test)]
+mod clip_replay_tests;
 #[cfg(test)]
 mod column_repaint_tests;
 #[cfg(test)]
 mod column_unseen_tests;
+#[cfg(test)]
+mod content_image_tests;
 #[cfg(test)]
 mod content_replay_tests;
 #[cfg(test)]
@@ -32,6 +35,8 @@ mod content_resize_tests;
 mod counters;
 #[cfg(test)]
 mod hover_repaint_tests;
+#[cfg(test)]
+mod hover_replay_tests;
 mod snapshot;
 pub use snapshot::FrameCounters;
 #[cfg(test)]
@@ -90,6 +95,9 @@ mod band_rerecord_tests;
 mod band_value_tests;
 mod record;
 pub(crate) use record::frame_miss_code;
+mod builder;
+#[cfg(test)]
+mod line_split_tests;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
@@ -113,13 +121,12 @@ mod used_style_tests;
 #[cfg(test)]
 mod why_tests;
 mod window_key;
+use builder::Builder;
 
 use super::Document;
 use super::state::DocState;
-use crate::dom::Node;
 use gpui::{AnyElement, IntoElement};
 use std::cell::Cell;
-use std::rc::Rc;
 
 /// Записи сохраняемого кадра одного дерева документа.
 #[derive(Default)]
@@ -158,23 +165,6 @@ impl FrameKey {
             freeze_scrollbars: opts.cx.deferred.freeze_scrollbars,
         })
     }
-}
-
-/// Сборка кадра, которую элемент выполняет сам, если повтор не подошёл.
-struct Builder {
-    state: Rc<DocState>,
-    nodes: Rc<Vec<Node>>,
-    /// Номер дерева `nodes` (`Document::tree`).
-    tree: u64,
-    opts: crate::RenderOpts,
-    store: Rc<crate::layout::reuse::Store>,
-    /// Счётчики сборки до первой сборки кадра: повторная (после отказа
-    /// заместителей) начинает с них, как первая.
-    counters: Cell<Option<crate::layout::reuse::Counters>>,
-    /// No resource changed since the previous frame: the window's frame tree
-    /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
-    layout_keys: bool,
-    phases: crate::why::root::Attempt,
 }
 
 impl Document {

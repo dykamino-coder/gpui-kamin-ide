@@ -38,9 +38,15 @@ pub(super) fn raster(s: &mut String, r: &Value) {
     if let Some(c) = r["shift_compare"].as_str() {
         let _ = writeln!(s, "  compared {c}");
     }
-    let _ = writeln!(
+    let _ = write!(
         s,
         "  gpu_wait {:.3} ms",
         r["gpu_wait_ms"].as_f64().unwrap_or(0.0)
     );
+    for (field, label) in [("submit_ms", "submit"), ("capture_copy_ms", "capture_copy")] {
+        if let Some(ms) = r[field].as_f64() {
+            let _ = write!(s, " {label} {ms:.3} ms");
+        }
+    }
+    let _ = writeln!(s);
 }

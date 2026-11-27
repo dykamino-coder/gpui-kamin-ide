@@ -51,7 +51,7 @@ impl Computed {
             crate::values::viewport_reads::note(vcx);
         }
         let size = if vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0 {
-            size.fold_viewport(self.viewport_cx(vcx.viewport), vcx)
+            size.fold_viewport(self.viewport_cx(vcx.viewport, vcx), vcx)
         } else {
             size
         };

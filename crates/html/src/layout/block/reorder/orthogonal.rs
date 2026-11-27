@@ -53,10 +53,10 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
         // canvas-слой — тем страницам якорь не ставится.
         if matches!(ch.tag.as_str(), "html" | "body")
             && ch.style.cascaded().wm().block_rl()
-            && ch.style.used().reset_flex.align_self.is_none()
+            && ch.style.flow_align().is_none()
             && ch.style.used().reset_background.bg_image.is_none()
         {
-            ch.style.used_mut().reset_flex.align_self = Some(crate::style::computed::Align::End);
+            ch.style.set_flow_align(crate::style::computed::Align::End);
         }
         // Ordinary orthogonal blocks now compute their own used inline size.
         if orthogonal_fixed_child::normal_block_flow(&ch.style.used(), container) {

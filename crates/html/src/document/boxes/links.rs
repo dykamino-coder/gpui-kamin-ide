@@ -177,6 +177,20 @@ impl BoxTree {
         false
     }
 
+    /// Whether an ancestor of box `id` sizes its children from their
+    /// intrinsic contributions (`BoxRecord::distributes`): the box gets a
+    /// share of that ancestor's width, which follows the width it gets.
+    pub(crate) fn distributed(&self, id: BoxId) -> bool {
+        let mut parent = self.get(id).map_or(BoxId::NONE, |r| r.parent);
+        while let Some(record) = self.get(parent) {
+            if record.distributes {
+                return true;
+            }
+            parent = record.parent;
+        }
+        false
+    }
+
     /// `paint` of the box and its ancestors up to the first that already has this epoch.
     fn mark_paint(&mut self, id: BoxId, clock: u32) {
         let mut at = id;

@@ -49,8 +49,9 @@ pub(super) struct Inline {
 /// Вывод — в куче: заданий в кадре стопки тысячи, а повторов среди них мало.
 pub(super) enum InlinePaint {
     Element(AnyElement),
-    /// The output and how far its block moved since it painted it.
-    Replay(Box<(RetainedPaint, gpui::Point<gpui::Pixels>)>),
+    /// The output, how far its block moved since it painted it, and whether
+    /// it is clipped by the current mask at any offset (`replay_moved`).
+    Replay(Box<(RetainedPaint, gpui::Point<gpui::Pixels>, bool)>),
 }
 
 pub(super) struct Frame {
@@ -131,8 +132,12 @@ impl CssPaintPass {
                         .record_retained_paint(|window| match paint {
                             InlinePaint::Element(mut child) => child.paint(window, cx),
                             InlinePaint::Replay(record) => {
-                                let (record, offset) = *record;
-                                window.replay_retained_paint_moved(&record, offset);
+                                let (record, offset, clip) = *record;
+                                if clip {
+                                    window.replay_retained_paint_clipped(&record, offset);
+                                } else {
+                                    window.replay_retained_paint_moved(&record, offset);
+                                }
                             }
                         })
                         .1

@@ -7,12 +7,12 @@ use crate::dom::{Element, Node};
 use crate::layout::box_kind::is_blank;
 use crate::layout::float::FloatCb;
 use crate::layout::float::band_measured::{band_float_m, band_host_m};
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 use crate::style::values::value::Len;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wrap_float_run(
-    parent: &Computed,
+    parent: &BoxStyle,
     cb_top_open: bool,
     em: f32,
     measured_ok: bool,

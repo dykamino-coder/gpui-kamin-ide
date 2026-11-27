@@ -80,6 +80,8 @@ pub(super) fn render(out: &Value) -> String {
         }
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render(&mut s, &f["paint_work"]);
+        super::layout_work::render(&mut s, &f["layout_work"]);
+        super::element_kinds::render(&mut s, &f["request_layout_kinds"]);
         roots::render(&mut s, &f["between"]["document_roots"], "root before");
         roots::render(&mut s, &f["document_roots"], "root");
         let phases: Vec<String> = f["phases_ms"]

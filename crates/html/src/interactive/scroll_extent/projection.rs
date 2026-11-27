@@ -34,8 +34,7 @@ pub(crate) fn projection(
         return None;
     }
     if c.is_some_and(|c| {
-        c.reset_positioned.position == Some(Position::Fixed)
-            && !c.reset_transforms.transform_ancestor
+        c.reset_positioned.position == Some(Position::Fixed) && !c.tree.transform_ancestor
             || c.reset_positioned.position == Some(Position::Absolute) && c.cb_node != parent
     }) {
         return None;

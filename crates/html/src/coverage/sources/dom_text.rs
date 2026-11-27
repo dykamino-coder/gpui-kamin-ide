@@ -163,7 +163,6 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../../../html-style/src/dom/element_style/ruby_display/direction.rs"),
     include_str!("../../../../html-style/src/dom/fixup_tree/mod.rs"),
     include_str!("../../../../html-style/src/dom/fixup_tree/ruby_boxes.rs"),
-    include_str!("../../../../html-style/src/dom/fixup_tree/alignment.rs"),
     include_str!("../../../../html-style/src/dom/fixup_tree/flow_items.rs"),
     include_str!("../../../../html-style/src/dom/fixup_grid/mod.rs"),
     include_str!("../../../../html-style/src/dom/fixup_grid/lanes.rs"),

@@ -4,7 +4,7 @@ use super::super::area::physical_area;
 use super::super::settle::default_anchor_of;
 use super::super::{AnchorPlan, SidePlan};
 use super::flipped;
-use crate::style::computed::{Align, BoxStyle, Computed, Position};
+use crate::style::computed::{Align, BoxStyle, Position};
 use crate::style::values::value::{Len, anchor_get, px_lossy_zero};
 use crate::values::ValueCx;
 
@@ -15,7 +15,7 @@ impl AnchorPlan {
     /// (проверка переполнения нужна и без якоря — `no-overflow`).
     pub(in crate::layout::positioned::anchor) fn of(
         own: &BoxStyle,
-        inherited: &Computed,
+        inherited: &BoxStyle,
         vcx: ValueCx<'_>,
         layout: &std::rc::Rc<crate::layout::layout_state::LayoutState>,
     ) -> Option<AnchorPlan> {
@@ -119,7 +119,7 @@ impl AnchorPlan {
             cb_vertical: inherited.wm().vertical(),
             cb_node: own.cb_node,
             fixed: own.reset_positioned.position == Some(Position::Fixed)
-                && !(inherited.reset_transforms.transform_ancestor
+                && !(inherited.tree.transform_ancestor
                     || inherited.reset_transforms.transform.is_some()
                     || inherited.reset_context.contain_layout == Some(true)
                     || inherited.reset_context.contain_paint == Some(true)
