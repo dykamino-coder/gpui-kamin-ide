@@ -8,7 +8,7 @@ use crate::layout::float::band_measured::{band_host_m, band_host_nested};
 use crate::layout::float::clear::bfc_no_fit;
 use crate::layout::float::initial_letter::{inline_float_host, split_leading_float};
 use crate::layout::float::{FloatCb, band_clearance, float_clear_scope, inline_floats};
-use crate::style::computed::{BoxStyle, Computed, Display};
+use crate::style::computed::{BoxStyle, Display};
 use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
@@ -197,7 +197,7 @@ pub(super) fn host_for_run(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wrap_into_host(
-    parent: &crate::style::computed::BoxStyle,
+    parent: &BoxStyle,
     cb_top_open: bool,
     parent_bfc: bool,
     cell_bfc: bool,

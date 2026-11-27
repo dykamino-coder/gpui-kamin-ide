@@ -2,7 +2,7 @@
 //! доли сдвига берутся от каждого фрагмента отдельно (css-transforms-1 §transform-rendering,
 //! css-break-3 §5.5), а не от непрерывной коробки.
 
-use super::super::Computed;
+use super::super::BoxStyle;
 use gpui::{Bounds, Pixels, TransformationMatrix};
 
 /// The 2D matrix of a box beyond a translation, resolvable per reference box.
@@ -17,7 +17,7 @@ pub struct FlatTransform {
 impl FlatTransform {
     /// The box's transform when it is flat (no 3D context, perspective or depth)
     /// and its linear part is not the identity; `None` for a pure translation.
-    pub fn of(c: &crate::style::computed::BoxStyle) -> Option<Self> {
+    pub fn of(c: &BoxStyle) -> Option<Self> {
         let t = c.reset_transforms.transform?.after_individual(
             c.reset_transforms.rotate_prop,
             c.reset_transforms.scale_prop,
