@@ -45,11 +45,10 @@ impl Window {
             crate::dirty_sources::trace::push_with("scroll_node.record_unlanded", core::panic::Location::caller(), || why);
         }
         if let Some(carry) = carry.map(Carry::landed) {
-            let relayed = scene.scroll.relayed.iter().map(|(space, hops)| {
-                let hops = hops.iter().cloned().chain([carry.clone()]).collect();
-                (*space, hops)
-            });
-            let relays: Vec<Relay> = relayed.chain([(scene.scroll.space, vec![carry])]).collect();
+            let mut relays: Vec<Relay> = (scene.scroll.relayed.iter())
+                .map(|(space, hops)| (*space, hops.iter().cloned().chain([carry.clone()]).collect()))
+                .collect();
+            relays.push((scene.scroll.space, vec![carry]));
             match self.next_frame.scene.scroll.record_base {
                 Some(_) => self.next_frame.scene.scroll.relayed.extend(relays),
                 None => self.land_carried_nodes(&relays),
