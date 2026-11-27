@@ -99,12 +99,12 @@ impl Retained {
                     }
                     None => self.build_in(bounds, window, cx),
                 };
-                self.scheduled += window.next_frame_callback_count().saturating_sub(before);
                 record.inputs = self.key.clone().map(|frame| {
                     Inputs::new(frame, key, window, std::mem::take(&mut self.layout_inputs))
                 });
                 record.prepaint = prepaint;
                 self.deferred = Some(window.prepaint_local_deferred(&record.prepaint, cx));
+                self.scheduled += window.next_frame_callback_count().saturating_sub(before);
                 record.paint = RetainedPaint::default();
                 record.layered = None;
                 record.layer = None;

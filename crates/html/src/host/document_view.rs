@@ -179,8 +179,11 @@ impl Render for DocumentView {
     }
 }
 
-fn size_style((width, height): (f32, f32)) -> gpui::Size<Option<gpui::Length>> {
-    gpui::size(Some(px(width).into()), Some(px(height).into()))
+fn size_style((width, height): (f32, f32)) -> gpui::SizeRefinement<gpui::Length> {
+    gpui::SizeRefinement {
+        width: Some(px(width).into()),
+        height: Some(px(height).into()),
+    }
 }
 
 #[cfg(test)]

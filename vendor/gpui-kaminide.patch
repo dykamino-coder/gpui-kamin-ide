@@ -45809,10 +45809,10 @@ index 0000000000000000000000000000000000000000..f79f1792eea18cee4f2a7ff008a6bd4a
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d55bd4233a18a62dd3d2dc83acea975b4726d18d
+index 0000000000000000000000000000000000000000..d12ffe88cb0d3566f375b462c3d19d1c4c8ade20
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,560 @@
+@@ -0,0 +1,561 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -46224,15 +46224,16 @@ index 0000000000000000000000000000000000000000..d55bd4233a18a62dd3d2dc83acea975b
 +                return Err(at(ScrollRefusal::Groups));
 +            }
 +        }
-+        // So do those of its deferred draws, in the frame's scene
-+        // (`reuse_deferred_paint`).
++        // So do those of its deferred draws, in their owning scene
++        // (`reuse_deferred_paint`). Local draws are inside the retained root.
 +        let frame = &self.rendered_frame;
 +        for draw in plan.draws.keys().map(|&index| &frame.deferred_draws[index]) {
 +            let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
 +            let groups = draw.groups.clone();
 +            if !groups.is_empty() {
-+                let labels = frame.scene.group_labels(painted, groups.clone());
-+                if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
++                let scene = if draw.local { source } else { &frame.scene };
++                let labels = scene.group_labels(painted, groups.clone());
++                if !scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
 +                    return Err(at(ScrollRefusal::Groups));
 +                }
 +            }

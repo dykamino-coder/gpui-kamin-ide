@@ -1,7 +1,7 @@
 //! Owner-walk regressions run in ordinary workspace tests, without a profiler feature.
 
 use super::*;
-use crate::host::DocumentView;
+use crate::host::document_view::DocumentView;
 use gpui::{
     Context, Entity, IntoElement, Render, TestAppContext, VisualTestContext, Window, px, size,
 };

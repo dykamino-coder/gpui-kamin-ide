@@ -409,15 +409,16 @@ impl Window {
                 return Err(at(ScrollRefusal::Groups));
             }
         }
-        // So do those of its deferred draws, in the frame's scene
-        // (`reuse_deferred_paint`).
+        // So do those of its deferred draws, in their owning scene
+        // (`reuse_deferred_paint`). Local draws are inside the retained root.
         let frame = &self.rendered_frame;
         for draw in plan.draws.keys().map(|&index| &frame.deferred_draws[index]) {
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             let groups = draw.groups.clone();
             if !groups.is_empty() {
-                let labels = frame.scene.group_labels(painted, groups.clone());
-                if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
+                let scene = if draw.local { source } else { &frame.scene };
+                let labels = scene.group_labels(painted, groups.clone());
+                if !scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                     return Err(at(ScrollRefusal::Groups));
                 }
             }
