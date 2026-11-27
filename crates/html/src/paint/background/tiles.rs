@@ -75,6 +75,11 @@ pub(super) fn paint_layer_in(
     vcx: ValueCx<'_>,
 ) {
     let layer = paint.layer;
+    // A fixed layer is placed against the viewport, which a scroll does not
+    // move: a scrolled replay of the nodes around it builds instead.
+    if layer.fixed == Some(true) {
+        window.paint_viewport_dependent();
+    }
     let positioning = geometry.map_or(bounds, |geometry| geometry.positioning(bounds));
     let Some(src) = layer.image.clone() else {
         return;

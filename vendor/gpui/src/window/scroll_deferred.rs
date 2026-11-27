@@ -154,7 +154,7 @@ impl Window {
                 self.reuse_paint_state(&range);
                 let scale = self.scale_factor();
                 let node = |id: ScrollNodeId| plan.scaled(id, scale);
-                let labels = self.rendered_frame.scene.group_label_nodes(scenes.clone(), groups.clone());
+                let labels = self.rendered_frame.scene.group_labels(scenes.clone(), groups.clone());
                 self.replay_groups(groups, Some((&labels, &node)));
                 self.replay_scenes_scrolled(scenes, &plan);
             }

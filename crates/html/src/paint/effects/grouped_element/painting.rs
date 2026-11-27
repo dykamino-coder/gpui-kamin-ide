@@ -157,6 +157,12 @@ pub(super) fn paint_body(
         }
         _ => (area, gpui::Corners::default()),
     };
+    // A spilling group composites over the whole window (`group_area`),
+    // which a scroll does not move: a scrolled replay of the nodes around it
+    // builds instead of moving its bounds off the window.
+    if group.spill {
+        window.paint_viewport_dependent();
+    }
     content::paint(
         group,
         _prepaint.1,
