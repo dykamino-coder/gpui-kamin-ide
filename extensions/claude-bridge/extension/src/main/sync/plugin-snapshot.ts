@@ -4,7 +4,7 @@ import os from 'os'
 import path from 'path'
 import { bridgeStatePath } from '../bridge-state'
 import type { SyncPluginData } from '../../shared/sync-types'
-import { listEnabledInstalledPlugins, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
+import { listEnabledInstalledPlugins, pluginSkillRefs, readEffectivePluginManifest, substituteUserConfig } from '../plugin-helpers'
 import { buildMonitorTriggerHooks } from '../plugin-monitors'
 import { collectPluginModuleTree } from './plugin-modules'
 
@@ -217,7 +217,7 @@ export function hashPluginHook(event: string, matcher: string | undefined, handl
     .slice(0, 16)
 }
 
-function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSettings {
+export function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSettings {
   let approved: Set<string> | null = null
   try {
     const file = bridgeStatePath('plugin-hook-approvals.json')
@@ -241,21 +241,24 @@ function filterApprovedHooks(pluginId: string, hooks: HookSettings): HookSetting
   return out
 }
 
+/** Complete effective plugin tool-hook declarations for one trusted tab root. */
+export async function scopedToolHookPlugins(cwd?: string) {
+  const installed = await listEnabledInstalledPlugins({cwd})
+  return Promise.all(installed.map(async plugin => {
+    const manifest = await readEffectivePluginManifest(plugin.installPath,plugin.name,plugin.marketplace)
+    const hooks = rewritePluginMcpMatchers(plugin.name,filterApprovedHooks(plugin.key,await collectPluginHooks(plugin.installPath,manifest)))
+    return {id:plugin.key,sourceRoot:plugin.installPath,hooks}
+  }))
+}
+
 export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings): HookSettings {
   const pluginPart = pluginName.replace(/[^a-zA-Z0-9_-]/g, '_')
   const officialPrefix = `mcp__plugin_${pluginPart}_`
   const bridgePrefix = `mcp__user-tools__plugin_${pluginPart}_`
-  // Claude's built-in file/shell tools are disabled in bridge sessions and
-  // exposed through the user-tools MCP server. Plugin hooks are authored
-  // against the native names, so translate standalone matcher tokens too.
-  const bridgeNativeTools = [
-    'Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'PowerShell',
-    'BashOutput', 'KillShell', 'NotebookEdit', 'WebFetch',
-    'EnterWorktree', 'ExitWorktree', 'AskUserQuestion',
-    'PushNotification', 'ShowWidget', 'TodoList', 'TodoWrite',
-    'LspDiagnostics', 'LspHover', 'LspDefinition', 'LspReferences',
-  ]
-  const bridgeNativeMatcher = new RegExp(`\\b(${bridgeNativeTools.join('|')})\\b`, 'g')
+  // Native names stay intact so the server can both match the replacement
+  // MCP tool and deliver Claude's original tool_name to the local command.
+  // These six tools exist only in Bridge and already use the MCP payload.
+  const bridgeOnlyMatcher = /\b(ShowWidget|TodoList|LspDiagnostics|LspHover|LspDefinition|LspReferences)\b/g
   const out: HookSettings = {}
   for (const [event, rawMatchers] of Object.entries(hooks)) {
     if (!Array.isArray(rawMatchers)) continue
@@ -281,7 +284,7 @@ export function rewritePluginMcpMatchers(pluginName: string, hooks: HookSettings
         ...(typeof matcher.matcher === 'string' ? {
           matcher: matcher.matcher
             .split(officialPrefix).join(bridgePrefix)
-            .replace(bridgeNativeMatcher, 'mcp__user-tools__$1'),
+            .replace(bridgeOnlyMatcher, 'mcp__user-tools__$1'),
         } : {}),
         ...(rewrittenHandlers ? { hooks: rewrittenHandlers } : {}),
       }
@@ -311,15 +314,7 @@ export async function buildPluginSnapshots(): Promise<Record<string, SyncPluginD
     const manifest = await readEffectivePluginManifest(plugin.installPath, plugin.name, plugin.marketplace)
     const options = loadNonSensitiveOptions(plugin.key, manifest)
 
-    const defaultSkills = path.join(plugin.installPath, 'skills')
-    const marketplaceRootSource = fs.existsSync(path.join(plugin.installPath, '.claude-plugin', 'marketplace.json'))
-    const skillsRefs = [
-      ...(fs.existsSync(defaultSkills) && !(marketplaceRootSource && manifest.skills !== undefined) ? ['skills'] : []),
-      ...manifestPathRefs(manifest.skills),
-    ]
-    if (skillsRefs.length === 0 && fs.existsSync(path.join(plugin.installPath, 'SKILL.md'))) {
-      skillsRefs.push('SKILL.md')
-    }
+    const skillsRefs = pluginSkillRefs(plugin.installPath, manifest)
 
     // Per Claude's merge contract commands/agents/outputStyles/themes replace
     // their default directory when explicitly declared; skills add to default.

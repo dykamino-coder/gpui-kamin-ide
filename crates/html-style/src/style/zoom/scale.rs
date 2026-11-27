@@ -40,6 +40,13 @@ pub fn scale_own(c: &mut Computed, k: f32, vcx: crate::values::ValueCx<'_>) {
         Some(Len::EmPx(e, add)) => *l = Some(Len::EmPx(e, add * k)),
         Some(Len::LhPx(e, add)) => *l = Some(Len::LhPx(e, add * k)),
         Some(Len::Calc(i)) => *l = Some(scale_calc(i, k, vcx)),
+        // The pixel parts of the tree leaves, as for a `calc()` sum.
+        Some(m @ Len::Math(_)) => {
+            *l = Some(m.resolve_math(vcx, |s| {
+                s.px *= k;
+                s.px != 0.0
+            }));
+        }
         _ => {}
     };
     let sides = |s: &mut Sides| {

@@ -15,6 +15,9 @@ pub(super) enum Val {
 /// `expr := term (('+'|'-') term)*`, `term := factor (('*'|'/') factor)*`.
 pub(super) struct Calc<'a> {
     pub(super) recording: Option<Vec<super::calc_expression::Node>>,
+    /// Parsing a deferred tree (`calc_tree`): length leaves are checked by
+    /// TYPE only; their units are compared by the fold once bases exist.
+    pub(super) typing: bool,
     pub(super) rest: &'a str,
 }
 
@@ -23,6 +26,7 @@ impl<'a> Calc<'a> {
         Self {
             rest,
             recording: None,
+            typing: false,
         }
     }
 
@@ -30,6 +34,7 @@ impl<'a> Calc<'a> {
         Self {
             rest,
             recording: self.recording.take(),
+            typing: self.typing,
         }
     }
 
@@ -170,5 +175,10 @@ impl Calc<'_> {
 }
 
 pub(super) fn parse_calc(inner: &str, vcx: ValueCx<'_>) -> Option<Len> {
-    eval_calc(inner, vcx)?.collapse(vcx)
+    match eval_calc(inner, vcx) {
+        Some(sum) => sum.collapse(vcx),
+        // Comparing units whose bases are not known yet (`min(3rem, 8vw)`)
+        // is deferred as a tree until the computed value (§10.10).
+        None => super::calc_tree::deferred(inner, vcx),
+    }
 }

@@ -94,7 +94,7 @@ export function createSharedBackend(options: SharedBackendOptions): WorkspaceBac
   for (const tab of saved.tabs) {
     try {
       const connection = { ...config.get(), cwd: projectDirectory(root, tab.cwd) }
-      const creation = { background: true, restored: tab }
+      const creation = { background: true, restored: tab, workspacePermission: tab.workspacePermission }
       if (tab.conversationId) manager.resumeSession({ ...connection, conversationId: tab.conversationId,
         sessionLabel: tab.sessionTitle }, creation)
       else manager.createTab(connection, creation)

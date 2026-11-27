@@ -1480,3 +1480,9 @@ pre.hljs-block::-webkit-scrollbar-corner,
     animation-iteration-count: infinite !important;
   }
 }
+
+.session-limit-notice {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  font-size: var(--fs-sm, 12px);
+}

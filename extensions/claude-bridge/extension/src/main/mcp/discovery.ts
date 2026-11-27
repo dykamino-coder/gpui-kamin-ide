@@ -175,7 +175,9 @@ async function loadMarketplaceDescriptionsAsync(pluginsDir: string): Promise<Map
 //   2. `<installPath>/.claude-plugin/plugin.json:mcpServers` (inline, 3 shapes)
 export async function discoverPluginConfigs(pluginsDir: string): Promise<ExternalMcpServerConfig[]> {
   const [plugins, marketplaceDescriptions] = await Promise.all([
-    listEnabledInstalledPlugins(),
+    // This manager serves every tab. Project-only installed servers require
+    // a catalog and executor bound to their owning project.
+    listEnabledInstalledPlugins({}),
     loadMarketplaceDescriptionsAsync(pluginsDir),
   ])
 
@@ -296,6 +298,7 @@ export async function discoverFromClaudeJsonAsync(claudeDir: string): Promise<Ex
     for (const [name, entry] of Object.entries(mcpServers)) {
       if (typeof entry !== 'object' || entry === null) continue
       const e = entry as Record<string, any>
+      if (e.disabled === true) continue
       const serverType = e.type === 'sse' ? 'sse' : e.type === 'http' ? 'http' : e.type === 'ws' ? 'ws' : 'stdio'
       const config: ExternalMcpServerConfig = {
         id: randomUUID(),
@@ -308,7 +311,7 @@ export async function discoverFromClaudeJsonAsync(claudeDir: string): Promise<Ex
         description: `From ${path.basename(r.path)}`,
       }
       if (serverType === 'http' || serverType === 'sse' || serverType === 'ws') {
-        config.url = e.url
+        config.url = typeof e.url === 'string' ? resolveEnvVars(e.url) : e.url
         if (e.headers && typeof e.headers === 'object') {
           config.headers = {}
           for (const [k, v] of Object.entries(e.headers)) {

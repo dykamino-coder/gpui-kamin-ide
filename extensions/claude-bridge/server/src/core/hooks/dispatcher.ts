@@ -24,6 +24,7 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 export const HOOK_OUTPUT_DRAIN_MS = 1000
 
 interface PendingHookExec {
+  ws: WS
   sessionId: string
   resolve: (r: HookExecutionResult) => void
   startedAt: number
@@ -146,8 +147,8 @@ export async function dispatchHook(
     outcome: result.outcome,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
-    stdoutPreview: result.stdout ? result.stdout.slice(0, 256) : undefined,
-    stderrPreview: (auditNote ?? result.stderr)?.slice(0, 256) || undefined,
+    stdoutPreview: !reg.codexToolHook && result.stdout ? result.stdout.slice(0, 256) : undefined,
+    stderrPreview: reg.codexToolHook ? undefined : (auditNote ?? result.stderr)?.slice(0, 256) || undefined,
   })
   return result
 }
@@ -186,13 +187,16 @@ async function dispatchLocal(reg: RegisteredHook, payload: HookInputPayload, ws:
         durationMs: Date.now() - start,
       })
     }, timeoutMs)
-    pendingLocalExecs.set(requestId, { sessionId: reg.sessionId, resolve: finish, startedAt: start })
+    pendingLocalExecs.set(requestId, { ws, sessionId: reg.sessionId, resolve: finish, startedAt: start })
     ws.once('close', disconnected)
     ws.once('error', disconnected)
     try {
       ws.send(
         JSON.stringify({
           type: 'hook:execute',
+          ...(reg.codexToolHook
+            ? { codexToolHook: { source: reg.source.kind, matcher: reg.matcher, handler: reg.handler } }
+            : {}),
           requestId,
           sessionId: reg.sessionId,
           hookId: reg.id,
@@ -219,9 +223,13 @@ async function dispatchLocal(reg: RegisteredHook, payload: HookInputPayload, ws:
 }
 
 /** Resolve a pending local hook from the VSIX bridge host's WS response. */
-export function handleLocalHookResponse(requestId: string, result: HookExecutionResult): void {
+export function handleLocalHookResponse(
+  ws: { readonly readyState: number },
+  requestId: string,
+  result: HookExecutionResult,
+): void {
   const pending = pendingLocalExecs.get(requestId)
-  if (!pending) {
+  if (pending?.ws !== ws) {
     warnLog('Hook response for unknown requestId', { requestId })
     return
   }

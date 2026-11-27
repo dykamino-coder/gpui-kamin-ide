@@ -67,6 +67,7 @@
   {"id":"invoke:notifications:get","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/config.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:notifications:test","status":"supported-in-browser-host","provider":"shared-host","requires":["finished-toast-route"],"sources":{"extension/src/main/ipc/config.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:open-external","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1,"webview/src/lib/external-links.ts":1}},
+  {"id":"invoke:open-workspace-location","status":"explicitly-not-applicable-with-reason","reason":"Only a desktop chat can open a file in the native project editor.","evidence":"extension/src/workspace-location.ts","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/external-links.ts":1}},
   {"id":"invoke:open-file-dialog","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:open-image-dialog","status":"supported-in-browser-host","provider":"environment","sources":{"extension/src/core-ipc.ts":1,"webview/src/lib/bridge-channels.ts":1}},
   {"id":"invoke:output-styles:list","status":"supported-in-browser-host","provider":"shared-host","sources":{"extension/src/main/ipc/skills-agents.ts":1,"webview/src/lib/bridge-channels.ts":1}},
