@@ -56,11 +56,9 @@ impl FontContext {
             x_height: metric(system.x_height(id, px)),
             zero_advance: advance('0'),
             ideographic_advance: advance('水'),
-            ideographic_vertical_advance: system
-                .has_glyph(id, '水')
-                .then(|| system.advance(id, px, '水').ok())
-                .flatten()
-                .and_then(|v| metric(v.height)),
+            // TextSystem::advance возвращает только горизонтальное продвижение.
+            // Отсутствие вертикального API сохраняем для CSS fallback, не как 0.
+            ideographic_vertical_advance: None,
             ..FontMetricFacts::default()
         })
     }

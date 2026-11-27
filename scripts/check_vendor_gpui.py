@@ -50,7 +50,6 @@ def crate_features(manifest: dict) -> dict[str, str]:
 TEST_FILTERS = {
     "gpui-windows": [
         "direct_write::blank_runs::",
-        "direct_write::size_adjust::",
         "direct_write::tests::zero_size_runs_shape_blank",
         "directx_atlas::",
         "directx_renderer::cover_shape::",

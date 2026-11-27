@@ -1,32 +1,31 @@
 # KaminIDE patches — gpui-pre-windows 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Font-size-adjust: a scoped DirectWrite fallback maps each selected face at its own raw-metric em scale before shaping, with CSS-run boundaries and native vertical design advances.
-# 2. Frame canvas: the frame is drawn into a kept canvas texture and each back buffer receives its accumulated damage by copy before present; a scroll step planned as a move (`Scene::frame_shift`) copies the canvas by the step through a scratch texture and rasterizes only the planned rectangles, from instances uploaded once; capture reads the canvas and reports the plan, rectangles and GPU wait.
-# 3. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.
-# 4. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
-# 5. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
-# 6. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
-# 7. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 8. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
-# 9. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
-# 10. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
-# 11. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
-# 12. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
-# 13. Zero em size: a run at font-size 0 is shaped blank (no glyph, no advance, zero extent); a line of such runs is not shaped, a mixed line shapes them at a stand-in size no neighbour uses and drops their glyph runs.
-# 14. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
-# 15. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
-# 16. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
-# 17. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
-# 18. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
-# 19. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
-# 20. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
-# 21. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
-# 22. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
-# 23. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
-# 24. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
-# 25. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
-# 26. Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.
-# 27. Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.
+# 1. Frame canvas: the frame is drawn into a kept canvas texture and each back buffer receives its accumulated damage by copy before present; a scroll step planned as a move (`Scene::frame_shift`) copies the canvas by the step through a scratch texture and rasterizes only the planned rectangles, from instances uploaded once; capture reads the canvas and reports the plan, rectangles and GPU wait.
+# 2. Analytic gradients: D3D and WARP evaluate radial, repeating and arbitrary-stop sRGB fills directly in the destination, with retained descriptor/stop buffers, shared group uploads and explicit memory accounting; no intermediate raster tile. Analytic quads draw as order-preserving runs with a pixel program of their own, so the plain quad and path programs carry neither the stop loop nor its buffers.
+# 3. Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.
+# 4. Debug shaders: embed both HLSL sources and their shared include, compile with rooted virtual filenames and the existing flags, and keep dev/agent binaries independent of the build worktree. The scoped include callback borrows static bytes until synchronous D3DCompile returns; its raw out-pointers are supplied by the compiler. Release keeps its existing embedded bytecode.
+# 5. Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+# 6. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen; exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 7. Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.
+# 8. Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.
+# 9. DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.
+# 10. Adapter policy: instance-owned typed DXGI preference, unchanged default enumeration, device recovery and live adapter LUID/driver identity.
+# 11. DirectWrite: CSS font selection, shaping, vertical glyphs and fallback metrics.
+# 12. Zero em size: a run at font-size 0 is shaped blank (no glyph, no advance, zero extent); a line of such runs is not shaped, a mixed line shapes them at a stand-in size no neighbour uses and drops their glyph runs.
+# 13. DirectX: CSS primitives, images, filters, masks, gradients and per-window frame readback with copy/map duration delivered to the explicit host endpoint.
+# 14. Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.
+# 15. Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.
+# 16. Diagnostics: application-owned GPU batch measurements and typed startup configuration survive device recovery; environment parsing belongs to the host.
+# 17. Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.
+# 18. Unsafe invariants: added unsafe blocks are windows-rs COM/Win32 calls on interfaces owned by the live DirectX/DirectWrite state, called on the thread that owns that state, with HRESULTs and out-parameters checked before use. Raw memory outside embedded debug shader compilation is touched in three places only: the frame-capture readback copies w*4 bytes per row of a w x h BGRA8 staging texture between Map and Unmap (RowPitch >= w*4), GPU timing reads a query result through the raw GetData vtable entry into a plain-data out-value whose size is passed with it, and external-texture registration adopts a non-null ID3D11Texture2D pointer already AddRef'd by the caller (from_raw takes that reference). Release builds never select the debug-only WARP/D3D11On12 device overrides.
+# 19. Offscreen windows: a platform option creates message-only windows whose renderer draws into a render-target texture of the same device, format and shaders instead of a swap chain, with no DirectComposition target, Present, DWM attributes or resize presentation boost; coalesced posted paint messages replace WM_PAINT for frame demand and vsync pacing, and device recovery rebuilds the offscreen target. Measurement and pixel-gate hosts read frames back without loading the desktop compositor.
+# 20. Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.
+# 21. GPU memory report: the DirectX renderer names every texture it holds (atlas pages with their allocated share, frame and path targets, group and blur buffers) by owner path, on request only; the software rasterizer is an explicit adapter preference that no selector string parses to, so optimized benchmark builds can measure software rendering while application selection is unchanged.
+# 22. Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.
+# 23. Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.
+# 24. Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.
+# 25. Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.
+# 26. Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -4946,18 +4945,17 @@ index 1db95715e26daf9ab0ca5097183a763cf3aa8340..1b1df44eb6b3d4f9179366a8ec0d799e
 +            // KaminIDE patch: group composites blended by the output merger
 +            "group_tiles",
 diff --git a/vendor/gpui-windows/src/direct_write.rs b/vendor/gpui-windows/src/direct_write.rs
-index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310d2b85100
+index 304dc38663b1c9a52c4cc2266d70d61f25472a79..41cef89d072cc7a5312784e8bc0dca1ba53aa44b
 --- a/vendor/gpui-windows/src/direct_write.rs
 +++ b/vendor/gpui-windows/src/direct_write.rs
-@@ -0,0 +1,7 @@
+@@ -0,0 +1,6 @@
 +//! Windows text shaping, font selection and glyph rasterization through DirectWrite.
 +
 +mod blank_runs;
 +mod css_weight;
 +mod fallbacks;
-+mod size_adjust;
 +
-@@ -34,0 +42,19 @@
+@@ -34,0 +41,19 @@
 +    scoped_fallbacks: Option<IDWriteFontFallback>,
 +    fallback_key: Option<FontFallbacks>,
 +    /// KaminIDE patch: возможность `vert` запрошена — глифы стоячего
@@ -4977,7 +4975,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +    /// `create_glyph_run_analysis`).
 +    pixel_exact: bool,
 +    /// Коллекция, из которой взята грань (upstream; заменяет прежний `is_system_font`).
-@@ -36 +62,9 @@
+@@ -36 +61,9 @@
 -}
 +    /// KaminIDE patch: вес для раскладки, когда грань выбрана по CSS
 +    /// (`css_weight`); иначе — вес самой грани.
@@ -4988,7 +4986,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +/// of `SUBPIXEL_VARIANTS_X`, so every quantized glyph origin is a whole pixel
 +/// of the supersampled grid.
 +const EXACT_SUPERSAMPLE: i32 = 8;
-@@ -80 +114,6 @@
+@@ -80 +113,6 @@
 -    font_info_cache: HashMap<usize, FontId>,
 +    /// KaminIDE patch: keyed by the face's COM address, so each entry retains
 +    /// its face. A fallback face DirectWrite served and then released could
@@ -4996,7 +4994,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +    /// of the same family), which would inherit the stale FontId: the
 +    /// glyph run is then rendered with the wrong face, per process.
 +    font_info_cache: HashMap<usize, (FontId, IDWriteFontFace3)>,
-@@ -288,0 +328,8 @@
+@@ -288,0 +327,8 @@
 +    fn pixel_exact_glyphs(&self, font_id: FontId) -> bool {
 +        self.state
 +            .read()
@@ -5005,7 +5003,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            .is_some_and(|font| font.pixel_exact)
 +    }
 +
-@@ -299,0 +347,43 @@
+@@ -299,0 +346,43 @@
 +    fn layout_line_into(
 +        &self,
 +        text: &str,
@@ -5049,28 +5047,28 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            || x.features_key != y.features_key
 +    }
 +
-@@ -302 +392 @@
+@@ -302 +391 @@
 -        _font_id: FontId,
 +        font_id: FontId,
-@@ -304,0 +395,5 @@
+@@ -304,0 +394,5 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) растеризуется только точно и
 +        // только в оттенках серого — ClearType ему не предлагается.
 +        if self.pixel_exact_glyphs(font_id) {
 +            return TextRenderingMode::Grayscale;
 +        }
-@@ -326 +421 @@
+@@ -326 +420 @@
 -                        &components.factory,
 +                        components,
-@@ -328 +422,0 @@
+@@ -328 +421,0 @@
 -                        &components.system_ui_font_name,
-@@ -333 +427,2 @@
+@@ -333 +426,2 @@
 -            let font_face_key = info.font_face.cast::<IUnknown>().unwrap().as_raw().addr();
 +            let font_face = info.font_face.clone();
 +            let font_face_key = font_face.cast::<IUnknown>().unwrap().as_raw().addr();
-@@ -335 +430 @@
+@@ -335 +429 @@
 -            this.font_info_cache.insert(font_face_key, font_id);
 +            this.font_info_cache.insert(font_face_key, (font_id, font_face));
-@@ -354,0 +450,24 @@
+@@ -354,0 +449,24 @@
 +        // KaminIDE patch: недостающее семейство заменяется системным шрифтом
 +        // интерфейса С ТЕМИ ЖЕ весом/начертанием/шириной/возможностями, а не
 +        // общим запасным стеком `TextSystem` (тот теряет вес и курсив). Прежде
@@ -5095,7 +5093,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        if font_id.is_none() && !self.fonts.is_empty() {
 +            font_id = Some(FontId(0));
 +        }
-@@ -366,23 +485,21 @@
+@@ -366,23 +484,21 @@
 -            match font_data {
 -                Cow::Borrowed(data) => unsafe {
 -                    let font_file = components
@@ -5140,7 +5138,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        None,
 +                    )?;
 +                components.builder.AddFontFile(&font_file)?;
-@@ -396,58 +512,0 @@
+@@ -396,58 +511,0 @@
 -    }
 -
 -    fn generate_font_fallbacks(
@@ -5199,35 +5197,35 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 -            builder.AddMappings(&system_fallbacks)?;
 -            Ok(Some(builder.CreateFontFallback()?))
 -        }
-@@ -469 +528 @@
+@@ -469 +527 @@
 -            ref fallbacks,
 +            fallbacks: ref font_fallbacks,
-@@ -471,0 +531,4 @@
+@@ -471,0 +530,4 @@
 +            // KaminIDE patch: ширина начертания (`font-stretch`). Узкое или
 +            // широкое начертание — это ОТДЕЛЬНЫЙ шрифт семейства, поэтому
 +            // выбирается здесь, при подборе, а не включается возможностью.
 +            stretch,
-@@ -474 +537 @@
+@@ -474 +536 @@
 -        factory: &IDWriteFactory5,
 +        components: &DirectWriteComponents,
-@@ -476 +538,0 @@
+@@ -476 +537,0 @@
 -        system_ui_font_name: &SharedString,
-@@ -478,0 +541,2 @@
+@@ -478,0 +540,2 @@
 +        let factory = &components.factory;
 +        let system_ui_font_name = &components.system_ui_font_name;
-@@ -482,2 +546,3 @@
+@@ -482,2 +545,3 @@
 -            gpui::font_name_with_fallbacks_shared(&family, &system_ui_font_name)
 -        };
 +            gpui::font_name_with_fallbacks_shared(family, system_ui_font_name)
 +        };
 +        let family_name = family.as_str();
-@@ -485 +550 @@
+@@ -485 +549 @@
 -        let font_family_h = HSTRING::from(family.as_str());
 +        let font_family_h = HSTRING::from(family_name);
-@@ -491 +556 @@
+@@ -491 +555 @@
 -                    DWRITE_FONT_STRETCH_NORMAL,
 +                    to_dwrite_stretch(stretch),
-@@ -495,0 +561,50 @@
+@@ -495,0 +560,50 @@
 +        // KaminIDE patch: запрет подмены начертания (`font-synthesis-weight`
 +        // и `-style`, css-fonts-4 §6.5) приходит своими тегами возможностей
 +        // `nsyw`/`nsys`: настоящих тегов OpenType для этого нет, а иного
@@ -5278,7 +5276,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        } else {
 +            font
 +        };
-@@ -497 +612,22 @@
+@@ -497 +611,22 @@
 -        for index in 0..total_number {
 +        // KaminIDE patch: документ просит подбор веса по CSS (тег `cssw`, см.
 +        // `css_weight`) — выбранная грань идёт первой, с подделкой жирного,
@@ -5302,7 +5300,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            .map(|_| None)
 +            .chain((0..total_number).map(Some));
 +        for slot in order {
-@@ -499,2 +635,23 @@
+@@ -499,2 +634,23 @@
 -                let font_face_ref = unsafe { font.GetFontFaceReference(index).log_err()? };
 -                let font_face = unsafe { font_face_ref.CreateFontFace().log_err()? };
 +                let font_face_ref = match (slot, css_pick.as_ref()) {
@@ -5328,7 +5326,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                // шейпинга через границу коробок и признак Ahem.
 +                let postscript_name =
 +                    get_postscript_name(&font_face, &components.locale).log_err()?;
-@@ -503,4 +660,21 @@
+@@ -503,4 +659,21 @@
 -                let fallbacks = fallbacks.as_ref().and_then(|fallbacks| {
 -                    Self::generate_font_fallbacks(fallbacks, factory, system_font_collection)
 -                        .log_err()
@@ -5354,7 +5352,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    )
 +                    .log_err()
 +                    .flatten()
-@@ -513 +687,18 @@
+@@ -513 +686,18 @@
 -                    font_collection: collection.clone(),
 +                    scoped_fallbacks,
 +                    fallback_key: font_fallbacks.clone(),
@@ -5374,7 +5372,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        (None, Some(pick)) => Some(pick.layout_weight),
 +                        _ => None,
 +                    },
-@@ -536,0 +728,79 @@
+@@ -536,0 +727,79 @@
 +        // KaminIDE patch: the glyph run list is sized at its first run
 +        // (`RendererContext::reserve`): a line that draws no glyph run keeps
 +        // no list, as before.
@@ -5454,23 +5452,17 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                size.as_f32()
 +            }
 +        };
-@@ -540,0 +811,33 @@
+@@ -540,0 +810,27 @@
 +
 +            // KaminIDE patch: участки, чьи прогоны просят `vert`, — их
 +            // продвижение возьмётся из вертикальных метрик в отрисовщике.
 +            let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
 +            // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
 +            let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
-+            let mut adjust_fallbacks = false;
 +            {
 +                let mut u8_at = 0usize;
 +                let mut u16_at = 0u32;
 +                for run in font_runs {
-+                    adjust_fallbacks |= self.fonts[run.font_id.0]
-+                        .fallback_key
-+                        .as_ref()
-+                        .and_then(FontFallbacks::size_adjustment)
-+                        .is_some();
 +                    // KaminIDE patch: контракт «len на границе знака» ничем
 +                    // не гарантирован — кривой прогон не должен ронять кадр.
 +                    let len16 = text
@@ -5488,12 +5480,12 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    u16_at += len16;
 +                }
 +            }
-@@ -553 +856,3 @@
+@@ -553 +849,3 @@
 -                        font_info.font_face.GetWeight(),
 +                        font_info
 +                            .layout_weight
 +                            .unwrap_or_else(|| font_info.font_face.GetWeight()),
-@@ -555,2 +860,5 @@
+@@ -555,2 +853,5 @@
 -                        DWRITE_FONT_STRETCH_NORMAL,
 -                        font_size.as_f32(),
 +                        // KaminIDE patch: ширина уже учтена при подборе начертания.
@@ -5501,22 +5493,17 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        // KaminIDE patch: кегль ПЕРВОГО прогона, а не блока —
 +                        // у прогонов он теперь свой.
 +                        shaping_size(0, None),
-@@ -560,2 +868,7 @@
+@@ -560,2 +861,2 @@
 -                if let Some(ref fallbacks) = font_info.fallbacks {
 -                    format.SetFontFallback(fallbacks)?;
-+                let fallbacks = if adjust_fallbacks {
-+                    Some(size_adjust::for_layout(self, components, text, font_runs)?)
-+                } else {
-+                    self.layout_fallbacks(components, font_runs)?
-+                };
-+                if let Some(fallbacks) = fallbacks {
++                if let Some(fallbacks) = self.layout_fallbacks(components, font_runs)? {
 +                    format.SetFontFallback(&fallbacks)?;
-@@ -570 +883,3 @@
+@@ -570 +871,3 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + first_run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + first_run.len))
 +                    .unwrap_or("");
-@@ -583,11 +898,27 @@
+@@ -583,11 +886,27 @@
 -            let (ascent, descent) = {
 -                let mut first_metrics = [DWRITE_LINE_METRICS::default(); 4];
 -                let mut line_count = 0u32;
@@ -5555,13 +5542,13 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            let mut applied_size = shaping_size(0, None);
 +            let mut prev_size = applied_size;
 +            for (run_index, run) in font_runs.iter().enumerate().skip(1) {
-@@ -595 +926,4 @@
+@@ -595 +914,4 @@
 -                let current_text = &text[utf8_offset..(utf8_offset + run.len)];
 +                let current_text = text
 +                    .get(utf8_offset..(utf8_offset + run.len))
 +                    .unwrap_or("");
 +                let run_utf8_start = utf8_offset;
-@@ -597,0 +932,17 @@
+@@ -597,0 +920,17 @@
 +                let base = &self.fonts[applied.0];
 +                let run_size = shaping_size(run_index, Some(prev_size));
 +                prev_size = run_size;
@@ -5579,20 +5566,20 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                }
 +                applied = run.font_id;
 +                applied_size = run_size;
-@@ -607,2 +958,4 @@
+@@ -607,2 +946,4 @@
 -                let font_size = if break_ligatures {
 -                    font_size.as_f32().next_up()
 +                // Upstream's alternating nudge prevents ligatures spanning style runs.
 +                // Browser callers opt out to retain CSS boundary shaping (§7.4).
 +                let size = if run.break_ligatures && run_index % 2 == 1 {
 +                    run_size.next_up()
-@@ -610 +963 @@
+@@ -610 +951 @@
 -                    font_size.as_f32()
 +                    run_size
-@@ -612 +965 @@
+@@ -612 +953 @@
 -                text_layout.SetFontSize(font_size, text_range)?;
 +                text_layout.SetFontSize(size, text_range)?;
-@@ -614 +967,6 @@
+@@ -614 +955,6 @@
 -                text_layout.SetFontWeight(font_info.font_face.GetWeight(), text_range)?;
 +                text_layout.SetFontWeight(
 +                    font_info
@@ -5600,10 +5587,10 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        .unwrap_or_else(|| font_info.font_face.GetWeight()),
 +                    text_range,
 +                )?;
-@@ -616,2 +973,0 @@
+@@ -616,2 +961,0 @@
 -
 -                break_ligatures = !break_ligatures;
-@@ -620 +976,56 @@
+@@ -620 +964,56 @@
 -            let mut runs = Vec::new();
 +            // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
 +            // шрифта каждого прогона (`FontRun.font_id` кладёт туда
@@ -5661,22 +5648,22 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            // отрисовщика мутирует его через указатель, а указатель,
 +            // производный от &T, мутировать нельзя (UB по правилам
 +            // алиасинга: оптимизатор вправе счесть width нулём).
-@@ -625 +1036,3 @@
+@@ -625 +1024,3 @@
 -                runs: &mut runs,
 +                runs: &mut *out,
 +                reserve,
 +                index_base,
-@@ -626,0 +1040,2 @@
+@@ -626,0 +1028,2 @@
 +                vert_ranges,
 +                blank_ranges,
-@@ -628 +1043 @@
+@@ -628 +1031 @@
 -            text_layout.Draw(
 +            let drawn = text_layout.Draw(
-@@ -633 +1048,2 @@
+@@ -633 +1036,2 @@
 -            )?;
 +            );
 +            drawn?;
-@@ -635,9 +1051,44 @@
+@@ -635,9 +1039,44 @@
 -
 -            Ok(LineLayout {
 -                font_size,
@@ -5730,7 +5717,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            }
 +
 +            Ok((width, ascent, descent))
-@@ -694,0 +1146,19 @@
+@@ -694,0 +1134,19 @@
 +        // KaminIDE patch: Ahem (`pixel_exact`) is placed at its full sub-pixel
 +        // position on both axes (`Window::paint_glyph` quantizes y on the x
 +        // grid for it) and rasterized bi-level by pixel-centre sampling: a
@@ -5750,31 +5737,31 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        // применяется — точная растеризация только в оттенках серого.
 +        let exact = font.pixel_exact && !params.subpixel_rendering;
 +        let k = if exact { EXACT_SUPERSAMPLE as f32 } else { 1.0 };
-@@ -696 +1166 @@
+@@ -696 +1154 @@
 -            m11: params.scale_factor,
 +            m11: params.scale_factor * k,
-@@ -699 +1169 @@
+@@ -699 +1157 @@
 -            m22: params.scale_factor,
 +            m22: params.scale_factor * k,
-@@ -702,0 +1173,5 @@
+@@ -702,0 +1161,5 @@
 +        let variants_y = if exact {
 +            SUBPIXEL_VARIANTS_X
 +        } else {
 +            SUBPIXEL_VARIANTS_Y
 +        };
-@@ -705,3 +1180,2 @@
+@@ -705,3 +1168,2 @@
 -        let baseline_origin_y = params.subpixel_variant.y as f32
 -            / gpui::SUBPIXEL_VARIANTS_Y as f32
 -            / params.scale_factor;
 +        let baseline_origin_y =
 +            params.subpixel_variant.y as f32 / variants_y as f32 / params.scale_factor;
-@@ -726,0 +1201 @@
+@@ -726,0 +1189 @@
 +            _ if exact => DWRITE_RENDERING_MODE1_ALIASED,
-@@ -729,0 +1205,3 @@
+@@ -729,0 +1193,3 @@
 +        if exact {
 +            grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED;
 +        }
-@@ -765 +1243,15 @@
+@@ -765 +1231,15 @@
 -        let bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        let mut bounds = unsafe { glyph_analysis.GetAlphaTextureBounds(texture_type)? };
 +        // KaminIDE patch: supersampled `pixel_exact` raster -> device pixels
@@ -5791,7 +5778,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                bottom: (bounds.bottom + k - 1).div_euclid(k),
 +            };
 +        }
-@@ -832,0 +1325,30 @@
+@@ -832,0 +1313,30 @@
 +            if self.fonts[params.font_id.0].pixel_exact {
 +                // KaminIDE patch: sample the supersampled bi-level raster at each
 +                // device pixel's centre, taken just above/left of it (k/2 - 1):
@@ -5822,40 +5809,23 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                }
 +                return Ok(bitmap_data);
 +            }
-@@ -1269,16 +1790,0 @@
--    fn get_advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
--        unsafe {
--            let font = &self.fonts[font_id.0].font_face;
--            let glyph_indices = [glyph_id.0 as u16];
--            let mut metrics = [DWRITE_GLYPH_METRICS::default()];
--            font.GetDesignGlyphMetrics(glyph_indices.as_ptr(), 1, metrics.as_mut_ptr(), false)?;
--
--            let metrics = &metrics[0];
--
--            Ok(Size {
--                width: metrics.advanceWidth as f32,
--                height: 0.0,
--            })
--        }
--    }
--
-@@ -1384 +1890,4 @@
+@@ -1384 +1894,4 @@
 -struct TextRendererWrapper(IDWriteTextRenderer);
 +// KaminIDE patch: обработчик версии 1 — вертикальная раскладка строки
 +// (стоячее письмо, `vert`) зовёт ТОЛЬКО его; со старым интерфейсом Draw
 +// падает с DWRITE_E_TEXTRENDERERINCOMPATIBLE.
 +struct TextRendererWrapper(IDWriteTextRenderer1);
-@@ -1393 +1902 @@
+@@ -1393 +1906 @@
 -#[implement(IDWriteTextRenderer)]
 +#[implement(IDWriteTextRenderer1)]
-@@ -1408,0 +1918,6 @@
+@@ -1408,0 +1922,6 @@
 +    /// KaminIDE patch: glyph runs the line draws at least (its shaping
 +    /// ranges); the empty list takes room for them, rounded to the power of
 +    /// two that doubling from empty would reach, at its first run. 0: grow.
 +    reserve: usize,
 +    /// KaminIDE patch: added to every glyph index (the line is a piece of a longer text).
 +    index_base: usize,
-@@ -1409,0 +1925,16 @@
+@@ -1409,0 +1929,16 @@
 +    /// KaminIDE patch: utf16-участки, где продвижение глифа берётся из
 +    /// вертикальных метрик (`vert`, стоячее вертикальное письмо).
 +    vert_ranges: Vec<(u32, u32)>,
@@ -5872,29 +5842,29 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            | 0x180B..=0x180F | 0x200B..=0x200F | 0x202A..=0x202E | 0x2060..=0x206F
 +            | 0x3164 | 0xFE00..=0xFE0F | 0xFEFF | 0xFFA0 | 0xFFF0..=0xFFF8
 +            | 0x1D173..=0x1D17A | 0xE0000..=0xE0FFF)
-@@ -1514,0 +2046,5 @@
+@@ -1514,0 +2050,5 @@
 +        // KaminIDE patch: MSDN допускает NULL в glyphRunDescription (и сам
 +        // прогон) — разыменование без проверки было бы AV на чужом шрифте.
 +        if glyphrun.is_null() || glyphrundescription.is_null() {
 +            return Ok(());
 +        }
-@@ -1521,0 +2058,3 @@
+@@ -1521,0 +2062,3 @@
 +        if blank_runs::in_blank(&context.blank_ranges, desc.textPosition) {
 +            return Ok(());
 +        }
-@@ -1525,2 +2064,3 @@
+@@ -1525,2 +2068,3 @@
 -        // This `cast()` action here should never fail since we are running on Win10+, and
 -        // `IDWriteFontFace3` requires Win10
 +        // KaminIDE patch: cast не «не может упасть» — на удалённом или
 +        // экзотическом шрифте лучше молча пропустить прогон, чем уронить всю
 +        // раскладку строки (upstream возвращает здесь ошибку).
-@@ -1528,4 +2068 @@
+@@ -1528,4 +2072 @@
 -            return Err(Error::new(
 -                DWRITE_E_UNSUPPORTEDOPERATION,
 -                "Failed to cast font face",
 -            ));
 +            return Ok(());
-@@ -1535,5 +2072,2 @@
+@@ -1535,5 +2076,2 @@
 -        let font_id = context
 -            .text_system
 -            .font_info_cache
@@ -5902,7 +5872,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 -            .copied()
 +        let font_id = match context.text_system.font_info_cache.get(&font_face_key) {
 +            Some(&(font_id, _)) => font_id,
-@@ -1542,7 +2076,10 @@
+@@ -1542,7 +2080,10 @@
 -            .map_or_else(
 -                || {
 -                    let font = font_face_to_font(font_face, &self.locale)
@@ -5920,7 +5890,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                    Some(&font_id) => font_id,
 +                    None => {
 +                        let Some(font_id) = context
-@@ -1551,10 +2088,13 @@
+@@ -1551,10 +2092,13 @@
 -                            .ok_or_else(|| Error::new(DWRITE_E_NOFONT, "Failed to create font"))?,
 -                    };
 -                    context
@@ -5944,7 +5914,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                font_id
 +            }
 +        };
-@@ -1576,0 +2117,31 @@
+@@ -1576,0 +2121,31 @@
 +        };
 +        // KaminIDE patch: стоячее вертикальное письмо (`vert`) продвигается
 +        // вертикальной метрикой глифа — advanceHeight подставленного глифа
@@ -5976,7 +5946,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            })
 +        } else {
 +            None
-@@ -1599,0 +2171,13 @@
+@@ -1599,0 +2175,13 @@
 +            // KaminIDE patch: знак-указание своего изображения не имеет.
 +            // Форму соседних букв он уже определил (соединитель, разделитель
 +            // направления), но шрифт его чаще всего не содержит — и подмена
@@ -5990,7 +5960,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                glyph_idx += cluster_glyph_count;
 +                continue;
 +            }
-@@ -1613 +2197,9 @@
+@@ -1613 +2201,9 @@
 -                        px(-glyph_offsets[this_glyph_idx].ascenderOffset),
 +                        // upstream: вертикальное смещение глифа (огласовки, метки).
 +                        // KaminIDE patch: у стоячего вертикального письма смещение
@@ -6001,15 +5971,15 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +                        } else {
 +                            px(-glyph_offsets[this_glyph_idx].ascenderOffset)
 +                        },
-@@ -1615 +2207 @@
+@@ -1615 +2211 @@
 -                    index: context.index_converter.utf8_ix,
 +                    index: context.index_converter.utf8_ix + context.index_base,
-@@ -1618 +2210,3 @@
+@@ -1618 +2214,3 @@
 -                context.width += glyph_advances[this_glyph_idx];
 +                context.width += vert_advances
 +                    .as_ref()
 +                    .map_or(glyph_advances[this_glyph_idx], |v| v[this_glyph_idx]);
-@@ -1622 +2216,11 @@
+@@ -1622 +2220,11 @@
 -        context.runs.push(ShapedRun { font_id, glyphs });
 +        if context.reserve > 0 && context.runs.capacity() == 0 {
 +            context
@@ -6022,7 +5992,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            glyphs,
 +            font_size: px(glyphrun.fontEmSize),
 +        });
-@@ -1667,0 +2272,90 @@
+@@ -1667,0 +2276,90 @@
 +    }
 +}
 +
@@ -6113,7 +6083,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +            isrighttoleft,
 +            clientdrawingeffect,
 +        )
-@@ -1781,0 +2476,19 @@
+@@ -1781,0 +2480,19 @@
 +/// KaminIDE patch: PostScript-имя грани — ключ физической грани (у
 +/// синтетических bold/oblique оно то же) и признак тестового шрифта Ahem.
 +/// upstream убрал эту функцию вместе с `FontIdentifier`.
@@ -6133,9 +6103,9 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +    get_name(info, locale)
 +}
 +
-@@ -1791,0 +2505 @@
+@@ -1791,0 +2509 @@
 +        stretch: FontStretch::default(),
-@@ -2016,0 +2731,42 @@
+@@ -2016,0 +2735,42 @@
 +    /// KaminIDE patch: `font-size: 0` text shapes as blank runs (`blank_runs`).
 +    #[test]
 +    fn zero_size_runs_shape_blank() -> Result<()> {
@@ -6178,7 +6148,7 @@ index 304dc38663b1c9a52c4cc2266d70d61f25472a79..989f06b493c36fb1e3dc343d41c8a310
 +        Ok(())
 +    }
 +
-@@ -2170,0 +2927,16 @@
+@@ -2170,0 +2931,16 @@
 +
 +/// KaminIDE patch: ступень ширины начертания в термины DirectWrite.
 +fn to_dwrite_stretch(stretch: FontStretch) -> DWRITE_FONT_STRETCH {
@@ -6595,310 +6565,6 @@ index 0000000000000000000000000000000000000000..eb8eeef39e37d7b3c718186eb9b27476
 +            Ok(Some(builder.CreateFontFallback()?))
 +        }
 +    }
-+}
-diff --git a/vendor/gpui-windows/src/direct_write/size_adjust.rs b/vendor/gpui-windows/src/direct_write/size_adjust.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..7a2f3b55cee69def07cb3a03c43a6a65732862d0
---- /dev/null
-+++ b/vendor/gpui-windows/src/direct_write/size_adjust.rs
-@@ -0,0 +1,163 @@
-+//! CSS Fonts 5: normalize every selected fallback face before native shaping.
-+
-+use super::*;
-+
-+struct Range {
-+    end: u32,
-+    adjustment: Option<FontSizeAdjustment>,
-+    fallback: Option<IDWriteFontFallback>,
-+}
-+
-+#[implement(IDWriteFontFallback)]
-+struct AdjustedFallback {
-+    inner: IDWriteFontFallback,
-+    ranges: Vec<Range>,
-+}
-+
-+/// Constructed only when a run requests metric normalization.
-+pub(super) fn for_layout(
-+    state: &DirectWriteState,
-+    components: &DirectWriteComponents,
-+    text: &str,
-+    runs: &[FontRun],
-+) -> Result<IDWriteFontFallback> {
-+    let mut at = 0;
-+    let mut end = 0;
-+    let ranges = runs
-+        .iter()
-+        .map(|run| {
-+            let part = text.get(at..at + run.len).unwrap_or("");
-+            at += run.len;
-+            end += part.encode_utf16().count() as u32;
-+            let font = &state.fonts[run.font_id.0];
-+            Range {
-+                end,
-+                adjustment: font
-+                    .fallback_key
-+                    .as_ref()
-+                    .and_then(FontFallbacks::size_adjustment),
-+                fallback: font.fallbacks.clone(),
-+            }
-+        })
-+        .collect();
-+    let inner = unsafe { components.factory.GetSystemFontFallback()? };
-+    Ok(AdjustedFallback { inner, ranges }.into())
-+}
-+
-+#[allow(non_snake_case)]
-+impl IDWriteFontFallback_Impl for AdjustedFallback_Impl {
-+    fn MapCharacters(
-+        &self,
-+        source: Ref<'_, IDWriteTextAnalysisSource>,
-+        position: u32,
-+        length: u32,
-+        collection: Ref<'_, IDWriteFontCollection>,
-+        family: &PCWSTR,
-+        weight: DWRITE_FONT_WEIGHT,
-+        style: DWRITE_FONT_STYLE,
-+        stretch: DWRITE_FONT_STRETCH,
-+        mapped_length: *mut u32,
-+        mapped_font: OutRef<'_, IDWriteFont>,
-+        scale: *mut f32,
-+    ) -> windows::core::Result<()> {
-+        let range = self
-+            .ranges
-+            .get(self.ranges.partition_point(|range| range.end <= position));
-+        let length = range.map_or(length, |range| length.min(range.end - position));
-+        let inner = range
-+            .and_then(|range| range.fallback.as_ref())
-+            .unwrap_or(&self.inner);
-+        let mut font = None;
-+        // COM keeps the input interfaces alive; DirectWrite supplies valid out
-+        // pointers. A mapping must not extend into the next CSS run.
-+        unsafe {
-+            inner.MapCharacters(
-+                source.as_ref(),
-+                position,
-+                length,
-+                collection.as_ref(),
-+                *family,
-+                weight,
-+                style,
-+                stretch,
-+                mapped_length,
-+                &mut font,
-+                scale,
-+            )?;
-+            if let (Some(font), Some(adjustment)) =
-+                (font.as_ref(), range.and_then(|range| range.adjustment))
-+            {
-+                let aspect = aspect(font, adjustment.metric)?;
-+                if aspect > 0.0 && adjustment.aspect.is_finite() && adjustment.aspect > 0.0 {
-+                    // Replace the system em scale: u = (m / m') s.
-+                    *scale = adjustment.aspect / aspect;
-+                }
-+            }
-+        }
-+        mapped_font.write(font)
-+    }
-+}
-+
-+fn aspect(font: &IDWriteFont, metric: FontSizeMetric) -> windows::core::Result<f32> {
-+    use FontSizeMetric::*;
-+    let mut metrics = DWRITE_FONT_METRICS::default();
-+    // Raw design units, unaffected by descriptor size-adjust or metric overrides.
-+    unsafe {
-+        font.GetMetrics(&mut metrics);
-+    }
-+    let units = f32::from(metrics.designUnitsPerEm);
-+    let value = match metric {
-+        XHeight => f32::from(metrics.xHeight),
-+        CapHeight => f32::from(metrics.capHeight),
-+        ZeroAdvance | IdeographicWidth | IdeographicHeight => {
-+            let face = unsafe { font.CreateFontFace()? };
-+            let cp = if metric == ZeroAdvance { '0' } else { '水' } as u32;
-+            let mut glyph = 0;
-+            unsafe {
-+                face.GetGlyphIndices(&cp, 1, &mut glyph)?;
-+            }
-+            if glyph == 0 {
-+                return Ok(if metric == ZeroAdvance { 0.5 } else { 1.0 });
-+            }
-+            let mut design = DWRITE_GLYPH_METRICS::default();
-+            unsafe {
-+                face.GetDesignGlyphMetrics(&glyph, 1, &mut design, false)?;
-+            }
-+            if metric == IdeographicHeight {
-+                design.advanceHeight as f32
-+            } else {
-+                design.advanceWidth as f32
-+            }
-+        }
-+    };
-+    Ok(if value > 0.0 && units > 0.0 {
-+        value / units
-+    } else {
-+        match metric {
-+            XHeight | ZeroAdvance => 0.5,
-+            CapHeight => f32::from(metrics.ascent) / units,
-+            IdeographicWidth | IdeographicHeight => 1.0,
-+        }
-+    })
-+}
-+
-+impl DirectWriteState {
-+    pub(super) fn get_advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
-+        unsafe {
-+            let font = &self.fonts[font_id.0].font_face;
-+            let glyph_indices = [glyph_id.0 as u16];
-+            let mut metrics = [DWRITE_GLYPH_METRICS::default()];
-+            font.GetDesignGlyphMetrics(glyph_indices.as_ptr(), 1, metrics.as_mut_ptr(), false)?;
-+
-+            let metrics = &metrics[0];
-+
-+            Ok(Size {
-+                width: metrics.advanceWidth as f32,
-+                height: metrics.advanceHeight as f32,
-+            })
-+        }
-+    }
-+}
-+
-+#[cfg(test)]
-+mod tests;
-diff --git a/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs b/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..48850054f473f5b58f72a03ce442777c80f8bcca
---- /dev/null
-+++ b/vendor/gpui-windows/src/direct_write/size_adjust/tests.rs
-@@ -0,0 +1,129 @@
-+//! Native DirectWrite shaping with different primary and fallback metrics.
-+
-+use super::super::DirectWriteTextSystem;
-+use super::aspect;
-+use anyhow::Result;
-+use gpui::{
-+    FontFallbacks, FontId, FontRun, FontSizeAdjustment, FontSizeMetric, GlyphId, LineLayout,
-+    PlatformTextSystem, px,
-+};
-+use std::borrow::Cow;
-+
-+fn system() -> Result<DirectWriteTextSystem> {
-+    let system = DirectWriteTextSystem::new(None)?;
-+    system.add_fonts(vec![
-+        Cow::Borrowed(include_bytes!(
-+            "../../../../gpui/tests/fonts/IBMPlexSans-Regular.ttf"
-+        )),
-+        Cow::Borrowed(include_bytes!(
-+            "../../../../gpui/tests/fonts/Lilex-Regular.ttf"
-+        )),
-+    ])?;
-+    Ok(system)
-+}
-+
-+fn run(id: FontId, text: &str, size: f32) -> FontRun {
-+    FontRun {
-+        len: text.len(),
-+        font_id: id,
-+        font_size: px(size),
-+        break_ligatures: false,
-+    }
-+}
-+
-+#[test]
-+fn each_fallback_uses_its_own_metric_before_shaping() -> Result<()> {
-+    let system = system()?;
-+    let primary = system.font_id(&gpui::font("IBM Plex Sans"))?;
-+    let fallback = system.font_id(&gpui::font("Lilex"))?;
-+    // U+01EA exists in Lilex but not IBM Plex Sans: selection is independent
-+    // of the installed system families.
-+    let text = "Ǫ";
-+    assert_eq!(system.glyph_for_char(primary, 'Ǫ'), Some(GlyphId(0)));
-+    assert_ne!(system.glyph_for_char(fallback, 'Ǫ'), Some(GlyphId(0)));
-+    for metric in [
-+        FontSizeMetric::XHeight,
-+        FontSizeMetric::CapHeight,
-+        FontSizeMetric::ZeroAdvance,
-+        FontSizeMetric::IdeographicWidth,
-+        FontSizeMetric::IdeographicHeight,
-+    ] {
-+        let raw = |id: FontId| -> Result<f32> {
-+            let state = system.state.read();
-+            let info = &state.fonts[id.0];
-+            let font = unsafe { info.font_collection.GetFontFromFontFace(&info.font_face)? };
-+            Ok(aspect(&font, metric)?)
-+        };
-+        let primary_aspect = raw(primary)?;
-+        let fallback_aspect = raw(fallback)?;
-+        let used_size = 20.0 * (0.5 / primary_aspect);
-+        let mut font = gpui::font("IBM Plex Sans");
-+        font.fallbacks = Some(
-+            FontFallbacks::from_fonts(vec!["Lilex".into()]).with_size_adjustment(
-+                FontSizeAdjustment {
-+                    metric,
-+                    aspect: primary_aspect,
-+                },
-+            ),
-+        );
-+        let adjusted = system.font_id(&font)?;
-+        let actual = system.layout_line(text, px(used_size), &[run(adjusted, text, used_size)]);
-+        let size = used_size * (primary_aspect / fallback_aspect);
-+        let expected = system.layout_line(text, px(size), &[run(fallback, text, size)]);
-+        assert!(!actual.runs.is_empty());
-+        assert_eq!(actual.runs[0].font_size, px(size), "{metric:?}");
-+        assert_eq!(actual.width, expected.width, "{metric:?}");
-+        let glyphs = |line: &LineLayout| {
-+            line.runs[0]
-+                .glyphs
-+                .iter()
-+                .map(|glyph| (glyph.id, glyph.position, glyph.index, glyph.is_emoji))
-+                .collect::<Vec<_>>()
-+        };
-+        assert_eq!(glyphs(&actual), glyphs(&expected), "{metric:?}");
-+    }
-+    Ok(())
-+}
-+
-+#[test]
-+fn normalization_stays_in_its_own_run() -> Result<()> {
-+    let system = system()?;
-+    let mut plain = gpui::font("IBM Plex Sans");
-+    plain.fallbacks = Some(FontFallbacks::from_fonts(vec!["Lilex".into()]));
-+    let mut adjusted = plain.clone();
-+    adjusted.fallbacks = Some(
-+        plain
-+            .fallbacks
-+            .as_ref()
-+            .unwrap()
-+            .clone()
-+            .with_size_adjustment(FontSizeAdjustment {
-+                metric: FontSizeMetric::XHeight,
-+                aspect: 1.0,
-+            }),
-+    );
-+    let plain = system.font_id(&plain)?;
-+    let adjusted = system.font_id(&adjusted)?;
-+    let first = system.layout_line("Ǫ", px(20.), &[run(plain, "Ǫ", 20.)]);
-+    let second = system.layout_line("Ǫ", px(20.), &[run(adjusted, "Ǫ", 20.)]);
-+    let mixed = system.layout_line(
-+        "ǪǪǪ",
-+        px(20.),
-+        &[
-+            run(plain, "Ǫ", 20.),
-+            run(adjusted, "Ǫ", 20.),
-+            run(plain, "Ǫ", 20.),
-+        ],
-+    );
-+    let sizes: Vec<_> = mixed.runs.iter().map(|run| run.font_size).collect();
-+    assert_eq!(
-+        sizes,
-+        vec![
-+            first.runs[0].font_size,
-+            second.runs[0].font_size,
-+            first.runs[0].font_size
-+        ]
-+    );
-+    assert_ne!(sizes[0], sizes[1]);
-+    Ok(())
 +}
 diff --git a/vendor/gpui-windows/src/directx_atlas.rs b/vendor/gpui-windows/src/directx_atlas.rs
 index 622c1cb6040ae6817692fc9f4ffb89dcc43f142e..aeb59d203da20232fc9a807b06b5245b5c7f70d2
