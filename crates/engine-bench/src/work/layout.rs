@@ -69,7 +69,7 @@ mod tests {
             drop(kamin_html::work::repeat(5));
         }
         let carry = first.carry_inputs();
-        drop(first.finish());
+        let _ = first.finish();
         let second = Session::begin();
         second.resume_inputs(carry);
         {
