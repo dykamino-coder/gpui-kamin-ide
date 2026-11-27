@@ -11,6 +11,11 @@ use crate::{ImageHrefResolver, ImageRendering, ShapeRendering, Size, TextRenderi
 /// Processing options.
 #[derive(Debug)]
 pub struct Options<'a> {
+    /// A CSS owner composites the root once outside this raster. Its computed
+    /// opacity still participates in explicit SVG inheritance during parsing.
+    pub root_opacity: Option<crate::Opacity>,
+    /// Whether the SVG raster owns the root background.
+    pub root_background: bool,
     /// Directory that will be used during relative paths resolving.
     ///
     /// Expected to be the same as the directory that contains the SVG file,
@@ -106,6 +111,8 @@ pub struct Options<'a> {
 impl Default for Options<'_> {
     fn default() -> Options<'static> {
         Options {
+            root_opacity: None,
+            root_background: true,
             resources_dir: None,
             dpi: 96.0,
             // Default font is user-agent dependent so we can use whichever we like.

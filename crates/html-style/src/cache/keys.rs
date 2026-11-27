@@ -8,6 +8,12 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FloatKey(u32);
 
+impl FloatKey {
+    pub fn get(self) -> f32 {
+        f32::from_bits(self.0)
+    }
+}
+
 impl From<f32> for FloatKey {
     fn from(value: f32) -> Self {
         Self(if value == 0.0 {

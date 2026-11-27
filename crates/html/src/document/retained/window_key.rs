@@ -22,6 +22,27 @@ pub(super) struct WindowKey {
 }
 
 impl WindowKey {
+    /// Name changed inputs without formatting their potentially large values.
+    pub(super) fn changed(&self, other: &Self) -> Vec<&'static str> {
+        [
+            (self.bounds != other.bounds, "bounds"),
+            (self.content_mask != other.content_mask, "content_mask"),
+            (self.text != other.text, "text"),
+            (self.offset != other.offset, "offset"),
+            (self.scale != other.scale, "scale"),
+            (self.rem != other.rem, "rem"),
+            (self.interaction != other.interaction, "interaction"),
+            (self.active != other.active, "active"),
+            (self.appearance != other.appearance, "appearance"),
+            (self.elapsed != other.elapsed, "elapsed"),
+            (self.reduce_motion != other.reduce_motion, "reduce_motion"),
+            (self.animation != other.animation, "animation"),
+        ]
+        .into_iter()
+        .filter_map(|(changed, name)| changed.then_some(name))
+        .collect()
+    }
+
     /// Discount inputs that only moved the root scroller
     /// (`RootScroll::key`); the frame replays them through its scroll nodes.
     pub(super) fn capture(
