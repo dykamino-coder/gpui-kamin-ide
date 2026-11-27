@@ -5,7 +5,7 @@ use crate::style::css::Rule;
 
 /// SVG 2 section 6.6: color presentation attributes enter the cascade, so
 /// inherited currentColor has the same value in HTML and in isolated SVG paint.
-pub(super) fn color(
+pub(in crate::dom) fn color(
     handle: &markup5ever_rcdom::Handle,
     attrs: &[(String, String)],
     vcx: crate::values::ValueCx<'_>,
