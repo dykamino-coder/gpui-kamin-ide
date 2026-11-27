@@ -71,7 +71,7 @@ fn name_table(table: &[u8], family: &str) -> Option<Vec<u8>> {
     push(&mut out, 0);
     push(&mut out, records.len() as u16);
     push(&mut out, (6 + records.len() * 12) as u16);
-    let mut pool = Vec::new();
+    let mut pool: Vec<u8> = Vec::new();
     for (key, text) in &records {
         key.iter().for_each(|v| push(&mut out, *v));
         push(&mut out, text.len() as u16);
@@ -144,7 +144,7 @@ mod tests {
         let mut name: Vec<u8> = vec![0, 0];
         name.extend((names.len() as u16).to_be_bytes());
         name.extend(((6 + names.len() * 12) as u16).to_be_bytes());
-        let mut pool = Vec::new();
+        let mut pool: Vec<u8> = Vec::new();
         for (key, text) in names {
             key.iter().for_each(|v| name.extend(v.to_be_bytes()));
             name.extend((text.len() as u16).to_be_bytes());
