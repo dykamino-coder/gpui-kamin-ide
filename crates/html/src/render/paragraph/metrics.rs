@@ -127,7 +127,7 @@ pub(crate) fn line_box_spans(
 /// ряду, где строка под аннотацию не растёт, а такой же абзац слева направо
 /// растёт (`ruby-bidi-002`: эталон из ltr-абзаца с `text-align: right`).
 pub(crate) fn atoms_fit_line(
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     ruby: bool,
     cx: &crate::layout::cx::LayoutCx,
 ) -> bool {
@@ -138,7 +138,7 @@ pub(crate) fn atoms_fit_line(
         // (`wm-propagation-body-035`: the caption image rose by the descent).
         && (!inherited.wm().turned() || rotated_atom::text_turn(cx))
         && (ruby || !inherited.wm().rtl())
-        && inherited.reset_context.no_select != Some(true)
+        && inherited.tree.no_select != Some(true)
         && inherited.inh.ui.pointer_events_none != Some(true)
         && crate::text::paragraph::align_for(inherited) != crate::text::paragraph::Align::Justify
         // Обрыв строки многоточием (`text-overflow: ellipsis`) режет текст по

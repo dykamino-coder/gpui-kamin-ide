@@ -88,13 +88,9 @@ fn fold_viewport_resolves_plain_and_calc_units() {
 
 #[test]
 fn viewport_cx_drops_scrollbars_and_reads_the_container() {
+    let doc = DocumentValues::detached(Media::default());
+    doc.viewport.set_unit_insets([15.0, 0.0]);
     let c = Computed {
-        reset_positioned: crate::style::computed::StyleGroup::new(
-            crate::style::computed::ResetPositioned {
-                viewport_unit_insets: Some([15.0, 0.0]),
-                ..Default::default()
-            },
-        ),
         reset_context: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetContext {
                 cq_box: (Some(100.0), None),
@@ -103,7 +99,7 @@ fn viewport_cx_drops_scrollbars_and_reads_the_container() {
         ),
         ..Default::default()
     };
-    let vp = c.viewport_cx((815.0, 600.0));
+    let vp = c.viewport_cx((815.0, 600.0), doc.values());
     assert_eq!(vp.size, (800.0, 600.0));
     assert!(!vp.vertical);
     assert_eq!(vp.container, Some((100.0, 600.0)));

@@ -17,7 +17,7 @@ pub struct FlatTransform {
 impl FlatTransform {
     /// The box's transform when it is flat (no 3D context, perspective or depth)
     /// and its linear part is not the identity; `None` for a pure translation.
-    pub fn of(c: &Computed) -> Option<Self> {
+    pub fn of(c: &crate::style::computed::BoxStyle) -> Option<Self> {
         let t = c.reset_transforms.transform?.after_individual(
             c.reset_transforms.rotate_prop,
             c.reset_transforms.scale_prop,

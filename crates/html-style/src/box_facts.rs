@@ -30,7 +30,7 @@ impl<W: Default, A> Default for BoxContext<W, A> {
 /// position in the box tree, not its own CSS values, so they live beside the
 /// shared computed style and never copy it (Blink keeps the same facts in the
 /// paint property tree, not in `ComputedStyle`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct TreeFacts {
     /// An ancestor clips its contents: non-visible overflow, `contain: paint`,
     /// a clip path or a mask.
@@ -44,6 +44,21 @@ pub struct TreeFacts {
     pub transform_ancestor: bool,
     /// An ancestor is transformed (css-transforms-1 §6: fixed backgrounds).
     pub transformed_ancestor: bool,
+    /// The nearest ancestor scrollport's axes, physical width then height,
+    /// including an indefinite nearest scroller (css-writing-modes-4 §7.3.1).
+    pub orthogonal_scrollport: Option<[AxisSizes; 2]>,
+    /// The used `user-select` makes the text unselectable (`Some(true)`);
+    /// `auto` resolves against the parent box (css-ui-4 §6.1).
+    pub no_select: Option<bool>,
+}
+
+/// One axis of a box for an orthogonal flow: its size and min/max limits
+/// (`style::computed::orthogonal`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct AxisSizes {
+    pub size: Option<f32>,
+    pub min: Option<f32>,
+    pub max: Option<f32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

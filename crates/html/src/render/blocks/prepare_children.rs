@@ -208,7 +208,7 @@ pub(crate) fn prepare_children(
 /// Свойства самого контейнера, от детей не зависящие: упорядоченный контекст
 /// (гибкий контейнер, сетка) и барьер `fixed` (правила — в `prepare_children`).
 pub(super) fn container_flags(inherited: &BoxStyle) -> (bool, bool) {
-    let under_tf = inherited.reset_transforms.transform_ancestor
+    let under_tf = inherited.tree.transform_ancestor
         || inherited.reset_transforms.transform.is_some()
         || inherited.reset_transforms.perspective.is_some()
         || inherited.reset_context.contain_layout == Some(true)

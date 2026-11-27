@@ -108,7 +108,11 @@ fn push_cell_wrapped(
     let build = &opts.cx.contracts.build;
     built = build.effects(
         built,
-        Effect::transform(&cell.style.used(), &row_state.row_style, frame),
+        Effect::transform(
+            &crate::style::computed::BoxStyle::shared(cell.style.used()),
+            &row_state.row_style,
+            frame,
+        ),
     );
     let pure_shift = |t: &crate::style::computed::Transform| {
         !t.has_3d
@@ -139,7 +143,7 @@ fn push_cell_wrapped(
     built = build.effects(
         built,
         Effect::Transform {
-            style: &row_state.row.style.used(),
+            style: &crate::style::computed::BoxStyle::shared(row_state.row.style.used()),
             parent: row_state.inherited,
             ref_box: rb,
             frame,
@@ -157,7 +161,7 @@ fn push_cell_wrapped(
         built = build.effects(
             built,
             Effect::Transform {
-                style: &g.style.used(),
+                style: &crate::style::computed::BoxStyle::shared(g.style.used()),
                 parent: geom.inherited,
                 ref_box: rb,
                 frame,

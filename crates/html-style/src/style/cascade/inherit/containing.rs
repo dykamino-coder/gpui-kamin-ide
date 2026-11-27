@@ -20,16 +20,6 @@ pub(super) fn inherit_containing(
     c.cb_ancestor = parent.cb_ancestor || establishes_cb(parent);
     c.cb_depth = parent.cb_depth + u16::from(establishes_cb(parent));
     c.sc_ancestor = crate::style::computed::stacking::nested_context(parent);
-    let icb_insets = own
-        .reset_positioned
-        .icb_scroll_insets
-        .or(parent.reset_positioned.icb_scroll_insets);
-    set!(c.reset_positioned.icb_scroll_insets, icb_insets);
-    let unit_insets = own
-        .reset_positioned
-        .viewport_unit_insets
-        .or(parent.reset_positioned.viewport_unit_insets);
-    set!(c.reset_positioned.viewport_unit_insets, unit_insets);
     c.cb_scroll_insets = if establishes_cb(parent) {
         (
             parent.reset_box_layout.scroll.used,
@@ -39,28 +29,26 @@ pub(super) fn inherit_containing(
         parent.cb_scroll_insets
     };
     let clipped = |o| matches!(o, Some(o) if o != Overflow::Visible);
-    c.tree.fragment_clip_ancestor =
-        parent.tree.fragment_clip_ancestor
-            || clipped(parent.reset_box_layout.overflow_x)
-            || clipped(parent.reset_box_layout.overflow_y)
-            || parent.reset_context.contain_paint == Some(true)
-            || parent.reset_mask.clip_ref.is_some()
-            || parent.reset_mask.clip_shape.is_some()
-            || parent.reset_mask.clip_polygon.is_some()
-            || parent.reset_mask.clip_inset.is_some()
-            || parent.reset_mask.clip_xywh.is_some()
-            || parent.reset_mask.clip_rect.is_some()
-            || parent.reset_mask.clip_len.is_some()
-            || parent.reset_mask.mask_image.is_some();
-    c.tree.in_multicol =
-        parent.tree.in_multicol
-            || ((parent.reset_fragmentation.column_count.is_some()
-                || parent.reset_fragmentation.column_width.is_some()
-                || parent.reset_fragmentation.column_height.is_some())
-                && !matches!(
-                    parent.reset_box_layout.display,
-                    Some(D::Grid | D::InlineGrid | D::GridLanes | D::Flex | D::InlineFlex)
-                ));
+    c.tree.fragment_clip_ancestor = parent.tree.fragment_clip_ancestor
+        || clipped(parent.reset_box_layout.overflow_x)
+        || clipped(parent.reset_box_layout.overflow_y)
+        || parent.reset_context.contain_paint == Some(true)
+        || parent.reset_mask.clip_ref.is_some()
+        || parent.reset_mask.clip_shape.is_some()
+        || parent.reset_mask.clip_polygon.is_some()
+        || parent.reset_mask.clip_inset.is_some()
+        || parent.reset_mask.clip_xywh.is_some()
+        || parent.reset_mask.clip_rect.is_some()
+        || parent.reset_mask.clip_len.is_some()
+        || parent.reset_mask.mask_image.is_some();
+    c.tree.in_multicol = parent.tree.in_multicol
+        || ((parent.reset_fragmentation.column_count.is_some()
+            || parent.reset_fragmentation.column_width.is_some()
+            || parent.reset_fragmentation.column_height.is_some())
+            && !matches!(
+                parent.reset_box_layout.display,
+                Some(D::Grid | D::InlineGrid | D::GridLanes | D::Flex | D::InlineFlex)
+            ));
     c.tree.backdrop_root_above = parent.tree.backdrop_root_above || backdrop_root(parent);
     // Ближайший содержащий блок абсолюта по `node_id` — ключ реестра рамок
     // `anchor::CB` (нужен `position-area`); корень даёт 0 = начальный
@@ -74,8 +62,7 @@ pub(super) fn inherit_containing(
     // только `transform` и висел от окна вместо предка
     // (`contain-layout-containing-block-fixed-001`,
     // `contain-paint-containing-block-fixed-001`).
-    c.tree.transform_ancestor =
-        parent.tree.transform_ancestor
+    c.tree.transform_ancestor = parent.tree.transform_ancestor
         || parent.reset_transforms.transform.is_some()
         || parent.reset_transforms.preserve_3d == Some(true)
         // css-transforms-2 §perspective-property: `perspective` other than

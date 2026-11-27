@@ -197,7 +197,7 @@ pub(super) fn host_for_run(
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn wrap_into_host(
-    parent: &Computed,
+    parent: &crate::style::computed::BoxStyle,
     cb_top_open: bool,
     parent_bfc: bool,
     cell_bfc: bool,
@@ -215,7 +215,7 @@ pub(super) fn wrap_into_host(
             && !cell_bfc
             && next == nodes.len()
             && parent.reset_context.float_tail
-            && !parent.reset_fragmentation.in_multicol
+            && !parent.tree.in_multicol
         {
             host.marks.inflow_height = true;
         }

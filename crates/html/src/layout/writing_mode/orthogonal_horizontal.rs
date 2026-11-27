@@ -4,10 +4,10 @@
 use crate::dom::Element;
 use crate::layout::writing_mode::{native_intrinsic, orthogonal_inline};
 use crate::style::computed::orthogonal::available;
-use crate::style::computed::{Computed, Display};
+use crate::style::computed::{BoxStyle, Computed, Display};
 use crate::style::values::value::{Len, px_lossy_zero};
 
-pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f32) -> bool {
+pub(super) fn size_auto(child: &mut Element, container: &BoxStyle, icb_width: f32) -> bool {
     // This fallback sizes ordinary blocks; grid and flex own their item sizing.
     if !matches!(
         child.style.used().reset_box_layout.display,
@@ -26,10 +26,7 @@ pub(super) fn size_auto(child: &mut Element, container: &Computed, icb_width: f3
     }
     let fallback = available(
         orthogonal_inline::axis(container, false),
-        container
-            .reset_context
-            .orthogonal_scrollport
-            .map(|axes| axes[0]),
+        container.tree.orthogonal_scrollport.map(|axes| axes[0]),
         icb_width,
     );
     let px = |value| px_lossy_zero(value);
@@ -71,7 +68,11 @@ mod tests {
             child.style.used_mut().reset_border.border_visible = [Some(true); 4];
             child.style.used_mut().reset_box_layout.max_width = Some(Len::Px(500.0));
             child.style.used_mut().reset_box_layout.min_width = Some(Len::Px(10.0));
-            assert!(size_auto(&mut child, &container, 800.0));
+            assert!(size_auto(
+                &mut child,
+                &BoxStyle::from(container.clone()),
+                800.0
+            ));
             assert_eq!(
                 child.style.used().reset_box_layout.width,
                 Some(Len::FitContent)
@@ -93,8 +94,8 @@ mod tests {
 
     #[test]
     fn nearest_scrollport_and_border_box_define_the_available_border_edge() {
-        let mut container = Computed::default();
-        container.reset_context.orthogonal_scrollport = Some([
+        let mut container = BoxStyle::default();
+        container.tree.orthogonal_scrollport = Some([
             crate::style::computed::orthogonal::AxisSizes {
                 size: Some(300.0),
                 ..Default::default()
@@ -105,7 +106,11 @@ mod tests {
         child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(10.0));
         child.style.used_mut().reset_box_layout.padding.left = Some(Len::Px(20.0));
         child.style.used_mut().reset_border.border_box = Some(true);
-        assert!(size_auto(&mut child, &container, 800.0));
+        assert!(size_auto(
+            &mut child,
+            &BoxStyle::from(container.clone()),
+            800.0
+        ));
         assert_eq!(
             child.style.used().reset_context.fit_arg[0],
             Some(Len::Px(290.0))
@@ -123,17 +128,33 @@ mod tests {
             Display::GridLanes,
         ] {
             child.style.used_mut().reset_box_layout.display = Some(display);
-            assert!(!size_auto(&mut child, &container, 800.0));
+            assert!(!size_auto(
+                &mut child,
+                &BoxStyle::from(container.clone()),
+                800.0
+            ));
             assert_eq!(child.style.used().reset_box_layout.width, None);
         }
         child.style.used_mut().reset_box_layout.display = Some(Display::Block);
         child.style.used_mut().reset_box_layout.width = Some(Len::Px(100.0));
-        assert!(!size_auto(&mut child, &container, 800.0));
+        assert!(!size_auto(
+            &mut child,
+            &BoxStyle::from(container.clone()),
+            800.0
+        ));
         child.style.used_mut().reset_box_layout.width = None;
         child.style.used_mut().reset_positioned.position = Some(Position::Absolute);
-        assert!(!size_auto(&mut child, &container, 800.0));
+        assert!(!size_auto(
+            &mut child,
+            &BoxStyle::from(container.clone()),
+            800.0
+        ));
         child.style.used_mut().reset_positioned.position = None;
         child.tag = "img".into();
-        assert!(!size_auto(&mut child, &container, 800.0));
+        assert!(!size_auto(
+            &mut child,
+            &BoxStyle::from(container.clone()),
+            800.0
+        ));
     }
 }

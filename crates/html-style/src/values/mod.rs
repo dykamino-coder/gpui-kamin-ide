@@ -21,8 +21,10 @@ pub mod readiness;
 pub mod synthetic_ids;
 pub mod traversal;
 pub use traversal::MAX_DEPTH;
+mod rules;
 mod style_storage;
 mod value_cx;
+mod viewport_facts;
 pub mod viewport_reads;
 
 use crate::style::css::{DeclBlock, Media, PageRule};
@@ -35,6 +37,7 @@ use std::rc::{Rc, Weak};
 pub use arena::ArenaKey;
 pub use arena::{Arena, load, store, store_once};
 pub use value_cx::{ValueCx, ValueDoc};
+pub use viewport_facts::ViewportFacts;
 
 /// Профили `@color-profile` документа: имя → байты ICC.
 pub type IccProfiles = HashMap<String, Vec<u8>>;
@@ -71,6 +74,8 @@ pub struct DocumentValues {
     pub media: Cell<Media>,
     /// Режим quirks (HTML §13.2.6.4.1), ставит разбор.
     pub quirks: Cell<bool>,
+    /// What the document's viewport establishes for its boxes.
+    pub viewport: ViewportFacts,
     /// Кегль, строка и семейство корня — базы `rem`, `rlh`, `rcap`…
     pub root: RefCell<RootMetrics>,
     /// Правила `@page` в порядке появления (css-page-3 §cascading-and-page-context).
@@ -156,6 +161,7 @@ impl DocumentValues {
             foreign_rasters: Default::default(),
             masks: Default::default(),
             quirks: Default::default(),
+            viewport: Default::default(),
             root: Default::default(),
             page_rules: Default::default(),
             try_rules: Default::default(),
@@ -226,21 +232,6 @@ impl DocumentValues {
     /// Режим quirks документа (HTML §13.2.6.4.1).
     pub fn quirks(&self) -> bool {
         self.quirks.get()
-    }
-
-    /// Объявления правила `@position-try` по имени (`--x`), копией.
-    pub fn try_rule(&self, name: &str) -> Option<crate::style::css::DeclBlock> {
-        self.try_rules.borrow().get(name).cloned()
-    }
-
-    /// Неизменяемая ревизия реестра @property документа, общая для его узлов.
-    pub fn property_rules(&self) -> Rc<property_registry::PropertySnapshot> {
-        self.property_rules.borrow().snapshot()
-    }
-
-    /// Правила `@page` документа (копией — их читает хост на каждом кадре).
-    pub fn page_rules(&self) -> Vec<PageRule> {
-        self.page_rules.borrow().clone()
     }
 
     /// Носитель документа.

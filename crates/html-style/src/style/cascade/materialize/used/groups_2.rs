@@ -29,8 +29,6 @@ overlay!(
     position_try_fallbacks,
     position_try_order,
     position_visibility,
-    icb_scroll_insets,
-    viewport_unit_insets,
     abs_static,
     z_index,
     rel_shift,

@@ -10,7 +10,7 @@ use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 
 pub(crate) fn orthogonal_children(
     children: Vec<Node>,
-    container: &Computed,
+    container: &crate::style::computed::BoxStyle,
     icb_w: f32,
 ) -> Vec<Node> {
     let mut out = children;
