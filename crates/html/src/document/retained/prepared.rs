@@ -85,11 +85,9 @@ impl Document {
                     // This state belongs to the actual embedding, not the host's root.
                     // Keep it across DOM generations, but never beyond element eviction.
                     let placement = record.placement.take();
-                    let bounds = gpui::Bounds::new(
-                        placement
-                            .as_ref()
-                            .map_or(Default::default(), |p| p.bounds.origin),
-                        size(px(w), px(h)),
+                    let bounds = placement.as_ref().map_or_else(
+                        || gpui::Bounds::new(Default::default(), size(px(w), px(h))),
+                        |placement| placement.bounds_for(key.viewport),
                     );
                     let mut prepare = |window: &mut Window| {
                         let environment =

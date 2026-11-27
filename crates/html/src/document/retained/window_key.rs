@@ -22,6 +22,11 @@ pub(super) struct WindowKey {
 }
 
 impl WindowKey {
+    /// The exact logical bounds compared by the frame key, for the shared journal.
+    pub(super) fn bounds(&self) -> Bounds<Pixels> {
+        self.bounds
+    }
+
     /// Name changed inputs without formatting their potentially large values.
     pub(super) fn changed(&self, other: &Self) -> Vec<&'static str> {
         [

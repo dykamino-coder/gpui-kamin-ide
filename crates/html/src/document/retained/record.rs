@@ -39,12 +39,14 @@ impl Inputs {
         if !matches {
             crate::why::note("frame_environment.inputs", || {
                 format!(
-                    "window_same={} serial={} -> {} root={} changed={:?}",
+                    "window_same={} serial={} -> {} root={} changed={:?} bounds_old={:?} bounds_new={:?}",
                     self.window == window.window_handle(),
                     self.serial.get(),
                     window.frame_serial(),
                     window.retained_root_environment(),
-                    self.environment.changed(environment)
+                    self.environment.changed(environment),
+                    self.environment.bounds(),
+                    environment.bounds()
                 )
             });
         }
