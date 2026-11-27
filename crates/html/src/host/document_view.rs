@@ -44,7 +44,9 @@ impl DocumentView {
             let _ = view.update(app, |view, cx| {
                 #[cfg(feature = "why-profiler")]
                 let mut sample = view.journal.as_ref().map(|j| j.begin(&view.document));
-                if let Some(place) = &view.place {
+                if let Some(place) = &view.place
+                    && window.view_needs_rendering(cx.entity_id(), cx)
+                {
                     view.document
                         .update_rendering(&view.opts, place, window, cx, |phase| {
                             #[cfg(feature = "why-profiler")]
@@ -143,6 +145,13 @@ impl Focusable for DocumentView {
 }
 
 impl Render for DocumentView {
+    fn cached_style(&self) -> Option<gpui::StyleRefinement> {
+        Some(gpui::StyleRefinement {
+            size: size_style(self.opts.viewport),
+            ..Default::default()
+        })
+    }
+
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         self.place = Some(window.element_place());
         let root = self.document.state_rc().root_scroll.clone();
@@ -170,12 +179,18 @@ impl Render for DocumentView {
     }
 }
 
+fn size_style((width, height): (f32, f32)) -> gpui::Size<Option<gpui::Length>> {
+    gpui::size(Some(px(width).into()), Some(px(height).into()))
+}
+
 #[cfg(test)]
 mod embedding_tests;
 #[cfg(test)]
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
+#[cfg(test)]
+mod host_frame_tests;
 #[cfg(test)]
 #[cfg(feature = "why-profiler")]
 mod journal_tests;

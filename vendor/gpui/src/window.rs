@@ -1056,6 +1056,9 @@ pub(crate) struct TooltipRequest {
 }
 
 pub(crate) struct DeferredDraw {
+    // A stacking root already painted this draw inside its retained scene.
+    // KaminIDE patch: a retained root owns these draws, including cache replay.
+    local: bool,
     current_view: EntityId,
     priority: usize,
     parent_node: DispatchNodeId,
@@ -4119,6 +4122,13 @@ impl Window {
         self.invalidator.replace_views(views);
     }
 
+    /// KaminIDE patch: whether a view's rendering step is invalidated for the next draw.
+    /// Includes descendant notifications and explicit window refreshes.
+    pub fn view_needs_rendering(&mut self, view: EntityId, cx: &App) -> bool {
+        self.invalidate_entities();
+        self.refreshing || self.dirty_views.contains(&view) || self.is_inspector_picking(cx)
+    }
+
     #[profiling::function]
     fn present(&mut self) {
         #[cfg(feature = "profiler")]
@@ -4375,7 +4385,49 @@ impl Window {
 
     fn prepaint_deferred_draws(&mut self, cx: &mut App) {
         assert_eq!(self.element_id_stack.len(), 0);
+        self.prepaint_deferred_range(0, false, cx);
+    }
 
+    /// KaminIDE patch: resolve deferred descendants inside a retained stacking root, before
+    /// the host continues prepainting its following siblings.
+    pub fn prepaint_local_deferred(
+        &mut self,
+        root: &RetainedPrepaint,
+        cx: &mut App,
+    ) -> Range<usize> {
+        let start = root.range().start.deferred_draws_index;
+        self.prepaint_deferred_range(start, true, cx);
+        start..self.next_frame.deferred_draws.len()
+    }
+
+    fn prepaint_deferred_range(&mut self, start: usize, local: bool, cx: &mut App) {
+        self.with_deferred_environment(|window| {
+            window.prepaint_deferred_range_inner(start, local, cx)
+        });
+    }
+
+    // KaminIDE patch: local deferred passes preserve their caller, including unwind.
+    fn with_deferred_environment<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let state = (
+            self.element_id_stack.clone(),
+            self.text_style_stack.clone(),
+            self.next_frame.dispatch_tree.active_node_id(),
+        );
+        self.with_restore(
+            state,
+            |window, state| {
+                window.element_id_stack = mem::take(&mut state.0);
+                window.text_style_stack = mem::take(&mut state.1);
+                if let Some(node) = state.2 {
+                    window.next_frame.dispatch_tree.set_active_node(node);
+                }
+            },
+            f,
+        )
+        .0
+    }
+
+    fn prepaint_deferred_range_inner(&mut self, start: usize, local: bool, cx: &mut App) {
         // Process deferred draws in multiple rounds to support nesting.
         // Each round processes all current deferred draws, which may push new ones.
         //
@@ -4386,7 +4438,7 @@ impl Window {
         // slices on the next frame. Moving the draws out and re-appending them
         // shifts the indices of nested draws, causing reused subtrees to graft
         // the wrong deferred draws and panic in the dispatch tree.
-        let mut round_start = 0;
+        let mut round_start = start;
         let mut depth = 0;
         loop {
             let round_end = self.next_frame.deferred_draws.len();
@@ -4402,8 +4454,14 @@ impl Window {
             traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
+                if !local && self.next_frame.deferred_draws[deferred_draw_ix].local {
+                    continue;
+                }
+                self.next_frame.deferred_draws[deferred_draw_ix].local = local;
                 let _render_scope = self.render_contexts.enter_snapshot(
-                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
+                    self.next_frame.deferred_draws[deferred_draw_ix]
+                        .render_contexts
+                        .clone(),
                 );
                 // KaminIDE patch: a dirty isolated view is drawn again alone.
                 self.rebuild_isolated(deferred_draw_ix, cx);
@@ -4428,7 +4486,8 @@ impl Window {
                 let entered = self.enter_deferred_prepaint(deferred_draw_ix);
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
-                        .layout_owner.clone();
+                        .layout_owner
+                        .clone();
                     self.with_retained_layout(&mut layout_owner, |window| {
                         window.with_rendered_view(current_view, |window| {
                             window.with_rem_size(Some(rem_size), |window| {
@@ -4456,21 +4515,42 @@ impl Window {
 
     fn paint_deferred_draws(&mut self, cx: &mut App) {
         assert_eq!(self.element_id_stack.len(), 0);
+        self.paint_deferred_range(0..self.next_frame.deferred_draws.len(), false, cx);
+    }
 
+    /// KaminIDE patch: paint deferred descendants in their stacking root's scene. These draws
+    /// are omitted from the window's later overlay pass, including cache reuse.
+    pub fn paint_local_deferred(&mut self, range: Range<usize>, cx: &mut App) {
+        self.paint_deferred_range(range, true, cx);
+    }
+
+    fn paint_deferred_range(&mut self, range: Range<usize>, local: bool, cx: &mut App) {
+        self.with_deferred_environment(|window| {
+            window.paint_deferred_range_inner(range, local, cx)
+        });
+    }
+
+    fn paint_deferred_range_inner(&mut self, range: Range<usize>, local: bool, cx: &mut App) {
         // Paint all deferred draws in priority order.
         // Since prepaint has already processed nested deferreds, we just paint them all.
         if self.next_frame.deferred_draws.len() == 0 {
             return;
         }
 
-        let traversal_order = self.deferred_draw_traversal_order();
+        let mut traversal_order = range.collect::<SmallVec<[usize; 8]>>();
+        traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
         let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
         for deferred_draw_ix in traversal_order {
             let mut deferred_draw = &mut deferred_draws[deferred_draw_ix];
-            let _render_scope = self.render_contexts
+            if deferred_draw.local != local {
+                continue;
+            }
+            let _render_scope = self
+                .render_contexts
                 .enter_snapshot(deferred_draw.render_contexts.clone());
             self.element_id_stack
                 .clone_from(&deferred_draw.element_id_stack);
+            self.text_style_stack = deferred_draw.text_style_stack.clone();
             self.next_frame
                 .dispatch_tree
                 .set_active_node(deferred_draw.parent_node);
@@ -4493,21 +4573,17 @@ impl Window {
                 self.leave_deferred_paint(entered);
             } else {
                 let range = deferred_draw.paint_range.clone();
-                self.reuse_deferred_paint(&mut deferred_draw.scroll, range, deferred_draw.groups.clone());
+                self.reuse_deferred_paint(
+                    &mut deferred_draw.scroll,
+                    range,
+                    deferred_draw.groups.clone(),
+                );
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
             deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
         }
         self.next_frame.deferred_draws = deferred_draws;
-        self.element_id_stack.clear();
-    }
-
-    fn deferred_draw_traversal_order(&mut self) -> SmallVec<[usize; 8]> {
-        let deferred_count = self.next_frame.deferred_draws.len();
-        let mut sorted_indices = (0..deferred_count).collect::<SmallVec<[_; 8]>>();
-        sorted_indices.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
-        sorted_indices
     }
 
     pub(crate) fn prepaint_index(&self) -> PrepaintStateIndex {
@@ -4577,6 +4653,7 @@ impl Window {
                 [range.start.deferred_draws_index..range.end.deferred_draws_index]
                 .iter()
                 .map(|deferred_draw| DeferredDraw {
+                    local: deferred_draw.local,
                     current_view: deferred_draw.current_view,
                     parent_node: reused_subtree.refresh_node_id(deferred_draw.parent_node),
                     element_id_stack: deferred_draw.element_id_stack.clone(),
@@ -5409,6 +5486,7 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
         self.next_frame.deferred_draws.push(DeferredDraw {
+            local: false,
             current_view: self.current_view(),
             parent_node,
             element_id_stack: self.element_id_stack.clone(),

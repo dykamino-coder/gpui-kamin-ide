@@ -301,7 +301,9 @@ impl Window {
             let draw = &self.rendered_frame.deferred_draws[index];
             let (nodes, painted, nested) = self.deferred_scroll_part(draw).map_err(|refusal| at(refusal))?;
             plan.draws.insert(index, parts.len() - 1);
-            parts.push((nodes, painted, &self.rendered_frame.scene, draw.groups.clone()));
+            // KaminIDE patch: root-local deferred commands belong to the retained scene.
+            let scene = if draw.local { source } else { &self.rendered_frame.scene };
+            parts.push((nodes, painted, scene, draw.groups.clone()));
             owners.push(Some(draw.scroll.owner));
             draws.extend(nested);
             next += 1;

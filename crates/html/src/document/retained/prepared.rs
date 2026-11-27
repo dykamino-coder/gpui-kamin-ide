@@ -70,6 +70,8 @@ impl Document {
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
     ) {
+        self.root_phases
+            .called(crate::why::root::Work::UpdateRendering);
         self.retained.prepared.take();
         let Some(key) = FrameKey::of(opts) else {
             return;
@@ -179,6 +181,7 @@ impl Document {
             counters: Cell::new(None),
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),
             phases: Default::default(),
+            work: self.root_phases.clone(),
         }
     }
 }

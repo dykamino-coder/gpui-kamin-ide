@@ -4,6 +4,18 @@ use serde_json::Value;
 use std::fmt::Write;
 
 pub(super) fn render(out: &mut String, roots: &Value, label: &str) {
+    if let Some(work) = roots.get("work_calls") {
+        let _ = writeln!(
+            out,
+            "  {label} work_calls total={} update_rendering={} render_viewport={} request_layout={} prepaint={} paint={}",
+            work["total"],
+            work["update_rendering"],
+            work["render_viewport"],
+            work["request_layout"],
+            work["prepaint"],
+            work["paint"]
+        );
+    }
     for root in roots["attempts"].as_array().into_iter().flatten() {
         let _ = writeln!(
             out,
@@ -55,5 +67,30 @@ mod tests {
         assert!(out.contains("build inclusive=2.000 exclusive=2.000 calls=1"));
         assert!(out.contains("host layout incomplete at checkpoint"));
         assert!(out.contains("1 attempts not kept"));
+    }
+
+    #[test]
+    fn work_calls_remain_visible_without_root_attempts() {
+        for n in [0, 2] {
+            let mut out = String::new();
+            render(
+                &mut out,
+                &json!({"attempts": [], "work_calls": {
+                    "total": n * 5, "update_rendering": n, "render_viewport": n,
+                    "request_layout": n, "prepaint": n, "paint": n
+                }}),
+                "root",
+            );
+            assert_eq!(
+                out,
+                format!(
+                    "  root work_calls total={} update_rendering={n} render_viewport={n} request_layout={n} prepaint={n} paint={n}\n",
+                    n * 5
+                )
+            );
+        }
+        let mut legacy = String::new();
+        render(&mut legacy, &json!({"attempts": []}), "root");
+        assert!(legacy.is_empty());
     }
 }

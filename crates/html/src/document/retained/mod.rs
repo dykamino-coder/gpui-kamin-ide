@@ -173,6 +173,8 @@ impl Document {
     /// Собрать кадр документа в коробке области просмотра (`opts.viewport`)
     /// либо повторить прошлый, если ни один его вход не изменился.
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
+        self.root_phases
+            .called(crate::why::root::Work::RenderViewport);
         let key = FrameKey::of(opts);
         let candidate =
             self.retained.inputs(key.as_ref()).is_ok() && self.state.values.resources_unchanged();

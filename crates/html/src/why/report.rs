@@ -190,3 +190,6 @@ pub fn raster(report: gpui::frame_capture::RasterReport) -> Value {
         "gpu_wait_ms": report.gpu_wait.as_secs_f64() * 1e3,
     })
 }
+
+#[cfg(test)]
+mod tests;

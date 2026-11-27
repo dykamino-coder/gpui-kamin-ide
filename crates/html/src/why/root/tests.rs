@@ -13,6 +13,29 @@ fn opts() -> crate::RenderOpts {
 }
 
 #[test]
+fn work_calls_count_actual_entry_points_and_reset_at_checkpoint() {
+    let (_one, reader) = crate::why::test_reader();
+    let journal = Journal::default();
+    assert_eq!(journal.take()["work_calls"], work_json([0; 5]));
+    for work in [
+        Work::UpdateRendering,
+        Work::RenderViewport,
+        Work::RequestLayout,
+        Work::Prepaint,
+        Work::Paint,
+        Work::Paint,
+    ] {
+        journal.called(work);
+    }
+    assert_eq!(journal.take()["work_calls"], work_json([1, 1, 1, 1, 2]));
+    assert_eq!(journal.take()["work_calls"], work_json([0; 5]));
+    drop(reader);
+    let disabled = Journal::default();
+    disabled.called(Work::Paint);
+    assert!(disabled.0.borrow().is_none());
+}
+
+#[test]
 fn nested_rebuilds_partition_the_inclusive_prepaint_interval() {
     let (_one, _reader) = crate::why::test_reader();
     let journal = Journal::default();

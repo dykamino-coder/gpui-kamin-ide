@@ -22,6 +22,7 @@ pub(super) struct Builder {
     /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
     pub(super) layout_keys: bool,
     pub(super) phases: crate::why::root::Attempt,
+    pub(super) work: crate::why::root::Journal,
 }
 
 impl Builder {

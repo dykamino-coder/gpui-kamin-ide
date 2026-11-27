@@ -37,6 +37,7 @@ pub(super) struct Retained {
     /// No replay candidate: the tree is built at `request_layout`, where the
     /// hover the window shows is known (`Builder::build`).
     unbuilt: bool,
+    deferred: Option<std::ops::Range<usize>>,
 }
 
 impl Retained {
@@ -66,6 +67,7 @@ impl Retained {
                 checked: Some(prepared.checked),
                 layout_inputs: prepared.layout_inputs,
                 unbuilt: false,
+                deferred: None,
             };
         }
         Self {
@@ -83,6 +85,7 @@ impl Retained {
             checked: None,
             layout_inputs: Default::default(),
             unbuilt: !candidate,
+            deferred: None,
         }
     }
 }
@@ -114,6 +117,9 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, ()) {
+        self.builder
+            .work
+            .called(crate::why::root::Work::RequestLayout);
         let id = {
             let _phase = self
                 .builder
@@ -134,6 +140,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.builder.work.called(crate::why::root::Work::Prepaint);
         let _phase = self.builder.phases.prepaint();
         let Some(id) = id else { return };
         if let Some(root) = &self.builder.state.root_scroll {
@@ -163,6 +170,7 @@ impl Element for Retained {
         window: &mut Window,
         cx: &mut App,
     ) {
+        self.builder.work.called(crate::why::root::Work::Paint);
         let _phase = self.builder.phases.enter(crate::why::root::Phase::Paint);
         let Some(id) = id else { return };
         self.paint_record(id, window, cx);

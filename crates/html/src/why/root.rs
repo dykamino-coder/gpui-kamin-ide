@@ -41,6 +41,23 @@ struct Log {
     next: u64,
     attempts: Vec<Attempt>,
     dropped: u64,
+    work: [u64; 5],
+}
+
+/// Actual engine entry points, including replay. A host-only frame calls none.
+#[derive(Clone, Copy)]
+pub(crate) enum Work {
+    UpdateRendering,
+    RenderViewport,
+    RequestLayout,
+    Prepaint,
+    Paint,
+}
+
+fn work_json(calls: [u64; 5]) -> Value {
+    json!({"total": calls.iter().sum::<u64>(),
+        "update_rendering": calls[0], "render_viewport": calls[1],
+        "request_layout": calls[2], "prepaint": calls[3], "paint": calls[4]})
 }
 
 #[derive(Clone, Default)]
@@ -61,6 +78,17 @@ struct Data {
 pub(crate) struct Scope(Option<(Attempt, Phase, Option<Phase>, Instant)>);
 
 impl Journal {
+    pub(crate) fn called(&self, work: Work) {
+        if super::enabled() {
+            let owner: Rc<RefCell<Log>> = self
+                .0
+                .borrow_mut()
+                .get_or_insert_with(Default::default)
+                .clone();
+            owner.borrow_mut().work[work as usize] += 1;
+        }
+    }
+
     pub(crate) fn begin(
         &self,
         document: u64,
@@ -105,7 +133,8 @@ impl Journal {
     /// A checkpoint invalidates pending gaps and scopes, including abandoned roots.
     pub(crate) fn take(&self) -> Value {
         let Some(stored) = self.0.borrow().clone() else {
-            return json!({"clock": "wall", "attempts": [], "dropped": 0});
+            return json!({"clock": "wall", "attempts": [], "dropped": 0,
+                "work_calls": work_json([0; 5])});
         };
         let owner: Rc<RefCell<Log>> = stored;
         let mut log = owner.borrow_mut();
@@ -131,7 +160,8 @@ impl Journal {
                 out
             })
             .collect();
-        json!({"clock": "wall", "attempts": attempts, "dropped": std::mem::take(&mut log.dropped)})
+        json!({"clock": "wall", "attempts": attempts, "dropped": std::mem::take(&mut log.dropped),
+            "work_calls": work_json(std::mem::take(&mut log.work))})
     }
 }
 
