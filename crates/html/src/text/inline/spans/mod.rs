@@ -20,7 +20,7 @@ use gpui::TextStyle;
 /// Text coordinates shared by all span collectors; atoms occupy no text bytes.
 fn text_ranges(
     pieces: &[Piece],
-) -> impl Iterator<Item = (std::ops::Range<usize>, &str, &Computed)> {
+) -> impl Iterator<Item = (std::ops::Range<usize>, &str, &BoxStyle)> {
     let mut at = 0;
     pieces.iter().filter_map(move |piece| {
         let Piece::Text { text, style } = piece else {
@@ -28,7 +28,7 @@ fn text_ranges(
         };
         let range = at..at + text.len();
         at = range.end;
-        Some((range, text.as_str(), &**style))
+        Some((range, text.as_str(), style))
     })
 }
 
@@ -130,12 +130,9 @@ pub fn decor_spans(
         match p {
             Piece::Text { text, style } => {
                 let end = at + text.len();
-                if !style.reset_text_box.decors.is_empty()
-                    && style.inh.ui.hidden != Some(true)
-                    && !text.is_empty()
+                if !style.decors.is_empty() && style.inh.ui.hidden != Some(true) && !text.is_empty()
                 {
                     let mut items: Vec<DecorItem> = style
-                        .reset_text_box
                         .decors
                         .iter()
                         .map(|d| {
@@ -152,7 +149,7 @@ pub fn decor_spans(
                             };
                             DecorItem {
                                 decor: d.clone(),
-                                font: run_for("x", &probe, base, vcx).font,
+                                font: super::runs::strut_font(&probe, base, vcx, None),
                                 group: at..end,
                             }
                         })
@@ -169,7 +166,7 @@ pub fn decor_spans(
                             }
                         }
                     }
-                    shadow_inks.push(style.reset_text_box.text_shadow_ink);
+                    shadow_inks.push(style.tree.text_shadow_ink);
                     out.push(DecorSpan {
                         range: at..end,
                         items,

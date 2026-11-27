@@ -3,27 +3,24 @@
 use super::*;
 #[test]
 fn parallel_table_column_uses_its_track_measure() {
-    let mut style = Computed {
+    let mut style = BoxStyle::from(Computed {
         reset_context: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetContext {
                 ortho_col: true,
-                orthogonal_inline: Some(InlineConstraint {
-                    available: 600.0,
-                    fixed: None,
-                    min: None,
-                    max: None,
-                }),
                 ..Default::default()
             },
         ),
         ..Computed::default()
-    };
+    });
+    style.tree.orthogonal_inline = Some(InlineConstraint {
+        available: 600.0,
+        fixed: None,
+        min: None,
+        max: None,
+    });
     assert_eq!(flow_constraint(&style), None);
     style.reset_context.ortho_col = false;
-    assert_eq!(
-        flow_constraint(&style),
-        style.reset_context.orthogonal_inline
-    );
+    assert_eq!(flow_constraint(&style), style.tree.orthogonal_inline);
 }
 #[test]
 fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
@@ -92,10 +89,7 @@ fn nearest_indefinite_scroller_replaces_an_outer_fixed_scroller() {
     };
     let mut child = BoxStyle::from(child);
     resolve(&mut child, &inner, (800.0, 600.0), false);
-    assert_eq!(
-        child.reset_context.orthogonal_inline.unwrap().available,
-        600.0
-    );
+    assert_eq!(child.tree.orthogonal_inline.unwrap().available, 600.0);
 }
 
 #[test]
@@ -110,7 +104,6 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
         let mut with_inherited = Computed {
             reset_context: crate::style::computed::StyleGroup::new(
                 crate::style::computed::ResetContext {
-                    orthogonal_inline: Some(c),
                     ..Default::default()
                 },
             ),
@@ -120,6 +113,11 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
         with_inherited
+    };
+    let parent = {
+        let mut parent = BoxStyle::from(parent);
+        parent.tree.orthogonal_inline = Some(c);
+        parent
     };
     let child = {
         let mut with_inherited = Computed {
@@ -131,27 +129,14 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
         with_inherited
     };
     let mut child = BoxStyle::from(child);
-    resolve(
-        &mut child,
-        &BoxStyle::from(parent.clone()),
-        (800.0, 600.0),
-        false,
-    );
-    assert_eq!(child.reset_context.orthogonal_inline, Some(c));
+    resolve(&mut child, &parent.clone(), (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline, Some(c));
     child.reset_box_layout.height = Some(Len::Px(40.0));
-    resolve(
-        &mut child,
-        &BoxStyle::from(parent.clone()),
-        (800.0, 600.0),
-        false,
-    );
-    assert_eq!(
-        child.reset_context.orthogonal_inline.unwrap().fixed,
-        Some(40.0)
-    );
+    resolve(&mut child, &parent.clone(), (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline.unwrap().fixed, Some(40.0));
     child.reset_box_layout.display = Some(Display::Flex);
-    resolve(&mut child, &BoxStyle::from(parent), (800.0, 600.0), false);
-    assert_eq!(child.reset_context.orthogonal_inline, None);
+    resolve(&mut child, &parent, (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline, None);
 }
 
 #[test]
@@ -184,10 +169,7 @@ fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
         (800.0, 600.0),
         false,
     );
-    assert_eq!(
-        child.reset_context.orthogonal_inline.unwrap().available,
-        100.0
-    );
+    assert_eq!(child.tree.orthogonal_inline.unwrap().available, 100.0);
     parent.reset_border.border_box = Some(true);
     parent.reset_box_layout.padding.left = Some(Len::Px(10.0));
     parent.reset_box_layout.padding.right = Some(Len::Px(10.0));
@@ -197,10 +179,7 @@ fn percentage_margins_use_cb_width_and_clip_does_not_replace_scrollport() {
         (800.0, 600.0),
         false,
     );
-    assert_eq!(
-        child.reset_context.orthogonal_inline.unwrap().available,
-        104.0
-    );
+    assert_eq!(child.tree.orthogonal_inline.unwrap().available, 104.0);
     let clipped = Computed {
         reset_box_layout: crate::style::computed::StyleGroup::new(
             crate::style::computed::ResetBoxLayout {

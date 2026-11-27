@@ -35,7 +35,7 @@ pub(super) fn abspos_normal(
         && !c.context.parent_flex_grid
         && !c.wm().vertical()
         && !c.context.cb_wm.vertical()
-        && !c.wm().turned()
+        && !c.turned_line()
     {
         let auto = |l: Option<crate::style::values::value::Len>| {
             matches!(l, None | Some(crate::style::values::value::Len::Auto))

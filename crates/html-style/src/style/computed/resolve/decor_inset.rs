@@ -4,7 +4,7 @@
 //! общего прохода разрешения окна нет. Смесь доли и точек остаётся `DecorLen::Mix`.
 
 use super::unit_change::Target;
-use crate::style::computed::{Computed, DecorLen};
+use crate::style::computed::{Computed, Decor, DecorLen};
 use crate::style::values::value::{Len, calc_get};
 use crate::values::ValueCx;
 
@@ -63,7 +63,6 @@ impl Computed {
     /// Отступы линий оформления, которые решает `resolve_decor_inset_viewport`.
     pub fn has_decor_insets(&self) -> bool {
         matches!(self.reset_text_box.td_inset, Some(Some(_)))
-            || self.reset_text_box.decors.iter().any(|d| d.inset.is_some())
     }
 
     pub fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
@@ -93,13 +92,7 @@ pub(super) fn walk_decor_inset_lengths<T: Target>(
     fix: impl Fn(&mut Option<Len>) + Copy,
     vcx: ValueCx<'_>,
 ) {
-    // Запись меняет отступ, если длина сворачивается или ещё не приведена к точкам и долям.
-    let pending = |pair: &[DecorLen; 2]| {
-        pair.iter().any(|&value| {
-            matches!(value, DecorLen::Raw(raw) if moves(raw))
-                || map_length(value, |_| {}, vcx) != value
-        })
-    };
+    let pending = |pair: &[DecorLen; 2]| pending(pair, moves, vcx);
     let map = |pair: &mut [DecorLen; 2]| *pair = pair.map(|value| map_length(value, fix, vcx));
     target.rewrite(
         |s| matches!(&s.reset_text_box.td_inset, Some(Some(pair)) if pending(pair)),
@@ -109,20 +102,33 @@ pub(super) fn walk_decor_inset_lengths<T: Target>(
             }
         },
     );
-    target.rewrite(
-        |s| {
-            let mut insets = s.reset_text_box.decors.iter().flat_map(|d| &d.inset);
-            insets.any(pending)
-        },
-        |s| {
-            for pair in s
-                .reset_text_box
-                .decors
-                .iter_mut()
-                .flat_map(|d| &mut d.inset)
-            {
-                map(pair);
-            }
-        },
-    );
+}
+
+// A write changes an inset whose length folds or is not yet reduced to pixels and percentages.
+fn pending(pair: &[DecorLen; 2], moves: impl Fn(Len) -> bool, vcx: ValueCx<'_>) -> bool {
+    pair.iter().any(|&value| {
+        matches!(value, DecorLen::Raw(raw) if moves(raw)) || map_length(value, |_| {}, vcx) != value
+    })
+}
+
+/// The insets of propagated decorations (`BoxStyle::decors`): a list with a
+/// pending length is copied once; the shared computed style is not touched.
+pub(crate) fn resolve_decor_list(
+    decors: &mut std::rc::Rc<[Decor]>,
+    moves: impl Fn(Len) -> bool + Copy,
+    fix: impl Fn(&mut Option<Len>) + Copy,
+    vcx: ValueCx<'_>,
+) {
+    if !decors
+        .iter()
+        .flat_map(|d| &d.inset)
+        .any(|pair| pending(pair, moves, vcx))
+    {
+        return;
+    }
+    let mut own = decors.to_vec();
+    for pair in own.iter_mut().flat_map(|d| &mut d.inset) {
+        *pair = pair.map(|value| map_length(value, fix, vcx));
+    }
+    *decors = own.into();
 }

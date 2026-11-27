@@ -107,7 +107,7 @@ pub(super) fn absolute_atom(
         // branch above (horizontal ltr; `align-self-static-position-003/007`).
         let block_level = !crate::layout::positioned::static_position::hypothetical_inline_level(e)
             && !inherited.wm().vertical()
-            && !inherited.wm().turned()
+            && !inherited.turned_line()
             && !inherited.wm().rtl();
         spot.set(crate::layout::positioned::containing_block::Spot {
             hole: None,

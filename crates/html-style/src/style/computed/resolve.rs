@@ -7,7 +7,7 @@ use crate::values::ValueCx;
 
 mod container_lengths;
 mod container_units;
-mod decor_inset;
+pub(in crate::style::computed) mod decor_inset;
 mod derived;
 mod em;
 mod font_size;

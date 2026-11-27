@@ -100,7 +100,7 @@ pub fn shift_spans(
                 // Полулидинг БЫВАЕТ отрицательным: `L = line-height − AD`
                 // (§10.8.1), и при `line-height` меньше кегля коробка куска
                 // выше строки. Зажим нулём убивал ровно этот случай.
-                let vertical = style.wm().vertical() || style.wm().turned();
+                let vertical = style.wm().vertical() || style.turned_line();
                 // CSS 2.1 §10.8.1 aligns the subject's own inline box, whose
                 // half-leading comes from its computed line-height. The line's
                 // strut is not that box (Blink `inline_box_state.cc`).
