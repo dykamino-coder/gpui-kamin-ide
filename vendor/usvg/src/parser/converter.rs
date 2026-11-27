@@ -408,12 +408,12 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
 
     let background_color = svg
         .attribute::<&str>(AId::BackgroundColor)
+        .filter(|_| opt.root_background)
         .and_then(|s| svgtypes::Paint::from_str(s).ok())
         .and_then(|paint| match paint {
             svgtypes::Paint::Color(c) => Some(c),
             _ => None,
         });
-
     let mut tree = Tree {
         size,
         root: Group::empty(),
@@ -848,15 +848,14 @@ pub(crate) fn convert_group(
     parent: &mut Group,
     collect_children: &dyn Fn(&mut Cache, &mut Group),
 ) -> Option<Group> {
-    // A `clipPath` child cannot have an opacity.
-    let opacity = if state.parent_clip_path.is_none() {
-        node.attribute::<Opacity>(AId::Opacity)
-            .unwrap_or(Opacity::ONE)
-    } else {
-        Opacity::ONE
-    };
-
     let is_root_svg = node.tag_name() == Some(EId::Svg) && node.parent_element().is_none();
+    let opacity = if state.parent_clip_path.is_some()
+        || (is_root_svg && state.opt.root_opacity.is_some())
+    {
+        Opacity::ONE
+    } else {
+        node.attribute::<Opacity>(AId::Opacity).unwrap_or(Opacity::ONE)
+    };
     let transform = if is_root_svg {
         // Already applied outside the viewBox mapping in `convert_doc`.
         Transform::default()

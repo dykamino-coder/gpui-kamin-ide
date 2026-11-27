@@ -190,7 +190,7 @@ impl crate::Tree {
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
         let source_bytes = doc.input_text().len();
         let source_nodes = doc.descendants().count();
-        let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
+        let mut doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref(), opt.root_opacity)?;
         doc.import_external(opt, source_bytes, source_nodes);
         self::converter::convert_doc(&doc, opt)
     }
