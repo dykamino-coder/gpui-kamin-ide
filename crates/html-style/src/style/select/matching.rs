@@ -15,7 +15,7 @@ mod nth;
 mod pseudo;
 use compound::{ancestor_holds, matches_compound};
 use nth::{nth_of_holds_prepared, structural_at};
-use pseudo::{host_holds, pseudo_holds};
+use pseudo::{host_holds, is_holds, pseudo_holds};
 
 /// Сопоставление селектора с узлом и его цепочкой предков.
 ///

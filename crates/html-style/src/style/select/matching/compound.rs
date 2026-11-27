@@ -60,10 +60,15 @@ fn ancestor_pseudos_hold(sel: &Selector, path: &[Ancestor], at: usize) -> bool {
     sel.pseudo
         .iter()
         .chain(sel.also.iter())
-        // Ancestors use the subject predicate too. Treating an unknown
-        // state as true activated :focus-within descendants without focus
-        // (Selectors 4 section 9.5).
-        .all(|p| pseudo_holds(sel, p, node, &path[..at], sibs))
+        .all(|p| match sel.pseudo_of(p).1 {
+            PseudoKind::Root => node.tag == "html",
+            PseudoKind::Empty => node.empty,
+            // Состояние ссылки предка (`a:visited span`): то же, что у предмета.
+            PseudoKind::Link => node.href.is_some() && !node.visited,
+            PseudoKind::Visited => node.href.is_some() && node.visited,
+            PseudoKind::Checked => node.checked,
+            _ => is_holds(sel, p, node, &path[..at], sibs).unwrap_or(true),
+        })
 }
 
 fn matches_chain(sel: &Selector, path: &[Ancestor], at: usize) -> bool {

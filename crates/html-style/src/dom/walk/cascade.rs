@@ -109,8 +109,6 @@ pub(super) fn cascade_element(
     // подсказки и лист форм их не задают.
     let hints = presentational_hints::rules(&tag, &attrs, path, vcx);
     matched.extend(hints.iter());
-    let svg_color = presentational_hints::svg_color(handle, attrs, vcx);
-    matched.extend(svg_color.iter());
     let math_hints = crate::dom::mathml::hints(handle, attrs, vcx);
     matched.extend(math_hints.iter());
     // Карта собирается, только когда её читают: пользовательские свойства

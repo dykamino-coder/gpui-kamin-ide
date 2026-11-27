@@ -15,27 +15,6 @@ use super::mutation::Batch;
 use crate::document::{Document, DocumentFailure};
 
 impl Document {
-    /// Change the host preference (Media Queries 5 section 12.5). Even without
-    /// a media query, used color-scheme and system colors may change.
-    pub fn set_preferred_color_scheme(&mut self, dark: bool) -> Result<bool, DocumentFailure> {
-        let media = self.state.media();
-        if media.dark == dark {
-            return Ok(false);
-        }
-        self.state
-            .values
-            .media
-            .set(crate::style::css::Media { dark, ..media });
-        let mut batch = Batch::new(&[]).expect("an empty batch addresses no node");
-        let theme_css = self.theme_css.clone();
-        let revision = self.budget().revision();
-        if let Err(error) = self.rebuild(&mut batch, None, &theme_css, self.key, revision) {
-            self.state.values.media.set(media);
-            return Err(error);
-        }
-        Ok(true)
-    }
-
     /// Take `viewport` (CSS px) as the size of the screen medium. `true` —
     /// a media query changed its result and the document was restyled. A
     /// printed document keeps its page size.

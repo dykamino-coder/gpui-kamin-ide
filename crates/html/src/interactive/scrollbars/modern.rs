@@ -140,7 +140,6 @@ pub(super) fn paint(
     alpha: f32,
     window: &mut Window,
 ) {
-    let (track, thumb) = super::palette::automatic(c.reset_cascade.dark_color_scheme);
     let color = |value: u32, alpha| {
         let mut color = crate::style::values::value::Color {
             r: value as f32 / 255.0,
@@ -155,14 +154,14 @@ pub(super) fn paint(
         color.to_hsla()
     };
     for bar in bars {
-        window.paint_quad(fill(bar.lane, color(track, 1.0)));
+        window.paint_quad(fill(bar.lane, color(248, 1.0)));
         if bar.maximum > 0.0 {
             let thickness = if bar.axis == 0 {
                 bar.thumb.size.height
             } else {
                 bar.thumb.size.width
             };
-            let mut quad = fill(bar.thumb, color(thumb, alpha));
+            let mut quad = fill(bar.thumb, color(110, alpha));
             quad.corner_radii = gpui::Corners::all(thickness / 2.0);
             let id = gpui::ScrollNodeId::follower(handle, bar.axis);
             window.with_scroll_node_paint(id, |window| window.paint_quad(quad));
@@ -176,7 +175,7 @@ pub(super) fn paint(
                 point(vertical.lane.left(), horizontal.lane.top()),
                 size(vertical.lane.size.width, horizontal.lane.size.height),
             ),
-            color(track, 1.0),
+            color(248, 1.0),
         ));
     }
 }

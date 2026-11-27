@@ -3,29 +3,6 @@
 use super::hint;
 use crate::style::css::Rule;
 
-/// SVG 2 section 6.6: color presentation attributes enter the cascade, so
-/// inherited currentColor has the same value in HTML and in isolated SVG paint.
-pub(in crate::dom) fn color(
-    handle: &markup5ever_rcdom::Handle,
-    attrs: &[(String, String)],
-    vcx: crate::values::ValueCx<'_>,
-) -> Option<Rule> {
-    if !matches!(&handle.data, markup5ever_rcdom::NodeData::Element { name, .. }
-        if &*name.ns == "http://www.w3.org/2000/svg")
-    {
-        return None;
-    }
-    let raw = &attrs.iter().find(|(name, _)| name == "color")?.1;
-    if crate::style::css::CssWide::parse(raw).is_none()
-        && !crate::style::css::LonghandId::Color.accepts(raw, vcx)
-    {
-        return None;
-    }
-    let mut rule = hint("")?;
-    rule.decls.push("color", raw, false);
-    Some(rule)
-}
-
 /// The experimental mapping uses an SVG number as a CSS pixel length.
 pub(super) fn path_length(tag: &str, attrs: &[(String, String)]) -> Option<Rule> {
     if !matches!(

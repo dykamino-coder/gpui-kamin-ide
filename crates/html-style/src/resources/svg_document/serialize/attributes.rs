@@ -12,9 +12,6 @@ pub fn write_attributes(
     attr_bad: bool,
 ) {
     for (k, v) in &e.attrs {
-        if k == "color" {
-            continue;
-        }
         if combined.is_some() && (k == "transform" || k == "transform-origin") {
             continue;
         }
@@ -45,23 +42,22 @@ pub fn write_attributes(
         // а CSS-запись `translate(100px, 0)` парсер SVG не понимает —
         // получалась единичная матрица (`svg-inline-styles-001..013`).
         let v = if k == "style" {
-            let kept: Vec<&str> = crate::style::css::split_top_level(v, ';')
-                .into_iter()
+            let kept: Vec<&str> = v
+                .split(';')
                 .filter(|d| {
-                    let name = super::color::property_name(d).unwrap_or_default();
+                    let name = d.split(':').next().unwrap_or("").trim();
                     // `clip-path` из `style=` уже ушёл синтезированным
                     // `<clipPath>`: в usvg объявление `style` перебивает
                     // презентационный атрибут и погасило бы нашу ссылку.
-                    name != "color"
-                        && !(matches!(
-                            name.as_str(),
-                            "transform"
-                                | "transform-origin"
-                                | "transform-box"
-                                | "translate"
-                                | "rotate"
-                                | "scale"
-                        ) || (clip_id.is_some() && name == "clip-path"))
+                    !(matches!(
+                        name,
+                        "transform"
+                            | "transform-origin"
+                            | "transform-box"
+                            | "translate"
+                            | "rotate"
+                            | "scale"
+                    ) || (clip_id.is_some() && name == "clip-path"))
                 })
                 .collect();
             std::borrow::Cow::Owned(kept.join(";"))

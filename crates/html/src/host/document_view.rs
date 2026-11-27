@@ -3,8 +3,7 @@
 use crate::{Document, DocumentBuilder, DocumentFailure, RenderOpts};
 use gpui::{
     App, AppContext, Context, ElementPlace, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Pixels, Render, Size, Styled, Subscription, Window,
-    WindowAppearance, div, px,
+    IntoElement, ParentElement, Pixels, Render, Size, Styled, Subscription, Window, div, px,
 };
 
 /// A persistent document with engine-owned root scrolling, independent of any shell.
@@ -17,7 +16,6 @@ pub struct DocumentView {
     focus: FocusHandle,
     place: Option<ElementPlace>,
     _step: Subscription,
-    _appearance: Subscription,
 }
 
 impl DocumentView {
@@ -29,10 +27,7 @@ impl DocumentView {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Entity<Self>, DocumentFailure> {
-        let document = builder
-            .preferred_color_scheme(dark_appearance(window))
-            .viewport(css_size(viewport))
-            .build_for_view(true)?;
+        let document = builder.viewport(css_size(viewport)).build_for_view(true)?;
         Ok(cx.new(|cx| Self::new(document, viewport, window, cx)))
     }
 
@@ -48,19 +43,6 @@ impl DocumentView {
                 if let Some(place) = &view.place {
                     view.document
                         .update_rendering(&view.opts, place, window, cx, |_| {});
-                }
-            });
-        });
-        let view = cx.weak_entity();
-        let appearance = window.observe_window_appearance(move |window, app| {
-            let _ = view.update(app, |view, cx| {
-                match view
-                    .document
-                    .set_preferred_color_scheme(dark_appearance(window))
-                {
-                    Ok(false) => {}
-                    // A rejected rebuild retains its diagnostic on the document.
-                    _ => cx.notify(),
                 }
             });
         });
@@ -80,7 +62,6 @@ impl DocumentView {
             },
             focus: cx.focus_handle(),
             _step: step,
-            _appearance: appearance,
         }
     }
 
@@ -110,13 +91,6 @@ impl DocumentView {
     pub fn document_mut(&mut self) -> &mut Document {
         &mut self.document
     }
-}
-
-fn dark_appearance(window: &Window) -> bool {
-    matches!(
-        window.appearance(),
-        WindowAppearance::Dark | WindowAppearance::VibrantDark
-    )
 }
 
 fn css_size(viewport: Size<Pixels>) -> (f32, f32) {

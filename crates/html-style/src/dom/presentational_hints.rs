@@ -2,7 +2,7 @@
 //! `rules` собирает для элемента правила происхождения «author presentational
 //! hint» (css-cascade-5 §6.4: ниже всех авторских слоёв, выше листа агента):
 //! `nowrap` ячеек с quirks-исключением, `cellpadding` ближайшей таблицы, `cellspacing` таблицы,
-//! Table `height`, column `width`, legacy font attributes and `<hr>` hints
+//! `height` таблицы, `width` колонок, `color` у `<font>`, подсказки `<hr>`
 //! (`presentational_hr`), таблиц/списков/вложений (`presentational_legacy`) и
 //! атрибуты `<foreignObject>` (SVG 2 §6.6). `colors` — `bgcolor`/`text`
 //! в стиль; `dimension` — разбор размерного значения (HTML §2.3.4.4).
@@ -11,9 +11,7 @@ use crate::style::computed::Computed;
 use crate::style::css::{Rule, Selector, parse_decls};
 use crate::values::ValueCx;
 
-mod font;
 mod svg;
-pub(super) use svg::color as svg_color;
 use svg::foreign_object;
 
 /// HTML rendering §15.3.8: cell nowrap is a presentational hint, with a
@@ -58,12 +56,22 @@ pub(super) fn rules(
         .chain(cell_spacing(tag, attrs))
         .chain(table_height(tag, attrs))
         .chain(column_width(tag, attrs))
-        .chain(font::rule(tag, attrs, vcx))
+        .chain(font_color(tag, attrs, vcx))
         .chain(super::presentational_hr::rule(tag, attrs, vcx))
         .chain(super::presentational_legacy::rule(tag, attrs, path, vcx))
         .chain(foreign_object(tag, attrs))
         .chain(svg::path_length(tag, attrs))
         .collect()
+}
+
+/// HTML rendering §15.3.4: legacy font colors participate below author CSS.
+fn font_color(tag: &str, attrs: &[(String, String)], vcx: ValueCx<'_>) -> Option<Rule> {
+    if tag != "font" {
+        return None;
+    }
+    let raw = &attrs.iter().find(|(name, _)| name == "color")?.1;
+    let color = super::presentational_hr::legacy_color(raw, vcx)?;
+    hint(&format!("color: {color}"))
 }
 
 /// HTML rendering §15.3.8 maps col/colgroup width into the hint origin.

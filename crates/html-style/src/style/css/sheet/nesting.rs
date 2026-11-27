@@ -22,13 +22,16 @@ pub(super) fn rule(
     parts: &[String],
     body: &str,
     media: &Media,
-    cx: &mut SheetCx,
+    cx: &SheetCx,
     out: &mut Vec<Rule>,
     order: &mut usize,
 ) -> Result<bool, Error> {
-    // CSS Nesting 1 sections 3.3 and 5: group declarations retain the
-    // parent selector; unknown blocks are skipped without losing later runs.
-    let nested = items(body).iter().any(|i| matches!(i, Item::Block(..)));
+    // Nested @supports keeps the parent selector even without nested style rules
+    // (CSS Nesting 1 §2.3). Preserve declaration recovery for other at-rules,
+    // including malformed @media in CSS2 declarations-009.
+    let nested = items(body)
+        .iter()
+        .any(|i| matches!(i, Item::Block(p, _) if !p.starts_with('@') || supports_group(p)));
     if nested {
         expand(parts, body, media, cx, out, order)?;
     }
@@ -125,23 +128,18 @@ pub(super) fn expand(
     parents: &[String],
     body: &str,
     media: &Media,
-    cx: &mut SheetCx,
+    cx: &SheetCx,
     out: &mut Vec<Rule>,
     order: &mut usize,
 ) -> Result<(), Error> {
     let vcx = cx.doc.values();
     let admission = Admission::new(cx.doc.revision_budget());
     let mut stack = Buffer::default();
-    stack.push(
-        (parents.to_vec(), items(body).into_iter(), None),
-        &admission,
-    )?;
-    while let Some((parents, siblings, _)) = stack.last_mut() {
+    stack.push((parents.to_vec(), items(body).into_iter()), &admission)?;
+    while let Some((parents, siblings)) = stack.last_mut() {
         admission.work(1)?;
         let Some(item) = siblings.next() else {
-            if let Some((_, _, Some(saved))) = stack.pop() {
-                cx.layer_now = saved;
-            }
+            stack.pop();
             continue;
         };
         match item {
@@ -166,27 +164,24 @@ pub(super) fn expand(
                 }
             }
             Item::Block(prelude, inner) if prelude.starts_with('@') => {
-                // Match a complete at-keyword, preserving layer-name case.
-                let end = prelude
-                    .find(|c: char| !c.is_ascii_alphanumeric() && !matches!(c, '@' | '-' | '_'))
-                    .unwrap_or(prelude.len());
-                let (name, head) = prelude.split_at(end);
-                let name = name.to_ascii_lowercase();
-                let holds = match name.as_str() {
-                    "@media" => media.matches_in(head, cx.custom(), vcx),
-                    "@supports" => supports_in(head, &cx.selectors, vcx),
-                    "@layer" => true,
-                    _ => false,
+                // Условные группы внутри правила (§2.3): их тело — то же
+                // тело правила стиля с тем же родителем.
+                let name = prelude.to_ascii_lowercase();
+                let holds = if name.starts_with("@media") {
+                    media.matches_in(&name, cx.custom(), vcx)
+                } else if name.starts_with("@supports") {
+                    supports_in(&prelude[9..], &cx.selectors, vcx)
+                } else {
+                    name.starts_with("@layer")
                 };
                 if holds {
                     let parents = parents.clone();
-                    let saved = (name == "@layer").then(|| cx.enter_layer(head.trim()));
-                    stack.push((parents, items(inner).into_iter(), saved), &admission)?;
+                    stack.push((parents, items(inner).into_iter()), &admission)?;
                 }
             }
             Item::Block(prelude, inner) => {
                 if let Some(sels) = resolve(parents, prelude, &cx.selectors) {
-                    stack.push((sels, items(inner).into_iter(), None), &admission)?;
+                    stack.push((sels, items(inner).into_iter()), &admission)?;
                 }
             }
         }

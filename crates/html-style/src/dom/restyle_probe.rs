@@ -28,7 +28,7 @@ pub use subtree::finish_boxes;
 pub struct RestyleProbe {
     doc: Rc<Scope>,
     has_args: Vec<HasArg>,
-    scheme: crate::style::values::value::Scheme,
+    media: Media,
     /// Носитель и тема, для которых собраны правила (`RestyleCache::probe`).
     asked: Media,
     extra_css: Box<str>,
@@ -185,7 +185,7 @@ impl RestyleCache {
         if !probe.has_args.is_empty() {
             self.marks(document, &probe.has_args, &mut tree)?;
         }
-        let vcx = values.values().with_scheme(probe.scheme);
+        let vcx = values.values().with_scheme(scheme(probe.media));
         let chains = &mut self.chains;
         let found = walk::probe(document, &tree, &probe.doc, targets, chains, vcx)?;
         if !probe.has_args.is_empty() {
@@ -238,6 +238,10 @@ impl RestyleCache {
             None => self.styles(probe, input, values, targets),
         }
     }
+}
+
+fn scheme(media: Media) -> crate::style::values::value::Scheme {
+    crate::style::values::value::Scheme::new(media.dark)
 }
 
 #[cfg(test)]

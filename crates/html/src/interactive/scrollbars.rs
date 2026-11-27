@@ -5,7 +5,6 @@
 mod buttons;
 pub(crate) mod interaction;
 mod modern;
-mod palette;
 #[cfg(test)]
 mod theme;
 use crate::style::computed::{BoxStyle, Computed, Overflow};
