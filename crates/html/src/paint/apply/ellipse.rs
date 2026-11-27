@@ -1,4 +1,4 @@
-//! Углы коробки четвертями эллипсов для квада (`Computed::radius_elliptic`).
+//! A box's corners as quarter ellipses for the quad (`Computed::radius_elliptic`).
 
 use crate::paint::apply::radius_px;
 use crate::style::computed::Computed;
