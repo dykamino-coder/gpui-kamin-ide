@@ -3,16 +3,20 @@
 use crate::Document;
 use gpui::{App, Window};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
+#[cfg(feature = "heap-report")]
+use std::{collections::BTreeMap, string::String};
+
+#[derive(Default)]
+pub(super) struct Owners {
+    #[cfg(feature = "heap-report")]
+    previous: BTreeMap<String, u64>,
+    pub walks: u64,
+}
 
 #[cfg(feature = "heap-report")]
-pub(super) fn owners(
-    doc: &Document,
-    window: &Window,
-    cx: &App,
-    previous: &mut BTreeMap<String, u64>,
-) -> Value {
+pub(super) fn owners(doc: &Document, window: &Window, cx: &App, state: &mut Owners) -> Value {
     let mut ops = crate::heap::Ops::default();
+    state.walks += 1;
     doc.heap_report(&mut ops);
     window.heap_report(cx, &mut |path, pointer, bytes| {
         if pointer.is_null() || ops.once(pointer) {
@@ -26,19 +30,19 @@ pub(super) fn owners(
     window.gpu_memory(&mut |path, bytes, _used| {
         *now.entry(format!("gpu/{path}")).or_default() += bytes;
     });
-    let grew = super::text::changes(previous, &now);
+    let grew = super::text::changes(&state.previous, &now);
     let gpu: u64 = now
         .iter()
         .filter(|(k, _)| k.starts_with("gpu/"))
         .map(|(_, v)| v)
         .sum();
     let heap = now.values().sum::<u64>() - gpu;
-    *previous = now.clone();
+    state.previous = now.clone();
     json!({"heap_bytes": heap, "gpu_bytes": gpu, "owners": now, "changed_bytes": grew})
 }
 
 #[cfg(not(feature = "heap-report"))]
-pub(super) fn owners(_: &Document, _: &Window, _: &App, _: &mut BTreeMap<String, u64>) -> Value {
+pub(super) fn owners(_: &Document, _: &Window, _: &App, _: &mut Owners) -> Value {
     json!({"heap_bytes": null, "gpu_bytes": null, "owners": null, "changed_bytes": null})
 }
 

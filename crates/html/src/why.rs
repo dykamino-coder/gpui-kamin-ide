@@ -13,7 +13,9 @@ use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
 mod element_kinds;
+mod layout_inputs;
 mod layout_work;
+pub use layout_inputs::to_json as layout_inputs;
 mod memory;
 pub use element_kinds::to_json as request_layout_kinds;
 mod paint_work;
@@ -56,6 +58,7 @@ pub const CODES: &[&str] = &[
     // Causes beyond `frame_miss.*` and `paint_path.refused_*` (`codes` below).
     "damage.value",
     "frame_unpublished",
+    "frame_environment.inputs",
     "layout_retry.container_size",
     "layout_retry.flow_refused",
     "layout_retry.replay_input",

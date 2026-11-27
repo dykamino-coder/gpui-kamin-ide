@@ -3,13 +3,13 @@
 use crate::{Document, FrameCounters};
 use gpui::{App, Window};
 use serde_json::{Value, json};
-use std::{collections::BTreeMap, path::Path, string::String};
+use std::{path::Path, string::String};
 
 /// An explicitly enabled reader. No report, heap walk or clock read exists
 /// in a host that has not created one.
 pub struct Report {
     frames: Vec<Value>,
-    owners: BTreeMap<String, u64>,
+    owners: super::memory::Owners,
     memory_samples: Vec<Value>,
     idle_samples: Vec<Value>,
     status: Value,
@@ -33,7 +33,7 @@ impl Report {
     pub fn new() -> Self {
         Self {
             frames: Vec::new(),
-            owners: BTreeMap::new(),
+            owners: super::memory::Owners::default(),
             memory_samples: Vec::new(),
             idle_samples: Vec::new(),
             status: Value::Null,
@@ -63,8 +63,11 @@ impl Report {
         process_private_bytes: Option<u64>,
     ) {
         let start = std::time::Instant::now();
+        let before = self.owners.walks;
         let mut memory = super::memory::owners(doc, window, cx, &mut self.owners);
         super::memory::process(&mut memory, process_private_bytes);
+        memory["owner_walks"] = json!(self.owners.walks - before);
+        memory["owner_walks_total"] = json!(self.owners.walks);
         memory["sample_id"] = json!(self.memory_samples.len() + 1);
         memory["reason"] = json!(reason);
         memory["after_frame"] = json!(self.frames.len());
@@ -94,6 +97,7 @@ impl Report {
         let memory = json!({
             "sample_id": self.memory_samples.last().map(|m| &m["sample_id"]),
             "sampled": false,
+            "owner_walks_total": self.owners.walks,
             "process_private_bytes": fields["memory"]["process_private_bytes"],
         });
         let mut entry = super::to_json(&super::take());
@@ -156,7 +160,7 @@ impl Report {
     /// The same top-level document consumed by DevTools and engine-compare.
     pub fn to_json(&self) -> Value {
         let mut out = json!({"schema": super::SCHEMA, "frames": self.frames,
-            "memory_samples": self.memory_samples});
+            "memory_samples": self.memory_samples, "owner_walks": self.owners.walks});
         if !self.status.is_null() {
             out["observations"] = self.status.clone();
         }

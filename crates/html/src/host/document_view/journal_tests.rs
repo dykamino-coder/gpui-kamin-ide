@@ -40,6 +40,11 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
     let journal = saved.borrow().as_ref().unwrap().clone();
     let out = journal.to_json();
     assert_eq!(out["schema"], 1);
+    #[cfg(feature = "heap-report")]
+    {
+        assert_eq!(out["owner_walks"], 1, "redraws must not walk owners");
+        assert_eq!(out["memory_samples"][0]["owner_walks"], 1);
+    }
     let frames = out["frames"].as_array().unwrap();
     assert!(!frames.is_empty(), "deferred frame observation was lost");
     let cold = &frames[0];
@@ -85,6 +90,11 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
     let samples = requested["memory_samples"].as_array().unwrap();
     assert_eq!(samples.len(), 2);
     assert_eq!(samples[1]["reason"], "request");
+    #[cfg(feature = "heap-report")]
+    {
+        assert_eq!(requested["owner_walks"], 2);
+        assert_eq!(samples[1]["owner_walks"], 1);
+    }
     assert_eq!(samples[1]["after_frame"], frames.len());
     #[cfg(feature = "heap-report")]
     assert_ne!(
@@ -93,6 +103,8 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
     );
     frame(cx);
     let after = journal.to_json();
+    #[cfg(feature = "heap-report")]
+    assert_eq!(after["owner_walks"], 2, "mutation redraw walked owners");
     assert_eq!(after["memory_samples"].as_array().unwrap().len(), 2);
     assert_eq!(
         after["frames"].as_array().unwrap().last().unwrap()["memory"]["sample_id"],

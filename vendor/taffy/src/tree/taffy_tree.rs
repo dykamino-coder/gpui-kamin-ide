@@ -1581,6 +1581,12 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.len()
     }
 
+    /// KaminIDE patch: the digest of the inputs of the node's most recent full layout
+    /// (`Cache::performed_input_key`), `None` before its first one or for a removed node.
+    pub fn performed_input_key(&self, node: NodeId) -> Option<u64> {
+        self.nodes.get(node.into())?.cache.performed_input_key()
+    }
+
     /// KaminIDE patch: whether the next node insertion has to grow the node storage.
     #[inline]
     pub fn node_storage_full(&self) -> bool {

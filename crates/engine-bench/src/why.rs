@@ -71,6 +71,8 @@ impl Watch {
             fields["capture_copy_ms"] = json!(part("capture_copy"));
             fields
         });
+        let inputs = cx
+            .update(|cx| kamin_html::why::layout_inputs(cx.instrumentation().layout_inputs.take()));
         let fields = json!({
             "mode": format!("{:?}", args.mode).to_lowercase(),
             "step": match step { Step::Cold(_) => "cold", Step::Warm => "warm", Step::Edit(_) => "edit" },
@@ -79,6 +81,7 @@ impl Watch {
             "layout_work": work.map(super::work::Sample::layout_profile),
             "raster": raster,
             "request_layout_kinds": kinds,
+            "layout_inputs": inputs,
             "gpu_batches": gpu_batches,
             "memory": {"process_private_bytes": private},
         });

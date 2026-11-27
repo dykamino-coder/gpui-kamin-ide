@@ -35,10 +35,10 @@ def crate_features(manifest: dict) -> dict[str, str]:
     # tree-sitter features so the highlighting tests are compiled.
     component = manifest["workspace"]["dependencies"]["gpui-component"]["features"]
     return {
-        "gpui": "stacker,test-support",
+        "gpui": "stacker,test-support,profiler",
         "gpui-base": "gpui/stacker",
         "gpui-component": ",".join(["gpui/stacker", *component]),
-        "gpui-windows": "test-support,gpui/stacker",
+        "gpui-windows": "test-support,gpui/stacker,gpui/profiler",
     }
 
 
@@ -59,6 +59,8 @@ TEST_FILTERS = {
         "directx_renderer::recovery_tests::damage",
         "directx_renderer::group_atlas",
         "window::drop_target",
+        "frame_request::",
+        "direct_manipulation::status::tests",
     ],
 }
 

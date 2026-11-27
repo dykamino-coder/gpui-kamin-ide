@@ -85,6 +85,7 @@ pub(super) fn render(out: &Value) -> String {
         super::element_kinds::render(&mut s, &f["request_layout_kinds"]);
         roots::render(&mut s, &f["between"]["document_roots"], "root before");
         roots::render(&mut s, &f["document_roots"], "root");
+        super::layout_inputs::render(&mut s, &f["layout_inputs"]);
         let phases: Vec<String> = f["phases_ms"]
             .as_object()
             .into_iter()

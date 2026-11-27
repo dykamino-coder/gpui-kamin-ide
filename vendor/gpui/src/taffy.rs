@@ -23,6 +23,8 @@ mod box_edges;
 mod retained;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
+// KaminIDE patch: boxes laid out with the inputs of the last pass (layout journal).
+mod layout_inputs;
 mod final_geometry;
 // KaminIDE patch: the descendants carrying a box's scrollable overflow (DevTools `why`).
 mod overflow_reach;
@@ -227,6 +229,9 @@ pub struct TaffyLayoutEngine {
     retained: retained::Retained,
     /// KaminIDE patch: recent node styles that equal new ones share (`style_share`).
     styles: style_share::StyleShare,
+    /// KaminIDE patch: the journal's sink and the inputs of the last pass,
+    /// only while the layout journal is on (`layout_inputs`).
+    noted: Option<(std::sync::Arc<crate::LayoutInputs>, Box<layout_inputs::Noted>)>,
 }
 
 const EXPECT_MESSAGE: &str = "we should avoid taffy layout errors by construction if possible";
@@ -268,6 +273,7 @@ impl TaffyLayoutEngine {
             frame_tree: false,
             retained: retained::Retained::default(),
             styles: Default::default(),
+            noted: None,
         }
     }
 
@@ -288,6 +294,9 @@ impl TaffyLayoutEngine {
     }
 
     pub fn clear(&mut self) {
+        if let Some((sink, noted)) = &mut self.noted {
+            sink.add(noted.pass(&self.taffy));
+        }
         self.final_geometry = final_geometry::FinalGeometry::default();
         if self.frame_tree {
             // The kept tree keeps its calc registry, so the sharing candidates stay valid.
@@ -607,6 +616,14 @@ impl TaffyLayoutEngine {
         //
 
         crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if self.frame_tree && !self.computed_layouts.contains(&id) {
+            let sink = &cx.instrumentation().layout_inputs;
+            if sink.enabled() {
+                let sink = sink.clone();
+                let (_, noted) = self.noted.get_or_insert_with(|| (sink, Box::default()));
+                noted.roots.push(id.into());
+            }
+        }
         if !self.computed_layouts.insert(id) {
             let stack = &mut self.layout_bounds_scratch_space;
             stack.push(id);

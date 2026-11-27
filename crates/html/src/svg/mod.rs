@@ -13,8 +13,10 @@
 //! пересчитывается. Поэтому рисуем с запасом по плотности.
 
 use crate::dom::{Element, Node};
+use crate::layout::build_contracts::SvgContent;
 use crate::layout::cx::FrameCx;
 use crate::layout::replaced::svg_size::size_of;
+use crate::resources::images::svg_raster::RootPaint;
 use clip::{shape_box, translate_only};
 use gpui::{AnyElement, IntoElement};
 use masks::masked_layers;
@@ -36,14 +38,14 @@ const DENSITY: f32 = 2.0;
 
 /// Готовый элемент с рисунком либо `None`, если разобрать не удалось.
 pub(crate) fn element_with_html(
-    e: &Element,
+    input: SvgContent<'_>,
     opts: &crate::layout::options::RenderOpts,
 ) -> Option<AnyElement> {
     let frame = opts.cx.frame();
-    if foreign::contains(e) {
-        foreign::element(e, opts)
+    if foreign::contains(input.element) {
+        foreign::element(input, opts)
     } else {
-        element(e, frame)
+        element_content(input, frame)
     }
 }
 
@@ -52,14 +54,30 @@ pub(crate) fn shape_reference_box(e: &Element, stroke: bool) -> Option<(f32, f32
     clip::reference_box(e, stroke)
 }
 
+#[cfg(test)]
 pub(crate) fn element(e: &Element, frame: FrameCx<'_>) -> Option<AnyElement> {
-    if used::needs_used_size(e) {
-        return Some(used::element(e, frame));
-    }
-    element_sized(e, frame, size_of(e))
+    element_content(
+        SvgContent {
+            element: e,
+            root_paint: RootPaint::Svg,
+        },
+        frame,
+    )
 }
 
-fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<AnyElement> {
+fn element_content(input: SvgContent<'_>, frame: FrameCx<'_>) -> Option<AnyElement> {
+    if used::needs_used_size(input.element) {
+        return Some(used::element(input, frame));
+    }
+    element_sized(input, frame, size_of(input.element))
+}
+
+fn element_sized(
+    input: SvgContent<'_>,
+    frame: FrameCx<'_>,
+    (w, h): (f32, f32),
+) -> Option<AnyElement> {
+    let e = input.element;
     let vcx = frame.values;
     // `overflow: visible` по оси выпускает фигуры за канву (SVG 2 §overflow):
     // растр расширяется до содержимого по свободной оси, а коробка остаётся
@@ -146,7 +164,7 @@ fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<
         (h + clip_margin).min(child_extent(false).max(h))
     };
     // CSS-маски на детях рисунка — слоями (см. `masked_layers`).
-    if let Some(layers) = masked_layers(e, w, h, rw, rh, frame) {
+    if let Some(layers) = masked_layers(input, w, h, rw, rh, frame) {
         return Some(layers);
     }
     // Переполнение ВЛЕВО и ВВЕРХ (SVG 2 §overflow, `overflow: visible`):
@@ -194,11 +212,18 @@ fn element_sized(e: &Element, frame: FrameCx<'_>, (w, h): (f32, f32)) -> Option<
         serialize_viewport(e, (w, h), rw, rh, nx, ny, vcx),
         cw,
         ch,
+        input.root_paint,
         vcx,
     )?;
     // CSS-фон самого <svg> (`svg { background: green }`): канва растра
     // прозрачна, фон красится коробкой картинки (svg-scale-001 и родня).
-    if let Some(bg) = e.style.used().reset_background.background {
+    if let Some(bg) = e
+        .style
+        .used()
+        .reset_background
+        .background
+        .filter(|_| input.root_paint == RootPaint::Svg)
+    {
         use gpui::Styled as _;
         img = img.bg(bg.to_hsla());
     }
