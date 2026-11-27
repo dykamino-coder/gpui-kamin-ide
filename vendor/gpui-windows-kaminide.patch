@@ -17894,10 +17894,10 @@ index 0000000000000000000000000000000000000000..c4ade6d3d9539d918ea664c3c26c559e
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/effect_targets.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/effect_targets.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9ea8085db3b938172b42399844b05f54c06f8f11
+index 0000000000000000000000000000000000000000..c2580f2ae4d77c2ff0f68a5b4112100ed7ffcd58
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/effect_targets.rs
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,229 @@
 +//! Navigation releases effect owners; still-used masks survive every frame.
 +
 +use super::*;
@@ -18090,6 +18090,7 @@ index 0000000000000000000000000000000000000000..9ea8085db3b938172b42399844b05f54
 +    let device = DirectXDevices::new().unwrap();
 +    let mut r = offscreen(&device, W, H);
 +    r.group_tiles = true;
++    assert!(!r.gpu_timer.instrumentation.config().gpu_timing);
 +    for (blur, blend, backdrop) in [(2., 1, true), (8., 1, true), (0., 0, false)] {
 +        let page = scene(3, blur, blend, backdrop);
 +        let mut cold = offscreen(&device, W, H);
@@ -18121,7 +18122,10 @@ index 0000000000000000000000000000000000000000..9ea8085db3b938172b42399844b05f54
 +    r.render_to_image(&Scene::default(), WindowBackgroundAppearance::Transparent)
 +        .unwrap();
 +    assert_eq!(effect_bytes(&r), 0);
-+    assert!(r.gpu_timer.instrumentation.batches.take_line().is_none());
++    // Frame-plan diagnostics are independent of GPU timing. Only the new
++    // resource events must remain absent while GPU timing is disabled.
++    let line = take(&r);
++    assert!(line.contains("mask_upload_create=0 mask_upload_alloc_bytes=0 effect_target_drop=0 effect_target_release_bytes=0"), "{line}");
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/fixtures.rs
 new file mode 100644

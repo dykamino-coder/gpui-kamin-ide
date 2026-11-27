@@ -190,6 +190,7 @@ fn removing_each_effect_kind_drops_its_scratch_without_changing_the_next_frame()
     let device = DirectXDevices::new().unwrap();
     let mut r = offscreen(&device, W, H);
     r.group_tiles = true;
+    assert!(!r.gpu_timer.instrumentation.config().gpu_timing);
     for (blur, blend, backdrop) in [(2., 1, true), (8., 1, true), (0., 0, false)] {
         let page = scene(3, blur, blend, backdrop);
         let mut cold = offscreen(&device, W, H);
@@ -221,5 +222,8 @@ fn removing_each_effect_kind_drops_its_scratch_without_changing_the_next_frame()
     r.render_to_image(&Scene::default(), WindowBackgroundAppearance::Transparent)
         .unwrap();
     assert_eq!(effect_bytes(&r), 0);
-    assert!(r.gpu_timer.instrumentation.batches.take_line().is_none());
+    // Frame-plan diagnostics are independent of GPU timing. Only the new
+    // resource events must remain absent while GPU timing is disabled.
+    let line = take(&r);
+    assert!(line.contains("mask_upload_create=0 mask_upload_alloc_bytes=0 effect_target_drop=0 effect_target_release_bytes=0"), "{line}");
 }
