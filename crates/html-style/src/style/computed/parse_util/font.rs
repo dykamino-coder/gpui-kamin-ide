@@ -67,7 +67,7 @@ pub use {
 
 /// Родовое имя семейства — разряд шрифта, а не шрифт.
 pub fn is_generic(lower: &str) -> bool {
-    generic_family(lower).is_some() || matches!(lower, "monospace" | "ui-monospace")
+    generic_family(lower).is_some() || lower == "monospace"
 }
 
 /// Список `font-feature-settings` (css-fonts-4 §7.1): `normal` — пустой,

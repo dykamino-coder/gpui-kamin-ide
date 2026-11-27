@@ -55,7 +55,7 @@ fn resolve_with(
                     // (до-трансформная рамка), без него — отображённую
                     // (`transform-002/009`: `anchor-size(width)` = 100, а не 50).
                     let b = if r.tf_top != 0
-                        && !(inherited.reset_transforms.transform_ancestor
+                        && !(inherited.tree.transform_ancestor
                             || inherited.reset_transforms.transform.is_some())
                     {
                         r.rect_tf

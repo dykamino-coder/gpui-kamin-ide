@@ -172,42 +172,17 @@ fn single(c: &mut Computed, p: &Computed, id: L, vcx: ValueCx<'_>) {
             c.reset_flex.justify_self_normal = p.reset_flex.justify_self_normal;
             c.reset_flex.justify_self_own_axis = p.reset_flex.justify_self_own_axis;
         }
-        // `align-self: inherit` (css-cascade-5 §7.3.1) — вычисленное значение
-        // родителя: его авторское слово, даже когда у самого родителя оно
-        // погашено как неприменимое (`dom::fixup_tree::alignment`: гашение —
-        // про используемое значение). Ребёнку блочного контейнера свойство
-        // неприменимо (css-align-3 §6.1) — то же гашение и здесь.
+        // `align-self: inherit` takes the parent's computed value as is
+        // (css-cascade-5 §7.3.1): the computed stage keeps it even where it
+        // does not apply; the box stage decides applicability
+        // (`style::cascade::inherit::self_align`).
         L::AlignSelf => {
-            let value = p
-                .reset_flex
-                .align_self_decl
-                .unwrap_or(p.reset_flex.align_self);
-            c.reset_flex.align_self = value;
-            c.reset_flex.align_self_decl = Some(value);
+            c.reset_flex.align_self = p.reset_flex.align_self;
             c.reset_flex.align_self_safe = p.reset_flex.align_self_safe;
             c.reset_flex.align_self_normal = p.reset_flex.align_self_normal;
             c.reset_flex.align_self_own_axis = p.reset_flex.align_self_own_axis;
             c.reset_flex.align_self_flex_kw = p.reset_flex.align_self_flex_kw;
             c.reset_flex.align_self_last = p.reset_flex.align_self_last;
-            // TRANSITIONAL(cascade-7b-R06): Явный inherit align-self гасится для block parent в computed стадии; удалить гашение после сохранения computed значения и проверки применимости в used block layout.
-            use crate::style::computed::{Display as D, Position as P};
-            let block_parent = matches!(
-                p.reset_box_layout.display,
-                None | Some(D::Block)
-                    | Some(D::ListItem)
-                    | Some(D::InlineBlock)
-                    | Some(D::TableCell)
-            ) && p.reset_flex.webkit_box != Some(true);
-            if block_parent
-                && c.reset_flex.align_self.is_some()
-                && !matches!(
-                    c.reset_positioned.position,
-                    Some(P::Absolute) | Some(P::Fixed)
-                )
-            {
-                c.reset_flex.align_self = None;
-                c.reset_flex.align_self_normal = false;
-            }
         }
         // Цвет линейки родителя целиком, не `currentcolor` своего текста
         // (`multicol-rule-color-inherit-001/002`).

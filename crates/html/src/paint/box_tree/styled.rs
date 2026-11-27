@@ -111,7 +111,7 @@ fn built_div(
     let unfilled;
     let paint = if c.background_paint.paints()
         && c.paint_background().color.is_some()
-        && !c.reset_transforms.transform_ancestor
+        && !c.tree.transform_ancestor
         && c.reset_transforms.transform.is_none()
         && c.reset_effects
             .filter_ref

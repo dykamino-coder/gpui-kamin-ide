@@ -132,7 +132,7 @@ fn emit(
         return;
     }
     if !(empty
-        && !c.reset_transforms.transform_ancestor
+        && !c.tree.transform_ancestor
         && c.reset_transforms.transform.is_none()
         && c.reset_effects
             .filter_ref

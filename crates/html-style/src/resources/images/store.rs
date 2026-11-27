@@ -13,6 +13,9 @@ mod access;
 #[cfg(test)]
 mod budget_tests;
 mod job;
+mod keep;
+#[cfg(test)]
+mod keep_tests;
 mod rasters;
 mod resolve;
 mod subscriptions;
@@ -22,11 +25,13 @@ mod view;
 
 pub use access::ResourcePolicy;
 pub use job::ImageServices;
+pub use keep::ImageRead;
 pub use subscriptions::{ConsumerId, ImageChange, ImageUse};
 
 use super::types::{DecodeOptions, DecodedImage, ImageError, ImageMetadata};
 use crate::resources::loader::{Cancellation, ResourceUrl, Revision};
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 /// Ручка запроса: слот таблицы и поколение слота (повторно занятый слот — другая ручка).
@@ -64,6 +69,10 @@ struct Entry {
     subscribers: Vec<(ConsumerId, ImageUse)>,
     /// Logical квота документа на точки готового растра.
     admission: Option<super::admission::Admission>,
+    /// The last document revision that requested or replayed it (`keep`);
+    /// a replay marks it through a shared borrow of the store (the store is shared
+    /// with decode threads, hence atomic).
+    used: std::sync::atomic::AtomicU32,
 }
 
 #[derive(Default)]
@@ -75,7 +84,9 @@ struct Slot {
 /// Таблица запросов картинок документа.
 pub struct ImageStore {
     services: ImageServices,
-    rasters: rasters::Rasters,
+    /// SVG rasters by content (markup, request, fonts, the resources they
+    /// read), shared by the revisions of one document (`continuing`).
+    rasters: Arc<rasters::Rasters>,
     base: Option<Url>,
     policy: ResourcePolicy,
     generation: u32,
@@ -90,6 +101,9 @@ pub struct ImageStore {
     cancel: Cancellation,
     /// Пределы и отмены заданий до выдачи в журнал документа.
     diagnostics: std::sync::Mutex<crate::diagnostics::DiagnosticLog>,
+    /// Document revisions seen (`keep::renew`) and the requests of this frame (`keep`).
+    epoch: u32,
+    log: std::sync::Mutex<Vec<ImageId>>,
 }
 
 impl Default for ImageStore {
@@ -102,7 +116,7 @@ impl ImageStore {
     pub fn new(services: ImageServices, base: Option<Url>, policy: ResourcePolicy) -> Self {
         Self {
             services,
-            rasters: rasters::Rasters::default(),
+            rasters: Arc::default(),
             base,
             policy,
             generation: 0,
@@ -115,6 +129,8 @@ impl ImageStore {
             budget: crate::budget::RevisionBudget::standalone(),
             cancel: Cancellation::default(),
             diagnostics: Default::default(),
+            epoch: 0,
+            log: Default::default(),
         }
     }
 
@@ -139,6 +155,7 @@ impl ImageStore {
     /// Ручка запроса; одинаковый запрос документа не грузится дважды.
     pub fn request(&mut self, request: ImageRequest) -> ImageId {
         if let Some(&id) = self.by_request.get(&request) {
+            self.touch(id);
             return id;
         }
         let allowed = self.policy.allows(&request.url);
@@ -163,7 +180,9 @@ impl ImageStore {
             attempt: self.attempts,
             subscribers: Vec::new(),
             admission: None,
+            used: std::sync::atomic::AtomicU32::new(self.epoch),
         });
+        self.log().push(id);
         self.by_request.insert(request, id);
         if allowed {
             self.enqueue(id);
@@ -205,7 +224,7 @@ impl ImageStore {
     pub fn begin_generation(&mut self) {
         self.generation += 1;
         std::mem::take(&mut self.cancel).cancel();
-        self.rasters.clear();
+        self.rasters = Arc::new(self.rasters.emptied());
         for (slot, cell) in self.slots.iter_mut().enumerate() {
             if cell.entry.take().is_some() {
                 cell.generation += 1;

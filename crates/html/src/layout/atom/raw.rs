@@ -51,7 +51,14 @@ pub(super) fn atom_element_raw(
     if let Some(el) = build.control(e, &box_style(inherited, &e.style, vcx), opts) {
         // Трансформы поля формы шли МИМО обёртки: инпуты стояли ровно, а
         // эталон сдвигал (transform-input-001..019).
-        return Some(build.effects(el, Effect::transform(&e.style.used(), inherited, frame)));
+        return Some(build.effects(
+            el,
+            Effect::transform(
+                &crate::style::computed::BoxStyle::shared(e.style.used()),
+                inherited,
+                frame,
+            ),
+        ));
     }
     // Абсолютный элемент без заданных краёв стоит на СТАТИЧЕСКОЙ позиции — там,
     // где он оказался бы в потоке. Внутри строки это место знает только сама

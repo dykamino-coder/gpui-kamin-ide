@@ -92,7 +92,7 @@ fn shapes(edit: &str, below: bool) -> String {
 /// The painted primitives in paint order: quads and every other kind (the
 /// `svg` images) with their bounds, without the atlas tile an image took
 /// (each document allocates its own; the pixels are the benches' check).
-fn scene(cx: &mut VisualTestContext) -> (Vec<String>, Vec<String>) {
+pub(super) fn scene(cx: &mut VisualTestContext) -> (Vec<String>, Vec<String>) {
     let sequence = cx.update(|window, _| window.painted_sequence());
     let untiled = |k: &str| match (k.find(", tile: "), k.find(", transformation: ")) {
         (Some(a), Some(b)) if a < b => format!("{}{}", &k[..a], &k[b..]),

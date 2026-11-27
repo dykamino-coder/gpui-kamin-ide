@@ -24,8 +24,10 @@ pub(crate) mod math;
 pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
+mod sfnt_rename;
 mod stretch;
 pub(crate) mod style_font;
+pub(crate) mod used_chars;
 #[cfg(test)]
 mod tests {
     //! Tests for fonts.
@@ -111,6 +113,7 @@ pub(crate) use crate::text::fonts::loading::load_faces_sheets;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
 use crate::text::fonts::sfnt_metrics::sfnt_romn_baseline;
+pub use crate::text::fonts::sfnt_rename::{renamed as renamed_sfnt, unique_family};
 pub use crate::text::fonts::stretch::alias_stretch;
 use crate::text::fonts::stretch::stretch_desc;
 use crate::text::fonts::windows_names::ensure_windows_names;

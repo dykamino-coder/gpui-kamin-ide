@@ -2771,7 +2771,10 @@ impl Interactivity {
 
         window.with_child_style(&style, bounds, |window| {
             let hitbox = if self.should_insert_hitbox(&style, window, cx) {
-                Some(window.insert_hitbox(bounds, self.hitbox_behavior))
+                // KaminIDE patch: a retained record notes the hover it paints
+                // over this hitbox (`Window::retained_hovers`).
+                let hover = self.rare().is_some_and(|rare| rare.hover_style.is_some());
+                Some(window.insert_hitbox_with(bounds, self.hitbox_behavior, hover))
             } else {
                 None
             };
@@ -3253,18 +3256,19 @@ impl Interactivity {
             });
             let current_view = window.current_view();
 
-            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
-                let hovered = hitbox.is_hovered(window);
-                let was_hovered = hover_state
-                    .as_ref()
-                    .is_some_and(|state| state.borrow().element);
-                if phase == DispatchPhase::Capture && hovered != was_hovered {
-                    if let Some(hover_state) = &hover_state {
+            // KaminIDE patch: without hover state the listener does nothing,
+            // and a registered one keeps a retained copy of this paint from
+            // moving (`Window::retained_movable`).
+            if let Some(hover_state) = hover_state {
+                window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
+                    let hovered = hitbox.is_hovered(window);
+                    let was_hovered = hover_state.borrow().element;
+                    if phase == DispatchPhase::Capture && hovered != was_hovered {
                         hover_state.borrow_mut().element = hovered;
                         cx.notify(current_view);
                     }
-                }
-            });
+                });
+            }
         }
 
         if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {

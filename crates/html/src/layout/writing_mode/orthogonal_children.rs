@@ -5,12 +5,12 @@
 //! `auto` (§7.3.2) либо нативный `fit-content` через `orthogonal_horizontal`.
 use crate::dom::Node;
 use crate::layout::box_kind::in_flow;
-use crate::style::computed::{Align, Computed, Display};
+use crate::style::computed::{Align, BoxStyle, Display};
 use crate::style::values::value::{Len, px_lossy_zero, px_strict};
 
 pub(crate) fn orthogonal_children(
     children: Vec<Node>,
-    container: &Computed,
+    container: &BoxStyle,
     icb_w: f32,
 ) -> Vec<Node> {
     let mut out = children;
@@ -35,7 +35,7 @@ pub(crate) fn orthogonal_children(
         ) && matches!(
             ch.style.used().reset_box_layout.height,
             None | Some(Len::Auto)
-        ) && ch.style.used().reset_flex.align_self.is_none()
+        ) && ch.style.flow_align().is_none()
             && ch
                 .style
                 .used()
@@ -46,7 +46,7 @@ pub(crate) fn orthogonal_children(
             // The child stands at the container's inline-start (§6.4).
             let from_bottom =
                 container.wm().inline_start() == crate::style::computed::writing_mode::Side::Bottom;
-            ch.style.used_mut().reset_flex.align_self = Some(if from_bottom {
+            ch.style.set_flow_align(if from_bottom {
                 Align::End
             } else {
                 Align::Start
