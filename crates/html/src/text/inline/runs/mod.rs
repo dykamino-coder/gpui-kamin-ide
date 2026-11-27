@@ -138,16 +138,6 @@ pub fn strut_font(
     face::run_face(style, base, base_px, vcx, faces).0
 }
 
-pub(super) fn run_for(
-    text: &str,
-    style: &Computed,
-    base: &TextStyle,
-    vcx: crate::values::ValueCx<'_>,
-) -> TextRun {
-    let ink = style.inh.ui.color;
-    decorated_run(text, style, Default::default(), ink, base, vcx, None)
-}
-
 /// The band an inline box's runs paint (`gpui::BandStyle`): the line
 /// painter's first paint and a band recorded again in a scene layer
 /// (`document::retained::band_repaint`) take it from here.
@@ -176,14 +166,13 @@ pub(crate) fn band_style(d: &crate::style::inline_decoration::InlineDecoration) 
 
 fn decorated_run(
     text: &str,
-    style: &Computed,
+    style: &BoxStyle,
     inline_decoration: crate::style::inline_decoration::InlineDecoration,
     ink: Option<Color>,
     base: &TextStyle,
     vcx: crate::values::ValueCx<'_>,
     faces: Option<&RunFaces>,
 ) -> TextRun {
-    let decoration = &style.reset_text_box;
     let base_px = f32::from(base.font_size.to_pixels(gpui::px(MEDIUM_FONT_SIZE_PX)));
     let (font, font_size) = face::run_face(style, base, base_px, vcx, faces);
     // `visibility: hidden` на самом куске: место в строке он держит, а чернил
@@ -192,7 +181,8 @@ fn decorated_run(
     let color = if style.inh.ui.hidden == Some(true) {
         gpui::hsla(0.0, 0.0, 0.0, 0.0)
     } else {
-        decoration
+        style
+            .tree
             .text_shadow_ink
             .or(ink)
             .map(Color::to_hsla)
@@ -212,20 +202,14 @@ fn decorated_run(
         // The box whose band this is: its pieces are that box's runs in the
         // document's scene layer (`gpui::TextRun::background_owner`).
         background_owner: inline_decoration.band_owner,
-        underline: decoration
-            .underline
-            .unwrap_or(false)
-            .then(|| UnderlineStyle {
-                thickness: gpui::px(1.),
-                color: Some(color),
-                wavy: false,
-            }),
-        strikethrough: decoration
-            .line_through
-            .unwrap_or(false)
-            .then(|| gpui::StrikethroughStyle {
-                thickness: gpui::px(1.),
-                color: Some(color),
-            }),
+        underline: style.underline().then(|| UnderlineStyle {
+            thickness: gpui::px(1.),
+            color: Some(color),
+            wavy: false,
+        }),
+        strikethrough: style.line_through().then(|| gpui::StrikethroughStyle {
+            thickness: gpui::px(1.),
+            color: Some(color),
+        }),
     }
 }

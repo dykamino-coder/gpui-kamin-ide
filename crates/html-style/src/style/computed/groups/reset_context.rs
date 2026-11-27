@@ -45,11 +45,6 @@ pub struct ResetContext {
     pub floated_box: bool,
     /// Explicit `clear: inherit`; ordinary `clear` is non-inherited.
     pub clear_inherit: bool,
-    /// Ограничение ОРТОГОНАЛЬНОГО потока: определённый размер ближайшего
-    /// предка-контейнера прокрутки по оси потока (CSS Writing Modes §7.3).
-    /// Наследуется вниз, потому что искать его надо ВВЕРХ по дереву, а на
-    /// момент раскладки ребёнка предков уже не видно.
-    pub ortho_limit: Option<f32>,
     /// Содержимое ближайшего предка — контейнера запросов размера — по
     /// физическим осям (ширина, высота): база единиц `cqw`/`cqh`/`cqi`/…
     /// (css-conditional-5 §container-lengths). Ось без такого контейнера
@@ -58,10 +53,6 @@ pub struct ResetContext {
     pub cq_box: (Option<f32>, Option<f32>),
     /// Used content box этого контейнера: явный layout input следующего прохода стиля.
     pub cq_size: (Option<f32>, Option<f32>),
-    /// Nearest ancestor scrollport, including an indefinite nearest scroller.
-    pub orthogonal_scrollport: Option<[orthogonal::AxisSizes; 2]>,
-    /// Used inline measurement contract of an ordinary orthogonal block.
-    pub orthogonal_inline: Option<orthogonal::InlineConstraint>,
     /// Ячейка таблицы, ПАРАЛЛЕЛЬНОЙ своему письму: доступное инлайн-место у
     /// неё ОПРЕДЕЛЕНО — это мера её КОЛОНКИ (css-tables-3
     /// §computing-column-measures), — и запасной предел §7.3
@@ -96,9 +87,6 @@ pub struct ResetContext {
     pub logical: Option<Box<Logical>>,
     /// Вычисленное `user-select` (`None` — начальное `auto`); не наследуется.
     pub user_select: Option<crate::style::computed::UserSelect>,
-    /// Используемое `user-select` — текст не выделяется (`Some(true)`);
-    /// `auto` решается по коробке-родителю (`inherit::box_stage`).
-    pub no_select: Option<bool>,
     /// `frame-sizing: content-height` (css-sizing-4
     /// §frame-sizing): высота `<iframe>` — по содержимому вложенного
     /// документа, если он сам согласился (`<meta name=responsive-embedded-sizing>`).
@@ -154,8 +142,6 @@ pub struct ResetContext {
     pub inline_display: Option<bool>,
     /// `display: run-in` — вбегание решает `dom::fold_run_ins`.
     pub run_in: Option<bool>,
-    /// CSS ancestor clipping inside a continuous fragmentation copy.
-    pub fragment_clip_ancestor: bool,
     /// `display: table-caption` — метка для таблицы.
     pub is_caption: Option<bool>,
     /// Род группы рядов: 0 — шапка, 1 — тело, 2 — подвал. `Display` у всех

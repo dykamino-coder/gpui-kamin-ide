@@ -228,7 +228,7 @@ pub(crate) fn apply_for_decorations_with_dimensions(
     apply_text(
         d,
         c,
-        c.reset_text_box.text_shadow_ink.or(c.ink()),
+        c.tree.text_shadow_ink.or(c.ink()),
         c.paints_decorations(),
         vcx,
     )

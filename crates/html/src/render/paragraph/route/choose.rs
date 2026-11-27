@@ -88,7 +88,7 @@ pub(crate) fn route_pieces(
         let native = wrap_rules.is_some()
             && native_request
                 .is_some_and(|request| request.accepts(&pieces, !line_atoms.is_empty()));
-        let selectable = inherited.reset_context.no_select != Some(true)
+        let selectable = inherited.tree.no_select != Some(true)
             && inherited.inh.ui.pointer_events_none != Some(true);
         if !native && !selectable {
             let text = gpui::StyledText::new(super::finish::own_text(text, shared))
@@ -140,7 +140,7 @@ pub(crate) fn route_pieces(
         // только для кусков, стоячих ЦЕЛИКОМ: смешанный кусок потребовал бы
         // резки на прогоны по ориентации.
         let vert_style;
-        let style = if style.wm().turned()
+        let style = if style.turned_line()
             && !style.wm().sideways()
             && t.chars().any(upright_in_mixed)
             && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
@@ -183,8 +183,8 @@ pub(crate) fn route_pieces(
         indent.px,
         inherited.inh.text_flow.nowrap == Some(true),
         &mut render_text,
-        !inherited.wm().vertical() && !inherited.wm().turned(),
-        (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
+        !inherited.wm().vertical() && !inherited.turned_line(),
+        (inherited.turned_line()).then_some(inherited.wm().block_rl()),
         &opts.cx,
     );
     let row = match record {

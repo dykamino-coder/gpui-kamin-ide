@@ -158,7 +158,7 @@ pub(in crate::render::blocks::flow) fn try_build(
     }
     Some(Leaf::Built(transformed_node(
         d.into_any_element(),
-        &e.style.used(),
+        &crate::style::computed::BoxStyle::shared(e.style.used()),
         inherited,
         e.node_id,
         opts.cx.frame(),
@@ -179,7 +179,7 @@ pub(in crate::render::blocks::flow) async fn generic(
         .await;
     transformed_node(
         built,
-        &e.style.used(),
+        &crate::style::computed::BoxStyle::shared(e.style.used()),
         inherited,
         e.node_id,
         opts.cx.frame(),

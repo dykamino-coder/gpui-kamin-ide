@@ -28,6 +28,10 @@ pub struct BoxStyleInput {
     /// (`SharedStyle::set_flow_align`). A fact of the box, not `align-self`:
     /// the author's `align-self` stays in the computed values.
     pub flow_align: Option<Align>,
+    /// What the box's ancestors establish (`box_facts::TreeFacts`).
+    pub tree: crate::style::computed::TreeFacts,
+    /// The text decorations propagated to the box (`BoxStyle::decors`).
+    pub decors: std::rc::Rc<[crate::style::computed::Decor]>,
 }
 
 impl BoxStyleInput {
@@ -49,6 +53,8 @@ impl BoxStyleInput {
             canvas_background,
             try_source: None,
             flow_align: None,
+            tree: Default::default(),
+            decors: Default::default(),
         }
     }
 }

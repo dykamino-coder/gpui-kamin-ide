@@ -1,7 +1,6 @@
 //! Tests of the paragraph route choice (`route_pieces`).
 
 use super::*;
-use crate::style::computed::Computed;
 
 #[test]
 fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {
@@ -15,25 +14,18 @@ fn physical_rows_keep_overlay_only_content_out_of_the_turned_paragraph() {
                 frag: Default::default(),
             };
             opts.cx.inline.pure_atom_paragraph = physical;
-            let inherited = Computed {
-                reset_context: crate::style::computed::StyleGroup::new(
-                    crate::style::computed::ResetContext {
-                        no_select: Some(true),
-                        ..Default::default()
-                    },
-                ),
-                ..Default::default()
-            };
+            let mut inherited = BoxStyle::default();
+            inherited.tree.no_select = Some(true);
             let pieces = vec![
                 inline::Piece::Text {
                     text: text.into(),
-                    style: BoxStyle::from(inherited.clone()),
+                    style: inherited.clone(),
                 },
                 inline::Piece::Overlay(div().into_any_element(), Default::default()),
             ];
             let mut element = route_pieces(
                 pieces,
-                &BoxStyle::from(inherited.clone()),
+                &inherited.clone(),
                 &opts,
                 None,
                 Default::default(),

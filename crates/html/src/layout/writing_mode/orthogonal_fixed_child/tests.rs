@@ -81,18 +81,14 @@ fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
                     ..Default::default()
                 },
             ),
-            reset_context: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetContext {
-                    ortho_limit: Some(160.0),
-                    ..Default::default()
-                },
-            ),
             ..Computed::default()
         };
         with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
-        with_inherited
+        let mut container = crate::style::computed::BoxStyle::from(with_inherited);
+        container.tree.ortho_limit = Some(160.0);
+        container
     };
     let child = {
         let mut with_inherited = {
@@ -113,17 +109,17 @@ fn parallel_block_retains_inline_block_height_during_intrinsic_measurement() {
         with_inherited
     };
     let mut child = crate::style::computed::BoxStyle::from(child);
-    resolve(&mut child, &container, (800.0, 600.0), false);
+    resolve(&mut child, &container.clone(), (800.0, 600.0), false);
     let contribution = native_vertical::constraint(&child, 160.0).unwrap();
     assert_eq!(contribution.fixed, Some(120.0));
     assert_eq!(contribution.used(40.0, 140.0), 120.0);
     container.reset_box_layout.height = None;
-    resolve(&mut child, &container, (800.0, 600.0), false);
-    assert_eq!(child.reset_context.orthogonal_inline, None);
+    resolve(&mut child, &container.clone(), (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline, None);
     container.reset_box_layout.height = Some(Len::Px(160.0));
     container.reset_box_layout.display = Some(Display::Flex);
-    resolve(&mut child, &container, (800.0, 600.0), false);
-    assert_eq!(child.reset_context.orthogonal_inline, None);
+    resolve(&mut child, &container.clone(), (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline, None);
 }
 
 #[test]
@@ -139,18 +135,14 @@ fn parallel_cell_children_fill_the_cells_authored_inline_size() {
                     ..Default::default()
                 },
             ),
-            reset_context: crate::style::computed::StyleGroup::new(
-                crate::style::computed::ResetContext {
-                    ortho_limit: Some(180.0),
-                    ..Default::default()
-                },
-            ),
             ..Computed::default()
         };
         with_inherited.inh.writing.writing_mode = Some(
             crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
         );
-        with_inherited
+        let mut cell = crate::style::computed::BoxStyle::from(with_inherited);
+        cell.tree.ortho_limit = Some(180.0);
+        cell
     };
     let child = {
         let mut with_inherited = Computed { ..bordered() };
@@ -160,13 +152,13 @@ fn parallel_cell_children_fill_the_cells_authored_inline_size() {
         with_inherited
     };
     let mut child = crate::style::computed::BoxStyle::from(child);
-    resolve(&mut child, &cell, (800.0, 600.0), false);
+    resolve(&mut child, &cell.clone(), (800.0, 600.0), false);
     let constraint = native_vertical::constraint(&child, 180.0).unwrap();
     // A shorter line still occupies the containing cell's content inline
     // size, with both borders deducted once rather than shrinking its box.
     assert_eq!(constraint.used(60.0, 120.0), 140.0);
     cell.reset_box_layout.height = None;
     cell.reset_context.ortho_col = true;
-    resolve(&mut child, &cell, (800.0, 600.0), false);
-    assert_eq!(child.reset_context.orthogonal_inline, None);
+    resolve(&mut child, &cell.clone(), (800.0, 600.0), false);
+    assert_eq!(child.tree.orthogonal_inline, None);
 }

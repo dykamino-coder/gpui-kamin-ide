@@ -79,7 +79,7 @@ pub(crate) fn layer_route(
         && (x_set
             || y_set
             || (!stacking_context(inherited)
-                && !inherited.reset_effects.backdrop_root_above
+                && !inherited.tree.backdrop_root_above
                 && !crate::text::inline::backdrop_root(inherited)
                 // Replaced boxes and inline static positions retain their
                 // intrinsic/line wrapper until those layout paths carry CB

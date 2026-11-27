@@ -13,6 +13,7 @@ mod conversion_input;
 mod inputs;
 mod paint;
 mod paint_projection;
+mod viewport;
 use crate::box_facts::BoxContext;
 use crate::style::box_input::BoxStyleInput;
 
@@ -114,6 +115,11 @@ pub struct BoxStyle {
     pub quirk_pct_base: Option<f32>,
     /// Block layout's placement of the box (`BoxStyleInput::flow_align`).
     pub flow_align: Option<super::Align>,
+    /// What the box's ancestors establish (`box_facts::TreeFacts`).
+    pub tree: crate::style::computed::TreeFacts,
+    /// Text decorations propagated to the box (css-text-decor-3 §2.1): one
+    /// list shared by the boxes that receive the same lines.
+    pub decors: Rc<[Decor]>,
 }
 
 impl BoxStyle {
@@ -138,9 +144,10 @@ impl BoxStyle {
             try_source,
             decor_box,
             flow_align,
+            tree,
+            decors,
         } = input.into();
-        // Определённость высоты и квирк-опора доли, которые раскладка положила
-        // в стиль элемента-копии, — исходные значения контекста его коробки.
+        // Height definiteness and the quirk basis start from the copy's hints.
         Self {
             context: context.as_deref().cloned().unwrap_or_default(),
             inline_decoration,
@@ -151,8 +158,6 @@ impl BoxStyle {
             cb_height_def: style.reset_context.cb_height_def_hint,
             quirk_pct_base: style.reset_context.quirk_pct_base_hint,
             style,
-            // `Self::default()` выделяет Rc<Computed>, который здесь сразу
-            // отбрасывался. Конструктор коробки сохраняет переданный стиль.
             inline_format: None,
             element_style: None,
             self_node: 0,
@@ -168,6 +173,8 @@ impl BoxStyle {
             sc_ancestor: false,
             inline_definite: None,
             flow_align,
+            tree,
+            decors,
         }
     }
 
@@ -176,32 +183,6 @@ impl BoxStyle {
         Self {
             style: Rc::new(style),
             ..self.clone()
-        }
-    }
-
-    /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
-    pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
-        // A paint with no lengths to resolve stays shared (`SharedPaints`).
-        if let Some(paint) = &mut self.paint
-            && paint.background.has_lengths()
-        {
-            let mut own = (**paint).clone();
-            own.background.resolve_viewport(&self.style, viewport, vcx);
-            *paint = vcx.doc.traversal.paints.share(own);
-        }
-        if self.style.has_viewport_lengths(vcx) {
-            Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);
-        }
-    }
-
-    /// `Computed::resolve_decor_inset_viewport` без копии общего стиля, когда решать нечего.
-    pub fn resolve_decor_inset_viewport(
-        &mut self,
-        viewport: (f32, f32),
-        vcx: crate::values::ValueCx<'_>,
-    ) {
-        if self.style.has_decor_insets() {
-            Rc::make_mut(&mut self.style).resolve_decor_inset_viewport(viewport, vcx);
         }
     }
 

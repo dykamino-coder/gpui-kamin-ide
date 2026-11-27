@@ -95,7 +95,7 @@ pub(crate) fn static_self_align_style(own: &Computed, inherited: &BoxStyle) -> O
 /// previous placement (`None`), as does `normal`/`auto` in both axes.
 pub(crate) fn inline_static_self_align(e: &Element, inherited: &BoxStyle) -> Option<(f32, f32)> {
     if inherited.wm().vertical()
-        || inherited.wm().turned()
+        || inherited.turned_line()
         || inherited.wm().rtl()
         || e.style.used().reset_context.inline_display == Some(true)
     {

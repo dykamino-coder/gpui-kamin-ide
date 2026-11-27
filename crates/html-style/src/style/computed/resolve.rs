@@ -7,7 +7,7 @@ use crate::values::ValueCx;
 
 mod container_lengths;
 mod container_units;
-mod decor_inset;
+pub(in crate::style::computed) mod decor_inset;
 mod derived;
 mod em;
 mod font_size;
@@ -28,7 +28,7 @@ pub use logical_sharing::LogicalSharing;
 #[cfg(test)]
 mod mask_tests;
 
-impl Computed {
+impl BoxStyle {
     /// Сдвиг из `transform`, который раскладка берёт на себя как
     /// относительное смещение — тем же путём, что и свойство `translate`
     /// (`apply::apply_box`). Чистый сдвиг — это смена начала координат
@@ -53,7 +53,7 @@ impl Computed {
             // layout places only its first fragment by the relative offset
             // (css-break-3 §box-splitting; `css-break/transform-000`): keep
             // the shift in the transform there.
-            || self.reset_fragmentation.in_multicol
+            || self.tree.in_multicol
         {
             return None;
         }
@@ -68,14 +68,16 @@ impl Computed {
             .pure_px_shift()
             .filter(|&(x, y)| x != 0.0 || y != 0.0)
     }
+}
 
+impl Computed {
     /// Перевести единицы окна в точки.
     ///
     /// Размер окна известен только сборщику дерева, поэтому `vh`/`vw` доживают
     /// до него неразрешёнными — как и `em` до размера шрифта.
     pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
         self.resolve_decor_inset_viewport(viewport, vcx);
-        let vp = self.viewport_cx(viewport);
+        let vp = self.viewport_cx(viewport, vcx);
         let fix = |l: &mut Option<Len>| {
             if let Some(v) = *l {
                 *l = Some(v.fold_viewport(vp, vcx));

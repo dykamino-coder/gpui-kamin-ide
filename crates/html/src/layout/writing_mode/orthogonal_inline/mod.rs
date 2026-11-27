@@ -71,17 +71,19 @@ fn ordinary(style: &Computed) -> bool {
         && !style.reset_context.ortho_col
 }
 
-pub(super) fn flow_constraint(style: &Computed) -> Option<InlineConstraint> {
+pub(super) fn flow_constraint(
+    style: &crate::style::computed::BoxStyle,
+) -> Option<InlineConstraint> {
     // Parallel table cells receive their inline measure from the column track.
     // A containing-block fallback must not override that intrinsic probe.
     (!style.reset_context.ortho_col)
-        .then_some(style.reset_context.orthogonal_inline)
+        .then_some(style.tree.orthogonal_inline)
         .flatten()
 }
 
 pub(crate) fn resolve(
     style: &mut BoxStyle,
-    parent: &Computed,
+    parent: &BoxStyle,
     viewport: (f32, f32),
     principal: bool,
 ) {
@@ -94,7 +96,7 @@ pub(crate) fn resolve(
     {
         Some([axis(style, false), axis(style, true)])
     } else {
-        parent.reset_context.orthogonal_scrollport
+        parent.tree.orthogonal_scrollport
     };
     let vertical = style.wm().vertical();
     let parent_vertical = parent.wm().vertical();
@@ -109,11 +111,9 @@ pub(crate) fn resolve(
     };
     // Equal values are not written: the context group stays shared with the
     // computed style (Blink `ComputedStyle` setters compare first).
-    if style.reset_context.orthogonal_scrollport != scrollport
-        || style.reset_context.orthogonal_inline != inline
-    {
-        style.reset_context.orthogonal_scrollport = scrollport;
-        style.reset_context.orthogonal_inline = inline;
+    if style.tree.orthogonal_scrollport != scrollport || style.tree.orthogonal_inline != inline {
+        style.tree.orthogonal_scrollport = scrollport;
+        style.tree.orthogonal_inline = inline;
     }
     if principal || !vertical || parent_vertical || !ordinary(style) || !ordinary(parent) {
         return;
@@ -124,7 +124,7 @@ pub(crate) fn resolve(
     let parent_axis = ratio_basis::block_axis(parent);
     let fallback = available(
         parent_axis,
-        parent.reset_context.orthogonal_scrollport.map(|s| s[1]),
+        parent.tree.orthogonal_scrollport.map(|s| s[1]),
         viewport.1,
     );
     let basis = parent_axis
@@ -143,7 +143,7 @@ pub(crate) fn resolve(
     .into_iter()
     .any(|v| matches!(v, Some(Overflow::Hidden | Overflow::Scroll)))
     {
-        style.reset_context.orthogonal_scrollport = Some([axis(style, false), own]);
+        style.tree.orthogonal_scrollport = Some([axis(style, false), own]);
     }
     // Margins keep font-relative units until layout (`resolve_em` covers sizes
     // only); `margin: 2em 0 4em` must still shrink the fallback (§7.3.1 uses the
@@ -166,14 +166,14 @@ pub(crate) fn resolve(
     // indefinite one (css-writing-modes-4 §7.3.1, `available-size-020`: a
     // `height: 120vh` parent is not capped by the ICB).
     let space = basis;
-    style.reset_context.orthogonal_inline = Some(InlineConstraint {
+    style.tree.orthogonal_inline = Some(InlineConstraint {
         available: (space - own_edges - margins).max(0.0),
         fixed: own.size,
         min: own.min,
         max: own.max,
     });
     // A wrapping cap is not a percentage basis or a used inline size.
-    style.reset_context.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
+    style.tree.ortho_limit = own.size.or(Some((space - own_edges - margins).max(0.0)));
 }
 
 #[cfg(test)]

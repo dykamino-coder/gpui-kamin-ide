@@ -27,7 +27,8 @@ impl Inputs {
         kamin_heap::HeapSize::heap_size(&self.lang, ops)
     }
 
-    pub(crate) fn matches(&self, style: &Computed) -> bool {
+    /// `suppress_breaks`: forced breaks become spaces (`TreeFacts::ruby_suppress_breaks`).
+    pub(crate) fn matches(&self, style: &Computed, suppress_breaks: bool) -> bool {
         let flow = &style.inh.text_flow;
         self.preserve_newlines == flow.preserve_newlines
             && self.keep_spaces == flow.keep_spaces
@@ -39,11 +40,11 @@ impl Inputs {
             && self.keep_all == flow.keep_all
             && self.break_anywhere == flow.break_anywhere
             && self.break_anywhere_strict == flow.break_anywhere_strict
-            && self.ruby_suppress_breaks == style.reset_text_box.ruby_suppress_breaks
+            && self.ruby_suppress_breaks == suppress_breaks
             && self.owned_breaks == crate::text::paragraph::rules(style).is_some()
     }
 
-    pub(crate) fn of(style: &Computed) -> Self {
+    pub(crate) fn of(style: &Computed, suppress_breaks: bool) -> Self {
         let flow = &style.inh.text_flow;
         Self {
             preserve_newlines: flow.preserve_newlines,
@@ -56,7 +57,7 @@ impl Inputs {
             keep_all: flow.keep_all,
             break_anywhere: flow.break_anywhere,
             break_anywhere_strict: flow.break_anywhere_strict,
-            ruby_suppress_breaks: style.reset_text_box.ruby_suppress_breaks,
+            ruby_suppress_breaks: suppress_breaks,
             owned_breaks: crate::text::paragraph::rules(style).is_some(),
         }
     }
@@ -69,8 +70,14 @@ pub(crate) struct Normalizer {
 }
 
 impl Normalizer {
-    pub(crate) fn text(&mut self, raw: &str, style: &Computed) -> String {
-        let text = normalize_text(raw, style, &mut self.case, self.previous_zwsp);
+    pub(crate) fn text(&mut self, raw: &str, style: &Computed, suppress_breaks: bool) -> String {
+        let text = normalize_text(
+            raw,
+            style,
+            suppress_breaks,
+            &mut self.case,
+            self.previous_zwsp,
+        );
         if !text.is_empty() && text != super::SPACER && !text.chars().all(bidi_format) {
             self.previous_zwsp = text.ends_with('\u{200b}');
         }

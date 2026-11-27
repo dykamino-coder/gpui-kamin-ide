@@ -1,12 +1,11 @@
 //! Ключевые слова содержимого в `height` вертикального текста: физическая высота — его
 //! строчная ось, и `min-content`/`max-content`/`fit-content` дают ограничение с пределами
 //! `min/max-height`. CSS Sizing 3 §5.1: `max-content` не ограничивается доступным местом.
-use crate::style::computed::Computed;
 use crate::style::computed::orthogonal::{InlineConstraint, InlineKeyword};
 use crate::style::values::value::Len;
 
 pub(super) fn constraint(
-    style: &Computed,
+    style: &crate::style::computed::BoxStyle,
     available: f32,
 ) -> Option<(InlineKeyword, InlineConstraint)> {
     if !style.wm().vertical() || style.contains_height() {
@@ -23,7 +22,7 @@ pub(super) fn constraint(
         keyword,
         InlineConstraint {
             available: style
-                .reset_context
+                .tree
                 .orthogonal_inline
                 .map_or(available, |c| c.available)
                 .max(0.0),
@@ -37,9 +36,10 @@ pub(super) fn constraint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::computed::Computed;
     #[test]
     fn vertical_intrinsic_modes_use_text_contributions_without_viewport_clamping() {
-        let mut style = {
+        let mut style = crate::style::computed::BoxStyle::new({
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
@@ -47,7 +47,7 @@ mod tests {
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
-        };
+        });
         for (height, expected) in [
             (Len::MinContent, 30.0),
             (Len::MaxContent, 900.0),
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn auto_fixed_horizontal_and_containment_do_not_claim_text_intrinsics() {
-        let mut style = {
+        let mut style = crate::style::computed::BoxStyle::new({
             let mut with_inherited = Computed {
                 ..Computed::default()
             };
@@ -73,7 +73,7 @@ mod tests {
                 crate::style::computed::writing_mode::WritingModeKw::new(true, false, false),
             );
             with_inherited
-        };
+        });
         assert!(constraint(&style, 600.0).is_none());
         style.reset_box_layout.height = Some(Len::Px(100.0));
         assert!(constraint(&style, 600.0).is_none());

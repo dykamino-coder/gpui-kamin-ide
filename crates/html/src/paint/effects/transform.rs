@@ -6,7 +6,7 @@
 
 use crate::hooks::IntoHooked;
 use crate::layout::cx::FrameCx;
-use crate::style::computed::Computed;
+use crate::style::computed::{BoxStyle, Computed};
 use gpui::AnyElement;
 
 /// css-transforms-2 §grouping-property-values: «групповые» свойства делают
@@ -36,7 +36,7 @@ fn flattens_3d(c: &Computed) -> bool {
 
 pub(crate) fn transformed(
     el: AnyElement,
-    c: &Computed,
+    c: &BoxStyle,
     parent: &Computed,
     frame: FrameCx<'_>,
 ) -> AnyElement {
@@ -47,7 +47,7 @@ pub(crate) fn transformed(
 /// paints untransformed inside its native source.
 pub(crate) fn transformed_node(
     el: AnyElement,
-    c: &Computed,
+    c: &BoxStyle,
     parent: &Computed,
     node: u64,
     frame: FrameCx<'_>,
@@ -59,7 +59,7 @@ pub(crate) fn transformed_node(
 /// a table row or row group transform spread over its cells.
 pub(crate) fn transformed_with(
     el: AnyElement,
-    c: &Computed,
+    c: &BoxStyle,
     parent: &Computed,
     ref_box: Option<crate::layout::build_contracts::RefBox>,
     frame: FrameCx<'_>,
@@ -69,7 +69,7 @@ pub(crate) fn transformed_with(
 
 fn transformed_inner(
     el: AnyElement,
-    c: &Computed,
+    c: &BoxStyle,
     parent: &Computed,
     ref_box: Option<crate::layout::build_contracts::RefBox>,
     node: Option<u64>,
@@ -181,7 +181,7 @@ fn transformed_inner(
     // только на пути с собственным преобразованием — красный ребёнок под
     // `rotateX(180deg); preserve-3d` оставался виден.
     wrapper.backface_hidden = c.reset_transforms.backface_hidden == Some(true);
-    wrapper.fragment_clip_ancestor = c.reset_context.fragment_clip_ancestor;
+    wrapper.fragment_clip_ancestor = c.tree.fragment_clip_ancestor;
     let Some(t) = c.reset_transforms.transform else {
         return wrapper.hooked();
     };

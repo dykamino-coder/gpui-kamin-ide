@@ -31,6 +31,7 @@ pub use subscriptions::{ConsumerId, ImageChange, ImageUse};
 use super::types::{DecodeOptions, DecodedImage, ImageError, ImageMetadata};
 use crate::resources::loader::{Cancellation, ResourceUrl, Revision};
 use std::collections::HashMap;
+use std::sync::Arc;
 use url::Url;
 
 /// Ручка запроса: слот таблицы и поколение слота (повторно занятый слот — другая ручка).
@@ -83,7 +84,9 @@ struct Slot {
 /// Таблица запросов картинок документа.
 pub struct ImageStore {
     services: ImageServices,
-    rasters: rasters::Rasters,
+    /// SVG rasters by content (markup, request, fonts, the resources they
+    /// read), shared by the revisions of one document (`continuing`).
+    rasters: Arc<rasters::Rasters>,
     base: Option<Url>,
     policy: ResourcePolicy,
     generation: u32,
@@ -113,7 +116,7 @@ impl ImageStore {
     pub fn new(services: ImageServices, base: Option<Url>, policy: ResourcePolicy) -> Self {
         Self {
             services,
-            rasters: rasters::Rasters::default(),
+            rasters: Arc::default(),
             base,
             policy,
             generation: 0,
@@ -221,7 +224,7 @@ impl ImageStore {
     pub fn begin_generation(&mut self) {
         self.generation += 1;
         std::mem::take(&mut self.cancel).cancel();
-        self.rasters.clear();
+        self.rasters = Arc::new(self.rasters.emptied());
         for (slot, cell) in self.slots.iter_mut().enumerate() {
             if cell.entry.take().is_some() {
                 cell.generation += 1;

@@ -26,8 +26,8 @@ pub(crate) fn defer(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> Opt
         return None;
     }
     let fixed = e.style.used().reset_positioned.position == Some(Position::Fixed);
-    let under_tf = inherited.reset_transforms.transform_ancestor
-        || inherited.reset_transforms.transform.is_some();
+    let under_tf =
+        inherited.tree.transform_ancestor || inherited.reset_transforms.transform.is_some();
     let to_icb = (fixed && !under_tf)
         || !(fixed || inherited.cb_ancestor || crate::text::inline::establishes_cb(inherited));
     let nearest = nearest_cb_index(inherited);

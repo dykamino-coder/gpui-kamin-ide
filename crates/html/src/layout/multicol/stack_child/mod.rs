@@ -113,7 +113,7 @@ pub(super) fn multicol_stack_child(
     let report: crate::layout::fragment::token::space::sequence::NestReport = Default::default();
     let mut inner = box_style(&merged, &copy.style, opts.cx.vcx());
     // External clipping belongs to Scope.parent, not the copied subtree.
-    inner.reset_context.fragment_clip_ancestor = false;
+    inner.tree.fragment_clip_ancestor = false;
     // Копии на случай разреза между колонками: элемент GPUI рисуется один раз,
     // а фрагмент нужен свой в каждой колонке. Больше, чем колонок, ребёнок
     // занять не может.
