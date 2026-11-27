@@ -30,5 +30,11 @@ pub(crate) fn ellipse_radii(c: &Computed, vcx: ValueCx<'_>) -> gpui::EllipseRadi
         x: pairs.map(|(x, _)| length(x)),
         y: pairs.map(|(_, y)| length(y)),
         double: false,
+        // Sides of different colours meet on the corner diagonals in the
+        // quad (`apply::paint_border_colors` gives the painted colours).
+        side_colors: c
+            .used_uniform_border_color()
+            .is_none()
+            .then(|| std::array::from_fn(|i| c.used_border_color(i).to_hsla())),
     }
 }

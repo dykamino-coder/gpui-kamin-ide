@@ -72,7 +72,7 @@ impl Computed {
             [w.top, w.right, w.bottom, w.left].map(px_lossy_zero)
         };
         let styles = b.border_side_styles;
-        let doubled = (0..4).any(|i| widths[i] > 0.0 && styles[i] == Some(10));
+        let doubled = (0..4).any(|i| widths[i] >= 3.0 && styles[i] == Some(10));
         let double_whole =
             (0..4).all(|i| widths[i] <= 0.0 || (styles[i] == Some(10) && widths[i] >= 3.0));
         let solid = styles
@@ -101,7 +101,7 @@ impl Computed {
             (b.border_shape.is_some(), "border_shape"),
             (b.border_image.is_some(), "border_image"),
             (patterned, "border_style"),
-            (!one_colour, "border_colours"),
+            (doubled && !one_colour, "border_colours"),
             (clips, "clip"),
         ]
         .into_iter()

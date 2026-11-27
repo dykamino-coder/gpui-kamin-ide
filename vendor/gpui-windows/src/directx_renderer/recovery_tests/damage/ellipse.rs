@@ -140,6 +140,36 @@ fn an_elliptical_double_border_draws_two_lines_and_a_gap() {
     }
 }
 
+/// Sides of different colours keep their colours along their lengths and
+/// meet on the corner's diagonal; GPU and WARP draw the same frame.
+#[test]
+fn elliptical_sides_of_different_colours_meet_on_the_diagonal() {
+    let gpu = DirectXDevices::new().unwrap();
+    let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
+    let scene = || {
+        let mut s = elliptical(hsla(0., 0., 1., 1.));
+        let q = &mut s.quads[0];
+        q.border_widths = gpui::Edges { top: ScaledPixels(6.), right: ScaledPixels(6.), ..Default::default() };
+        q.ellipse.sides = 1;
+        q.ellipse.side_colors = [hsla(0., 1., 0.5, 1.), hsla(0.6667, 1., 0.5, 1.), hsla(0., 0., 0., 0.), hsla(0., 0., 0., 0.)];
+        s
+    };
+    let frames = [&gpu, &warp].map(|d| drawn(d, scene()));
+    assert!(frames[0] == frames[1], "{} pixels differ between the adapters", differing(&frames[0], &frames[1]));
+    let px = |x: usize, y: usize| {
+        let at = (y * W as usize + x) * 4;
+        [frames[0][at], frames[0][at + 1], frames[0][at + 2]]
+    };
+    // BGRA: the top side red between the top corners, the right side blue
+    // between the right corners; in the top right corner (rx 10, ry 35) the
+    // point near the top edge is red, near the right edge blue.
+    assert_eq!(px(100, 32), [0, 0, 255], "top side");
+    assert_eq!(px(137, 67), [255, 0, 0], "right side");
+    assert_eq!(px(128, 32), [0, 0, 255], "corner, by the top edge");
+    let right = px(137, 55);
+    assert!(right[0] > right[2], "corner, by the right edge: {right:?}");
+}
+
 /// A circular quad of the existing path: the reference for how far two
 /// adapters' blend units agree on antialiased edges.
 fn circular(color: Hsla) -> Scene {

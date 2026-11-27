@@ -166,7 +166,7 @@ pub(crate) fn coloured_borders(
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
     // A one-colour `double` border is painted whole by its rings.
     let rings = crate::paint::apply::double_border(c, vcx).is_some();
-    if !uniform && !rings && c.reset_border.border_shape.is_none() {
+    if !uniform && !rings && c.reset_border.border_shape.is_none() && !c.radius_elliptic(vcx) {
         let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (

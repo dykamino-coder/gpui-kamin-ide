@@ -651,7 +651,9 @@ struct CornerEllipse {
     float4 radii_y;
     uint on;
     uint style;
-    uint2 pad;
+    uint sides;
+    uint pad;
+    Hsla side_colors[4];
 };
 
 struct Quad {
@@ -847,6 +849,18 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
             precise float outer_line = covered - saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, line_width, r, left, top));
             precise float inner_line = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges - line_width, r, left, top)) - inner;
             ring = max(outer_line, 0.0) + max(inner_line, 0.0);
+        }
+        if (quad.ellipse.sides != 0u) {
+            // The quadrant's horizontal and vertical sides meet on the line
+            // from the box's corner to the inner edge's corner (Blink
+            // `BoxBorderPainter` clips each side to that miter): the signed
+            // distance to it weighs the two colours.
+            precise float2 from_edge = half_size - abs(center_to_point);
+            float2 width = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
+            precise float miter = (from_edge.x * width.y - from_edge.y * width.x) / max(length(width), 1e-6);
+            float4 horizontal = hsla_to_rgba(quad.ellipse.side_colors[top ? 0 : 2]);
+            float4 vertical = hsla_to_rgba(quad.ellipse.side_colors[left ? 3 : 1]);
+            border_color = lerp(vertical, horizontal, saturate(0.5 + miter));
         }
         float4 blended_border = over(background_color, border_color);
         color = lerp(background_color, blended_border, saturate(ring / covered));

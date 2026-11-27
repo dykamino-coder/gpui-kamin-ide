@@ -1771,8 +1771,14 @@ pub struct CornerEllipse {
     /// The border's style: 0 solid, 1 double (two lines of a third of the
     /// width each, css-backgrounds-3 §4.2).
     pub style: u32,
+    /// Nonzero: the sides take `side_colors` instead of the quad's border
+    /// colour, meeting on each corner's diagonal from the outer to the inner
+    /// corner (css-backgrounds-3 §4.4).
+    pub sides: u32,
     /// Layout padding to 16 bytes (`shaders.hlsl`).
-    pub pad: [u32; 2],
+    pub pad: u32,
+    /// Top, right, bottom and left side colours (`sides`).
+    pub side_colors: [Hsla; 4],
 }
 
 impl From<Quad> for Primitive {
