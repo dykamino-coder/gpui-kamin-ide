@@ -171,12 +171,12 @@ impl Window {
                         None => self.describe_space(space),
                     },
                 };
-                let why = if node.torn {
-                    "torn"
+                let why = if let Some(site) = node.torn {
+                    format!("torn at {}:{}", site.file(), site.line())
                 } else if node.paint.is_none() {
-                    "no paint, and it moves apart from its parent into a clip that shows"
+                    "no paint, and it moves apart from its parent into a clip that shows".into()
                 } else {
-                    "painted in a scene the part does not own"
+                    "painted in a scene the part does not own".into()
                 };
                 format!(
                     "scroll node {:?} (frame node {}): {why}; painted in {scene}, anchored {}, offset {:?} -> {:?}, chain {:?}, clip {:?}, parent {:?}",
@@ -338,7 +338,7 @@ impl Window {
                         let drawn = drawn.get_or_insert_with(|| super::scroll_nodes::layer_spaces(&scene.paint_operations[span.clone()]));
                         drawn.contains(&space)
                     });
-                if (foreign && !layered) || node.torn {
+                if (foreign && !layered) || node.torn.is_some() {
                     return Err(at_node(ScrollRefusal::Node, index));
                 }
                 let span = group.map_or(span.clone(), |group| 0..group.scene.paint_operations.len());

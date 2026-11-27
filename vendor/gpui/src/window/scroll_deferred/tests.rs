@@ -44,7 +44,7 @@ fn an_owned_deferred_draw_paints_under_its_scroll_node(cx: &mut TestAppContext) 
             let node = &frame.scroll_nodes[owner];
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             assert!(!painted.is_empty());
-            assert!(node.more.is_empty() && !node.torn);
+            assert!(node.more.is_empty() && node.torn.is_none());
             let marks = frame.scene.scroll.within(&painted);
             assert!(!marks.is_empty() && marks.iter().all(|mark| mark.node == node.id));
             let hitboxes = draw.prepaint_range.start.hitboxes_index..draw.prepaint_range.end.hitboxes_index;

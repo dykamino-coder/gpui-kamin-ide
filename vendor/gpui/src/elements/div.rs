@@ -2839,21 +2839,22 @@ impl Interactivity {
             let mut scroll_offset = scroll_offset.borrow_mut();
             let read = *scroll_offset;
 
-            scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
+            // KaminIDE patch: a range its host measures only after this
+            // prepaint (`ScrollHandle::measure_range_after_prepaint`) is not
+            // known yet: the offset asked for stays, and the host clamps it.
+            let host_range = tracked_scroll_handle.as_deref().is_some_and(|state| state.host_range);
+            if !host_range {
+                *scroll_offset = clamped_offset(*scroll_offset, scroll_max);
+            }
             if scroll_to_bottom {
                 scroll_offset.y = -scroll_max.y;
-            } else {
-                scroll_offset.y = scroll_offset.y.clamp(-scroll_max.y, px(0.));
             }
             // KaminIDE patch: DevTools `why` names a prepaint that moved a
             // scroll offset its layout read (the record then cannot replay).
             if *scroll_offset != read {
-                crate::dirty_sources::trace::push_with("scroll.clamped", core::panic::Location::caller(), || {
-                    let node = self.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
-                    format!(
-                        "node {node:?} offset {read:?} -> {:?}: max {scroll_max:?} content {:?} bounds {bounds:?} to bottom {scroll_to_bottom}",
-                        *scroll_offset, self.content_size
-                    )
+                let node = self.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
+                note_clamped(node, read, *scroll_offset, || {
+                    format!("max {scroll_max:?} content {:?} bounds {bounds:?} to bottom {scroll_to_bottom}", self.content_size)
                 });
             }
 
@@ -4684,6 +4685,23 @@ struct ScrollHandleState {
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
     active_item: Option<ScrollActiveItem>,
+    // KaminIDE patch: its host measures the range after the prepaint
+    // (`measure_range_after_prepaint`).
+    host_range: bool,
+}
+
+/// KaminIDE patch: `offset` inside the scroll range up to `max`.
+fn clamped_offset(offset: Point<Pixels>, max: Point<Pixels>) -> Point<Pixels> {
+    point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)))
+}
+
+/// KaminIDE patch: DevTools `why` (`scroll.clamped`): a clamp moved the
+/// offset of `node` from `read` to `now`; `why` tells by what range.
+#[track_caller]
+fn note_clamped(node: Option<crate::ScrollNodeId>, read: Point<Pixels>, now: Point<Pixels>, why: impl FnOnce() -> String) {
+    crate::dirty_sources::trace::push_with("scroll.clamped", core::panic::Location::caller(), || {
+        format!("node {node:?} offset {read:?} -> {now:?}: {}", why())
+    });
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -4772,10 +4790,44 @@ impl ScrollHandle {
             .max(&Default::default());
         let offset = *state.offset.borrow();
         if offset.x < -range.x || offset.y < -range.y {
+            // The range a host measured after the prepaint is known now: the
+            // offset its prepaint kept takes it (`measure_range_after_prepaint`).
+            if state.host_range {
+                let now = clamped_offset(offset, range);
+                *state.offset.borrow_mut() = now;
+                note_clamped(Some(crate::ScrollNodeId::of(self)), offset, now, || format!("measured range {range:?}"));
+            }
             return false;
         }
         state.child_bounds = items;
         state.max_offset = range;
+        true
+    }
+
+    /// KaminIDE patch: the host of this scroller measures its range only
+    /// after the prepaint (`host`): a proxy child sized from what the content
+    /// measured before (`resize_item`). Its prepaint then keeps the offset
+    /// asked for instead of clamping it to a range not measured yet, as CSSOM
+    /// View clamps a scroll position to the scrolling area layout gives (a
+    /// document opened at a restored or fragment offset shows there at once),
+    /// and the host clamps it once measured (`resize_item`, `clamp_to_range`).
+    pub fn measure_range_after_prepaint(&self, host: bool) {
+        self.0.borrow_mut().host_range = host;
+    }
+
+    /// KaminIDE patch: clamp the offset to the range the last prepaint or
+    /// `resize_item` recorded; true when it moved (a layout must place the
+    /// content there).
+    #[track_caller]
+    pub fn clamp_to_range(&self) -> bool {
+        let state = self.0.borrow();
+        let (read, max) = (*state.offset.borrow(), state.max_offset);
+        let now = clamped_offset(read, max);
+        if now == read {
+            return false;
+        }
+        *state.offset.borrow_mut() = now;
+        note_clamped(Some(crate::ScrollNodeId::of(self)), read, now, || format!("range {max:?}"));
         true
     }
 

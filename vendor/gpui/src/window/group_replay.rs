@@ -126,7 +126,7 @@ impl Window {
             let node = &mut self.next_frame.scroll_nodes[index as usize];
             match range {
                 Some(range) => node.land(range, here, main),
-                None => node.torn = true,
+                None => node.tear(),
             }
         }
         let scene = &mut self.next_frame.scene;

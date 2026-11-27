@@ -69,7 +69,7 @@ fn a_node_inside_a_record_lands_with_the_moved_column_that_shows_it(cx: &mut Tes
             });
             let frame_space = window.next_frame.scene.scroll.space;
             let node = window.next_frame.scroll_nodes.iter().find(|node| node.id == inner_id).unwrap();
-            assert_eq!((node.painted_in, node.torn), (Some(frame_space), false), "the inner node lands with the second column");
+            assert_eq!((node.painted_in, node.torn), (Some(frame_space), None), "the inner node lands with the second column");
             assert_eq!(node.chain, rect(110., 0., 100., 60.), "its mask moved and clipped as the column");
             std::mem::swap(&mut window.rendered_frame, &mut window.next_frame);
             window.next_frame.clear();
@@ -138,7 +138,7 @@ fn a_node_inside_a_segmented_flow_lands_with_the_column_that_shows_it(cx: &mut T
             });
             let frame_space = window.next_frame.scene.scroll.space;
             let node = window.next_frame.scroll_nodes.iter().find(|node| node.id == inner_id).unwrap();
-            assert_eq!((node.painted_in, node.torn), (Some(frame_space), false), "the inner node lands with the second column");
+            assert_eq!((node.painted_in, node.torn), (Some(frame_space), None), "the inner node lands with the second column");
             std::mem::swap(&mut window.rendered_frame, &mut window.next_frame);
             window.next_frame.clear();
             outer.set_offset(point(px(0.), px(-40.)));

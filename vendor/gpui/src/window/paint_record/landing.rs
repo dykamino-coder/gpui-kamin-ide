@@ -83,7 +83,9 @@ impl Window {
             let shown = last.kept.contains(&node.id);
             let Some((_, hops)) = relays.iter().find(|(space, _)| node.painted_in == Some(*space)) else {
                 // Its commands landed already elsewhere: two landings cannot move as one node.
-                node.torn |= shown && node.painted_in.is_some();
+                if shown && node.painted_in.is_some() {
+                    node.tear();
+                }
                 continue;
             };
             // A node the copy hides lands where another copy of the record shows it.
@@ -107,7 +109,7 @@ impl Window {
                         None => hops.iter().fold(node.clip, |clip, hop| place(clip, hop).0),
                     };
                 }
-                _ => node.torn = true,
+                _ => node.tear(),
             }
         }
         // A dependent lands before the next command the copies kept.

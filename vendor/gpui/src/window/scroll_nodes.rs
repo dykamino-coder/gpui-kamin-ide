@@ -85,8 +85,9 @@ pub(crate) struct ScrollNodeRecord {
     /// node again (`PaintCtx` replays): more ranges of the same scene.
     pub(crate) more: Vec<Range<usize>>,
     /// Deferred paint of the children landed in another scene than `paint`:
-    /// a scrolled replay cannot move it.
-    pub(crate) torn: bool,
+    /// a scrolled replay cannot move it. The site that first tore it, which
+    /// the DevTools `why` journal names (`tear`).
+    pub(crate) torn: Option<&'static core::panic::Location<'static>>,
     /// Marked a primitive drawn through a matrix a shift cannot move exactly,
     /// without its pivot (`Scene::pivot_of`): replayed only unmoved.
     pub(crate) unpivoted: bool,
@@ -102,6 +103,12 @@ impl ScrollNodeRecord {
         } else {
             self.more.push(range);
         }
+    }
+
+    /// Tear it (`torn`), keeping the first site that did.
+    #[track_caller]
+    pub(crate) fn tear(&mut self) {
+        self.torn = self.torn.or(Some(core::panic::Location::caller()));
     }
 
     /// All its paint ranges.
@@ -309,7 +316,7 @@ impl Window {
             paint: None,
             painted_in: None,
             more: Vec::new(),
-            torn: false,
+            torn: None,
             unpivoted: false,
             pending: false,
         });
@@ -355,7 +362,9 @@ impl Window {
         frame.scroll_nodes[index].pending = true;
         // Inside an open layer or depth context its commands take orders a
         // moved copy cannot give again (`Scene::scrollable` sees only its range).
-        frame.scroll_nodes[index].torn |= !frame.scene.at_root();
+        if !frame.scene.at_root() {
+            frame.scroll_nodes[index].tear();
+        }
         let interest = frame.scroll_nodes[index].interest;
         self.open_interest(interest, true);
         let depth = self.content_mask_stack.len() - 1;
@@ -383,7 +392,9 @@ impl Window {
         if *swapped {
             frame.scroll_paint.open.push(node);
             *reentry = Some((ops, space));
-            frame.scroll_nodes[node.0 as usize].torn |= !frame.scene.at_root();
+            if !frame.scene.at_root() {
+                frame.scroll_nodes[node.0 as usize].tear();
+            }
             return;
         }
         frame.scroll_paint.open.pop();
@@ -395,7 +406,7 @@ impl Window {
         if record.painted_in == Some(space) && began == space {
             record.more.push(start..ops);
         } else if !(frame.scene.in_group && began == space) {
-            record.torn = true;
+            record.tear();
         }
     }
 
