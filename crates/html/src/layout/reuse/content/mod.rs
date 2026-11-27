@@ -102,7 +102,7 @@ impl FlowReuse {
         {
             return None;
         }
-        let (owner, at) = {
+        let (owner, at, distributed) = {
             let boxes = inner.cx.doc().boxes.borrow();
             let owner = boxes.owner_of(nodes)?;
             // A block of the root flow is replayed whole by its records
@@ -115,9 +115,9 @@ impl FlowReuse {
             if flow == Some(parent) || boxes.get(parent).is_none() {
                 return None;
             }
-            (owner, boxes.clock())
+            (owner, boxes.clock(), boxes.distributed(owner))
         };
-        let follows = follows_width(inherited, outer);
+        let follows = follows_width(inherited, outer, distributed);
         let env = KeyEnv::of(&self.store.inputs, inherited, outer, inner, fresh);
         // The log holds this build's reads only: the first content empties it.
         let first = !self.images_log.replace(true);
