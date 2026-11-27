@@ -12,6 +12,22 @@ use crate::host_link::ShellEvent;
 /// перенесены дословно. `true` — канал обработан здесь.
 pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &Value) -> bool {
     match channel {
+        "kamin:editor:openLocation" => {
+            let coordinate = |key: &str| {
+                u32::try_from(payload.get(key)?.as_u64()?)
+                    .ok()
+                    .filter(|n| *n > 0)
+            };
+            if let (Some(path), Some(line), Some(column)) = (
+                payload.get("path").and_then(Value::as_str),
+                coordinate("line"),
+                coordinate("column"),
+            ) {
+                let _ = on_event_tx.try_send(ShellEvent::Ed(
+                    crate::host::events::EdEvent::OpenTextLocation(path.to_owned(), line, column),
+                ));
+            }
+        }
         "kamin:notification:show" => {
             let id = payload
                 .get("id")
@@ -98,4 +114,24 @@ pub(crate) fn handle(on_event_tx: &Sender<ShellEvent>, channel: &str, payload: &
         _ => return false,
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_editor_location_keeps_both_coordinates() {
+        let (tx, rx) = smol::channel::unbounded();
+        let channel = "kamin:editor:openLocation";
+        let mut payload =
+            serde_json::json!({"path":"C:/Fixture/sample file.ts","line":4,"column":2});
+        assert!(handle(&tx, channel, &payload));
+        assert!(
+            matches!(rx.try_recv(), Ok(ShellEvent::Ed(crate::host::events::EdEvent::OpenTextLocation(path, 4, 2))) if path == "C:/Fixture/sample file.ts")
+        );
+        payload["column"] = serde_json::json!(0);
+        assert!(handle(&tx, channel, &payload));
+        assert!(rx.try_recv().is_err());
+    }
 }
