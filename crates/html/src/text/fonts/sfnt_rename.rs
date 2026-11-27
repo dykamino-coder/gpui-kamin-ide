@@ -141,7 +141,7 @@ mod tests {
     }
 
     fn font(names: &[([u16; 4], Vec<u8>)]) -> Vec<u8> {
-        let mut name = vec![0, 0];
+        let mut name: Vec<u8> = vec![0, 0];
         name.extend((names.len() as u16).to_be_bytes());
         name.extend(((6 + names.len() * 12) as u16).to_be_bytes());
         let mut pool = Vec::new();
