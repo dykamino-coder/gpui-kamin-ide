@@ -20,7 +20,7 @@ export function JsonlTextBlock({ text, isStreaming }: JsonlTextBlockProps): JSX.
     return (
       <div
         class="block-text"
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(text, { workspaceLinks: true }) }}
       />
     )
   }
@@ -54,7 +54,7 @@ export function JsonlTextBlock({ text, isStreaming }: JsonlTextBlockProps): JSX.
       {head && (
         <span
           class="stream-stable"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(head) }}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(head, { workspaceLinks: true }) }}
         />
       )}
       {tail && <StreamingTail text={tail} />}

@@ -13,3 +13,8 @@
   --markdown-link: var(--accent-blue);
   --markdown-inline-code: var(--accent-yellow-dark);
 }
+
+.block-text a.workspace-location {
+  color: var(--markdown-link);
+  text-decoration: underline;
+}
