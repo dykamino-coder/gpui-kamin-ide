@@ -1,10 +1,5 @@
 [
   {
-    "file": "crates/html/src/dom/fixup_tree/alignment.rs",
-    "task": "cascade-7b-R06",
-    "reason": "Авторский align-self гасится в cascaded из-за общего поля с командами layout; удалить гашение после переноса команд в used values и проверки применимости в block layout."
-  },
-  {
     "file": "crates/html/src/dom/shared_style.rs",
     "task": "cascade-7b-layout-made",
     "reason": "computed() возвращает единственную стадию нематериализованных стилей и layout-made коробок; удалить fallback после отказа от element style handles для синтетических коробок."
@@ -53,11 +48,6 @@
     "file": "crates/html/src/layout/multicol/measure/laid.rs",
     "task": "F2-2",
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
-  },
-  {
-    "file": "crates/html/src/style/cascade/compute/longhands.rs",
-    "task": "cascade-7b-R06",
-    "reason": "Явный inherit align-self гасится для block parent в computed стадии; удалить гашение после сохранения computed значения и проверки применимости в used block layout."
   },
   {
     "file": "crates/html/src/style/cascade/inherit/context.rs",

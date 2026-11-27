@@ -59,7 +59,7 @@ pub(crate) fn flow_children(
                     if inherited.wm().rtl()
                         && !inherited.wm().vertical()
                         && e.style.used().reset_box_layout.width.is_some()
-                        && e.style.used().reset_flex.align_self.is_none()
+                        && e.style.flow_align().is_none()
                         // Блочный по ВЫЧИСЛЕННОМУ `display`, а не по тегу:
                         // `span { display: block; width: … }` в rtl-блоке —
                         // тоже блок (`block-in-inline-margins-002a/b`).
@@ -76,7 +76,7 @@ pub(crate) fn flow_children(
                             ))
                         && !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                     {
-                        e.style.used_mut().reset_flex.align_self = Some(Align::End);
+                        e.style.set_flow_align(Align::End);
                     }
                     // A box with a DEFINITE physical cross size stands at its
                     // containing block's inline-start (CSS 2.2 §10.3.3 in logical
@@ -99,12 +99,12 @@ pub(crate) fn flow_children(
                                 | Some(Len::Vh(_))
                                 | Some(Len::Vw(_))
                         )
-                        && e.style.used().reset_flex.align_self.is_none()
+                        && e.style.flow_align().is_none()
                         && !e.inline
                         && matches!(e.style.used().reset_box_layout.display, None | Some(Display::Block))
                         && !crate::style::flow::absolutely_positioned(e.style.used().reset_positioned.position)
                     {
-                        e.style.used_mut().reset_flex.align_self = Some(Align::End);
+                        e.style.set_flow_align(Align::End);
                     }
                     // Коробка с `aspect-ratio` при auto-ширине и определённой
                     // высоте — fit-content, а не растяжка (css-sizing-4 §5.1:
@@ -132,12 +132,12 @@ pub(crate) fn flow_children(
                         && (matches!(e.style.used().reset_box_layout.height, Some(Len::Px(_)))
                             || (matches!(e.style.used().reset_box_layout.height, Some(Len::Pct(_)))
                                 && matches!(inherited.reset_box_layout.height, Some(Len::Px(_)))))
-                        && e.style.used().reset_flex.align_self.is_none()
+                        && e.style.flow_align().is_none()
                         && inherited.inh.writing.writing_mode.is_none()
                         && !e.inline
                         && !positioned_out
                     {
-                        e.style.used_mut().reset_flex.align_self = Some(Align::Start);
+                        e.style.set_flow_align(Align::Start);
                     }
                     Node::Element(e)
                 }

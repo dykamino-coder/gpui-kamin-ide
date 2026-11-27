@@ -48,6 +48,7 @@ impl From<&BoxStyle> for crate::style::box_input::BoxStyleInput {
         Self {
             try_source: style.try_style.clone(),
             decor_box: style.decor_box,
+            flow_align: style.flow_align,
             ..Self::new(
                 std::rc::Rc::clone(style.style_rc()),
                 Some(std::rc::Rc::new(style.context.clone())),
@@ -67,6 +68,7 @@ impl From<BoxStyle> for crate::style::box_input::BoxStyleInput {
         Self {
             try_source: style.try_style,
             decor_box: style.decor_box,
+            flow_align: style.flow_align,
             ..Self::new(
                 style.style,
                 Some(context),

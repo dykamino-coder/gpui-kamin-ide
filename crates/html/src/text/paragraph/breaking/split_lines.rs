@@ -51,6 +51,8 @@ impl Paragraph {
     pub(crate) fn split_uncached(&self, limit: Option<Pixels>, window: &mut Window) -> Vec<Line> {
         crate::work::add!(LayoutCacheMisses, 1);
         let segs = self.measure(window);
+        // Breaking alone: the measurement above is TextMeasureNs.
+        crate::work::time!(_breaking, LineBreakNs);
         let mut lines = self.lay(limit, &segs);
         // Обрезка строк контейнером с `text-overflow: ellipsis`: не влезшая
         // строка усекается с многоточием (css-overflow-3 §text-overflow).

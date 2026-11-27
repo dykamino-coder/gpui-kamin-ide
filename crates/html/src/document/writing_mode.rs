@@ -116,11 +116,12 @@ pub(super) fn propagate_writing_mode(mut nodes: Vec<Node>, vcx: ValueCx<'_>) -> 
     // Корень vertical-rl прижат к ПРАВОМУ краю окна (§8.2): якорь самим
     // стилем; корню с фоном-картинкой не ставится — гасил canvas-слой
     // (замерено на background-size-document-root-vrl-*).
+    // A placement of the root box, not its `align-self` (`SharedStyle::flow_align`).
     if taken.0.is_some_and(|m| m.is_rl())
-        && html.style.cascaded().reset_flex.align_self.is_none()
         && html.style.cascaded().reset_background.bg_image.is_none()
     {
-        html.style.cascaded_mut().reset_flex.align_self = Some(crate::style::computed::Align::End);
+        html.style
+            .set_flow_align(crate::style::computed::Align::End);
     }
     // Вертикальный корень с ФОНОМ-КАРТИНКОЙ: без минимума высоты его
     // коробка при пустом теле нулевая, и краске негде лечь
