@@ -19,19 +19,12 @@ on:
         type: choice
         options: [bridge-roundtrip, native-client, workspace-link, console-scroll, engine-menus, engine-receipts, extension-hooks, installed-client]
         default: bridge-roundtrip
-  # Bootstrap the optional workflow once for a same-repository harness PR.
-  # Subsequent exact candidates run on explicit dispatch.
-  pull_request:
-    types: [opened, reopened]
-    paths:
-      - .github/workflows/native-windows-smoke.yml
-      - scripts/ci/native-windows/**
 
 permissions:
   contents: read
 
 concurrency:
-  group: native-smoke-${{ inputs.candidate || github.event.pull_request.head.sha || github.sha }}-${{ inputs.scenario || 'bridge-roundtrip' }}
+  group: native-smoke-${{ inputs.candidate || github.sha }}-${{ inputs.scenario || 'bridge-roundtrip' }}
   cancel-in-progress: false
 
 jobs:
@@ -145,12 +138,12 @@ jobs:
           path: ${{ runner.temp }}/hook-report.json
           retention-days: 3
   native:
-    if: inputs.scenario != 'installed-client' && inputs.scenario != 'extension-hooks' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: inputs.scenario != 'installed-client' && inputs.scenario != 'extension-hooks'
     runs-on: windows-2022
     timeout-minutes: 65
     env:
-      SMOKE_SHA: ${{ inputs.candidate || github.event.pull_request.head.sha || github.sha }}
-      DRIVER_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SMOKE_SHA: ${{ inputs.candidate || github.sha }}
+      DRIVER_SHA: ${{ github.sha }}
       SMOKE_SCENARIO: ${{ inputs.scenario || 'bridge-roundtrip' }}
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_DEV_OPT_LEVEL: '0'

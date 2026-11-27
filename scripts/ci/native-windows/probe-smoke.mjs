@@ -112,7 +112,7 @@ try {
       const pkg = JSON.parse(await readFile("extensions/claude-bridge/server/package.json", "utf8"));
       assert.equal(value.data.version, pkg.version);
     }, true);
-    const driver = { step, probe, web, report };
+    const driver = { step, probe, web, report, capture };
     await registerClient(driver, origin);
     let tab;
     let previousTab;
