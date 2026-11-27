@@ -75,6 +75,9 @@ pub(crate) struct ScrollBook {
     /// While a paint record lands: the marks of the nodes it opened inside
     /// itself, carried to its copy (carry).
     pub(crate) carry: Option<Box<carry::Carry>>,
+    /// Of a paint record's scene: the records landed in it whose nodes it
+    /// holds, by their scene, and each landing on the way (carry::Relay).
+    pub(crate) relayed: Vec<carry::Relay>,
     /// Around one insert (`Window::insert_scene_primitive`): the pivot of
     /// the flat transform painted now.
     pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
@@ -96,6 +99,7 @@ impl ScrollBook {
         self.marks.clear();
         self.open = None;
         self.carry = None;
+        self.relayed.clear();
         (self.pivot, self.unpivoted) = (None, false);
         self.pivots.clear();
         self.copying = None;

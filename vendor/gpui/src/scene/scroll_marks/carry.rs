@@ -16,8 +16,13 @@ const DROPPED: u32 = u32::MAX;
 /// A source command its node can no longer show where the copy lands.
 const GONE: u32 = u32::MAX - 1;
 
+/// The scene a record's nodes were painted in and the landings that copied
+/// its commands since, in order, into a scene that lands later itself.
+pub(crate) type Relay = (SceneSpace, Vec<Box<Carry>>);
+
 /// The marks still to carry, in command order, where the copy lands
 /// (`offset`, `clip`), and where the commands of the source landed.
+#[derive(Clone)]
 pub(crate) struct Carry {
     marks: Vec<ScrollMark>,
     next: usize,
@@ -34,6 +39,17 @@ impl Carry {
     pub(crate) fn of(source: &Scene, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
         let landed = Vec::with_capacity(source.paint_operations.len());
         Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, offset, clip, landed, kept: Vec::new() })
+    }
+
+    /// Where the copy lands: its offset and clip.
+    pub(crate) fn placement(&self) -> (Point<ScaledPixels>, Option<Bounds<ScaledPixels>>) {
+        (self.offset, self.clip)
+    }
+
+    /// What a later landing of the copy needs: its marks are carried already.
+    pub(crate) fn landed(mut self: Box<Self>) -> Box<Self> {
+        self.marks = Vec::new();
+        self
     }
 
     /// The mark of source command `index`, taken in order.
