@@ -114,6 +114,8 @@ impl FrameMiss {
                 ScrollRefusal::UnmarkedLayer => "frame_miss.scroll_unmarkedlayer",
                 ScrollRefusal::RetainedLayer => "frame_miss.scroll_retainedlayer",
                 ScrollRefusal::LayerReservoir => "frame_miss.scroll_layerreservoir",
+                ScrollRefusal::Transform => "frame_miss.scroll_transform",
+                ScrollRefusal::Fractional => "frame_miss.scroll_fractional",
             },
         }
     }

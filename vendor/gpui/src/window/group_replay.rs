@@ -10,7 +10,7 @@
 //! other records keep refusing groups (`RetainedPaint::replayable`).
 
 use super::*;
-use crate::{PaintGroup, ScrollNodeId};
+use crate::ScrollNodeId;
 
 impl RetainedPaint {
     /// This output with the groups `made` of the frame's list.
@@ -83,7 +83,7 @@ impl Window {
     pub(super) fn replay_groups(
         &mut self,
         groups: Range<usize>,
-        scrolled: Option<(&[Option<ScrollNodeId>], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
+        scrolled: Option<(&[crate::scene::GroupLabel], &dyn Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>))>,
     ) -> Range<usize> {
         let base = self.next_frame.scene.groups.len();
         let prev = &self.rendered_frame.scene;
@@ -92,14 +92,43 @@ impl Window {
         }
         let delta = base as i32 - groups.start as i32;
         let still = |_: ScrollNodeId| (Point::default(), Bounds::default());
-        let copies: Vec<PaintGroup> = prev.groups[groups]
-            .iter()
-            .enumerate()
-            .map(|(at, group)| match scrolled {
-                Some((labels, node)) => Scene::replayed_group(group, delta, labels.get(at).copied().flatten(), &node),
-                None => Scene::replayed_group(group, delta, None, &still),
-            })
-            .collect();
+        // KaminIDE patch: the copied scroll nodes painted in a group's scene
+        // land in the scene of its copy, as those of the record's own scene
+        // land in the frame's (`replay_scenes_scrolled`, `land_scroll_paint`).
+        let spaces: Vec<_> = prev.groups[groups.clone()].iter().map(|group| group.scene.scroll.space).collect();
+        let landing = std::mem::take(&mut self.next_frame.scroll_paint.landing);
+        let (mine, others): (Vec<_>, Vec<_>) = landing.into_iter().partition(|entry| spaces.contains(&entry.2));
+        self.next_frame.scroll_paint.landing = others;
+        let prev = &self.rendered_frame.scene;
+        let mut copies = Vec::with_capacity(spaces.len());
+        let mut landed = Vec::new();
+        for (at, group) in prev.groups[groups].iter().enumerate() {
+            let space = group.scene.scroll.space;
+            let ranges = mine.iter().filter(|entry| entry.2 == space).flat_map(|entry| [entry.1.start, entry.1.end]);
+            let mut edges: Vec<(usize, usize)> = ranges.map(|old| (old, 0)).collect();
+            edges.sort_unstable();
+            edges.dedup();
+            let copy = match scrolled {
+                Some((labels, node)) => {
+                    Scene::replayed_group_landing(group, delta, labels.get(at).and_then(|label| label.node()), &node, &mut edges)
+                }
+                None => Scene::replayed_group_landing(group, delta, None, &still, &mut edges),
+            };
+            let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
+            let here = copy.scene.scroll.space;
+            for (index, paint, _, main) in mine.iter().filter(|entry| entry.2 == space) {
+                let (start, end) = (land(paint.start), land(paint.end));
+                landed.push((*index, (start != usize::MAX && end != usize::MAX).then_some(start..end), here, *main));
+            }
+            copies.push(copy);
+        }
+        for (index, range, here, main) in landed {
+            let node = &mut self.next_frame.scroll_nodes[index as usize];
+            match range {
+                Some(range) => node.land(range, here, main),
+                None => node.torn = true,
+            }
+        }
         let scene = &mut self.next_frame.scene;
         scene.groups.extend(copies);
         scene.relabel = delta;
