@@ -44,7 +44,8 @@ impl Recipe {
         let measured = plan.measured_kids;
         let kids = plan.stackable.unwrap_or_default();
         let copies = self.count.max(1) as usize;
-        let (parents, _, parallel, kids) = column_kids(kids, opts.cx.vcx().clearance_possible);
+        let (parents, kid_starts, parallel, kids) =
+            column_kids(kids, opts.cx.vcx().clearance_possible);
         let prepared = kids
             .iter()
             .map(|(c, _)| {
@@ -68,13 +69,23 @@ impl Recipe {
             kids,
             prepared,
         );
-        let (statics, spots) = &*self.statics.borrow();
-        let kid_starts: Vec<usize> = (0..=children.len()).collect();
+        let (original, original_spots) = &*self.statics.borrow();
+        let statics = &plan.oof_static;
+        let spots: Vec<_> = statics
+            .iter()
+            .map(|(_, child)| {
+                original
+                    .iter()
+                    .position(|(_, old)| old.node_id == child.node_id)
+                    .map(|index| original_spots[index].clone())
+                    .unwrap_or_default()
+            })
+            .collect();
         let children = crate::layout::multicol::container::insert_static_probes(
             &self.merged,
             &opts,
             statics,
-            spots,
+            &spots,
             &kid_starts,
             children,
         );

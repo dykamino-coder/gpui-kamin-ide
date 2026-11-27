@@ -36,6 +36,7 @@ pub(super) fn stack_box(
     scope: Option<&super::ClampScope>,
 ) -> Result<(gpui::Div, BoxStyle), AnyElement> {
     let StackPlan {
+        source,
         line_col_w,
         layout_col_w,
         direct_oof,
@@ -58,7 +59,7 @@ pub(super) fn stack_box(
         rows,
         nest_rows,
     );
-    if let Some(kids) = stackable.filter(|k| !k.is_empty()) {
+    if let Some(kids) = stackable.filter(|k| !k.is_empty() || !oof_static.is_empty()) {
         let d = super::ClampScope::close(scope, d, e, &merged);
         return Err(multicol_column_stack(
             d,
@@ -80,6 +81,7 @@ pub(super) fn stack_box(
             nest_rows,
             nest_phase,
             nest_report,
+            source,
             direct_oof,
             oof_static,
             nested_whole,

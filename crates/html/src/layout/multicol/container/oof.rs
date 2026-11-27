@@ -35,8 +35,7 @@ pub(super) fn column_stack_div(
     let geometry = opts.cx.position.geometry.as_ref().map(|geometry| {
         let mut selected = (**geometry).clone();
         selected.flows.retain(|source| {
-            e.children
-                .iter()
+            crate::layout::fragment::flow::box_children::children(&e.children)
                 .any(|node| matches!(node, Node::Element(child) if child.node_id == if source.owner == 0 { source.id } else { source.owner }))
         });
         std::rc::Rc::new(selected)

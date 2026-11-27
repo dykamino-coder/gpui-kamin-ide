@@ -26,10 +26,7 @@ pub(crate) fn children(
     let nodes = crate::layout::fragment::flow::copy_flow(&host.children);
     let flow: Vec<_> = nodes.iter().filter(|n| !is_blank(n)).collect();
     if !flow.iter().all(|n| match n {
-        // TRANSITIONAL(F2-2): Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume.
-        Node::Element(c) => {
-            !out_of_flow(&c.style.used()) && (independent_copy(c) || empty_floats(c))
-        }
+        Node::Element(c) => out_of_flow(&c.style.used()) || independent_copy(c) || empty_floats(c),
         _ => false,
     }) {
         return None;
@@ -102,6 +99,7 @@ pub(crate) fn pending(
     nodes
         .iter()
         .filter(|n| !is_blank(n))
+        .filter(|n| !matches!(n, Node::Element(c) if out_of_flow(&c.style.used())))
         .map(|n| {
             let Node::Element(c) = n else { return None };
             if !independent_copy(c) && !empty_floats(c) {

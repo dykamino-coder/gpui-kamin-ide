@@ -46,6 +46,7 @@ pub(crate) fn multicol_column_stack(
     nest_rows: Option<f32>,
     nest_phase: f32,
     nest_report: Option<crate::layout::fragment::token::space::sequence::NestReport>,
+    source: Vec<Element>,
     direct_oof: Vec<Element>,
     oof_static: Vec<(usize, Element)>,
     nested_whole: std::cell::RefCell<Vec<u64>>,
@@ -60,7 +61,7 @@ pub(crate) fn multicol_column_stack(
         &opts.cx.constraints,
     );
     let source = if !col_vert && rows.is_none() {
-        kids.iter().map(|(c, _)| c.clone()).collect()
+        source
     } else {
         Vec::new()
     };

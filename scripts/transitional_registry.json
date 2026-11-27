@@ -45,11 +45,6 @@
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
   },
   {
-    "file": "crates/html/src/layout/multicol/measure/laid.rs",
-    "task": "F2-2",
-    "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
-  },
-  {
     "file": "crates/html/src/style/cascade/inherit/context.rs",
     "task": "cascade-7b-R10",
     "reason": "Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers."

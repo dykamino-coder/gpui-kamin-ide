@@ -52,7 +52,6 @@ fn sibling_with_its_own_fragment_state_keeps_the_whole_preplan() {
         "<div style='box-decoration-break:clone'>clone</div>",
         "<div style='text-box-trim:trim-both'>trim</div>",
         "<div><div style='position:absolute'>parallel</div></div>",
-        "<div style='position:absolute'>parallel sibling</div>",
     ] {
         let tree =
             crate::document::parsed::parse(&format!("<div><div>ordinary</div>{special}</div>"), "");
@@ -234,3 +233,5 @@ fn cross_copy_clearance_shares_the_float_exclusion_context() {
         1
     );
 }
+
+mod positioned;
