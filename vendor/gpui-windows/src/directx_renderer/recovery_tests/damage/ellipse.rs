@@ -124,7 +124,8 @@ fn an_elliptical_double_border_draws_two_lines_and_a_gap() {
         let at = |x: usize, y: usize| (y * W as usize + x) * 4;
         let px = |x: usize, y: usize| [frames[0][at(x, y)], frames[0][at(x, y) + 1], frames[0][at(x, y) + 2]];
         // Between the right corners (y 65..70): outer line, gap, inner line.
-        let (red, white) = ([255, 0, 0], [255, 255, 255]);
+        // Target bytes are BGRA.
+        let (red, white) = ([0, 0, 255], [255, 255, 255]);
         assert_eq!(px(138, 67), red, "double {double}: outer line");
         assert_eq!(px(135, 67), if double { white } else { red }, "double {double}: gap");
         assert_eq!(px(132, 67), red, "double {double}: inner line");
@@ -171,7 +172,21 @@ fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
             let got = drawn(device, elliptical(color));
             let want = drawn(device, masked(color));
             let circle = drawn(device, circular(color));
-            stats.push((format!("{name} alpha {} quad vs mask", color.a), compare(&got, &want)));
+            // The first pixel that differs, with its mask byte, for the report.
+            let first = (0..got.len() / 4).find(|i| got[i * 4..i * 4 + 4] != want[i * 4..i * 4 + 4]).map(|i| {
+                let (x, y) = ((i % W as usize) as f32, (i / W as usize) as f32);
+                let m = (coverage(x + 0.5 - BOX[0], y + 0.5 - BOX[1], BOX[2], BOX[3]) * 255.0).round();
+                let inside = (65 * W as usize + 70) * 4;
+                let backdrop = (5 * W as usize + 5) * 4;
+                format!(
+                    " first at {x},{y} mask {m} quad {:?} group {:?} inside {:?} backdrop {:?}",
+                    &got[i * 4..i * 4 + 4],
+                    &want[i * 4..i * 4 + 4],
+                    &want[inside..inside + 4],
+                    &want[backdrop..backdrop + 4]
+                )
+            });
+            stats.push((format!("{name} alpha {} quad vs mask{}", color.a, first.unwrap_or_default()), compare(&got, &want)));
             frames.push((got, want, circle));
         }
         let ([g, w], [gm, wm], [gc, wc]) = (
