@@ -24,6 +24,7 @@ pub(crate) mod math;
 pub(crate) use matching::alias_for;
 pub(crate) mod metric_overrides;
 mod sfnt_metrics;
+mod sfnt_rename;
 mod stretch;
 pub(crate) mod style_font;
 #[cfg(test)]
@@ -110,6 +111,7 @@ pub(crate) use crate::text::fonts::loading::load_faces;
 pub(crate) use crate::text::fonts::loading::load_faces_sheets;
 pub use crate::text::fonts::loading::size_adjust;
 pub use crate::text::fonts::sfnt_metrics::sfnt_family;
+pub use crate::text::fonts::sfnt_rename::{renamed as renamed_sfnt, unique_family};
 use crate::text::fonts::sfnt_metrics::sfnt_romn_baseline;
 pub use crate::text::fonts::stretch::alias_stretch;
 use crate::text::fonts::stretch::stretch_desc;

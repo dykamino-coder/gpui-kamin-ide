@@ -14,40 +14,10 @@ pub fn covers_space(family: &str, vcx: ValueCx<'_>) -> bool {
     vcx.doc.font_snapshot().covers_space(family)
 }
 
-/// Покрывает ли дескриптор `unicode-range` знак U+0020.
-///
-/// Видов записи три (css-fonts-4 §unicode-range-desc): одиночный знак `U+20`,
-/// отрезок `U+0-7F` и маска `U+00??`. Негодная запись делает дескриптор
-/// недействительным целиком, а его умолчание — `U+0-10FFFF`, то есть пробел
-/// покрыт.
+/// Whether a `unicode-range` descriptor holds U+0020 (`coverage::ranges`).
 pub(super) fn range_has_space(value: Option<&str>) -> bool {
-    let Some(value) = value else { return true };
-    let mut any = false;
-    for part in value.split(',') {
-        let part = part.trim();
-        let Some(body) = part.strip_prefix("U+").or_else(|| part.strip_prefix("u+")) else {
-            return true;
-        };
-        let (lo, hi) = match body.split_once('-') {
-            Some((a, b)) => (
-                u32::from_str_radix(a.trim(), 16).ok(),
-                u32::from_str_radix(b.trim(), 16).ok(),
-            ),
-            None if body.contains('?') => (
-                u32::from_str_radix(&body.replace('?', "0"), 16).ok(),
-                u32::from_str_radix(&body.replace('?', "F"), 16).ok(),
-            ),
-            None => {
-                let one = u32::from_str_radix(body, 16).ok();
-                (one, one)
-            }
-        };
-        match (lo, hi) {
-            (Some(lo), Some(hi)) if lo <= hi => any |= (lo..=hi).contains(&0x20),
-            _ => return true,
-        }
-    }
-    any
+    let ranges = crate::font_facts::coverage::ranges(value);
+    crate::font_facts::coverage::covers(&ranges, 0x20)
 }
 
 /// Разобрать правила `@font-face` из таблицы стилей и загрузить шрифты.
@@ -200,6 +170,9 @@ pub(super) fn load_faces_into(
                     family: real.clone(),
                     adjust,
                     features,
+                    ranges: crate::font_facts::coverage::ranges(
+                        declaration(&block, "unicode-range").as_deref(),
+                    ),
                 });
             if let Some(list) = declaration(&block, "font-feature-settings")
                 .and_then(|v| crate::style::computed::feature_list(&v))

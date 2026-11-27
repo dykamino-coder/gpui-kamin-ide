@@ -89,6 +89,23 @@ impl FontRegistrySnapshot {
         matching::select(faces, &request)
     }
 
+    /// Every face of `family`'s composite for `request` as (backend family,
+    /// `unicode-range`), the leading face first (`coverage::composite`).
+    pub fn composite_for(
+        &self,
+        family: &str,
+        request: FontRequest<'_>,
+    ) -> Vec<(String, Vec<(u32, u32)>)> {
+        key::with(family, |family| self.registry.faces.get(family))
+            .map(|faces| {
+                super::coverage::composite(faces, &request)
+                    .into_iter()
+                    .map(|face| (face.family.clone(), face.ranges.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn alias_for(&self, family: &str, request: FontRequest<'_>) -> Option<String> {
         self.matching_face(family, request)
             .map(|f| f.family)
