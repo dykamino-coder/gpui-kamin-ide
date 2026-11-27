@@ -78,10 +78,5 @@
     "file": "crates/html/src/text/inline/runs/face.rs",
     "task": "cascade-7b-font-size-adjust",
     "reason": "A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face."
-  },
-  {
-    "file": "crates/html/src/text/inline/first_line.rs",
-    "task": "cascade-7b-R12",
-    "reason": "Слой first-line пропускает допустимый vertical-align, поскольку float::FirstLine меряет без сдвига; удалить пропуск после учёта вертикального сдвига первой строки в этом замере."
   }
 ]
