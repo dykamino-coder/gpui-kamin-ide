@@ -106,11 +106,7 @@ mod tests {
         child.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(10.0));
         child.style.used_mut().reset_box_layout.padding.left = Some(Len::Px(20.0));
         child.style.used_mut().reset_border.border_box = Some(true);
-        assert!(size_auto(
-            &mut child,
-            &BoxStyle::from(container.clone()),
-            800.0
-        ));
+        assert!(size_auto(&mut child, &container, 800.0));
         assert_eq!(
             child.style.used().reset_context.fit_arg[0],
             Some(Len::Px(290.0))
@@ -151,10 +147,6 @@ mod tests {
         ));
         child.style.used_mut().reset_positioned.position = None;
         child.tag = "img".into();
-        assert!(!size_auto(
-            &mut child,
-            &BoxStyle::from(container.clone()),
-            800.0
-        ));
+        assert!(!size_auto(&mut child, &BoxStyle::from(container), 800.0));
     }
 }

@@ -55,12 +55,7 @@ fn percentage_uses_fallback_but_fixed_parent_keeps_its_own_basis() {
         ..Computed::default()
     };
     child.reset_box_layout.height = Some(Len::Pct(0.5));
-    resolve(
-        &mut child,
-        &BoxStyle::from(parent.clone()),
-        (800.0, 600.0),
-        false,
-    );
+    resolve(&mut child, &BoxStyle::from(parent), (800.0, 600.0), false);
     assert_eq!(child.reset_box_layout.height, Some(Len::Px(360.0)));
 }
 
@@ -155,12 +150,7 @@ fn inherited_writing_mode_does_not_establish_another_orthogonal_boundary() {
         Some(40.0)
     );
     child.reset_box_layout.display = Some(Display::Flex);
-    resolve(
-        &mut child,
-        &BoxStyle::from(parent.clone()),
-        (800.0, 600.0),
-        false,
-    );
+    resolve(&mut child, &BoxStyle::from(parent), (800.0, 600.0), false);
     assert_eq!(child.reset_context.orthogonal_inline, None);
 }
 
