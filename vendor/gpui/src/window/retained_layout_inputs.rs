@@ -34,6 +34,24 @@ impl RetainedLayoutInputs {
                     .is_some_and(ScrollHandle::has_pending_scroll)
         })
     }
+
+    /// The first scroll read whose position changed or whose handle has a
+    /// pending scroll (`scroll_unchanged` false), for the `why` journal: its
+    /// node, what the layout read and what it is now.
+    pub fn scroll_change(&self) -> Option<String> {
+        self.scroll.iter().enumerate().find_map(|(at, input)| {
+            let now = *input.offset.borrow();
+            let pending = input.handle.as_ref().is_some_and(ScrollHandle::has_pending_scroll);
+            (now != input.position || pending).then(|| {
+                let node = input.handle.as_ref().map(super::ScrollNodeId::of);
+                format!(
+                    "scroll read {at} of {} (node {node:?}): read {:?}, now {now:?}, pending scroll {pending}",
+                    self.scroll.len(),
+                    input.position
+                )
+            })
+        })
+    }
 }
 
 impl Window {
@@ -108,5 +126,25 @@ impl Window {
         if let Some(outer) = &mut self.layout_scroll_inputs {
             outer.extend_from_slice(&inputs.scroll);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{point, px};
+
+    /// DevTools names the scroll read that keeps a record from replaying.
+    #[test]
+    fn a_changed_scroll_read_is_named() {
+        let offset = Rc::new(RefCell::new(point(px(0.), px(-40.))));
+        let read = ScrollInput { offset: offset.clone(), position: point(px(0.), px(-40.)), handle: None };
+        let inputs = RetainedLayoutInputs { states: Cell::default(), scroll: vec![read] };
+        assert!(inputs.scroll_unchanged() && inputs.scroll_change().is_none());
+        *offset.borrow_mut() = point(px(0.), px(0.));
+        let change = inputs.scroll_change().expect("the read changed");
+        assert!(!inputs.scroll_unchanged());
+        assert!(change.starts_with("scroll read 0 of 1 (node None): read"), "{change}");
+        assert!(change.contains("pending scroll false"), "{change}");
     }
 }
