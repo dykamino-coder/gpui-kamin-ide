@@ -1768,8 +1768,11 @@ pub struct CornerEllipse {
     pub radii_y: [f32; 4],
     /// Nonzero: the corners are the ellipses `corner_radii` by `radii_y`.
     pub on: u32,
+    /// The border's style: 0 solid, 1 double (two lines of a third of the
+    /// width each, css-backgrounds-3 §4.2).
+    pub style: u32,
     /// Layout padding to 16 bytes (`shaders.hlsl`).
-    pub pad: [u32; 3],
+    pub pad: [u32; 2],
 }
 
 impl From<Quad> for Primitive {

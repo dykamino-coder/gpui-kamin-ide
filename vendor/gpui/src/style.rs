@@ -1069,7 +1069,7 @@ impl Style {
             Some(e) => {
                 let (x, y) = e.to_pixels(bounds.size, rem_size);
                 let [top_left, top_right, bottom_right, bottom_left] = x;
-                (Corners { top_left, top_right, bottom_right, bottom_left }, Some(y))
+                (Corners { top_left, top_right, bottom_right, bottom_left }, Some((y, u32::from(e.double))))
             }
             None => (self.corner_radii.to_pixels(rem_size).clamp_radii_for_quad_size(bounds.size), None),
         };
@@ -1182,6 +1182,9 @@ pub struct EllipseRadii {
     pub x: [DefiniteLength; 4],
     /// Vertical radius per corner.
     pub y: [DefiniteLength; 4],
+    /// The border is `double` (css-backgrounds-3 §4.2): two lines of a third
+    /// of each side's width, the quad drawing both along the corners.
+    pub double: bool,
 }
 
 impl EllipseRadii {

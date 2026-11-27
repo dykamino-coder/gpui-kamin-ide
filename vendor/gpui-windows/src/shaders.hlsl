@@ -427,7 +427,8 @@ struct GradientDescriptor {
 struct GradientStop {
     float4 color;
     float offset;
-    uint3 pad;
+    uint style;
+    uint2 pad;
 };
 StructuredBuffer<GradientDescriptor> analytic_gradients : register(t5);
 StructuredBuffer<GradientStop> analytic_stops : register(t6);
@@ -649,7 +650,8 @@ float quarter_ellipse_sdf(float2 pt, float2 radii) {
 struct CornerEllipse {
     float4 radii_y;
     uint on;
-    uint3 pad;
+    uint style;
+    uint2 pad;
 };
 
 struct Quad {
@@ -787,11 +789,6 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     return max(corner_to_point.x, corner_to_point.y);
 }
 
-// KaminIDE patch: a quad with quarter-ellipse corners (css-backgrounds-3
-// §5.1): `corner_radii` the horizontal radii, `ellipse.radii_y` the vertical
-// ones. The border's inner edge is the box inset by the four border widths
-// with each corner's radii shrunk by the widths of its two sides (§5.4); a
-// solid border lies over the background between the two edges.
 // KaminIDE patch: `v` rounded to the nearest of the 256 steps of an 8-bit
 // unorm channel, as a target of that format stores it.
 float4 q8(float4 v) {
@@ -799,6 +796,30 @@ float4 q8(float4 v) {
     return steps;
 }
 
+// KaminIDE patch: distance to the edge of the quad's box inset by `inset`
+// (left, top, right, bottom), each corner's radii `r` shrunk by the insets of
+// its two sides (css-backgrounds-3 §5.4); far outside when nothing is left.
+float inset_ellipse_sdf(float2 center_to_point, float2 half_size, float4 inset, float2 r,
+                        bool left, bool top) {
+    precise float2 inner_min = inset.xy - half_size;
+    precise float2 inner_max = half_size - inset.zw;
+    precise float2 inner_half = (inner_max - inner_min) / 2.;
+    if (inner_half.x <= 0.0 || inner_half.y <= 0.0) {
+        return 1.0e6;
+    }
+    float2 side = float2(left ? inset.x : inset.z, top ? inset.y : inset.w);
+    precise float2 inner_point = center_to_point - (inner_min + inner_max) / 2.;
+    precise float d = ellipse_box_sdf(abs(inner_point) - inner_half, max(r - side, 0.0));
+    return d;
+}
+
+// KaminIDE patch: a quad with quarter-ellipse corners (css-backgrounds-3
+// §5.1): `corner_radii` the horizontal radii, `ellipse.radii_y` the vertical
+// ones. The border's inner edge is the box inset by the four border widths
+// with each corner's radii shrunk by the widths of its two sides (§5.4); a
+// solid border lies over the background between the two edges. A double one
+// (`ellipse.style` 1, §4.2) is two such rings: the outer line a third of each
+// width (rounded, as `apply::double_border` does), the inner line as wide.
 float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background_color,
                              float4 border_color) {
     precise float2 half_size = quad.bounds.size / 2.;
@@ -808,22 +829,27 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
     float rx = pick_corner_radius(center_to_point, quad.corner_radii);
     float ry = top ? (left ? quad.ellipse.radii_y.x : quad.ellipse.radii_y.y)
                    : (left ? quad.ellipse.radii_y.w : quad.ellipse.radii_y.z);
-    precise float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
+    float2 r = float2(rx, ry);
+    precise float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, r);
     float4 color = background_color;
     float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
                           quad.border_widths.right, quad.border_widths.bottom);
-    if (any(edges != 0.0)) {
-        float2 inner_min = edges.xy - half_size;
-        float2 inner_max = half_size - edges.zw;
-        float2 inner_half = (inner_max - inner_min) / 2.;
-        float2 side = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
-        float inner_sdf = 1.0e6;
-        if (inner_half.x > 0.0 && inner_half.y > 0.0) {
-            float2 inner_point = center_to_point - (inner_min + inner_max) / 2.;
-            inner_sdf = ellipse_box_sdf(abs(inner_point) - inner_half, max(float2(rx, ry) - side, 0.0));
+    // The border's share of the pixel's coverage: the coverage between its
+    // edges over the box's (Skia draws the ring as the outer shape minus the
+    // inner one). Where a side has no width the edges meet, and the
+    // antialiased pixel there takes no border colour.
+    precise float covered = saturate(0.5 - outer_sdf);
+    if (any(edges != 0.0) && covered > 0.0) {
+        precise float inner = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges, r, left, top));
+        precise float ring = covered - inner;
+        if (quad.ellipse.style == 1u) {
+            float4 line_width = round(edges / 3.0);
+            precise float outer_line = covered - saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, line_width, r, left, top));
+            precise float inner_line = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges - line_width, r, left, top)) - inner;
+            ring = max(outer_line, 0.0) + max(inner_line, 0.0);
         }
         float4 blended_border = over(background_color, border_color);
-        color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
+        color = lerp(background_color, blended_border, saturate(ring / covered));
     }
     // Premultiplied output, drawn with the premultiplied blender
     // (`draw_quads`): the values the masked group it replaces hands the
@@ -831,7 +857,7 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
     // its mask the coverage in 8-bit steps, and its composite multiplies the
     // two (`group_source_with`).
     precise float4 p8 = q8(float4(color.rgb * color.a, color.a));
-    precise float m8 = q8(float4(saturate(0.5 - outer_sdf), 0.0, 0.0, 0.0)).x;
+    precise float m8 = q8(float4(covered, 0.0, 0.0, 0.0)).x;
     precise float4 source = p8 * m8;
     return source;
 }

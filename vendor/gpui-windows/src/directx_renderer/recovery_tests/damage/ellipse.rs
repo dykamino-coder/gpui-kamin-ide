@@ -50,7 +50,7 @@ fn elliptical(color: Hsla) -> Scene {
         bottom_right: ScaledPixels(br.0),
         bottom_left: ScaledPixels(bl.0),
     };
-    q.ellipse = CornerEllipse { radii_y: [tl.1, tr.1, br.1, bl.1], on: 1, pad: [0; 3] };
+    q.ellipse = CornerEllipse { radii_y: [tl.1, tr.1, br.1, bl.1], on: 1, ..Default::default() };
     s.quads.push(q);
     s
 }
@@ -96,6 +96,47 @@ fn drawn(device: &DirectXDevices, scene: Scene) -> Vec<u8> {
     s.note_frame_damage(&Scene::default(), 1, (W, H));
     r.draw(&s, WindowBackgroundAppearance::Opaque).unwrap();
     target_bytes(&mut r)
+}
+
+/// An opaque white box with a 9px red border on the right only, `double`
+/// when `double`: the box spans x 20..140, so the lines are x 131..134 and
+/// 137..140 with the gap 134..137.
+fn bordered(double: bool) -> Scene {
+    let mut s = elliptical(hsla(0., 0., 1., 1.));
+    let q = &mut s.quads[0];
+    q.border_widths = gpui::Edges { right: ScaledPixels(9.), ..Default::default() };
+    q.border_color = hsla(0., 1., 0.5, 1.);
+    q.ellipse.style = u32::from(double);
+    s
+}
+
+/// A double border draws its two lines and leaves the gap between them to
+/// the background; the antialiased pixels of the sides without width take
+/// no border colour; GPU and WARP draw the same frame.
+#[test]
+fn an_elliptical_double_border_draws_two_lines_and_a_gap() {
+    let gpu = DirectXDevices::new().unwrap();
+    let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
+    let plain = drawn(&gpu, elliptical(hsla(0., 0., 1., 1.)));
+    for double in [false, true] {
+        let frames = [&gpu, &warp].map(|d| drawn(d, bordered(double)));
+        assert!(frames[0] == frames[1], "double {double}: {} pixels differ between the adapters", differing(&frames[0], &frames[1]));
+        let at = |x: usize, y: usize| (y * W as usize + x) * 4;
+        let px = |x: usize, y: usize| [frames[0][at(x, y)], frames[0][at(x, y) + 1], frames[0][at(x, y) + 2]];
+        // Between the right corners (y 65..70): outer line, gap, inner line.
+        let (red, white) = ([255, 0, 0], [255, 255, 255]);
+        assert_eq!(px(138, 67), red, "double {double}: outer line");
+        assert_eq!(px(135, 67), if double { white } else { red }, "double {double}: gap");
+        assert_eq!(px(132, 67), red, "double {double}: inner line");
+        assert_eq!(px(128, 67), white, "double {double}: background");
+        // Left of the bottom right corner (x 80..140) the frame is the borderless box's,
+        // antialiased corner pixels included.
+        for y in 0..H as usize {
+            for x in 0..80 {
+                assert_eq!(frames[0][at(x, y)..at(x, y) + 4], plain[at(x, y)..at(x, y) + 4], "double {double}: border colour at {x},{y}");
+            }
+        }
+    }
 }
 
 /// A circular quad of the existing path: the reference for how far two

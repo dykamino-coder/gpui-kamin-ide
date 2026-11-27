@@ -64,10 +64,21 @@ impl Computed {
     pub fn ellipse_quad_refusal(&self) -> Option<&'static str> {
         let b = &self.reset_border;
         let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
-        let solid = b
-            .border_side_styles
+        // Solid, or `double` on every painted side at least 3px wide (two
+        // lines and a gap, `apply::double_border`); narrower double sides
+        // paint solid there and here alike.
+        let widths = {
+            let w = self.borders();
+            [w.top, w.right, w.bottom, w.left].map(px_lossy_zero)
+        };
+        let styles = b.border_side_styles;
+        let doubled = (0..4).any(|i| widths[i] > 0.0 && styles[i] == Some(10));
+        let double_whole =
+            (0..4).all(|i| widths[i] <= 0.0 || (styles[i] == Some(10) && widths[i] >= 3.0));
+        let solid = styles
             .iter()
-            .all(|s| matches!(s, None | Some(0 | 1 | 9)));
+            .all(|s| matches!(s, None | Some(0 | 1 | 9 | 10)))
+            && (!doubled || double_whole);
         let one_colour = b.border_colors.iter().all(|c| *c == b.border_colors[0]);
         let calc = |l: &Len| matches!(l, Len::Calc(_));
         let calculated = [b.radius.tl, b.radius.tr, b.radius.br, b.radius.bl]

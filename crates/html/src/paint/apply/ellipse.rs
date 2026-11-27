@@ -29,5 +29,6 @@ pub(crate) fn ellipse_radii(c: &Computed, vcx: ValueCx<'_>) -> gpui::EllipseRadi
     gpui::EllipseRadii {
         x: pairs.map(|(x, _)| length(x)),
         y: pairs.map(|(_, y)| length(y)),
+        double: false,
     }
 }

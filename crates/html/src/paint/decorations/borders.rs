@@ -58,6 +58,25 @@ pub(crate) fn box_borders(
     // `BorderEdge::GetDoubleBorderStripeWidths`: 50 → 17/16/17, 5 → 2/1/2).
     // Квад и слой рамки её не красят (`apply::double_border`).
     if let Some((colour, [t, r, b, l])) = crate::paint::apply::double_border(c, vcx) {
+        if c.radius_elliptic(vcx) {
+            // One quad draws both lines along the elliptical corners.
+            let mut layer = div()
+                .absolute()
+                .top(px(-t))
+                .left(px(-l))
+                .right(px(-r))
+                .bottom(px(-b))
+                .border_t(px(t))
+                .border_r(px(r))
+                .border_b(px(b))
+                .border_l(px(l))
+                .border_color(colour.to_hsla());
+            let mut radii = crate::paint::apply::ellipse_radii(c, vcx);
+            radii.double = true;
+            layer.style().corner_ellipse = Some(Box::new(radii));
+            out.push(layer.into_any_element());
+            return;
+        }
         let third = |w: f32| (w / 3.0).round();
         let (o_t, o_r, o_b, o_l) = (third(t), third(r), third(b), third(l));
         let mut outer = div()

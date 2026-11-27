@@ -12728,7 +12728,7 @@ index 1366317bc6eaec0ccf0695443d75ca3207353c8f..9f4e8d977296eb4819c26afcca1a50e1
 +
 +    fn randomized_element_tree_property(cx: &mut TestAppContext, seed: u64) {
 diff --git a/vendor/gpui/src/scene.rs b/vendor/gpui/src/scene.rs
-index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc027efc2b2
+index 160587a4ad924f80c2dd01b90a8300febbc13105..e865b1764390bea370b136626d29dd6a3ae75ad9
 --- a/vendor/gpui/src/scene.rs
 +++ b/vendor/gpui/src/scene.rs
 @@ -2,0 +3,45 @@
@@ -14039,7 +14039,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc0
 +}
 +
 +#[derive(Default, Debug, Copy, Clone, PartialEq)]
-@@ -543,0 +1741,32 @@
+@@ -543,0 +1741,35 @@
 +    /// KaminIDE patch: elliptical corners (`CornerEllipse`); off: circular.
 +    pub ellipse: CornerEllipse,
 +    /// KaminIDE patch: преобразование квада (`transform` в CSS).
@@ -14070,27 +14070,30 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc0
 +    pub radii_y: [f32; 4],
 +    /// Nonzero: the corners are the ellipses `corner_radii` by `radii_y`.
 +    pub on: u32,
++    /// The border's style: 0 solid, 1 double (two lines of a third of the
++    /// width each, css-backgrounds-3 §4.2).
++    pub style: u32,
 +    /// Layout padding to 16 bytes (`shaders.hlsl`).
-+    pub pad: [u32; 3],
-@@ -552 +1781 @@
++    pub pad: [u32; 2],
+@@ -552 +1784 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -571 +1800 @@
+@@ -571 +1803 @@
 -#[derive(Debug, Copy, Clone)]
 +#[derive(Debug, Copy, Clone, PartialEq)]
-@@ -580,0 +1810,5 @@
+@@ -580,0 +1813,5 @@
 +    /// KaminIDE patch (теперь и upstream): коробка самого элемента. Кроме
 +    /// внутренней тени upstream, ею же вырезается наружная тень — она не
 +    /// рисуется ПОД коробкой (css-backgrounds-3 §box-shadow: «the shadow is
 +    /// not painted inside the border box»; Blink `ClipToBorderEdge`). Наш
 +    /// прежний `box_bounds` слит в это поле.
-@@ -602,0 +1837,5 @@
+@@ -602,0 +1840,5 @@
 +    /// KaminIDE patch: точечная рамка (`border-style: dotted`).
 +    ///
 +    /// Тот же штриховой узор, но с квадратной ячейкой: штрих равен зазору,
 +    /// а не вдвое длиннее. Номер обязан совпадать с веткой шейдера.
 +    Dotted = 2,
-@@ -649,0 +1889,12 @@
+@@ -649,0 +1892,12 @@
 +            translation: [0.0, 0.0],
 +        })
 +    }
@@ -14103,19 +14106,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc0
 +    pub fn skew(self, x: Radians, y: Radians) -> Self {
 +        self.compose(Self {
 +            rotation_scale: [[1.0, x.0.tan()], [y.0.tan(), 1.0]],
-@@ -708 +1959 @@
+@@ -708 +1962 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -727 +1978 @@
+@@ -727 +1981 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -746 +1997 @@
+@@ -746 +2000 @@
 -#[derive(Copy, Clone, Debug)]
 +#[derive(Copy, Clone, Debug, PartialEq)]
-@@ -751 +2002 @@
+@@ -751 +2005 @@
 -    pub pad: u32,
 +    pub pad: u32, // KaminIDE patch: ABI-aligned sampling flags: bit 0 selects nearest texel
-@@ -757,0 +2009,59 @@
+@@ -757,0 +2012,59 @@
 +    /// KaminIDE patch: a repeated image (`Window::with_sprite_pattern`): the
 +    /// image fills cells of this size laid from `bounds.origin` over all of
 +    /// `bounds`, each cell exactly as a sprite of that cell would draw it.
@@ -14175,7 +14178,7 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc0
 +    pub fn size(&self) -> (i32, i32) {
 +        (self.0.bounds.size.width.0, self.0.bounds.size.height.0)
 +    }
-@@ -773,0 +2084,23 @@
+@@ -773,0 +2087,23 @@
 +    /// KaminIDE patch: на Windows Surface-примитив переиспользован под
 +    /// backdrop blur — скругление маски композита.
 +    #[cfg(not(target_os = "macos"))]
@@ -14199,19 +14202,19 @@ index 160587a4ad924f80c2dd01b90a8300febbc13105..a25e4f9169236c23b20570c7f264ebc0
 +    /// единица; 0 — обрезка многоугольником самой группы.
 +    #[cfg(not(target_os = "macos"))]
 +    pub fragment: u32,
-@@ -795,0 +2129,2 @@
+@@ -795,0 +2132,2 @@
 +    /// Original color coordinates and destination-to-source matrix for vector presentation.
 +    pub color_mapping: Option<(Bounds<P>, TransformationMatrix)>,
-@@ -815,0 +2151 @@
+@@ -815,0 +2154 @@
 +            color_mapping: None,
-@@ -835,0 +2172,6 @@
+@@ -835,0 +2175,6 @@
 +            color_mapping: self.color_mapping.as_ref().map(|(bounds, matrix)| {
 +                let mut matrix = *matrix;
 +                matrix.translation[0] *= factor;
 +                matrix.translation[1] *= factor;
 +                (bounds.scale(factor), matrix)
 +            }),
-@@ -949,0 +2292,63 @@
+@@ -949,0 +2295,63 @@
 +
 +/// KaminIDE patch: the primitives of `scene` in the order its batches draw
 +/// them, a retained layer's in its place (`Window::painted_sequence`): each
@@ -24551,7 +24554,7 @@ index 0000000000000000000000000000000000000000..c03e6ba7d21aaea61b2631ce1b1e82e5
 +    multiply(multiply(expand(m), h), expand(inverse))
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d34b71e826
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..385c9cf2abc0a8db3d93c59a392abc5ceef7bb2f
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
 @@ -0,0 +1,4 @@
@@ -24983,7 +24986,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +            Some(e) => {
 +                let (x, y) = e.to_pixels(bounds.size, rem_size);
 +                let [top_left, top_right, bottom_right, bottom_left] = x;
-+                (Corners { top_left, top_right, bottom_right, bottom_left }, Some(y))
++                (Corners { top_left, top_right, bottom_right, bottom_left }, Some((y, u32::from(e.double))))
 +            }
 +            None => (self.corner_radii.to_pixels(rem_size).clamp_radii_for_quad_size(bounds.size), None),
 +        };
@@ -25084,7 +25087,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +        }
 +
 +        border_snap::paint(self, bounds, corner_radii, rem_size, window);
-@@ -770,0 +1174,29 @@
+@@ -770,0 +1174,32 @@
 +/// KaminIDE patch: the radii of a box's quarter-ellipse corners (top left,
 +/// top right, bottom right, bottom left; css-backgrounds-3 §5.1): `x`
 +/// horizontal, a fraction of the box's width, `y` vertical, of its height.
@@ -25096,6 +25099,9 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +    pub x: [DefiniteLength; 4],
 +    /// Vertical radius per corner.
 +    pub y: [DefiniteLength; 4],
++    /// The border is `double` (css-backgrounds-3 §4.2): two lines of a third
++    /// of each side's width, the quad drawing both along the corners.
++    pub double: bool,
 +}
 +
 +impl EllipseRadii {
@@ -25114,20 +25120,20 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +    }
 +}
 +
-@@ -773,0 +1206,2 @@
+@@ -773,0 +1209,2 @@
 +            safe_alignment: (false, false, false, false),
 +            safe_justify_alignment: (false, false),
-@@ -779,0 +1214 @@
+@@ -779,0 +1217 @@
 +            overflow_clip_offset: None,
-@@ -781,0 +1217 @@
+@@ -781,0 +1220 @@
 +            kamin_scrollbars: KaminScrollbars::default(),
-@@ -791,0 +1228,5 @@
+@@ -791,0 +1231,5 @@
 +            aspect_ratio_preferred_size: [None; 2],
 +            sizing_keywords: [None; 2],
 +            max_sizing_keywords: [None; 2],
 +            min_sizing_keywords: [None; 2],
 +            contained_intrinsic_size: [None; 2],
-@@ -797,0 +1239,8 @@
+@@ -797,0 +1242,8 @@
 +            // KaminIDE patch
 +            justify_items: None,
 +            justify_self: None,
@@ -25136,7 +25142,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +            grid_auto_cols: None,
 +            grid_auto_cols_list: Vec::new(),
 +            grid_auto_rows_list: Vec::new(),
-@@ -800,0 +1250,23 @@
+@@ -800,0 +1253,23 @@
 +            flex_balance_lines: 0,
 +            flex_cross_reverse: false,
 +            block_baselines: false,
@@ -25160,35 +25166,35 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d3
 +            block_flow: None,
 +            grid_subgrid: 0,
 +            grid_line_names: None,
-@@ -802,0 +1275 @@
+@@ -802,0 +1278 @@
 +            item_is_table: false,
-@@ -806,0 +1280 @@
+@@ -806,0 +1283 @@
 +            snap_to_device_pixels: false,
-@@ -807,0 +1282 @@
+@@ -807,0 +1285 @@
 +            corner_ellipse: None,
-@@ -808,0 +1284 @@
+@@ -808,0 +1287 @@
 +            inset_box_shadow: Default::default(),
-@@ -813,0 +1290,4 @@
+@@ -813,0 +1293,4 @@
 +            grid_cols_min: None,
 +            grid_cols_fit: false,
 +            grid_template_cols: None,
 +            grid_template_rows: None,
-@@ -1059,0 +1540,3 @@
+@@ -1059,0 +1543,3 @@
 +    /// KaminIDE patch: `last baseline` — выравнивание по ПОСЛЕДНИМ базовым
 +    /// линиям с прижимом группы к концу оси (css-align-3 §4.2, §9.3).
 +    LastBaseline,
-@@ -1133,0 +1617,4 @@
+@@ -1133,0 +1620,4 @@
 +    /// KaminIDE patch: a block container that establishes a new block formatting context
 +    /// (`display: flow-root`, css-display-3 §2.2): its margins never collapse with its
 +    /// children's or through it (CSS 2.1 §8.3.1).
 +    FlowRoot,
-@@ -1258,0 +1746 @@
+@@ -1258,0 +1749 @@
 +            AlignItems::LastBaseline => Self::LAST_BASELINE,
-@@ -1282,0 +1771 @@
+@@ -1282,0 +1774 @@
 +            Display::FlowRoot => Self::FlowRoot,
 diff --git a/vendor/gpui/src/style/border_snap.rs b/vendor/gpui/src/style/border_snap.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2b23a9a17aaadc83d333012eb4db949aa250c2d4
+index 0000000000000000000000000000000000000000..be152fa0c67df15ba8c4cf0936e7f328ec131f04
 --- /dev/null
 +++ b/vendor/gpui/src/style/border_snap.rs
 @@ -0,0 +1,162 @@
@@ -25283,7 +25289,7 @@ index 0000000000000000000000000000000000000000..2b23a9a17aaadc83d333012eb4db949a
 +        // `box-shadow-multiple-001`). Clamping each strip at the box middle
 +        // keeps the union equal to the box.
 +        // An elliptical corner reaches `radii_y` down (`Window::with_corner_ellipse`).
-+        let max_radius_y = window.corner_ellipse.map_or(Pixels::ZERO, |r| r.into_iter().fold(Pixels::ZERO, Pixels::max));
++        let max_radius_y = window.corner_ellipse.map_or(Pixels::ZERO, |(r, _)| r.into_iter().fold(Pixels::ZERO, Pixels::max));
 +        let band = max_border_width.max(max_corner_radius).max(max_radius_y);
 +        let mid_y = bounds.origin.y + bounds.size.height / 2.0;
 +        let mid_x = bounds.origin.x + bounds.size.width / 2.0;
@@ -34230,7 +34236,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e1a87eff3f99e19fab93582738273970
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..43aa319211bdc5149190f119fa8474285cfe8935
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f5a894e5d31cc2af148fde58801edb90250240a6
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -34538,7 +34544,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..43aa319211bdc5149190f119fa847428
 +    pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
 @@ -1190,0 +1453,29 @@
 +    /// KaminIDE patch: vertical corner radii (logical px) of the quads now painted (`with_corner_ellipse`).
-+    pub(crate) corner_ellipse: Option<[Pixels; 4]>,
++    pub(crate) corner_ellipse: Option<([Pixels; 4], u32)>,
 +    /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
 +    pub(crate) box_fill: Option<Bounds<Pixels>>,
 +    /// KaminIDE patch: the hover hitbox of the box whose own paint opens a run next (layer_box).
@@ -35510,9 +35516,9 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..43aa319211bdc5149190f119fa847428
 +    /// KaminIDE patch: paint `f` with elliptical corners: every quad it
 +    /// paints takes `radii_y` (logical px; top left, top right, bottom
 +    /// right, bottom left) as the vertical radii of its corners, its own
-+    /// corner radii being the horizontal ones (`CornerEllipse`). `None`
++    /// corner radii being the horizontal ones, and `style` as its border's
 +    /// paints circular corners.
-+    pub fn with_corner_ellipse<R>(&mut self, radii_y: Option<[Pixels; 4]>, f: impl FnOnce(&mut Self) -> R) -> R {
++    pub fn with_corner_ellipse<R>(&mut self, radii_y: Option<([Pixels; 4], u32)>, f: impl FnOnce(&mut Self) -> R) -> R {
 +        let previous = std::mem::replace(&mut self.corner_ellipse, radii_y);
 +        self.with_restore(previous, |window, previous| window.corner_ellipse = *previous, f).0
 +    }
@@ -35803,7 +35809,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..43aa319211bdc5149190f119fa847428
 +            border_widths: quad.border_widths.scale(scale_factor),
 @@ -4564,0 +5698,4 @@
 +            ellipse: match self.corner_ellipse {
-+                Some(r) => crate::CornerEllipse { radii_y: r.map(|v| (v * scale_factor).0), on: 1, pad: [0; 3] },
++                Some((r, style)) => crate::CornerEllipse { radii_y: r.map(|v| (v * scale_factor).0), on: 1, style, pad: [0; 2] },
 +                None => crate::CornerEllipse::default(),
 +            },
 @@ -4567,2 +5704,8 @@
