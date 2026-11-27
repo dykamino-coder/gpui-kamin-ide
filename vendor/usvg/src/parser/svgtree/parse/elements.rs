@@ -203,6 +203,7 @@ pub(crate) fn parse_svg_element<'input>(
         }
     }
 
+    super::root::apply(parent_id, tag_name, attrs_start_idx, doc);
     let node_id = doc.append(
         parent_id,
         NodeKind::Element {
@@ -210,7 +211,6 @@ pub(crate) fn parse_svg_element<'input>(
             attributes: ShortRange::new(attrs_start_idx as u32, doc.attrs.len() as u32),
         },
     );
-
     Ok(node_id)
 }
 

@@ -9,9 +9,10 @@ use gpui::{
     size,
 };
 
-pub(super) fn element(e: &Element, frame: FrameCx<'_>) -> AnyElement {
+pub(super) fn element(input: super::SvgContent<'_>, frame: FrameCx<'_>) -> AnyElement {
     UsedSvg {
-        element: e.clone(),
+        element: input.element.clone(),
+        root_paint: input.root_paint,
         frame: frame.keep(),
     }
     .hooked()
@@ -29,6 +30,7 @@ pub(super) fn needs_used_size(e: &Element) -> bool {
 
 struct UsedSvg {
     element: Element,
+    root_paint: super::RootPaint,
     frame: FrameDoc,
 }
 
@@ -111,7 +113,10 @@ impl Hooks for UsedSvg {
         let dimensions = window.layout_size_unrounded(*id);
         let origin = window.layout_origin_unrounded(*id);
         let mut image = super::element_sized(
-            &self.element,
+            super::SvgContent {
+                element: &self.element,
+                root_paint: self.root_paint,
+            },
             self.frame.frame(),
             (dimensions.width.into(), dimensions.height.into()),
         )?;

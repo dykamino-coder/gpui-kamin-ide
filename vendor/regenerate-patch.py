@@ -95,6 +95,7 @@ FIXES = {
         "Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.",
         "Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.",
         "Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.",
+        "Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.",
         "Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).",
     ],
     "gpui-windows": [
@@ -131,6 +132,7 @@ FIXES = {
         "Damage redraw: the target keeps the last frame and every buffer (offscreen texture or flip-model back buffer) carries the damage accumulated since it was drawn; a frame is drawn only within that rectangle under a scissor, groups whose composite cannot reach it are skipped, and an unchanged frame is neither drawn nor presented. A different size, background, opaque backdrop, atlas epoch (removed tiles, replaced or forgotten external textures, device loss), a sampled external texture, a failed pass or GPUI_DAMAGE_REDRAW=0 draw the whole frame. Frame capture keeps one staging texture per size. Group images stay in the group atlas between frames: a group matched with a group of the last frame (Scene::group_base) keeps that group's atlas rectangle and image and is not drawn again; the other groups take free space on the shelves of the last full layout, and the atlas is packed again when they do not fit.",
         "Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.",
         "Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.",
+        "Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.",
         "Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.",
     ],
     "gpui-base": [
@@ -197,6 +199,7 @@ FIXES = {
         "Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).",
     ],
     "usvg": [
+        "CSS root compositing: accept a typed computed opacity before resolving explicit inheritance, then leave only the root group to its external paint owner; nested SVG resources retain their own context.",
         "Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.",
         "Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.",
         "CSS drop-shadow(): expand the region for the offset and blur support instead of clipping to the default SVG filter region.",

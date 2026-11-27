@@ -32,10 +32,10 @@ impl ChildBuild {
     /// Содержимое встроенного SVG, включая HTML foreign objects.
     pub(crate) fn svg(
         &self,
-        e: &Element,
+        input: super::SvgContent<'_>,
         opts: &crate::layout::options::RenderOpts,
     ) -> Option<AnyElement> {
-        (self.svg)(e, opts)
+        (self.svg)(input, opts)
     }
 
     /// Предпочтительные размеры содержимого с учётом replaced/native-коробки и наследования.

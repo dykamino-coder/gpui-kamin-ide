@@ -28,7 +28,12 @@ struct Totals {
     window_px: f64,
     /// Why frames were drawn whole, by reason.
     full_by: Vec<(&'static str, u64)>,
+    /// Pixels of the path intermediate the path batches cleared and drew.
+    path_intermediate_px: f64,
 }
+
+/// The index of path batches in [`KINDS`].
+const PATHS: usize = 2;
 
 /// How a planned frame reaches the target ([`BatchCost::plan`]).
 #[derive(Clone, Copy)]
@@ -68,6 +73,12 @@ impl BatchCost {
             k.prims += prims as u64;
             k.area_px += area_px;
         });
+    }
+
+    /// A path batch worked within `px` pixels of its intermediate (0: it
+    /// reached nothing and drew nothing).
+    pub fn intermediate(&self, px: f64) {
+        self.with(|t| t.path_intermediate_px += px);
     }
 
     /// The plan of a window frame of `window_px` pixels: how much is painted
@@ -156,17 +167,25 @@ impl BatchCost {
         let kinds = KINDS
             .iter()
             .zip(t.kinds.iter())
-            .filter(|(_, k)| k.batches > 0)
-            .map(|(name, k)| {
+            .enumerate()
+            .filter(|(_, (_, k))| k.batches > 0)
+            .map(|(i, (name, k))| {
                 let gpu = if t.timed_frames > 0 {
                     format!(" gpu_us={:.0}", k.gpu_ns / timed / 1000.0)
                 } else {
                     String::new()
                 };
+                // Batches per frame; for paths also the intermediate area they used.
+                let mid = if i == PATHS {
+                    format!(" mid_kpx={:.0}", per(t.path_intermediate_px) / 1000.0)
+                } else {
+                    String::new()
+                };
                 format!(
-                    "{name}: n={:.0} kpx={:.0}{gpu}",
+                    "{name}: n={:.0} kpx={:.0} b={:.0}{mid}{gpu}",
                     per(k.prims as f64),
-                    per(k.area_px) / 1000.0
+                    per(k.area_px) / 1000.0,
+                    per(k.batches as f64)
                 )
             })
             .collect::<Vec<_>>()
@@ -209,29 +228,5 @@ fn plan_summary(t: &Totals) -> String {
 }
 
 #[cfg(test)]
-mod plan_tests {
-    use super::{BatchCost, FramePlan};
-
-    #[test]
-    fn a_period_of_kept_frames_still_reports_its_plan() {
-        let cost = BatchCost::default();
-        cost.plan(FramePlan::Keep, 1000.0);
-        let line = cost.take_line().unwrap();
-        assert!(line.contains("plan keep=1 full=0 within=0"), "{line}");
-        assert!(cost.take_line().is_none());
-    }
-
-    #[test]
-    fn painted_area_is_the_mean_of_drawn_frames_with_reasons() {
-        let cost = BatchCost::default();
-        cost.frame();
-        cost.frame();
-        cost.plan(FramePlan::Full("external"), 4_000_000.0);
-        cost.plan(FramePlan::Within(10_000.0), 4_000_000.0);
-        let line = cost.take_line().unwrap();
-        assert!(
-            line.contains("full=1 within=1 painted_kpx=2005 window_kpx=4000 full_by=external:1"),
-            "{line}"
-        );
-    }
-}
+#[path = "batch_cost/plan_tests.rs"]
+mod plan_tests;

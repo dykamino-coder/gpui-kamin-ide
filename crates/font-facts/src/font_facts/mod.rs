@@ -8,6 +8,7 @@ use std::rc::Rc;
 /// Маркер CSS-подбора веса для адаптера платформы.
 pub const CSS_WEIGHT_TAG: (&str, u32) = ("cssw", 1);
 
+pub mod coverage;
 mod descriptors;
 mod key;
 pub mod matching;

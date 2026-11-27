@@ -84,6 +84,8 @@ mod record_release_tests;
 #[cfg(test)]
 mod replaced_max_width_tests;
 #[cfg(test)]
+mod replaced_owner_tests;
+#[cfg(test)]
 mod slot_display_tests;
 pub use prepared::UpdatePhase;
 #[cfg(test)]
@@ -95,6 +97,8 @@ mod band_value_tests;
 mod record;
 pub(crate) use record::frame_miss_code;
 mod builder;
+#[cfg(test)]
+mod line_split_tests;
 #[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
