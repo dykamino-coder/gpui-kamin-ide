@@ -3991,13 +3991,13 @@ function sweepOutputDirectory(directory = outputDirectory(), now = Date.now(), c
     const file = import_node_path4.default.join(directory, name);
     if (activeFiles.has(file)) continue;
     try {
-      const stat = import_node_fs4.default.statSync(file);
-      if (!stat.isFile()) continue;
-      if (now - stat.mtimeMs > STALE_MS) {
+      const stat2 = import_node_fs4.default.statSync(file);
+      if (!stat2.isFile()) continue;
+      if (now - stat2.mtimeMs > STALE_MS) {
         import_node_fs4.default.unlinkSync(file);
         removed++;
       } else {
-        kept.push({ file, size: stat.size, mtime: stat.mtimeMs });
+        kept.push({ file, size: stat2.size, mtime: stat2.mtimeMs });
       }
     } catch {
     }
@@ -4537,17 +4537,17 @@ var require_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    function visit_(key2, node, visitor, path59) {
-      const ctrl = callVisitor(key2, node, visitor, path59);
+    function visit_(key2, node, visitor, path60) {
+      const ctrl = callVisitor(key2, node, visitor, path60);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key2, path59, ctrl);
-        return visit_(key2, ctrl, visitor, path59);
+        replaceNode(key2, path60, ctrl);
+        return visit_(key2, ctrl, visitor, path60);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path59 = Object.freeze(path59.concat(node));
+          path60 = Object.freeze(path60.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = visit_(i, node.items[i], visitor, path59);
+            const ci = visit_(i, node.items[i], visitor, path60);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -4558,13 +4558,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path59 = Object.freeze(path59.concat(node));
-          const ck = visit_("key", node.key, visitor, path59);
+          path60 = Object.freeze(path60.concat(node));
+          const ck = visit_("key", node.key, visitor, path60);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = visit_("value", node.value, visitor, path59);
+          const cv = visit_("value", node.value, visitor, path60);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -4585,17 +4585,17 @@ var require_visit = __commonJS({
     visitAsync.BREAK = BREAK;
     visitAsync.SKIP = SKIP;
     visitAsync.REMOVE = REMOVE;
-    async function visitAsync_(key2, node, visitor, path59) {
-      const ctrl = await callVisitor(key2, node, visitor, path59);
+    async function visitAsync_(key2, node, visitor, path60) {
+      const ctrl = await callVisitor(key2, node, visitor, path60);
       if (identity.isNode(ctrl) || identity.isPair(ctrl)) {
-        replaceNode(key2, path59, ctrl);
-        return visitAsync_(key2, ctrl, visitor, path59);
+        replaceNode(key2, path60, ctrl);
+        return visitAsync_(key2, ctrl, visitor, path60);
       }
       if (typeof ctrl !== "symbol") {
         if (identity.isCollection(node)) {
-          path59 = Object.freeze(path59.concat(node));
+          path60 = Object.freeze(path60.concat(node));
           for (let i = 0; i < node.items.length; ++i) {
-            const ci = await visitAsync_(i, node.items[i], visitor, path59);
+            const ci = await visitAsync_(i, node.items[i], visitor, path60);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -4606,13 +4606,13 @@ var require_visit = __commonJS({
             }
           }
         } else if (identity.isPair(node)) {
-          path59 = Object.freeze(path59.concat(node));
-          const ck = await visitAsync_("key", node.key, visitor, path59);
+          path60 = Object.freeze(path60.concat(node));
+          const ck = await visitAsync_("key", node.key, visitor, path60);
           if (ck === BREAK)
             return BREAK;
           else if (ck === REMOVE)
             node.key = null;
-          const cv = await visitAsync_("value", node.value, visitor, path59);
+          const cv = await visitAsync_("value", node.value, visitor, path60);
           if (cv === BREAK)
             return BREAK;
           else if (cv === REMOVE)
@@ -4639,23 +4639,23 @@ var require_visit = __commonJS({
       }
       return visitor;
     }
-    function callVisitor(key2, node, visitor, path59) {
+    function callVisitor(key2, node, visitor, path60) {
       if (typeof visitor === "function")
-        return visitor(key2, node, path59);
+        return visitor(key2, node, path60);
       if (identity.isMap(node))
-        return visitor.Map?.(key2, node, path59);
+        return visitor.Map?.(key2, node, path60);
       if (identity.isSeq(node))
-        return visitor.Seq?.(key2, node, path59);
+        return visitor.Seq?.(key2, node, path60);
       if (identity.isPair(node))
-        return visitor.Pair?.(key2, node, path59);
+        return visitor.Pair?.(key2, node, path60);
       if (identity.isScalar(node))
-        return visitor.Scalar?.(key2, node, path59);
+        return visitor.Scalar?.(key2, node, path60);
       if (identity.isAlias(node))
-        return visitor.Alias?.(key2, node, path59);
+        return visitor.Alias?.(key2, node, path60);
       return void 0;
     }
-    function replaceNode(key2, path59, node) {
-      const parent = path59[path59.length - 1];
+    function replaceNode(key2, path60, node) {
+      const parent = path60[path60.length - 1];
       if (identity.isCollection(parent)) {
         parent.items[key2] = node;
       } else if (identity.isPair(parent)) {
@@ -5267,10 +5267,10 @@ var require_Collection = __commonJS({
     var createNode = require_createNode();
     var identity = require_identity();
     var Node = require_Node();
-    function collectionFromPath(schema, path59, value) {
+    function collectionFromPath(schema, path60, value) {
       let v = value;
-      for (let i = path59.length - 1; i >= 0; --i) {
-        const k = path59[i];
+      for (let i = path60.length - 1; i >= 0; --i) {
+        const k = path60[i];
         if (typeof k === "number" && Number.isInteger(k) && k >= 0) {
           const a = [];
           a[k] = v;
@@ -5289,7 +5289,7 @@ var require_Collection = __commonJS({
         sourceObjects: /* @__PURE__ */ new Map()
       });
     }
-    var isEmptyPath = (path59) => path59 == null || typeof path59 === "object" && !!path59[Symbol.iterator]().next().done;
+    var isEmptyPath = (path60) => path60 == null || typeof path60 === "object" && !!path60[Symbol.iterator]().next().done;
     var Collection = class extends Node.NodeBase {
       constructor(type, schema) {
         super(type);
@@ -5319,11 +5319,11 @@ var require_Collection = __commonJS({
        * be a Pair instance or a `{ key, value }` object, which may not have a key
        * that already exists in the map.
        */
-      addIn(path59, value) {
-        if (isEmptyPath(path59))
+      addIn(path60, value) {
+        if (isEmptyPath(path60))
           this.add(value);
         else {
-          const [key2, ...rest] = path59;
+          const [key2, ...rest] = path60;
           const node = this.get(key2, true);
           if (identity.isCollection(node))
             node.addIn(rest, value);
@@ -5337,8 +5337,8 @@ var require_Collection = __commonJS({
        * Removes a value from the collection.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path59) {
-        const [key2, ...rest] = path59;
+      deleteIn(path60) {
+        const [key2, ...rest] = path60;
         if (rest.length === 0)
           return this.delete(key2);
         const node = this.get(key2, true);
@@ -5352,8 +5352,8 @@ var require_Collection = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path59, keepScalar) {
-        const [key2, ...rest] = path59;
+      getIn(path60, keepScalar) {
+        const [key2, ...rest] = path60;
         const node = this.get(key2, true);
         if (rest.length === 0)
           return !keepScalar && identity.isScalar(node) ? node.value : node;
@@ -5371,8 +5371,8 @@ var require_Collection = __commonJS({
       /**
        * Checks if the collection includes a value with the key `key`.
        */
-      hasIn(path59) {
-        const [key2, ...rest] = path59;
+      hasIn(path60) {
+        const [key2, ...rest] = path60;
         if (rest.length === 0)
           return this.has(key2);
         const node = this.get(key2, true);
@@ -5382,8 +5382,8 @@ var require_Collection = __commonJS({
        * Sets a value in this collection. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path59, value) {
-        const [key2, ...rest] = path59;
+      setIn(path60, value) {
+        const [key2, ...rest] = path60;
         if (rest.length === 0) {
           this.set(key2, value);
         } else {
@@ -7898,9 +7898,9 @@ var require_Document = __commonJS({
           this.contents.add(value);
       }
       /** Adds a value to the document. */
-      addIn(path59, value) {
+      addIn(path60, value) {
         if (assertCollection(this.contents))
-          this.contents.addIn(path59, value);
+          this.contents.addIn(path60, value);
       }
       /**
        * Create a new `Alias` node, ensuring that the target `node` has the required anchor.
@@ -7975,14 +7975,14 @@ var require_Document = __commonJS({
        * Removes a value from the document.
        * @returns `true` if the item was found and removed.
        */
-      deleteIn(path59) {
-        if (Collection.isEmptyPath(path59)) {
+      deleteIn(path60) {
+        if (Collection.isEmptyPath(path60)) {
           if (this.contents == null)
             return false;
           this.contents = null;
           return true;
         }
-        return assertCollection(this.contents) ? this.contents.deleteIn(path59) : false;
+        return assertCollection(this.contents) ? this.contents.deleteIn(path60) : false;
       }
       /**
        * Returns item at `key`, or `undefined` if not found. By default unwraps
@@ -7997,10 +7997,10 @@ var require_Document = __commonJS({
        * scalar values from their surrounding node; to disable set `keepScalar` to
        * `true` (collections are always returned intact).
        */
-      getIn(path59, keepScalar) {
-        if (Collection.isEmptyPath(path59))
+      getIn(path60, keepScalar) {
+        if (Collection.isEmptyPath(path60))
           return !keepScalar && identity.isScalar(this.contents) ? this.contents.value : this.contents;
-        return identity.isCollection(this.contents) ? this.contents.getIn(path59, keepScalar) : void 0;
+        return identity.isCollection(this.contents) ? this.contents.getIn(path60, keepScalar) : void 0;
       }
       /**
        * Checks if the document includes a value with the key `key`.
@@ -8011,10 +8011,10 @@ var require_Document = __commonJS({
       /**
        * Checks if the document includes a value at `path`.
        */
-      hasIn(path59) {
-        if (Collection.isEmptyPath(path59))
+      hasIn(path60) {
+        if (Collection.isEmptyPath(path60))
           return this.contents !== void 0;
-        return identity.isCollection(this.contents) ? this.contents.hasIn(path59) : false;
+        return identity.isCollection(this.contents) ? this.contents.hasIn(path60) : false;
       }
       /**
        * Sets a value in this document. For `!!set`, `value` needs to be a
@@ -8031,13 +8031,13 @@ var require_Document = __commonJS({
        * Sets a value in this document. For `!!set`, `value` needs to be a
        * boolean to add/remove the item from the set.
        */
-      setIn(path59, value) {
-        if (Collection.isEmptyPath(path59)) {
+      setIn(path60, value) {
+        if (Collection.isEmptyPath(path60)) {
           this.contents = value;
         } else if (this.contents == null) {
-          this.contents = Collection.collectionFromPath(this.schema, Array.from(path59), value);
+          this.contents = Collection.collectionFromPath(this.schema, Array.from(path60), value);
         } else if (assertCollection(this.contents)) {
-          this.contents.setIn(path59, value);
+          this.contents.setIn(path60, value);
         }
       }
       /**
@@ -9998,9 +9998,9 @@ var require_cst_visit = __commonJS({
     visit.BREAK = BREAK;
     visit.SKIP = SKIP;
     visit.REMOVE = REMOVE;
-    visit.itemAtPath = (cst, path59) => {
+    visit.itemAtPath = (cst, path60) => {
       let item = cst;
-      for (const [field, index] of path59) {
+      for (const [field, index] of path60) {
         const tok = item?.[field];
         if (tok && "items" in tok) {
           item = tok.items[index];
@@ -10009,23 +10009,23 @@ var require_cst_visit = __commonJS({
       }
       return item;
     };
-    visit.parentCollection = (cst, path59) => {
-      const parent = visit.itemAtPath(cst, path59.slice(0, -1));
-      const field = path59[path59.length - 1][0];
+    visit.parentCollection = (cst, path60) => {
+      const parent = visit.itemAtPath(cst, path60.slice(0, -1));
+      const field = path60[path60.length - 1][0];
       const coll = parent?.[field];
       if (coll && "items" in coll)
         return coll;
       throw new Error("Parent collection not found");
     };
-    function _visit(path59, item, visitor) {
-      let ctrl = visitor(item, path59);
+    function _visit(path60, item, visitor) {
+      let ctrl = visitor(item, path60);
       if (typeof ctrl === "symbol")
         return ctrl;
       for (const field of ["key", "value"]) {
         const token = item[field];
         if (token && "items" in token) {
           for (let i = 0; i < token.items.length; ++i) {
-            const ci = _visit(Object.freeze(path59.concat([[field, i]])), token.items[i], visitor);
+            const ci = _visit(Object.freeze(path60.concat([[field, i]])), token.items[i], visitor);
             if (typeof ci === "number")
               i = ci - 1;
             else if (ci === BREAK)
@@ -10036,10 +10036,10 @@ var require_cst_visit = __commonJS({
             }
           }
           if (typeof ctrl === "function" && field === "key")
-            ctrl = ctrl(item, path59);
+            ctrl = ctrl(item, path60);
         }
       }
-      return typeof ctrl === "function" ? ctrl(item, path59) : ctrl;
+      return typeof ctrl === "function" ? ctrl(item, path60) : ctrl;
     }
     exports2.visit = visit;
   }
@@ -13604,12 +13604,12 @@ async function collectPluginModuleTree(pluginRoot, manifest, report = () => {
         continue;
       }
       if (!entry.isFile() || SKIPPED_FILES.has(rel)) continue;
-      const stat = await import_fs4.default.promises.stat(full);
-      if (stat.size > MAX_FILE_BYTES) {
+      const stat2 = await import_fs4.default.promises.stat(full);
+      if (stat2.size > MAX_FILE_BYTES) {
         refusal = `${rel} is larger than ${MAX_FILE_BYTES} bytes`;
         return;
       }
-      total += stat.size;
+      total += stat2.size;
       if (++count > MAX_TREE_FILES || total > MAX_TREE_BYTES) {
         refusal = `the plugin tree exceeds ${MAX_TREE_FILES} files or ${MAX_TREE_BYTES} bytes`;
         return;
@@ -13669,8 +13669,8 @@ function manifestPathRefs(value) {
 }
 async function readText(filePath) {
   try {
-    const stat = await import_fs5.default.promises.stat(filePath);
-    if (!stat.isFile() || stat.size > MAX_TEXT_FILE_BYTES) return void 0;
+    const stat2 = await import_fs5.default.promises.stat(filePath);
+    if (!stat2.isFile() || stat2.size > MAX_TEXT_FILE_BYTES) return void 0;
     return await import_fs5.default.promises.readFile(filePath, "utf-8");
   } catch {
     return void 0;
@@ -13752,19 +13752,19 @@ async function collectComponentFiles(pluginRoot, refs, kind, options) {
   for (const ref2 of refs) {
     const source = safeResolve(pluginRoot, ref2);
     if (!source) continue;
-    let stat;
+    let stat2;
     try {
-      stat = await import_fs5.default.promises.stat(source);
+      stat2 = await import_fs5.default.promises.stat(source);
     } catch {
       continue;
     }
-    const files = stat.isDirectory() ? await walkFiles(source, accept) : stat.isFile() && accept(source) ? [source] : [];
+    const files = stat2.isDirectory() ? await walkFiles(source, accept) : stat2.isFile() && accept(source) ? [source] : [];
     for (const filePath of files) {
       const canonical = import_path5.default.resolve(filePath);
       if (sourceSeen.has(canonical)) continue;
       sourceSeen.add(canonical);
       let rel;
-      if (stat.isDirectory()) {
+      if (stat2.isDirectory()) {
         rel = import_path5.default.relative(source, filePath);
         if (kind === "skills" && !rel.includes(import_path5.default.sep)) {
           rel = import_path5.default.join(import_path5.default.basename(source), rel);
@@ -14393,12 +14393,12 @@ var init_executor = __esm({
 });
 
 // src/main/mcp/tools/notebook.ts
-async function readNotebookCapped(path59) {
-  const st = await import_promises2.default.stat(path59);
+async function readNotebookCapped(path60) {
+  const st = await import_promises2.default.stat(path60);
   if (st.size > MAX_NOTEBOOK_BYTES) {
     throw new Error(`Notebook too large (${Math.round(st.size / 1024 / 1024)} MB > 50 MB cap)`);
   }
-  return import_promises2.default.readFile(path59, "utf8");
+  return import_promises2.default.readFile(path60, "utf8");
 }
 function textResult3(text) {
   return { content: [{ type: "text", text }] };
@@ -14611,11 +14611,11 @@ function evictOldest() {
   if (e) cacheBytes -= e.bytes;
   cache.delete(oldest);
 }
-async function readTextCached(filePath, stat) {
-  stat ??= await import_promises3.default.stat(filePath);
-  if (!stat.isFile()) throw new Error(`Not a file: ${filePath}`);
+async function readTextCached(filePath, stat2) {
+  stat2 ??= await import_promises3.default.stat(filePath);
+  if (!stat2.isFile()) throw new Error(`Not a file: ${filePath}`);
   const cached3 = cache.get(filePath);
-  if (cached3 && cached3.mtimeMs === stat.mtimeMs && cached3.size === stat.size) {
+  if (cached3 && cached3.mtimeMs === stat2.mtimeMs && cached3.size === stat2.size) {
     cache.delete(filePath);
     cache.set(filePath, cached3);
     return cached3;
@@ -14627,8 +14627,8 @@ async function readTextCached(filePath, stat) {
     content: decoded.text,
     encoding: decoded.encoding,
     binary,
-    mtimeMs: stat.mtimeMs,
-    size: stat.size,
+    mtimeMs: stat2.mtimeMs,
+    size: stat2.size,
     bytes: decoded.text.length * 2
   };
   invalidateFileCache(filePath);
@@ -14834,7 +14834,7 @@ var require_path = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.convertPosixPathToPattern = exports2.convertWindowsPathToPattern = exports2.convertPathToPattern = exports2.escapePosixPath = exports2.escapeWindowsPath = exports2.escape = exports2.removeLeadingDotSegment = exports2.makeAbsolute = exports2.unixify = void 0;
     var os39 = require("os");
-    var path59 = require("path");
+    var path60 = require("path");
     var IS_WINDOWS_PLATFORM = os39.platform() === "win32";
     var LEADING_DOT_SEGMENT_CHARACTERS_COUNT = 2;
     var POSIX_UNESCAPED_GLOB_SYMBOLS_RE = /(\\?)([()*?[\]{|}]|^!|[!+@](?=\()|\\(?![!()*+?@[\]{|}]))/g;
@@ -14846,7 +14846,7 @@ var require_path = __commonJS({
     }
     exports2.unixify = unixify;
     function makeAbsolute(cwd, filepath) {
-      return path59.resolve(cwd, filepath);
+      return path60.resolve(cwd, filepath);
     }
     exports2.makeAbsolute = makeAbsolute;
     function removeLeadingDotSegment(entry) {
@@ -16143,7 +16143,7 @@ var require_braces = __commonJS({
 var require_constants3 = __commonJS({
   "node_modules/picomatch/lib/constants.js"(exports2, module2) {
     "use strict";
-    var path59 = require("path");
+    var path60 = require("path");
     var WIN_SLASH = "\\\\/";
     var WIN_NO_SLASH = `[^${WIN_SLASH}]`;
     var DEFAULT_MAX_EXTGLOB_RECURSION = 0;
@@ -16317,7 +16317,7 @@ var require_constants3 = __commonJS({
       /* | */
       CHAR_ZERO_WIDTH_NOBREAK_SPACE: 65279,
       /* \uFEFF */
-      SEP: path59.sep,
+      SEP: path60.sep,
       /**
        * Create EXTGLOB_CHARS
        */
@@ -16344,7 +16344,7 @@ var require_constants3 = __commonJS({
 var require_utils2 = __commonJS({
   "node_modules/picomatch/lib/utils.js"(exports2) {
     "use strict";
-    var path59 = require("path");
+    var path60 = require("path");
     var win32 = process.platform === "win32";
     var {
       REGEX_BACKSLASH,
@@ -16373,7 +16373,7 @@ var require_utils2 = __commonJS({
       if (options && typeof options.windows === "boolean") {
         return options.windows;
       }
-      return win32 === true || path59.sep === "\\";
+      return win32 === true || path60.sep === "\\";
     };
     exports2.escapeLast = (input, char, lastIdx) => {
       const idx = input.lastIndexOf(char, lastIdx);
@@ -17737,7 +17737,7 @@ var require_parse2 = __commonJS({
 var require_picomatch = __commonJS({
   "node_modules/picomatch/lib/picomatch.js"(exports2, module2) {
     "use strict";
-    var path59 = require("path");
+    var path60 = require("path");
     var scan = require_scan();
     var parse = require_parse2();
     var utils = require_utils2();
@@ -17822,7 +17822,7 @@ var require_picomatch = __commonJS({
     };
     picomatch.matchBase = (input, glob, options, posix = utils.isWindows(options)) => {
       const regex = glob instanceof RegExp ? glob : picomatch.makeRe(glob, options);
-      return regex.test(path59.basename(input));
+      return regex.test(path60.basename(input));
     };
     picomatch.isMatch = (str, patterns, options) => picomatch(patterns, options)(str);
     picomatch.parse = (pattern, options) => {
@@ -18049,7 +18049,7 @@ var require_pattern = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.isAbsolute = exports2.partitionAbsoluteAndRelative = exports2.removeDuplicateSlashes = exports2.matchAny = exports2.convertPatternsToRe = exports2.makeRe = exports2.getPatternParts = exports2.expandBraceExpansion = exports2.expandPatternsWithBraceExpansion = exports2.isAffectDepthOfReadingPattern = exports2.endsWithSlashGlobStar = exports2.hasGlobStar = exports2.getBaseDirectory = exports2.isPatternRelatedToParentDirectory = exports2.getPatternsOutsideCurrentDirectory = exports2.getPatternsInsideCurrentDirectory = exports2.getPositivePatterns = exports2.getNegativePatterns = exports2.isPositivePattern = exports2.isNegativePattern = exports2.convertToNegativePattern = exports2.convertToPositivePattern = exports2.isDynamicPattern = exports2.isStaticPattern = void 0;
-    var path59 = require("path");
+    var path60 = require("path");
     var globParent = require_glob_parent();
     var micromatch = require_micromatch();
     var GLOBSTAR = "**";
@@ -18144,7 +18144,7 @@ var require_pattern = __commonJS({
     }
     exports2.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename = path59.basename(pattern);
+      const basename = path60.basename(pattern);
       return endsWithSlashGlobStar(pattern) || isStaticPattern(basename);
     }
     exports2.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
@@ -18202,7 +18202,7 @@ var require_pattern = __commonJS({
     }
     exports2.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute(pattern) {
-      return path59.isAbsolute(pattern);
+      return path60.isAbsolute(pattern);
     }
     exports2.isAbsolute = isAbsolute;
   }
@@ -18379,8 +18379,8 @@ var require_utils3 = __commonJS({
     exports2.errno = errno;
     var fs55 = require_fs();
     exports2.fs = fs55;
-    var path59 = require_path();
-    exports2.path = path59;
+    var path60 = require_path();
+    exports2.path = path60;
     var pattern = require_pattern();
     exports2.pattern = pattern;
     var stream = require_stream2();
@@ -18492,8 +18492,8 @@ var require_async = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path59, settings, callback) {
-      settings.fs.lstat(path59, (lstatError, lstat) => {
+    function read(path60, settings, callback) {
+      settings.fs.lstat(path60, (lstatError, lstat) => {
         if (lstatError !== null) {
           callFailureCallback(callback, lstatError);
           return;
@@ -18502,7 +18502,7 @@ var require_async = __commonJS({
           callSuccessCallback(callback, lstat);
           return;
         }
-        settings.fs.stat(path59, (statError, stat) => {
+        settings.fs.stat(path60, (statError, stat2) => {
           if (statError !== null) {
             if (settings.throwErrorOnBrokenSymbolicLink) {
               callFailureCallback(callback, statError);
@@ -18512,9 +18512,9 @@ var require_async = __commonJS({
             return;
           }
           if (settings.markSymbolicLink) {
-            stat.isSymbolicLink = () => true;
+            stat2.isSymbolicLink = () => true;
           }
-          callSuccessCallback(callback, stat);
+          callSuccessCallback(callback, stat2);
         });
       });
     }
@@ -18534,17 +18534,17 @@ var require_sync = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.read = void 0;
-    function read(path59, settings) {
-      const lstat = settings.fs.lstatSync(path59);
+    function read(path60, settings) {
+      const lstat = settings.fs.lstatSync(path60);
       if (!lstat.isSymbolicLink() || !settings.followSymbolicLink) {
         return lstat;
       }
       try {
-        const stat = settings.fs.statSync(path59);
+        const stat2 = settings.fs.statSync(path60);
         if (settings.markSymbolicLink) {
-          stat.isSymbolicLink = () => true;
+          stat2.isSymbolicLink = () => true;
         }
-        return stat;
+        return stat2;
       } catch (error) {
         if (!settings.throwErrorOnBrokenSymbolicLink) {
           return lstat;
@@ -18611,17 +18611,17 @@ var require_out = __commonJS({
     var sync = require_sync();
     var settings_1 = require_settings();
     exports2.Settings = settings_1.default;
-    function stat(path59, optionsOrSettingsOrCallback, callback) {
+    function stat2(path60, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path59, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path60, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path59, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path60, getSettings(optionsOrSettingsOrCallback), callback);
     }
-    exports2.stat = stat;
-    function statSync2(path59, optionsOrSettings) {
+    exports2.stat = stat2;
+    function statSync2(path60, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path59, settings);
+      return sync.read(path60, settings);
     }
     exports2.statSync = statSync2;
     function getSettings(settingsOrOptions = {}) {
@@ -18837,16 +18837,16 @@ var require_async2 = __commonJS({
           return;
         }
         const tasks = names.map((name) => {
-          const path59 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
+          const path60 = common.joinPathSegments(directory, name, settings.pathSegmentSeparator);
           return (done) => {
-            fsStat.stat(path59, settings.fsStatSettings, (error, stats) => {
+            fsStat.stat(path60, settings.fsStatSettings, (error, stats) => {
               if (error !== null) {
                 done(error);
                 return;
               }
               const entry = {
                 name,
-                path: path59,
+                path: path60,
                 dirent: utils.fs.createDirentFromStats(name, stats)
               };
               if (settings.stats) {
@@ -18964,7 +18964,7 @@ var require_settings2 = __commonJS({
   "node_modules/@nodelib/fs.scandir/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path59 = require("path");
+    var path60 = require("path");
     var fsStat = require_out();
     var fs55 = require_fs4();
     var Settings = class {
@@ -18972,7 +18972,7 @@ var require_settings2 = __commonJS({
         this._options = _options;
         this.followSymbolicLinks = this._getValue(this._options.followSymbolicLinks, false);
         this.fs = fs55.createFileSystemAdapter(this._options.fs);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path59.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path60.sep);
         this.stats = this._getValue(this._options.stats, false);
         this.throwErrorOnBrokenSymbolicLink = this._getValue(this._options.throwErrorOnBrokenSymbolicLink, true);
         this.fsStatSettings = new fsStat.Settings({
@@ -18999,17 +18999,17 @@ var require_out2 = __commonJS({
     var sync = require_sync2();
     var settings_1 = require_settings2();
     exports2.Settings = settings_1.default;
-    function scandir(path59, optionsOrSettingsOrCallback, callback) {
+    function scandir(path60, optionsOrSettingsOrCallback, callback) {
       if (typeof optionsOrSettingsOrCallback === "function") {
-        async.read(path59, getSettings(), optionsOrSettingsOrCallback);
+        async.read(path60, getSettings(), optionsOrSettingsOrCallback);
         return;
       }
-      async.read(path59, getSettings(optionsOrSettingsOrCallback), callback);
+      async.read(path60, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports2.scandir = scandir;
-    function scandirSync(path59, optionsOrSettings) {
+    function scandirSync(path60, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
-      return sync.read(path59, settings);
+      return sync.read(path60, settings);
     }
     exports2.scandirSync = scandirSync;
     function getSettings(settingsOrOptions = {}) {
@@ -19656,7 +19656,7 @@ var require_settings3 = __commonJS({
   "node_modules/@nodelib/fs.walk/out/settings.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path59 = require("path");
+    var path60 = require("path");
     var fsScandir = require_out2();
     var Settings = class {
       constructor(_options = {}) {
@@ -19666,7 +19666,7 @@ var require_settings3 = __commonJS({
         this.deepFilter = this._getValue(this._options.deepFilter, null);
         this.entryFilter = this._getValue(this._options.entryFilter, null);
         this.errorFilter = this._getValue(this._options.errorFilter, null);
-        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path59.sep);
+        this.pathSegmentSeparator = this._getValue(this._options.pathSegmentSeparator, path60.sep);
         this.fsScandirSettings = new fsScandir.Settings({
           followSymbolicLinks: this._options.followSymbolicLinks,
           fs: this._options.fs,
@@ -19728,7 +19728,7 @@ var require_reader2 = __commonJS({
   "node_modules/fast-glob/out/readers/reader.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path59 = require("path");
+    var path60 = require("path");
     var fsStat = require_out();
     var utils = require_utils3();
     var Reader = class {
@@ -19741,7 +19741,7 @@ var require_reader2 = __commonJS({
         });
       }
       _getFullEntryPath(filepath) {
-        return path59.resolve(this._settings.cwd, filepath);
+        return path60.resolve(this._settings.cwd, filepath);
       }
       _makeEntry(stats, pattern) {
         const entry = {
@@ -20157,7 +20157,7 @@ var require_provider = __commonJS({
   "node_modules/fast-glob/out/providers/provider.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
-    var path59 = require("path");
+    var path60 = require("path");
     var deep_1 = require_deep();
     var entry_1 = require_entry();
     var error_1 = require_error();
@@ -20171,7 +20171,7 @@ var require_provider = __commonJS({
         this.entryTransformer = new entry_2.default(this._settings);
       }
       _getRootDirectory(task) {
-        return path59.resolve(this._settings.cwd, task.base);
+        return path60.resolve(this._settings.cwd, task.base);
       }
       _getReaderOptions(task) {
         const basePath = task.base === "." ? "" : task.base;
@@ -21526,21 +21526,21 @@ function localGrep(o, budget = defaultBudget()) {
   if (!re) return null;
   const overrides = Overrides.compile([...o.vcsDirectories.map((d) => `!${d}`), ...o.globs]);
   if (!overrides) return null;
-  let stat;
+  let stat2;
   try {
-    stat = import_node_fs15.default.lstatSync(o.searchPath);
+    stat2 = import_node_fs15.default.lstatSync(o.searchPath);
   } catch {
     return null;
   }
   const bytes = { bytes: budget.bytes };
   try {
-    if (stat.isFile()) {
+    if (stat2.isFile()) {
       const segs = o.searchPath.split(/[\\/]/);
       if (o.globs.length || segs.some((s) => o.vcsDirectories.includes(s))) return null;
       const stdout2 = searchFile(o, re, o.searchPath, false, bytes);
       return { stdout: stdout2, code: stdout2 ? 0 : 1 };
     }
-    if (!stat.isDirectory()) return null;
+    if (!stat2.isDirectory()) return null;
     const ctx = ignoreContext(o.searchPath);
     if (!ctx) return null;
     const chain = [...ctx.parents];
@@ -21907,8 +21907,8 @@ async function grepFallback(o) {
 }
 async function matchFile(regex, file, outputMode, lineNumbers, withPath) {
   try {
-    const stat = await import_promises6.default.stat(file);
-    if (stat.size > MAX_READ_BYTES) return null;
+    const stat2 = await import_promises6.default.stat(file);
+    if (stat2.size > MAX_READ_BYTES) return null;
     const buffer = await import_promises6.default.readFile(file);
     if (buffer.subarray(0, 8192).includes(0)) return null;
     const lines = buffer.toString("utf8").split("\n");
@@ -22091,11 +22091,11 @@ async function readFile(input, context) {
     if (ext === ".ipynb") {
       return notebookRead({ file_path: filePath });
     }
-    const stat = await import_promises7.default.stat(filePath);
-    if (!stat.isFile()) return errorResult4(`Not a file: ${filePath}`);
-    if (stat.size > MAX_READ_BYTES) {
+    const stat2 = await import_promises7.default.stat(filePath);
+    if (!stat2.isFile()) return errorResult4(`Not a file: ${filePath}`);
+    if (stat2.size > MAX_READ_BYTES) {
       return errorResult4(
-        `File too large (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit). Use offset+limit to read a range, or use Bash with head/tail/sed.`
+        `File too large (${Math.round(stat2.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit). Use offset+limit to read a range, or use Bash with head/tail/sed.`
       );
     }
     if (IMAGE_EXTENSIONS.has(ext)) {
@@ -22105,18 +22105,18 @@ async function readFile(input, context) {
       return { content: [{ type: "image", data: base64, mimeType }] };
     }
     const ranged = input.offset !== void 0 || input.limit !== void 0;
-    if (!ranged && stat.size > WARN_READ_BYTES) {
+    if (!ranged && stat2.size > WARN_READ_BYTES) {
       return errorResult4(
         // Native Read's wording, without its allow_large escape: this Read has
         // no such parameter, and the server's result limit would cut the file.
-        `File content (${formatKb(stat.size)}) exceeds maximum allowed size (${formatKb(WARN_READ_BYTES)}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
+        `File content (${formatKb(stat2.size)}) exceeds maximum allowed size (${formatKb(WARN_READ_BYTES)}). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.`
       );
     }
     const offset = typeof input.offset === "number" ? Math.max(0, Math.floor(input.offset) - 1) : 0;
     const limit = typeof input.limit === "number" && input.limit > 0 ? Math.floor(input.limit) : 2e3;
-    let view = ranged && stat.size > STREAMED_RANGE_BYTES ? await readUtf8LineWindow(filePath, offset, limit, input.limit === void 0) : null;
+    let view = ranged && stat2.size > STREAMED_RANGE_BYTES ? await readUtf8LineWindow(filePath, offset, limit, input.limit === void 0) : null;
     if (!view) {
-      const file = await readTextCached(filePath, stat);
+      const file = await readTextCached(filePath, stat2);
       if (file.binary) {
         return errorResult4(
           `This tool cannot read binary files. ${filePath} appears to be binary (it contains NUL bytes). Use Bash (for example \`xxd | head\` or \`file\`) to inspect it.`
@@ -22231,9 +22231,9 @@ async function editFile(input, context) {
     return errorResult4("No changes to make: old_string and new_string are exactly the same.");
   }
   try {
-    let stat;
+    let stat2;
     try {
-      stat = await import_promises7.default.stat(filePath);
+      stat2 = await import_promises7.default.stat(filePath);
     } catch (err) {
       if (err?.code === "ENOENT" && oldString === "") {
         await import_promises7.default.mkdir(import_node_path19.default.dirname(filePath), { recursive: true });
@@ -22243,12 +22243,12 @@ async function editFile(input, context) {
       }
       throw err;
     }
-    if (stat.size > MAX_READ_BYTES) {
+    if (stat2.size > MAX_READ_BYTES) {
       return errorResult4(
-        `File too large to edit (${Math.round(stat.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit)`
+        `File too large to edit (${Math.round(stat2.size / 1024 / 1024)} MB > ${MAX_READ_BYTES / 1024 / 1024} MB limit)`
       );
     }
-    const file = await readTextCached(filePath, stat);
+    const file = await readTextCached(filePath, stat2);
     if (file.binary) return errorResult4(`Cannot edit a binary file: ${filePath}`);
     const content = file.content;
     let result;
@@ -27382,32 +27382,32 @@ var require_URL = __commonJS({
           else
             return basepath.substring(0, lastslash + 1) + refpath;
         }
-        function remove_dot_segments(path59) {
-          if (!path59) return path59;
+        function remove_dot_segments(path60) {
+          if (!path60) return path60;
           var output = "";
-          while (path59.length > 0) {
-            if (path59 === "." || path59 === "..") {
-              path59 = "";
+          while (path60.length > 0) {
+            if (path60 === "." || path60 === "..") {
+              path60 = "";
               break;
             }
-            var twochars = path59.substring(0, 2);
-            var threechars = path59.substring(0, 3);
-            var fourchars = path59.substring(0, 4);
+            var twochars = path60.substring(0, 2);
+            var threechars = path60.substring(0, 3);
+            var fourchars = path60.substring(0, 4);
             if (threechars === "../") {
-              path59 = path59.substring(3);
+              path60 = path60.substring(3);
             } else if (twochars === "./") {
-              path59 = path59.substring(2);
+              path60 = path60.substring(2);
             } else if (threechars === "/./") {
-              path59 = "/" + path59.substring(3);
-            } else if (twochars === "/." && path59.length === 2) {
-              path59 = "/";
-            } else if (fourchars === "/../" || threechars === "/.." && path59.length === 3) {
-              path59 = "/" + path59.substring(4);
+              path60 = "/" + path60.substring(3);
+            } else if (twochars === "/." && path60.length === 2) {
+              path60 = "/";
+            } else if (fourchars === "/../" || threechars === "/.." && path60.length === 3) {
+              path60 = "/" + path60.substring(4);
               output = output.replace(/\/?[^\/]*$/, "");
             } else {
-              var segment = path59.match(/(\/?([^\/]*))/)[0];
+              var segment = path60.match(/(\/?([^\/]*))/)[0];
               output += segment;
-              path59 = path59.substring(segment.length);
+              path60 = path60.substring(segment.length);
             }
           }
           return output;
@@ -40443,15 +40443,15 @@ async function skillFiles(root, refs, recursive, budget) {
     if (!contained(root, location)) continue;
     const real = await import_promises9.default.realpath(location).catch(() => null);
     if (!real || !contained(realRoot, real)) continue;
-    const stat = await import_promises9.default.lstat(location).catch(() => null);
-    if (stat?.isFile() && import_node_path21.default.basename(location).toLowerCase() === "skill.md") files.add(location);
-    if (stat?.isDirectory()) await visit(location, 0);
+    const stat2 = await import_promises9.default.lstat(location).catch(() => null);
+    if (stat2?.isFile() && import_node_path21.default.basename(location).toLowerCase() === "skill.md") files.add(location);
+    if (stat2?.isDirectory()) await visit(location, 0);
   }
   return [...files].sort();
 }
 async function describeSkill(file, source) {
-  const stat = await import_promises9.default.stat(file);
-  if (stat.size > 1e5) return null;
+  const stat2 = await import_promises9.default.stat(file);
+  if (stat2.size > 1e5) return null;
   const text = (await import_promises9.default.readFile(file, "utf8")).replace(/^\uFEFF/, "");
   const front = extractFrontmatter(text);
   if (front === null && /^---/.test(text)) return null;
@@ -44001,7 +44001,7 @@ function mcpStartup(initialize) {
 
 // src/bridge-host.ts
 var vscode6 = __toESM(require("vscode"), 1);
-var import_node_path26 = __toESM(require("node:path"), 1);
+var import_node_path27 = __toESM(require("node:path"), 1);
 
 // src/resync-tracker.ts
 var ResyncTracker = class {
@@ -44989,9 +44989,9 @@ var TranscriptMirror = class {
       const raw = await import_promises10.default.readFile(this.sidecar, "utf8");
       const parsed = JSON.parse(raw);
       if (parsed.v !== 3 || typeof parsed.pos !== "number" || !parsed.head) return null;
-      const stat = await import_promises10.default.stat(this.file);
-      if (stat.size === 0) return null;
-      if (typeof parsed.size === "number" && stat.size < parsed.size) return null;
+      const stat2 = await import_promises10.default.stat(this.file);
+      if (stat2.size === 0) return null;
+      if (typeof parsed.size === "number" && stat2.size < parsed.size) return null;
       this.cursor = { head: parsed.head, pos: parsed.pos, lastUuid: parsed.lastUuid, lastPos: parsed.lastPos };
       return this.cursor;
     } catch {
@@ -45286,32 +45286,32 @@ var import_node_path23 = require("node:path");
 
 // ../../../src/kamin-host/rolling-log.ts
 var import_node_fs18 = require("node:fs");
-function removeIfPresent(path59) {
+function removeIfPresent(path60) {
   try {
-    if ((0, import_node_fs18.existsSync)(path59)) (0, import_node_fs18.unlinkSync)(path59);
+    if ((0, import_node_fs18.existsSync)(path60)) (0, import_node_fs18.unlinkSync)(path60);
   } catch {
   }
 }
-function rotateLogFiles(path59, backups) {
+function rotateLogFiles(path60, backups) {
   if (backups <= 0) {
-    removeIfPresent(path59);
-    return !(0, import_node_fs18.existsSync)(path59);
+    removeIfPresent(path60);
+    return !(0, import_node_fs18.existsSync)(path60);
   }
-  removeIfPresent(`${path59}.${String(backups)}`);
+  removeIfPresent(`${path60}.${String(backups)}`);
   for (let i = backups - 1; i >= 1; i -= 1) {
-    const from = `${path59}.${String(i)}`;
+    const from = `${path60}.${String(i)}`;
     if (!(0, import_node_fs18.existsSync)(from)) continue;
-    const to = `${path59}.${String(i + 1)}`;
+    const to = `${path60}.${String(i + 1)}`;
     removeIfPresent(to);
     try {
       (0, import_node_fs18.renameSync)(from, to);
     } catch {
     }
   }
-  if ((0, import_node_fs18.existsSync)(path59)) {
-    removeIfPresent(`${path59}.1`);
+  if ((0, import_node_fs18.existsSync)(path60)) {
+    removeIfPresent(`${path60}.1`);
     try {
-      (0, import_node_fs18.renameSync)(path59, `${path59}.1`);
+      (0, import_node_fs18.renameSync)(path60, `${path60}.1`);
     } catch {
       return false;
     }
@@ -45319,8 +45319,8 @@ function rotateLogFiles(path59, backups) {
   return true;
 }
 var RollingLogWriter = class {
-  constructor(path59, options) {
-    this.path = path59;
+  constructor(path60, options) {
+    this.path = path60;
     this.options = options;
     if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes <= 0) {
       throw new Error("rolling log maxBytes must be a positive safe integer");
@@ -45328,8 +45328,8 @@ var RollingLogWriter = class {
     if (!Number.isSafeInteger(options.backups) || options.backups < 0) {
       throw new Error("rolling log backups must be a non-negative safe integer");
     }
-    if (options.rotateOnOpen && (0, import_node_fs18.existsSync)(path59) && (0, import_node_fs18.statSync)(path59).size > 0) {
-      rotateLogFiles(path59, options.backups);
+    if (options.rotateOnOpen && (0, import_node_fs18.existsSync)(path60) && (0, import_node_fs18.statSync)(path60).size > 0) {
+      rotateLogFiles(path60, options.backups);
     }
     this.open();
   }
@@ -47778,8 +47778,8 @@ async function readEntrypointMd(baseDir, kind) {
       for (const cand of candidates) {
         const mdPath = import_path9.default.join(full, cand);
         try {
-          const stat = await import_fs8.default.promises.stat(mdPath);
-          if (stat.size > 1e5) break;
+          const stat2 = await import_fs8.default.promises.stat(mdPath);
+          if (stat2.size > 1e5) break;
           const raw = await import_fs8.default.promises.readFile(mdPath, "utf-8");
           result[`${entry.name}/${cand}`] = annotateWithClientPath(raw, mdPath);
           break;
@@ -47790,8 +47790,8 @@ async function readEntrypointMd(baseDir, kind) {
     }
     if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
       try {
-        const stat = await import_fs8.default.promises.stat(full);
-        if (stat.size > 1e5) return;
+        const stat2 = await import_fs8.default.promises.stat(full);
+        if (stat2.size > 1e5) return;
         const raw = await import_fs8.default.promises.readFile(full, "utf-8");
         result[entry.name] = annotateWithClientPath(raw, full);
       } catch {
@@ -49395,15 +49395,15 @@ function registerSkillsAgentsIPC(ctx) {
             const resolved = import_path15.default.resolve(pluginRoot, ref2);
             const relative = import_path15.default.relative(pluginRoot, resolved);
             if (relative === ".." || relative.startsWith(".." + import_path15.default.sep) || import_path15.default.isAbsolute(relative)) continue;
-            let stat;
+            let stat2;
             try {
-              stat = await import_fs14.default.promises.stat(resolved);
+              stat2 = await import_fs14.default.promises.stat(resolved);
             } catch {
               continue;
             }
-            if (stat.isDirectory()) {
+            if (stat2.isDirectory()) {
               for (const filePath of await scanSkillFiles(resolved)) skillPaths.add(filePath);
-            } else if (stat.isFile() && import_path15.default.basename(resolved).toLowerCase() === "skill.md") {
+            } else if (stat2.isFile() && import_path15.default.basename(resolved).toLowerCase() === "skill.md") {
               skillPaths.add(resolved);
             }
           }
@@ -49421,13 +49421,13 @@ function registerSkillsAgentsIPC(ctx) {
             if (typeof item === "string") {
               const resolved = resolvePluginComponentPath(pluginRoot, item);
               if (!resolved) continue;
-              let stat;
+              let stat2;
               try {
-                stat = await import_fs14.default.promises.stat(resolved);
+                stat2 = await import_fs14.default.promises.stat(resolved);
               } catch {
                 continue;
               }
-              const declared = stat.isDirectory() ? await scanCommandsDir(resolved) : [{ relName: import_path15.default.basename(resolved, ".md"), filePath: resolved }];
+              const declared = stat2.isDirectory() ? await scanCommandsDir(resolved) : [{ relName: import_path15.default.basename(resolved, ".md"), filePath: resolved }];
               for (const command of declared) {
                 const content = await safeReadFile2(command.filePath);
                 if (content === null || seenPaths.has(command.filePath)) continue;
@@ -49589,13 +49589,13 @@ function registerSkillsAgentsIPC(ctx) {
             if (typeof item === "string") {
               const resolved = resolvePluginComponentPath(pluginRoot, item);
               if (!resolved) continue;
-              let stat;
+              let stat2;
               try {
-                stat = await import_fs14.default.promises.stat(resolved);
+                stat2 = await import_fs14.default.promises.stat(resolved);
               } catch {
                 continue;
               }
-              if (stat.isDirectory()) {
+              if (stat2.isDirectory()) {
                 for (const parsed of await scanAgentsDir(resolved, `plugin:${pluginName}`)) {
                   if (!seenPaths.has(parsed.path)) {
                     scanned.push(parsed);
@@ -49696,13 +49696,13 @@ function registerSkillsAgentsIPC(ctx) {
         if (typeof item === "string") {
           const resolved = resolvePluginComponentPath(pluginRoot, item);
           if (!resolved) continue;
-          let stat;
+          let stat2;
           try {
-            stat = await import_fs14.default.promises.stat(resolved);
+            stat2 = await import_fs14.default.promises.stat(resolved);
           } catch {
             continue;
           }
-          const files = stat.isDirectory() ? (await import_fs14.default.promises.readdir(resolved, { withFileTypes: true })).filter((file) => file.isFile() && file.name.endsWith(".md")).map((file) => import_path15.default.join(resolved, file.name)) : [resolved];
+          const files = stat2.isDirectory() ? (await import_fs14.default.promises.readdir(resolved, { withFileTypes: true })).filter((file) => file.isFile() && file.name.endsWith(".md")).map((file) => import_path15.default.join(resolved, file.name)) : [resolved];
           for (const filePath of files) {
             const meta = await readMdMeta(filePath);
             if (!meta) continue;
@@ -55710,6 +55710,52 @@ async function transcribeAudio(config, base64, mimeType) {
 // src/core-ipc.ts
 init_host_compat();
 
+// src/workspace-location.ts
+var import_promises12 = require("node:fs/promises");
+var import_node_path26 = __toESM(require("node:path"), 1);
+function parseWorkspaceLocation(destination) {
+  if (typeof destination !== "string" || destination.length > 4096 || /[\r\n]/.test(destination)) return null;
+  const url = /^file:/i.test(destination);
+  if (url && !/^file:\/\/\/[a-z]:\//i.test(destination)) return null;
+  const value = url ? destination.slice(8) : destination.replace(/^\/(?=[a-z]:\/)/i, "");
+  const match = /^(.*?)(?:#L(\d+)(?:C(\d+))?|:(\d+)(?::(\d+))?)?$/i.exec(value);
+  if (!match) return null;
+  let file = match[1];
+  if (url) {
+    try {
+      file = decodeURIComponent(file);
+    } catch {
+      return null;
+    }
+  }
+  const line = Number(match[2] ?? match[4] ?? 1);
+  const column = Number(match[3] ?? match[5] ?? 1);
+  if (!/^[a-z]:[\\/]/i.test(file) || /[<>:"|?*]/.test(file.slice(2))) return null;
+  if ([...file].some((c) => c.charCodeAt(0) < 32)) return null;
+  if (![line, column].every((n) => Number.isSafeInteger(n) && n > 0 && n <= 4294967295)) return null;
+  return { path: file, line, column };
+}
+function contained2(root, target) {
+  const relative = import_node_path26.default.relative(root, target);
+  return !!relative && relative !== ".." && !relative.startsWith(".." + import_node_path26.default.sep) && !import_node_path26.default.isAbsolute(relative);
+}
+async function projectTextFile(root, file) {
+  if (!import_node_path26.default.isAbsolute(root) || !import_node_path26.default.isAbsolute(file) || !contained2(root, file)) return null;
+  try {
+    const [project, target] = await Promise.all([(0, import_promises12.realpath)(root), (0, import_promises12.realpath)(file)]);
+    return contained2(project, target) && (await (0, import_promises12.stat)(target)).isFile() ? target : null;
+  } catch {
+    return null;
+  }
+}
+async function workspaceLocation(root, destination) {
+  if (process.platform !== "win32") return null;
+  const location = parseWorkspaceLocation(destination);
+  if (!location) return null;
+  const target = await projectTextFile(root, location.path);
+  return target ? { ...location, path: target } : null;
+}
+
 // src/main/tree-enrichment.ts
 function enrichTreeWithTabs(tree, tabManager) {
   const sessionMap = tabManager.getSessionTabMap();
@@ -55755,8 +55801,8 @@ function enrichTreeWithTabs(tree, tabManager) {
 }
 
 // src/main/sync/request-auth.ts
-function withSyncAuthorization(path59, init, token) {
-  if (!path59.startsWith("/api/sync/") || !token) return init;
+function withSyncAuthorization(path60, init, token) {
+  if (!path60.startsWith("/api/sync/") || !token) return init;
   return {
     ...init,
     headers: { ...init?.headers ?? {}, Authorization: `Bearer ${token}` }
@@ -55849,7 +55895,7 @@ var MIME = {
   ".webp": "image/webp",
   ".svg": "image/svg+xml"
 };
-function registerCoreIpc(context, configStore) {
+function registerCoreIpc(context, configStore, tabs) {
   ipcMain.handle("get-version", () => String(context.extension.packageJSON.version ?? ""));
   ipcMain.handle("vscode:is-available", () => false);
   ipcMain.handle("whisper:transcribe", (_e, base64, mime) => transcribeAudio(configStore.get(), base64, mime));
@@ -55869,6 +55915,14 @@ function registerCoreIpc(context, configStore) {
     if (!m) return;
     const sev = severity === "error" ? "error" : severity === "warning" ? "warning" : "info";
     showTimedNotice(sev, m, typeof durationMs === "number" ? durationMs : void 0);
+  });
+  ipcMain.handle("open-workspace-location", async (_e, tabId, destination) => {
+    if (!tabId || tabs.getActiveTabId() !== tabId) return false;
+    const root = tabs.getTab(tabId)?.config.cwd;
+    if (!root) return false;
+    const location = await workspaceLocation(root, destination);
+    if (!location || tabs.getActiveTabId() !== tabId || tabs.getTab(tabId)?.config.cwd !== root) return false;
+    return await vscode5.commands.executeCommand("kaminide.openTextLocation", location);
   });
   ipcMain.handle("open-external", async (_e, url) => {
     try {
@@ -55945,8 +55999,8 @@ function registerCoreIpc(context, configStore) {
   ipcMain.handle("bridge:server-version", async (_e, httpBase) => {
     return createServerHttp(httpBase).serverVersion();
   });
-  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path59, init) => {
-    return createServerHttp(httpBase, configStore.get().token).serverFetch(path59, init);
+  ipcMain.handle("bridge:server-fetch", async (_e, httpBase, path60, init) => {
+    return createServerHttp(httpBase, configStore.get().token).serverFetch(path60, init);
   });
   ipcMain.handle("save-text-as", async (_e, opts) => {
     try {
@@ -56296,8 +56350,8 @@ var BridgeHost = class {
     setPluginLspProjectResolver((tabId, file) => {
       const direct = tabId ? this.tabManager.getTab(tabId)?.config.cwd : void 0;
       if (direct) return direct;
-      const resolvedFile = import_node_path26.default.resolve(file);
-      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path26.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path26.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const resolvedFile = import_node_path27.default.resolve(file);
+      return this.tabManager.getDistinctCwds().map((cwd) => import_node_path27.default.resolve(cwd)).filter((cwd) => resolvedFile === cwd || resolvedFile.startsWith(cwd + import_node_path27.default.sep)).sort((a, b) => b.length - a.length)[0] ?? vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath;
     });
     const getUserCwd = () => vscode6.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
     const ctx = {
@@ -56377,7 +56431,7 @@ var BridgeHost = class {
         return [...this.tabManager.getDistinctCwds(), ...cwd ? [cwd] : []];
       }
     });
-    registerCoreIpc(context, this.configStore);
+    registerCoreIpc(context, this.configStore, this.tabManager);
     const buildPayload = () => this.mcpManager.getExternalToolSchemas().map((s) => ({
       name: s.name,
       description: s.description,
