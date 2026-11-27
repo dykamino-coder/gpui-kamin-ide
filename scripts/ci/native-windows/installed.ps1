@@ -10,6 +10,7 @@ $app = $null
 $setup = $null
 $runner = $null
 $stage = 'provenance'
+$processCheck = $null
 $checks = [ordered]@{ provenance = $false; previousVersion = $false; inAppUpdateAndRestart = $false
     versionFile = $false; displayVersion = $false; explorerRegistration = $false; installationLog = $false }
 try {
@@ -59,8 +60,19 @@ try {
     $stage = 'in-app-update'
     node (Join-Path $PSScriptRoot 'upgrade.mjs') $exe $package.FullName $previous $metadata.versions.app $evidence $capture
     if ($LASTEXITCODE) { throw 'In-app update or automatic restart failed. See upgrade.json.' }
-    $app = Get-Process -Name 'kaminide-gpui' | Where-Object { $_.Path -eq $exe } | Select-Object -First 1
-    if (!$app) { throw 'Restarted executable was not found in the installation directory' }
+    # The self-updater starts a detached process. Bind keyboard input to the
+    # process that served the authenticated candidate ping after restart.
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalAddress '127.0.0.1' -LocalPort ([int]$env:KAMIN_PROBE_PORT))
+    if ($listeners.Count -ne 1) { throw 'Expected a single loopback probe listener' }
+    $app = Get-Process -Id $listeners[0].OwningProcess
+    $matching = @(Get-Process -Name 'kaminide-gpui' | Where-Object { $_.Path -eq $exe })
+    $processCheck = [ordered]@{
+        pathMatches = $app.Path -eq $exe
+        sessionMatches = $app.SessionId -eq (Get-Process -Id $PID).SessionId
+        samePathCount = $matching.Count
+        firstByPathWasListener = $matching.Count -gt 0 -and $matching[0].Id -eq $app.Id
+    }
+    if (!$processCheck.pathMatches -or !$processCheck.sessionMatches) { throw 'Probe owner is not the installed client in this desktop session' }
     $checks.inAppUpdateAndRestart = $true
     $stage = 'verify-upgraded-installation'
     if ((Get-Content $versionFile -Raw).Trim() -ne $metadata.versions.app) { throw 'Installed version file mismatch' }
@@ -96,7 +108,7 @@ try {
 } finally {
     $pipeline = [ordered]@{ candidate = $env:SMOKE_SHA; driver = $env:DRIVER_SHA; stage = $stage
         source = $env:INSTALLER_SOURCE; version = $metadata.versions.app; previous = $previous
-        checks = $checks; explorerUi = "registration only"; versionText = "inspect version.png when available"
+        checks = $checks; probeProcess = $processCheck; explorerUi = "registration only"; versionText = "inspect version.png when available"
         installerSha256 = $metadata.installer.sha256; runner = $env:ImageVersion
         session = (Get-Process -Id $PID).SessionId; interactive = [Environment]::UserInteractive
         clientExit = if ($app -and $app.HasExited) { $app.ExitCode } else { $null }
