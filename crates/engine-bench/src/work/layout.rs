@@ -11,7 +11,9 @@ impl super::Sample {
     pub(crate) fn layout_profile(&self) -> Value {
         #[cfg(feature = "work-counters")]
         {
-            profile(&self.counters)
+            let mut profile = profile(&self.counters);
+            profile["style_copy_sites"] = sites(&self.clone_sites);
+            profile
         }
         #[cfg(not(feature = "work-counters"))]
         {
@@ -57,8 +59,42 @@ fn profile(counters: &kamin_html::work::Snapshot) -> Value {
     })
 }
 
+/// The largest detached style groups by write location: `file:line`, count, bytes.
+#[cfg(feature = "work-counters")]
+fn sites(sites: &[(String, u64, u64)]) -> Value {
+    let top = sites
+        .iter()
+        .take(SITES)
+        .map(|(site, count, bytes)| json!([site, count, bytes]));
+    json!({
+        "total_sites": sites.len(),
+        "top_by_bytes": top.collect::<Vec<_>>(),
+    })
+}
+
+/// Write locations kept per sample.
+#[cfg(feature = "work-counters")]
+const SITES: usize = 24;
+
 #[cfg(all(test, feature = "work-counters"))]
 mod tests {
+    #[test]
+    fn copy_sites_keep_the_largest_and_their_number() {
+        let list: Vec<_> = (0..30u64)
+            .map(|i| (format!("a.rs:{i}"), 1, 100 - i))
+            .collect();
+        let value = super::sites(&list);
+        assert_eq!(value["total_sites"], 30);
+        assert_eq!(
+            value["top_by_bytes"].as_array().unwrap().len(),
+            super::SITES
+        );
+        assert_eq!(
+            value["top_by_bytes"][0],
+            serde_json::json!(["a.rs:0", 1, 100])
+        );
+    }
+
     #[test]
     fn layout_profile_sums_phases_and_keeps_repeats() {
         use kamin_html::work::{Phase, Session};

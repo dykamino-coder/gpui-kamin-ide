@@ -28,6 +28,9 @@ pub(super) struct Sample {
     usage: super::usage::Sample,
     #[cfg(feature = "work-counters")]
     style_storage: [u64; 6],
+    /// Detached style groups by write location (work::clone_site).
+    #[cfg(feature = "work-counters")]
+    clone_sites: Vec<(String, u64, u64)>,
 }
 
 /// Адаптер GPU процесса для счётчиков: открывается один раз до первого замера, чтобы
@@ -86,8 +89,10 @@ impl Capture {
             let usage = self.usage.finish();
             self.carry.replace(self.session.carry_inputs());
             let live = doc.values().doc.style_storage();
+            let clone_sites = self.session.take_clone_sites();
             Sample {
                 cold,
+                clone_sites,
                 counters: self.session.finish(),
                 usage,
                 style_storage: [

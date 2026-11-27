@@ -7670,7 +7670,7 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        // KaminIDE patch: overlay geometry is already in device coordinates.
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
-index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307022a14db
+index d6556258e15f7cac891e14861a2cd323fa09f6cf..d8d6d0f51e52162ac2790bf8804bca5783edba9b
 --- a/vendor/gpui/src/element.rs
 +++ b/vendor/gpui/src/element.rs
 @@ -61,0 +62,13 @@
@@ -7696,7 +7696,13 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 @@ -245,0 +263,2 @@
 +
 +    fn root_layout_id(&self) -> Option<LayoutId>;
-@@ -345,0 +365,85 @@
+@@ -301,0 +321,5 @@
++                // KaminIDE patch: self-time of request_layout by element type.
++                let _prof = cx
++                    .instrumentation()
++                    .request_layout
++                    .enter(std::any::type_name::<E>());
+@@ -345,0 +370,85 @@
 +    // KaminIDE patch: accessibility construction temporaries must not survive child traversal.
 +    #[inline(never)]
 +    fn begin_a11y_prepaint(
@@ -7782,18 +7788,18 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +        }
 +    }
 +
-@@ -347 +451,3 @@
+@@ -347 +456,3 @@
 -        match mem::take(&mut self.phase) {
 +        // KaminIDE patch (#76): self-time профиль prepaint по типам элементов.
 +        let _prof = cx.instrumentation().prepaint.enter(std::any::type_name::<E>());
 +        match &mut self.phase {
-@@ -352 +458 @@
+@@ -352 +463 @@
 -                mut request_layout,
 +                request_layout,
-@@ -358 +464 @@
+@@ -358 +469 @@
 -                mut request_layout,
 +                request_layout,
-@@ -361,45 +467,14 @@
+@@ -361,45 +472,14 @@
 -                if let Some(element_id) = self.element.id() {
 -                    window.element_id_stack.push(element_id);
 -                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
@@ -7853,15 +7859,15 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +                    true => window.next_frame.dispatch_tree.push_node(),
 +                    false => DispatchNodeId::NONE,
 +                };
-@@ -410 +485 @@
+@@ -410 +490 @@
 -                    &mut request_layout,
 +                    request_layout,
-@@ -414 +489,3 @@
+@@ -414 +494,3 @@
 -                window.next_frame.dispatch_tree.pop_node();
 +                if node_id != DispatchNodeId::NONE {
 +                    window.next_frame.dispatch_tree.pop_node();
 +                }
-@@ -417,23 +494,6 @@
+@@ -417,23 +499,6 @@
 -                    if let Some(global_id) = global_id.as_ref() {
 -                        #[cfg(debug_assertions)]
 -                        let creator = crate::window::a11y::debug::NodeCreator {
@@ -7891,7 +7897,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +                        &mut prepaint,
 +                        window,
 +                    );
-@@ -445,0 +506,27 @@
+@@ -445,0 +511,27 @@
 +                self.finish_prepaint(node_id, bounds, prepaint);
 +            }
 +            _ => panic!("must call request_layout before prepaint"),
@@ -7919,18 +7925,18 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +                request_layout,
 +                ..
 +            } => {
-@@ -455 +542 @@
+@@ -455 +547 @@
 -            _ => panic!("must call request_layout before prepaint"),
 +            _ => unreachable!("prepaint phase was checked before traversing children"),
-@@ -464 +551 @@
+@@ -464 +556 @@
 -        match mem::take(&mut self.phase) {
 +        match &mut self.phase {
-@@ -470,2 +557,2 @@
+@@ -470,2 +562,2 @@
 -                mut request_layout,
 -                mut prepaint,
 +                request_layout,
 +                prepaint,
-@@ -474,3 +561,4 @@
+@@ -474,3 +566,4 @@
 -                if let Some(element_id) = self.element.id() {
 -                    window.element_id_stack.push(element_id);
 -                    debug_assert_eq!(&*global_id.as_ref().unwrap().0, &*window.element_id_stack);
@@ -7938,21 +7944,21 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +
 +                if *node_id != DispatchNodeId::NONE {
 +                    window.next_frame.dispatch_tree.set_active_node(*node_id);
-@@ -478,2 +565,0 @@
+@@ -478,2 +570,0 @@
 -
 -                window.next_frame.dispatch_tree.set_active_node(node_id);
-@@ -483,3 +569,3 @@
+@@ -483,3 +574,3 @@
 -                    bounds,
 -                    &mut request_layout,
 -                    &mut prepaint,
 +                    *bounds,
 +                    request_layout,
 +                    prepaint,
-@@ -494,2 +580 @@
+@@ -494,2 +585 @@
 -                self.phase = ElementDrawPhase::Painted;
 -                (request_layout, prepaint)
 +                self.finish_paint()
-@@ -497,0 +583,13 @@
+@@ -497,0 +588,13 @@
 +        }
 +    }
 +
@@ -7966,7 +7972,7 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +                ..
 +            } => (request_layout, prepaint),
 +            _ => unreachable!("paint phase was checked before traversing children"),
-@@ -558,0 +657,11 @@
+@@ -558,0 +662,11 @@
 +    fn root_layout_id(&self) -> Option<LayoutId> {
 +        match &self.phase {
 +            ElementDrawPhase::RequestLayout { layout_id, .. }
@@ -7978,16 +7984,16 @@ index d6556258e15f7cac891e14861a2cd323fa09f6cf..98edf83500335fd6b0768750d3888307
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn Any> { self.element.paint_metadata() }
 +
-@@ -592,0 +702,3 @@
+@@ -592,0 +707,3 @@
 +    /// Host metadata forwarded by the erased element.
 +    pub fn paint_metadata(&self) -> Option<&dyn Any> { self.0.paint_metadata() }
 +
-@@ -629,0 +742,4 @@
+@@ -629,0 +747,4 @@
 +        let traversal = window.render_context::<crate::PaintTraversal>();
 +        let _boundary = if self.0.paint_boundary() {
 +            traversal.map(|traversal| (traversal.enter_boundary)(window))
 +        } else { None };
-@@ -670,0 +787,3 @@
+@@ -670,0 +792,3 @@
 +
 +    fn paint_boundary(&self) -> bool { false }
 +    fn paint_metadata(&self) -> Option<&dyn Any> { self.0.paint_metadata() }
@@ -12023,13 +12029,13 @@ index 0000000000000000000000000000000000000000..5a60c9d7addadcf21996e8442990f50f
 +}
 diff --git a/vendor/gpui/src/instrumentation.rs b/vendor/gpui/src/instrumentation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff4037c3a56a
+index 0000000000000000000000000000000000000000..581d8d9ac8ea88d047c7ce11cfcbb5ae70744fb4
 --- /dev/null
 +++ b/vendor/gpui/src/instrumentation.rs
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,66 @@
 +//! KaminIDE patch: типизированные настройки и измерения, принадлежащие приложению.
 +
-+use crate::{batch_cost::BatchCost, prepaint_prof::PrepaintProfile};
++use crate::{batch_cost::BatchCost, prepaint_prof::ElementProfile};
 +use std::sync::Arc;
 +
 +/// Выбор устройства для native acceptance; release использует Default.
@@ -12049,6 +12055,8 @@ index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff40
 +pub struct InstrumentationConfig {
 +    /// Измерять self-time prepaint по типам элементов.
 +    pub prepaint: bool,
++    /// Measure the self-time of request_layout by element type.
++    pub request_layout: bool,
 +    /// Создавать timestamp-запросы GPU.
 +    pub gpu_timing: bool,
 +    /// Подменить DPI монитора для воспроизводимого raster capture.
@@ -12064,7 +12072,9 @@ index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff40
 +    /// Счётчики пачек, включая завершённые GPU timestamps.
 +    pub batches: Arc<BatchCost>,
 +    /// Профиль элементов UI-потока.
-+    pub prepaint: PrepaintProfile,
++    pub prepaint: ElementProfile,
++    /// Self-time of request_layout by element type.
++    pub request_layout: ElementProfile,
 +}
 +
 +impl Default for Instrumentation {
@@ -12079,7 +12089,8 @@ index 0000000000000000000000000000000000000000..2041e912d79bc70a27495076b7e4ff40
 +        Self {
 +            config,
 +            batches: Arc::default(),
-+            prepaint: PrepaintProfile::new(config.prepaint),
++            prepaint: ElementProfile::new(config.prepaint),
++            request_layout: ElementProfile::new(config.request_layout),
 +        }
 +    }
 +
@@ -12606,11 +12617,13 @@ index e47fd002885cc3d947d7e8dfaa595863d2c3abd1..f9e896cd4abf44d3a51f15ce6df35281
 +                font_size,
 diff --git a/vendor/gpui/src/prepaint_prof.rs b/vendor/gpui/src/prepaint_prof.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f1bd869290732a5cf80e84792bfc4e5b9072dbac
+index 0000000000000000000000000000000000000000..229c680ab6c09daa74c793a88d2dfc116c90924f
 --- /dev/null
 +++ b/vendor/gpui/src/prepaint_prof.rs
-@@ -0,0 +1,81 @@
-+//! KaminIDE patch: self-time prepaint, принадлежащий одному приложению.
+@@ -0,0 +1,138 @@
++//! KaminIDE patch: self-time of one element phase by element type, owned by
++//! one application. The host may attach monotonic cost counters; each element
++//! then also gets the part of their growth that happened outside its children.
 +
 +use std::{
 +    collections::HashMap,
@@ -12618,20 +12631,43 @@ index 0000000000000000000000000000000000000000..f1bd869290732a5cf80e84792bfc4e5b
 +    time::Instant,
 +};
 +
-+#[derive(Default)]
-+struct State {
-+    stack: Vec<u64>,
-+    times: HashMap<&'static str, (u64, u32)>,
++/// Number of host cost counters read by a [`CostProbe`].
++pub const COSTS: usize = 4;
++/// Current values of the host's monotonic cost counters.
++pub type CostProbe = fn() -> [u64; COSTS];
++
++/// Exclusive cost of one element type.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct ElementCost {
++    /// Nanoseconds outside child elements of the same phase.
++    pub self_ns: u64,
++    pub calls: u32,
++    /// Growth of the host counters outside child elements.
++    pub self_costs: [u64; COSTS],
 +}
 +
-+/// Явный профилировщик: стек используется только UI-потоком приложения.
++#[derive(Default)]
++struct Open {
++    children_ns: u64,
++    children_costs: [u64; COSTS],
++    start_costs: [u64; COSTS],
++}
++
++#[derive(Default)]
++struct State {
++    stack: Vec<Open>,
++    times: HashMap<&'static str, ElementCost>,
++    probe: Option<CostProbe>,
++}
++
++/// Explicit profiler; its stack is used only by the application's UI thread.
 +#[derive(Clone, Default)]
-+pub struct PrepaintProfile {
++pub struct ElementProfile {
 +    state: Arc<Mutex<State>>,
 +    enabled: bool,
 +}
 +
-+impl PrepaintProfile {
++impl ElementProfile {
 +    pub(crate) fn new(enabled: bool) -> Self {
 +        Self {
 +            enabled,
@@ -12639,12 +12675,24 @@ index 0000000000000000000000000000000000000000..f1bd869290732a5cf80e84792bfc4e5b
 +        }
 +    }
 +
-+    /// Начать замер элемента, не удерживая блокировку во время обхода детей.
++    /// Attach the host's cost counters to every following element.
++    pub fn set_costs(&self, probe: CostProbe) {
++        if let Ok(mut state) = self.state.lock() {
++            state.probe = Some(probe);
++        }
++    }
++
++    /// Start measuring an element without holding the lock over its children.
 +    pub fn enter(&self, name: &'static str) -> Option<Guard> {
 +        if !self.enabled {
 +            return None;
 +        }
-+        self.state.lock().ok()?.stack.push(0);
++        let mut state = self.state.lock().ok()?;
++        let start_costs = state.probe.map(|probe| probe()).unwrap_or_default();
++        state.stack.push(Open {
++            start_costs,
++            ..Open::default()
++        });
 +        Some(Guard {
 +            started: Instant::now(),
 +            name,
@@ -12652,25 +12700,31 @@ index 0000000000000000000000000000000000000000..f1bd869290732a5cf80e84792bfc4e5b
 +        })
 +    }
 +
-+    /// Топ-N типов: имя, суммарные микросекунды self-time, число вызовов.
++    /// Top-N types: short name, total self-time in microseconds, calls.
 +    pub fn take_top(&self, n: usize) -> Vec<(String, u64, u32)> {
-+        let Ok(mut state) = self.state.lock() else {
-+            return Vec::new();
-+        };
-+        let mut values: Vec<_> = state
-+            .times
-+            .drain()
-+            .map(|(name, (us, count))| {
-+                (name.rsplit("::").next().unwrap_or(name).to_string(), us, count)
++        let mut values: Vec<_> = self
++            .take()
++            .into_iter()
++            .map(|(name, cost)| {
++                let short = name.rsplit("::").next().unwrap_or(name).to_string();
++                (short, cost.self_ns / 1_000, cost.calls)
 +            })
 +            .collect();
 +        values.sort_by(|a, b| b.1.cmp(&a.1));
 +        values.truncate(n);
 +        values
 +    }
++
++    /// Every measured type by its full name since the last take.
++    pub fn take(&self) -> Vec<(&'static str, ElementCost)> {
++        let Ok(mut state) = self.state.lock() else {
++            return Vec::new();
++        };
++        state.times.drain().collect()
++    }
 +}
 +
-+/// RAII-замер: при unwind восстанавливает стек того же профилировщика.
++/// RAII measurement: on unwind it restores the stack of the same profiler.
 +pub struct Guard {
 +    started: Instant,
 +    name: &'static str,
@@ -12679,15 +12733,29 @@ index 0000000000000000000000000000000000000000..f1bd869290732a5cf80e84792bfc4e5b
 +
 +impl Drop for Guard {
 +    fn drop(&mut self) {
-+        let total = self.started.elapsed().as_micros() as u64;
++        let total = u64::try_from(self.started.elapsed().as_nanos()).unwrap_or(u64::MAX);
 +        if let Ok(mut state) = self.state.lock() {
-+            let children = state.stack.pop().unwrap_or(0);
++            let end_costs = state.probe.map(|probe| probe()).unwrap_or_default();
++            let open = state.stack.pop().unwrap_or_default();
++            let grown: [u64; COSTS] =
++                std::array::from_fn(|i| end_costs[i].saturating_sub(open.start_costs[i]));
 +            if let Some(parent) = state.stack.last_mut() {
-+                *parent += total;
++                parent.children_ns += total;
++                for (child, grew) in parent.children_costs.iter_mut().zip(grown) {
++                    *child += grew;
++                }
 +            }
 +            let entry = state.times.entry(self.name).or_default();
-+            entry.0 += total.saturating_sub(children);
-+            entry.1 += 1;
++            entry.self_ns += total.saturating_sub(open.children_ns);
++            entry.calls += 1;
++            for ((own, grew), children) in entry
++                .self_costs
++                .iter_mut()
++                .zip(grown)
++                .zip(open.children_costs)
++            {
++                *own += grew.saturating_sub(children);
++            }
 +        }
 +    }
 +}

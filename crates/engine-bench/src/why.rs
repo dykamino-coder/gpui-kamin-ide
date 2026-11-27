@@ -9,6 +9,7 @@
 //! reads two of them (`compare`).
 
 pub(super) mod compare;
+mod element_kinds;
 mod layout_work;
 mod paint_work;
 mod text;
@@ -107,6 +108,9 @@ impl Watch {
         // Primitives and painted area by batch kind since the last sample (`[gpu]`,
         // with GPU time per kind under KAMIN_DIAG_GPU_TIMING=1).
         let gpu_batches = cx.update(|cx| cx.instrumentation().batches.take_line());
+        // Exclusive request_layout time and style copies by element type since the last sample.
+        let kinds =
+            cx.update(|cx| element_kinds::to_json(cx.instrumentation().request_layout.take()));
         let index = FRAMES.with(|f| f.borrow().len()) + 1;
         let fields = json!({
             "frame": index,
@@ -125,6 +129,7 @@ impl Watch {
                 "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3,
             })),
             "gpu_batches": gpu_batches,
+            "request_layout_kinds": kinds,
             "memory": memory,
             "between": self.between,
         });
