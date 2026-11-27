@@ -13,29 +13,25 @@ use super::*;
 /// identity is known up front; the device object is created on first use and
 /// dropped with the pipelines when the device is lost.
 pub(super) struct GradientProgram {
-    fragment: std::cell::OnceCell<ID3D11PixelShader>,
+    fragment: deferred_shader::Shader<ID3D11PixelShader>,
     pub(super) executable: String,
 }
 
 impl GradientProgram {
-    pub(super) fn new() -> Result<Self> {
-        let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
+    pub(super) fn new(profile: &gpui::StartupProfile) -> Result<Self> {
+        let (fragment, executable) = deferred_shader::fragment(ShaderModule::QuadGradient, profile)?;
         Ok(Self {
-            executable: super::shader_identity::executable(raw.as_bytes())?,
-            fragment: std::cell::OnceCell::new(),
+            executable,
+            fragment,
         })
     }
 
-    pub(super) fn fragment(&self, device: &ID3D11Device) -> Result<&ID3D11PixelShader> {
-        if self.fragment.get().is_none() {
-            let raw = RawShaderBytes::new(ShaderModule::QuadGradient, ShaderTarget::Fragment)?;
-            let _ = self.fragment.set(create_fragment_shader(device, raw.as_bytes())?);
-        }
-        Ok(self.fragment.get().expect("set above"))
+    pub(super) fn fragment(&self, context: &ID3D11DeviceContext) -> Result<&ID3D11PixelShader> {
+        self.fragment.get(context)
     }
 
     pub(super) fn is_created(&self) -> bool {
-        self.fragment.get().is_some()
+        self.fragment.is_created()
     }
 }
 

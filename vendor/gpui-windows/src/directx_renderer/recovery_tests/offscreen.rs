@@ -21,8 +21,8 @@ fn cold_renderer_reports_device_work_before_the_first_frame() {
     for name in ["renderer.create", "renderer.surface", "renderer.globals", "renderer.pipelines"] {
         assert_eq!(timings[name].calls, 1, "{name}");
     }
-    assert_eq!(timings["renderer.vertex_shader_create"].calls, 11);
-    assert_eq!(timings["renderer.pixel_shader_create"].calls, 11);
+    assert!(!timings.contains_key("renderer.vertex_shader_create"));
+    assert!(!timings.contains_key("renderer.pixel_shader_create"));
     assert!(instrumentation.startup.take().is_empty());
 }
 

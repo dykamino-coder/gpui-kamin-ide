@@ -1,4 +1,4 @@
-//! KaminIDE patch: интервалы запуска с владельцем приложения; выключено без часов.
+//! KaminIDE patch: application-owned startup intervals; no clock reads when disabled.
 
 use std::{
     collections::BTreeMap,
@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-/// Время включает вложенные интервалы; эти записи нельзя складывать как фазы.
+/// Time includes nested intervals; entries cannot be added as disjoint phases.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct StartupTiming {
     pub calls: u64,
@@ -27,7 +27,7 @@ impl StartupProfile {
         }
     }
 
-    /// Guard создаётся до операции, в том числе до конструктора платформы.
+    /// Create the guard before the operation, including platform construction.
     #[inline]
     pub fn span(&self, name: &'static str) -> StartupSpan {
         self.with_clock(name, Instant::now)
@@ -44,7 +44,7 @@ impl StartupProfile {
         }
     }
 
-    /// Снимок очищает интервалы; не меняет настройки и не читает часы.
+    /// Drain intervals without changing configuration or reading the clock.
     pub fn take(&self) -> BTreeMap<&'static str, StartupTiming> {
         self.timings
             .as_ref()
@@ -54,7 +54,7 @@ impl StartupProfile {
     }
 }
 
-#[must_use = "интервал заканчивается при уничтожении guard"]
+#[must_use = "the interval ends when its guard is dropped"]
 pub struct StartupSpan {
     name: &'static str,
     open: Option<(Timings, Instant)>,

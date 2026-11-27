@@ -202,7 +202,7 @@ impl WindowsPlatform {
         Self::with_gpu_adapter_and_instrumentation(headless, preference, gpui::Instrumentation::default())
     }
 
-    /// KaminIDE patch: журнал запуска получает тот же экземпляр до создания DirectWrite.
+    /// KaminIDE patch: share startup instrumentation before DirectWrite construction.
     pub fn with_gpu_adapter_and_instrumentation(
         headless: bool,
         preference: GpuAdapterPreference,

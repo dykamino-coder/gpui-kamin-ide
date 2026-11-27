@@ -26,7 +26,7 @@ pub struct InstrumentationConfig {
     /// Measure the self-time of request_layout by element type and the
     /// layout inputs boxes keep across passes (`Instrumentation::layout_inputs`).
     pub request_layout: bool,
-    /// Измерять создание платформы, шрифтов и устройства для журнала запуска.
+    /// Record platform, font and device construction in the startup journal.
     pub startup: bool,
     /// Создавать timestamp-запросы GPU.
     pub gpu_timing: bool,
@@ -49,7 +49,7 @@ pub struct Instrumentation {
     /// Frame-tree boxes laid out with the inputs of the previous pass; kept
     /// with `request_layout` (the layout journal).
     pub layout_inputs: Arc<LayoutInputs>,
-    /// Вложенные интервалы запуска; clone сохраняет одного владельца измерений.
+    /// Nested startup intervals; clones share the same measurement owner.
     pub startup: StartupProfile,
 }
 

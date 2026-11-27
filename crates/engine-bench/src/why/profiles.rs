@@ -1,4 +1,4 @@
-//! Одинаковые границы профилей GPUI и документа: кадры в паузе сохраняются отдельно.
+//! Align GPUI and document profile boundaries; preserve gap frames separately.
 
 use serde_json::{Value, json};
 

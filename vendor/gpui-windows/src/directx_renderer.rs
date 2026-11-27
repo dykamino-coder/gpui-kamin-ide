@@ -57,6 +57,7 @@ mod texture_pool;
 mod gpu_memory;
 pub(crate) use gpu_memory::texture_bytes;
 mod shader_identity;
+mod deferred_shader;
 #[cfg(debug_assertions)]
 mod shader_compilation;
 mod present_gate;
@@ -1698,7 +1699,7 @@ impl DirectXRenderer {
                     params,
                     first as u32,
                     len as u32,
-                    self.pipelines.quad_gradient.fragment(&devices.device)?,
+                    self.pipelines.quad_gradient.fragment(&devices.device_context)?,
                 )?;
             } else {
                 pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
@@ -2397,7 +2398,7 @@ impl DirectXRenderPipelines {
             64,
             create_blend_state(device)?,
         )?;
-        let quad_gradient = analytic_gradient::GradientProgram::new()?;
+        let quad_gradient = analytic_gradient::GradientProgram::new(profile)?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
             profile,
@@ -2590,8 +2591,8 @@ struct PipelineState<T> {
     gradients: Option<analytic_gradient::GradientBuffers>,
     // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
     shader_executables: [String; 2],
-    vertex: ID3D11VertexShader,
-    fragment: ID3D11PixelShader,
+    vertex: deferred_shader::Shader<ID3D11VertexShader>,
+    fragment: deferred_shader::Shader<ID3D11PixelShader>,
     buffer: ID3D11Buffer,
     buffer_size: usize,
     view: Option<ID3D11ShaderResourceView>,
@@ -2644,8 +2645,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             topology,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             &self.blend_state,
         );
         unsafe {
@@ -2710,8 +2711,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             blend_override.unwrap_or(&self.blend_state),
         );
         unsafe {
@@ -2736,7 +2737,7 @@ impl<T> PipelineState<T> {
             batch_params_buffer,
             first_instance,
             instance_count,
-            &self.fragment,
+            self.fragment.get(device_context)?,
         )
     }
 
@@ -2760,7 +2761,7 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
+            self.vertex.get(device_context)?,
             fragment,
             &self.blend_state,
         );
@@ -2789,8 +2790,8 @@ impl<T> PipelineState<T> {
             device_context,
             slice::from_ref(&self.view),
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
-            &self.vertex,
-            &self.fragment,
+            self.vertex.get(device_context)?,
+            self.fragment.get(device_context)?,
             &self.blend_state,
         );
         unsafe {
@@ -3330,7 +3331,7 @@ pub(crate) mod shader_resources {
             }
         }
 
-        pub(crate) fn as_bytes(&'t self) -> &'t [u8] {
+        pub(crate) fn as_bytes(&self) -> &[u8] {
             self.inner
         }
 

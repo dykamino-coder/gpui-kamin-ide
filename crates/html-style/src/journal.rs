@@ -124,7 +124,7 @@ pub struct Journal {
     /// Causes past the bound, not kept.
     pub dropped: u64,
     pub caches: BTreeMap<&'static str, CacheStats>,
-    /// Вложенные интервалы существующих проходов; не слагаемые времени кадра.
+    /// Nested intervals of existing passes; not additive frame-time components.
     pub timings: BTreeMap<&'static str, Timing>,
 }
 

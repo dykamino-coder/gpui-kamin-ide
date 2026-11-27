@@ -1,4 +1,4 @@
-//! Интервалы журнала: без читателя не читают часы и не захватывают журнал.
+//! Journal intervals: no clock reads or journal locks without a reader.
 
 use std::time::{Duration, Instant};
 
@@ -8,9 +8,9 @@ pub struct Timing {
     pub elapsed: Duration,
 }
 
-/// Вложенный интервал, суммируемый по имени до следующего `take`.
-/// Имена задаются проходами движка, не содержимым документа.
-#[must_use = "интервал заканчивается при уничтожении guard"]
+/// Nested interval accumulated by name until the next `take`.
+/// Names describe engine passes, not document contents.
+#[must_use = "the interval ends when its guard is dropped"]
 pub struct Span {
     name: &'static str,
     started: Option<Instant>,
@@ -34,7 +34,7 @@ impl Span {
 impl Drop for Span {
     fn drop(&mut self) {
         if let Some(started) = self.started {
-            // Подписка могла закончиться раньше интервала.
+            // The subscription may have ended before this interval.
             if super::enabled() && super::kept_here() {
                 let elapsed = started.elapsed();
                 super::with(|j| {

@@ -1,4 +1,4 @@
-//! Читаемые интервалы запуска и вложенных проходов; не смешивает их с фазами.
+//! Readable startup and nested-pass intervals, separate from disjoint phases.
 
 use serde_json::Value;
 use std::fmt::Write;

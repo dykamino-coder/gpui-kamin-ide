@@ -1,5 +1,5 @@
-//! Первый захваченный кадр процесса: создание ОС, host, документ, readback.
-//! Часы ОС нужны только для привязки рождения процесса; дальше — `Instant`.
+//! First captured process frame: OS creation, host, document, readback.
+//! The OS clock anchors process creation; subsequent intervals use `Instant`.
 
 use serde_json::{Value, json};
 use std::{
@@ -24,7 +24,7 @@ struct Cold {
     captured: Option<Instant>,
 }
 
-/// Вызывается только с `--why`. Ошибка привязки не становится ложным нулём.
+/// Called only with `--why`; a failed clock anchor never becomes a false zero.
 pub(crate) fn start() -> Result<(), Box<dyn std::error::Error>> {
     let (mut created, mut exited, mut kernel, mut user) = (
         FILETIME::default(),
@@ -32,7 +32,7 @@ pub(crate) fn start() -> Result<(), Box<dyn std::error::Error>> {
         FILETIME::default(),
         FILETIME::default(),
     );
-    // Псевдодескриптор собственного процесса; все выходные буферы живут до возврата.
+    // The pseudo handle denotes this process; output buffers outlive the call.
     unsafe {
         GetProcessTimes(
             GetCurrentProcess(),
@@ -87,7 +87,7 @@ pub(super) fn native_json(
     }).collect::<serde_json::Map<_, _>>().into()
 }
 
-/// Только первый документ: следующие cold-повторы не являются запуском процесса.
+/// Only the first document: later cold repeats are not process launches.
 pub(crate) fn sample_started(at: Instant) {
     COLD.with(|c| {
         if let Some(c) = c.borrow_mut().as_mut() {

@@ -5481,7 +5481,7 @@ zkM>{l3K%`3(KC#gJ$m%yCf=k&EI7J-M06&mjuG)0LTUu?0%mN!T7eI+yKfFc@eL+j
 KHi`M@(SHGAT(5lq
 
 diff --git a/vendor/gpui/src/app.rs b/vendor/gpui/src/app.rs
-index a921de1aa0358a8672425fa241e14f38b70825ab..be1c2357cd4e6bdff0d3191a40704124224df0a2
+index a921de1aa0358a8672425fa241e14f38b70825ab..b05a21c7f9f698562daa2a04c80a269bc972ec3d
 --- a/vendor/gpui/src/app.rs
 +++ b/vendor/gpui/src/app.rs
 @@ -68,0 +69 @@
@@ -5494,7 +5494,7 @@ index a921de1aa0358a8672425fa241e14f38b70825ab..be1c2357cd4e6bdff0d3191a40704124
 +        self.with_instrumentation_instance(crate::Instrumentation::new(config))
 +    }
 +
-+    /// KaminIDE patch: сохранить измерения, начатые конструктором платформы.
++    /// KaminIDE patch: preserve measurements started by the platform constructor.
 +    pub fn with_instrumentation_instance(self, instrumentation: crate::Instrumentation) -> Self {
 +        let mut app = self.0.borrow_mut();
 +        app.instrumentation = instrumentation;
@@ -12105,7 +12105,7 @@ index 0000000000000000000000000000000000000000..5a60c9d7addadcf21996e8442990f50f
 +}
 diff --git a/vendor/gpui/src/instrumentation.rs b/vendor/gpui/src/instrumentation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..38ef1f52eb08eb354fa2ebb4a7e1a86bd8b27c3e
+index 0000000000000000000000000000000000000000..fef4c237af50fadc97c145c6a9b8066c17d15237
 --- /dev/null
 +++ b/vendor/gpui/src/instrumentation.rs
 @@ -0,0 +1,132 @@
@@ -12137,7 +12137,7 @@ index 0000000000000000000000000000000000000000..38ef1f52eb08eb354fa2ebb4a7e1a86b
 +    /// Measure the self-time of request_layout by element type and the
 +    /// layout inputs boxes keep across passes (`Instrumentation::layout_inputs`).
 +    pub request_layout: bool,
-+    /// Измерять создание платформы, шрифтов и устройства для журнала запуска.
++    /// Record platform, font and device construction in the startup journal.
 +    pub startup: bool,
 +    /// Создавать timestamp-запросы GPU.
 +    pub gpu_timing: bool,
@@ -12160,7 +12160,7 @@ index 0000000000000000000000000000000000000000..38ef1f52eb08eb354fa2ebb4a7e1a86b
 +    /// Frame-tree boxes laid out with the inputs of the previous pass; kept
 +    /// with `request_layout` (the layout journal).
 +    pub layout_inputs: Arc<LayoutInputs>,
-+    /// Вложенные интервалы запуска; clone сохраняет одного владельца измерений.
++    /// Nested startup intervals; clones share the same measurement owner.
 +    pub startup: StartupProfile,
 +}
 +
@@ -12243,11 +12243,11 @@ index 0000000000000000000000000000000000000000..38ef1f52eb08eb354fa2ebb4a7e1a86b
 +}
 diff --git a/vendor/gpui/src/instrumentation/startup.rs b/vendor/gpui/src/instrumentation/startup.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145d4408201
+index 0000000000000000000000000000000000000000..38786765930aea5353e89fc39028691fa01c0072
 --- /dev/null
 +++ b/vendor/gpui/src/instrumentation/startup.rs
 @@ -0,0 +1,104 @@
-+//! KaminIDE patch: интервалы запуска с владельцем приложения; выключено без часов.
++//! KaminIDE patch: application-owned startup intervals; no clock reads when disabled.
 +
 +use std::{
 +    collections::BTreeMap,
@@ -12255,7 +12255,7 @@ index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145
 +    time::{Duration, Instant},
 +};
 +
-+/// Время включает вложенные интервалы; эти записи нельзя складывать как фазы.
++/// Time includes nested intervals; entries cannot be added as disjoint phases.
 +#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 +pub struct StartupTiming {
 +    pub calls: u64,
@@ -12276,7 +12276,7 @@ index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145
 +        }
 +    }
 +
-+    /// Guard создаётся до операции, в том числе до конструктора платформы.
++    /// Create the guard before the operation, including platform construction.
 +    #[inline]
 +    pub fn span(&self, name: &'static str) -> StartupSpan {
 +        self.with_clock(name, Instant::now)
@@ -12293,7 +12293,7 @@ index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145
 +        }
 +    }
 +
-+    /// Снимок очищает интервалы; не меняет настройки и не читает часы.
++    /// Drain intervals without changing configuration or reading the clock.
 +    pub fn take(&self) -> BTreeMap<&'static str, StartupTiming> {
 +        self.timings
 +            .as_ref()
@@ -12303,7 +12303,7 @@ index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145
 +    }
 +}
 +
-+#[must_use = "интервал заканчивается при уничтожении guard"]
++#[must_use = "the interval ends when its guard is dropped"]
 +pub struct StartupSpan {
 +    name: &'static str,
 +    open: Option<(Timings, Instant)>,

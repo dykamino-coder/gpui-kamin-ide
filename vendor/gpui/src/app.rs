@@ -204,7 +204,7 @@ impl Application {
         self.with_instrumentation_instance(crate::Instrumentation::new(config))
     }
 
-    /// KaminIDE patch: сохранить измерения, начатые конструктором платформы.
+    /// KaminIDE patch: preserve measurements started by the platform constructor.
     pub fn with_instrumentation_instance(self, instrumentation: crate::Instrumentation) -> Self {
         let mut app = self.0.borrow_mut();
         app.instrumentation = instrumentation;
