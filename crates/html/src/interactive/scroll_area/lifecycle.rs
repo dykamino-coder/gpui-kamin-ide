@@ -217,7 +217,10 @@ impl Element for ScrollArea {
         // Preserve its block-background / inline-foreground phases through
         // this native adapter (Blink box_fragment_painter.cc:877-959).
         // Register before descendants: bubble dispatch runs the inner adapter first.
-        super::wheel::listen(paint_bounds.1.clone(), child.1.clone(), window);
+        let hidden = Some(crate::style::computed::Overflow::Hidden);
+        let layout = &self.style.reset_box_layout;
+        let wheel = [layout.overflow_x != hidden, layout.overflow_y != hidden];
+        super::wheel::listen(paint_bounds.1.clone(), child.1.clone(), wheel, window);
         crate::hooks::paint_reopen(window, |window| child.0.paint(window, cx));
         if self.root.as_ref().is_some_and(|root| root.hosted.get()) {
             return;
