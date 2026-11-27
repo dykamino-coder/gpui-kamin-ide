@@ -791,13 +791,13 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     return max(corner_to_point.x, corner_to_point.y);
 }
 
-// KaminIDE patch: the premultiplied source an elliptical quad hands the
-// blender: `colour * alpha` and alpha in 8-bit steps, times the coverage in
-// 8-bit steps, the product rounded to a step in integers. Left as a float
-// product of steps, its fractions of 1/65025 of a code reach a blend that may
-// round a hair apart on two adapters; with steps every sum stays at least
-// 1/255 of a code from a tie (255 is odd), so every adapter writes the same
-// byte.
+// KaminIDE patch: the premultiplied source a quad hands the blender: `colour * alpha`
+// and alpha in 8-bit steps, times the coverage in 8-bit steps, the product
+// rounded to a step in integers. Left as a float product of steps, its
+// fractions of 1/65025 of a code reach a blend that may round a hair apart
+// on two adapters (non-premultiplied blending multiplies two such floats in
+// the blend unit); with steps every sum stays at least 1/255 of a code from
+// a tie (255 is odd), so every adapter writes the same byte.
 float4 blend_source(float4 color, float coverage) {
     uint4 p = uint4(round(saturate(float4(color.rgb * color.a, color.a)) * 255.0));
     uint m = uint(round(saturate(coverage) * 255.0));
@@ -2109,7 +2109,12 @@ float4 blur_fragment(BlurFragmentInput input): SV_Target {
         }
         // Цвет назначения — копия кадра под группой.
         float4 dst = t_backdrop.Load(int3(int2(floor(input.position.xy) - q.backdrop_rect.xy), 0));
-        return composite_mix(q.blend_mode, src, dst);
+        // KaminIDE patch: the step is rounded to the 8-bit target here, as
+        // group_tiles_fragment rounds it: the output merger's float-to-UNORM
+        // conversion is allowed a tolerance, so a float result near a tie
+        // lands on either code by adapter. A value already on a code
+        // converts exactly on every adapter.
+        return round(saturate(composite_mix(q.blend_mode, src, dst)) * 255.0) / 255.0;
     }
     // Tent 3x3: с билинейкой и каскадом /2 → мягкое размытие без колец.
     float4 c = blur_tap(q, input.uv, float2(0.0, 0.0)) * 0.25;
@@ -2246,7 +2251,9 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
     float2 local_position = untransform(input.position.xy, quad.transformation);
     float4 background_color = gradient_color(quad.background, local_position, quad.bounds,
     input.background_solid, input.background_color0, input.background_color1);
-    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
+    float4 color = quad_fragment_impl(quad, local_position, background_color, input.border_color);
+    // Elliptical quads return their blend source already (`blend_source`).
+    return quad.ellipse.on != 0 ? color : blend_source(color, 1.0);
 }
 QuadVertexOutput quad_gradient_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     return quad_vertex(vertex_id, instance_id);
@@ -2257,5 +2264,7 @@ float4 quad_gradient_fragment(QuadFragmentInput input): SV_Target {
     float2 local_position = untransform(input.position.xy, quad.transformation);
     float4 background_color = analytic_gradient(quad.background.stop_count, local_position, quad.bounds);
     background_color.a *= quad.background.solid.a;
-    return quad_fragment_impl(quad, local_position, background_color, input.border_color);
+    float4 color = quad_fragment_impl(quad, local_position, background_color, input.border_color);
+    // Elliptical quads return their blend source already (`blend_source`).
+    return quad.ellipse.on != 0 ? color : blend_source(color, 1.0);
 }
