@@ -28,6 +28,11 @@ impl Record {
         if !own.matches(environment, window) {
             return Err(FrameMiss::Environment.noted());
         }
+        // The pointer entered or left a box with a hover style: the scene layer paints
+        // its new hover (`Builder::repaint_boxes`); a frame without one is built.
+        if store.scene_layer().is_none() && !own.same_hovers(environment) {
+            return Err(FrameMiss::Environment.noted());
+        }
         if !window.layout_scroll_replayable(&own.layout, &self.prepaint) {
             return Err(FrameMiss::LayoutScroll.noted());
         }
