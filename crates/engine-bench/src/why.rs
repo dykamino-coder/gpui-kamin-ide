@@ -9,6 +9,7 @@
 //! reads two of them (`compare`).
 
 pub(super) mod compare;
+mod layout_work;
 mod paint_work;
 mod text;
 
@@ -117,6 +118,7 @@ impl Watch {
             "paint_path": path,
             "phases_ms": phases,
             "paint_work": work.map(super::work::Sample::paint_profile),
+            "layout_work": work.map(super::work::Sample::layout_profile),
             "raster": raster.map(|r| json!({
                 "plan": r.plan, "full_by": r.full_by, "shift_miss": r.shift_miss, "shift_compare": r.shift_compare, "delta": r.delta, "moved_px": r.moved_px,
                 "rects_count": r.rects.len(), "raster_px": r.raster_px, "rects": r.rects,

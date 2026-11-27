@@ -6,6 +6,7 @@
 
 use serde_json::Value;
 
+mod layout;
 mod paint;
 
 pub(super) struct Capture {
@@ -13,6 +14,9 @@ pub(super) struct Capture {
     session: kamin_html::work::Session,
     #[cfg(feature = "work-counters")]
     usage: super::usage::Capture,
+    /// Where this frame's layout units go for the next sample.
+    #[cfg(feature = "work-counters")]
+    carry: Carry,
 }
 
 /// Счётчики работы и ресурсы одного образца.
@@ -31,7 +35,13 @@ pub(super) struct Sample {
 pub(super) struct Adapter {
     #[cfg(feature = "work-counters")]
     gpu: super::usage::Adapter,
+    /// The layout units of the previous sample (kamin_html::work::repeat).
+    #[cfg(feature = "work-counters")]
+    carry: Carry,
 }
+
+#[cfg(feature = "work-counters")]
+type Carry = std::rc::Rc<std::cell::RefCell<kamin_html::work::Carry>>;
 
 impl Adapter {
     pub(super) fn open(luid: (i32, u32)) -> Self {
@@ -40,6 +50,8 @@ impl Adapter {
         Self {
             #[cfg(feature = "work-counters")]
             gpu: super::usage::Adapter::open(luid),
+            #[cfg(feature = "work-counters")]
+            carry: Default::default(),
         }
     }
 }
@@ -50,14 +62,20 @@ impl Capture {
         let usage = super::usage::Capture::begin(&adapter.gpu)?;
         #[cfg(not(feature = "work-counters"))]
         let _ = adapter;
+        #[cfg(feature = "work-counters")]
+        let session = kamin_html::work::Session::begin_measured(
+            Some(usage.observer()),
+            super::allocations::svg_observer(),
+        );
+        #[cfg(feature = "work-counters")]
+        session.resume_inputs(adapter.carry.take());
         Ok(Self {
             #[cfg(feature = "work-counters")]
-            session: kamin_html::work::Session::begin_measured(
-                Some(usage.observer()),
-                super::allocations::svg_observer(),
-            ),
+            session,
             #[cfg(feature = "work-counters")]
             usage,
+            #[cfg(feature = "work-counters")]
+            carry: adapter.carry.clone(),
         })
     }
 
@@ -66,6 +84,7 @@ impl Capture {
         #[cfg(feature = "work-counters")]
         {
             let usage = self.usage.finish();
+            self.carry.replace(self.session.carry_inputs());
             let live = doc.values().doc.style_storage();
             Sample {
                 cold,

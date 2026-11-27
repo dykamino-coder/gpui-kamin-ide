@@ -16,6 +16,9 @@ use tracing::{
 #[path = "timer.rs"]
 mod timer;
 pub use timer::{Timer, time};
+#[path = "inputs.rs"]
+mod inputs;
+pub use inputs::{Carry, Repeat, repeat};
 
 macro_rules! vocabulary {
     ($name:ident { $($variant:ident => $label:literal),+ $(,)? }) => {
@@ -57,6 +60,8 @@ struct Totals {
     /// Наносекунды внутри observer ([observed]).
     observed_ns: AtomicU64,
     allocations: Option<fn() -> (u64, u64)>,
+    /// Layout units seen by [inputs::repeat].
+    inputs: std::sync::Mutex<inputs::Inputs>,
 }
 struct Collector(Arc<Totals>);
 // Dispatch С…СЂР°РЅРёС‚ РѕР±Р»Р°СЃС‚СЊ РЅР°Р±Р»СЋРґРµРЅРёСЏ Рё РІРѕСЃСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ РїСЂРµРґС‹РґСѓС‰РµРіРѕ РїРѕРґРїРёСЃС‡РёРєР°.
@@ -102,6 +107,7 @@ impl Session {
             observer,
             observed_ns: AtomicU64::new(0),
             allocations,
+            inputs: Default::default(),
         });
         let dispatch = Dispatch::new(Collector(totals.clone()));
         Self {

@@ -120,6 +120,7 @@ pub(super) fn render(out: &Value) -> String {
         }
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render(&mut s, &f["paint_work"]);
+        super::layout_work::render(&mut s, &f["layout_work"]);
         let phases: Vec<String> = f["phases_ms"]
             .as_object()
             .into_iter()
