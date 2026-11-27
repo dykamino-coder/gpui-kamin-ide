@@ -208,6 +208,8 @@ pub(super) fn path_area(
     let bounds = paths
         .iter()
         .map(|p| p.clipped_bounds())
+        // A zero-sized fractional mask must stay empty before outward rounding.
+        .filter(|b| !b.is_empty())
         .reduce(|a, b| a.union(&b))?;
     let [x0, y0, x1, y1] = [
         bounds.origin.x.0,

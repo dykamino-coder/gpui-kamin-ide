@@ -14905,10 +14905,10 @@ index 0000000000000000000000000000000000000000..b917c453c6bc3c2fd028152804ea5485
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/path_pass.rs b/vendor/gpui-windows/src/directx_renderer/path_pass.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9e93c99c36438b9453eda7c7f414275802b751df
+index 0000000000000000000000000000000000000000..82f01db7a9dd93958799640cfc789d62926da42b
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/path_pass.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,253 @@
 +//! KaminIDE patch: a path batch costs the pixels its paths can reach, not the
 +//! window.
 +//!
@@ -15119,6 +15119,8 @@ index 0000000000000000000000000000000000000000..9e93c99c36438b9453eda7c7f4142758
 +    let bounds = paths
 +        .iter()
 +        .map(|p| p.clipped_bounds())
++        // A zero-sized fractional mask must stay empty before outward rounding.
++        .filter(|b| !b.is_empty())
 +        .reduce(|a, b| a.union(&b))?;
 +    let [x0, y0, x1, y1] = [
 +        bounds.origin.x.0,
@@ -15162,10 +15164,10 @@ index 0000000000000000000000000000000000000000..9e93c99c36438b9453eda7c7f4142758
 +mod tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs b/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fb06a6036815a9942d1535704bef9b6b117bb4e2
+index 0000000000000000000000000000000000000000..6a8fcfcb642dfe35724a77fa2d7c26d0cfa71c76
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/path_pass_tests.rs
-@@ -0,0 +1,97 @@
+@@ -0,0 +1,110 @@
 +//! KaminIDE patch: the area a path batch works in (`path_area`).
 +
 +use super::{Region, path_area, scissor_bounds};
@@ -15245,6 +15247,19 @@ index 0000000000000000000000000000000000000000..fb06a6036815a9942d1535704bef9b6b
 +        None
 +    );
 +    assert_eq!(path_area(&[], (200, 100), None), None);
++}
++
++#[test]
++fn empty_fractional_masks_do_not_acquire_pixels_when_rounded_outward() {
++    for mask in [[12.25, 13.75, 0., 4.], [12.25, 13.75, 4., 0.]] {
++        let empty = path(10., 10., 40., 40., mask);
++        assert_eq!(path_area(&[empty.clone()], (200, 100), None), None);
++        let visible = path(50., 50., 60., 60., OPEN);
++        assert_eq!(
++            path_area(&[empty, visible], (200, 100), None),
++            Some(region(50, 50, 10, 10))
++        );
++    }
 +}
 +
 +#[test]
