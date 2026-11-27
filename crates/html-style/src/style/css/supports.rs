@@ -116,11 +116,3 @@ fn supports_take_term(s: &str) -> Option<(&str, &str)> {
     let close = open + find_matching(&s[open..])?;
     Some((&s[..=close], &s[close + 1..]))
 }
-
-/// A nested supports group starts with the complete at-keyword token.
-pub(super) fn supports_group(prelude: &str) -> bool {
-    prelude
-        .get(..9)
-        .is_some_and(|head| head.eq_ignore_ascii_case("@supports"))
-        && prelude[9..].starts_with(|c: char| c == '(' || c.is_ascii_whitespace())
-}
