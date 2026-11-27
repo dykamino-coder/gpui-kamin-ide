@@ -9892,6 +9892,13 @@ mod tests {
             (Some(Instant::now()), FrameRequestSource::LocalSchedule),
             (None, FrameRequestSource::NativeCallback),
         ] {
+            let input_at = Instant::now();
+            journal::record_input(journal::InputTiming {
+                kind: "test",
+                start: input_at,
+                end: input_at,
+                caused_invalidation: false,
+            });
             platform_window.simulate_frame_request(RequestFrameOptions {
                 signal_at,
                 signal_source: source,
@@ -9925,6 +9932,18 @@ mod tests {
                 .expect("completed no-render boundary");
             assert!(signal_index < skip_index);
         }
+        platform_window.simulate_frame_request(RequestFrameOptions {
+            require_presentation: false,
+            ..Default::default()
+        });
+        let entries = collector.collect_unseen().entries;
+        assert!(entries.iter().any(|entry| matches!(
+            entry, ForegroundJournalEntry::PlatformSignal(signal)
+                if signal.window_id == window.window_id()
+        )));
+        assert!(!entries.iter().any(|entry| matches!(
+            entry, ForegroundJournalEntry::Boundary(IntervalBoundary::FrameSkipped(_))
+        )), "an idle request must not seal an empty interval");
     }
 
     #[cfg(feature = "profiler")]

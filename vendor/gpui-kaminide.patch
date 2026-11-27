@@ -34698,7 +34698,7 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e3f940a500d133b43c9ce90720d8f3c7
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
-index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ed0a10481925cd8400b44a1e2b781074448352a7
+index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..c3dff7af100d0cb2a07c6bc76da4d4b49cd09b61
 --- a/vendor/gpui/src/window.rs
 +++ b/vendor/gpui/src/window.rs
 @@ -12 +12 @@
@@ -37544,10 +37544,31 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ed0a10481925cd8400b44a1e2b781074
 +        outer.borrow_mut().clear();
 +    }
 +
-@@ -7778 +9898 @@
+@@ -7774,0 +9895,7 @@
++            let input_at = Instant::now();
++            journal::record_input(journal::InputTiming {
++                kind: "test",
++                start: input_at,
++                end: input_at,
++                caused_invalidation: false,
++            });
+@@ -7778 +9905 @@
 -                require_presentation: true,
 +                require_presentation: false,
-@@ -7913,0 +10034,36 @@
+@@ -7807,0 +9935,12 @@
++        platform_window.simulate_frame_request(RequestFrameOptions {
++            require_presentation: false,
++            ..Default::default()
++        });
++        let entries = collector.collect_unseen().entries;
++        assert!(entries.iter().any(|entry| matches!(
++            entry, ForegroundJournalEntry::PlatformSignal(signal)
++                if signal.window_id == window.window_id()
++        )));
++        assert!(!entries.iter().any(|entry| matches!(
++            entry, ForegroundJournalEntry::Boundary(IntervalBoundary::FrameSkipped(_))
++        )), "an idle request must not seal an empty interval");
+@@ -7913,0 +10053,36 @@
 +    /// `request_present` shows the last frame again: it wakes the platform,
 +    /// and the frame it gets presents without rendering any view.
 +    #[gpui::test]
@@ -37584,7 +37605,7 @@ index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..ed0a10481925cd8400b44a1e2b781074
 +            .unwrap();
 +    }
 +
-@@ -8034,0 +10191,67 @@
+@@ -8034,0 +10210,67 @@
 +    }
 +
 +    /// KaminIDE patch: the open ink sinks, copied into every paint snapshot,
