@@ -169,13 +169,14 @@ pub(crate) fn replay_moved(
     window: &mut Window,
     record: &LineCapture,
     offset: gpui::Point<gpui::Pixels>,
+    clip: bool,
 ) -> Rc<LineCapture> {
     debug_assert!(record.complete(), "incomplete deferred paint record");
     debug_assert!(
         offset == gpui::Point::default() || record.jobs.borrow().is_empty(),
         "a moved replay with positioned jobs"
     );
-    capture(window, |window| jobs::readmit(window, record, offset)).1
+    capture(window, |window| jobs::readmit(window, record, offset, clip)).1
 }
 
 /// The deferred paint of `record` moves with its block (`replay_moved`).

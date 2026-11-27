@@ -318,6 +318,11 @@ impl<E: Element> Drawable<E> {
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
         match mem::take(&mut self.phase) {
             ElementDrawPhase::Start => {
+                // KaminIDE patch: self-time of request_layout by element type.
+                let _prof = cx
+                    .instrumentation()
+                    .request_layout
+                    .enter(std::any::type_name::<E>());
                 let global_id = self
                     .element
                     .id()

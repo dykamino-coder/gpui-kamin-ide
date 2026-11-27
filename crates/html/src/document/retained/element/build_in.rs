@@ -10,7 +10,14 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> LayoutId {
-        self.check_place(window);
+        if std::mem::take(&mut self.unbuilt) {
+            self.slot.builds.set(self.slot.builds.get() + 1);
+            self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
+            let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
+            self.tree = Some(tree);
+            self.flow = flow;
+        }
+        self.check_place(window, cx);
         let before = window.next_frame_callback_count();
         let id = if self.laid_out.is_none()
             && let Some(tree) = self.tree.as_mut()
@@ -36,7 +43,7 @@ impl Retained {
     /// Дерево шага, собранное для другого места в кадре, не годится: ключи
     /// состояний его элементов отличались бы от кадра — тогда кадр
     /// собирается здесь, как без шага.
-    fn check_place(&mut self, window: &Window) {
+    fn check_place(&mut self, window: &Window, cx: &App) {
         if self
             .laid_out
             .as_ref()
@@ -47,7 +54,7 @@ impl Retained {
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
-            let (tree, flow) = self.builder.build(true, false);
+            let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
             self.tree = Some(tree);
             self.flow = flow;
         }

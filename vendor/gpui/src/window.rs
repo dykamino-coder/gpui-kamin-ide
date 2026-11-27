@@ -83,6 +83,8 @@ mod paint_scope;
 mod paint_record;
 /// KaminIDE patch: host-keyed retained subtrees (`window/retained.rs`).
 mod retained; mod group_replay;
+mod hover_view;
+pub use hover_view::HoverView;
 mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
@@ -1090,6 +1092,8 @@ pub(crate) struct Frame {
     pub(crate) hitboxes: Vec<Hitbox>,
     /// KaminIDE patch: inverse-matrix scopes of hitboxes inserted under a transform.
     pub(crate) hitbox_scopes: FxHashMap<HitboxId, Rc<hit_transform::HitScope>>,
+    /// KaminIDE patch: hitboxes a box paints a hover style over (`Window::retained_hovers`).
+    pub(crate) hover_hitboxes: FxHashSet<HitboxId>,
     /// KaminIDE patch: scopes of single segment placements (index in `hitboxes`),
     /// overriding the scope of their hitbox id.
     pub(crate) hitbox_entry_scopes: FxHashMap<usize, Option<Rc<hit_transform::HitScope>>>,
@@ -1254,6 +1258,7 @@ impl Frame {
             scene: Scene::default(),
             hitboxes: Vec::new(),
             hitbox_scopes: FxHashMap::default(),
+            hover_hitboxes: FxHashSet::default(),
             hitbox_entry_scopes: FxHashMap::default(),
             window_control_hitboxes: Vec::new(),
             scroll_nodes: Vec::new(),
@@ -1292,6 +1297,7 @@ impl Frame {
         self.cursor_styles.clear();
         self.hitboxes.clear();
         self.hitbox_scopes.clear();
+        self.hover_hitboxes.clear();
         self.hitbox_entry_scopes.clear();
         self.window_control_hitboxes.clear();
         self.scroll_nodes.clear();
@@ -4532,6 +4538,9 @@ impl Window {
             if let Some(scope) = self.rendered_frame.hitbox_scopes.get(&hitbox.id) {
                 self.next_frame.hitbox_scopes.insert(hitbox.id, scope.clone());
             }
+            if self.rendered_frame.hover_hitboxes.contains(&hitbox.id) {
+                self.next_frame.hover_hitboxes.insert(hitbox.id);
+            }
         }
         let shift = self.next_frame.hitboxes.len();
         for index in range.start.hitboxes_index..range.end.hitboxes_index {
@@ -7054,6 +7063,11 @@ impl Window {
     ///
     /// This method should only be called as part of the prepaint phase of element drawing.
     pub fn insert_hitbox(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior) -> Hitbox {
+        self.insert_hitbox_with(bounds, behavior, false)
+    }
+
+    /// KaminIDE patch: `insert_hitbox` noting whether a box paints a hover style over it.
+    pub(crate) fn insert_hitbox_with(&mut self, bounds: Bounds<Pixels>, behavior: HitboxBehavior, hover: bool) -> Hitbox {
         self.invalidator.debug_assert_prepaint();
 
         // KaminIDE patch: under a scroll node, own mask ∩ the node's clip.
@@ -7068,6 +7082,9 @@ impl Window {
         };
         if let Some(scope) = &self.hit_scope {
             self.next_frame.hitbox_scopes.insert(id, scope.clone());
+        }
+        if hover {
+            self.next_frame.hover_hitboxes.insert(id);
         }
         if !self.insert_segment_hitbox(&hitbox) {
             if let Some((node, own)) = scroll_mark {
@@ -9713,6 +9730,7 @@ impl Frame {
         }
         vec(sink, "gpui/hitboxes", &self.hitboxes);
         table::<(HitboxId, Rc<hit_transform::HitScope>)>(sink, path, self.hitbox_scopes.capacity());
+        table::<HitboxId>(sink, path, self.hover_hitboxes.capacity());
         table::<(usize, Option<Rc<hit_transform::HitScope>>)>(sink, path, self.hitbox_entry_scopes.capacity());
         vec(sink, path, &self.window_control_hitboxes);
         vec(sink, path, &self.deferred_draws);

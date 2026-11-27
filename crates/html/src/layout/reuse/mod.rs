@@ -106,6 +106,8 @@ pub(crate) struct FlowReuse {
     next_contents: RefCell<HashMap<u64, Rc<content::ContentRecord>>>,
     /// Content this build wraps for recording (`content`).
     pending_contents: RefCell<Vec<content::PendingContent>>,
+    /// This build emptied the image request log (`content::Content`).
+    images_log: Cell<bool>,
     /// Subtree verdicts of the contents of this build (`content::inert`).
     inert: content::inert::InertLists,
     /// Far state of this build (`far`): the document's, or made with the
@@ -120,6 +122,8 @@ pub(crate) struct FlowReuse {
     screen: Cell<Option<Bounds<ScaledPixels>>>,
     /// Маска содержимого корня кадра: повтор краски годен только под ней.
     mask: Cell<Option<Bounds<Pixels>>>,
+    /// The hover the window shows in this build (`ReplayRecord::hovers_hold`).
+    hover: gpui::HoverView,
 }
 
 fn find<'a>(nodes: impl Iterator<Item = &'a Node>, tag: &str) -> Option<&'a Element> {
@@ -156,6 +160,7 @@ impl FlowReuse {
         allow: bool,
         drawn: bool,
         again: bool,
+        hover: gpui::HoverView,
     ) -> Option<Rc<Self>> {
         let root = match find(nodes.iter(), "html") {
             Some(html) => Root::Body {
@@ -192,12 +197,14 @@ impl FlowReuse {
             replay_slots: Default::default(),
             next_contents: Default::default(),
             pending_contents: Default::default(),
+            images_log: Cell::new(false),
             inert: Default::default(),
             far: Default::default(),
             far_widths: Cell::new(false),
             far_recorders: Cell::new(0),
             screen: Cell::new(None),
             mask: Cell::new(None),
+            hover,
         }))
     }
 

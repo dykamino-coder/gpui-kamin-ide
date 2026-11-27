@@ -14,8 +14,9 @@ use windows::Win32::Graphics::Direct3D11::{D3D11_MAP_READ, D3D11_MAPPED_SUBRESOU
 // KaminIDE patch: elliptical corners drawn by the quad, not a masked group.
 mod ellipse;
 mod groups;
-// KaminIDE patch: a scroll step drawn as the canvas moved.
+// KaminIDE patch: a scroll step drawn as the canvas moved; path batches in a rectangle.
 mod moved;
+mod paths;
 // KaminIDE patch: a colour sprite reads the same pixels at any atlas place.
 mod sprites;
 // KaminIDE patch: output-merger blend series equal their formulas.
@@ -25,10 +26,7 @@ const W: u32 = 256;
 const H: u32 = 192;
 
 fn b(x: f32, y: f32, w: f32, h: f32) -> Bounds<ScaledPixels> {
-    Bounds {
-        origin: point(ScaledPixels(x), ScaledPixels(y)),
-        size: size(ScaledPixels(w), ScaledPixels(h)),
-    }
+    Bounds::new(point(ScaledPixels(x), ScaledPixels(y)), size(ScaledPixels(w), ScaledPixels(h)))
 }
 
 fn mask() -> ContentMask<ScaledPixels> {

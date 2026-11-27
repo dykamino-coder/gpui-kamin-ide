@@ -18,23 +18,26 @@ pub(super) fn skip_origin(e: &Element, vcx: crate::values::ValueCx<'_>) -> Optio
     let mut origin = CounterOrigin::Relative;
     all_elements(e, |node| {
         if origin == CounterOrigin::Relative && super::content::inert_node(node, vcx) {
-            return true;
+            return hover_free(node);
         }
         origin = CounterOrigin::Fixed;
-        inert(node)
+        inert(node) && hover_free(node)
     })
     .then_some(origin)
 }
 
 /// Элемент `e` сам инертен: обычный поток или таблица, без собственного слоя.
 fn inert(e: &Element) -> bool {
+    flow_kind(e) && unlayered(e)
+}
+
+/// No position, float, transform, opacity or blending: no layer of its own.
+fn unlayered(e: &Element) -> bool {
     let style = e.style.used();
-    flow_kind(e)
-        && matches!(
-            style.reset_positioned.position,
-            None | Some(Position::Static)
-        )
-        && style.reset_positioned.z_index.is_none()
+    matches!(
+        style.reset_positioned.position,
+        None | Some(Position::Static)
+    ) && style.reset_positioned.z_index.is_none()
         && style.reset_box_layout.float.is_none_or(|f| f == 0)
         && style.reset_transforms.transform.is_none()
         && style.reset_transforms.translate.is_none()
@@ -48,19 +51,29 @@ fn inert(e: &Element) -> bool {
 /// element (css-display-3 §2.4: its content is an outside resource or a nested
 /// document, whose loading publishes no epoch) and a natively drawn control
 /// (HTML §15.5); MathML and ruby with their own layout (a ruby annotation may
-/// overhang its box, css-ruby-1 §4.4); hover and animations (pointer and clock
-/// state); first-line and first-letter (taken from an ancestor's lines); a
+/// overhang its box, css-ruby-1 §4.4); animations (clock state); first-line
+/// and first-letter (taken from an ancestor's lines); a
 /// list item's marker (its number comes from siblings). The tag alone decides
 /// nothing: `<a>`, `<li>` without a marker or `<dd>` are flow boxes like `<div>`.
 pub(super) fn flow_kind(e: &Element) -> bool {
-    !embedded(e)
-        && !math_layout(e)
+    !embedded(e) && own_state_free(e)
+}
+
+/// `flow_kind` but for replaced elements and controls.
+fn own_state_free(e: &Element) -> bool {
+    !math_layout(e)
         && crate::text::ruby::ruby_role(e).is_none()
-        && e.hover.is_none()
         && e.anim.is_none()
         && e.first_letter.is_none()
         && e.first_line.is_none()
         && e.list_item.is_none()
+}
+
+/// No `:hover` style of `e`'s own (selectors-4 §10.2). A replay record notes
+/// the hover its boxes paint (`replay::Ranges::hovers`), so `flow_kind` admits
+/// them; records without that note (skip, far, kept paragraph) require this.
+pub(super) fn hover_free(e: &Element) -> bool {
+    e.hover.is_none()
 }
 
 /// Поддерево `e` можно повторить на экране (`replay`): коробки потока без
@@ -229,21 +242,7 @@ pub(super) fn all_elements(e: &Element, mut f: impl FnMut(&Element) -> bool) -> 
 #[cfg(test)]
 mod tests;
 
-/// Обёртка `html`/`body` (или её отсутствие) не читает базовых линий и
-/// строк крайних детей потока: блочная коробка без псевдоэлементов первой
-/// строки и буквы, без обрезки текстовых краёв (css-inline-3 §5) и без
-/// обрезки содержимого, под которой повтор краски был бы под другой маской.
-pub(super) fn edges_free(e: Option<&Element>) -> bool {
-    use crate::style::computed::{Display, Overflow};
-    let Some(e) = e else { return true };
-    let style = e.style.used();
-    let b = &style.reset_box_layout;
-    let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
-    e.first_line.is_none()
-        && e.first_letter.is_none()
-        && matches!(b.display, None | Some(Display::Block))
-        && visible(b.overflow_x)
-        && visible(b.overflow_y)
-        && !style.reset_text_box.text_box_trim_start
-        && !style.reset_text_box.text_box_trim_end
-}
+mod edges;
+mod image;
+pub(super) use edges::edges_free;
+pub(super) use image::store_image;
