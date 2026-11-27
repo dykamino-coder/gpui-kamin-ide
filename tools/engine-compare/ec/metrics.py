@@ -250,3 +250,46 @@ def tree_memory(samples, marks):
         w = [s[2] for s in samples if loaded[0] + 0.5 <= s[0] <= end[0]]
         steady = med(w)
     return peak, steady
+
+
+def tree_private(samples, marks):
+    """Private bytes of the tree from the same samples and marks as ``tree_memory``: the peak after navigation, the
+    median of the steady window, and the tree at the end of every CPU loop (``cpu_<case>_1``: after that case's
+    frames, e.g. N scroll steps or N edits). Marks are (t, cpu_s, ws, private[, cycles])."""
+    nav = marks.get('nav'); end = marks.get('steady_end'); loaded = marks.get('loaded')
+    after = [s[3] for s in samples if nav and s[0] >= nav[0]]
+    out = {'peak_private_bytes': max(after) if after else None, 'steady_private_bytes': None, 'after_phase': {}}
+    if loaded and end:
+        out['steady_private_bytes'] = med([s[3] for s in samples if loaded[0] + 0.5 <= s[0] <= end[0]])
+    for k, m in marks.items():
+        if k.startswith('cpu_') and k.endswith('_1') and len(m) > 3:
+            out['after_phase'][k[4:-2]] = {'ws_bytes': m[2], 'private_bytes': m[3]}
+    return out
+
+
+def ours_private(j):
+    """Private commit of an engine_bench report: the process's lifetime peak (PeakPagefileUsage, read at the end of the
+    memory audit, else at the end of the report) and the median of the audit's idle window."""
+    page = ((j or {}).get('memory_audit') or {}).get('page') or {}
+    ends = [page.get('end') or {}, (j or {}).get('end') or {}]
+    peak = next((e['process_lifetime_peak_commit_bytes'] for e in ends if e.get('process_lifetime_peak_commit_bytes')), None)
+    return {'peak_private_bytes': peak, 'steady_private_bytes': (page.get('median') or {}).get('private_commit_bytes')}
+
+
+MEMORY_KEYS = ('peak_bytes', 'steady_bytes', 'peak_private_bytes', 'steady_private_bytes')
+
+
+def minus_blank(mem, blank):
+    """The page's memory minus the same engine and class on an empty page, key by key (``None`` where either side
+    lacks the number): what the page itself costs, without the engine's constant price of process, window and device.
+    After-phase values are compared with the empty page's steady value of the same kind."""
+    if not mem or not blank:
+        return {}
+    out = {k: mem[k] - blank[k] for k in MEMORY_KEYS if mem.get(k) is not None and blank.get(k) is not None}
+    for case, v in (mem.get('after_phase') or {}).items():
+        d = {}
+        for k, b in (('ws_bytes', 'steady_bytes'), ('private_bytes', 'steady_private_bytes')):
+            if v.get(k) is not None and blank.get(b) is not None:
+                d[k] = v[k] - blank[b]
+        out.setdefault('after_phase', {})[case] = d
+    return out

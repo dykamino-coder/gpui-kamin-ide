@@ -23,8 +23,8 @@ from .. import records as REC
 from .. import winproc as W
 from ..config import file_version
 
-DEF = 'oneshot-2'  # 2: cold CPU = tree CPU minus the empty page; steady memory in the hold window
-BLANK = '<!doctype html><html><head><title>blank</title></head><body></body></html>'
+DEF = 'oneshot-3'  # 2: cold CPU = tree CPU minus the empty page; steady memory in the hold window; 3: private peak
+from . import BLANK
 REPEATS = 3
 
 
@@ -74,10 +74,13 @@ class OneShot:
             p.kill()
         peaks = tree.finish(); root = W.proc_mem(p.handle)
         pk = max([v for _, v in peaks.values() if v] + ([root.PeakWorkingSetSize] if root else []), default=None)
+        # private peak: the highest tree sample, or the root's own lifetime peak commit when the process lived shorter
+        # than a sampling period (a one-shot engine on a small page exits within tens of milliseconds)
+        pv = max([s[3] for s in tree.samples if s[3]] + ([root.PeakPagefileUsage] if root else []), default=None)
         p.close()
         err = (out / 'stderr.txt').read_text(encoding='utf-8', errors='replace') if (out / 'stderr.txt').exists() else ''
         shutil.rmtree(out, ignore_errors=True)
-        return code, wall * 1000, pk, err, self_ms, cpu, steady
+        return code, wall * 1000, (pk, pv), err, self_ms, cpu, steady
 
     def _watch_ready(self, sub, p):
         """Time the engine's ready file appears (config steady.ready_file), [t] filled by a watcher thread."""
@@ -120,17 +123,18 @@ class OneShot:
 
     def _blank(self, lane, cls):
         """Walls on the empty page, once per engine build x class x lane (cached in the store)."""
-        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-cpu{lane.base}-v2.json'
+        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-cpu{lane.base}-v4.json'
         with self.lock:
             if f.exists():
                 return json.loads(f.read_text(encoding='utf-8'))
             page = lane.work / 'blank.html'; page.write_text(BLANK, encoding='utf-8')
             self._launch(lane, cls, page, lane.work / f'{self.name}-warmup', 90)  # first start pays disk and caches
-            w = {'walls': [], 'cpu': []}
+            w = {'walls': [], 'cpu': [], 'peaks': [], 'private_peaks': [], 'steadies': []}
             for i in range(REPEATS):
-                code, wall, _, _, _, cpu, _ = self._launch(lane, cls, page, lane.work / f'{self.name}-blank{i}', 90)
+                code, wall, (pk, pv), _, _, cpu, sd = self._launch(lane, cls, page, lane.work / f'{self.name}-blank{i}', 90)
                 if code == 0:
                     w['walls'].append(wall); w['cpu'].append(cpu)
+                    w['peaks'].append(pk); w['private_peaks'].append(pv); w['steadies'].append(sd)
             f.parent.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(w), encoding='utf-8')
             return w
 
@@ -143,16 +147,16 @@ class OneShot:
         rec = REC.new_record(self.name, self.version(), part, page, cls, f'{DEF}-{policy.definition()}', bounds)
         rec['lane'] = lane.id; rec['mask'] = format(lane.mask(cls), 'X'); t0 = time.perf_counter()
         b = self._blank(lane, cls); blank = b['walls']
-        walls, peaks, own, cpus, steadies, why = [], [], [], [], [], None
+        walls, peaks, pvs, own, cpus, steadies, why = [], [], [], [], [], [], None
         n = REPEATS  # cheap; the blank subtraction needs a median on both sides even in quick
         for i in range(max(n, 1) if blank else 0):
-            code, wall, pk, err, sm, cpu, sd = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90, page.id)
+            code, wall, (pk, pv), err, sm, cpu, sd = self._launch(lane, cls, page.file('base.html'), lane.work / f'{self.name}-{page.id}-{i}', 90, page.id)
             if code is None:
                 why = 'hangs: no snapshot within 90 s'; break
             if code != 0:
                 from . import last_error
                 why = f'crashed: exit code {code}: {last_error(err)}'; break
-            walls.append(wall); peaks.append(pk); own.append(sm); cpus.append(cpu); steadies.append(sd)
+            walls.append(wall); peaks.append(pk); pvs.append(pv); own.append(sm); cpus.append(cpu); steadies.append(sd)
         if not blank:
             why = 'fails on an empty page: no baseline'
         cold = REC.row(rec, 'cold')
@@ -176,7 +180,10 @@ class OneShot:
             if cold['cpu_ms'] is None:
                 cold['cpu_empty'] = 'process CPU of the page did not exceed the empty page'
         steady = M.med(steadies) if not why else None
-        rec['memory'] = {'peak_bytes': M.med(peaks), 'steady_bytes': steady, 'empty': why if not peaks else None}
+        rec['memory'] = {'peak_bytes': M.med(peaks), 'steady_bytes': steady, 'empty': why if not peaks else None,
+                         'peak_private_bytes': M.med([x for x in pvs if x]), 'steady_private_bytes': None,
+                         'blank': {'peak_bytes': M.med([x for x in b.get('peaks', []) if x]), 'steady_bytes': M.med([x for x in b.get('steadies', []) if x]),
+                                   'peak_private_bytes': M.med([x for x in b.get('private_peaks', []) if x]), 'steady_private_bytes': None}}
         if steady is None:
             rec['memory']['steady_empty'] = why or (
                 'the engine did not write its ready file' if self.e.get('steady') else

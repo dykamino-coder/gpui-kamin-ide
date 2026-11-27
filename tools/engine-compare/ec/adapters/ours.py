@@ -7,6 +7,7 @@ part "cpu":  counters build, the same phases, CPU per frame from its per-phase p
 Config: {"adapter": "ours", "exe": timing exe, "counters_exe": counters exe, "version": optional label,
          "timeout_s": {"syn": 300, "default": 120}}
 """
+import json
 import shutil
 import time
 
@@ -14,7 +15,7 @@ from .. import metrics as M
 from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
-from . import last_error
+from . import BLANK, last_error
 
 RULE = 'html.alt body{color:#111}'
 EDITS = {'C': ('html.alt [data-deep]{background:#eee}', 'class'), 'D': ('[data-edit]{background:#eee}', 'attr'),
@@ -181,6 +182,8 @@ class Ours:
                 if rep.get('check_error'):
                     r['note'] = (r.get('note', '') + ' check: ' + rep['check_error'])[:200]
             if not why:
+                rec['memory'].update(M.ours_private(j))
+                rec['memory']['blank'] = self._blank(lane, cls, to)
                 ma, note = M.ours_steady(j.get('memory_audit'))
                 rec.setdefault('memory', {})['steady_bytes'] = ma
                 if note:
@@ -189,6 +192,24 @@ class Ours:
                     rec['memory']['steady_empty'] = note or 'no memory audit in the plan report'
         rec['wall_s'] = time.perf_counter() - t0
         return rec
+
+    def _blank(self, lane, cls, timeout):
+        """Memory of one bench process on an empty page (cold phase, then the same memory audit as a page), once per
+        build x class: the engine's constant price, which the report subtracts from every page."""
+        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-mem-v1.json'
+        if f.exists():
+            return json.loads(f.read_text(encoding='utf-8'))
+        page = lane.work / 'blank-ours.html'; page.write_text(BLANK, encoding='utf-8')
+        pf = lane.work / f'plan-blank-{lane.id}.json'
+        pf.write_text(json.dumps({'series_ms': 500, 'min_runs': 3, 'memory_settle_ms': 2000,
+                                  'phases': [{'name': 'cold', 'mode': 'cold', 'input': str(page), 'runs': 5}]}), encoding='utf-8')
+        j, why, _ = self._run(self.e['exe'], lane, None, cls, [page, '--plan', str(pf)], timeout)
+        if why:
+            return None
+        b = {'peak_bytes': j.get('peak_working_set_bytes'), 'steady_bytes': M.ours_steady(j.get('memory_audit'))[0],
+             **M.ours_private(j)}
+        f.parent.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(b), encoding='utf-8')
+        return b
 
     def measure(self, lane, page, cls, part, policy, phases=None):
         phases = phases or M.PHASES
