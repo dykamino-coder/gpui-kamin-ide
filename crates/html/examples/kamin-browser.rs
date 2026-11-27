@@ -20,6 +20,8 @@ mod dialog;
 mod file_watch;
 #[path = "kamin-browser/folder.rs"]
 mod folder;
+#[path = "kamin-browser/hud.rs"]
+mod hud;
 #[cfg(feature = "why-profiler")]
 #[path = "kamin-browser/idle_control.rs"]
 mod idle_control;

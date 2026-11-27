@@ -1,7 +1,7 @@
 //! Viewer state, window lifecycle, folder selection, and native file notifications.
 
 use crate::{paths, viewport};
-use gpui::{Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Window, px, size};
+use gpui::{Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task, Window, px, size};
 use kamin_html::{host::document_view::DocumentView, metrics::FontContext};
 use std::{path::PathBuf, time::SystemTime};
 
@@ -24,6 +24,7 @@ pub struct Browser {
     pub preset_width: Option<u32>,
     pub viewport: (f32, f32),
     pub stamp: Option<(SystemTime, u64)>,
+    pub hud: crate::hud::Hud,
     #[cfg(feature = "why-profiler")]
     pub journal: Option<kamin_html::why::WindowJournal>,
     #[cfg(feature = "why-profiler")]
@@ -32,6 +33,7 @@ pub struct Browser {
     pub timing_plain: bool,
     _bounds: Subscription,
     pub file_watch: Option<crate::file_watch::FileWatch>,
+    _hud: Task<()>,
 }
 
 impl Browser {
@@ -42,6 +44,8 @@ impl Browser {
         cx: &mut Context<Self>,
     ) -> Self {
         let bounds = cx.observe_window_bounds(window, |this, window, cx| this.resize(window, cx));
+        let hud = crate::hud::Hud::new(window, cx);
+        let hud_task = crate::hud::start(window, cx);
         let mut this = Self {
             fonts,
             page: None,
@@ -61,6 +65,7 @@ impl Browser {
             preset_width: None,
             viewport: (0., 0.),
             stamp: None,
+            hud,
             #[cfg(feature = "why-profiler")]
             journal: None,
             #[cfg(feature = "why-profiler")]
@@ -69,6 +74,7 @@ impl Browser {
             timing_plain: false,
             _bounds: bounds,
             file_watch: None,
+            _hud: hud_task,
         };
         this.resize(window, cx);
         if let Some(path) = path {
