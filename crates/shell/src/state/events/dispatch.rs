@@ -77,6 +77,7 @@ impl RootView {
             | ShellEvent::Ed(EdEvent::SetFileMode { .. })
             | ShellEvent::Ed(EdEvent::OpenFile { .. })
             | ShellEvent::Ed(EdEvent::OpenFileAt { .. })
+            | ShellEvent::Ed(EdEvent::OpenTextLocation { .. })
             | ShellEvent::Ed(EdEvent::FileOpened { .. })
             | ShellEvent::Ed(EdEvent::ToggleFileTabsOverflow)
             | ShellEvent::Ed(EdEvent::PushFsUndo { .. })

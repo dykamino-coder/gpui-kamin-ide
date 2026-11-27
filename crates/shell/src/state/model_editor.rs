@@ -19,7 +19,7 @@ pub struct EditorState {
     pub pending_reload: Vec<String>,
     pub reload_suppress: std::collections::HashSet<String>,
     /// Переход к строке после открытия файла (scroll-to-line из поиска).
-    pub pending_goto: Option<(String, u32)>,
+    pub pending_goto: Option<(String, u32, u32)>,
     /// Путь → текст ошибки чтения: вкладка рисует карточку `.error`.
     pub editor_errors: std::collections::HashMap<String, String>,
     /// Открытый файл-просмотрщик (path + строки + целевая строка).

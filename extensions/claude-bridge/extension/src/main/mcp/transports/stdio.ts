@@ -9,7 +9,7 @@ import { spawn } from 'child_process'
 import type { McpResult } from '../tool-registry'
 import { collectMcpList } from '../pagination'
 import type { McpServerState, TransportContext } from './context'
-import { awaitMcpReply, withProgressToken } from './request-deadline'
+import { awaitMcpReply, rejectPendingMcpRequests, withProgressToken } from './request-deadline'
 import { stdioLaunch } from './stdio-launch'
 import { resolveWorkingDirectory } from '../../utils/working-directory'
 import type { ExternalMcpServerConfig } from '../../../shared/types'
@@ -80,6 +80,16 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
 
     state.process = proc
     state.inputBuffer = ''
+    // ChildProcess 'error' covers spawn/kill; stdin emits its own error when
+    // the peer closes its read end between the writable check and the write.
+    proc.stdin.on('error', err => {
+      if (state.process !== proc) return
+      const failure = new Error(`[stdio] stdin write failed: ${err.message}`)
+      ctx.appendLog(id, 'error', failure.message)
+      rejectPendingMcpRequests(state, failure)
+      finish(false, failure)
+      proc.kill()
+    })
     // Decode across chunk boundaries: a multi-byte UTF-8 character split
     // between two reads would otherwise turn into two U+FFFD in the JSON-RPC
     // frame (Cyrillic tool results arrived corrupted).
@@ -194,15 +204,15 @@ export async function connectStdio(ctx: TransportContext, id: string): Promise<v
     })
 
     proc.on('exit', (code, signal) => {
+      const failure = new Error(`Process exited early (code=${code ?? 'null'})`)
+      finish(false, failure)
+      if (state.process !== proc) return
+      rejectPendingMcpRequests(state, failure)
       ctx.appendLog(id, code === 0 ? 'info' : 'warn', `[stdio] process exited code=${code} signal=${signal ?? 'none'}`)
       state.status = 'disconnected'
       state.tools = []
       ctx.notifyChanged()
       ctx.onToolsChanged?.()
-      // If the child died before initialize came back, fail the connect
-      // *now* instead of waiting for the 30s timeout. Much better UX — the
-      // user sees `failed — process exited code=1` the moment it happens.
-      finish(false, new Error(`Process exited early (code=${code ?? 'null'})`))
       // Перманентная поломка (MODULE_NOT_FOUND и т.п.): реконнект гонял бы
       // пустые спавны node на каждом буте — сразу error без ретраев.
       if (state.permanentFailure) {
@@ -330,6 +340,7 @@ function stdioRequest(
   method: string,
   params: Record<string, unknown>,
 ): Promise<any> {
+  if (!state.process?.stdin?.writable) return Promise.reject(new Error('MCP server stdin is closed'))
   const reqId = state.nextRequestId++
   const reply = awaitMcpReply<any>(state, reqId, {
     method,
