@@ -21,7 +21,7 @@ pub(super) fn child_of(parent: &BoxStyle) -> BoxContext<WritingMode, Align> {
             Some(D::Flex | D::InlineFlex | D::Grid | D::InlineGrid | D::GridLanes)
         ),
         parent_lanes: parent.reset_box_layout.display == Some(D::GridLanes),
-        cb_wm: parent.wm().line(),
+        cb_wm: parent.line_wm(),
         applicability: parent.applicability_inputs(),
     }
 }

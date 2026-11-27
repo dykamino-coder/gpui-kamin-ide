@@ -132,7 +132,8 @@ mod tests {
             .flat_map(|s| property_fields(s))
             .collect();
         // `side_order` is a group handle of its own (ResetCascade), not a leaf.
-        assert!(fields.len() >= 517);
+        // Used values of the box (TreeFacts, BoxStyle::decors) are not computed fields.
+        assert!(fields.len() >= 509);
         assert!(fields.contains(&"border_width") && fields.contains(&"font_families"));
     }
 }

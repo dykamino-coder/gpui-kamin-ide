@@ -75,7 +75,7 @@ pub(crate) fn constraint(
         .or_else(|| {
             // The former rotated wrapper explicitly requested min-content for
             // parallel table columns; available space alone must not replace it.
-            if !style.reset_context.ortho_col || style.reset_context.ortho_limit.is_none() {
+            if !style.reset_context.ortho_col || style.tree.ortho_limit.is_none() {
                 return None;
             }
             let own = crate::layout::writing_mode::orthogonal_inline::axis(style, true);
@@ -88,7 +88,7 @@ pub(crate) fn constraint(
         })
 }
 
-pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
+pub(crate) fn keyword(style: &crate::style::computed::BoxStyle) -> Option<InlineKeyword> {
     match style.reset_box_layout.height {
         Some(Len::MinContent) => Some(InlineKeyword::MinContent),
         Some(Len::MaxContent) => Some(InlineKeyword::MaxContent),
@@ -96,7 +96,7 @@ pub(crate) fn keyword(style: &Computed) -> Option<InlineKeyword> {
         _ => None,
     }
     .or_else(|| {
-        (style.reset_context.ortho_col && style.reset_context.ortho_limit.is_some())
+        (style.reset_context.ortho_col && style.tree.ortho_limit.is_some())
             .then_some(InlineKeyword::MinContent)
     })
 }

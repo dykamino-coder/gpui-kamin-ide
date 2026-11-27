@@ -40,7 +40,6 @@ impl WritingProps {
             vertical: self.writing_mode.is_some_and(WritingModeKw::is_vertical),
             rl: flow.is_rl(),
             sideways: flow.is_sideways(),
-            turned: false,
             rtl: self.rtl == Some(true),
             orientation: self.text_orientation.unwrap_or_default(),
         }
