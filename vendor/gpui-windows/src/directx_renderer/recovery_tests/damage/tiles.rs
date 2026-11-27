@@ -122,9 +122,10 @@ fn draw_tiles(device: &DirectXDevices, s: &Scene, bg: WindowBackgroundAppearance
 }
 
 /// The tile pass's frame against the levels' frame and both against the
-/// formula: the pass equals the formula exactly and differs from the levels
-/// by at most one code.
-fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8]) {
+/// formula: the pass equals the formula exactly; the levels round every
+/// mixed step in the shader as the pass does, so they differ from it by at
+/// most one code only where a normal composite blends in the output merger.
+fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8], mixed_only: bool) {
     let (big, one) = off(got, levels);
     let (gb, go) = off(got, want);
     let (lb, lo) = off(levels, want);
@@ -132,6 +133,9 @@ fn compare(name: &str, got: &[u8], levels: &[u8], want: &[u8]) {
         "{name}: tiles vs levels {one} channels off by one; vs formula: tiles {gb}/{go}, levels {lb}/{lo} (>1 / =1)"
     );
     assert_eq!(big, 0, "{name}: tiles off the levels by more than one");
+    if mixed_only {
+        assert_eq!(one, 0, "{name}: levels off the tiles where every step is mixed in the shader");
+    }
     assert_eq!((gb, go), (0, 0), "{name}: tiles off the formula");
 }
 
@@ -157,7 +161,7 @@ fn check(device: &DirectXDevices, name: &str, groups: &[G], bg: WindowBackground
     let modes: Vec<u32> = groups.iter().map(|g| g.blend).collect();
     let opacity: Vec<f32> = groups.iter().map(|g| g.opacity).collect();
     let want = expect(base, &images, &modes, &opacity);
-    compare(name, &got, &copies, &want);
+    compare(name, &got, &copies, &want, modes.iter().all(|&m| m != 0));
 }
 
 fn chain(modes: &[u32]) -> Vec<G> {
@@ -220,7 +224,7 @@ fn every_separable_mode_equals_its_formula() {
 /// Non-separable modes: the pass takes the copy path's steps (`composite_mix`).
 /// Both paths are off the f64 oracle here (11-16: hue, 10472 channels > 1 on
 /// Iris Xe, equal in both), an open finding outside the tile pass; the distance
-/// is reported.
+/// is reported. Both round every step in the shader, so they agree exactly.
 #[test]
 fn non_separable_modes_equal_the_composite_levels() {
     for (gpu, device) in devices() {
@@ -232,7 +236,7 @@ fn non_separable_modes_equal_the_composite_levels() {
             let levels = draw_path(&device, &frame, bg, false);
             let (big, one) = off(&got, &levels);
             eprintln!("{gpu}: mode {m}: tiles vs levels {big}/{one} (>1 / =1)");
-            assert_eq!(big, 0, "{gpu}: mode {m}");
+            assert_eq!((big, one), (0, 0), "{gpu}: mode {m}");
         }
     }
 }
@@ -269,6 +273,7 @@ fn children_of_an_isolated_group_blend_with_its_buffer_not_the_frame() {
         let isolated = expect(vec![0; (W * H * 4) as usize], &images, &modes, &opacity);
         let base = draw(&device, &scene(&backdrop(), &[], None), bg);
         let want = expect(base, &[isolated], &[0], &[1.]);
-        compare(&format!("{gpu}: isolated"), &got, &copies, &want);
+        // The isolated parent is a normal composite (blended in the merger).
+        compare(&format!("{gpu}: isolated"), &got, &copies, &want, false);
     }
 }
