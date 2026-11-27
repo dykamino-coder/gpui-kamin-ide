@@ -65,6 +65,7 @@ export interface HandlerCtx {
   notifyConversationId: (id: string) => void
   notifySessionInfo: (effort?: string, model?: string) => void
   /** session:created's engine (absent from older servers → Claude) and model. */
+  noteClaudePermissions?: (value: import('../../shared/types').TabInfo['claudePermissions'], sessionId?: string) => void
   noteCollaboration?: (value: import('../../shared/types').TabInfo['codexCollaboration'], sessionId?: string) => void
   noteSessionEngine?: (engine: AgentEngine | undefined, model: string | undefined) => void
   /** An engine switch was reported: done, or refused (the tab's request is undone). */
@@ -139,6 +140,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         })
       }
       // Engine first: the tab list pushed by notifySessionInfo carries it.
+      ctx.noteClaudePermissions?.(undefined)
       ctx.noteCollaboration?.(msg.codexCollaboration)
       ctx.noteSessionEngine?.(engine, msg.model)
       ctx.notifySessionInfo(msg.effort, msg.model)
@@ -471,6 +473,19 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
       break
     }
 
+    case 'session:claude-permissions': {
+      if (typeof msg.sessionId !== 'string' || !Array.isArray(msg.available)) break
+      const { available, selected, requested, reason } = msg
+      ctx.noteClaudePermissions?.({
+        available: available.filter((mode): mode is string => typeof mode === 'string'),
+        selected: typeof selected === 'string' ? selected : undefined,
+        requested: typeof requested === 'string' ? requested : undefined,
+        reason: typeof reason === 'string' ? reason : undefined,
+      }, msg.sessionId)
+      ctx.notifySessionInfo()
+      break
+    }
+
     case 'session:codex-collaboration':
       ctx.noteCollaboration?.(msg.codexCollaboration, msg.sessionId)
       ctx.notifySessionInfo()
@@ -503,6 +518,7 @@ export function handleServerMessage(msg: ServerMessage, ctx: HandlerCtx): void {
         model: msg.model,
         ...(engine ? { engine } : {}),
       })
+      ctx.noteClaudePermissions?.(undefined)
       ctx.noteCollaboration?.(msg.codexCollaboration)
       if (engine) ctx.noteSessionEngine?.(engine, msg.model)
       if (msg.engineSwitch) ctx.settleEngineSwitch?.(true)

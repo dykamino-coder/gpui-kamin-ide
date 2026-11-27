@@ -7,6 +7,105 @@
 CI компилирует настоящий config-модуль с `debug-assertions=no` и проверяет,
 что env-reader не вызывается. Версии, `vendor/` и `crates/html` не меняются.
 
+## Воспроизводимый запуск на GitHub Actions
+
+Workflow `Native Windows smoke` собирает указанный Git SHA на стандартной
+`windows-2022` VM. Сценарий `native-client` проверяет размер отрисованной области
+GPUI, активацию встроенного расширения в отдельном Extension Host и выполнение
+JavaScript штатной страницы чата в CEF. Сценарий `bridge-roundtrip` дополнительно
+поднимает настоящий Bridge на loopback той же VM в режиме синтетического CLI.
+Запрос `/health` проходит из CEF через штатный IPC расширения и возвращает
+версию сервера из проверяемого commit. Затем клиент открывает сессию Codex
+через WebSocket и отображает ответ синтетического app-server на тестовую
+фразу. Сценарий `workspace-link` продолжает этот же диалог: синтетический
+ответ содержит ссылку на созданный в профиле файл. Драйвер находит ссылку
+в сообщении ассистента, посылает события мыши в CEF и сверяет открытый файл и
+позицию 4:2 по данным GPUI. Для него в кандидате нужен debug-запрос
+`nativeAcceptance/editorLocation`. Сценарий `extension-hooks` запускает
+Windows-интеграцию командных hooks из исходников кандидата без GUI.
+Сценарий `console-scroll` передаёт 80 строк синтетического CLI через настоящий PTY,
+проверяет normal buffer, положение видимого ползунка после колеса и перетаскивания к обоим краям.
+Сценарий `engine-menus` переключает тот же чат между синтетическим Codex и
+Claude, повторно выбирает Opus и отдельно проверяет меню режима движка и
+инструментов рабочего пространства. После выбора «Change mode in Console» проверяет
+фокус xterm и доставку Windows Shift+Tab при первом и повторном открытии.
+Сценарий `engine-receipts` дополнительно проверяет Bypass, Manual и Plan.
+Синтетический CLI читает реальные флаги своего процесса и сообщает режим в
+UserPromptSubmit и Stop. Клиент отображает полученный режим и сохраняет Plan
+после возврата на Claude. Для сценария нужен commit с этой тестовой fixture.
+Проверки не требуют подписки.
+
+Сценарий `installed-client` принимает отдельный `installer_source`: ID запуска
+PR checks, опубликовавшего `kaminide-release-<SHA>`, или тег опубликованной
+версии. Передать соответствующий `candidate` (для артефакта — SHA сборки из
+его имени). Штатный verifier связывает установщик с исходным деревом и
+проверяет SHA-256. Свежий профиль сначала получает предыдущую опубликованную версию. Её штатный
+updater скачивает проверенный пакет с loopback-канала после клика в статус-баре.
+Драйвер ждёт автоматического перезапуска, сверяет InstallDir, version.txt,
+DisplayVersion, обе регистрации команды Explorer, install log, ответ настоящего
+Extension Host и страницу CEF. Версия из UI сохраняется в version.png для
+чтения. Видимость контекстного меню в окне Explorer и полная installer-матрица
+остаются отдельными проверками.
+Параметр `installed_scenario` позволяет дополнительно выполнить `bridge-roundtrip`,
+`workspace-link`, `console-scroll`, `engine-menus` или `engine-receipts` на установленном клиенте. В release-сценарии
+ссылки положение курсора проверяется сохранением тестовой вставки в строке 4,
+столбце 2 временного файла. Report фиксирует класс `hosted-windows-installed-release`.
+
+```bash
+commit=$(git rev-parse HEAD)
+gh workflow run native-windows-smoke.yml -f candidate="$commit" -f scenario=bridge-roundtrip
+gh run list --workflow native-windows-smoke.yml --limit 3
+gh run watch "$run_id" --exit-status
+gh run download "$run_id" --dir "$capture_dir"
+```
+
+До публикации релиза взять SHA сборки из имени артефакта проверок релизного PR.
+GitHub собирает merge-кандидат. `pr_checks_run` задаёт ID запуска PR checks.
+
+```bash
+repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+candidate=$(gh api "repos/$repo/actions/runs/$pr_checks_run/artifacts" --paginate \
+  --jq '.artifacts[] | select(.expired == false) | .name | capture("^kaminide-release-(?<sha>[a-f0-9]{40})$").sha')
+gh workflow run native-windows-smoke.yml -f candidate="$candidate" \
+  -f scenario=installed-client -f installer_source="$pr_checks_run" -f installed_scenario=workspace-link
+```
+
+В командах `run_id` — ID нужного запуска из списка, `capture_dir` — отдельный
+каталог для отчёта. Поля `candidate` и `driver` в pipeline.json указывают отдельно проверяемый commit и версию драйвера.
+Прогон заканчивается ошибкой на первой обязательной границе, для которой
+истёк таймаут или получен неправильный ответ. Снимок относится к окну
+приложения. Срок хранения CI-артефакта — три дня.
+
+Оба клиентских сценария подключаются к Windows-реализации Bridge. Профиль
+клиента и данные сервера временные и раздельные. Результаты Linux Docker
+проверяет отдельный job. Сквозной тест Windows → Linux потребует доступного
+с этой же VM отдельного Linux guest в изолированном окружении и положительной
+пробы loopback до запуска клиента. Адреса отдельных GitHub jobs в этом
+сценарии не используются. Приёмка установленного release-кандидата, работа
+обычного GPU и ввод через физические устройства остаются отдельными сценариями.
+
+### Матрица расширения
+
+| Область | Уровень | Критерий приёмки |
+| --- | --- | --- |
+| MCP | Integration, Protocol E2E, затем Browser и Windows | Холодный запуск находит отдельный и plugin MCP без Test. Проверяются поздний handshake, stderr, tools/list, реальный вызов и обновление каталога после reconnect. Постоянная ошибка видна и не вызывает непрерывных повторов. Чужой пользователь не видит инструмент. |
+| Plugins и Skills | Integration, Protocol E2E, затем Windows Customize | Синтетический marketplace устанавливает плагин, у модели есть инструкция ожидаемой версии. Update/disable и смена проекта меняют содержимое. Поведение живой модели принимается отдельной полевой проверкой. |
+| Hooks | Unit, Integration на Windows, затем Native E2E | Active Hooks соответствует профилю. Разрешённый hook получает события и аргументы, allow/deny, ошибка и timeout дают ожидаемое решение в обоих движках. Повторный маршрут инструмента, reconnect и смена движка сохраняют защиту. |
+| Сессии | Protocol E2E, Browser, затем Native | Для нового чата и resume сверить модель, поддерживаемые уровни и точный effort в turn/start. Проверить stop, сообщения об ошибках, обновление квоты и единственный экземпляр исторических событий. |
+| UI | Native Windows E2E | Проверить Customize, вкладки, фокус и клавиши, движение Console колесом и за ползунок, переход к файлу и курсору, восстановление после остановки Extension Host. Каждое действие завершается наблюдаемым состоянием в заданный срок. |
+| Инсталлятор | Установленный exact candidate | Старая версия скачивает новый пакет, штатно перезапускается, версия видна в статус-баре и реестре, клиент выполняет выбранный сценарий. |
+| Корпоративная среда | Полевая приёмка | Отдельно подтвердить реальную Windows-сборку, Linux-контейнер, корпоративный маршрут, живой аккаунт и ожидаемый эффект исправления. |
+
+Для сетевого сценария сначала проверить `linuxCapability` в отчёте стандартной VM.
+Он фиксирует наличие WSL, число зарегистрированных WSL 2 дистрибутивов и успешный
+`uname -s` в существующем госте. Если доступен гость, следующий этап — поднять
+одноразовый Linux Bridge в нём, проверить /health с Windows и провести тот же
+маршрут CEF → Extension Host → WebSocket. Для отдельной пары VM требуется
+изолированная сеть. Выделенный Windows runner требует обслуживания и очистки
+образа между заданиями. Стенд мейнтейнера предполагает согласованный доступ и время.
+[GitHub-hosted runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) ·
+[Требования WSL 2 к VM](https://learn.microsoft.com/en-us/windows/wsl/faq)
+
 ## Подготовка кандидата
 
 В собственной acceptance-ветке объединить нужный PR и shared seam commit,
