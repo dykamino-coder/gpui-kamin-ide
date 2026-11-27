@@ -41,7 +41,7 @@ pub(crate) fn box_borders(
         if c.radius_elliptic(vcx) && c.reset_border.border_shape.is_none() {
             // The quad draws the ring's elliptical edges (`Computed::radius_elliptic`).
             layer.style().corner_ellipse =
-                Some(Some(Box::new(crate::paint::apply::ellipse_radii(c, vcx))));
+                Some(Box::new(crate::paint::apply::ellipse_radii(c, vcx)));
         } else if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
             let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer

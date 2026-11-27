@@ -223,7 +223,7 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
         return d;
     }
     if c.radius_elliptic(vcx) {
-        d.style().corner_ellipse = Some(Some(Box::new(ellipse_radii(c, vcx))));
+        d.style().corner_ellipse = Some(Box::new(ellipse_radii(c, vcx)));
         return d;
     }
     let r = &c.reset_border.radius;
