@@ -94,7 +94,7 @@ fn records_stay_bounded_per_style() {
         parent.inh.font.font_size = Some(Len::Px(10.0 + px as f32));
         box_style(&BoxStyle::new(parent), &p.style, vcx);
     }
-    let held = p.style.stage_memo().0.get().unwrap().borrow().len();
+    let held = p.style.stage_memo().0.borrow().len();
     assert_eq!(held, 1);
     println!(
         "box stage record: {} bytes, BoxStyle {} bytes",

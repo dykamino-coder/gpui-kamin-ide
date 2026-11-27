@@ -37,14 +37,13 @@ impl OwnKey {
     }
 }
 
-/// Document inputs every stage may read.
+/// Document inputs every stage may read. The viewport is not among them: a stage that reads
+/// it notes the read (`viewport_reads`), and only then is it a key (`Entry::viewport`).
 #[derive(Clone, Copy, PartialEq)]
 pub(super) struct DocInputs {
     pub(super) fonts: u64,
     scheme: Scheme,
-    clearance: bool,
     root: [u32; 2],
-    viewport_known: bool,
 }
 
 pub(super) fn doc_inputs(vcx: ValueCx<'_>) -> DocInputs {
@@ -52,9 +51,7 @@ pub(super) fn doc_inputs(vcx: ValueCx<'_>) -> DocInputs {
     DocInputs {
         fonts: vcx.doc.font_generation(),
         scheme: vcx.scheme,
-        clearance: vcx.clearance_possible,
         root: [root.font_px.to_bits(), root.line_px.to_bits()],
-        viewport_known: vcx.viewport.0 > 0.0 && vcx.viewport.1 > 0.0,
     }
 }
 

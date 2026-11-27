@@ -15,7 +15,7 @@
 
 use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
-use std::cell::{OnceCell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Records per style: painted and unpainted stages, a moved box, copies of the element.
@@ -74,13 +74,15 @@ impl Entry {
     }
 }
 
-/// The remembered box stages of one style, shared by the copies of its element.
+/// The remembered box stages of one style, shared by the copies of its element: the table
+/// exists from the start, so a copy made before the first stage (render works on copies of
+/// the document's elements) still reads and fills the document's records.
 #[derive(Clone, Default)]
-pub struct StageMemo(OnceCell<Rc<RefCell<Vec<Entry>>>>);
+pub struct StageMemo(Rc<RefCell<Vec<Entry>>>);
 
 impl std::fmt::Debug for StageMemo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n = self.0.get().map_or(0, |e| e.borrow().len());
+        let n = self.0.borrow().len();
         write!(f, "StageMemo({n})")
     }
 }
@@ -88,9 +90,7 @@ impl std::fmt::Debug for StageMemo {
 impl StageMemo {
     /// The remembered stage for `q`, or why there is none.
     pub(crate) fn find(&self, q: &Query<'_>) -> Result<BoxStyle, Miss> {
-        let Some(entries) = self.0.get() else {
-            return Err(Miss::First);
-        };
+        let entries = &self.0;
         let doc = doc_inputs(q.vcx);
         let mut reason = Miss::First;
         let entries = entries.borrow();
@@ -123,7 +123,7 @@ impl StageMemo {
             own: q.own,
             out: out.clone(),
         };
-        let mut entries = self.0.get_or_init(Default::default).borrow_mut();
+        let mut entries = self.0.borrow_mut();
         let same = entries.iter().position(|e| {
             e.paint == entry.paint
                 && e.tree.is_some() == entry.tree.is_some()
@@ -145,9 +145,7 @@ impl StageMemo {
     /// The records of the style, without the values they share (`heap-report`).
     #[cfg(feature = "heap-report")]
     pub(crate) fn heap_size(&self, ops: &mut kamin_heap::Ops) -> usize {
-        let Some(rc) = self.0.get() else {
-            return 0;
-        };
+        let rc = &self.0;
         ops.at("style/box-stage", |ops| {
             let block = ops.shallow(Rc::as_ptr(rc));
             let entries = rc.borrow();
@@ -181,6 +179,7 @@ fn shared_parent(vcx: ValueCx<'_>, parent: &BoxStyle) -> Rc<BoxStyle> {
 }
 
 /// The size of one record.
+#[cfg(test)]
 pub(crate) const fn entry_bytes() -> usize {
     std::mem::size_of::<Entry>()
 }

@@ -15,6 +15,8 @@ pub(super) fn styled(
     paint: bool,
     vcx: ValueCx<'_>,
 ) -> BoxStyle {
+    // Style share of a frame, hits included (`box_stage_ns` in the journal).
+    crate::work::time!(_stage, BoxStageNs);
     // Перенесённая раскладкой коробка остаётся ребёнком своего родителя по
     // дереву элементов (css-cascade-5 §7.2); `parent` — её новая коробка-родитель.
     let moved = own.moved_from();

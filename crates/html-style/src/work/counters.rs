@@ -80,6 +80,8 @@ vocabulary!(Counter {
     BoxStageMissParent => "box_stage_miss_parent",
     BoxStageMissViewport => "box_stage_miss_viewport",
     BoxStageUncached => "box_stage_uncached",
+    BoxStageNs => "box_stage_ns",
+    ScrollBuildNs => "scroll_build_ns",
     TreeNodesVisited => "tree_nodes_visited",
     SubtreeQueries => "subtree_queries",
     SubtreeNodesVisited => "subtree_nodes_visited",
