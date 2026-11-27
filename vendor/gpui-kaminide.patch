@@ -24551,7 +24551,7 @@ index 0000000000000000000000000000000000000000..c03e6ba7d21aaea61b2631ce1b1e82e5
 +    multiply(multiply(expand(m), h), expand(inverse))
 +}
 diff --git a/vendor/gpui/src/style.rs b/vendor/gpui/src/style.rs
-index 9150fdded91b817305454f18beb0a0b7d6c5966a..3175a8a128b70ef7147f0e86d65b10cf9a1aab38
+index 9150fdded91b817305454f18beb0a0b7d6c5966a..b69c1690ffc0ca9e5c5c8b5b262eb3d34b71e826
 --- a/vendor/gpui/src/style.rs
 +++ b/vendor/gpui/src/style.rs
 @@ -0,0 +1,4 @@
@@ -25090,7 +25090,7 @@ index 9150fdded91b817305454f18beb0a0b7d6c5966a..3175a8a128b70ef7147f0e86d65b10cf
 +/// horizontal, a fraction of the box's width, `y` vertical, of its height.
 +/// Blink draws such a box as one rounded rectangle with elliptical radii
 +/// (`SkRRect`), not through a mask.
-+#[derive(Clone, Debug, PartialEq)]
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 +pub struct EllipseRadii {
 +    /// Horizontal radius per corner.
 +    pub x: [DefiniteLength; 4],
