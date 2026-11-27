@@ -41,6 +41,22 @@ impl Carry {
         Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, offset, clip, landed, kept: Vec::new() })
     }
 
+    /// Where a copy made command by command (a frozen segment) put the
+    /// commands of its source, moved by `offset` and clipped by `clip`.
+    pub(crate) fn mapping(len: usize, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
+        Box::new(Carry { marks: Vec::new(), next: 0, offset, clip, landed: Vec::with_capacity(len), kept: Vec::new() })
+    }
+
+    /// Note where the next source command landed: `None` gone, or `twice`
+    /// (in two places, which no node range can follow: dropped).
+    pub(crate) fn push(&mut self, at: Option<usize>, twice: bool) {
+        self.landed.push(match at {
+            _ if twice => DROPPED,
+            Some(at) => at as u32,
+            None => GONE,
+        });
+    }
+
     /// Where the copy lands: its offset and clip.
     pub(crate) fn placement(&self) -> (Point<ScaledPixels>, Option<Bounds<ScaledPixels>>) {
         (self.offset, self.clip)

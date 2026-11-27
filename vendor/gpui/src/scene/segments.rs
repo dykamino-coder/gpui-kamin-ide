@@ -9,6 +9,7 @@ mod clips;
 mod groups;
 mod freeze;
 mod commands;
+mod marks;
 use groups::Group;
 pub(crate) use clips::{Clip, Tag};
 
