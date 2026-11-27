@@ -2,12 +2,13 @@
 //! Растры принадлежат документу; глобального кэша по короткому хэшу здесь нет.
 
 mod pixels;
+mod root;
+pub use root::RootPaint;
+mod view;
 use super::types::{AlphaMode, ColourSpace, CpuRaster, PixelFormat};
-use resvg::{
-    tiny_skia::{Pixmap, Transform},
-    usvg,
-};
+use resvg::{tiny_skia::Pixmap, usvg};
 use std::sync::Arc;
+pub use view::RasterView;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RasterRequest {
@@ -16,6 +17,8 @@ pub struct RasterRequest {
     pub density: crate::cache::FloatKey,
     pub pad: u32,
     pub external_resources: bool,
+    pub root_paint: RootPaint,
+    pub view: Option<RasterView>,
 }
 impl RasterRequest {
     pub fn new(w: f32, h: f32, density: f32, pad: f32) -> Self {
@@ -25,6 +28,8 @@ impl RasterRequest {
             density: density.into(),
             pad: (pad.max(0.0) * density).round() as u32,
             external_resources: true,
+            root_paint: RootPaint::Svg,
+            view: None,
         }
     }
     /// SVG 2 secure static mode: картинки не загружают внешние файлы; data: допустим.
@@ -42,6 +47,8 @@ pub fn rasterize(
     allow_data: bool,
 ) -> Option<Arc<CpuRaster>> {
     let options = usvg::Options {
+        root_opacity: request.root_paint.opacity(),
+        root_background: request.root_paint == RootPaint::Svg,
         fontdb: fonts,
         use_href_resolver: Some(usvg::UseHrefResolver(Box::new(load))),
         image_href_resolver: usvg::ImageHrefResolver {
@@ -82,7 +89,7 @@ pub fn rasterize(
         crate::work::time!(_svg_time, SvgRenderNs);
         resvg::render(
             &tree,
-            Transform::from_scale(w as f32 / size.width(), h as f32 / size.height()),
+            request.transform(size.width(), size.height()),
             &mut pixmap.as_mut(),
         );
     }
@@ -118,16 +125,4 @@ pub fn rasterize(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn requests_canonicalize_nan_density_and_signed_zero() {
-        for [a, b] in [[0.0, -0.0], [f32::NAN, f32::from_bits(0xff80_0001)]] {
-            let a = RasterRequest::new(10.0, 8.0, a, 0.0);
-            let b = RasterRequest::new(10.0, 8.0, b, -0.0);
-            assert_eq!(a, b);
-            assert_eq!(crate::cache::hint(a), crate::cache::hint(b));
-        }
-    }
-}
+mod tests;
