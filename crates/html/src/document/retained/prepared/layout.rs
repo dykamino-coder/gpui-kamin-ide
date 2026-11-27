@@ -55,12 +55,19 @@ impl Builder {
         let mut allow = bounds.origin == Default::default() && window.retained_root_environment();
         loop {
             let retry = self.counters.get().is_some();
-            let (mut tree, flow) = self.build(allow, true, window.hover_view(cx));
+            let (mut tree, flow) = {
+                let _span = crate::why::Span::new("frame.build_elements");
+                self.build(allow, true, window.hover_view(cx))
+            };
             observe(UpdatePhase::Built);
             let (_, inputs) = window.record_layout_inputs(|window| {
                 window.with_layout_keys(self.layout_keys && !retry, |window| {
-                    tree.request_layout(window, cx);
+                    {
+                        let _span = crate::why::Span::new("frame.request_layout");
+                        tree.request_layout(window, cx);
+                    }
                     observe(UpdatePhase::Requested);
+                    let _span = crate::why::Span::new("frame.layout");
                     tree.layout_as_root(space, window, cx);
                 })
             });

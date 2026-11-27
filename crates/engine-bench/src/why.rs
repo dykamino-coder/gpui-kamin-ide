@@ -8,12 +8,15 @@
 //! and `tools/engine-compare`; `why.txt` for people; `--why-compare A B`
 //! reads two of them (`compare`).
 
+pub(crate) mod cold;
 pub(super) mod compare;
 mod element_kinds;
 mod layout_inputs;
 mod layout_work;
 mod paint_work;
+mod profiles;
 mod text;
+mod timings;
 
 use super::run::Step;
 use super::view::View;
@@ -54,7 +57,12 @@ impl Watch {
             r.borrow_mut()
                 .get_or_insert_with(kamin_html::why::subscribe);
         });
-        let between = kamin_html::why::to_json(&kamin_html::why::take());
+        let mut between = kamin_html::why::to_json(&kamin_html::why::take());
+        // Initial empty frames and late frames belong to the gap, not the next sample.
+        profiles::append(
+            &mut between,
+            cx.update(|cx| profiles::take(cx.instrumentation())),
+        );
         let frames = window.read_with(cx, |view, _| view.doc.frame_counters())?;
         let path = kamin_html::paint_path::read();
         Ok(Some(Self {
@@ -111,13 +119,7 @@ impl Watch {
         let mut entry = kamin_html::why::to_json(&kamin_html::why::take());
         // Primitives and painted area by batch kind since the last sample (`[gpu]`,
         // with GPU time per kind under KAMIN_DIAG_GPU_TIMING=1).
-        let gpu_batches = cx.update(|cx| cx.instrumentation().batches.take_line());
-        // Exclusive request_layout time and style copies by element type since the last sample.
-        let kinds =
-            cx.update(|cx| element_kinds::to_json(cx.instrumentation().request_layout.take()));
-        // Boxes laid out with the inputs of the previous layout pass since the last sample.
-        let inputs =
-            cx.update(|cx| layout_inputs::to_json(cx.instrumentation().layout_inputs.take()));
+        let profiles = cx.update(|cx| profiles::take(cx.instrumentation()));
         let index = FRAMES.with(|f| f.borrow().len()) + 1;
         let fields = json!({
             "frame": index,
@@ -135,15 +137,13 @@ impl Watch {
                 "rects_count": r.rects.len(), "raster_px": r.raster_px, "rects": r.rects,
                 "gpu_wait_ms": r.gpu_wait.as_secs_f64() * 1e3, "submit_ms": part("raster_submit"), "capture_copy_ms": part("capture_copy"),
             })),
-            "gpu_batches": gpu_batches,
-            "request_layout_kinds": kinds,
-            "layout_inputs": inputs,
             "memory": memory,
             "between": self.between,
         });
         for (key, value) in fields.as_object().into_iter().flatten() {
             entry[key] = value.clone();
         }
+        profiles::append(&mut entry, profiles);
         FRAMES.with(|f| f.borrow_mut().push(entry));
         write(args.why.as_deref().ok_or("--why without a directory")?)
     }
@@ -190,8 +190,12 @@ fn owners(doc: &kamin_html::Document, window: &gpui::Window, cx: &gpui::App) -> 
 fn write(dir: &std::path::Path) -> Result<()> {
     std::fs::create_dir_all(dir)?;
     let frames = FRAMES.with(|f| f.borrow().clone());
-    let out = json!({"schema": kamin_html::why::SCHEMA, "frames": frames});
+    let out = json!({"schema": kamin_html::why::SCHEMA, "frames": frames,
+        "process_cold": cold::report()});
     std::fs::write(dir.join("why.json"), serde_json::to_vec_pretty(&out)?)?;
-    std::fs::write(dir.join("why.txt"), text::render(&out))?;
+    std::fs::write(
+        dir.join("why.txt"),
+        text::render(&out) + &timings::render(&out),
+    )?;
     Ok(())
 }

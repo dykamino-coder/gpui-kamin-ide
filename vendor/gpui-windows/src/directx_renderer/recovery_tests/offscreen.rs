@@ -6,6 +6,26 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_BIND_RENDER_TARGET, D3D11_TEXTURE2D_DESC, ID3D11Texture2D,
 };
 
+#[test]
+fn cold_renderer_reports_device_work_before_the_first_frame() {
+    let instrumentation = gpui::Instrumentation::new(gpui::InstrumentationConfig {
+        startup: true,
+        ..Default::default()
+    });
+    let device = DirectXDevices::with_instrumentation(
+        crate::GpuAdapterPreference::Software,
+        instrumentation.clone(),
+    ).unwrap();
+    let _renderer = DirectXRenderer::new_offscreen(HWND::default(), &device).unwrap();
+    let timings = instrumentation.startup.take();
+    for name in ["renderer.create", "renderer.surface", "renderer.globals", "renderer.pipelines"] {
+        assert_eq!(timings[name].calls, 1, "{name}");
+    }
+    assert_eq!(timings["renderer.vertex_shader_create"].calls, 11);
+    assert_eq!(timings["renderer.pixel_shader_create"].calls, 11);
+    assert!(instrumentation.startup.take().is_empty());
+}
+
 fn desc(texture: &ID3D11Texture2D) -> D3D11_TEXTURE2D_DESC {
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { texture.GetDesc(&mut desc) };

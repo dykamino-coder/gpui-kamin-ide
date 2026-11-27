@@ -26,11 +26,24 @@ pub(super) fn parse_document(
     let admission = crate::budget::admission::Admission::new(revision.clone());
     state.values.admit_revision(revision, base);
     let vcx = state.values();
-    fonts.install(&state.text, vcx);
-    let sheets = crate::dom::style_sources::collect(input, theme_css)?;
-    let used = crate::text::fonts::used_chars::UsedChars::of_document(&input.dom.document, &sheets);
-    crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx, &used)?;
-    crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
+    {
+        let _span = crate::why::Span::new("document.font_context_install");
+        fonts.install(&state.text, vcx);
+    }
+    let sheets = {
+        let _span = crate::why::Span::new("document.style_sources");
+        crate::dom::style_sources::collect(input, theme_css)?
+    };
+    {
+        let _span = crate::why::Span::new("document.font_faces");
+        let used =
+            crate::text::fonts::used_chars::UsedChars::of_document(&input.dom.document, &sheets);
+        crate::text::fonts::load_faces_sheets(&sheets, base, &state.text, vcx, &used)?;
+    }
+    {
+        let _span = crate::why::Span::new("document.color_profiles");
+        crate::style::values::color_space::load_profiles_sheets(&sheets, base, vcx)?;
+    }
     #[cfg(feature = "engine-bench")]
     let style_started = crate::work::Clock::now();
     let styled = {
@@ -48,6 +61,7 @@ pub(super) fn parse_document(
     {
         timings.style = style_started.elapsed();
     }
+    let _span = crate::why::Span::new("document.viewport_resources");
     let (mut nodes, root) = viewport::prepare(styled, vcx, state.root_scroll.is_some());
     if let Some(base) = base {
         base_url::resolve(&mut nodes, base, false, &admission)?;

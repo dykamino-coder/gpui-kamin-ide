@@ -3,6 +3,9 @@
 use crate::{batch_cost::BatchCost, prepaint_prof::ElementProfile};
 use std::sync::Arc;
 
+mod startup;
+pub use startup::{StartupProfile, StartupSpan, StartupTiming};
+
 /// Выбор устройства для native acceptance; release использует Default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DebugDevice {
@@ -23,6 +26,8 @@ pub struct InstrumentationConfig {
     /// Measure the self-time of request_layout by element type and the
     /// layout inputs boxes keep across passes (`Instrumentation::layout_inputs`).
     pub request_layout: bool,
+    /// Измерять создание платформы, шрифтов и устройства для журнала запуска.
+    pub startup: bool,
     /// Создавать timestamp-запросы GPU.
     pub gpu_timing: bool,
     /// Подменить DPI монитора для воспроизводимого raster capture.
@@ -44,6 +49,8 @@ pub struct Instrumentation {
     /// Frame-tree boxes laid out with the inputs of the previous pass; kept
     /// with `request_layout` (the layout journal).
     pub layout_inputs: Arc<LayoutInputs>,
+    /// Вложенные интервалы запуска; clone сохраняет одного владельца измерений.
+    pub startup: StartupProfile,
 }
 
 /// Boxes of the window's frame tree by whether their layout inputs (definite
@@ -114,6 +121,7 @@ impl Instrumentation {
                 enabled: config.request_layout,
                 ..Default::default()
             }),
+            startup: StartupProfile::new(config.startup),
         }
     }
 

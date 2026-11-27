@@ -90,6 +90,9 @@ pub(super) fn park(window: &gpui::Window) -> Result<(), Box<dyn std::error::Erro
 }
 
 pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    if args.why.is_some() {
+        super::why::cold::start()?;
+    }
     let mut startup = super::startup::Startup::new();
     let preference = super::gpu::preference(&args.gpu)?;
     // Ошибки имени возвращаем до входа в событийный цикл платформы.
@@ -104,12 +107,18 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     instrumentation.scale_factor = Some(1.);
     // The journal names the element types that spend request_layout.
     instrumentation.request_layout = args.why.is_some();
+    instrumentation.startup = args.why.is_some();
+    let instrumentation = gpui::Instrumentation::new(instrumentation);
     let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
     let outcome = Rc::new(RefCell::new(None));
     let result = outcome.clone();
-    let platform = Rc::new(gpui_windows::WindowsPlatform::with_gpu_adapter(
-        false, preference,
-    )?);
+    let platform = Rc::new(
+        gpui_windows::WindowsPlatform::with_gpu_adapter_and_instrumentation(
+            false,
+            preference,
+            instrumentation.clone(),
+        )?,
+    );
     // Offscreen: текстура message-only окна, DWM не видит ни окна, ни кадров.
     let offscreen = args.surface == super::args::Surface::Offscreen;
     platform.set_offscreen_windows(offscreen);
@@ -118,8 +127,8 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         std::env::var_os("ENGINE_BENCH_DAMAGE_AUDIT").is_some_and(|v| v == "1"),
     );
     startup.mark("platform_device_text_and_host_setup");
-    let application =
-        gpui::Application::with_platform(platform.clone()).with_instrumentation(instrumentation);
+    let application = gpui::Application::with_platform(platform.clone())
+        .with_instrumentation_instance(instrumentation);
     startup.mark("gpui_application");
     application.run(move |cx| {
         startup.mark("event_loop_entry");

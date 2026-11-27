@@ -26,6 +26,7 @@ pub(super) fn executable(bytes: &[u8]) -> Result<String> {
 impl<T> PipelineState<T> {
     pub(super) fn new(
         device: &ID3D11Device,
+        profile: &gpui::StartupProfile,
         label: &'static str,
         shader_module: ShaderModule,
         buffer_size: usize,
@@ -35,11 +36,13 @@ impl<T> PipelineState<T> {
         let vertex = {
             let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Vertex)?;
             shader_executables[0] = executable(raw_shader.as_bytes())?;
+            let _vertex = profile.span("renderer.vertex_shader_create");
             create_vertex_shader(device, raw_shader.as_bytes())?
         };
         let fragment = {
             let raw_shader = RawShaderBytes::new(shader_module, ShaderTarget::Fragment)?;
             shader_executables[1] = executable(raw_shader.as_bytes())?;
+            let _fragment = profile.span("renderer.pixel_shader_create");
             create_fragment_shader(device, raw_shader.as_bytes())?
         };
         let buffer = create_buffer(device, std::mem::size_of::<T>(), buffer_size)?;

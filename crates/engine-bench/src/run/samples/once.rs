@@ -67,6 +67,9 @@ pub(super) async fn sample_once(
                 timings = Some(view.doc.build_timings());
             }
             if let Step::Cold(markup) = step {
+                if args.why.is_some() {
+                    crate::why::cold::sample_started(started);
+                }
                 let t = kamin_html::work::Clock::now();
                 let mut source = Vec::new();
                 let html = {

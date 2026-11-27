@@ -13,6 +13,8 @@ pub use gpui::dirty_sources::trace::Shared;
 use std::collections::BTreeMap;
 use std::panic::Location;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
+mod timing;
+pub use timing::{Span, Timing};
 
 /// Version of the journal's shape and codes for protocol readers.
 pub const SCHEMA: u32 = 1;
@@ -122,6 +124,8 @@ pub struct Journal {
     /// Causes past the bound, not kept.
     pub dropped: u64,
     pub caches: BTreeMap<&'static str, CacheStats>,
+    /// Вложенные интервалы существующих проходов; не слагаемые времени кадра.
+    pub timings: BTreeMap<&'static str, Timing>,
 }
 
 impl Journal {
@@ -130,11 +134,15 @@ impl Journal {
             causes: Vec::new(),
             dropped: 0,
             caches: BTreeMap::new(),
+            timings: BTreeMap::new(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.causes.is_empty() && self.dropped == 0 && self.caches.is_empty()
+        self.causes.is_empty()
+            && self.dropped == 0
+            && self.caches.is_empty()
+            && self.timings.is_empty()
     }
 }
 

@@ -5481,45 +5481,50 @@ zkM>{l3K%`3(KC#gJ$m%yCf=k&EI7J-M06&mjuG)0LTUu?0%mN!T7eI+yKfFc@eL+j
 KHi`M@(SHGAT(5lq
 
 diff --git a/vendor/gpui/src/app.rs b/vendor/gpui/src/app.rs
-index a921de1aa0358a8672425fa241e14f38b70825ab..a5366f85e54bfa7239cc6d9ca5650357bc76b58b
+index a921de1aa0358a8672425fa241e14f38b70825ab..be1c2357cd4e6bdff0d3191a40704124224df0a2
 --- a/vendor/gpui/src/app.rs
 +++ b/vendor/gpui/src/app.rs
 @@ -68,0 +69 @@
 +mod idle;
-@@ -198,0 +200,9 @@
+@@ -198,0 +200,14 @@
 +    }
 +
 +    /// Настроить измерения до запуска платформы.
 +    pub fn with_instrumentation(self, config: crate::InstrumentationConfig) -> Self {
++        self.with_instrumentation_instance(crate::Instrumentation::new(config))
++    }
++
++    /// KaminIDE patch: сохранить измерения, начатые конструктором платформы.
++    pub fn with_instrumentation_instance(self, instrumentation: crate::Instrumentation) -> Self {
 +        let mut app = self.0.borrow_mut();
-+        app.instrumentation = crate::Instrumentation::new(config);
++        app.instrumentation = instrumentation;
 +        app.platform.set_instrumentation(app.instrumentation.clone());
 +        drop(app);
 +        self
-@@ -760,0 +771 @@
+@@ -760,0 +776 @@
 +    instrumentation: crate::Instrumentation,
-@@ -857,0 +869,5 @@
+@@ -857,0 +874,5 @@
 +    /// Измерения этого приложения, независимые от других экземпляров.
 +    pub fn instrumentation(&self) -> &crate::Instrumentation {
 +        &self.instrumentation
 +    }
 +
-@@ -881,0 +898,2 @@
+@@ -881,0 +903,2 @@
 +        let instrumentation = crate::Instrumentation::default();
 +        platform.set_instrumentation(instrumentation.clone());
-@@ -885,0 +904 @@
+@@ -885,0 +909 @@
 +                instrumentation,
-@@ -1236,0 +1256,2 @@
+@@ -1236,0 +1261,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -1237,0 +1259 @@
+@@ -1237,0 +1264 @@
 +        crate::dirty_sources::note("refresh-all", std::panic::Location::caller());
-@@ -2931,0 +2954,2 @@
+@@ -2931,0 +2959,2 @@
 +    // KaminIDE patch (INC-2026-0001): источник заказа перерисовки — в `dirty_sources`.
 +    #[track_caller]
-@@ -2932,0 +2957 @@
+@@ -2932,0 +2962 @@
 +        let caller = std::panic::Location::caller();
-@@ -2952,0 +2978,4 @@
+@@ -2952,0 +2983,4 @@
 +        crate::dirty_sources::note(
 +            if live_invalidators.is_empty() { "notify-deferred" } else { "notify" },
 +            caller,
@@ -12100,14 +12105,17 @@ index 0000000000000000000000000000000000000000..5a60c9d7addadcf21996e8442990f50f
 +}
 diff --git a/vendor/gpui/src/instrumentation.rs b/vendor/gpui/src/instrumentation.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..587d31c2cd5ee43d9acb2c0225d4b3d7f90c45b6
+index 0000000000000000000000000000000000000000..38ef1f52eb08eb354fa2ebb4a7e1a86bd8b27c3e
 --- /dev/null
 +++ b/vendor/gpui/src/instrumentation.rs
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,132 @@
 +//! KaminIDE patch: типизированные настройки и измерения, принадлежащие приложению.
 +
 +use crate::{batch_cost::BatchCost, prepaint_prof::ElementProfile};
 +use std::sync::Arc;
++
++mod startup;
++pub use startup::{StartupProfile, StartupSpan, StartupTiming};
 +
 +/// Выбор устройства для native acceptance; release использует Default.
 +#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -12129,6 +12137,8 @@ index 0000000000000000000000000000000000000000..587d31c2cd5ee43d9acb2c0225d4b3d7
 +    /// Measure the self-time of request_layout by element type and the
 +    /// layout inputs boxes keep across passes (`Instrumentation::layout_inputs`).
 +    pub request_layout: bool,
++    /// Измерять создание платформы, шрифтов и устройства для журнала запуска.
++    pub startup: bool,
 +    /// Создавать timestamp-запросы GPU.
 +    pub gpu_timing: bool,
 +    /// Подменить DPI монитора для воспроизводимого raster capture.
@@ -12150,6 +12160,8 @@ index 0000000000000000000000000000000000000000..587d31c2cd5ee43d9acb2c0225d4b3d7
 +    /// Frame-tree boxes laid out with the inputs of the previous pass; kept
 +    /// with `request_layout` (the layout journal).
 +    pub layout_inputs: Arc<LayoutInputs>,
++    /// Вложенные интервалы запуска; clone сохраняет одного владельца измерений.
++    pub startup: StartupProfile,
 +}
 +
 +/// Boxes of the window's frame tree by whether their layout inputs (definite
@@ -12220,12 +12232,123 @@ index 0000000000000000000000000000000000000000..587d31c2cd5ee43d9acb2c0225d4b3d7
 +                enabled: config.request_layout,
 +                ..Default::default()
 +            }),
++            startup: StartupProfile::new(config.startup),
 +        }
 +    }
 +
 +    /// Снимок неизменяемых настроек.
 +    pub fn config(&self) -> InstrumentationConfig {
 +        self.config
++    }
++}
+diff --git a/vendor/gpui/src/instrumentation/startup.rs b/vendor/gpui/src/instrumentation/startup.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c0a147bb4c97c75f0c6b748ad2a78145d4408201
+--- /dev/null
++++ b/vendor/gpui/src/instrumentation/startup.rs
+@@ -0,0 +1,104 @@
++//! KaminIDE patch: интервалы запуска с владельцем приложения; выключено без часов.
++
++use std::{
++    collections::BTreeMap,
++    sync::{Arc, Mutex},
++    time::{Duration, Instant},
++};
++
++/// Время включает вложенные интервалы; эти записи нельзя складывать как фазы.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct StartupTiming {
++    pub calls: u64,
++    pub elapsed: Duration,
++}
++
++type Timings = Arc<Mutex<BTreeMap<&'static str, StartupTiming>>>;
++
++#[derive(Clone, Default)]
++pub struct StartupProfile {
++    timings: Option<Timings>,
++}
++
++impl StartupProfile {
++    pub(super) fn new(enabled: bool) -> Self {
++        Self {
++            timings: enabled.then(Arc::default),
++        }
++    }
++
++    /// Guard создаётся до операции, в том числе до конструктора платформы.
++    #[inline]
++    pub fn span(&self, name: &'static str) -> StartupSpan {
++        self.with_clock(name, Instant::now)
++    }
++
++    #[inline]
++    fn with_clock(&self, name: &'static str, clock: impl FnOnce() -> Instant) -> StartupSpan {
++        StartupSpan {
++            name,
++            open: self
++                .timings
++                .as_ref()
++                .map(|timings| (timings.clone(), clock())),
++        }
++    }
++
++    /// Снимок очищает интервалы; не меняет настройки и не читает часы.
++    pub fn take(&self) -> BTreeMap<&'static str, StartupTiming> {
++        self.timings
++            .as_ref()
++            .and_then(|timings| timings.lock().ok())
++            .map(|mut t| std::mem::take(&mut *t))
++            .unwrap_or_default()
++    }
++}
++
++#[must_use = "интервал заканчивается при уничтожении guard"]
++pub struct StartupSpan {
++    name: &'static str,
++    open: Option<(Timings, Instant)>,
++}
++
++impl Drop for StartupSpan {
++    fn drop(&mut self) {
++        if let Some((profile, started)) = &self.open {
++            let elapsed = started.elapsed();
++            if let Ok(mut timings) = profile.lock() {
++                let timing = timings.entry(self.name).or_default();
++                timing.calls += 1;
++                timing.elapsed += elapsed;
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn disabled_does_not_read_clock_or_retain_profile() {
++        let profile = StartupProfile::new(false);
++        let span = profile.with_clock("off", || panic!("disabled clock"));
++        assert!(profile.timings.is_none());
++        drop(span);
++        assert!(profile.take().is_empty());
++    }
++
++    #[test]
++    fn clones_share_counts_and_take_resets() {
++        let profile = StartupProfile::new(true);
++        let clone = profile.clone();
++        let outer = profile.span("platform");
++        drop(clone.span("fonts"));
++        drop(profile.span("fonts"));
++        drop(outer);
++        let timings = clone.take();
++        assert_eq!(timings["fonts"].calls, 2);
++        assert_eq!(timings["platform"].calls, 1);
++        assert!(timings["platform"].elapsed >= timings["fonts"].elapsed);
++        assert!(profile.take().is_empty());
++        assert!(StartupProfile::new(true).take().is_empty());
 +    }
 +}
 diff --git a/vendor/gpui/src/key_dispatch.rs b/vendor/gpui/src/key_dispatch.rs

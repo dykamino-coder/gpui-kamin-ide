@@ -47,6 +47,11 @@ pub(crate) async fn sample_with(
     let seq = capture.sequence();
     let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await;
     if let Some(watch) = watch {
+        if matches!(step, Step::Cold(_))
+            && let Some(frame) = out.as_ref().ok().and_then(|out| out.1.as_ref())
+        {
+            crate::why::cold::captured(frame.completed_at);
+        }
         let measurements = out.as_ref().ok().map(|out| (&out.0, &out.2));
         let error = out.as_ref().err().map(|e| e.to_string());
         // The raster of a frame this sample captured, not of an earlier one.

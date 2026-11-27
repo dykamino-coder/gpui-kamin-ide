@@ -59,6 +59,10 @@ pub(super) async fn prepare(
     startup_timings.mark("initial_empty_gpu_frame");
     // Замер начинается в покое платформы (без презентов буста после WM_SIZE).
     startup_timings.settle(cx).await;
+    if args.why.is_some() {
+        let native = cx.update(|cx| cx.instrumentation().startup.take());
+        super::why::cold::startup(startup_timings.report(), native);
+    }
     let mut gpu = serde_json::to_value(window.update(cx, |_, window, _| window.gpu_specs())?)?;
     let identity = platform.gpu_adapter_info()?;
     let adapter = work::Adapter::open((identity.luid_high_part, identity.luid_low_part));

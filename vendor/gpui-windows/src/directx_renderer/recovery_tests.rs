@@ -94,7 +94,7 @@ fn failed_recovery_releases_slots_and_preserves_composition_policy() {
             if stage == 3 {
                 anyhow::bail!("injected pipelines failure");
             }
-            let _pipelines = DirectXRenderPipelines::new(&devices.device)?;
+            let _pipelines = DirectXRenderPipelines::new(&devices.device, &device.instrumentation.startup)?;
             anyhow::bail!("injected composition/set_swap_chain failure at {stage}")
         });
         assert!(result.is_err());

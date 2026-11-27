@@ -7,7 +7,7 @@ pub(super) fn replacement(device: &DirectXDevices, width: u32, height: u32) -> R
     RecoveryResources {
         resources: DirectXResources::new(&devices, width, height, HWND::default(), false).unwrap(),
         globals: DirectXGlobalElements::new(&devices.device).unwrap(),
-        pipelines: DirectXRenderPipelines::new(&devices.device).unwrap(),
+        pipelines: DirectXRenderPipelines::new(&devices.device, &device.instrumentation.startup).unwrap(),
         devices,
         direct_composition: None,
     }

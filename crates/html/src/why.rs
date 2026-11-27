@@ -13,6 +13,7 @@ use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
+pub use kamin_style::journal::Span;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
 pub(crate) use kamin_style::journal::{note, note_at};
 
@@ -128,6 +129,9 @@ pub fn to_json(entry: &Entry) -> Value {
         }))).collect::<serde_json::Map<_, _>>(),
         "frames": entry.frames.iter().map(|e| json!({"kind": e.kind, "site": site(e.site), "detail": e.detail})).collect::<Vec<_>>(),
         "frames_dropped": entry.frames_dropped,
+        "timings_ms": j.timings.iter().map(|(name, t)| ((*name).to_string(), json!({
+            "calls": t.calls, "inclusive_ms": t.elapsed.as_secs_f64() * 1000.,
+        }))).collect::<serde_json::Map<_, _>>(),
     })
 }
 

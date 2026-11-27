@@ -567,6 +567,8 @@ impl DirectXRenderer {
         disable_direct_composition: bool,
         offscreen: bool,
     ) -> Result<Self> {
+        let profile = &directx_devices.instrumentation.startup;
+        let _renderer = profile.span("renderer.create");
         if disable_direct_composition && !offscreen {
             log::info!("Direct Composition is disabled.");
         }
@@ -583,15 +585,21 @@ impl DirectXRenderer {
         gpui::set_shift_budget_us(if software { Self::SOFTWARE_SHIFT_BUDGET_US } else { 0 });
         let atlas = Arc::new(DirectXAtlas::new(&devices.device, &devices.device_context));
 
-        let resources = if offscreen {
-            DirectXResources::new_offscreen(&devices, 1, 1)
-        } else {
-            DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
-        }
-        .context("Creating DirectX resources")?;
-        let globals = DirectXGlobalElements::new(&devices.device)
-            .context("Creating DirectX global elements")?;
-        let pipelines = DirectXRenderPipelines::new(&devices.device)
+        let resources = {
+            let _surface = profile.span("renderer.surface");
+            if offscreen {
+                DirectXResources::new_offscreen(&devices, 1, 1)
+            } else {
+                DirectXResources::new(&devices, 1, 1, hwnd, disable_direct_composition)
+            }
+            .context("Creating DirectX resources")?
+        };
+        let globals = {
+            let _globals = profile.span("renderer.globals");
+            DirectXGlobalElements::new(&devices.device)
+                .context("Creating DirectX global elements")?
+        };
+        let pipelines = DirectXRenderPipelines::new(&devices.device, profile)
             .context("Creating DirectX render pipelines")?;
 
         let direct_composition = if disable_direct_composition {
@@ -2371,9 +2379,11 @@ impl DirectXResources {
 }
 
 impl DirectXRenderPipelines {
-    pub fn new(device: &ID3D11Device) -> Result<Self> {
+    pub fn new(device: &ID3D11Device, profile: &gpui::StartupProfile) -> Result<Self> {
+        let _pipelines = profile.span("renderer.pipelines");
         let shadow_pipeline = PipelineState::new(
             device,
+            profile,
             "shadow_pipeline",
             ShaderModule::Shadow,
             4,
@@ -2381,6 +2391,7 @@ impl DirectXRenderPipelines {
         )?;
         let quad_pipeline = PipelineState::new(
             device,
+            profile,
             "quad_pipeline",
             ShaderModule::Quad,
             64,
@@ -2389,6 +2400,7 @@ impl DirectXRenderPipelines {
         let quad_gradient = analytic_gradient::GradientProgram::new()?;
         let path_rasterization_pipeline = PipelineState::new(
             device,
+            profile,
             "path_rasterization_pipeline",
             ShaderModule::PathRasterization,
             32,
@@ -2396,6 +2408,7 @@ impl DirectXRenderPipelines {
         )?;
         let path_sprite_pipeline = PipelineState::new(
             device,
+            profile,
             "path_sprite_pipeline",
             ShaderModule::PathSprite,
             4,
@@ -2403,6 +2416,7 @@ impl DirectXRenderPipelines {
         )?;
         let underline_pipeline = PipelineState::new(
             device,
+            profile,
             "underline_pipeline",
             ShaderModule::Underline,
             4,
@@ -2410,6 +2424,7 @@ impl DirectXRenderPipelines {
         )?;
         let mono_sprites = PipelineState::new(
             device,
+            profile,
             "monochrome_sprite_pipeline",
             ShaderModule::MonochromeSprite,
             512,
@@ -2417,6 +2432,7 @@ impl DirectXRenderPipelines {
         )?;
         let subpixel_sprites = PipelineState::new(
             device,
+            profile,
             "subpixel_sprite_pipeline",
             ShaderModule::SubpixelSprite,
             512,
@@ -2424,6 +2440,7 @@ impl DirectXRenderPipelines {
         )?;
         let poly_sprites = PipelineState::new(
             device,
+            profile,
             "polychrome_sprite_pipeline",
             ShaderModule::PolychromeSprite,
             16,
@@ -2431,6 +2448,7 @@ impl DirectXRenderPipelines {
         )?;
         let blur_pipeline = PipelineState::new(
             device,
+            profile,
             "blur_pipeline",
             ShaderModule::Blur,
             4,
@@ -2439,6 +2457,7 @@ impl DirectXRenderPipelines {
 
         let clear_pipeline = PipelineState::new(
             device,
+            profile,
             "clear_pipeline",
             ShaderModule::Clear,
             1,
@@ -2446,6 +2465,7 @@ impl DirectXRenderPipelines {
         )?;
         let group_tiles_pipeline = PipelineState::new(
             device,
+            profile,
             "group_tiles_pipeline",
             ShaderModule::GroupTiles,
             4,
