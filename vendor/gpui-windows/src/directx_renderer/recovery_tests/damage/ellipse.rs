@@ -155,7 +155,12 @@ fn elliptical_sides_of_different_colours_meet_on_the_diagonal() {
         s
     };
     let frames = [&gpu, &warp].map(|d| drawn(d, scene()));
-    assert!(frames[0] == frames[1], "{} pixels differ between the adapters", differing(&frames[0], &frames[1]));
+    // The first differing pixel and both adapters' bytes name the operation
+    // that rounds apart.
+    let first = (0..frames[0].len() / 4).find(|i| frames[0][i * 4..i * 4 + 4] != frames[1][i * 4..i * 4 + 4]).map(|i| {
+        format!(" first at {},{} gpu {:?} warp {:?}", i % W as usize, i / W as usize, &frames[0][i * 4..i * 4 + 4], &frames[1][i * 4..i * 4 + 4])
+    });
+    assert!(frames[0] == frames[1], "{} pixels differ between the adapters{}", differing(&frames[0], &frames[1]), first.unwrap_or_default());
     let px = |x: usize, y: usize| {
         let at = (y * W as usize + x) * 4;
         [frames[0][at], frames[0][at + 1], frames[0][at + 2]]
@@ -170,8 +175,7 @@ fn elliptical_sides_of_different_colours_meet_on_the_diagonal() {
     assert!(right[0] > right[2], "corner, by the right edge: {right:?}");
 }
 
-/// A circular quad of the existing path: the reference for how far two
-/// adapters' blend units agree on antialiased edges.
+/// A circular quad of the existing path, translucent edges included.
 fn circular(color: Hsla) -> Scene {
     let mut s = Scene::default();
     let mut q = fill(color);
@@ -216,8 +220,9 @@ fn compare(a: &[u8], b: &[u8]) -> (usize, u8) {
 /// An opaque fill with elliptical corners draws the bytes of its masked
 /// group on the default adapter and on WARP; a translucent one draws the
 /// fixed-function blend of the same source (`fixed_blend`); the two adapters
-/// draw the same frame. The masked group and a circular quad on the two
-/// adapters are counted for comparison;
+/// draw the same frame, and so does a circular quad of the existing path
+/// (both hand the blender `blend_source`). The masked group on the two
+/// adapters is counted for comparison;
 /// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 #[test]
 fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
@@ -263,5 +268,5 @@ fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
         std::fs::write(path, lines.join("\n")).unwrap();
     }
     let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
-    assert!(exact("alpha 1 quad vs mask") && exact("quad vs fixed blend") && exact("quad gpu vs warp"), "{}", lines.join("; "));
+    assert!(exact("alpha 1 quad vs mask") && exact("quad vs fixed blend") && exact("quad gpu vs warp") && exact("circle gpu vs warp"), "{}", lines.join("; "));
 }
