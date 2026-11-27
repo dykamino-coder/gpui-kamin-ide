@@ -219,7 +219,7 @@ pub(super) fn box_overflow(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
 /// (css-transforms-2 §individual-transforms) plus a pure px `transform`
 /// shift folded into it (`Computed::folded_shift`); the transform wrapper
 /// then leaves its matrix alone.
-pub(crate) fn static_shift(mut d: Div, c: &Computed) -> Div {
+pub(crate) fn static_shift(mut d: Div, c: &BoxStyle) -> Div {
     // Чистый px-сдвиг `transform` складывается сюда же
     // (`Computed::folded_shift`); матрицу обёртки он тогда не трогает.
     let folded = c.folded_shift();

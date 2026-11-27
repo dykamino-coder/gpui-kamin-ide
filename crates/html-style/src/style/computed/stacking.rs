@@ -51,10 +51,10 @@ pub fn nested_context(parent: &BoxStyle) -> bool {
 
 /// Коробка — содержащий блок и для `position: fixed`: тот же список, что
 /// барьер `under_tf` (`style::cascade::inherit`, `transform_ancestor`).
-pub fn fixed_cb_layer_box(c: &Computed) -> bool {
+pub fn fixed_cb_layer_box(c: &BoxStyle) -> bool {
     // css-transforms-2 §backface-visibility: `hidden` у участника 3D-контекста
     // — содержащий блок для всех потомков (`backface-visibility-hidden-004`).
-    (c.reset_transforms.backface_hidden == Some(true) && c.reset_transforms.transform_ancestor)
+    (c.reset_transforms.backface_hidden == Some(true) && c.tree.transform_ancestor)
         || c.reset_transforms.transform.is_some()
         || c.reset_transforms.preserve_3d == Some(true)
         || c.reset_transforms.perspective.is_some()

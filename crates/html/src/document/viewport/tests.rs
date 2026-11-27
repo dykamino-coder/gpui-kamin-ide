@@ -34,11 +34,7 @@ fn viewport_units_use_root_unconditional_gutters_only() {
     ] {
         let nodes = crate::document::parsed::parse(&format!("<style>{css}</style>"), "");
         let c = policy(&nodes, vcx).unwrap();
-        assert_eq!(
-            c.reset_positioned.viewport_unit_insets,
-            Some(expected),
-            "{css}"
-        );
+        assert_eq!(vcx.doc.viewport.unit_insets(), expected, "{css}");
         let mut child = inherit_unpainted(
             &BoxStyle::from(c.clone()),
             &Computed {

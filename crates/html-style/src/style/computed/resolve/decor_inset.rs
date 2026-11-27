@@ -67,7 +67,7 @@ impl Computed {
     }
 
     pub fn resolve_decor_inset_viewport(&mut self, viewport: (f32, f32), vcx: ValueCx<'_>) {
-        let vp = self.viewport_cx(viewport);
+        let vp = self.viewport_cx(viewport, vcx);
         let fix = |length: &mut Option<Len>| {
             if let Some(v) = *length {
                 *length = Some(v.fold_viewport(vp, vcx));
