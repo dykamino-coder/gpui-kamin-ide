@@ -98,28 +98,55 @@ fn drawn(device: &DirectXDevices, scene: Scene) -> Vec<u8> {
     target_bytes(&mut r)
 }
 
-/// Opaque and translucent fills with elliptical corners equal their masked
-/// groups byte for byte, on the default adapter and on WARP, and the two
-/// adapters draw the same frame.
+/// A circular quad of the existing path: the reference for how far two
+/// adapters' blend units agree on antialiased edges.
+fn circular(color: Hsla) -> Scene {
+    let mut s = Scene::default();
+    let mut q = fill(color);
+    q.corner_radii = Corners { top_left: ScaledPixels(30.), top_right: ScaledPixels(10.), bottom_right: ScaledPixels(25.), bottom_left: ScaledPixels(0.) };
+    s.quads.push(q);
+    s
+}
+
+/// Pixels that differ and the largest difference, in codes.
+fn compare(a: &[u8], b: &[u8]) -> (usize, u8) {
+    (differing(a, b), a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0))
+}
+
+/// Opaque and translucent fills with elliptical corners draw the bytes of
+/// their masked groups on the default adapter, and WARP draws the same
+/// frame: the quad rounds every value to the target's 8-bit steps itself,
+/// where the masked group leaves the rounding of its shader output to the
+/// adapter (a GPU rounds before blending, WARP does not). The masked group
+/// and a circular quad on the two adapters are counted for comparison;
+/// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 #[test]
 fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
     let gpu = DirectXDevices::new().unwrap();
     let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
-    let mut failures = Vec::new();
+    let mut stats = Vec::new();
     for color in [hsla(0.6, 0.7, 0.5, 1.), hsla(0.1, 0.8, 0.45, 0.6)] {
         let mut frames = Vec::new();
         for (name, device) in [("gpu", &gpu), ("warp", &warp)] {
             let got = drawn(device, elliptical(color));
             let want = drawn(device, masked(color));
-            if got != want {
-                let worst = got.iter().zip(&want).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
-                failures.push(format!("{name} alpha {}: {} pixels differ from the masked group (at most {worst} codes)", color.a, differing(&got, &want)));
-            }
-            frames.push(got);
+            let circle = drawn(device, circular(color));
+            stats.push((format!("{name} alpha {} quad vs mask", color.a), compare(&got, &want)));
+            frames.push((got, want, circle));
         }
-        if frames[0] != frames[1] {
-            failures.push(format!("alpha {}: {} pixels differ between the adapters", color.a, differing(&frames[0], &frames[1])));
-        }
+        let ([g, w], [gm, wm], [gc, wc]) = (
+            [&frames[0].0, &frames[1].0],
+            [&frames[0].1, &frames[1].1],
+            [&frames[0].2, &frames[1].2],
+        );
+        stats.push((format!("alpha {} quad gpu vs warp", color.a), compare(g, w)));
+        stats.push((format!("alpha {} mask gpu vs warp", color.a), compare(gm, wm)));
+        stats.push((format!("alpha {} circle gpu vs warp", color.a), compare(gc, wc)));
     }
-    assert!(failures.is_empty(), "{}", failures.join("; "));
+    let lines: Vec<String> = stats.iter().map(|(name, (n, worst))| format!("{name}: {n} pixels, at most {worst} codes")).collect();
+    if let Ok(path) = std::env::var("KAMIN_ELLIPSE_STATS") {
+        std::fs::write(path, lines.join("\n")).unwrap();
+    }
+    let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
+    assert!(exact("gpu alpha") && exact("quad gpu vs warp"), "{}", lines.join("; "));
 }

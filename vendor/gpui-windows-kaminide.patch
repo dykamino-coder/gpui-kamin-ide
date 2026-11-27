@@ -7391,7 +7391,7 @@ index 0000000000000000000000000000000000000000..281808cffc0174eba95396a06b74e2f1
 +    unreachable!()
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer.rs b/vendor/gpui-windows/src/directx_renderer.rs
-index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc09c7a078
+index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..6a7a9bf82e8e472b02fe8d4d8e879c6cd594b4a4
 --- a/vendor/gpui-windows/src/directx_renderer.rs
 +++ b/vendor/gpui-windows/src/directx_renderer.rs
 @@ -0,0 +1,2 @@
@@ -8761,7 +8761,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 @@ -539,0 +1610,2 @@
 +        self.pipelines.quad_pipeline.upload_gradients(
 +            &devices.device, &devices.device_context, &scene.gradient_data())?;
-@@ -599,4 +1671,9 @@
+@@ -599,4 +1671,10 @@
 -    fn draw_quads(&mut self, start: usize, len: usize) -> Result<()> {
 -        if len == 0 {
 -            return Ok(());
@@ -8775,7 +8775,8 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            self.backdrop_pending = false;
 +        }
 +        let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
-@@ -604,9 +1681,21 @@
++        let premultiplied = if quads.iter().any(|q| q.ellipse.on != 0) { Some(self.premultiplied_blend()?) } else { None };
+@@ -604,9 +1682,23 @@
 -        self.pipelines.quad_pipeline.draw_range(
 -            &devices.device_context,
 -            self.globals
@@ -8791,43 +8792,45 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            .as_ref()
 +            .context("batch params buffer missing")?;
 +        let pipeline = &self.pipelines.quad_pipeline;
-+        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
++        for (analytic, elliptical, first, len) in analytic_gradient::program_runs(quads, start) {
++            let blend = premultiplied.as_ref().filter(|_| elliptical).unwrap_or(&pipeline.blend_state);
 +            if analytic {
 +                pipeline.bind_gradients(&devices.device_context);
-+                pipeline.draw_range_with_program(
++                pipeline.draw_range_blended(
 +                    &devices.device_context,
 +                    params,
 +                    first as u32,
 +                    len as u32,
 +                    self.pipelines.quad_gradient.fragment(&devices.device)?,
++                    blend,
 +                )?;
 +            } else {
-+                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
++                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, blend)?;
 +            }
 +        }
 +        Ok(())
-@@ -621,0 +1711,6 @@
+@@ -621,0 +1714,6 @@
 +        // KaminIDE patch: промежуточный буфер путей остаётся размером с кадр.
 +        unsafe {
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&resources.viewport)));
 +        }
-@@ -643,0 +1739,2 @@
+@@ -643,0 +1742,2 @@
 +                color_bounds: path.color_mapping.map_or(path.clipped_bounds(), |m| m.0),
 +                color_transform: path.color_mapping.map_or(TransformationMatrix::unit(), |m| m.1),
-@@ -672 +1769,4 @@
+@@ -672 +1772,4 @@
 -                .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +            devices
 +                .device_context
 +                .RSSetViewports(Some(slice::from_ref(&self.res().viewport)));
-@@ -815,0 +1916,4 @@
+@@ -815,0 +1919,4 @@
 +    // KaminIDE patch: на Windows Surface-примитив = backdrop blur (см.
 +    // window.rs::paint_backdrop_blur). Кадр под областью копируется, гонится
 +    // каскадом даунсемплов /2→/4→/8 (tent-фильтр в шейдере) и композитится
 +    // обратно с SDF-маской скруглённых углов.
-@@ -819,0 +1924,40 @@
+@@ -819,0 +1927,40 @@
 +        // KaminIDE patch: consecutive group composites are drawn level by level
 +        // (`group_batch`); anything else ends the run.
 +        let mut run: Vec<&PaintSurface> = Vec::new();
@@ -8868,7 +8871,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                .device_context
 +                .OMSetRenderTargets(Some(self.current_target()), None);
 +        }
-@@ -822,0 +1967,366 @@
+@@ -822,0 +1970,366 @@
 +    /// KaminIDE patch: один blur-квад (см. draw_surfaces).
 +    fn draw_backdrop_blur(&mut self, s: &PaintSurface) -> Result<()> {
 +        let device = self.dev().device.clone();
@@ -9235,10 +9238,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        group_region::narrow_composite(&mut quad, vw, vh);
 +        Some((quad, place.page))
 +    }
-@@ -840 +2350 @@
+@@ -840 +2353 @@
 -            _ => dxgi::get_driver_version(&devices.adapter),
 +            _ => crate::gpu_adapter::driver_version(&devices.adapter),
-@@ -890,0 +2401,12 @@
+@@ -890,0 +2404,12 @@
 +        // KaminIDE patch (#76): waitable-гейт — Present больше НИКОГДА не
 +        // блокирует UI-поток. При занятом компоузере (RDP-энкодер 60-90мс на
 +        // кадр — diag.log юзера) draw() пропускает кадр и перерисовывается
@@ -9251,19 +9254,19 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                (!h.is_invalid()).then(|| FrameLatencyGate::new(h))
 +            })
 +        };
-@@ -893 +2415 @@
+@@ -893 +2418 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -900 +2422 @@
+@@ -900 +2425 @@
 -        ) = create_resources(devices, &swap_chain, width, height)?;
 +        ) = create_resources(devices, Some(&swap_chain), width, height)?;
-@@ -904 +2426,2 @@
+@@ -904 +2429,2 @@
 -            swap_chain,
 +            swap_chain: Some(swap_chain),
 +            frame_gate,
-@@ -906,0 +2430 @@
+@@ -906,0 +2433 @@
 +            back_buffer,
-@@ -912,0 +2437,32 @@
+@@ -912,0 +2440,32 @@
 +    }
 +
 +    /// KaminIDE patch: a render target texture in place of a swap chain back
@@ -9296,17 +9299,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    /// KaminIDE patch: the swap chain of a presented (non-offscreen) target.
 +    fn swap_chain(&self) -> Result<&IDXGISwapChain1> {
 +        self.swap_chain.as_ref().context("offscreen target has no swap chain")
-@@ -923 +2479 @@
+@@ -923 +2482 @@
 -            render_target,
 +            (render_target, back_buffer),
-@@ -930 +2486 @@
+@@ -930 +2489 @@
 -        ) = create_resources(devices, &self.swap_chain, width, height)?;
 +        ) = create_resources(devices, self.swap_chain.as_ref(), width, height)?;
-@@ -932,0 +2489 @@
+@@ -932,0 +2492 @@
 +        self.back_buffer = back_buffer;
-@@ -957,0 +2515 @@
+@@ -957,0 +2518 @@
 +        let quad_gradient = analytic_gradient::GradientProgram::new()?;
-@@ -999,0 +2558,22 @@
+@@ -999,0 +2561,22 @@
 +        let blur_pipeline = PipelineState::new(
 +            device,
 +            "blur_pipeline",
@@ -9329,27 +9332,27 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +            4,
 +            create_blend_state_replace(device)?,
 +        )?;
-@@ -1001,0 +2582 @@
+@@ -1001,0 +2585 @@
 +            group_tiles_pipeline,
-@@ -1003,0 +2585 @@
+@@ -1003,0 +2588 @@
 +            quad_gradient,
-@@ -1009,0 +2592,2 @@
+@@ -1009,0 +2595,2 @@
 +            blur_pipeline,
 +            clear_pipeline,
-@@ -1018,0 +2603,4 @@
+@@ -1018,0 +2606,4 @@
 +        // KaminIDE patch (visual hosting): root = контейнер, gpui-визуал —
 +        // его ребёнок (underlay-эпоха WebView2 удалена; CEF рисуется через
 +        // external-текстуры атласа, дерево dcomp статично после setup).
 +        let comp_root = unsafe { comp_device.CreateVisual() }?;
-@@ -1023,0 +2612 @@
+@@ -1023,0 +2615 @@
 +            comp_root,
-@@ -1030 +2619,2 @@
+@@ -1030 +2622,2 @@
 -            self.comp_target.SetRoot(&self.comp_visual)?;
 +            self.comp_root.AddVisual(&self.comp_visual, false, None)?;
 +            self.comp_target.SetRoot(&self.comp_root)?;
-@@ -1063,0 +2654 @@
+@@ -1063,0 +2657 @@
 +            group_samplers: texture_pool::samplers(device)?,
-@@ -1076 +2667,16 @@
+@@ -1076 +2670,16 @@
 -    _pad: [u32; 3],
 +    origin: [f32; 2],
 +    _pad: u32,
@@ -9367,11 +9370,11 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        origin: [0.0; 2],
 +        _pad: 0,
 +    }
-@@ -1089,0 +2696,3 @@
+@@ -1089,0 +2699,3 @@
 +    gradients: Option<analytic_gradient::GradientBuffers>,
 +    // KaminIDE patch: идентичность исполняемых DXBC chunks, без debug paths.
 +    shader_executables: [String; 2],
-@@ -1100,30 +2708,0 @@
+@@ -1100,30 +2711,0 @@
 -    fn new(
 -        device: &ID3D11Device,
 -        label: &'static str,
@@ -9402,7 +9405,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        })
 -    }
 -
-@@ -1190,0 +2770,45 @@
+@@ -1190,0 +2773,45 @@
 +        self.draw_textured(device_context, texture, sampler, instance_count, None)
 +    }
 +
@@ -9448,10 +9451,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        instance_count: u32,
 +        blend_override: Option<&ID3D11BlendState>,
 +    ) -> Result<()> {
-@@ -1197 +2821 @@
+@@ -1197 +2824 @@
 -            &self.blend_state,
 +            blend_override.unwrap_or(&self.blend_state),
-@@ -1214,0 +2839,19 @@
+@@ -1214,0 +2842,33 @@
 +    ) -> Result<()> {
 +        self.draw_range_with_program(
 +            device_context,
@@ -9471,27 +9474,43 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        first_instance: u32,
 +        instance_count: u32,
 +        fragment: &ID3D11PixelShader,
-@@ -1227 +2870 @@
++    ) -> Result<()> {
++        self.draw_range_blended(device_context, batch_params_buffer, first_instance, instance_count, fragment, &self.blend_state)
++    }
++
++    /// KaminIDE patch: the instance range drawn by `fragment` through
++    /// `blend` (quads with elliptical corners blend premultiplied colour).
++    fn draw_range_blended(
++        &self,
++        device_context: &ID3D11DeviceContext,
++        batch_params_buffer: &ID3D11Buffer,
++        first_instance: u32,
++        instance_count: u32,
++        fragment: &ID3D11PixelShader,
++        blend: &ID3D11BlendState,
+@@ -1227,2 +2887,2 @@
 -            &self.fragment,
+-            &self.blend_state,
 +            fragment,
-@@ -1275,0 +2919,2 @@
++            blend,
+@@ -1275,0 +2936,2 @@
 +    color_bounds: Bounds<ScaledPixels>,
 +    color_transform: TransformationMatrix,
-@@ -1319 +2964,2 @@
+@@ -1319 +2981,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1347 +2993,2 @@
+@@ -1347 +3010,2 @@
 -        Flags: 0,
 +        // KaminIDE patch (#76): waitable-гейт (см. FrameLatencyGate).
 +        Flags: DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT.0 as u32,
-@@ -1358 +3005 @@
+@@ -1358 +3022 @@
 -    swap_chain: &IDXGISwapChain1,
 +    swap_chain: Option<&IDXGISwapChain1>,
-@@ -1362 +3009 @@
+@@ -1362 +3026 @@
 -    ID3D11Texture2D,
 +    (ID3D11Texture2D, Option<ID3D11Texture2D>),
-@@ -1370,2 +3017,8 @@
+@@ -1370,2 +3034,8 @@
 -    let (render_target, render_target_view) =
 -        create_render_target_and_its_view(swap_chain, &devices.device)?;
 +    // KaminIDE patch: the frame is drawn into a canvas of its own and copied
@@ -9502,7 +9521,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +        None => None,
 +    };
 +    let render_target = (render_target, back_buffer);
-@@ -1395,3 +3048,22 @@
+@@ -1395,3 +3065,22 @@
 -#[inline]
 -fn create_render_target_and_its_view(
 -    swap_chain: &IDXGISwapChain1,
@@ -9528,17 +9547,17 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +}
 +
 +fn create_offscreen_target_and_its_view(
-@@ -1398,0 +3071,2 @@
+@@ -1398,0 +3088,2 @@
 +    width: u32,
 +    height: u32,
-@@ -1400 +3074,5 @@
+@@ -1400 +3091,5 @@
 -    let render_target: ID3D11Texture2D = unsafe { swap_chain.GetBuffer(0) }?;
 +    let mut render_target = None;
 +    unsafe {
 +        device.CreateTexture2D(&offscreen_target_desc(width, height), None, Some(&mut render_target))?
 +    };
 +    let render_target = render_target.context("offscreen render target")?;
-@@ -1492,0 +3171,33 @@
+@@ -1492,0 +3188,33 @@
 +/// KaminIDE patch: блендер без смешивания — источник заменяет назначение.
 +fn create_blend_state_replace(device: &ID3D11Device) -> Result<ID3D11BlendState> {
 +    let mut desc = D3D11_BLEND_DESC::default();
@@ -9572,7 +9591,7 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +    }
 +}
 +
-@@ -1701,7 +3412 @@
+@@ -1701,7 +3429 @@
 -    use windows::{
 -        Win32::Graphics::Direct3D::{
 -            Fxc::{D3DCOMPILE_DEBUG, D3DCOMPILE_SKIP_OPTIMIZATION, D3DCompileFromFile},
@@ -9581,22 +9600,22 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        core::{HSTRING, PCSTR},
 -    };
 +    use windows::Win32::Graphics::Direct3D::ID3DBlob;
-@@ -1711,0 +3417,2 @@
+@@ -1711,0 +3434,2 @@
 +        /// KaminIDE patch: analytic-gradient quads over the quad instance buffer.
 +        QuadGradient,
-@@ -1719,0 +3427,6 @@
+@@ -1719,0 +3444,6 @@
 +        /// KaminIDE patch: backdrop blur (тосты).
 +        Blur,
 +        /// KaminIDE patch: frame clear drawn with blending off (quad_clear).
 +        Clear,
 +        /// KaminIDE patch: group composites blended by the output merger.
 +        GroupTiles,
-@@ -1763,0 +3477,4 @@
+@@ -1763,0 +3494,4 @@
 +                },
 +                ShaderModule::QuadGradient => match target {
 +                    ShaderTarget::Vertex => QUAD_GRADIENT_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => QUAD_GRADIENT_FRAGMENT_BYTES,
-@@ -1796,0 +3514,12 @@
+@@ -1796,0 +3531,12 @@
 +                ShaderModule::Blur => match target {
 +                    ShaderTarget::Vertex => BLUR_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => BLUR_FRAGMENT_BYTES,
@@ -9609,9 +9628,9 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +                    ShaderTarget::Vertex => GROUP_TILES_VERTEX_BYTES,
 +                    ShaderTarget::Fragment => GROUP_TILES_FRAGMENT_BYTES,
 +                },
-@@ -1801,0 +3531 @@
+@@ -1801,0 +3548 @@
 +    // KaminIDE patch: compile embedded HLSL without a runtime worktree path.
-@@ -1803,64 +3533 @@
+@@ -1803,64 +3550 @@
 -    pub(super) fn build_shader_blob(entry: ShaderModule, target: ShaderTarget) -> Result<ID3DBlob> {
 -        unsafe {
 -            use windows::Win32::Graphics::{
@@ -9677,13 +9696,13 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 -        }
 -    }
 +    use super::shader_compilation::build_shader_blob;
-@@ -1875,0 +3543 @@
+@@ -1875,0 +3560 @@
 +                ShaderModule::QuadGradient => "quad_gradient",
-@@ -1883,0 +3552,3 @@
+@@ -1883,0 +3569,3 @@
 +                ShaderModule::Blur => "blur",
 +                ShaderModule::Clear => "clear",
 +                ShaderModule::GroupTiles => "group_tiles",
-@@ -2054,17 +3725,40 @@
+@@ -2054,17 +3742,40 @@
 -mod dxgi {
 -    use windows::{
 -        Win32::Graphics::Dxgi::{IDXGIAdapter1, IDXGIDevice},
@@ -9743,10 +9762,10 @@ index f8b86bc25bdebedf4f0399bc6f79c8248dea55e1..b40aa2d20fbbad1d8fc13d5490b7c1cc
 +mod shader_tests;
 diff --git a/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..edab36c3742ea464516540010862cb9466b3b9aa
+index 0000000000000000000000000000000000000000..eaabbf3cc776d3c87e09d72ffb7f5546eca0a66f
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/analytic_gradient.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,169 @@
 +//! Arbitrary stop buffers follow quad instances, including retained layer instances.
 +//! WARP executes the same analytic shader directly in the destination surface.
 +//! Analytic quads have a pixel program of their own (as WebRender separates
@@ -9789,14 +9808,17 @@ index 0000000000000000000000000000000000000000..edab36c3742ea464516540010862cb94
 +}
 +
 +/// Splits `quads` (instances `first..`) into maximal runs of one program and
-+/// yields `(analytic, first_instance, count)` in paint order. Runs keep the
-+/// primitive order exactly, so splitting never reorders overlapping quads.
-+pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, usize, usize)> + '_ {
++/// one blender and yields `(analytic, elliptical, first_instance, count)` in
++/// paint order: quads with elliptical corners hand the blender premultiplied
++/// colour (`quad_fragment_ellipse`). Runs keep the primitive order exactly,
++/// so splitting never reorders overlapping quads.
++pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, bool, usize, usize)> + '_ {
 +    let mut at = 0;
++    let key = |q: &Quad| (q.is_analytic_gradient(), q.ellipse.on != 0);
 +    std::iter::from_fn(move || {
-+        let analytic = quads.get(at)?.is_analytic_gradient();
-+        let len = quads[at..].iter().take_while(|q| q.is_analytic_gradient() == analytic).count();
-+        let run = (analytic, first + at, len);
++        let (analytic, elliptical) = key(quads.get(at)?);
++        let len = quads[at..].iter().take_while(|q| key(q) == (analytic, elliptical)).count();
++        let run = (analytic, elliptical, first + at, len);
 +        at += len;
 +        Some(run)
 +    })
@@ -15819,10 +15841,10 @@ index 0000000000000000000000000000000000000000..917474ee4445ec198c1eb87c893eb16b
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..bef28d0eaac7c8ef3717c36b893da694da32b497
+index 0000000000000000000000000000000000000000..b03d023bccd2b84ec7e0b14899c3a6aed5bc9d4e
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse.rs
-@@ -0,0 +1,125 @@
+@@ -0,0 +1,152 @@
 +//! KaminIDE patch: a quad with elliptical corners (`CornerEllipse`) draws
 +//! the pixels that a group of its square fill drew through the coverage
 +//! mask it replaces (`contour_dist` in kamin-html, corner shape 1).
@@ -15923,30 +15945,57 @@ index 0000000000000000000000000000000000000000..bef28d0eaac7c8ef3717c36b893da694
 +    target_bytes(&mut r)
 +}
 +
-+/// Opaque and translucent fills with elliptical corners equal their masked
-+/// groups byte for byte, on the default adapter and on WARP, and the two
-+/// adapters draw the same frame.
++/// A circular quad of the existing path: the reference for how far two
++/// adapters' blend units agree on antialiased edges.
++fn circular(color: Hsla) -> Scene {
++    let mut s = Scene::default();
++    let mut q = fill(color);
++    q.corner_radii = Corners { top_left: ScaledPixels(30.), top_right: ScaledPixels(10.), bottom_right: ScaledPixels(25.), bottom_left: ScaledPixels(0.) };
++    s.quads.push(q);
++    s
++}
++
++/// Pixels that differ and the largest difference, in codes.
++fn compare(a: &[u8], b: &[u8]) -> (usize, u8) {
++    (differing(a, b), a.iter().zip(b).map(|(x, y)| x.abs_diff(*y)).max().unwrap_or(0))
++}
++
++/// Opaque and translucent fills with elliptical corners draw the bytes of
++/// their masked groups on the default adapter, and WARP draws the same
++/// frame: the quad rounds every value to the target's 8-bit steps itself,
++/// where the masked group leaves the rounding of its shader output to the
++/// adapter (a GPU rounds before blending, WARP does not). The masked group
++/// and a circular quad on the two adapters are counted for comparison;
++/// `KAMIN_ELLIPSE_STATS` names a file that takes the counts.
 +#[test]
 +fn an_elliptical_quad_draws_the_pixels_of_its_mask() {
 +    let gpu = DirectXDevices::new().unwrap();
 +    let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
-+    let mut failures = Vec::new();
++    let mut stats = Vec::new();
 +    for color in [hsla(0.6, 0.7, 0.5, 1.), hsla(0.1, 0.8, 0.45, 0.6)] {
 +        let mut frames = Vec::new();
 +        for (name, device) in [("gpu", &gpu), ("warp", &warp)] {
 +            let got = drawn(device, elliptical(color));
 +            let want = drawn(device, masked(color));
-+            if got != want {
-+                let worst = got.iter().zip(&want).map(|(a, b)| a.abs_diff(*b)).max().unwrap_or(0);
-+                failures.push(format!("{name} alpha {}: {} pixels differ from the masked group (at most {worst} codes)", color.a, differing(&got, &want)));
-+            }
-+            frames.push(got);
++            let circle = drawn(device, circular(color));
++            stats.push((format!("{name} alpha {} quad vs mask", color.a), compare(&got, &want)));
++            frames.push((got, want, circle));
 +        }
-+        if frames[0] != frames[1] {
-+            failures.push(format!("alpha {}: {} pixels differ between the adapters", color.a, differing(&frames[0], &frames[1])));
-+        }
++        let ([g, w], [gm, wm], [gc, wc]) = (
++            [&frames[0].0, &frames[1].0],
++            [&frames[0].1, &frames[1].1],
++            [&frames[0].2, &frames[1].2],
++        );
++        stats.push((format!("alpha {} quad gpu vs warp", color.a), compare(g, w)));
++        stats.push((format!("alpha {} mask gpu vs warp", color.a), compare(gm, wm)));
++        stats.push((format!("alpha {} circle gpu vs warp", color.a), compare(gc, wc)));
 +    }
-+    assert!(failures.is_empty(), "{}", failures.join("; "));
++    let lines: Vec<String> = stats.iter().map(|(name, (n, worst))| format!("{name}: {n} pixels, at most {worst} codes")).collect();
++    if let Ok(path) = std::env::var("KAMIN_ELLIPSE_STATS") {
++        std::fs::write(path, lines.join("\n")).unwrap();
++    }
++    let exact = |name: &str| stats.iter().filter(|(n, _)| n.contains(name)).all(|(_, (count, _))| *count == 0);
++    assert!(exact("gpu alpha") && exact("quad gpu vs warp"), "{}", lines.join("; "));
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/groups.rs
 new file mode 100644
@@ -19287,7 +19336,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0fb9aa1e8
+index ba89c6873354fb7449b8294878e080a68c3dd29b..5a54eb6021c1b16d825d118ab5349b1abe1e2268
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -19582,7 +19631,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, quad.bounds, quad.content_mask);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, quad.bounds, quad.content_mask, quad.transformation);
-@@ -559,4 +721,107 @@
+@@ -559,4 +721,125 @@
 -float4 quad_fragment(QuadFragmentInput input): SV_Target {
 -    Quad quad = quads[input.quad_id];
 -    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
@@ -19642,13 +19691,16 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +// coverage mask these quads replace (`contour_dist` in kamin-html), exact
 +// for a circle; elsewhere the distance to the nearer straight side.
 +float ellipse_box_sdf(float2 corner_to_point, float2 r) {
-+    float2 v = -corner_to_point;
++    // `precise`: one rounding per operation in this order on every adapter
++    // (no fused multiply-adds), so GPU and WARP reach the same coverage.
++    precise float2 v = -corner_to_point;
 +    if (r.x > 0.0 && r.y > 0.0 && v.x >= 0.0 && v.y >= 0.0 && v.x < r.x && v.y < r.y) {
-+        float2 e = 1.0 - v / r;
-+        float dd = sqrt(e.x * e.x + e.y * e.y);
-+        float2 g = e / r;
-+        float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
-+        return (dd - 1.0) / max(grad, 1e-6);
++        precise float2 e = 1.0 - v / r;
++        precise float dd = sqrt(e.x * e.x + e.y * e.y);
++        precise float2 g = e / r;
++        precise float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
++        precise float d = (dd - 1.0) / max(grad, 1e-6);
++        return d;
 +    }
 +    return max(corner_to_point.x, corner_to_point.y);
 +}
@@ -19658,16 +19710,23 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +// ones. The border's inner edge is the box inset by the four border widths
 +// with each corner's radii shrunk by the widths of its two sides (§5.4); a
 +// solid border lies over the background between the two edges.
++// KaminIDE patch: `v` rounded to the nearest of the 256 steps of an 8-bit
++// unorm channel, as a target of that format stores it.
++float4 q8(float4 v) {
++    precise float4 steps = round(saturate(v) * 255.0) / 255.0;
++    return steps;
++}
++
 +float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background_color,
 +                             float4 border_color) {
-+    float2 half_size = quad.bounds.size / 2.;
-+    float2 center_to_point = local_position - quad.bounds.origin - half_size;
++    precise float2 half_size = quad.bounds.size / 2.;
++    precise float2 center_to_point = local_position - quad.bounds.origin - half_size;
 +    bool left = center_to_point.x < 0.0;
 +    bool top = center_to_point.y < 0.0;
 +    float rx = pick_corner_radius(center_to_point, quad.corner_radii);
 +    float ry = top ? (left ? quad.ellipse.radii_y.x : quad.ellipse.radii_y.y)
 +                   : (left ? quad.ellipse.radii_y.w : quad.ellipse.radii_y.z);
-+    float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
++    precise float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
 +    float4 color = background_color;
 +    float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
 +                          quad.border_widths.right, quad.border_widths.bottom);
@@ -19684,20 +19743,28 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +        float4 blended_border = over(background_color, border_color);
 +        color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
 +    }
-+    // The coverage in the mask's 8-bit steps, so the quad draws the bytes of
-+    // the masked group it replaces.
-+    float coverage = round(saturate(0.5 - outer_sdf) * 255.0) / 255.0;
-+    return color * float4(1.0, 1.0, 1.0, coverage);
++    // Premultiplied output, drawn with the premultiplied blender
++    // (`draw_quads`). Every value is rounded to the target's 8-bit steps in
++    // the order the masked group it replaces rounds them: the colour as the
++    // shader hands it to the blender, the group buffer's `colour * alpha`, the
++    // mask's coverage, then the composite's product. A GPU rounds the shader
++    // output to the target format before blending and WARP does not; with
++    // the steps taken here both blend the same bytes.
++    precise float4 c8 = q8(color);
++    precise float3 p8 = q8(float4(c8.rgb * c8.a, 0.0)).rgb;
++    precise float m8 = q8(float4(saturate(0.5 - outer_sdf), 0.0, 0.0, 0.0)).x;
++    precise float4 out8 = q8(float4(p8 * m8, c8.a * m8));
++    return out8;
 +}
 +float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
 +                          float4 input_border_color) {
 +    if (quad.ellipse.on != 0) {
 +        return quad_fragment_ellipse(quad, local_position, background_color, input_border_color);
 +    }
-@@ -580 +845 @@
+@@ -580 +863 @@
 -    float2 the_point = input.position.xy - quad.bounds.origin;
 +    float2 the_point = local_position - quad.bounds.origin;
-@@ -619 +884,17 @@
+@@ -619 +902,17 @@
 -    float2 straight_border_inner_corner_to_point = corner_to_point + reduced_border;
 +    // KaminIDE patch: внутренний прямоугольник рамки строится из ЧЕТЫРЁХ ширин
 +    // сразу, а не из одной на полукоробку. Прежде ширина выбиралась по знаку
@@ -19716,24 +19783,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +    float2 inner_max = half_size - reduced_edges.zw;
 +    float2 straight_border_inner_corner_to_point =
 +        max(inner_min - center_to_point, center_to_point - inner_max);
-@@ -669 +950 @@
+@@ -669 +968 @@
 -        float4 border_color = input.border_color;
 +        float4 border_color = input_border_color;
-@@ -671 +952,2 @@
+@@ -671 +970,2 @@
 -        if (quad.border_style == 1) {
 +        // KaminIDE patch: 2 — точечная рамка, тот же узор с квадратной ячейкой.
 +        if (quad.border_style == 1 || quad.border_style == 2) {
-@@ -685 +967,3 @@
+@@ -685 +985,3 @@
 -            const float dash_length_per_width = 2.0;
 +            // KaminIDE patch: у точечной рамки штрих равен зазору — так её и
 +            // рисует браузер; у штриховой штрих вдвое длиннее.
 +            const float dash_length_per_width = (quad.border_style == 2) ? 1.0 : 2.0;
-@@ -862,0 +1147,2 @@
+@@ -862,0 +1165,2 @@
 +    // KaminIDE patch: прежние наши `inset` + `box_bounds` слиты в поля
 +    // upstream; раскладка обязана совпадать с `struct Shadow` в scene.rs.
-@@ -913,0 +1200 @@
+@@ -913,0 +1218 @@
 +    input.position.xy += global_origin;
-@@ -952,0 +1240,12 @@
+@@ -952,0 +1258,12 @@
 +    // KaminIDE patch: наружная тень вырезается коробкой самого элемента
 +    // (css-backgrounds-3 §box-shadow: «the shadow is not painted inside the
 +    // border box»; Blink `BoxPainterBase::PaintNormalBoxShadow` →
@@ -19746,22 +19813,22 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +                             shadow.element_corner_radii);
 +        alpha *= saturate(own + 0.5);
 +    }
-@@ -966,0 +1266,2 @@
+@@ -966,0 +1284,2 @@
 +    Bounds color_bounds;
 +    TransformationMatrix color_transform;
-@@ -1002 +1303 @@
+@@ -1002 +1321 @@
 -    Bounds bounds = sprite.bounds;
 +    Bounds bounds = sprite.color_bounds;
-@@ -1017 +1318,3 @@
+@@ -1017 +1336,3 @@
 -    float4 color = gradient_color(background, input.position.xy, bounds,
 +    float2 color_position = mul(input.position.xy, sprite.color_transform.rotation_scale)
 +        + sprite.color_transform.translation;
 +    float4 color = gradient_color(background, color_position, bounds,
-@@ -1055,0 +1359 @@
+@@ -1055,0 +1377 @@
 +    input.position.xy += global_origin;
-@@ -1107,0 +1412 @@
+@@ -1107,0 +1430 @@
 +    input.position.xy += global_origin;
-@@ -1116,3 +1421,10 @@
+@@ -1116,3 +1439,10 @@
 -        float2 st = ((input.position.xy - origin) / underline.bounds.size.y) - float2(0., 0.5);
 -        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / underline.bounds.size.y;
 -        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / underline.bounds.size.y;
@@ -19775,24 +19842,24 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +        float2 st = (local / height) - float2(0., 0.5);
 +        float frequency = (M_PI_F * WAVE_FREQUENCY * underline.thickness) / height;
 +        float amplitude = (underline.thickness * WAVE_HEIGHT_RATIO) / height;
-@@ -1123 +1435 @@
+@@ -1123 +1453 @@
 -        float distance_in_pixels = distance * underline.bounds.size.y;
 +        float distance_in_pixels = distance * height;
-@@ -1150,0 +1463 @@
+@@ -1150,0 +1481 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1152 +1464,0 @@
+@@ -1152 +1482,0 @@
 -    float2 tile_position: POSITION;
-@@ -1157,0 +1470 @@
+@@ -1157,0 +1488 @@
 +    nointerpolation uint sprite_id: TEXCOORD0;
-@@ -1159 +1471,0 @@
+@@ -1159 +1489,0 @@
 -    float2 tile_position: POSITION;
-@@ -1173 +1484,0 @@
+@@ -1173 +1502,0 @@
 -    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
-@@ -1176,0 +1488 @@
+@@ -1176,0 +1506 @@
 +    output.sprite_id = sprite_id;
-@@ -1178 +1489,0 @@
+@@ -1178 +1507,0 @@
 -    output.tile_position = tile_position;
-@@ -1183,0 +1495,10 @@
+@@ -1183,0 +1513,10 @@
 +// KaminIDE patch: a glyph is read in its tile's own texels (`tile_texel`),
 +// as an image is: normalized atlas coordinates gave a glyph other filter
 +// weights wherever the atlas put its tile, so the same glyph in two tiles
@@ -19803,20 +19870,20 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +    return tile_texel(local_position, sprite.bounds, sprite.tile);
 +}
 +
-@@ -1185 +1506,2 @@
+@@ -1185 +1524,2 @@
 -    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
 +    input.position.xy += global_origin;
 +    float sample = sprite_texel(input).r;
-@@ -1195 +1517,2 @@
+@@ -1195 +1535,2 @@
 -    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
 +    input.position.xy += global_origin;
 +    float3 sample = sprite_texel(input).rgb;
-@@ -1221,0 +1545,4 @@
+@@ -1221,0 +1563,4 @@
 +    // KaminIDE patch: cell size of a repeated image (`PolychromeSprite::pattern`); zero: none.
 +    float2 pattern;
 +    // KaminIDE patch: см. `Quad::transformation`.
 +    TransformationMatrix transformation;
-@@ -1243,3 +1570,6 @@
+@@ -1243,3 +1588,6 @@
 -    float4 device_position = to_device_position(unit_vertex, sprite.bounds);
 -    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds,
 -                                                    sprite.content_mask);
@@ -19826,9 +19893,9 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
 +    float4 clip_distance = distance_from_clip_rect_transformed(
 +        unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
-@@ -1256,0 +1587 @@
+@@ -1256,0 +1605 @@
 +    input.position.xy += global_origin;
-@@ -1258,2 +1589,26 @@
+@@ -1258,2 +1607,26 @@
 -    float4 sample = t_sprite.Sample(s_sprite, input.tile_position);
 -    float distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 +    // KaminIDE patch: координаты самого спрайта.
@@ -19857,7 +19924,7 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..cce7640c763dcb63e1c460c3c21ba0e0
 +        sample = tile_texel(local_position, cell, sprite.tile);
 +    }
 +    float distance = quad_sdf(local_position, sprite.bounds, sprite.corner_radii);
-@@ -1268,0 +1624,572 @@
+@@ -1268,0 +1642,572 @@
 +
 +/*
 +**

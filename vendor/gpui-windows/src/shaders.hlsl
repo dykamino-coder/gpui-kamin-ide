@@ -773,13 +773,16 @@ float2 untransform(float2 position, TransformationMatrix t) {
 // coverage mask these quads replace (`contour_dist` in kamin-html), exact
 // for a circle; elsewhere the distance to the nearer straight side.
 float ellipse_box_sdf(float2 corner_to_point, float2 r) {
-    float2 v = -corner_to_point;
+    // `precise`: one rounding per operation in this order on every adapter
+    // (no fused multiply-adds), so GPU and WARP reach the same coverage.
+    precise float2 v = -corner_to_point;
     if (r.x > 0.0 && r.y > 0.0 && v.x >= 0.0 && v.y >= 0.0 && v.x < r.x && v.y < r.y) {
-        float2 e = 1.0 - v / r;
-        float dd = sqrt(e.x * e.x + e.y * e.y);
-        float2 g = e / r;
-        float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
-        return (dd - 1.0) / max(grad, 1e-6);
+        precise float2 e = 1.0 - v / r;
+        precise float dd = sqrt(e.x * e.x + e.y * e.y);
+        precise float2 g = e / r;
+        precise float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
+        precise float d = (dd - 1.0) / max(grad, 1e-6);
+        return d;
     }
     return max(corner_to_point.x, corner_to_point.y);
 }
@@ -789,16 +792,23 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
 // ones. The border's inner edge is the box inset by the four border widths
 // with each corner's radii shrunk by the widths of its two sides (§5.4); a
 // solid border lies over the background between the two edges.
+// KaminIDE patch: `v` rounded to the nearest of the 256 steps of an 8-bit
+// unorm channel, as a target of that format stores it.
+float4 q8(float4 v) {
+    precise float4 steps = round(saturate(v) * 255.0) / 255.0;
+    return steps;
+}
+
 float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background_color,
                              float4 border_color) {
-    float2 half_size = quad.bounds.size / 2.;
-    float2 center_to_point = local_position - quad.bounds.origin - half_size;
+    precise float2 half_size = quad.bounds.size / 2.;
+    precise float2 center_to_point = local_position - quad.bounds.origin - half_size;
     bool left = center_to_point.x < 0.0;
     bool top = center_to_point.y < 0.0;
     float rx = pick_corner_radius(center_to_point, quad.corner_radii);
     float ry = top ? (left ? quad.ellipse.radii_y.x : quad.ellipse.radii_y.y)
                    : (left ? quad.ellipse.radii_y.w : quad.ellipse.radii_y.z);
-    float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
+    precise float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, float2(rx, ry));
     float4 color = background_color;
     float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
                           quad.border_widths.right, quad.border_widths.bottom);
@@ -815,10 +825,18 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
         float4 blended_border = over(background_color, border_color);
         color = lerp(background_color, blended_border, saturate(0.5 + inner_sdf));
     }
-    // The coverage in the mask's 8-bit steps, so the quad draws the bytes of
-    // the masked group it replaces.
-    float coverage = round(saturate(0.5 - outer_sdf) * 255.0) / 255.0;
-    return color * float4(1.0, 1.0, 1.0, coverage);
+    // Premultiplied output, drawn with the premultiplied blender
+    // (`draw_quads`). Every value is rounded to the target's 8-bit steps in
+    // the order the masked group it replaces rounds them: the colour as the
+    // shader hands it to the blender, the group buffer's `colour * alpha`, the
+    // mask's coverage, then the composite's product. A GPU rounds the shader
+    // output to the target format before blending and WARP does not; with
+    // the steps taken here both blend the same bytes.
+    precise float4 c8 = q8(color);
+    precise float3 p8 = q8(float4(c8.rgb * c8.a, 0.0)).rgb;
+    precise float m8 = q8(float4(saturate(0.5 - outer_sdf), 0.0, 0.0, 0.0)).x;
+    precise float4 out8 = q8(float4(p8 * m8, c8.a * m8));
+    return out8;
 }
 float4 quad_fragment_impl(Quad quad, float2 local_position, float4 background_color,
                           float4 input_border_color) {
