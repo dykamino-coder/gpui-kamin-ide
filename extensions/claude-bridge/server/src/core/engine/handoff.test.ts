@@ -88,7 +88,7 @@ describe('buildHandoff', () => {
     expect(handoff!.text.startsWith('<bridge-context>')).toBe(true)
     expect(handoff!.text.endsWith('</bridge-context>')).toBe(true)
     expect(handoff!.text).toContain('not written by the user')
-    expect(handoff!.text).toContain('with\nClaude and ChatGPT; until now Claude (sonnet) answered')
+    expect(handoff!.text).toContain('with\nClaude and ChatGPT. Engine previously selected: Claude (sonnet).')
     expect(handoff!.text).toContain('User: Remember 4217.\n\nAssistant: Remembered.')
   })
 

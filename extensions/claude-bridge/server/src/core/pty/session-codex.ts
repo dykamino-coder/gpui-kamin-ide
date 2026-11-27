@@ -13,6 +13,7 @@
 // codex's own rollout (CODEX_HOME) stays the source of truth for resume.
 // ============================================================================
 
+import { hasWorkspaceSkills } from './host-declaration'
 import { createHash, randomUUID } from 'crypto'
 import fs from 'fs'
 import os from 'os'
@@ -21,13 +22,15 @@ import type { WebSocket as WS } from 'ws'
 import type { AgentEvent } from '../../shared/agent-events'
 import { config as bridgeConfig } from '../config'
 import { CodexAgentSession, type TurnContext } from '../codex/codex-session'
+import { collaborationModes, isCollaborationMode, type CollaborationMode } from '../codex/collaboration-modes'
 import { SESSION_CONTEXT_OPEN } from '../codex/normalize'
 import { classifyCodexError, describeCodexError, loginRequired } from '../codex/codex-errors'
 import { codexUnavailableReason, type CodexRuntime } from '../codex/codex-runtime'
 import { limitWindowLabel, type CodexRateLimits } from '../../shared/codex-rate-limits'
 import { bridgeMcpThreadConfig } from '../codex/config-toml'
 import { JsonRpcError } from '../codex/jsonrpc'
-import { CodexConsoleRenderer, consoleBanner, consoleNotice } from '../codex/console-render'
+import { CodexConsoleRenderer, consoleBanner } from '../codex/console-render'
+import { recentConsoleMessages } from '../codex/console-history'
 import { CodexTranscriptProjector, type CodexTranscriptEntry } from '../codex/transcript'
 import { VirtualPty } from '../codex/virtual-pty'
 import { eventBus } from '../events/bus'
@@ -44,6 +47,8 @@ import { attachOutputDebounce, sendToClient } from './session-io'
 import { attachSessionJsonlWatcher } from './session-jsonl-wiring'
 import type { SessionUsage, SessionUsageWindow } from './session-statusline'
 import { buildSystemPrompt } from './system-prompt'
+import { HOOK_SYNC_ERROR, refreshCodexToolHooks } from '../hooks/codex-tool-hooks'
+import { clearSession as clearHooks } from '../hooks/registry'
 import { syncedInstructions } from './synced-instructions'
 import type { PtySession, SessionConfig } from './types'
 
@@ -83,7 +88,7 @@ export interface CodexPlacement {
   resumeNotFound: boolean
 }
 
-const REASONING_EFFORTS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+const REASONING_EFFORTS = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 const STREAM_THROTTLE_MS = 100
 
 export function projectsDir(deps?: { projectsDir?: string }): string {
@@ -103,7 +108,7 @@ function lastUuid(file: string): string | null {
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
         const entry = JSON.parse(lines[i]!) as { uuid?: unknown; type?: unknown; subtype?: unknown; engine?: unknown }
-        if (isEngineUsageLine(entry)) continue
+        if (isEngineUsageLine(entry) || entry.subtype === 'codex_turn_request') continue
         const uuid = entry.uuid
         if (typeof uuid === 'string') return uuid
       } catch {
@@ -121,6 +126,7 @@ function lastUuid(file: string): string | null {
  *  lost when the app-server or Bridge restarts; Bridge keeps it next to the
  *  session settings, per thread, and resumes the thread with it. */
 export interface CodexChoice {
+  collaborationMode?: CollaborationMode
   model?: string
   /** Bridge effort level (the selector's value). */
   effort?: string
@@ -137,8 +143,11 @@ export function loadCodexChoice(settingsDir: string, threadId: string): CodexCho
   try {
     const raw = JSON.parse(fs.readFileSync(choiceFile(settingsDir, threadId), 'utf8')) as Record<string, unknown>
     return {
+      ...(isCollaborationMode(raw.collaborationMode) ? { collaborationMode: raw.collaborationMode } : {}),
       ...(typeof raw.model === 'string' && raw.model ? { model: raw.model } : {}),
-      ...(typeof raw.effort === 'string' && raw.effort ? { effort: raw.effort } : {}),
+      ...(typeof raw.effort === 'string' && raw.effort
+        ? { effort: raw.effort === 'max' && raw.nativeEffort !== true ? 'xhigh' : raw.effort }
+        : {}),
       ...(isContextRecord(raw.context) ? { context: raw.context } : {}),
     }
   } catch {
@@ -156,7 +165,11 @@ export function saveCodexChoice(session: PtySession, change: CodexChoice): void 
 function writeCodexChoice(settingsDir: string, threadId: string, choice: CodexChoice): void {
   try {
     fs.mkdirSync(settingsDir, { recursive: true })
-    fs.writeFileSync(choiceFile(settingsDir, threadId), JSON.stringify(choice), { mode: 0o600 })
+    fs.writeFileSync(
+      choiceFile(settingsDir, threadId),
+      JSON.stringify({ ...choice, ...(choice.effort === 'max' ? { nativeEffort: true } : {}) }),
+      { mode: 0o600 },
+    )
   } catch (error) {
     warnLog('codex choice not saved', { threadId, error: String(error) })
   }
@@ -173,12 +186,12 @@ const contextHash = (text: string): string => createHash('sha256').update(text).
  *  their family, not the identifier the chat runs ("Codex based on GPT-6"). */
 export function modelLine(model: string | null | undefined, effort: string | null | undefined): string {
   if (!model) return ''
-  const level = codexEffort(effort)
+  const level = effort
   return [
     '## Model',
     `This chat runs on the model \`${model}\`${level ? ` with reasoning effort \`${level}\`` : ''}.`,
     level
-      ? 'When asked which model or reasoning effort you run on, answer with these exact values.'
+      ? 'These are the settings Bridge requested at this point in the conversation. A later Bridge model line updates them for subsequent turns.'
       : 'When asked which model you are, answer with this exact identifier.',
   ].join('\n')
 }
@@ -189,9 +202,16 @@ export function modelLine(model: string | null | undefined, effort: string | nul
 export function effectiveEffort(
   model: string | null | undefined,
   effort: string | null | undefined,
-  catalog: { knownModel(model: string | null | undefined): { defaultReasoningEffort: string | null } | undefined },
+  catalog: {
+    knownModel(
+      model: string | null | undefined,
+    ): { defaultReasoningEffort: string | null; reasoningEfforts: string[] } | undefined
+  },
 ): string | undefined {
-  return codexEffort(effort) ?? codexEffort(catalog.knownModel(model)?.defaultReasoningEffort)
+  const entry = catalog.knownModel(model)
+  return (
+    codexEffort(effort, entry?.reasoningEfforts) ?? codexEffort(entry?.defaultReasoningEffort, entry?.reasoningEfforts)
+  )
 }
 
 /** The context record of what a thread was given at thread/start. */
@@ -260,28 +280,22 @@ export function codexModel(model: string | null | undefined): string | undefined
  *  `session:usage` snapshot tagged `engine: 'codex'`. 5-hour and weekly
  *  windows take the ids the Claude status line uses, so the row labels them
  *  alike; context fields stay null (codex reports its window per response). */
-export function codexPlanUsage(
-  limits: CodexRateLimits,
-  model: string | null,
-  effort: string | null,
-): SessionUsage | null {
-  const account = limits.buckets[0]
-  if (!account) return null
+export function codexPlanUsage(limits: CodexRateLimits, model: string | null, effort: string | null): SessionUsage {
+  const account = limits.buckets.find((b) => b.id === 'codex') ?? limits.buckets.find((b) => b.id === null)
   const windows: SessionUsageWindow[] = []
   for (const [slot, w] of [
-    ['primary', account.primary],
-    ['secondary', account.secondary],
+    ['primary', account?.primary],
+    ['secondary', account?.secondary],
   ] as const) {
-    if (!w || w.resetsAt === null) continue
+    if (!w) continue
     const id = w.windowMinutes === 300 ? 'five_hour' : w.windowMinutes === 7 * 24 * 60 ? 'seven_day' : `codex_${slot}`
     windows.push({
       id,
       label: limitWindowLabel(w.windowMinutes, 'Plan limit'),
       percent: w.usedPercent,
-      resetsAt: new Date(w.resetsAt).toISOString(),
+      resetsAt: w.resetsAt === null ? null : new Date(w.resetsAt).toISOString(),
     })
   }
-  if (windows.length === 0) return null
   const at = new Date(limits.readAt).toISOString()
   return {
     windows,
@@ -301,10 +315,15 @@ export function isCompactCommand(text: string): boolean {
   return /^\s*\/compact(?:\s|$)/.test(text)
 }
 
-/** Bridge effort levels → codex ReasoningEffort; Claude's `max` is codex `xhigh`. */
-export function codexEffort(effort: string | null | undefined): string | undefined {
-  if (effort === 'max') return 'xhigh'
-  return effort && REASONING_EFFORTS.has(effort) ? effort : undefined
+/** The pinned app-server accepts model-advertised effort strings. */
+export function codexEffort(effort: unknown, supported?: readonly string[]): string | undefined {
+  if (typeof effort !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(effort)) return undefined
+  if (supported?.length) {
+    if (supported.includes(effort)) return effort
+    // Older clients offered a Claude-style Max alias even on xhigh-only models.
+    return effort === 'max' && supported.includes('xhigh') ? 'xhigh' : undefined
+  }
+  return REASONING_EFFORTS.has(effort) ? effort : undefined
 }
 
 function developerInstructions(config: SessionConfig): string {
@@ -315,6 +334,8 @@ function developerInstructions(config: SessionConfig): string {
   const text = [
     buildSystemPrompt(config.cwd, config.basePrompt, config.transcriptMirrorDir, config.host),
     bridgeClaudeMd(config.host),
+    hasWorkspaceSkills('codex', config.host) &&
+      'At the start of a task, use mcp__bridge__ListWorkspaceSkills to discover current user, project and enabled plugin skills on the client. For a matching skill, use mcp__bridge__Read on its file_path and follow the applicable instructions. Resolve references from that file on the client. All ordinary tool permissions continue to apply.',
     syncedInstructions(config.bearerHash, config.cwd),
   ]
     .filter(Boolean)
@@ -331,6 +352,7 @@ export async function createCodexSession(
   deps: CodexSessionDeps,
   signal?: AbortSignal,
 ): Promise<PtySession> {
+  if (config.hookSyncFailed) throw new Error(HOOK_SYNC_ERROR)
   const sessionId = randomUUID()
   const mcpToken = randomUUID()
   const { settingsDir } = placement
@@ -353,19 +375,40 @@ export async function createCodexSession(
   })
   // A resumed thread continues on the model and effort last chosen in it.
   const saved = placement.resumeThreadId ? loadCodexChoice(settingsDir, placement.resumeThreadId) : null
-  const effort = saved?.effort ?? config.effort
+  const previousMessages = placement.resumeThreadId
+    ? await recentConsoleMessages(
+        codexTranscriptPath(settingsDir, placement.resumeThreadId, projectsDir(deps)),
+        placement.resumeThreadId,
+      )
+    : ''
   const instructions = developerInstructions(config)
   // A chat on the default model still learns which model and effort that is
   // (the catalog names the default; no model call).
-  const catalog = await deps.runtime.recentModels().catch(() => [])
+  const [catalog, availableModes] = await Promise.all([
+    deps.runtime.recentModels().catch(() => []),
+    collaborationModes(host),
+  ])
   const lineModel = codexModel(saved?.model) ?? codexModel(config.model) ?? catalog.find((m) => m.isDefault)?.model
+  const configuredDefault = process.env.BRIDGE_CODEX_DEFAULT_EFFORT?.trim()
+  // Only an explicitly advertised level may override the native default for a new chat.
+  const defaultEffort =
+    !placement.resumeThreadId &&
+    !config.conversation &&
+    !config.resumeConversationId &&
+    configuredDefault &&
+    deps.runtime.knownModel(lineModel)?.reasoningEfforts.includes(configuredDefault)
+      ? configuredDefault
+      : undefined
+  const effort = saved?.effort ?? config.effort ?? defaultEffort
   const startLine = modelLine(lineModel, effectiveEffort(lineModel, effort, deps.runtime))
   const startOptions = {
     host,
+    availableModes,
+    collaborationMode: saved?.collaborationMode,
     id: sessionId,
     cwd: settingsDir,
     model: codexModel(saved?.model) ?? codexModel(config.model),
-    effort: codexEffort(effort),
+    effort: codexEffort(effort, deps.runtime.knownModel(lineModel)?.reasoningEfforts),
     threadConfig,
     developerInstructions: [instructions, startLine].filter(Boolean).join('\n\n'),
   }
@@ -414,10 +457,10 @@ export async function createCodexSession(
     lastResizeAt: Date.now(),
     consoleShrunk: false,
     host: config.host,
-    registeredTools: [],
-    registeredResources: [],
-    registeredResourceTemplates: [],
-    registeredPrompts: [],
+    registeredTools: config.carryRegistrations?.registeredTools ?? [],
+    registeredResources: config.carryRegistrations?.registeredResources ?? [],
+    registeredResourceTemplates: config.carryRegistrations?.registeredResourceTemplates ?? [],
+    registeredPrompts: config.carryRegistrations?.registeredPrompts ?? [],
     cliConversationId: null,
     isSubAgent: config.isSubAgent || false,
     parentSessionId: config.parentSessionId || null,
@@ -425,7 +468,7 @@ export async function createCodexSession(
     pendingElicitations: new Map(),
     sessionTitle: null,
     isRestarting: false,
-    effort: effort || null,
+    effort: startOptions.effort ?? null,
     model: startOptions.model ?? null,
     bearerHash: config.bearerHash,
     streamProtocol: config.protocolVersion ?? 0,
@@ -435,6 +478,7 @@ export async function createCodexSession(
     launchConfig: { ...config, carryRegistrations: undefined },
     ...(config.conversation ? { conversation: config.conversation } : {}),
   }
+  await refreshCodexToolHooks(session, signal)
   const releaseEndpoint = holdMcpEndpoint(session)
   let agent: CodexAgentSession
   let freshThread = false
@@ -468,6 +512,7 @@ export async function createCodexSession(
     }
   } catch (error) {
     releaseEndpoint()
+    clearHooks(session.id)
     throw error
   }
   const threadId = agent.conversationId()!
@@ -480,33 +525,37 @@ export async function createCodexSession(
   // app-server can answer thread/start with `reasoningEffort: null`, and a
   // turn without effort ran on a level nobody showed, REAL-121). With neither,
   // no level is sent and the chat shows none.
-  if (!session.effort) {
-    const resolved = agent.reasoningEffort ?? effectiveEffort(agent.model ?? lineModel, null, deps.runtime)
-    if (resolved) {
-      agent.setEffort(resolved)
-      session.effort = resolved
-    }
-  }
+  const resolved = effectiveEffort(agent.model ?? lineModel, agent.reasoningEffort, deps.runtime)
+  agent.setEffort(resolved)
+  session.effort = resolved ?? null
   session.cliConversationId = resumed ? threadId : null
   // A new thread's initial context holds the instructions and the start line;
   // a resumed one keeps what its record says it was given.
   if (!resumed) {
     const choice = loadCodexChoice(settingsDir, threadId)
-    writeCodexChoice(settingsDir, threadId, { ...choice, context: startedContext(instructions, startLine) })
+    writeCodexChoice(settingsDir, threadId, {
+      ...choice,
+      ...(defaultEffort && resolved ? { effort: resolved } : {}),
+      context: startedContext(instructions, startLine),
+    })
   }
   session.resumeNotFound = resumeNotFound
   if (freshThread) session.resumedOnFreshThread = true
   binding = new CodexSessionBinding(session, agent, deps.runtime, transcript, config.cwd, {
     // Same thread, same MCP endpoint and Bearer, on whichever app-server the
     // runtime has now (a crashed one is restarted within its restart limits).
-    reopen: async (threadId, model) =>
-      CodexAgentSession.start({
+    reopen: async (threadId, model) => {
+      const host = await deps.runtime.host()
+      return CodexAgentSession.start({
         ...startOptions,
-        host: await deps.runtime.host(),
+        host,
+        availableModes: await collaborationModes(host),
+        collaborationMode: loadCodexChoice(settingsDir, threadId)?.collaborationMode,
         resumeThreadId: threadId,
         model: model ?? undefined,
-        effort: codexEffort(session.effort),
-      }),
+        effort: session.effort ?? undefined,
+      })
+    },
     onDead: (code) => vpty.markExited(code),
     console: (data) => vpty.emit(data),
     stallMs: deps.stallMs,
@@ -521,12 +570,14 @@ export async function createCodexSession(
   // for reattach like CLI output. The banner is the console's first frame.
   attachOutputDebounce(session)
   vpty.emit(consoleBanner({ threadId, model: session.model, resumed, cwd: config.cwd || undefined }))
+  if (resumed && threadId === placement.resumeThreadId && previousMessages) vpty.emit(previousMessages)
 
   // A resumed transcript exists already (epoch 0 finds it); a fresh one
   // appears with the first projected entry.
   attachSessionJsonlWatcher(session, config, resumed ? 0 : Date.now(), {
     recordCompactLink: deps.recordCompactLink,
     engine: 'codex',
+    fixedTranscript: transcript,
   })
 
   vpty.onExit(({ exitCode }) => {
@@ -738,6 +789,16 @@ export class CodexSessionBinding {
     void this.deliver(text, submissionId, userText).finally(() => this.delivering--)
   }
 
+  showStatus(text: string, submissionId?: string): void {
+    const account = this.runtime.knownAccount()
+    const auth = !account || account.checkFailed ? 'unknown' : account.loggedIn ? 'signed in' : 'signed out'
+    this.receipt(text, submissionId, 'read')
+    this.appendSystem(
+      `ChatGPT status · account: ${auth} · model: ${this.agent.model ?? 'default'} · next-turn effort: ${this.agent.reasoningEffort ?? 'engine default'}`,
+      'info',
+    )
+  }
+
   /** Messages handed to the thread whose delivery has not settled yet. */
   private delivering = 0
 
@@ -752,19 +813,20 @@ export class CodexSessionBinding {
   /** A turn that ended while no client was attached must not stay `working`. */
   replay(): void {
     this.activity(this.turnOpen)
+    this.pushPlanLimits()
   }
 
   /** The ChatGPT plan windows for the status row under the chat input, tagged
    *  as codex usage (the webview never shows them in a Claude chat). Read
    *  through the runtime's account cache; an unreadable account sends nothing
    *  and the row says it has no plan data. */
-  private pushPlanLimits(): void {
+  pushPlanLimits(): void {
     void this.runtime
       .rateLimits()
       .then((limits) => {
         if (this.disposed) return
         const usage = codexPlanUsage(limits, this.session.model ?? null, this.session.effort ?? null)
-        if (usage) sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
+        sendToClient(this.session.ws, { type: 'session:usage', sessionId: this.session.id, usage })
       })
       .catch(() => undefined)
   }
@@ -924,8 +986,8 @@ export class CodexSessionBinding {
     }
   }
 
-  private appendSystem(text: string, level: 'warning' | 'error'): void {
-    this.hooks?.console?.(consoleNotice(level, text))
+  appendSystem(text: string, level: 'info' | 'warning' | 'error'): void {
+    this.hooks?.console?.(this.console.notice(level, text))
     const threadId = this.agent.conversationId()
     if (!threadId) return
     this.append(this.projector.project({ kind: 'notice', threadId, at: Date.now(), level, message: text }))

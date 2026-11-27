@@ -5,12 +5,10 @@
 //! общими для всех копий элемента (Blink: `LayoutObject::Style()` — неизменяемый вычисленный стиль;
 //! Servo: `Arc<ComputedValues>`).
 
-use crate::box_facts::BoxContext;
 use crate::style::ComputedHandle;
 use crate::style::box_input::BoxStyleInput;
 use crate::style::cascade::materialize::ComputedSlot;
-use crate::style::computed::writing_mode::WritingMode;
-use crate::style::computed::{Align, BoxStyle, Computed};
+use crate::style::computed::Computed;
 use std::rc::Rc;
 
 /// The style of an element by value stage. Copies of an element share all
@@ -119,6 +117,7 @@ impl SharedStyle {
         BoxStyleInput {
             try_source: facts.and_then(|f| f.try_source.clone()),
             decor_box: self.decor_box(),
+            flow_align: self.flow_align(),
             ..BoxStyleInput::new(
                 style,
                 facts.and_then(|f| f.context.clone()),
@@ -161,27 +160,6 @@ impl SharedStyle {
         self.decoration = Some(Rc::new(decoration)).filter(|d| **d != Default::default());
     }
 
-    /// Коробка родителя элемента по дереву элементов, когда раскладка перенесла
-    /// коробку элемента под другую коробку-родителя (`dom::Marks::box_origin`).
-    pub fn moved_from(&self) -> Option<Rc<BoxStyle>> {
-        self.box_facts.as_deref().and_then(|f| f.moved_from.clone())
-    }
-
-    /// Запомнить коробку родителя по дереву элементов перенесённой коробки.
-    /// Повторный перенос (флоат, поднятый через несколько строчных) её не меняет.
-    pub fn set_moved_from(&mut self, tree: Rc<BoxStyle>) {
-        let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
-        facts.moved_from.get_or_insert(tree);
-        self.box_facts = Some(Rc::new(facts));
-    }
-
-    /// Сохраняет факты существующей синтетической коробки до A07.
-    pub fn set_box_context(&mut self, context: Rc<BoxContext<WritingMode, Align>>) {
-        let mut facts = self.box_facts.as_deref().cloned().unwrap_or_default();
-        facts.context = Some(context);
-        self.box_facts = Some(Rc::new(facts));
-    }
-
     /// The style of an element whose box layout generated from a box style (a
     /// `::marker` box, the `foreignObject` viewport root): its values are
     /// computed already and become its only stage. Moved element boxes keep
@@ -195,6 +173,7 @@ impl SharedStyle {
             try_source: input.try_source,
             moved_from: None,
             decor_box: (input.decor_box != input.style.decor_box).then_some(input.decor_box),
+            flow_align: input.flow_align,
         };
         let decoration = crate::style::background_paint::DecorationInput {
             inline: input.inline_decoration,
@@ -208,7 +187,8 @@ impl SharedStyle {
             used: None,
             box_facts: (facts.context.is_some()
                 || facts.try_source.is_some()
-                || facts.decor_box.is_some())
+                || facts.decor_box.is_some()
+                || facts.flow_align.is_some())
             .then(|| Rc::new(facts)),
             decoration: Some(Rc::new(decoration)).filter(|d| **d != Default::default()),
         }

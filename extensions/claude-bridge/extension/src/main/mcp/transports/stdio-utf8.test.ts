@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import type { McpServerState, TransportContext } from './context'
-import { connectStdio } from './stdio'
+import { connectStdio, stdioJsonRpc } from './stdio'
 
 const DESCRIPTION = 'Инструмент: проверка — ' + 'ЖЖЖ'.repeat(2000)
 
@@ -24,6 +24,8 @@ const send = (msg) => {
 rl.on('line', (line) => {
   const msg = JSON.parse(line)
   if (msg.id === undefined) return
+  if (msg.method === 'fixture/hold') return
+  if (msg.method === 'fixture/exit') process.exit(0)
   if (msg.method === 'initialize') send({ jsonrpc: '2.0', id: msg.id, result: { capabilities: {}, serverInfo: { name: 'Сервер Ж', version: '1' } } })
   else if (msg.method === 'tools/list') send({ jsonrpc: '2.0', id: msg.id, result: { tools: [{ name: 'echo', description: ${JSON.stringify(DESCRIPTION)}, inputSchema: { type: 'object' } }] } })
   else send({ jsonrpc: '2.0', id: msg.id, result: {} })
@@ -37,11 +39,11 @@ afterEach(() => {
   for (const directory of directories.splice(0)) fs.rmSync(directory, { recursive: true, force: true })
 })
 
-it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
+async function fixture(scriptText: string) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'stdio-utf8-'))
   directories.push(directory)
   const script = path.join(directory, 'server.cjs')
-  fs.writeFileSync(script, SERVER)
+  fs.writeFileSync(script, scriptText)
   const state = {
     config: { id: 's', name: 's', type: 'stdio', command: process.execPath, args: [script], enabled: true },
     status: 'connecting',
@@ -70,8 +72,50 @@ it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
     },
   } as unknown as TransportContext
 
+  return { ctx, state, logs }
+}
+
+it('decodes a JSON-RPC frame split inside a multi-byte character', async () => {
+  const { ctx, state, logs } = await fixture(SERVER)
   await connectStdio(ctx, 's')
   expect(state.toolSchemas.get('echo')?.description).toBe(DESCRIPTION)
   expect(logs.join('\n')).toContain('server "Сервер Ж"')
   expect(logs.join('\n')).not.toContain('�')
+}, 30_000)
+
+it('keeps a healthy stdio server that reports progress to stderr', async () => {
+  const { ctx, state, logs } = await fixture("process.stderr.write(('INFO: loading tools\\n').repeat(30))\n" + SERVER)
+  await connectStdio(ctx, 's')
+  expect(state.toolSchemas.has('echo')).toBe(true)
+  expect(logs).toContain('INFO: loading tools')
+}, 30_000)
+
+it('rejects the handshake when the peer closes its input before tools/list', async () => {
+  const { ctx, state, logs } = await fixture(`
+    const fs = require('node:fs')
+    const bytes = Buffer.alloc(4096)
+    const count = fs.readSync(0, bytes, 0, bytes.length)
+    const { id } = JSON.parse(bytes.subarray(0, count))
+    fs.closeSync(0)
+    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result: { capabilities: {} } }) + '\\n')
+    setTimeout(() => process.exit(0), 2500)
+  `)
+  await expect(connectStdio(ctx, 's')).rejects.toThrow(/stdin/i)
+  expect(logs.some(line => /stdin/i.test(line))).toBe(true)
+  expect(state.pendingRequests.size).toBe(0)
+}, 10_000)
+
+it('settles every outstanding request when a connected peer exits', async () => {
+  const { ctx, state } = await fixture(SERVER)
+  await connectStdio(ctx, 's')
+  const pending = stdioJsonRpc(ctx, 's', 'fixture/hold', {})
+  const ending = stdioJsonRpc(ctx, 's', 'fixture/exit', {})
+  const results = await Promise.allSettled([pending, ending])
+  expect(results.map(result => result.status)).toEqual(['rejected', 'rejected'])
+  expect(state.pendingRequests.size).toBe(0)
+}, 10_000)
+
+it('stops a child that repeatedly reports a failed connection', async () => {
+  const { ctx } = await fixture("process.stderr.write(('Error: connect ECONNREFUSED\\n').repeat(30))\n" + SERVER)
+  await expect(connectStdio(ctx, 's')).rejects.toThrow('Circuit breaker')
 }, 30_000)

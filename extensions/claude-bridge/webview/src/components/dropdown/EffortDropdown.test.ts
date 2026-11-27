@@ -2,7 +2,7 @@
 // chat without a known level used to show High (the Claude fallback) while its
 // turns went without effort (REAL-121).
 import { expect, it } from 'vitest'
-import { effortShown } from './EffortDropdown'
+import { codexEffortOptions, effortShown } from './EffortDropdown'
 
 it('shows the level a ChatGPT chat reports, and Default while it reports none', () => {
   expect(effortShown({ engine: 'codex', effort: 'medium' }, 'high').value).toBe('medium')
@@ -14,4 +14,10 @@ it('keeps High for a Claude chat without a level: its CLI starts with --effort h
   expect(effortShown({ engine: 'claude' }, undefined).value).toBe('high')
   expect(effortShown(undefined, 'low').value).toBe('low')
   expect(effortShown({ effort: 'max' }, 'low').value).toBe('max')
+})
+
+it('lists the levels advertised by each Codex model and shows its native selection', () => {
+  expect(codexEffortOptions(['low', 'medium']).map(option => option.value)).toEqual(['low', 'medium'])
+  expect(codexEffortOptions(['xhigh', 'max', 'ultra']).map(option => option.name)).toEqual(['Extra high', 'Max', 'Ultra'])
+  expect(effortShown({ engine: 'codex', effort: 'ultra' }, null).value).toBe('ultra')
 })

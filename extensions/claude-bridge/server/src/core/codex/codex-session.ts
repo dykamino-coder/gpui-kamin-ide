@@ -14,6 +14,7 @@ import { EventStream } from '../engine/event-stream'
 import type { CodexExit } from './app-server'
 import type { TomlTable } from './config-toml'
 import { CodexThreadBusyError, type CodexHost, type ThreadSink } from './codex-host'
+import type { CollaborationMode } from './collaboration-modes'
 import { JsonRpcError } from './jsonrpc'
 import { CodexEventNormalizer } from './normalize'
 import type {
@@ -39,6 +40,8 @@ export interface CodexSessionOptions {
   /** Thread-scoped config, e.g. bridgeMcpThreadConfig(); re-sent on resume. */
   threadConfig?: TomlTable
   developerInstructions?: string
+  collaborationMode?: CollaborationMode
+  availableModes?: CollaborationMode[]
   approvalPolicy?: AskForApproval
   sandbox?: SandboxMode
 }
@@ -64,6 +67,7 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
   private nextModel: string | undefined
   private currentModel: string | null = null
   private effort: string | undefined
+  private collaborationMode: CollaborationMode | undefined
   private readonly idleWaiters = new Set<() => void>()
   private detach: (() => void) | undefined
   private stopped = false
@@ -76,6 +80,10 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     private readonly options: CodexSessionOptions,
   ) {
     this.effort = options.effort
+    this.collaborationMode =
+      options.collaborationMode === 'default' && !options.availableModes?.includes('default')
+        ? undefined
+        : options.collaborationMode
   }
 
   static async start(options: CodexSessionOptions): Promise<CodexAgentSession> {
@@ -178,20 +186,43 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     const threadId = this.requireThread()
     // Only a new turn carries the context: a steer joins a turn that already has it.
     const extra = context?.() ?? null
+    const requestedEffort = this.effort
+    const mode = this.collaborationMode
+    const model = this.currentModel
+    if (mode && (!model || !this.options.availableModes?.includes(mode))) {
+      throw new Error('The selected Codex collaboration mode is unavailable for this thread.')
+    }
     const response = await this.options.host.rpc.request<TurnStartResponse>('turn/start', {
       threadId,
       input: extra ? [...textInput(extra.text), ...textInput(text)] : textInput(text),
       ...(submissionId ? { clientUserMessageId: submissionId } : {}),
       ...(this.nextModel ? { model: this.nextModel } : {}),
-      ...(this.effort ? { effort: this.effort } : {}),
+      ...(requestedEffort ? { effort: requestedEffort } : {}),
       // The bundled catalog defaults every model to `none`, so without this the
       // app-server never streams a reasoning summary and the chat shows no
       // thinking at all (the CLI only shows it when its config asks).
       summary: CODEX_REASONING_SUMMARY,
+      // Null instructions select the app-server's own versioned mode prompt.
+      // Use this chat's model and effort; the Plan preset otherwise suggests Medium.
+      ...(mode
+        ? {
+            collaborationMode: {
+              mode,
+              settings: { model, reasoning_effort: requestedEffort ?? null, developer_instructions: null },
+            },
+          }
+        : {}),
     })
     this.nextModel = undefined
     extra?.delivered()
     const turn = response.turn
+    this.events.emit({
+      kind: 'turn.requestAccepted',
+      threadId,
+      turnId: turn.id,
+      at: Date.now(),
+      requestedEffort: requestedEffort ?? null,
+    })
     if (turn.status === 'inProgress' && this.activeTurnId === null && !this.completed.has(turn.id)) {
       this.activeTurnId = turn.id
     }
@@ -246,6 +277,20 @@ export class CodexAgentSession implements AgentSession, ThreadSink {
     this.nextModel = model
     this.currentModel = model
     return 'next-turn'
+  }
+
+  get collaboration() {
+    return { selected: this.collaborationMode ?? 'default', available: this.options.availableModes ?? [] }
+  }
+
+  chooseCollaboration(mode: CollaborationMode): boolean {
+    if (mode === 'default' && !this.options.availableModes?.includes(mode)) {
+      this.collaborationMode = undefined
+      return true
+    }
+    if (!this.currentModel || !this.options.availableModes?.includes(mode)) return false
+    this.collaborationMode = mode
+    return true
   }
 
   /** Reasoning effort for the next and later turns (turn/start.effort). */

@@ -19,6 +19,7 @@ describe('codex console renderer', () => {
     const r = new CodexConsoleRenderer()
     const out = [
       r.render(ev({ kind: 'turn.started', turnId: 'u' })),
+      r.render(ev({ kind: 'turn.requestAccepted', turnId: 'u', requestedEffort: 'xhigh' })),
       r.render(ev({ kind: 'message.user', id: 'm0', turnId: 'u', text: 'hi' })),
       r.render(ev({ kind: 'message.assistant.delta', id: 'm1', turnId: 'u', delta: 'Hel' })),
       r.render(ev({ kind: 'message.assistant.delta', id: 'm1', turnId: 'u', delta: 'lo\nworld' })),
@@ -29,8 +30,9 @@ describe('codex console renderer', () => {
       .join('')
     expect(out).toBe(
       '10:00:00 ── turn started\r\n' +
-        '10:00:00 you hi\r\n' +
-        '10:00:00 assistant Hello\r\nworld\r\n' +
+        '10:00:00 turn/start accepted · requested effort xhigh\r\n' +
+        '\r\n❯ You  10:00:00\r\n  hi\r\n' +
+        '\r\n● ChatGPT  10:00:00\r\n  Hello\r\n  world\r\n' +
         '10:00:00 ── turn completed in 1.5 s\r\n',
     )
   })
@@ -56,11 +58,46 @@ describe('codex console renderer', () => {
     ]
       .map(strip)
       .join('')
-    expect(out).toContain('assistant done\r\n')
-    expect(out).toContain('→ bridge.Read {"file_path":"/a"}')
+    expect(out).toContain('● ChatGPT  10:00:00\r\n  done\r\n')
+    expect(out).toContain('→ bridge.Read\r\n  {"file_path":"/a"}')
     expect(out).toContain('← bridge.Read completed')
     expect(out).toContain('… (1000 chars)')
     expect(out).toContain('── turn failed: HTTP 407')
+  })
+
+  it('streams only public summaries, with separate paragraphs, complete headings and no length cutoff', () => {
+    const r = new CodexConsoleRenderer()
+    const base = { id: 'rs', turnId: 'u' }
+    const deltas = ['*', '*Checking', ' settings*', '*', '\n\n', 'Keep x ** y and a literal *']
+    const first = deltas.join('')
+    const last = 'Second paragraph ' + 'x'.repeat(240)
+    const raw = [
+      r.render(ev({ ...base, kind: 'reasoning.delta', channel: 'content', index: 0, delta: 'private' })),
+      ...deltas.map((delta) => r.render(ev({ ...base, kind: 'reasoning.delta', channel: 'summary', index: 0, delta }))),
+      r.render(ev({ ...base, kind: 'reasoning', summary: [first + '.', last], content: ['private'] })),
+      r.render(ev({ ...base, kind: 'message.assistant', text: 'Answer' })),
+    ].join('')
+    const out = strip(raw)
+    expect(raw).toContain('\x1b[1mChecking settings\x1b[0m')
+    expect(out.match(/Checking settings/g)).toHaveLength(1)
+    expect(out).toContain('Keep x ** y and a literal *.')
+    expect(out).toContain('\r\n  ' + last)
+    expect(out).toContain('● ChatGPT')
+    expect(out).not.toContain('private')
+    expect(out).not.toMatch(/[^\r]\n/)
+  })
+
+  it('closes a live block around asynchronous notices and preserves a final-only answer suffix', () => {
+    const r = new CodexConsoleRenderer()
+    const base = { turnId: 'turn', id: 'a' }
+    const text = strip(
+      r.render(ev({ ...base, kind: 'message.assistant.delta', delta: 'first' })) +
+        r.notice('warning', 'still running', at) +
+        r.render(ev({ ...base, kind: 'message.assistant', text: 'first final' })),
+    )
+    expect(text).toContain('first\r\n10:00:00 warning')
+    expect(text.match(/first/g)).toHaveLength(1)
+    expect(text).toContain(' final\r\n')
   })
 
   it('never passes terminal control sequences from the engine through', () => {

@@ -247,6 +247,11 @@ export function submitTextToSession(session: PtySession, text: string, submissio
     void gate.then(() => submitTextToSession(session, text, submissionId))
     return
   }
+  // A local status read consumes neither a turn nor its pending handoff.
+  if (session.agentInput?.showStatus && text.trim() === '/status') {
+    session.agentInput.showStatus(text, submissionId)
+    return
+  }
   // The first turn of an engine that joined the conversation carries the
   // history as a hidden block (conversation/conversation.ts, handoff.ts).
   // Receipts keep the user's own text: it is the client's submission

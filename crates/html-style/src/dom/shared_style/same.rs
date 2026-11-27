@@ -18,9 +18,9 @@ fn same_ptr<T>(a: &Option<Rc<T>>, b: &Option<Rc<T>>) -> bool {
 }
 
 impl SharedStyle {
-    /// Whether every stage layout can read holds the same values. Box facts and
-    /// inline decoration compare by identity only: a copy that carries its own
-    /// is treated as different.
+    /// Whether every stage layout can read holds the same values. Inline
+    /// decoration compares by identity only: a copy that carries its own is
+    /// treated as different; box facts compare as `facts::same`.
     pub fn same(&self, other: &Self) -> bool {
         let used = match (&self.used, &other.used) {
             (None, None) => true,
@@ -29,7 +29,7 @@ impl SharedStyle {
         };
         used && same_rc(&self.cascaded, &other.cascaded)
             && same_rc(&self.base(), &other.base())
-            && same_ptr(&self.box_facts, &other.box_facts)
+            && super::facts::same(&self.box_facts, &other.box_facts)
             && same_ptr(&self.decoration, &other.decoration)
     }
 
@@ -52,7 +52,7 @@ impl SharedStyle {
         };
         used && base
             && same_rc(&self.cascaded, &other.cascaded)
-            && same_ptr(&self.box_facts, &other.box_facts)
+            && super::facts::same(&self.box_facts, &other.box_facts)
             && decoration
     }
 
@@ -92,7 +92,7 @@ impl SharedStyle {
         };
         used && base
             && layout(&self.cascaded, &other.cascaded)
-            && same_ptr(&self.box_facts, &other.box_facts)
+            && super::facts::same(&self.box_facts, &other.box_facts)
             && decoration
     }
 
@@ -128,7 +128,7 @@ impl SharedStyle {
         };
         used && unread(&self.cascaded, &other.cascaded)
             && unread(&base, &other.base())
-            && same_ptr(&self.box_facts, &other.box_facts)
+            && super::facts::same(&self.box_facts, &other.box_facts)
             && decoration
     }
 }

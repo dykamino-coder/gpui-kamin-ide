@@ -36,6 +36,7 @@ impl Scene {
             fragments: group.fragments.iter().map(|fragment| {
                 fragment.iter().map(|p| *p + offset).collect()
             }).collect(),
+            label_dropped: group.label_dropped,
         }
     }
 

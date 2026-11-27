@@ -124,7 +124,7 @@ pub(super) fn wrap_with_captions(
             let w = wrap.style();
             w.flex_grow = grow;
             w.flex_shrink = shrink;
-            w.align_self = if e.style.used().reset_flex.align_self.is_some() {
+            w.align_self = if inherited.reset_flex.align_self.is_some() {
                 own_align
             } else {
                 None
@@ -197,7 +197,7 @@ pub(super) fn wrap_with_captions(
         if !vertical
             && caps_px
             && e.style.used().reset_box_layout.width.is_none()
-            && e.style.used().reset_flex.align_self.is_none()
+            && inherited.reset_flex.align_self.is_none()
         {
             outer.style().align_self = Some(gpui::AlignItems::Stretch);
         }

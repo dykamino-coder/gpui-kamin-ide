@@ -1,8 +1,9 @@
-import { createProxyUsageRecorder } from '../stats/proxy-usage'
 // ============================================================================
 // PTY Session Manager core — spawns and manages Claude CLI sessions
 // ============================================================================
 
+import { forgetClaudeMode, publishClaudePermissions, restoredClaudeMode, retainClaudeMode } from './claude-permissions'
+import { createProxyUsageRecorder } from '../stats/proxy-usage'
 import { devCli, waitForDevCliStartup } from './dev-cli'
 import { mcpIdentity, startMcpTaskDelivery } from './mcp-tasks'
 import { randomUUID } from 'crypto'
@@ -262,8 +263,10 @@ async function createAdmittedSession(
     config.conversation = { id: manifest.id, dir: manifest.dir }
     // A swept Claude transcript comes back from the archive; without one the
     // segment continues in a new session that gets the whole conversation.
-    if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment)))
+    if (segment.nativeId && segment.engine === 'claude' && !(await ensureSegmentTranscript(segment))) {
+      if (config.claudePermissionMode && config.noSpawnOnNotFound) throw new ResumeNotFoundError()
       segment = await restartSegmentFresh(manifest)
+    }
     settingsDir = segment.settingsDir
     fs.mkdirSync(settingsDir, { recursive: true })
     config.resumeConversationId = segment.nativeId ?? undefined
@@ -336,6 +339,14 @@ async function createAdmittedSession(
   }
 
   // Create session directory + settings (overwrites existing on restart)
+  if (requestedResumeId || config.resumeConversationId || config.conversation) {
+    config.claudePermissionMode ??= restoredClaudeMode(
+      tokenId,
+      config.conversation?.id ?? requestedResumeId ?? config.resumeConversationId,
+      settingsDir,
+      followCompactLinks,
+    )
+  }
   fs.mkdirSync(settingsDir, { recursive: true })
   const mcpEndpoint = await mcpIdentity(tokenId, settingsDir)
   const cliSettings = writeSessionSettings(sessionId, settingsDir, mcpToken, config.cwd, config.bearerHash, mcpEndpoint)
@@ -645,14 +656,14 @@ async function createAdmittedSession(
   }
 
   sessions.set(sessionId, session)
-  new SessionCliControl(session, cliMod)
+  new SessionCliControl(session, cliMod, () => publishClaudePermissions(session))
   startMcpTaskDelivery(() => [...sessions.values()])
   registered(session)
 
   // Auto-answer interactive startup prompts:
   // 1. "Yes, I trust this folder" (Enter to confirm — option 1 is default)
   // 2. Effort level selection (legacy startup prompt; IS_DEMO=1 skips it)
-  attachStartupAutoResponder(session)
+  if (!config.claudePermissionMode) attachStartupAutoResponder(session)
 
   // Wire PTY output → WS with debounce (same pattern as terminal.ts)
   attachOutputDebounce(session)
@@ -663,8 +674,28 @@ async function createAdmittedSession(
   // When resuming, use epoch 0 so watcher finds the existing JSONL file (its mtime is in the past)
   const watcherStartTime = config.resumeConversationId ? 0 : Date.now()
   attachSessionJsonlWatcher(session, config, watcherStartTime, {
-    recordCompactLink,
-    onConversationId: (conversationId) => usageRecorder.bind(conversationId),
+    recordCompactLink: (oldId, newId) => {
+      recordCompactLink(oldId, newId)
+      if (session.launchConfig?.claudePermissionMode) {
+        try {
+          retainClaudeMode(session, session.launchConfig.claudePermissionMode, newId)
+        } catch {
+          warnLog('Could not retain Claude permission mode for the compacted conversation')
+        }
+      }
+    },
+    onConversationId: (conversationId) => {
+      usageRecorder.bind(conversationId)
+      if (session.launchConfig?.pristineClaudeId && session.launchConfig.claudePermissionMode) {
+        // The first persisted turn makes this an ordinary resumable chat.
+        try {
+          retainClaudeMode(session, session.launchConfig.claudePermissionMode)
+          delete session.launchConfig.pristineClaudeId
+        } catch {
+          warnLog('Could not retain the selected permission mode on first transcript discovery')
+        }
+      }
+    },
   })
 
   // Live subscription limits + context fill pushed to the chat (statusLine).
@@ -1291,7 +1322,7 @@ async function retireSwitchedSession(old: PtySession): Promise<void> {
  *  `minimal` has no Claude `--effort`, so Claude starts on its default then. */
 export function switchedEffort(effort: string | null | undefined, engine: AgentEngineId): string | undefined {
   if (!effort) return undefined
-  if (engine === 'codex') return effort
+  if (engine === 'codex') return effort === 'max' ? 'xhigh' : effort
   return CLAUDE_EFFORTS.has(effort) ? effort : undefined
 }
 /** Claude Code's `--effort` scale (live-switch.ts EFFORT_LEVELS). */
@@ -1304,6 +1335,8 @@ const CLAUDE_EFFORTS: ReadonlySet<string> = new Set(['low', 'medium', 'high', 'x
 export function engineSwitchLaunchContext(launch: SessionConfig | undefined): SessionConfig {
   if (!launch) return {}
   const keep: SessionConfig = {}
+  if (launch.hookSyncFailed) keep.hookSyncFailed = true
+  if (launch.codexHookProtocol) keep.codexHookProtocol = launch.codexHookProtocol
   if (launch.basePrompt !== undefined) keep.basePrompt = launch.basePrompt
   if (launch.thinkingDisplay !== undefined) keep.thinkingDisplay = launch.thinkingDisplay
   if (launch.transcriptMirrorDir !== undefined) keep.transcriptMirrorDir = launch.transcriptMirrorDir
@@ -1351,6 +1384,10 @@ export async function switchSessionEngine(
     },
     target,
   })
+  // The first engine switch assigns a new logical chat id. Its Claude mode
+  // must survive returning to another native segment, including a cold resume.
+  if (plan && !known && fromEngine === 'claude' && old.launchConfig?.claudePermissionMode)
+    retainClaudeMode(old, old.launchConfig.claudePermissionMode, plan.ref.id)
   const t1 = performance.now()
 
   const effort = switchedEffort(old.effort, target.engine)
@@ -1359,6 +1396,7 @@ export async function switchSessionEngine(
     // display, transcript mirror, sub-agent placement) belongs to the chat, not
     // to the engine: the joining engine starts with it, like a wake or restart.
     ...engineSwitchLaunchContext(old.launchConfig),
+    carryRegistrations: old,
     cwd: old.cwd,
     cols: 120,
     rows: 40,
@@ -1731,6 +1769,11 @@ export async function deleteSessionByConversationId(
   dropArchivedTranscript(conversationId)
   forgetModelSelection(conversationId)
   forgetEffortSelection(conversationId)
+  try {
+    forgetClaudeMode(tokenId, conversationId)
+  } catch {
+    warnLog('Could not remove the saved Claude permission mode for the deleted conversation')
+  }
   fs.rmSync(target.settingsDir, { recursive: true, force: true })
   // Do not follow a project-directory link even when an archive identified ownership.
   if (isPlainDirectory(path.dirname(target.jsonlPath))) {

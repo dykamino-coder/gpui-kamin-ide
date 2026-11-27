@@ -11,6 +11,7 @@
 //! результат детерминирован, вторая вставка заменит первую. Запись тяжелее всего бюджета
 //! не кэшируется: иначе она вытеснила бы всё остальное. Вытесненное значение живёт, пока
 //! его держат (`Arc`), кэш лишь перестаёт его отдавать.
+//! A cache with holders keeps an entry that is still held elsewhere (`holders`).
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -41,6 +42,8 @@ struct Store<K, V> {
 }
 
 mod evict;
+mod holders;
+pub use holders::held_elsewhere;
 mod keys;
 mod why;
 use evict::evict;
@@ -59,6 +62,8 @@ pub struct BoundedCache<K, V> {
     budget: usize,
     weigh: fn(&V) -> usize,
     key_weight: fn(&K) -> usize,
+    /// The value is held outside the cache too (`with_holders`).
+    held: fn(&V) -> bool,
     store: Mutex<Option<Store<K, V>>>,
 }
 
@@ -73,6 +78,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
             budget,
             weigh,
             key_weight: |_| 0,
+            held: |_| false,
             store: Mutex::new(None),
         }
     }
@@ -212,7 +218,7 @@ impl<K: Eq + Hash, V: Clone> BoundedCache<K, V> {
         }
         store.bytes += weight;
         if store.bytes > self.budget {
-            evict(store, self.budget, observed);
+            evict(store, self.budget, observed, self.held);
         }
         let held = &HELD[self.slot];
         match store.bytes >= before {

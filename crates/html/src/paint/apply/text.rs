@@ -81,6 +81,7 @@ pub fn apply_text(
             // `anchor()` в `line-height` не бывает (css-anchor-position-1 §anchor-fn:
             // только вставки) — как незнакомая длина, без сдвига.
             Len::Calc(_)
+            | Len::Math(_)
             | Len::Auto
             | Len::MinContent
             | Len::MaxContent
