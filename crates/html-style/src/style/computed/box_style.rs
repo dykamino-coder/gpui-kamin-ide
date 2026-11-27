@@ -14,6 +14,7 @@ mod inputs;
 mod paint;
 mod paint_projection;
 mod stage_parent;
+mod viewport;
 use crate::box_facts::BoxContext;
 use crate::style::box_input::BoxStyleInput;
 
@@ -116,7 +117,10 @@ pub struct BoxStyle {
     /// Block layout's placement of the box (`BoxStyleInput::flow_align`).
     pub flow_align: Option<super::Align>,
     /// What the box's ancestors establish (`box_facts::TreeFacts`).
-    pub tree: crate::box_facts::TreeFacts,
+    pub tree: crate::style::computed::TreeFacts,
+    /// Text decorations propagated to the box (css-text-decor-3 §2.1): one
+    /// list shared by the boxes that receive the same lines.
+    pub decors: Rc<[Decor]>,
 }
 
 impl BoxStyle {
@@ -142,6 +146,7 @@ impl BoxStyle {
             decor_box,
             flow_align,
             tree,
+            decors,
         } = input.into();
         // Height definiteness and the quirk basis start from the copy's hints.
         Self {
@@ -170,6 +175,7 @@ impl BoxStyle {
             inline_definite: None,
             flow_align,
             tree,
+            decors,
         }
     }
 
@@ -178,32 +184,6 @@ impl BoxStyle {
         Self {
             style: Rc::new(style),
             ..self.clone()
-        }
-    }
-
-    /// `Computed::resolve_viewport` без копии общего стиля, когда решать нечего.
-    pub fn resolve_viewport(&mut self, viewport: (f32, f32), vcx: crate::values::ValueCx<'_>) {
-        // A paint with no lengths to resolve stays shared (`SharedPaints`).
-        if let Some(paint) = &mut self.paint
-            && paint.background.has_lengths()
-        {
-            let mut own = (**paint).clone();
-            own.background.resolve_viewport(&self.style, viewport, vcx);
-            *paint = vcx.doc.traversal.paints.share(own);
-        }
-        if self.style.has_viewport_lengths(vcx) {
-            Rc::make_mut(&mut self.style).resolve_viewport(viewport, vcx);
-        }
-    }
-
-    /// `Computed::resolve_decor_inset_viewport` без копии общего стиля, когда решать нечего.
-    pub fn resolve_decor_inset_viewport(
-        &mut self,
-        viewport: (f32, f32),
-        vcx: crate::values::ValueCx<'_>,
-    ) {
-        if self.style.has_decor_insets() {
-            Rc::make_mut(&mut self.style).resolve_decor_inset_viewport(viewport, vcx);
         }
     }
 

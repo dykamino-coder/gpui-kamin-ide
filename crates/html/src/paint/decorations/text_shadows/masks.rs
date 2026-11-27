@@ -35,7 +35,7 @@ pub(super) fn masked_layer(
         transparent()
     };
     let mut mask = style.clone();
-    mask.reset_text_box.text_shadow_ink = Some(ink);
+    mask.tree.text_shadow_ink = Some(ink);
     mask.inh.text_ink.text_shadow = None;
     mask.inh.text_ink.text_shadow_rest.clear();
     mask.reset_text_box.text_shadow_raw = None;
@@ -80,8 +80,8 @@ pub(super) fn mask_nodes(
                 } else {
                     transparent()
                 };
+                e.style.edit_tree(|t| t.text_shadow_ink = Some(ink));
                 let s = e.style.used_mut();
-                s.reset_text_box.text_shadow_ink = Some(ink);
                 s.reset_background.background = None;
                 s.reset_background.bg_image = None;
                 s.reset_effects.shadows.clear();

@@ -51,8 +51,10 @@ impl BoxStyle {
             quirk_pct_base,
             flow_align,
             tree,
+            decors,
         } = self;
         *stretched == other.stretched
+            && (Rc::ptr_eq(decors, &other.decors) || *decors == other.decors)
             && *flow_align == other.flow_align
             && *tree == other.tree
             && *cb_ancestor == other.cb_ancestor

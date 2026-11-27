@@ -5,7 +5,7 @@
 //! `inherited_value` до обработчика.
 
 use super::values;
-use crate::style::computed::{Computed, DECOR_THROUGH, DECOR_UNDER};
+use crate::style::computed::Computed;
 use crate::style::css::LonghandId;
 use crate::style::values::value::StyleColor;
 use crate::values::ValueCx;
@@ -60,8 +60,6 @@ impl Computed {
             TextDecorationLine => {
                 if let Some(lines) = values::decoration_line(v) {
                     self.reset_text_box.td_lines = accept_parsed!(self, Some(lines));
-                    self.reset_text_box.underline = Some(lines & DECOR_UNDER != 0);
-                    self.reset_text_box.line_through = Some(lines & DECOR_THROUGH != 0);
                 }
             }
             TextDecorationStyle => {

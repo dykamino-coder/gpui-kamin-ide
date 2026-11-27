@@ -1,19 +1,14 @@
 //! CSS-операнды группы text_box; значение за общим COW-указателем.
 use super::super::*;
-use crate::style::values::value::{Color, Len, StyleColor};
+use crate::style::values::value::{Len, StyleColor};
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ResetTextBox {
-    /// Paint-only fragment ink for a text-shadow mask; decoration records stay intact.
-    pub text_shadow_ink: Option<Color>,
-    pub underline: Option<bool>,
-    pub line_through: Option<bool>,
     /// `match-parent` (css-text-3 §text-align): бит 1 — у `text-align-all`,
     /// бит 2 — у `text-align-last`; решается при наследовании по письму
     /// РОДИТЕЛЯ (`inherit_fonts`).
     pub text_align_match_parent: u8,
-    /// Internal ruby unit promoted to a technical block for layout.
-    pub ruby_unit: bool,
-    /// Blink-compatible forced break suppression within ruby inline content.
+    /// The element is a ruby box: forced breaks inside it become spaces (Blink-compatible);
+    /// the box stage hands that down as `TreeFacts::ruby_suppress_breaks`.
     pub ruby_suppress_breaks: bool,
     /// `hanging-punctuation` — какая пунктуация выходит за край строки.
     /// `text-box-trim` — срезать полулидинг первой/последней строки блока.
@@ -83,7 +78,7 @@ pub struct ResetTextBox {
     pub initial_letter: Option<(f32, u32)>,
     /// `text-decoration-line` самой коробки (биты `DECOR_*`); пусто — не
     /// задано (`none`). Не наследуется: потомкам линии достаются через
-    /// `decors` (css-text-decor-3 §2 «propagated»).
+    /// `BoxStyle::decors` (css-text-decor-3 §2 «propagated»).
     pub td_lines: Option<u8>,
     /// `text-decoration-style` (не наследуется).
     pub td_style: Option<DecorStyle>,
@@ -94,15 +89,9 @@ pub struct ResetTextBox {
     /// `text-decoration-inset` (css-text-decor-4 §4.1, не наследуется):
     /// `None` — 0, `Some(None)` — `auto`.
     pub td_inset: Option<Option<[DecorLen; 2]>>,
-    /// Украшения, наложенные на текст коробки её предками и ею самой
-    /// (css-text-decor-3 §2.1), от внешнего к внутреннему.
-    pub decors: Vec<Decor>,
     /// Роль руби-коробки из `display: ruby*` (css-ruby-1 §2.1). Не
     /// наследуется. `display` при этом остаётся строчным (`InlineBlock` +
     /// `inline_display`), у `block ruby` — `Block`: все `match` по `Display`
     /// остаются как есть, роль читается отдельно.
     pub ruby_role: Option<RubyRole>,
-    /// Rotation model: inside the horizontal clone of a turned vertical paragraph
-    /// (`text-combine-upright` and atoms need a counter-rotation). Inherited.
-    pub turned_line: bool,
 }

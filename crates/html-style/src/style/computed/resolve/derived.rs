@@ -14,9 +14,6 @@ impl Computed {
             let mut with_inherited = Computed {
                 reset_text_box: crate::style::computed::StyleGroup::new(
                     crate::style::computed::ResetTextBox {
-                        text_shadow_ink: self.reset_text_box.text_shadow_ink,
-                        underline: self.reset_text_box.underline,
-                        line_through: self.reset_text_box.line_through,
                         ellipsis: self.reset_text_box.ellipsis,
                         overflow_marker: self.reset_text_box.overflow_marker.clone(),
                         vertical_shift: self.reset_text_box.vertical_shift,
@@ -191,8 +188,6 @@ impl Computed {
         c.reset_effects.shadows.clear();
         c.inh.text_ink.text_shadow = None;
         c.inh.text_ink.text_shadow_rest.clear();
-        c.reset_text_box.underline = None;
-        c.reset_text_box.line_through = None;
         c
     }
 }

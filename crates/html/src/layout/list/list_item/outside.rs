@@ -78,7 +78,7 @@ mod tests {
             item.inh.table_list.list_style_type = kind;
             let li = crate::dom::Element::synthetic("li", item, Default::default(), vec![]);
             let mut parent = inherit(&BoxStyle::default(), &li.style.used(), vcx);
-            parent.reset_context.orthogonal_inline =
+            parent.tree.orthogonal_inline =
                 Some(crate::style::computed::orthogonal::InlineConstraint {
                     available: 160.,
                     fixed: Some(160.),

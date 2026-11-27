@@ -123,6 +123,11 @@ impl SharedStyle {
             decor_box: self.decor_box(),
             flow_align: self.flow_align(),
             tree: facts.map(|f| f.tree).unwrap_or_default(),
+            decors: self
+                .decoration
+                .as_deref()
+                .map(|d| d.decors.clone())
+                .unwrap_or_default(),
             ..BoxStyleInput::new(
                 style,
                 facts.and_then(|f| f.context.clone()),
@@ -186,6 +191,7 @@ impl SharedStyle {
             background_paint: input.background_paint,
             canvas: input.canvas_background,
             paint: input.paint,
+            decors: input.decors,
         };
         Self {
             cascaded: input.style,
