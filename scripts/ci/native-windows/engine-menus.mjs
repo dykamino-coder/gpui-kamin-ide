@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { checkClaudeModeReceipts } from "./claude-mode-receipts.mjs";
+import { collapseRight, pinInCollapsedRight } from "./console-layout.mjs";
 import { checkPermissionConsoleShortcut } from "./console-shortcut.mjs";
 import { byText, clickElement, menuOption } from "./cef-input.mjs";
 
@@ -75,7 +76,9 @@ export async function checkEngineMenus(driver, tab, receipts = false) {
   await switchModel("return-opus", "Opus 5.5");
   await inspect("claude", "returned-claude");
   if (receipts) await checkClaudeModeReceipts(driver, state, tab, true);
-  for (const name of ["first-console-command", "repeat-console-command"]) {
+  await collapseRight(driver, "first-console");
+  for (const name of ["first-console-command", "repeat-console-command", "pinned-console-command"]) {
+    if (name === "pinned-console-command") await pinInCollapsedRight(driver);
     const row = await state();
     await checkPermissionConsoleShortcut(driver, row.controls[row.controls.indexOf("Bridge tools") - 1], name);
   }
