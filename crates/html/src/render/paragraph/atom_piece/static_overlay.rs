@@ -38,7 +38,7 @@ pub(crate) fn static_overlay(
     let physical = inherited.inline_format == Some(crate::style::computed::InlineFormat::Turned)
         && crate::layout::writing_mode::rotated_atom::text_turn(&opts.cx);
     if physical {
-        merged.reset_text_box.turned_line = false;
+        merged.tree.turned_line = false;
         merged.reset_context.lines_reversed = None;
         merged.reset_context.para_vertical = None;
     }
@@ -82,7 +82,7 @@ pub(crate) fn static_overlay(
     let inner = if physical {
         crate::layout::writing_mode::physical_atomic::PhysicalAtomic::new(
             inner,
-            inherited.wm().line().line_turn()
+            inherited.line_wm().line_turn()
                 == crate::style::computed::writing_mode::Turn::CounterClockwise,
             !inherited.wm().alphabetic_baseline(),
             opts.cx.deferred.vertical_paint.clone(),
@@ -129,7 +129,7 @@ pub(crate) fn static_overlay(
         slot
     });
     let inner = anchor::place::place_in_context(inner, &positioned, inherited, &opts.cx);
-    let rotated_rtl = inherited.wm().rtl() && inherited.wm().turned();
+    let rotated_rtl = inherited.wm().rtl() && inherited.turned_line();
     let inner = if inherited.wm().rtl() && !rot_block && !rotated_rtl {
         crate::layout::positioned::containing_block::InlineStartHang::new(inner).hooked()
     } else {

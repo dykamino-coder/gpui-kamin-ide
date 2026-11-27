@@ -41,7 +41,7 @@ pub(super) fn own_box_atom(
         && e.style.used().reset_context.inline_display != Some(true)
         && merged.wm().vertical()
         && !inherited.wm().vertical()
-        && !inherited.wm().turned()
+        && !inherited.turned_line()
     {
         box_.style().baseline_unavailable = Some(true);
     }
@@ -117,7 +117,7 @@ pub(super) fn own_box_atom(
             } else {
                 0.0
             };
-            merged.reset_context.ortho_limit = Some((h - edges).max(0.0));
+            merged.tree.ortho_limit = Some((h - edges).max(0.0));
         }
         box_ = box_.flex();
         box_ = if merged.wm().block_rl() {

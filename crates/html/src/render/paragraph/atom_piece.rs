@@ -92,18 +92,18 @@ fn atom_piece_in(
     // полосы (`band_kid`) без потокового текста хранит статическую точку.
     let plain_flow = !inherited.wm().vertical()
         && (!inherited.wm().rtl()
-            || (flow_text && inherited.reset_context.ortho_limit.is_some())
+            || (flow_text && inherited.tree.ortho_limit.is_some())
             || (inherited.reset_context.band_kid && !flow_text));
     // Статическая позиция — для гипотетической статической коробки (§10.3.7):
     // метка `inline_display` возвращает блокифицированный `display: inline` в
     // строчный путь. БЛОЧНЫЙ абсолют в повёрнутом абзаце — кусок вне потока в
     // начале следующей строки (`next_line_point`): поворачивается вместе со
     // строками, и его до-поворотное место — гипотетическая коробка §10.6.4.
-    let rot_block = inherited.wm().turned()
+    let rot_block = inherited.turned_line()
         && !inline_level(e)
         && e.style.used().reset_context.inline_display != Some(true);
     if plain_flow
-        && (!in_inline_cb || inherited.wm().turned())
+        && (!in_inline_cb || inherited.turned_line())
         && at_static_position(&e.style.used())
         && (inline_level(e)
             || e.style.used().reset_context.inline_display == Some(true)
@@ -123,7 +123,7 @@ fn atom_piece_in(
     // Стоячая коробка в повёрнутом абзаце: `inline-block` с явным
     // ГОРИЗОНТАЛЬНЫМ письмом контр-поворачивается — его содержимое
     // обязано стоять прямо (эмуляция tcy в эталонах compression-*).
-    if inherited.wm().turned()
+    if inherited.turned_line()
         && e.style.used().reset_box_layout.display == Some(Display::InlineBlock)
         && e.style.cascaded().vertical_decl() == Some(false)
     {
@@ -139,7 +139,7 @@ fn atom_piece_in(
             return Some(inline::Piece::Atom(physical));
         }
         let mut merged = crate::style::cascade::materialize::box_style(inherited, &e.style, vcx);
-        merged.reset_text_box.turned_line = false;
+        merged.tree.turned_line = false;
         let em = match merged.reset_box_layout.width {
             Some(Len::Px(v)) => v,
             _ => match merged.inh.font.font_size {
@@ -206,7 +206,7 @@ fn atom_piece_in(
     // piece of the horizontal pre-rotation paragraph, whose clone has
     // `vertical` cleared. Carry the writing mode on the box itself.
     let vertical_abs;
-    let e = if (inherited.wm().turned() || inherited.reset_context.upright_stack)
+    let e = if (inherited.turned_line() || inherited.reset_context.upright_stack)
         && e.style.cascaded().inh.writing.writing_mode.is_none()
         && matches!(
             e.style.used().reset_positioned.position,

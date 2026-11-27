@@ -190,7 +190,7 @@ pub(super) fn cell_cascaded_style(
     // зелёный квадрат из двух колонок).
     // Высота в `ch` разрешается позже, с письмом ряда (`cell_heights`).
     if cell.style.used().wm().vertical()
-        && cm.reset_context.ortho_limit.is_none()
+        && cm.tree.ortho_limit.is_none()
         && !matches!(
             cell.style.cascaded().reset_box_layout.height,
             Some(Len::Ch(_))
@@ -200,7 +200,7 @@ pub(super) fn cell_cascaded_style(
             .height
             .or(st.reset_box_layout.max_height)
     {
-        cm.reset_context.ortho_limit = Some(h);
+        cm.tree.ortho_limit = Some(h);
     }
     // Инлайн-мера ячейки ПАРАЛЛЕЛЬНОЙ таблицы — дорожка КОЛОНКИ, не стол.
     // Унаследованный предел — запас по §7.3 лишь для неопределённого места;
@@ -212,7 +212,7 @@ pub(super) fn cell_cascaded_style(
     // (гейт транспонирования решётки и spacing_phys), предел уже задан.
     // У анонимной обёртки table-cell (anon_element("table", …),
     // Computed::default()) своё письмо пусто: line-box-direction-* не затронуты.
-    if e.style.used().wm().vertical() && cm.reset_context.ortho_limit.is_some() {
+    if e.style.used().wm().vertical() && cm.tree.ortho_limit.is_some() {
         cm.reset_context.ortho_col = true;
     }
     cm

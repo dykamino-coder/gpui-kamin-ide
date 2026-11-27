@@ -40,6 +40,7 @@ impl DirectXRenderer {
         let Some(area) = area else {
             return Ok(());
         };
+        self.ensure_path_target()?;
         let original = self.begin_scissor(area)?;
         let drawn = self
             .draw_paths_to_intermediate(paths, area)
@@ -207,6 +208,8 @@ pub(super) fn path_area(
     let bounds = paths
         .iter()
         .map(|p| p.clipped_bounds())
+        // A zero-sized fractional mask must stay empty before outward rounding.
+        .filter(|b| !b.is_empty())
         .reduce(|a, b| a.union(&b))?;
     let [x0, y0, x1, y1] = [
         bounds.origin.x.0,

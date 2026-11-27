@@ -49,7 +49,7 @@ pub(crate) fn vertical_paragraph(
     horizontal.inh.writing.writing_mode = None;
     // Пометка для `text-combine-upright`: кускам внутри повёрнутого
     // абзаца нужен контр-поворот (см. atom-ветку ниже).
-    horizontal.reset_text_box.turned_line = true;
+    horizontal.tree.turned_line = true;
     // `vertical-lr`: колонки идут слева направо — строки подаются снизу
     // вверх, чтобы после поворота ПО ЧАСОВОЙ первая оказалась левой (у
     // vertical-rl порядок родной: первая строка правой колонкой).
@@ -97,12 +97,9 @@ pub(crate) fn vertical_paragraph(
     let atom_line = crate::dom::whitespace::blank_text(&plain);
     let mut flow = horizontal.clone();
     flow.reset_context.para_vertical = Some(inherited.wm().block_rl());
-    let fallback = inherited
-        .reset_context
-        .ortho_limit
-        .unwrap_or(opts.viewport.1);
-    flow.reset_context.ortho_limit = Some(fallback);
-    flow.reset_context.orthogonal_inline = native_vertical::constraint(inherited, fallback);
+    let fallback = inherited.tree.ortho_limit.unwrap_or(opts.viewport.1);
+    flow.tree.ortho_limit = Some(fallback);
+    flow.tree.orthogonal_inline = native_vertical::constraint(inherited, fallback);
     let built = std::cell::Cell::new(false);
     let request = NativeRequest {
         style: &flow,
@@ -118,10 +115,7 @@ pub(crate) fn vertical_paragraph(
     // ортогонального потока уже принесён вниз стилем: задаём его ШИРИНОЙ
     // до поворота, и после поворота он становится высотой коробки — то
     // есть перенос считается по той оси, по которой идёт строка.
-    let limit = inherited
-        .reset_context
-        .ortho_limit
-        .unwrap_or(opts.viewport.1);
+    let limit = inherited.tree.ortho_limit.unwrap_or(opts.viewport.1);
     // …и всё же ОДИН случай жёсткую ширину не терпит: АБСОЛЮТНАЯ коробка
     // со свободной строчной осью. Её размер по этой оси — по содержимому
     // (§10.3.7), а жёсткая ширина делает `natural.width` тождественно
@@ -154,8 +148,7 @@ pub(crate) fn vertical_paragraph(
     // три дорожки становились 140 и каждая ячейка рвала строку по
     // 7 знаков вместо 3/2/2. Потолок при этом остаётся: колонка не шире
     // инлайн-размера стола.
-    let col_min =
-        inherited.reset_context.ortho_col && inherited.reset_context.ortho_limit.is_some();
+    let col_min = inherited.reset_context.ortho_col && inherited.tree.ortho_limit.is_some();
     // Atomic content shares native text's fixed and shrink-to-fit inline sizing.
     let inline_constraint = native_vertical::constraint(inherited, limit);
     let inner = if let Some(constraint) = inline_constraint {
@@ -212,7 +205,7 @@ pub(crate) fn vertical_paragraph(
     // ячейка мерила коробку нулём и justify уводил глиф из виду.
     let vt = if let Some(constraint) = inline_constraint {
         vt.inline_constraint(constraint)
-    } else if let Some(l) = inherited.reset_context.ortho_limit {
+    } else if let Some(l) = inherited.tree.ortho_limit {
         vt.fit_within(px(l))
     } else if crate::render::paragraph::paragraph_style(inherited).hug_claim {
         // Родитель размером в содержимое по строчной оси

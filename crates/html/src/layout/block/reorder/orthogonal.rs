@@ -119,7 +119,8 @@ pub(crate) fn orthogonal_vertical_children(children: Vec<Node>, container: &Comp
             } else {
                 h
             };
-            ch.style.used_mut().reset_context.ortho_limit = Some((inner - margins).max(0.0));
+            ch.style
+                .edit_tree(|t| t.ortho_limit = Some((inner - margins).max(0.0)));
         }
     }
     out

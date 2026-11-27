@@ -12,7 +12,11 @@ pub(super) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
         .into_iter()
         .map(|node| match node {
             Node::Element(mut element) => {
-                if element.style.used().reset_context.clear_inherit {
+                // Read before writing: the used-value layer copies the style on write.
+                let used = element.style.used();
+                if used.reset_context.clear_inherit
+                    && used.reset_box_layout.clear != parent.reset_box_layout.clear
+                {
                     element.style.used_mut().reset_box_layout.clear = parent.reset_box_layout.clear;
                 }
                 // Preserve the computed value for inheritance until this layout
@@ -22,11 +26,11 @@ pub(super) fn used(nodes: Vec<Node>, parent: &Computed) -> Vec<Node> {
                     && !out_of_flow(&element.style.used())
                     && element.tag != "br"
                 {
-                    inherit_before_reset(
-                        &mut element.children,
-                        element.style.used().reset_box_layout.clear,
-                    );
-                    element.style.used_mut().reset_box_layout.clear = None;
+                    let clear = element.style.used().reset_box_layout.clear;
+                    inherit_before_reset(&mut element.children, clear);
+                    if clear.is_some() {
+                        element.style.used_mut().reset_box_layout.clear = None;
+                    }
                 }
                 Node::Element(element)
             }

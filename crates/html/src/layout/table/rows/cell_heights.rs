@@ -86,10 +86,10 @@ pub(super) fn resolve_cell_heights(
     // inline-size в высоту: блок выше (у `let mut cm`) высоты ещё
     // не видел (table-cell-align-005/006).
     if cell.style.used().wm().vertical()
-        && cm.reset_context.ortho_limit.is_none()
+        && cm.tree.ortho_limit.is_none()
         && let Some(Len::Px(h)) = cell.style.used().reset_box_layout.height
     {
-        cm.reset_context.ortho_limit = Some(h);
+        cm.tree.ortho_limit = Some(h);
     }
     // Ортогональная ячейка (вертикальный контент от ряда) не уже
     // ТОЛЩИНЫ своей вертикальной строки — вклад стека в дорожку

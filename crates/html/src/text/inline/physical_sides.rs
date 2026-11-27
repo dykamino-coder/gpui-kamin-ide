@@ -2,18 +2,17 @@
 //! неповёрнутой плоскости набора абзаца: плоскость задаёт содержащий абзац, даже если строчный
 //! элемент переопределяет `writing-mode`. Обёртка над `physical_projection` для `Sides` и
 //! целого `Computed`.
-use crate::style::computed::{Computed, Sides};
+use crate::style::computed::{BoxStyle, Computed, Sides};
 
-pub(super) fn project<T: Copy>(flow: &Computed, sides: [T; 4]) -> [T; 4] {
+pub(super) fn project<T: Copy>(flow: &BoxStyle, sides: [T; 4]) -> [T; 4] {
     super::physical_projection::project(
-        flow.wm().turned(),
-        flow.wm().line().line_turn()
-            == crate::style::computed::writing_mode::Turn::CounterClockwise,
+        flow.turned_line(),
+        flow.line_wm().line_turn() == crate::style::computed::writing_mode::Turn::CounterClockwise,
         sides,
     )
 }
 
-pub(crate) fn side_values(flow: &Computed, sides: Sides) -> Sides {
+pub(crate) fn side_values(flow: &BoxStyle, sides: Sides) -> Sides {
     let [top, right, bottom, left] =
         project(flow, [sides.top, sides.right, sides.bottom, sides.left]);
     Sides {
@@ -24,7 +23,7 @@ pub(crate) fn side_values(flow: &Computed, sides: Sides) -> Sides {
     }
 }
 
-pub(super) fn project_box(flow: &Computed, style: &mut Computed) {
+pub(super) fn project_box(flow: &BoxStyle, style: &mut Computed) {
     style.reset_box_layout.padding = side_values(flow, style.reset_box_layout.padding);
     style.reset_border.border_width = side_values(flow, style.reset_border.border_width);
     let colors = style.reset_border.border_colors.clone();
@@ -52,22 +51,13 @@ mod tests {
     use super::*;
     use crate::style::values::value::Len;
 
-    fn flow(rotated: bool, ccw: bool) -> Computed {
-        {
-            let mut with_inherited = Computed {
-                reset_text_box: crate::style::computed::StyleGroup::new(
-                    crate::style::computed::ResetTextBox {
-                        turned_line: rotated,
-                        ..Default::default()
-                    },
-                ),
-                ..Computed::default()
-            };
-            with_inherited.inh.writing.flat_mode = Some(
-                crate::style::computed::writing_mode::WritingModeKw::new(true, !ccw, ccw),
-            );
-            with_inherited
-        }
+    fn flow(rotated: bool, ccw: bool) -> BoxStyle {
+        let mut flow = BoxStyle::default();
+        flow.tree.turned_line = rotated;
+        flow.inh.writing.flat_mode = Some(
+            crate::style::computed::writing_mode::WritingModeKw::new(true, !ccw, ccw),
+        );
+        flow
     }
 
     #[test]
