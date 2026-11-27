@@ -81,6 +81,10 @@ mod tests {
         // layout's split of that limit is the same one.
         p.indent_basis = Some(px(40.));
         assert_eq!(p.split_key(Some(px(40.))), split);
+        // Clamp markers of an unclamped paragraph are read by no split.
+        p.clamp_marker = Some("".into());
+        p.marker_size = Some(px(16.));
+        assert_eq!(p.split_key(Some(px(40.))), split);
     }
 
     #[test]
@@ -186,11 +190,16 @@ impl Paragraph {
         self.clamp.hash(&mut h);
         self.clamp_force.hash(&mut h);
         self.text_overflow.hash(&mut h);
-        self.overflow_marker.hash(&mut h);
-        self.clamp_marker.hash(&mut h);
-        self.marker_size
-            .map(|s| f32::from(s).to_bits())
-            .hash(&mut h);
+        // The markers are read only by a split that truncates
+        // (`text-overflow`) or clamps (`line-clamp`): a probe that carries
+        // none of them makes the same split of an unclamped paragraph.
+        if self.text_overflow || self.clamp.is_some() {
+            self.overflow_marker.hash(&mut h);
+            self.clamp_marker.hash(&mut h);
+            self.marker_size
+                .map(|s| f32::from(s).to_bits())
+                .hash(&mut h);
+        }
         self.hyphen.hash(&mut h);
         self.hyphen_limit_lines.hash(&mut h);
         self.spacers.hash(&mut h);
