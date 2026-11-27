@@ -120,6 +120,11 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
                             .await;
                     }
                 }
+                let _ = view.update_in(cx, |view, window, cx| {
+                    if let Some(page) = &view.page {
+                        journal.sample_memory("series_end", page.read(cx).document(), window, cx);
+                    }
+                });
             }
             match journal.write(&options.why) {
                 Ok(()) => eprintln!("Engine journal: {}", options.why.join("why.json").display()),

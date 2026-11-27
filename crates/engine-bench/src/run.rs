@@ -125,10 +125,11 @@ pub(super) async fn run(
             report[key] = value.clone();
         }
     }
-    let run = (cx, window, fonts, args, capture, luid);
+    let run = (&mut *cx, window, fonts, args, capture, luid);
     // A failed check (a frame unlike the fresh document) still fails the run,
     // but after the report: the timings and the per-step checks are kept.
     let finished = frames.finish(&mut report, run).await;
+    crate::why::finish(args, cx, window)?;
     // После замера установившейся памяти: запись сборки — куча стенда, не страницы.
     report["build"] = super::build_info::json();
     report["cpu_calibration"] = super::process::calibration();

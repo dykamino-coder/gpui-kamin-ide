@@ -48,8 +48,16 @@ impl WindowJournal {
         self.recording.borrow_mut().begin(doc)
     }
 
-    pub(crate) fn drawn(&self, step: Step, doc: &Document, window: &Window, cx: &App) {
-        self.recording.borrow_mut().drawn(step, doc, window, cx);
+    pub(crate) fn drawn(&self, step: Step, doc: &Document) {
+        self.recording.borrow_mut().drawn(step, doc);
+    }
+
+    /// Take owners on open, an explicit DevTools request or series completion.
+    /// This can walk the document and must be called outside frame recording.
+    pub fn sample_memory(&self, reason: &str, doc: &Document, window: &Window, cx: &App) {
+        self.recording
+            .borrow_mut()
+            .sample_memory(reason, doc, window, cx);
     }
 
     /// Drain observed entries without requesting a frame.

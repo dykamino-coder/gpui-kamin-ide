@@ -83,12 +83,19 @@ fn diff(s: &mut String, label: &str, a: &Counts, b: &Counts) {
 }
 
 fn owners(f: &Value) -> BTreeMap<String, u64> {
-    f["memory"]["owners"]
+    f["owners"]
         .as_object()
         .into_iter()
         .flatten()
         .map(|(k, v)| (k.clone(), v.as_u64().unwrap_or(0)))
         .collect()
+}
+
+fn memory(run: &Value) -> Option<&Value> {
+    run["memory_samples"]
+        .as_array()
+        .and_then(|samples| samples.last())
+        .or_else(|| frames(run).last().map(|frame| &frame["memory"]))
 }
 
 /// The text of the comparison of runs `a` and `b`.
@@ -110,8 +117,8 @@ pub(super) fn compare(a: &Value, b: &Value) -> String {
         let at = [3, 0, 1, 2][at];
         diff(&mut s, label, &ca[at], &cb[at]);
     }
-    // Memory: the last frame of each run, by owner.
-    if let (Some(la), Some(lb)) = (fa.last(), fb.last()) {
+    // Explicit end-of-series snapshots; older reports kept owners in frames.
+    if let (Some(la), Some(lb)) = (memory(a), memory(b)) {
         let changed = kamin_html::why::owner_changes(&owners(la), &owners(lb));
         for (owner, d) in changed.iter().take(SHOWN_OWNERS) {
             let _ = writeln!(s, "  memory {d:+} {owner}");
@@ -122,7 +129,7 @@ pub(super) fn compare(a: &Value, b: &Value) -> String {
             "process_private_bytes",
             "outside_owners_bytes",
         ] {
-            let (x, y) = (la["memory"][key].as_i64(), lb["memory"][key].as_i64());
+            let (x, y) = (la[key].as_i64(), lb[key].as_i64());
             if let (Some(x), Some(y)) = (x, y)
                 && x != y
             {
@@ -160,6 +167,23 @@ pub(super) fn compare(a: &Value, b: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+
+    #[test]
+    fn compares_explicit_final_owner_samples_instead_of_frame_references() {
+        let run = |bytes| {
+            json!({"schema": 1,
+                "frames": [{"memory": {"sample_id": 1, "sampled": false}}],
+                "memory_samples": [{"owners": {"document": 1}},
+                    {"reason": "series_end", "owners": {"document": bytes}, "heap_bytes": bytes,
+                        "process_private_bytes": bytes * 2, "outside_owners_bytes": bytes}]
+            })
+        };
+        let text = super::compare(&run(10), &run(50));
+        assert!(text.contains("memory +40 document"));
+        assert!(text.contains("memory heap_bytes: 10 -> 50 (+40)"));
+        assert!(text.contains("memory process_private_bytes: 20 -> 100 (+80)"));
+        assert!(text.contains("memory outside_owners_bytes: 10 -> 50 (+40)"));
+    }
 
     #[test]
     fn names_what_changed_between_two_runs() {

@@ -4,6 +4,23 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn explicit_memory_samples_are_not_reported_as_current_frame_owners() {
+    let out = json!({"schema": 1, "frames": [{
+        "frame": 1, "memory": {"sample_id": 1, "sampled": false}
+    }], "memory_samples": [{
+        "sample_id": 1, "reason": "open", "after_frame": 0, "duration_ms": 64.5,
+        "heap_bytes": 100, "gpu_bytes": 0, "changed_bytes": [["document", 100]]
+    }]});
+    let rendered = render(&out);
+    let (frame, snapshot) = rendered.split_once("memory snapshot").unwrap();
+    assert!(frame.contains("memory not sampled; latest snapshot 1"));
+    assert!(!frame.contains("heap owners"));
+    assert!(snapshot.contains("1: open after frame 0, 64.500 ms"));
+    assert!(snapshot.contains("heap owners 100 bytes"));
+    assert!(snapshot.contains("memory +100 document"));
+}
+
+#[test]
 fn growth_is_ordered_by_size_and_names_new_and_gone_owners() {
     let before = BTreeMap::from([("a".to_string(), 10), ("b".to_string(), 5)]);
     let now = BTreeMap::from([("a".to_string(), 11), ("c".to_string(), 100)]);

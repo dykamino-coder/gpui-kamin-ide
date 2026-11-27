@@ -93,7 +93,11 @@ impl Recording {
         Step::new(self.report.watch(doc), self.fields.clone())
     }
 
-    pub(crate) fn drawn(&mut self, step: Step, doc: &Document, window: &Window, cx: &App) {
+    pub fn sample_memory(&mut self, reason: &str, doc: &Document, window: &Window, cx: &App) {
+        self.report.sample_memory(reason, doc, window, cx, None);
+    }
+
+    pub(crate) fn drawn(&mut self, step: Step, doc: &Document) {
         let (watch, mut fields, start, end) = step.finish();
         if self.build_pending {
             let build = doc.build_timings();
@@ -101,7 +105,7 @@ impl Recording {
             fields["phases_ms"]["style"] = json!(ms(build.style));
             self.build_pending = false;
         }
-        match self.report.record(watch, doc, window, cx, false, fields) {
+        match self.report.record(watch, doc, false, fields) {
             Ok(index) => self.pending.push_back((start, end, index)),
             Err(error) => self.error(error.into()),
         }

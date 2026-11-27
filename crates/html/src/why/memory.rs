@@ -41,3 +41,34 @@ pub(super) fn owners(
 pub(super) fn owners(_: &Document, _: &Window, _: &App, _: &mut BTreeMap<String, u64>) -> Value {
     json!({"heap_bytes": null, "gpu_bytes": null, "owners": null, "changed_bytes": null})
 }
+
+pub(super) fn process(memory: &mut Value, private: Option<u64>) {
+    if let Some(private) = private {
+        memory["process_private_bytes"] = json!(private);
+        memory["outside_owners_bytes"] = memory["heap_bytes"]
+            .as_u64()
+            .map(|heap| json!(private as i64 - heap as i64))
+            .unwrap_or(Value::Null);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_memory_belongs_to_the_explicit_owner_checkpoint() {
+        let mut sample = json!({"heap_bytes": 100});
+        process(&mut sample, None);
+        assert!(sample.get("process_private_bytes").is_none());
+        process(&mut sample, Some(150));
+        assert_eq!(sample["process_private_bytes"], 150);
+        assert_eq!(sample["outside_owners_bytes"], 50);
+        process(&mut sample, Some(90));
+        assert_eq!(sample["outside_owners_bytes"], -10);
+        sample["heap_bytes"] = Value::Null;
+        process(&mut sample, Some(200));
+        assert_eq!(sample["process_private_bytes"], 200);
+        assert!(sample["outside_owners_bytes"].is_null());
+    }
+}

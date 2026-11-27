@@ -54,7 +54,7 @@ impl Browser {
             Ok(page) => {
                 #[cfg(feature = "why-profiler")]
                 if let Some(journal) = &self.journal {
-                    page.update(cx, |page, _| page.set_journal(journal.clone()));
+                    page.update(cx, |page, cx| page.set_journal(journal.clone(), window, cx));
                 }
                 if !self.list_focus.is_focused(window) {
                     page.read(cx).focus_handle(cx).focus(window, cx);

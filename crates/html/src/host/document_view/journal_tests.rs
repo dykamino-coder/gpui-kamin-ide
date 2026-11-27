@@ -30,7 +30,7 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
         let journal = crate::why::WindowJournal::new(window, cx);
         let document = Document::builder(LONG, "").build_for_view(true).unwrap();
         let mut page = DocumentView::new(document, size(px(400.), px(300.)), window, cx);
-        page.set_journal(journal.clone());
+        page.set_journal(journal.clone(), window, cx);
         *output.borrow_mut() = Some(journal);
         page
     });
@@ -54,8 +54,43 @@ fn journal_records_document_steps_and_inside_draw_without_a_host_meter(cx: &mut 
     assert!(warm["phases_ms"]["document_step"].is_number());
     assert!(warm["phases_ms"]["journal_memory"].is_number());
     assert!(warm["phases_ms"]["journal_record"].is_number());
-    assert!(warm["memory"]["heap_bytes"].is_number());
+    assert_eq!(warm["memory"]["sampled"], false);
+    assert_eq!(warm["memory"]["sample_id"], 1);
+    assert!(warm["memory"].get("owners").is_none());
+    let samples = out["memory_samples"].as_array().unwrap();
+    assert_eq!(samples.len(), 1, "redraws must not sample memory owners");
+    assert_eq!(samples[0]["reason"], "open");
+    assert_eq!(samples[0]["after_frame"], 0);
+    assert!(samples[0]["duration_ms"].is_number());
+    #[cfg(feature = "heap-report")]
+    assert!(samples[0]["heap_bytes"].is_number());
     assert!(warm["causes"].is_array());
+    cx.update(|window, cx| {
+        page.update(cx, |page, cx| {
+            page.document
+                .update(&format!("{LONG}{}", "<p>new node</p>".repeat(100)), "")
+                .unwrap();
+            cx.notify();
+        });
+        journal.sample_memory("request", page.read(cx).document(), window, cx);
+    });
+    let requested = journal.to_json();
+    let samples = requested["memory_samples"].as_array().unwrap();
+    assert_eq!(samples.len(), 2);
+    assert_eq!(samples[1]["reason"], "request");
+    assert_eq!(samples[1]["after_frame"], frames.len());
+    #[cfg(feature = "heap-report")]
+    assert_ne!(
+        samples[0]["owners"]["dom/nodes"], samples[1]["owners"]["dom/nodes"],
+        "an explicit snapshot must observe the mutated document"
+    );
+    frame(cx);
+    let after = journal.to_json();
+    assert_eq!(after["memory_samples"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        after["frames"].as_array().unwrap().last().unwrap()["memory"]["sample_id"],
+        2
+    );
     // Drop every handle before releasing the reader-test serialization guard.
     cx.update(|_, cx| page.update(cx, |page, _| page.journal = None));
     drop(journal);

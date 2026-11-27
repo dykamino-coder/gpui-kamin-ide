@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, path::Path, string::String};
 pub struct Report {
     frames: Vec<Value>,
     owners: BTreeMap<String, u64>,
+    memory_samples: Vec<Value>,
     status: Value,
     _reader: super::Subscription,
 }
@@ -32,6 +33,7 @@ impl Report {
         Self {
             frames: Vec::new(),
             owners: BTreeMap::new(),
+            memory_samples: Vec::new(),
             status: Value::Null,
             _reader: super::subscribe(),
         }
@@ -46,16 +48,33 @@ impl Report {
         }
     }
 
+    /// An explicit owner snapshot, outside frame recording. Frames reference
+    /// its id; they never present an old snapshot as current memory usage.
+    pub fn sample_memory(
+        &mut self,
+        reason: &str,
+        doc: &Document,
+        window: &Window,
+        cx: &App,
+        process_private_bytes: Option<u64>,
+    ) {
+        let start = std::time::Instant::now();
+        let mut memory = super::memory::owners(doc, window, cx, &mut self.owners);
+        super::memory::process(&mut memory, process_private_bytes);
+        memory["sample_id"] = json!(self.memory_samples.len() + 1);
+        memory["reason"] = json!(reason);
+        memory["after_frame"] = json!(self.frames.len());
+        memory["duration_ms"] = json!(start.elapsed().as_secs_f64() * 1000.);
+        self.memory_samples.push(memory);
+    }
+
     /// A sample's additional fields (`mode`, `step`, `phases_ms`, `raster`,
     /// `error`, etc.) use the same protocol for every reader. `cold` counts
     /// the current document from zero, including work before the checkpoint.
-    #[allow(clippy::too_many_arguments)]
     pub fn record(
         &mut self,
         watch: Watch,
         doc: &Document,
-        window: &Window,
-        cx: &App,
         cold: bool,
         fields: Value,
     ) -> Result<usize, &'static str> {
@@ -68,16 +87,11 @@ impl Report {
                 .since(&watch.frames)
                 .ok_or("document frame counter regressed")?
         };
-        let memory_at = std::time::Instant::now();
-        let mut memory = super::memory::owners(doc, window, cx, &mut self.owners);
-        let memory_ms = memory_at.elapsed().as_secs_f64() * 1000.;
-        if let Some(private) = fields["memory"]["process_private_bytes"].as_u64() {
-            memory["process_private_bytes"] = json!(private);
-            memory["outside_owners_bytes"] = memory["heap_bytes"]
-                .as_u64()
-                .map(|heap| json!(private as i64 - heap as i64))
-                .unwrap_or(Value::Null);
-        }
+        let memory = json!({
+            "sample_id": self.memory_samples.last().map(|m| &m["sample_id"]),
+            "sampled": false,
+            "process_private_bytes": fields["memory"]["process_private_bytes"],
+        });
         let mut entry = super::to_json(&super::take());
         let after = crate::paint_path::read();
         let path: serde_json::Map<String, Value> = crate::paint_path::NAMES
@@ -99,7 +113,7 @@ impl Report {
         for (key, value) in common.as_object().into_iter().flatten() {
             entry[key] = value.clone();
         }
-        entry["phases_ms"]["journal_memory"] = json!(memory_ms);
+        entry["phases_ms"]["journal_memory"] = json!(0.);
         entry["phases_ms"]["journal_record"] = json!(recording.elapsed().as_secs_f64() * 1000.);
         self.frames.push(entry);
         Ok(self.frames.len() - 1)
@@ -131,7 +145,8 @@ impl Report {
 
     /// The same top-level document consumed by DevTools and engine-compare.
     pub fn to_json(&self) -> Value {
-        let mut out = json!({"schema": super::SCHEMA, "frames": self.frames});
+        let mut out = json!({"schema": super::SCHEMA, "frames": self.frames,
+            "memory_samples": self.memory_samples});
         if !self.status.is_null() {
             out["observations"] = self.status.clone();
         }

@@ -6,6 +6,7 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 
 mod frames;
+mod memory;
 mod raster;
 mod window;
 use frames::frames;
@@ -28,8 +29,6 @@ pub fn changes(before: &BTreeMap<String, u64>, now: &BTreeMap<String, u64>) -> V
     out.sort_by_key(|(k, d)| (std::cmp::Reverse(d.unsigned_abs()), k.clone()));
     out
 }
-
-const SHOWN_OWNERS: usize = 8;
 
 /// The text form of `why.json`.
 pub(super) fn render(out: &Value) -> String {
@@ -115,25 +114,10 @@ pub(super) fn render(out: &Value) -> String {
                 line(&mut s, "  miss", e);
             }
         }
-        let m = &f["memory"];
-        let _ = writeln!(
-            s,
-            "  memory heap owners {} bytes, gpu {} bytes, process private {} bytes, outside the owners' report {} bytes",
-            m["heap_bytes"], m["gpu_bytes"], m["process_private_bytes"], m["outside_owners_bytes"]
-        );
-        for c in m["changed_bytes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .take(SHOWN_OWNERS)
-        {
-            let _ = writeln!(
-                s,
-                "  memory {:+} {}",
-                c[1].as_i64().unwrap_or(0),
-                text(&c[0])
-            );
-        }
+        memory::frame(&mut s, &f["memory"]);
+    }
+    for sample in out["memory_samples"].as_array().into_iter().flatten() {
+        memory::sample(&mut s, sample);
     }
     s
 }

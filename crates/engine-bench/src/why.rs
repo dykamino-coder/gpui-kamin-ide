@@ -2,8 +2,8 @@
 //! (`kamin_html::why`). Each sampled frame gets one entry: built or replayed,
 //! the journal's causes with their engine lines, the requests of frames and
 //! the draws and renders they caused, the paint-path refusals, the phase
-//! times, the cache lookups with the reasons of their misses and the memory
-//! by owner with what grew. A failed sample keeps its entry with the error.
+//! times and the cache lookups with the reasons of their misses. Explicit
+//! memory snapshots show owners and what grew. A failed sample keeps its error.
 //! `why.json` (schema `kamin_html::why::SCHEMA`) is for the browser panel
 //! and `tools/engine-compare`; `why.txt` for people; `--why-compare A B`
 //! reads two of them (`compare`).
@@ -72,10 +72,11 @@ impl Watch {
         window.update(cx, |view, window, cx| {
             REPORT.with(|report| {
                 let mut report = report.borrow_mut();
-                report
-                    .as_mut()
-                    .expect("sample began a report")
-                    .record(self.0, &view.doc, window, cx, cold, fields)
+                let report = report.as_mut().expect("sample began a report");
+                if cold {
+                    report.sample_memory("open", &view.doc, window, cx, Some(private));
+                }
+                report.record(self.0, &view.doc, cold, fields)
             })
         })??;
         REPORT.with(|report| {
@@ -86,4 +87,24 @@ impl Watch {
                 .write(args.why.as_deref().ok_or("--why without a directory")?)
         })
     }
+}
+
+pub(super) fn finish(
+    args: &super::args::Args,
+    cx: &mut AsyncApp,
+    window: WindowHandle<View>,
+) -> Result<()> {
+    if args.why.is_none() {
+        return Ok(());
+    }
+    let private = super::process::Snapshot::read()?.commit;
+    window.update(cx, |view, window, cx| {
+        REPORT.with(|report| {
+            if let Some(report) = report.borrow_mut().as_mut() {
+                report.sample_memory("series_end", &view.doc, window, cx, Some(private));
+                report.write(args.why.as_deref().expect("enabled journal"))?;
+            }
+            Ok(())
+        })
+    })?
 }

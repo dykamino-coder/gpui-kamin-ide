@@ -62,10 +62,10 @@ impl DocumentView {
                 #[cfg(feature = "why-profiler")]
                 if let Some(sample) = sample {
                     let weak = cx.weak_entity();
-                    window.defer(cx, move |window, cx| {
-                        let _ = weak.update(cx, |view, cx| {
+                    window.defer(cx, move |_, cx| {
+                        let _ = weak.update(cx, |view, _| {
                             if let Some(journal) = &view.journal {
-                                journal.drawn(sample, &view.document, window, cx);
+                                journal.drawn(sample, &view.document);
                             }
                         });
                     });
@@ -123,7 +123,8 @@ impl DocumentView {
     /// Attach the shared DevTools frame journal. Without a recorder there
     /// are no diagnostic clocks, checkpoints or memory walks in this view.
     #[cfg(feature = "why-profiler")]
-    pub fn set_journal(&mut self, journal: crate::why::WindowJournal) {
+    pub fn set_journal(&mut self, journal: crate::why::WindowJournal, window: &Window, cx: &App) {
+        journal.sample_memory("open", &self.document, window, cx);
         self.journal = Some(journal);
     }
 }
