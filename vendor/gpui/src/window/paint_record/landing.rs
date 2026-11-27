@@ -9,15 +9,19 @@
 //! for its own. Landed in a scene the frame draws, a node whose commands the
 //! copy shows takes its ranges there through every landing on the way, its
 //! mask moved and clipped as the copy, so a scrolled replay of the frame
-//! moves it as a node the frame painted itself. A node shown by two
-//! landings, or with a command of its ranges dropped by a copy, stays where
-//! it was (torn): a scrolled replay then builds.
+//! moves it as a node the frame painted itself. A node the frame painted
+//! itself, whose children's deferred paint a record ran under it again, takes
+//! the copy's commands marked under it as one more range. A node one landing
+//! moved and another shows too, or with a command of its ranges dropped by a
+//! copy, stays where it was (torn): a scrolled replay then builds.
 
 use super::*;
 use crate::scene::scroll_marks::carry::{Carry, Relay};
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod reentry_tests;
 
 impl Window {
     /// `replay_placed_carrying` of the record `scene`, landing the nodes it
@@ -33,6 +37,7 @@ impl Window {
         if marked {
             self.next_frame.scene.scroll.carry = Some(Carry::of(scene, offset, clip));
         }
+        let start = self.next_frame.scene.paint_operations.len();
         let done = self.replay_placed_carrying(scene, offset, clip);
         let carry = self.next_frame.scene.scroll.carry.take();
         let carry = carry.filter(|carry| done && carry.landed.len() == scene.paint_operations.len());
@@ -51,7 +56,7 @@ impl Window {
             relays.push((scene.scroll.space, vec![carry]));
             match self.next_frame.scene.scroll.record_base {
                 Some(_) => self.next_frame.scene.scroll.relayed.extend(relays),
-                None => self.land_carried_nodes(&relays),
+                None => self.land_carried_nodes(&relays, start),
             }
         }
         done
@@ -60,7 +65,8 @@ impl Window {
     /// Move the ranges of the nodes painted in the scenes of `relays` that
     /// the last landing shows to where their landings put their commands in
     /// the scene painted now, their masks moved and clipped by each landing.
-    fn land_carried_nodes(&mut self, relays: &[Relay]) {
+    /// `start`: the first command the last landing put in that scene.
+    fn land_carried_nodes(&mut self, relays: &[Relay], start: usize) {
         let scale = self.scale_factor();
         let unscaled = |v: ScaledPixels| px(v.0 / scale);
         let place = |bounds: Bounds<Pixels>, hop: &Carry| {
@@ -82,9 +88,21 @@ impl Window {
             let node = &mut frame.scroll_nodes[at];
             let shown = last.kept.contains(&node.id);
             let Some((_, hops)) = relays.iter().find(|(space, _)| node.painted_in == Some(*space)) else {
-                // Its commands landed already elsewhere: two landings cannot move as one node.
-                if shown && node.painted_in.is_some() {
-                    node.tear();
+                // Its paint still open here holds the copy's commands already.
+                if !shown || node.painted_in.is_none() || (node.pending && node.painted_in == Some(here)) {
+                    continue;
+                }
+                // A node painted here itself whose children's paint the records
+                // ran under it again (deferred paint): the copy's commands marked
+                // under it are one more range of it here. One a landing moved here
+                // has the copy's mask: shown by another landing too, it cannot move
+                // as one node.
+                let more = (node.painted_in == Some(here) && !node.landed)
+                    .then(|| marked_span(&frame.scene.scroll.marks, start, node.id))
+                    .flatten();
+                match more {
+                    Some(range) => node.more.push(range),
+                    None => node.tear(),
                 }
                 continue;
             };
@@ -97,7 +115,7 @@ impl Window {
             let more: Option<Vec<_>> = node.more.iter().map(land).collect();
             match (paint, more) {
                 (Some(Some(paint)), Some(more)) => {
-                    (node.paint, node.more, node.painted_in) = (Some(paint), more, Some(here));
+                    (node.paint, node.more, node.painted_in, node.landed) = (Some(paint), more, Some(here), true);
                     for hop in hops {
                         let (chain, shift) = place(node.chain, hop);
                         node.chain = chain;
@@ -121,4 +139,13 @@ impl Window {
             }
         }
     }
+}
+
+/// The commands from `start` on marked under `node`, from its first to its
+/// last; `None` when none is.
+fn marked_span(marks: &[crate::scene::scroll_marks::ScrollMark], start: usize, node: crate::ScrollNodeId) -> Option<Range<usize>> {
+    let from = marks.partition_point(|mark| (mark.op as usize) < start);
+    let mut ops = marks[from..].iter().filter(|mark| mark.node == node).map(|mark| mark.op as usize);
+    let first = ops.next()?;
+    Some(first..ops.last().unwrap_or(first) + 1)
 }

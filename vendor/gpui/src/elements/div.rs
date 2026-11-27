@@ -6235,6 +6235,75 @@ mod tests {
         assert_eq!(scroll_handle.max_offset(), resized, "unchanged");
     }
 
+    /// KaminIDE patch: a scroller whose host measures the range after the
+    /// prepaint keeps the offset asked for past the range of its proxy; the
+    /// measured range clamps it, and the DevTools `why` journal names the
+    /// clamp (`scroll.clamped`), as it names a prepaint's clamp otherwise.
+    #[gpui::test]
+    fn a_host_measured_range_clamps_the_offset_once_measured(cx: &mut TestAppContext) {
+        use crate::dirty_sources::trace;
+        struct Proxy(ScrollHandle);
+
+        impl Render for Proxy {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    div()
+                        .id("container")
+                        .h(px(50.))
+                        .w(px(100.))
+                        .py(px(4.))
+                        .overflow_y_scroll()
+                        .track_scroll(&self.0)
+                        .child(div().absolute().w(px(10.)).h(px(80.)))
+                        .child(div().w_full().h(px(20.))),
+                )
+            }
+        }
+
+        let _reader = trace::Trace::start();
+        let handle = ScrollHandle::new();
+        let window: AnyWindowHandle = cx.add_window({
+            let handle = handle.clone();
+            move |_, _| Proxy(handle)
+        })
+        .into();
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx)
+            })
+            .unwrap()
+        };
+        let node = format!("{:?}", Some(crate::ScrollNodeId::of(&handle)));
+        let clamps = |site: &str| {
+            let (events, _) = trace::take();
+            let clamp = |e: &&trace::Event| e.kind == "scroll.clamped" && e.detail.contains(&node) && e.detail.contains(site);
+            events.iter().filter(clamp).count()
+        };
+        handle.measure_range_after_prepaint(true);
+        handle.set_offset(point(px(0.), px(-100.)));
+        draw(cx);
+        assert_eq!(handle.offset().y, px(-100.), "the prepaint clamped to the proxy's range");
+        assert_eq!(handle.max_offset().y, px(38.));
+        assert_eq!(clamps("-100"), 0, "a clamp was noted");
+        // The host measures 130px: the offset takes the end of that range.
+        assert!(!handle.resize_item(0, size(px(10.), px(130.))));
+        assert_eq!(handle.offset().y, px(-88.));
+        assert_eq!(clamps("measured range"), 1, "the measured clamp is not noted");
+        // Unchanged content: the recorded range clamps it.
+        handle.set_offset(point(px(0.), px(-100.)));
+        assert!(handle.clamp_to_range());
+        assert_eq!(handle.offset().y, px(-38.));
+        assert!(!handle.clamp_to_range(), "within the range");
+        assert_eq!(clamps("range"), 1);
+        // Without a host the prepaint clamps, and says so.
+        handle.measure_range_after_prepaint(false);
+        handle.set_offset(point(px(0.), px(-100.)));
+        draw(cx);
+        assert_eq!(handle.offset().y, px(-38.));
+        assert_eq!(clamps("content"), 1, "the prepaint's clamp is not noted");
+    }
+
     struct ContentSizedGrid;
 
     impl Render for ContentSizedGrid {

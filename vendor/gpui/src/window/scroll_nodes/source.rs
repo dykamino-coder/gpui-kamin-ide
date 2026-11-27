@@ -27,15 +27,9 @@ impl NodeSource {
     pub(crate) fn offset(&self) -> Point<Pixels> {
         match self {
             NodeSource::Handle(handle) => {
-                let (offset, max) = (handle.offset(), handle.max_offset());
-                let clamped = point(
-                    offset.x.clamp(-max.x, px(0.)),
-                    offset.y.clamp(-max.y, px(0.)),
-                );
-                if clamped != offset {
-                    handle.set_offset(clamped);
-                }
-                clamped
+                // DevTools `why` names a clamp that moves it (`scroll.clamped`).
+                handle.clamp_to_range();
+                handle.offset()
             }
             NodeSource::Viewport { .. } => Point::default(),
             NodeSource::Anchor(offset) => offset(),

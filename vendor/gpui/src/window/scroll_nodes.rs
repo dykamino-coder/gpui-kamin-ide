@@ -88,6 +88,10 @@ pub(crate) struct ScrollNodeRecord {
     /// a scrolled replay cannot move it. The site that first tore it, which
     /// the DevTools `why` journal names (`tear`).
     pub(crate) torn: Option<&'static core::panic::Location<'static>>,
+    /// Moved into the scene it paints in by a landing of the record it was
+    /// opened in (`paint_record::landing`): its mask and offsets are the
+    /// copy's, so another copy cannot add ranges to it.
+    pub(crate) landed: bool,
     /// Marked a primitive drawn through a matrix a shift cannot move exactly,
     /// without its pivot (`Scene::pivot_of`): replayed only unmoved.
     pub(crate) unpivoted: bool,
@@ -317,6 +321,7 @@ impl Window {
             painted_in: None,
             more: Vec::new(),
             torn: None,
+            landed: false,
             unpivoted: false,
             pending: false,
         });

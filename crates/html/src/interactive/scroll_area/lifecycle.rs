@@ -111,10 +111,6 @@ impl Element for ScrollArea {
         let hitbox = window.insert_hitbox(paint_bounds, gpui::HitboxBehavior::Normal);
         child.2.set_decoration_clip(window.content_mask());
         child.2.begin(self.tree.as_deref());
-        // The range is the content this prepaint measures (`settle`): the
-        // scroller keeps the offset asked for until then (CSSOM View §7: a
-        // scroll position is clamped to the scrolling area layout gives).
-        child.1.measure_range_after_prepaint(self.tree.is_some());
         // The bars layout decided for this scrollport (laying only it out
         // again when its content asked for others) hold before its content
         // is prepainted: its gutters, insets and painted bars follow them.
