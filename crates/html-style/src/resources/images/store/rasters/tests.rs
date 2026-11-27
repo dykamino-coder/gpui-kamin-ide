@@ -208,3 +208,20 @@ fn raw_markup_does_not_implicitly_inherit_document_base() {
         Some([0, 0, 255, 255])
     );
 }
+
+#[test]
+fn next_revision_and_new_budget_keep_the_rasters_of_unchanged_markup() {
+    let mut store = ImageStore::default();
+    let req = RasterRequest::new(10.0, 8.0, 1.0, 0.0);
+    let a = store.rasterize_svg(MARKUP, req).unwrap();
+    // A new revision of the same store (`renew`) rasterizes nothing again.
+    store.set_budget(crate::budget::RevisionBudget::standalone());
+    assert!(Arc::ptr_eq(&a, &store.rasterize_svg(MARKUP, req).unwrap()));
+    // Nor does the store of the next revision of the document.
+    let next = store.continuing();
+    drop(store);
+    assert!(Arc::ptr_eq(&a, &next.rasterize_svg(MARKUP, req).unwrap()));
+    // Other markup is still its own raster.
+    let other = MARKUP.replace("green", "blue");
+    assert!(!Arc::ptr_eq(&a, &next.rasterize_svg(&other, req).unwrap()));
+}
