@@ -189,3 +189,27 @@ fn repeated_downloads_reuse_the_same_resampled_variant() {
         &[0, 128, 0, 255, 0, 128, 0, 191, 0, 128, 0, 64, 0, 0, 0, 0]
     );
 }
+
+#[test]
+fn uploads_nobody_holds_leave_both_cache_levels_by_their_budgets() {
+    use crate::resources::images::pixels::bgra;
+    // 4 MiB rasters, well past the two 64 MiB levels together: the first one
+    // must be let go once nothing outside the caches holds its image.
+    const SIDE: u32 = 1024;
+    let unique = |i: u32| {
+        let mut bytes = vec![0u8; (SIDE * SIDE * 4) as usize];
+        bytes[..4].copy_from_slice(&i.to_le_bytes());
+        bytes
+    };
+    let first = bgra(SIDE, SIDE, unique(u32::MAX)).unwrap();
+    let alive = Arc::downgrade(&first);
+    drop(upload(&first));
+    drop(first);
+    for i in 0..64 {
+        drop(upload(&bgra(SIDE, SIDE, unique(i)).unwrap()));
+    }
+    assert!(
+        alive.upgrade().is_none(),
+        "an unheld upload outlived both budgets"
+    );
+}

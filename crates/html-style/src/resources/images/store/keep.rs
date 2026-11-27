@@ -38,7 +38,8 @@ impl ImageStore {
             self.queue.retain(|queued| queued.id != id);
             self.free_slot(id);
         }
-        self.rasters.clear();
+        // SVG rasters stay: their keys hold every input by content and resource
+        // revision, and their cache has its own budget.
         self.revision += 1;
     }
 

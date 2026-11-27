@@ -32,10 +32,23 @@ impl Inputs {
     }
 
     pub(super) fn matches(&self, environment: &WindowKey, window: &Window) -> bool {
-        self.window == window.window_handle()
+        let matches = self.window == window.window_handle()
             && self.serial.get().checked_add(1) == Some(window.frame_serial())
             && window.retained_root_environment()
-            && self.environment == *environment
+            && self.environment == *environment;
+        if !matches {
+            crate::why::note("frame_environment.inputs", || {
+                format!(
+                    "window_same={} serial={} -> {} root={} changed={:?}",
+                    self.window == window.window_handle(),
+                    self.serial.get(),
+                    window.frame_serial(),
+                    window.retained_root_environment(),
+                    self.environment.changed(environment)
+                )
+            });
+        }
+        matches
     }
 
     pub(super) fn replayed(&self, window: &Window) {
