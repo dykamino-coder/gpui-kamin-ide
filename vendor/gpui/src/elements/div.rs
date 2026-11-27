@@ -2837,12 +2837,24 @@ impl Interactivity {
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
             let mut scroll_offset = scroll_offset.borrow_mut();
+            let read = *scroll_offset;
 
             scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
             if scroll_to_bottom {
                 scroll_offset.y = -scroll_max.y;
             } else {
                 scroll_offset.y = scroll_offset.y.clamp(-scroll_max.y, px(0.));
+            }
+            // KaminIDE patch: DevTools `why` names a prepaint that moved a
+            // scroll offset its layout read (the record then cannot replay).
+            if *scroll_offset != read {
+                crate::dirty_sources::trace::push_with("scroll.clamped", core::panic::Location::caller(), || {
+                    let node = self.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
+                    format!(
+                        "node {node:?} offset {read:?} -> {:?}: max {scroll_max:?} content {:?} bounds {bounds:?} to bottom {scroll_to_bottom}",
+                        *scroll_offset, self.content_size
+                    )
+                });
             }
 
             if let Some(mut scroll_handle_state) = tracked_scroll_handle {
