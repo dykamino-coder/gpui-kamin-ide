@@ -50,7 +50,6 @@ impl DirectXRenderer {
             if let Some(back) = &resources.back_buffer {
                 whole("gpu/target/back-buffer", back);
             }
-            whole("gpu/target/path", &resources.path_intermediate_texture);
             whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
         }
         if let Some((_, _, scratch)) = &self.retained.scratch {
