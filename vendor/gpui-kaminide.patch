@@ -7790,10 +7790,10 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/dirty_sources/trace.rs b/vendor/gpui/src/dirty_sources/trace.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef1a23e233abc077ea727103e4abbde5252700c5
+index 0000000000000000000000000000000000000000..551ec603b12b04c31383721bf653e5113e2610e2
 --- /dev/null
 +++ b/vendor/gpui/src/dirty_sources/trace.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,126 @@
 +//! KaminIDE patch (DevTools `why`): bounded frame events shared by diagnostic readers.
 +use std::panic::Location;
 +use std::sync::Mutex;
@@ -7896,11 +7896,6 @@ index 0000000000000000000000000000000000000000..ef1a23e233abc077ea727103e4abbde5
 +/// The events since the last take and how many were past the bound.
 +pub fn take() -> (Vec<Event>, u64) {
 +    std::mem::take(&mut *LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
-+}
-+
-+/// Read pending events without consuming the frame owner's trace.
-+pub fn snapshot() -> (Vec<Event>, u64) {
-+    LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
 +}
 +
 +#[cfg(test)]

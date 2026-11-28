@@ -102,11 +102,6 @@ pub fn take() -> (Vec<Event>, u64) {
     std::mem::take(&mut *LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
 }
 
-/// Read pending events without consuming the frame owner's trace.
-pub fn snapshot() -> (Vec<Event>, u64) {
-    LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
