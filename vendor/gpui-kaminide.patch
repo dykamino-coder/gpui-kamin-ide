@@ -43415,10 +43415,10 @@ index 0000000000000000000000000000000000000000..5e503a58ba5a34f606b276e05281cd5a
 +}
 diff --git a/vendor/gpui/src/window/plane3d/group.rs b/vendor/gpui/src/window/plane3d/group.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5e2e495ec9305260ecf58e78decbfdafc4d16424
+index 0000000000000000000000000000000000000000..41fa724c99e838a71d480de814a9ec2316fd743c
 --- /dev/null
 +++ b/vendor/gpui/src/window/plane3d/group.rs
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,65 @@
 +//! Place planes without changing composite geometry or paint order.
 +
 +use super::*;
@@ -43466,7 +43466,9 @@ index 0000000000000000000000000000000000000000..5e2e495ec9305260ecf58e78decbfdaf
 +        fragment: u32,
 +        mask: ContentMask<ScaledPixels>,
 +    ) {
-+        self.next_frame.scene.insert_group_surface(
++        let unbounded = self.content_mask_stack.len() == 1;
++        let scale = self.scale_factor();
++        self.next_frame.with_scene_node(scale, |scene| scene.insert_group_surface(
 +            PaintSurface {
 +                order: 0,
 +                bounds: mask.bounds,
@@ -43478,8 +43480,8 @@ index 0000000000000000000000000000000000000000..5e2e495ec9305260ecf58e78decbfdaf
 +                color_matrix: None,
 +                fragment,
 +            },
-+            self.content_mask_stack.len() == 1,
-+        );
++            unbounded,
++        ));
 +    }
 +}
 diff --git a/vendor/gpui/src/window/plane3d/replay.rs b/vendor/gpui/src/window/plane3d/replay.rs

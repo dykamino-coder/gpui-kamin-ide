@@ -5,7 +5,7 @@ mod flat;
 pub use flat::FlatTransform;
 mod matrices4;
 mod perspective_frame;
-pub use perspective_frame::PerspectiveInputs;
+pub use perspective_frame::{PerspectiveFrame, PerspectiveInputs};
 mod frame3d;
 pub use frame3d::{Frame3d, Frame3dBuild};
 
@@ -62,14 +62,6 @@ pub struct Transform {
     /// Identity or a single 2D scale function, eligible for primitive interpolation.
     pub(crate) scale_primitive: bool,
 }
-
-/// Ячейка матрицы перспективы элемента в точках устройства
-/// (css-transforms-2 §perspective-matrix-computation): заводится при
-/// разборе `perspective`, наполняется его `Transformed::paint`, читается
-/// объёмным путём ПРЯМЫХ детей. Разделяемая ячейка, а не стек кадра:
-/// абсолютный ребёнок с `z-index`/`fixed` рисуется отложенным слоем
-/// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
-pub type PerspectiveFrame = std::rc::Rc<std::cell::RefCell<Option<PerspectiveInputs>>>;
 
 /// Единичная 4×4.
 pub const IDENTITY4: [[f32; 4]; 4] = [

@@ -35,10 +35,7 @@ pub(crate) fn paint_3d(
         raw: [f32::from(raw_origin.x), f32::from(raw_origin.y)],
         origin: (ox, oy),
         scale_factor: sf,
-        perspective: group
-            .under_perspective
-            .as_ref()
-            .and_then(|f| f.borrow().clone()),
+        perspective: group.under_perspective.as_ref().and_then(|f| f.source()),
     };
     let own = inputs.own();
     // Вырожденная 4×4 (`scale3d(2, 2, 0)`, transform3d-scale-004:

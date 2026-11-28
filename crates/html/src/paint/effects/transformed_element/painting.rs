@@ -93,7 +93,7 @@ pub(super) fn paint_body(
             .perspective_origin_px
             .1
             .unwrap_or(h * group.perspective_origin.1);
-        *frame.borrow_mut() = Some(crate::style::computed::PerspectiveInputs {
+        frame.set(crate::style::computed::PerspectiveInputs {
             distance: d,
             base: raw_origin,
             origin: (px, py),

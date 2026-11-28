@@ -2,6 +2,21 @@
 
 use super::{Transform, mul4};
 use gpui::{Pixels, Point, ScrollMotion};
+use std::{cell::RefCell, rc::Rc};
+
+/// A parent's shared spatial source, including deferred direct children.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PerspectiveFrame(Rc<RefCell<Option<PerspectiveInputs>>>);
+
+impl PerspectiveFrame {
+    pub fn source(&self) -> Option<PerspectiveInputs> {
+        self.0.borrow().clone()
+    }
+
+    pub fn set(&self, inputs: PerspectiveInputs) {
+        *self.0.borrow_mut() = Some(inputs);
+    }
+}
 
 /// Inputs remain attached to the parent's frame when a child scrolls inside it.
 #[derive(Clone, Debug, PartialEq)]

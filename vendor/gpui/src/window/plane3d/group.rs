@@ -45,7 +45,9 @@ impl Window {
         fragment: u32,
         mask: ContentMask<ScaledPixels>,
     ) {
-        self.next_frame.scene.insert_group_surface(
+        let unbounded = self.content_mask_stack.len() == 1;
+        let scale = self.scale_factor();
+        self.next_frame.with_scene_node(scale, |scene| scene.insert_group_surface(
             PaintSurface {
                 order: 0,
                 bounds: mask.bounds,
@@ -57,7 +59,7 @@ impl Window {
                 color_matrix: None,
                 fragment,
             },
-            self.content_mask_stack.len() == 1,
-        );
+            unbounded,
+        ));
     }
 }
