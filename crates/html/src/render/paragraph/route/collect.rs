@@ -25,6 +25,8 @@ pub(crate) fn paragraph_pieces_routed(
     first_line: &Computed,
     native_request: Option<&NativeRequest<'_>>,
 ) -> AnyElement {
+    // DevTools: the build of paragraphs inside the document build (inclusive).
+    crate::work::time!(_build, ParagraphBuildNs);
     let vcx = opts.cx.vcx();
     // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки
     // кусков: куски строят вложенные абзацы (`inline-block`, `<svg>`), и

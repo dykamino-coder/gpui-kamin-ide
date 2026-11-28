@@ -21,6 +21,7 @@ impl FlowReuse {
         // width would not replay it (Blink `ShouldCreateSubsequence` caches
         // only where a replay is likely).
         if content.follows && self.resized.get() {
+            crate::work::add!(ContentsUnrecordedResized, 1);
             return;
         }
         let end = Counters::read(&opts.cx);

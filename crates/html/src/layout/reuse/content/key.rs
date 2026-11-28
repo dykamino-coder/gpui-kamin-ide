@@ -98,7 +98,7 @@ impl ContentKey {
 
 /// The key of the records and bans of the content of box `id`: apart from
 /// the node ids that key the root flow's records (the top bit).
-pub(super) fn key(id: BoxId) -> u64 {
+pub(in crate::layout::reuse) fn key(id: BoxId) -> u64 {
     1 << 63 | u64::from(id.generation) << 32 | u64::from(id.slot)
 }
 

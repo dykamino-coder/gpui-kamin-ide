@@ -70,13 +70,6 @@ pub const SPACER: &str = "\u{feff}";
 /// Метка атомарного куска: ширины не несёт, ряд пробелов не рвёт.
 pub const ZWSP: &str = "\u{200b}";
 
-/// Box ids of inline edge spacers (`Computed::spacer_edge`); 0 means none.
-pub(super) static SPACER_BOX: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-
-/// Ids for the transparent band colour of inline boxes with a border and no
-/// background (see `collect_with_empty_metrics`).
-pub(super) static BORDER_BAND: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-
 /// Edge spacers with their box: (byte offset, box id, physical left edge,
 /// own rtl), in logical order.
 pub fn spacer_edges(pieces: &[Piece]) -> Vec<(usize, u32, bool, bool)> {
