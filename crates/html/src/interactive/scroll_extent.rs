@@ -135,6 +135,12 @@ impl Frame {
         self.root.set(root.map(|e| e.node_id));
         self.viewport
             .set(root.is_some_and(|e| e.tag == "html-viewport"));
+        // The range is the content the prepaint measures (`settle`): the
+        // scroller keeps the offset asked for until then (CSSOM View: a
+        // scroll position is clamped to the scrolling area layout gives).
+        if let Some(handle) = self.handle.borrow().as_ref() {
+            handle.measure_range_after_prepaint(root.is_some());
+        }
         root.map(|_| self.clone())
     }
 }
