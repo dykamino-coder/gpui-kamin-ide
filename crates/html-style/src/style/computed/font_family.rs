@@ -198,6 +198,9 @@ mod tests {
         );
         let style = family(&doc, "Ahem, Helvetica");
         assert_eq!(style.inh.font.font_family.as_deref(), Some("Ahem"));
-        assert_eq!(style.inh.font.font_families.unwrap()[1], "Helvetica");
+        assert_eq!(
+            style.inh.font.font_families.as_ref().unwrap()[1],
+            "Helvetica"
+        );
     }
 }
