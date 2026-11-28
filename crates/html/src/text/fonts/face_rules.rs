@@ -16,10 +16,15 @@ pub(super) fn declaration(block: &str, name: &str) -> Option<String> {
     css::resource_rules::descriptor(block, name)
 }
 
-/// Select the first supported file source; local() is resolved by system fallback.
-pub(super) fn source(block: &str) -> Option<String> {
-    let src = declaration(block, "src")?;
-    let mut fallback = None;
+/// CSS Fonts §4.3: try URL sources in order until one activates successfully.
+/// A filename extension does not establish support or reorder the list.
+pub(super) fn try_source<T, E>(
+    block: &str,
+    mut activate: impl FnMut(String) -> Result<Option<T>, E>,
+) -> Result<Option<T>, E> {
+    let Some(src) = declaration(block, "src") else {
+        return Ok(None);
+    };
     for part in css::split_top_level(&src, ',') {
         let part = part.trim();
         if !css::at_url(part) {
@@ -29,20 +34,16 @@ pub(super) fn source(block: &str) -> Option<String> {
             continue;
         };
         let path = css::unescape(&path);
-        let known = matches!(
-            std::path::Path::new(&path)
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("ttf" | "otf" | "woff" | "woff2")
-        );
-        if known {
-            return Some(path);
+        if let Some(active) = activate(path)? {
+            return Ok(Some(active));
         }
-        fallback.get_or_insert(path);
     }
-    fallback
+    Ok(None)
+}
+
+#[cfg(test)]
+pub(super) fn source(block: &str) -> Option<String> {
+    try_source::<_, std::convert::Infallible>(block, |path| Ok(Some(path))).unwrap()
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use super::*;
 /// Дорожка сетки в терминах GPUI. Нижняя грань всегда `min-content`: без неё
 /// колонка на узкой панели схлопывается в ноль и содержимое обрезается.
 /// Одна грань дорожки.
-fn bound(t: &Track) -> gpui::GridTrack {
+fn bound(t: &Track, c: &Computed, vcx: crate::values::ValueCx<'_>) -> gpui::GridTrack {
     match t {
         Track::Px(v) => gpui::GridTrack::Pixels(px(*v)),
         Track::Auto => gpui::GridTrack::Auto,
@@ -13,9 +13,33 @@ fn bound(t: &Track) -> gpui::GridTrack {
         Track::MaxContent => gpui::GridTrack::MaxContent,
         Track::Fr(f) => gpui::GridTrack::Fraction(*f),
         Track::Pct(p) => gpui::GridTrack::Percent(*p),
-        // Сюда единица шрифта дойти не должна: её переводит в точки
-        // разрешение кегля. Если всё же дошла — ведём себя как `auto`.
-        Track::Font(_) => gpui::GridTrack::Auto,
+        Track::Font(l) | Track::FitFont(l) => {
+            let cx = crate::style::computed::LenCx {
+                font: Some(c.font_cx(vcx)),
+                viewport: Some(c.viewport_cx(vcx.viewport, vcx)),
+                ..Default::default()
+            };
+            // Percentages refer to the grid axis, rather than the viewport.
+            let terms = if matches!(l, Len::Calc(_) | Len::Math(_)) {
+                cx.math_terms(*l, vcx)
+            } else {
+                cx.px(*l, vcx).map(|v| (0.0, v))
+            };
+            let Some((fraction, add)) = terms else {
+                return gpui::GridTrack::Auto;
+            };
+            if matches!(t, Track::FitFont(_)) {
+                gpui::GridTrack::FitContentCalc {
+                    fraction,
+                    add: px(add),
+                }
+            } else {
+                gpui::GridTrack::Calc {
+                    fraction,
+                    add: px(add),
+                }
+            }
+        }
         Track::FitPx(v) => gpui::GridTrack::FitContentPx(px(*v)),
         Track::FitPct(p) => gpui::GridTrack::FitContentPercent(*p),
     }
@@ -28,17 +52,23 @@ fn bound(t: &Track) -> gpui::GridTrack {
 /// с Chrome: колонка 120px выходила 200). Исключение — доля свободного места:
 /// `1fr` в CSS и есть `minmax(auto, 1fr)`, иначе она схлопывается под
 /// содержимым.
-pub(super) fn track(t: &TrackSize) -> gpui::GridTrack {
+pub(super) fn track(
+    t: &TrackSize,
+    c: &Computed,
+    vcx: crate::values::ValueCx<'_>,
+) -> gpui::GridTrack {
     match t {
-        TrackSize::MinMax(lo, hi) => gpui::GridTrack::MinMax(Box::new((bound(lo), bound(hi)))),
+        TrackSize::MinMax(lo, hi) => {
+            gpui::GridTrack::MinMax(Box::new((bound(lo, c, vcx), bound(hi, c, vcx))))
+        }
         TrackSize::Single(Track::Fr(f)) => gpui::GridTrack::MinMax(Box::new((
             gpui::GridTrack::Auto,
             gpui::GridTrack::Fraction(*f),
         ))),
-        TrackSize::Single(one) => bound(one),
+        TrackSize::Single(one) => bound(one, c, vcx),
         TrackSize::AutoRepeat { fit, tracks } => gpui::GridTrack::AutoRepeat {
             fit: *fit,
-            tracks: tracks.iter().map(track).collect(),
+            tracks: tracks.iter().map(|t| track(t, c, vcx)).collect(),
         },
     }
 }

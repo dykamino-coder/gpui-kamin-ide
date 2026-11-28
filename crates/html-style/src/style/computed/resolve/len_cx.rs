@@ -77,26 +77,7 @@ impl<'a> LenCx<'a> {
         Some(match l {
             Len::Px(v) => v,
             Len::Pct(k) => pct(k)?,
-            Len::Calc(i) => {
-                // Слагаемые окна и контейнера сворачиваются по окну
-                // контекста; после свёртки сумма из одних точек — длина.
-                let mut sum = calc_get(i, vcx);
-                let folded = self
-                    .viewport
-                    .is_some_and(|vp| sum.fold_viewport(vp.size, vp.vertical, vp.container));
-                // A container unit counts too: an axis without a query container
-                // falls back to the viewport (`ViewportCx::for_box`).
-                if folded {
-                    crate::values::viewport_reads::note(vcx);
-                }
-                let (k, add) = if folded {
-                    sum.length_percentage()?
-                } else {
-                    sum.pct_px()?
-                };
-                if k == 0.0 { add } else { pct(k)? + add }
-            }
-            Len::Math(_) => {
+            Len::Calc(_) | Len::Math(_) => {
                 let (k, add) = self.math_terms(l, vcx)?;
                 if k == 0.0 { add } else { pct(k)? + add }
             }

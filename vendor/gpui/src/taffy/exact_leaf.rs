@@ -103,6 +103,14 @@ impl TaffyLayoutEngine {
         self.leaf(id, true)
     }
 
+    /// An overflowing unpainted wrapper with a bounded caller guarantee:
+    /// its content stays at inline-start at every width no larger than its
+    /// current width. The caller must restrict reuse to that range.
+    pub(crate) fn unpainted_leaf_narrower(&self, id: LayoutId) -> Option<ExactLeaf> {
+        let leaf = self.leaf(id, true)?;
+        (leaf.min_width > leaf.size.width).then_some(leaf)
+    }
+
     fn leaf(&self, id: LayoutId, unpainted: bool) -> Option<ExactLeaf> {
         let node: NodeId = id.into();
         let layout = self.taffy.layout(node).ok()?;

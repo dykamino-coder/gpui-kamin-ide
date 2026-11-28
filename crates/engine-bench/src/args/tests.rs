@@ -1,6 +1,53 @@
 use super::Args;
 
 #[test]
+fn capture_scale_defaults_to_one_and_preserves_fractional_scale() {
+    let page = std::env::temp_dir().join(format!("engine-bench-scale-{}.html", std::process::id()));
+    std::fs::write(&page, "<!doctype html><p>scale</p>").unwrap();
+    let parse = |extra: &[&str]| {
+        Args::parse(
+            std::iter::once(page.to_str().unwrap())
+                .chain(extra.iter().copied())
+                .map(str::to_owned),
+        )
+    };
+    let base = parse(&["--viewport", "1446x900"]).unwrap().unwrap();
+    assert_eq!(base.device_scale_factor, 1.);
+    assert_eq!(base.capture_size(), (1446, 900));
+    let scaled = parse(&["--viewport", "1446x900", "--device-scale-factor", "1.25"])
+        .unwrap()
+        .unwrap();
+    assert_eq!(scaled.device_scale_factor, 1.25);
+    assert_eq!(scaled.capture_size(), (1808, 1125));
+    assert_eq!(scaled.viewport, base.viewport);
+    std::fs::remove_file(page).unwrap();
+}
+
+#[test]
+fn scroll_step_supports_stationary_and_end_clamped_captures() {
+    let page = std::env::temp_dir().join(format!(
+        "engine-bench-scroll-step-{}.html",
+        std::process::id()
+    ));
+    std::fs::write(&page, "<p>scroll</p>").unwrap();
+    let parse = |step: &str| {
+        Args::parse(
+            [page.to_str().unwrap(), "--scroll-step", step]
+                .into_iter()
+                .map(str::to_owned),
+        )
+    };
+    for (value, expected) in [("0", 0.), ("0.5", 0.5), ("100000000", 100_000_000.)] {
+        assert_eq!(parse(value).unwrap().unwrap().scroll_step, expected);
+    }
+    for value in ["NaN", "inf", "-1", "1e99"] {
+        let error = parse(value).err().unwrap().to_string();
+        assert!(error.contains("finite and nonnegative"), "{value}: {error}");
+    }
+    std::fs::remove_file(page).unwrap();
+}
+
+#[test]
 fn markup_configuration_is_owned_by_each_parse_session() {
     let page = std::env::temp_dir().join("engine-bench-session-config-test.html");
     std::fs::write(&page, "<p>x</p>").unwrap();

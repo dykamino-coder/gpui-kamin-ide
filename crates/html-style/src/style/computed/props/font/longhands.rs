@@ -67,6 +67,7 @@ impl Computed {
             }
             FontSize if inherit => {
                 (self.inh.font.font_size, self.reset_cascade.font_size_step) = (None, 0);
+                self.inh.font.font_size_origin = 0;
                 self.reset_svg_math.math_font_size = false;
             }
             FontSize => {
@@ -74,6 +75,30 @@ impl Computed {
                     return;
                 };
                 self.accept_declaration();
+                self.inh.font.font_size_origin = match size {
+                    Size::Length(_)
+                        if v.contains('(')
+                            && crate::style::values::value::Len::absolute_font_math(v, vcx) =>
+                    {
+                        10
+                    }
+                    Size::Keyword(crate::style::values::value::Len::Px(px), _) => {
+                        [9., 10., 13., 16., 18., 24., 32., 48.]
+                            .iter()
+                            .position(|v| *v == px)
+                            .map_or(10, |i| i as u8 + 1)
+                    }
+                    Size::Keyword(..) => 9,
+                    Size::Length(
+                        crate::style::values::value::Len::Em(_)
+                        | crate::style::values::value::Len::Pct(_)
+                        | crate::style::values::value::Len::Ch(_)
+                        | crate::style::values::value::Len::Ex(_)
+                        | crate::style::values::value::Len::Ic(_)
+                        | crate::style::values::value::Len::Lh(_),
+                    ) => 9,
+                    _ => 10,
+                };
                 (
                     self.inh.font.font_size,
                     self.reset_cascade.font_size_step,

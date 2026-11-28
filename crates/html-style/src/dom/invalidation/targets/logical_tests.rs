@@ -232,3 +232,6 @@ fn a_changed_attribute_condition_is_tested_in_both_states_of_the_batch() {
         assert_eq!(found.len(), want, "{css}");
     }
 }
+
+#[path = "disabled_tests.rs"]
+mod disabled;

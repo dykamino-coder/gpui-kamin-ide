@@ -128,7 +128,7 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     assert_eq!(rebound.reset_box_layout.margin.top, None);
     assert_eq!(rebound.reset_box_layout.width, None);
     assert_eq!(rebound.reset_background.background, None);
-    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(32.0)));
+    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(24.0 * 1.2)));
 
     let mut contents = root.children.clone();
     let Node::Element(outer) = &mut contents[0] else {
@@ -152,5 +152,5 @@ fn promoted_explicit_inheritance_is_not_rebound_to_box_parent() {
     assert_eq!(rebound.reset_box_layout.margin.top, Some(Len::Px(12.0)));
     assert_eq!(rebound.reset_box_layout.width, Some(Len::Px(13.0)));
     assert!(rebound.reset_background.background.is_some());
-    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(32.0)));
+    assert_eq!(rebound.inh.font.font_size, Some(Len::Px(24.0 * 1.2)));
 }

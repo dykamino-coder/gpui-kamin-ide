@@ -19,7 +19,7 @@ use crate::render::first_letter_scope::Scope;
 use crate::render::paragraph::route::paint_inline_step7;
 use crate::style::computed::{BoxStyle, Position};
 use crate::text::line_trim::Trim;
-use gpui::{AnyElement, IntoElement, ParentElement, Styled};
+use gpui::{AnyElement, IntoElement, ParentElement};
 
 #[cfg(test)]
 mod tests;
@@ -141,8 +141,9 @@ pub(in crate::render::blocks::flow) fn try_build(
     if !straight(e, &merged) {
         return Some(Leaf::Generic(Box::new(merged)));
     }
-    let mut d = styled_div_with(e, &merged, &opts.cx).flex().flex_col();
-    d.style().block_baselines = Some(true);
+    // The paragraph participates in normal block flow, just as on the general
+    // route; it must not acquire flex sizing or flex margin semantics.
+    let mut d = styled_div_with(e, &merged, &opts.cx);
     if !e.children.is_empty() {
         // One copy of the options carries the child sizes, the entered depth
         // and the paragraph's trim owner.

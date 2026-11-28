@@ -11,6 +11,10 @@ pub(super) struct Atom {
 }
 
 impl Atom {
+    pub(super) fn is_percentage(&self) -> bool {
+        self.nature == 1
+    }
+
     pub(super) fn parse(s: &str, vcx: ValueCx<'_>) -> Option<Self> {
         let split = s
             .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c == '%')

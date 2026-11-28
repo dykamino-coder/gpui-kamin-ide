@@ -25,6 +25,9 @@ pub const BROWSER_CSS: &str = r#"
     ul, ol { margin-block: 1em; margin-inline: 0; padding-inline-start: 40px }
     ol { list-style-type: decimal }
     ul, menu, dir { list-style-type: disc }
+    :is(ul, ol, menu, dir) :is(ul, menu, dir) { list-style-type: circle }
+    :is(ul, ol, menu, dir) :is(ul, ol, menu, dir) :is(ul, menu, dir) { list-style-type: square }
+    :is(ul, ol, menu, dir) :is(ul, ol, menu, dir) { margin-block: 0 }
     li { margin: 0 }
     dl { margin-block: 1em; margin-inline: 0 }
     dd { margin-left: 40px }
@@ -61,6 +64,7 @@ pub const BROWSER_CSS: &str = r#"
     sup { vertical-align: super; font-size: smaller }
     u, ins { text-decoration: underline }
     s, strike, del { text-decoration: line-through }
+    abbr[title] { text-decoration: underline dotted }
     nobr { white-space: nowrap }
     /* UA DEVIATION: iframe lacks the 2px inset border expected by HTML
        Rendering, Embedded content (#embedded-content-rendering-rules) and
@@ -68,13 +72,14 @@ pub const BROWSER_CSS: &str = r#"
        docs/html-ua-deviations.md for the unresolved rule and acceptance case. */
     fieldset { margin-inline: 2px; border: 2px groove; padding: 0.35em 0.75em 0.625em }
     legend { padding-inline: 2px }
-    a[href] { color: #0000ee }
+    a[href] { color: LinkText }
     /* css-overflow-5: a scroll marker behaves like a link (Blink
        `scroll_marker.css`: `color: -webkit-link; text-decoration: underline`). */
-    *::scroll-marker { color: #0000ee; text-decoration: underline }
+    *::scroll-marker { color: LinkText; text-decoration: underline }
     /* HTML Rendering, Button layout (#button-layout): a button generates
        an inline-block box, so its contents have an independent layout context. */
     button { display: inline-block; padding: 1px 6px; border-radius: 0 }
+    button:disabled, input:disabled, select:disabled, textarea:disabled { color: GrayText }
     /* css-overflow-5 §scroll-buttons: `::scroll-button()`s are styled like
        `<button>` (Blink `scroll_button.css`). */
     *::scroll-button(*) { display: inline-block; padding: 1px 6px; border-radius: 0;
@@ -95,3 +100,35 @@ pub const BROWSER_CSS: &str = r#"
                overflow-wrap: break-word; border: 1px solid #767676;
                border-radius: 0; padding: 2px; margin: 0 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn board_appearance_browser_lists_abbreviations_and_disabled_ink() {
+        let parsed = crate::dom::parse(
+            "<ul id=a><li>x<ul id=b><li>y<ul id=c><li>z</ul></ul></ul>\
+             <abbr id=d title=expanded>abbr</abbr><button disabled id=e>x</button>",
+            super::BROWSER_CSS,
+        );
+        let node = |id: &str| {
+            crate::dom::test_support::find(&parsed.nodes, &|e| e.attr("id") == Some(id)).unwrap()
+        };
+        use crate::style::computed::{DecorStyle, MarkerType};
+        for (id, marker) in [("a", "disc"), ("b", "circle"), ("c", "square")] {
+            assert_eq!(
+                node(id).style.used().inh.table_list.list_style_type,
+                Some(MarkerType::Counter(marker.into())),
+                "{id}"
+            );
+        }
+        assert_eq!(
+            node("d").style.used().reset_text_box.td_style,
+            Some(DecorStyle::Dotted)
+        );
+        let vcx = parsed.values();
+        assert_eq!(
+            node("e").style.used().inh.ui.color,
+            crate::style::values::value::Color::parse("GrayText", vcx)
+        );
+    }
+}

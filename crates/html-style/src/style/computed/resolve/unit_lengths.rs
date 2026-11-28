@@ -37,6 +37,10 @@ pub(super) fn walk_unit_lengths<T: Target>(
     fix: impl Fn(&mut Option<Len>) + Copy,
     vcx: ValueCx<'_>,
 ) {
+    target.rewrite(
+        |s| s.reset_grid.track_sizes().any(|t| t.lengths_pending(moves)),
+        |s| s.reset_grid.for_each_track_mut(|t| t.resolve_lengths(fix)),
+    );
     lengths(
         target,
         moves,

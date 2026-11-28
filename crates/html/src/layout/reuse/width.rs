@@ -56,11 +56,14 @@ pub(super) fn independent(e: &Element, vcx: ValueCx<'_>) -> Width {
     let style = e.style.used();
     let b = &style.reset_box_layout;
     let (m, p) = (&b.margin, &b.padding);
+    let auto_margin = [m.left, m.right].contains(&Some(Len::Auto));
+    let auto_width = matches!(b.width, None | Some(Len::Auto));
     let edges = !style.wm().vertical()
         && !style.wm().rtl()
-        && [m.top, m.right, m.bottom, m.left]
+        && [m.top, m.bottom].into_iter().all(px_or_none)
+        && [m.left, m.right]
             .into_iter()
-            .all(px_or_none)
+            .all(|l| px_or_none(l) || (auto_width && l == Some(Len::Auto)))
         && [p.top, p.right, p.bottom, p.left]
             .into_iter()
             .all(px_or_none)
@@ -69,10 +72,16 @@ pub(super) fn independent(e: &Element, vcx: ValueCx<'_>) -> Width {
     if !edges || viewport_dependent(e, vcx) {
         return Width::Dependent;
     }
+    // CSS 2 §10.3.3: an overflowing auto-width box resolves auto margins
+    // to zero. Only the measured floor range is reusable: positive free
+    // space can change its position, even when its text stays on one line.
+    if auto_margin {
+        return Width::Floor;
+    }
     match b.width {
         Some(Len::Px(_)) => Width::Fixed,
         None if text_only(e) => Width::Stretch,
-        None => Width::Floor,
+        None | Some(Len::Auto) => Width::Floor,
         Some(_) => Width::Dependent,
     }
 }

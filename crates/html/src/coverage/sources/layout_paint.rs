@@ -45,6 +45,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../../../html-style/src/resources/svg_document/serialize/attributes.rs"),
     include_str!("../../../../html-style/src/resources/svg_document/serialize/filters.rs"),
     include_str!("../../../../html-style/src/resources/svg_document/serialize/geometry.rs"),
+    include_str!("../../../../html-style/src/resources/svg_document/serialize/paint.rs"),
     include_str!("../../../../html-style/src/resources/svg_document/serialize/sizing.rs"),
     include_str!("../../../../html-style/src/resources/svg_document/serialize/transform.rs"),
     include_str!("../../../../html-style/src/resources/svg_document/clip.rs"),

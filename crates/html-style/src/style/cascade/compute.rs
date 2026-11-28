@@ -19,6 +19,7 @@ use crate::values::ValueCx;
 
 mod background;
 mod explicit;
+pub(super) mod font_defaults;
 mod fonts;
 mod longhands;
 mod sizes;
@@ -98,6 +99,7 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
     background::inherit_background(own, &mut c);
     fonts::inherit_fonts(parent, own, &mut c);
     crate::style::computed::math_style::inherit(parent, &mut c, vcx);
+    font_defaults::inherit_size(parent, own, &mut c, vcx);
     text::inherit_text(parent, own, &mut c);
     c.resolve_gradient_current_color(vcx);
     text::inherit_ui(parent, own, &mut c);

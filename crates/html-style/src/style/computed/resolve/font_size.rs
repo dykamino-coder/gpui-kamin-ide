@@ -8,10 +8,6 @@ use super::*;
 use crate::style::values::value::calc_get;
 use crate::values::ValueCx;
 
-/// Таблица ключевых кеглей при базовом 16px (CSS 2.1 §15.7, css-fonts-4
-/// §absolute-size): по ней шагают `larger`/`smaller`.
-const KEYWORD_PX: [f32; 8] = [9.0, 10.0, 13.0, 16.0, 18.0, 24.0, 32.0, 48.0];
-
 impl Computed {
     /// Вычисленный кегль из computed размера и used метрик родителя `font`. `None` — кегль не задан
     /// (наследуется) или зависит от недоступной метрики (`lh` в `calc()`
@@ -24,14 +20,17 @@ impl Computed {
     pub fn computed_font_px(&self, font: FontCx<'_>, vcx: ValueCx<'_>) -> Option<f32> {
         let parent_px = font.font_px;
         let family = font.family;
-        // `larger`/`smaller` шагают по таблице, если кегль родителя в ней
-        // стоит (§15.7); иначе работает запасной множитель `Len::Em`.
-        if self.reset_cascade.font_size_step != 0
-            && let Some(i) = KEYWORD_PX.iter().position(|t| (t - parent_px).abs() < 0.01)
-            && let Ok(j) = usize::try_from(i as i32 + i32::from(self.reset_cascade.font_size_step))
-            && let Some(px) = KEYWORD_PX.get(j)
-        {
-            return Some(*px);
+        // Relative keywords scale the computed parent size, including when
+        // that size happens to equal an absolute-size keyword table entry.
+        if self.reset_cascade.font_size_step != 0 {
+            return Some(
+                parent_px
+                    * if self.reset_cascade.font_size_step > 0 {
+                        1.2
+                    } else {
+                        5. / 6.
+                    },
+            );
         }
         let metrics = || {
             font.units.map_or_else(
@@ -125,7 +124,7 @@ mod tests {
             ("150%", Some(30.0)),
             ("calc(1em + 4px)", Some(24.0)),
             ("calc(50% + 1em + 2px)", Some(32.0)),
-            ("larger", Some(24.0)),
+            ("larger", Some(21.6)),
             ("10vw", None),
         ] {
             let (c, doc) = computed(value);

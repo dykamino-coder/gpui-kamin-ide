@@ -788,6 +788,16 @@ impl Window {
         Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
     }
 
+    /// The leaf of an unpainted wrapper whose content overflows its width.
+    /// The caller guarantees that the content stays at inline-start at every
+    /// width no larger than the current wrapper width, and must restrict reuse
+    /// to that range. This weaker, bounded guarantee does not satisfy
+    /// [`Self::layout_snapshot_unpainted`]'s contract at arbitrary widths.
+    pub fn layout_snapshot_unpainted_narrower(&self, id: LayoutId) -> Option<LayoutSnapshot> {
+        let leaf = self.layout_engine.as_ref()?.unpainted_leaf_narrower(id)?;
+        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
+    }
+
     /// Position in this pass's layout requests; pass it to `capture_layout`
     /// after requesting a subtree.
     pub fn layout_request_position(&self) -> usize {

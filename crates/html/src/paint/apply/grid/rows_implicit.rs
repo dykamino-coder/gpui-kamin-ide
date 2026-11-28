@@ -4,7 +4,12 @@
 use super::*;
 use crate::style::values::value::px_lossy_zero;
 
-pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
+pub(super) fn grid_implicit(
+    mut d: Div,
+    c: &Computed,
+    flip: bool,
+    vcx: crate::values::ValueCx<'_>,
+) -> Div {
     // Неявные дорожки: элементов больше, чем описано — их размер задаёт
     // `grid-auto-*`, иначе они выходят по содержимому.
     let (auto_line, auto_flow_axis) = if flip {
@@ -13,17 +18,27 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
         (&c.reset_grid.grid_auto_rows, &c.reset_grid.grid_auto_cols)
     };
     if let Some(t) = auto_line {
-        d.style().grid_auto_rows = Some(track(t));
+        d.style().grid_auto_rows = Some(track(t, c, vcx));
         if !c.reset_grid.grid_auto_rows_list.is_empty() {
-            d.style().grid_auto_rows_list =
-                Some(c.reset_grid.grid_auto_rows_list.iter().map(track).collect());
+            d.style().grid_auto_rows_list = Some(
+                c.reset_grid
+                    .grid_auto_rows_list
+                    .iter()
+                    .map(|t| track(t, c, vcx))
+                    .collect(),
+            );
         }
     }
     if let Some(t) = auto_flow_axis {
-        d.style().grid_auto_cols = Some(track(t));
+        d.style().grid_auto_cols = Some(track(t, c, vcx));
         if !c.reset_grid.grid_auto_cols_list.is_empty() {
-            d.style().grid_auto_cols_list =
-                Some(c.reset_grid.grid_auto_cols_list.iter().map(track).collect());
+            d.style().grid_auto_cols_list = Some(
+                c.reset_grid
+                    .grid_auto_cols_list
+                    .iter()
+                    .map(|t| track(t, c, vcx))
+                    .collect(),
+            );
         }
     }
     // Лунки на пути сетки: одинокий `repeat(auto-*)` с дорожками ПО
@@ -62,7 +77,7 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
         {
             let line = vec![gpui::GridTrack::AutoRepeat {
                 fit: r.fit,
-                tracks: body.iter().map(track).collect(),
+                tracks: body.iter().map(|t| track(t, c, vcx)).collect(),
             }];
             d = if row_dir != flip {
                 d.grid_template_rows(line)
@@ -137,7 +152,12 @@ pub(super) fn grid_implicit(mut d: Div, c: &Computed, flip: bool) -> Div {
     d
 }
 
-pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
+pub(super) fn grid_rows_repeat(
+    mut d: Div,
+    c: &Computed,
+    flip: bool,
+    vcx: crate::values::ValueCx<'_>,
+) -> Div {
     // Повтор по ОСИ РЯДОВ: у классической сетки его не было вовсе, и
     // `grid-template-rows: repeat(auto-fill, …)` уходил в никуда — ряды
     // становились неявными, нулевой высоты.
@@ -180,7 +200,7 @@ pub(super) fn grid_rows_repeat(mut d: Div, c: &Computed, flip: bool) -> Div {
         // у лунок и у сетки-эталона по-разному (`row-auto-repeat-014`).
         let line = vec![gpui::GridTrack::AutoRepeat {
             fit: r.fit,
-            tracks: body.iter().map(track).collect(),
+            tracks: body.iter().map(|t| track(t, c, vcx)).collect(),
         }];
         d = if flip {
             d.grid_template_cols(line)

@@ -10,9 +10,9 @@ impl LenCx<'_> {
     /// The length-percentage terms of a tree the cascade did not fold (a node
     /// outside inheritance): the context viewport and font are substituted
     /// without arena writes.
-    pub(super) fn math_terms(self, l: Len, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
+    pub fn math_terms(self, l: Len, vcx: ValueCx<'_>) -> Option<(f32, f32)> {
         let mut viewport = false;
-        let sum = l.math_sum(vcx, |s| {
+        let mut fold = |s: &mut Sum| {
             let folded = self
                 .viewport
                 .is_some_and(|vp| s.fold_viewport(vp.size, vp.vertical, vp.container));
@@ -22,7 +22,14 @@ impl LenCx<'_> {
                     | f.line_px.is_some_and(|line| s.fold_line(line))
             });
             folded | font
-        });
+        };
+        let sum = if let Len::Calc(id) = l {
+            let mut sum = crate::style::values::value::calc_get(id, vcx);
+            fold(&mut sum);
+            Some(sum)
+        } else {
+            l.math_sum(vcx, fold)
+        };
         if viewport {
             crate::values::viewport_reads::note(vcx);
         }

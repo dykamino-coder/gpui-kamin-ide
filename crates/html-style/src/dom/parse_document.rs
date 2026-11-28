@@ -64,7 +64,7 @@ pub fn convert(
 pub fn convert_restyling(
     input: &Admitted,
     extra_css: &str,
-    mut media: Media,
+    media: Media,
     doc: &Rc<crate::values::DocumentValues>,
     mut invalidation: Option<&mut super::invalidation::Invalidation>,
     keep: Option<&mut super::restyle_probe::RestyleCache>,
@@ -75,10 +75,10 @@ pub fn convert_restyling(
     let dom = &input.dom;
     let xhtml = input.xhtml;
     let admission = crate::budget::admission::Admission::new(input.context().budget().clone());
-    if let Some(dark) = super::page_scheme::preference(&dom.document, media.dark, &admission)? {
-        media.dark = dark;
-    }
-    let vcx = vcx.with_scheme(crate::style::values::value::Scheme::new(media.dark));
+    let page = super::page_scheme::used_dark(&dom.document, media.dark, &admission)?;
+    let scheme =
+        crate::style::values::value::Scheme::new(media.dark).with_page(page.unwrap_or(false));
+    let vcx = vcx.with_scheme(scheme);
     // Режим quirks (HTML §13.2.6.4.1, «initial» insertion mode: документ без
     // DOCTYPE). XML и HTML-адаптер XHTML всегда работают без quirks.
     doc.quirks
@@ -134,7 +134,7 @@ pub fn convert_restyling(
                 doc.clone(),
                 has_args,
                 reads_attr,
-                (media, asked),
+                (scheme, asked),
                 extra_css,
             );
             *keep = super::restyle_probe::RestyleCache::with_probe(probe);

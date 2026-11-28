@@ -58,7 +58,9 @@ fn parse_block(raw: &str, vcx: Option<ValueCx<'_>>) -> DeclBlock {
         let (k, v) = (&item[..colon], &item[colon + 1..]);
         let name = unescape(k.trim());
         let custom = name.starts_with("--");
-        if custom && (name == "--" || !selector_tokens::ident(k.trim())) {
+        // Syntax 3 §consume-a-declaration: a property starts with one ident
+        // token. Reject an IE star hack alone, retaining the following items.
+        if !selector_tokens::ident(k.trim()) || name == "--" {
             continue;
         }
         // CSS Variables §2: custom-property names are case-sensitive tokens.
@@ -167,4 +169,33 @@ pub(super) fn strip_nested_blocks(body: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn board_appearance_invalid_declarations_preserve_the_rest_of_the_block() {
+        use crate::style::css::{parse_decls_in, parse_stylesheet};
+        let doc = crate::values::DocumentValues::detached(Default::default());
+        for bad in [
+            "*zoom:1",
+            "filter:progid:DXImageTransform.Microsoft.gradient(startColorstr='#fff',endColorstr='#000')",
+            "_width:9px",
+            r"width:9px\9",
+        ] {
+            for body in [
+                format!("margin-left:auto;{bad};margin-right:auto;width:200px"),
+                format!("margin-left:auto;margin-right:auto;width:200px;{bad}"),
+            ] {
+                let block = parse_decls_in(&body, doc.values());
+                assert_eq!(block.last("margin-left"), Some("auto"), "{body}");
+                assert_eq!(block.last("margin-right"), Some("auto"), "{body}");
+                assert_eq!(block.last("width"), Some("200px"), "{body}");
+                assert!(block.last("*zoom").is_none());
+                let rules = parse_stylesheet(&format!("div{{{body}}}")).unwrap();
+                assert_eq!(rules.len(), 1, "{body}");
+                assert_eq!(rules[0].decls.last("margin-right"), Some("auto"));
+            }
+        }
+    }
 }

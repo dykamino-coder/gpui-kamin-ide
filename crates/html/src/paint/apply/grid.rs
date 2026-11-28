@@ -17,7 +17,7 @@ pub(super) use track_sizes::to_content;
 use track_sizes::track;
 
 /// Стиль контейнера-сетки: дорожки, неявные дорожки, направление.
-pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
+pub(super) fn grid_style(mut d: Div, c: &Computed, vcx: crate::values::ValueCx<'_>) -> Div {
     d = d.grid();
     d.style().grid_axis_reversed = Some(grid_flow_axes::reversed(c));
     d = grid_lanes(d, c);
@@ -67,12 +67,15 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
     });
     let with_areas =
         |tracks: &[TrackSize], want: usize, auto: &Option<TrackSize>, list: &[TrackSize]| {
-            let mut out: Vec<gpui::GridTrack> = tracks.iter().map(track).collect();
+            let mut out: Vec<gpui::GridTrack> = tracks.iter().map(|t| track(t, c, vcx)).collect();
             let plain = tracks
                 .iter()
                 .all(|t| !matches!(t, TrackSize::AutoRepeat { .. }));
             if plain && list.is_empty() && want > out.len() {
-                let fill = auto.as_ref().map(track).unwrap_or(gpui::GridTrack::Auto);
+                let fill = auto
+                    .as_ref()
+                    .map(|t| track(t, c, vcx))
+                    .unwrap_or(gpui::GridTrack::Auto);
                 out.resize(want, fill);
             }
             out
@@ -162,7 +165,7 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
         }
         _ => {}
     }
-    d = grid_rows_repeat(d, c, flip);
+    d = grid_rows_repeat(d, c, flip, vcx);
     if let Some(rows) = &c.reset_grid.grid_rows {
         // Ряды областей сверх шаблона — тоже явные (см. `with_areas` выше).
         let tracks = with_areas(
@@ -177,5 +180,5 @@ pub(super) fn grid_style(mut d: Div, c: &Computed) -> Div {
             d.grid_template_rows(tracks)
         };
     }
-    grid_implicit(d, c, flip)
+    grid_implicit(d, c, flip, vcx)
 }

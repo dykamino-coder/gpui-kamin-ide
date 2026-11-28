@@ -5,6 +5,39 @@ use super::Document;
 use crate::text::fonts;
 
 #[test]
+fn board_appearance_font_sources_continue_after_read_decode_and_activation_failure() {
+    let calls = std::rc::Rc::new(std::cell::Cell::new(0));
+    let count = calls.clone();
+    let fonts = crate::text::metrics::FontContext::default().with_loader(move |bytes| {
+        count.set(count.get() + 1);
+        (bytes.last() == Some(&50)).then(|| "ActivatedFont".to_owned())
+    });
+    // A malformed font, rejected face, usable face, then an unused face.
+    let css = "@font-face {font-family: Ordered; src: \
+        url(data:font/ttf;base64,AAAA), \
+        url(data:font/ttf;base64,AAEAADE=), \
+        url(data:font/ttf;base64,AAEAADI=), \
+        url(data:font/ttf;base64,AAEAADM=)}";
+    let html = format!("<style>{css}</style><p>text</p>");
+    let doc = Document::builder(&html, "").fonts(&fonts).build().unwrap();
+    assert_eq!(
+        fonts::alias("Ordered", doc.state.values()).as_deref(),
+        Some("ActivatedFont")
+    );
+    assert_eq!(calls.get(), 2);
+    fonts::load_faces(css, &doc.state.text, doc.state.values()).unwrap();
+    assert_eq!(
+        fonts::alias("Ordered", doc.state.values()).as_deref(),
+        Some("ActivatedFont")
+    );
+    assert_eq!(
+        calls.get(),
+        2,
+        "both failed and successful activations are cached"
+    );
+}
+
+#[test]
 fn font_loading_resolves_the_first_html_base_before_parsing() {
     let dir = std::env::temp_dir().join(format!("kamin-document-base-{}", std::process::id()));
     let assets = dir.join("шрифты assets");

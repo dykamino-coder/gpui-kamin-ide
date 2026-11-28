@@ -101,7 +101,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         std::env::set_var("GPUI_NO_ERROR_DIALOG", "1");
     }
     let mut instrumentation = kamin_html::host::instrumentation::from_env();
-    instrumentation.scale_factor = Some(1.);
+    instrumentation.scale_factor = Some(args.device_scale_factor);
     // The journal names the element types that spend request_layout.
     instrumentation.request_layout = args.why.is_some();
     let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
@@ -165,7 +165,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         doc: empty,
                         animation_elapsed: args.animation_time(0),
                         phases: Rc::new(RefCell::new(Phases::default())),
-                        viewport: None,
+                        viewport: Some(args.viewport),
                         step: None,
                         step_opts: None,
                         fresh_scroll: None,

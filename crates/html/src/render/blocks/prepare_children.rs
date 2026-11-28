@@ -81,10 +81,9 @@ pub(crate) fn prepare_children(
         )
         .into_owned()
     };
-    // §10.3.3: у блока в потоке с `width: auto` боковое `auto`-поле
-    // используется НУЛЁМ, а коробка занимает всю ширину. У нас блок — гибкая
-    // колонка, и любое auto-поле на поперечной оси отменяет растяжение до
-    // дорожки: абзац сжимался по содержимому и уезжал к краю.
+    // Preserve auto margins until layout: CSS 2 §10.4 repeats the width
+    // and margin calculation (§10.3.3) after applying min/max constraints.
+    // Native block layout fills auto width and then distributes the remainder.
     let split = if ordered_context {
         split
     } else {
@@ -111,14 +110,19 @@ pub(crate) fn prepare_children(
                         ) =>
                 {
                     let auto = |l: Option<Len>| l == Some(Len::Auto);
-                    let table = e.tag == "table" || e.style.used().reset_box_layout.display == Some(Display::Table);
-                    if matches!(e.style.used().reset_box_layout.width, None | Some(Len::Auto))
-                        && !table
+                    let table = e.tag == "table"
+                        || e.style.used().reset_box_layout.display == Some(Display::Table);
+                    if matches!(
+                        e.style.used().reset_box_layout.width,
+                        None | Some(Len::Auto)
+                    ) && !table
                         && !replaced_tag(&e)
                     {
                         e.style.used_mut().reset_box_layout.width = Some(Len::FitContent);
                     }
-                    if !auto(e.style.used().reset_box_layout.margin.left) && !auto(e.style.used().reset_box_layout.margin.right) {
+                    if !auto(e.style.used().reset_box_layout.margin.left)
+                        && !auto(e.style.used().reset_box_layout.margin.right)
+                    {
                         let rtl = inherited.wm().rtl();
                         match (e.style.used().reset_flex.justify_self, rtl) {
                             (Some(Align::Center), _) => {
@@ -130,24 +134,6 @@ pub(crate) fn prepare_children(
                             }
                             _ => e.style.used_mut().reset_box_layout.margin.right = Some(Len::Auto),
                         }
-                    }
-                    Node::Element(e)
-                }
-                Node::Element(mut e)
-                    if in_flow(&e.style.used())
-                        // Orthogonal auto block size fits content; its margins
-                        // position it in the containing block (WM 4 section 7.3).
-                        && (e.style.cascaded().vertical_decl().or(inherited.vertical_decl()) == Some(true))
-                            == (inherited.wm().vertical())
-                        && matches!(e.style.used().reset_box_layout.width, None | Some(Len::Auto))
-                        && (e.style.used().reset_box_layout.margin.left == Some(Len::Auto)
-                            || e.style.used().reset_box_layout.margin.right == Some(Len::Auto)) =>
-                {
-                    if e.style.used().reset_box_layout.margin.left == Some(Len::Auto) {
-                        e.style.used_mut().reset_box_layout.margin.left = Some(Len::Px(0.0));
-                    }
-                    if e.style.used().reset_box_layout.margin.right == Some(Len::Auto) {
-                        e.style.used_mut().reset_box_layout.margin.right = Some(Len::Px(0.0));
                     }
                     Node::Element(e)
                 }

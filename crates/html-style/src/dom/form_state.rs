@@ -18,7 +18,9 @@ use markup5ever_rcdom::{Handle, NodeData};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
+mod disabled;
 mod selection;
+pub(crate) use disabled::disabled;
 
 const HTML: &str = "http://www.w3.org/1999/xhtml";
 

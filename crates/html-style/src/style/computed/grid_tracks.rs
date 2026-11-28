@@ -4,7 +4,10 @@ use crate::style::computed::*;
 use crate::style::values::value::Len;
 
 mod auto_fill;
+mod lengths;
 mod line_names;
+#[cfg(test)]
+mod tests;
 mod track_list;
 pub(super) use auto_fill::{
     auto_fill_body, auto_fill_body_tracks, auto_fill_fit_px, auto_fill_intrinsic, auto_fill_max,
@@ -22,8 +25,8 @@ pub enum Track {
     Fr(f32),
     /// Доля ШИРИНЫ СЕТКИ (`25%`) — не путать с долей остатка (`fr`).
     Pct(f32),
-    /// Длина в единицах ШРИФТА (`2ch`, `1em`, `8rem`): кегль и метрики на
-    /// разборе ещё неизвестны, величина считается вместе с прочими `em`.
+    /// Deferred font, viewport or mixed length. The percentage basis becomes
+    /// available only when the grid itself is laid out.
     Font(Len),
     Auto,
     MinContent,
@@ -33,6 +36,8 @@ pub enum Track {
     /// `fit-content( <length-percentage> )`), а не фиксированный максимум.
     FitPx(f32),
     FitPct(f32),
+    /// The same intrinsic limit with deferred units or arithmetic.
+    FitFont(Len),
 }
 
 impl Track {
@@ -40,7 +45,13 @@ impl Track {
     /// после разрешения кегля узла.
     pub fn resolve_font_one(&mut self, font: super::FontCx<'_>, vcx: crate::values::ValueCx<'_>) {
         if let Track::Font(l) = *self {
-            *self = Track::Px(l.to_px(None, font, vcx).unwrap_or(0.0));
+            if let Some(px) = l.to_px(None, font, vcx) {
+                *self = Track::Px(px);
+            }
+        } else if let Track::FitFont(l) = *self
+            && let Some(px) = l.to_px(None, font, vcx)
+        {
+            *self = Track::FitPx(px);
         }
     }
 }

@@ -14,132 +14,44 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
         style.inh.font.monospace = None;
         return;
     }
-    // Имя семейства — либо строка в кавычках, либо ряд
-    // ИДЕНТИФИКАТОРОВ (§15.3). Неверное имя делает объявление
-    // недействительным целиком (§4.2): прежде разбор просто
-    // пропускал негодное имя и брал следующее из списка, из-за
-    // чего `font-family: 1Ahem, Ahem` набиралось шрифтом Ahem.
     if !v.split(',').all(|part| family_name_ok(part.trim())) {
         return;
     }
     style.inh.font.font_families = accept_parsed!(style, Some(families(v, vcx)));
-    let lower = v.to_ascii_lowercase();
-    // Моноширинный запрос несёт смысл (код) и решает выбор
-    // встроенного шрифта, если названного в системе нет.
-    style.inh.font.monospace = Some(lower.contains("mono") || lower.contains("courier"));
-    // Родовое имя — не пустое место: браузер подставляет за него
-    // конкретный системный шрифт, и без подстановки разметка
-    // набиралась умолчанием движка, шире браузерного. Берётся то
-    // же семейство, что подставляет Chrome на этой системе.
-    // Родовое имя — только БЕЗ кавычек (css-fonts-4 §4.1.1: names
-    // that happen to be the same as a keyword value «must be quoted
-    // to prevent confusion with the keywords»): `"fantasy", serif` —
-    // семейство «fantasy», затем родовое `serif`
-    // (`quoted-generic-ignored`).
-    let quoted = |f: &str| f.starts_with('"') || f.starts_with('\'');
-    let first_generic = v
-        .split(',')
-        .map(str::trim)
-        .filter(|f| !quoted(f))
-        .map(str::to_ascii_lowercase)
-        .find(|f| is_generic(f));
-    let generic = v
-        .split(',')
-        .map(str::trim)
-        .filter(|f| !quoted(f))
-        .map(str::to_ascii_lowercase)
-        .find_map(|f| generic_family(&f));
-    // Первое НЕ родовое имя списка уходит в шрифт как есть:
-    // подстановкой недостающего занимается сама система шрифтов.
-    // Имя нормализуется до сравнения: неквотированное имя из
-    // нескольких слов — это один пробел между ними (§15.3).
-    // Имя в кавычках — СТРОКА, она берётся буквально: `"CSSTest   FamilyName"`
-    // с тремя пробелами не совпадает с `CSSTest FamilyName` (css-fonts-4
-    // §4.2 «spaces are not reduced», `font-family-name-007/008`).
-    // Годно ли имя списка как ИМЯ СЕМЕЙСТВА: в кавычках — всегда
-    // (даже `"serif"`), без кавычек — если это не родовое слово.
-    let usable = |raw: &str| {
-        let f = raw.trim_matches(is_quote);
-        let lower = f.to_ascii_lowercase();
-        !f.is_empty()
-            && (quoted(raw)
-                || (!is_generic(&lower) && !matches!(lower.as_str(), "inherit" | "initial")))
-    };
-    // Первое ДОСТУПНОЕ имя списка: браузер идёт по списку, пока
-    // не найдёт шрифт (§15.3). Прежде бралось первое подходящее по
-    // виду, и `font-family: Courier New, Ahem` при отсутствующем
-    // `Courier New` набиралось подменой вместо `Ahem`.
-    //
-    // Доступность даёт не только система. Список установленных —
-    // это снимок `all_font_names()`, снятый ОДИН РАЗ на старте
-    // (`FontContext::install`), и шрифт, принесённый самой
-    // страницей через `@font-face`, в него не попадает никогда.
-    // Без учёта подмен список семейств не доходил до второго
-    // имени: `font-family: "WOFF Test", "WOFF Test CFF Fallback"`
-    // при НЕГОДНОМ `woff2` обязан взять второе имя, а вместо
-    // этого отдавал системе первое, которого нет, — и весь набор
-    // WOFF2 держался на случайном совпадении подмен.
-    // Мало ИМЕТЬ шрифт: «первым доступным» (css-fonts-4
-    // §first-available-font) семейство становится, только если в
-    // его unicode-range включает U+0020 — от первого доступного считаются
-    // метрики строки, `line-height: normal`, `ch` и `ex`.
-    // Правило `@font-face` с `unicode-range` без пробела обязано
-    // быть ПРОПУЩЕНО: `font-family: 'A-no-space', 'B'` меряется
-    // по `B`, а не по первому имени списка. Прежде подмена от
-    // такого правила проходила как доступная, и при замере по
-    // настоящему имени доли кегля брались с ЧУЖОГО
-    // файла — `first-available-font-002/007`, `ex-unit-004`.
     let registry = vcx.doc.font_snapshot();
-    let named: Vec<_> = v
-        .split(',')
-        .map(str::trim)
-        .filter(|raw| usable(raw))
-        .map(family_name)
-        .collect();
-    if let Some(found) = registry.first_available_named(named.iter().map(String::as_str)) {
-        style.inh.font.font_family = Some(found.to_string());
-        return;
-    }
-    // Ни одно имя не доступно. Первое родовое имя списка — его
-    // подстановка; `monospace` своего имени не даёт (семейство под
-    // него берёт `metrics::mono_family` по признаку). Родового нет —
-    // шрифт ДОКУМЕНТА (CSS 2.1 §15.3, «the user agent's default
-    // font»), а не неизвестное имя: DirectWrite заменял его
-    // системным UI-шрифтом (`select_font`, Segoe UI), тогда как
-    // эталон без `font-family` набирается базой документа
-    // (`font-family-name-017/018/022`, `standard-font-family`).
-    // Метка «шрифт документа» — ПУСТОЕ имя: оно задано (родителя
-    // не наследует, `-017`), а меряется и набирается как `None`.
-    // Пока список установленных не снят (`fonts_known`), о
-    // доступности судить нечем — ниже прежняя ветка.
-    if registry.fonts_known() && lower.trim() != "inherit" {
-        style.inh.font.font_family = match first_generic.as_deref() {
-            Some("monospace") => None,
-            Some(_) => generic.map(str::to_string),
-            None => {
-                style.inh.font.monospace = Some(false);
-                Some(String::new())
+    // CSS Fonts 4 sections 2.1 and 5.2: generic and named families occupy
+    // the same ordered list. A later installed name cannot outrank a generic.
+    for raw in v.split(',').map(str::trim) {
+        let lower = raw.to_ascii_lowercase();
+        if !raw.starts_with(['\'', '"']) && is_generic(&lower) {
+            // A generic without a platform face does not match a font;
+            // continue through the authored list (CSS Fonts 4 section 2.1.5).
+            if lower != "monospace" && generic_family(&lower).is_none() {
+                continue;
             }
-        };
-        return;
+            style.inh.font.monospace = Some(lower == "monospace");
+            style.inh.font.font_family = generic_family(&lower).map(str::to_owned);
+            return;
+        }
+        let name = family_name(raw);
+        if let Some(found) = registry.first_available_named([name.as_str()]) {
+            style.inh.font.font_family = Some(found.to_owned());
+            let lower = found.to_ascii_lowercase();
+            style.inh.font.monospace = Some(lower.contains("mono") || lower.contains("courier"));
+            return;
+        }
+        // Before platform discovery, preserve the first named request. Once
+        // discovery is complete, unavailable names continue to the next entry.
+        if !registry.fonts_known() {
+            style.inh.font.monospace = Some(lower.contains("mono") || lower.contains("courier"));
+            style.inh.font.font_family = Some(name);
+            return;
+        }
     }
-    style.inh.font.font_family = v
-        .split(',')
-        .map(|f| f.trim().trim_matches(is_quote))
-        .find(|f| {
-            let lower = f.to_ascii_lowercase();
-            !f.is_empty() && !is_generic(&lower) && !matches!(lower.as_str(), "inherit" | "initial")
-        })
-        // Неквотированное имя из нескольких слов НОРМАЛИЗУЕТСЯ:
-        // последовательность пробельных знаков (включая переводы
-        // строк) — это один пробел (`Courier   New` == `Courier
-        // New`, CSS2 §15.3; font-family-013 и родня). Экранирование
-        // раскрывается как в любом идентификаторе.
-        .map(|f| {
-            let un = crate::style::css::unescape(f);
-            un.split_whitespace().collect::<Vec<_>>().join(" ")
-        })
-        .or_else(|| generic.map(str::to_string));
+    // No available family: explicitly use the document font, rather than
+    // inheriting the parent's family or asking the backend for an absent name.
+    style.inh.font.font_family = Some(String::new());
+    style.inh.font.monospace = Some(false);
 }
 
 fn families(value: &str, vcx: crate::values::ValueCx<'_>) -> Vec<String> {
@@ -156,7 +68,12 @@ fn families(value: &str, vcx: crate::values::ValueCx<'_>) -> Vec<String> {
                     return family.to_string();
                 }
             }
-            family_name(name)
+            let name = family_name(name);
+            vcx.doc
+                .font_snapshot()
+                .first_available_named([name.as_str()])
+                .unwrap_or(&name)
+                .to_owned()
         })
         .collect()
 }
@@ -172,16 +89,120 @@ fn family_name(raw: &str) -> String {
 }
 
 pub fn inherit(target: &mut Computed, own: &Computed, parent: &Computed) {
-    target.inh.font.font_family = own
-        .inh
-        .font
-        .font_family
-        .clone()
-        .or_else(|| parent.inh.font.font_family.clone());
+    target.inh.font.font_family = own.inh.font.font_family.clone().or_else(|| {
+        own.inh
+            .font
+            .font_families
+            .is_none()
+            .then(|| parent.inh.font.font_family.clone())
+            .flatten()
+    });
     target.inh.font.font_families = own
         .inh
         .font
         .font_families
         .clone()
         .or_else(|| parent.inh.font.font_families.clone());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::style::css::Media;
+    use crate::values::DocumentValues;
+    use std::rc::Rc;
+
+    fn document() -> Rc<DocumentValues> {
+        let doc = DocumentValues::detached(Media::default());
+        doc.set_installed_fonts(Rc::new(
+            ["arial", "times new roman", "courier new", "ahem"]
+                .map(str::to_owned)
+                .into_iter()
+                .collect(),
+        ));
+        // Initial root metrics already created a registry snapshot.
+        doc.font_inputs_changed();
+        doc
+    }
+
+    fn family(doc: &DocumentValues, value: &str) -> Computed {
+        let mut style = Computed::default();
+        apply(&mut style, value, doc.values());
+        style
+    }
+
+    #[test]
+    fn generics_and_named_faces_share_the_authored_order() {
+        let doc = document();
+        for (value, expected) in [
+            ("serif, Arial", Some("Times New Roman")),
+            ("Arial, serif", Some("Arial")),
+            ("Absent, serif, Arial", Some("Times New Roman")),
+            ("'serif', Arial", Some("Arial")),
+            ("monospace, Arial", None),
+            ("Arial, monospace", Some("Arial")),
+            ("ui-serif, Arial", Some("Arial")),
+            ("ui-sans-serif, Arial", Some("Arial")),
+            ("ui-monospace, Arial", Some("Arial")),
+            ("ui-rounded, Arial", Some("Arial")),
+        ] {
+            let style = family(&doc, value);
+            assert_eq!(style.inh.font.font_family.as_deref(), expected, "{value}");
+            assert_eq!(
+                style.inh.font.monospace,
+                Some(value.starts_with("monospace")),
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn platform_equivalents_precede_later_families_and_reach_glyph_fallback() {
+        let doc = document();
+        for (value, expected) in [
+            ("Helvetica, serif", "Arial"),
+            ("'hElVeTiCa', Ahem", "Arial"),
+            ("Times, Arial", "Times New Roman"),
+            ("Courier, serif", "Courier New"),
+        ] {
+            let style = family(&doc, value);
+            assert_eq!(
+                style.inh.font.font_family.as_deref(),
+                Some(expected),
+                "{value}"
+            );
+            assert_eq!(
+                style.inh.font.font_families.as_ref().unwrap()[0],
+                expected,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn document_faces_shadow_platform_equivalents_and_keep_space_coverage() {
+        let doc = document();
+        doc.font_faces
+            .aliases
+            .borrow_mut()
+            .insert("helvetica".into(), "Ahem".into());
+        let style = family(&doc, "Helvetica, serif");
+        assert_eq!(style.inh.font.font_family.as_deref(), Some("Helvetica"));
+        doc.font_faces
+            .has_space
+            .borrow_mut()
+            .insert("helvetica".into(), false);
+        doc.font_registry_changed();
+        let style = family(&doc, "Helvetica, serif");
+        assert_eq!(
+            style.inh.font.font_family.as_deref(),
+            Some("Times New Roman")
+        );
+        let style = family(&doc, "Ahem, Helvetica");
+        assert_eq!(style.inh.font.font_family.as_deref(), Some("Ahem"));
+        assert_eq!(
+            style.inh.font.font_families.as_ref().unwrap()[1],
+            "Helvetica"
+        );
+    }
 }

@@ -111,6 +111,8 @@ pub(super) fn finish_table_outer(
 ) -> AnyElement {
     let mut outer = outer;
     let fit_wrapper = !root_table && caps_top.is_empty() && caps_bot.is_empty() && wrapper_fits(e);
+    let overflow_wrapper =
+        !root_table && caps_top.is_empty() && caps_bot.is_empty() && wrapper_overflows(e);
     // Сжатие по содержимому — `min(max-content, доступное)` (CSS 2.1
     // §17.5.2.2: «the used width is the greater of W and MIN» при W =
     // ширине контейнера, если таблица шире): в ряду-обёртке стол обязан
@@ -157,7 +159,7 @@ pub(super) fn finish_table_outer(
         let mut wrap = div().flex().flex_row();
         if root_table {
             wrap = wrap.w_full();
-        } else if fit_wrapper {
+        } else if fit_wrapper || overflow_wrapper {
             // Блок потока по блочной оси не сжимается (CSS 2.1 §10.6.3), как
             // и прочие блоки нашей гибкой колонки потока.
             wrap = wrap.flex_shrink_0();
@@ -166,6 +168,9 @@ pub(super) fn finish_table_outer(
         let wrap = wrap.child(outer).into_any_element();
         if fit_wrapper {
             return StartWrapper(wrap).hooked();
+        }
+        if overflow_wrapper {
+            return OverflowWrapper(wrap).hooked();
         }
         return wrap;
     }
@@ -192,6 +197,39 @@ impl crate::hooks::Wrap for StartWrapper {
     fn child(&mut self) -> &mut AnyElement {
         &mut self.0
     }
+}
+
+/// Auto margins keep the content at inline-start only while it overflows.
+/// CSS 2 section 10.3.3 and Flexbox section 8.1 resolve them to zero with
+/// negative free space; positive free space moves the table. Replay must
+/// restrict the flow width to no more than its recorded width.
+pub(crate) struct OverflowWrapper(AnyElement);
+
+impl crate::hooks::Wrap for OverflowWrapper {
+    fn paint_boundary(&self) -> bool {
+        false
+    }
+
+    fn child(&mut self) -> &mut AnyElement {
+        &mut self.0
+    }
+}
+
+fn wrapper_overflows(e: &Element) -> bool {
+    let style = e.style.used();
+    let m = &style.reset_box_layout.margin;
+    !style.wm().vertical()
+        && !style.wm().rtl()
+        && [m.left, m.right].contains(&Some(Len::Auto))
+        && [m.left, m.right]
+            .into_iter()
+            // A negative fixed margin can leave positive free space even
+            // when the content overflows the wrapper's border box.
+            .all(|m| match m {
+                None | Some(Len::Auto) => true,
+                Some(Len::Px(px)) => px >= 0.0,
+                _ => false,
+            })
 }
 
 /// Таблица стоит у начального края обёртки при любой её ширине: поля

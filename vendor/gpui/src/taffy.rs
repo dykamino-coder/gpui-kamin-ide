@@ -1040,14 +1040,23 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::Pixels(px) => length(f32::from(*px) * scale_factor),
                     // KaminIDE patch: процент от ширины сетки.
                     G::Percent(p) => taffy::style_helpers::percent(*p),
-                    G::Fraction(_) | G::Auto | G::FitContentPx(_) | G::FitContentPercent(_) => {
-                        auto()
-                    }
+                    G::Calc { fraction, add } => taffy::MinTrackSizingFunction::calc(
+                        taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
+                    ),
+                    G::Fraction(_)
+                    | G::Auto
+                    | G::FitContentPx(_)
+                    | G::FitContentPercent(_)
+                    | G::FitContentCalc { .. } => auto(),
                     G::MinContent => min_content(),
                     G::MaxContent => max_content(),
                     // Вложенный `minmax` сводится к своим граням по отдельности.
                     G::MinMax(pair) => match &pair.0 {
                         G::Pixels(px) => length(f32::from(*px) * scale_factor),
+                        G::Percent(p) => taffy::style_helpers::percent(*p),
+                        G::Calc { fraction, add } => taffy::MinTrackSizingFunction::calc(
+                            taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
+                        ),
                         G::MinContent => min_content(),
                         G::MaxContent => max_content(),
                         _ => auto(),
@@ -1061,6 +1070,9 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::Pixels(px) => length(f32::from(*px) * scale_factor),
                     // KaminIDE patch: процент от ширины сетки.
                     G::Percent(p) => taffy::style_helpers::percent(*p),
+                    G::Calc { fraction, add } => taffy::MaxTrackSizingFunction::calc(
+                        taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
+                    ),
                     G::Fraction(f) => fr(*f),
                     G::Auto => auto(),
                     G::MinContent => min_content(),
@@ -1068,9 +1080,26 @@ impl ToTaffy<taffy::style::Style> for Style {
                     G::FitContentPx(px) => {
                         taffy::MaxTrackSizingFunction::fit_content_px(f32::from(*px) * scale_factor)
                     }
-                    G::FitContentPercent(p) => taffy::MaxTrackSizingFunction::fit_content_percent(*p),
+                    G::FitContentPercent(p) => {
+                        taffy::MaxTrackSizingFunction::fit_content_percent(*p)
+                    }
+                    G::FitContentCalc { fraction, add } => {
+                        taffy::MaxTrackSizingFunction::fit_content_calc(taffy::tree::calc_handle(
+                            f32::from(*add) * scale_factor,
+                            *fraction,
+                        ))
+                    }
                     G::MinMax(pair) => match &pair.1 {
                         G::Pixels(px) => length(f32::from(*px) * scale_factor),
+                        G::Percent(p) => taffy::style_helpers::percent(*p),
+                        G::Calc { fraction, add } => taffy::MaxTrackSizingFunction::calc(
+                            taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
+                        ),
+                        G::FitContentCalc { fraction, add } => {
+                            taffy::MaxTrackSizingFunction::fit_content_calc(
+                                taffy::tree::calc_handle(f32::from(*add) * scale_factor, *fraction),
+                            )
+                        }
                         G::FitContentPx(px) => taffy::MaxTrackSizingFunction::fit_content_px(
                             f32::from(*px) * scale_factor,
                         ),

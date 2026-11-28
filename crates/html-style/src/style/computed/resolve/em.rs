@@ -85,17 +85,8 @@ impl Computed {
                 .font_adjustment()
                 .map(|_| self.glyph_units(&family, own_px, vcx)),
         };
-        for list in {
-            let grid = &mut *self.reset_grid;
-            [grid.grid_tracks.as_mut(), grid.grid_rows.as_mut()]
-        }
-        .into_iter()
-        .flatten()
-        {
-            for t in list.iter_mut() {
-                t.resolve_font(grid_font, vcx);
-            }
-        }
+        self.reset_grid
+            .for_each_track_mut(|t| t.resolve_font(grid_font, vcx));
         let base = match self.inh.font.font_size {
             Some(Len::Px(px)) => px,
             _ => parent_font_px,

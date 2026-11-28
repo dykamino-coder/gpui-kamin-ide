@@ -65,8 +65,27 @@ impl FontRegistrySnapshot {
         &self,
         families: impl IntoIterator<Item = &'a str>,
     ) -> Option<&'a str> {
-        families.into_iter().find(|family| {
-            (self.installed(family) || self.alias(family).is_some()) && self.covers_space(family)
+        families.into_iter().find_map(|family| {
+            if self.installed(family) || self.alias(family).is_some() {
+                return self.covers_space(family).then_some(family);
+            }
+            // CSS Fonts 4 section 5.1 permits platform family substitutions.
+            // Try a conventional equivalent only after the authored family,
+            // including document faces, has failed to match.
+            let alternate = [
+                ("Helvetica", "Arial"),
+                ("Arial", "Helvetica"),
+                ("Times", "Times New Roman"),
+                ("Times New Roman", "Times"),
+                ("Courier", "Courier New"),
+                #[cfg(not(target_os = "windows"))]
+                ("Courier New", "Courier"),
+            ]
+            .into_iter()
+            .find_map(|(name, equivalent)| {
+                family.eq_ignore_ascii_case(name).then_some(equivalent)
+            })?;
+            self.installed(alternate).then_some(alternate)
         })
     }
 

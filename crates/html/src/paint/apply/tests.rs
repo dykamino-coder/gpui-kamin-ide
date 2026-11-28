@@ -218,3 +218,6 @@ fn positioned_intrinsic_dimensions_reach_native_layout() {
         ])
     );
 }
+
+#[path = "root_context_tests.rs"]
+mod root_context;

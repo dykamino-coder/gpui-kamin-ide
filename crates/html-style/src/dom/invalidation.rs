@@ -157,10 +157,12 @@ fn reads(sel: &Selector, changed: &Changed) -> bool {
     };
     // `:checked` reads the attributes its state derives from (`form_state`).
     let state = |raw: &String| {
-        mentions(raw, "checked")
+        (mentions(raw, "checked")
             && crate::dom::form_state::READS
                 .iter()
-                .any(|name| among(&changed.attrs, name))
+                .any(|name| among(&changed.attrs, name)))
+            || ((mentions(raw, "disabled") || mentions(raw, "enabled"))
+                && among(&changed.attrs, "disabled"))
     };
     sel.classes.iter().any(|c| among(&changed.classes, c))
         || sel.attrs.iter().any(|a| among(&changed.attrs, &a.name))

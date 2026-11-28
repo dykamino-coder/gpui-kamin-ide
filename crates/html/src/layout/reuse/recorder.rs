@@ -18,6 +18,14 @@ use std::rc::Rc;
 mod wrap;
 pub(super) use wrap::{Recorder, Skip};
 
+/// Where an unpainted wrapper guarantees its content stays at inline-start.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum Unpainted {
+    No,
+    AnyWidth,
+    Narrower,
+}
+
 /// A record in the making with what its frame measures. The build's list of
 /// them (`FlowReuse::pending`) goes when the frame seals its records
 /// (`FlowReuse::finish`): a kept record holds only its result, and the
@@ -48,7 +56,7 @@ pub(super) struct Making {
     /// Корень блока — обёртка, которая ничего не рисует и держит содержимое
     /// у начального края (`table::StartWrapper`): лист снимается сквозь неё,
     /// а ширина блока — ширина содержимого, если оно шире обёртки.
-    unpainted: bool,
+    unpainted: Unpainted,
     /// The block's border box is the flow width less fixed margins
     /// (`width::tracks_flow`): a wrap at this flow width is one at every
     /// narrower flow (`narrow`).
@@ -76,7 +84,7 @@ impl Making {
     pub(super) fn new(
         width: Width,
         settled: bool,
-        (unpainted, tracks_flow): (bool, bool),
+        (unpainted, tracks_flow): (Unpainted, bool),
         sink: u32,
     ) -> Self {
         Self {
@@ -179,12 +187,7 @@ impl Pending {
         if !far && replay.is_none() {
             return None;
         }
-        let resizable = reusable_range(
-            m.width,
-            m.border.get(),
-            record.key.flow_width(),
-            m.lines.slack(),
-        );
+        let resizable = self.resizable();
         if !m.settled && resizable.is_none() {
             return None;
         }

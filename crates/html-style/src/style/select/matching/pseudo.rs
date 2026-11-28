@@ -91,6 +91,9 @@ pub(super) fn pseudo_holds(
         }
         PseudoKind::TargetCurrent => me.target_current,
         PseudoKind::Checked => me.checked,
+        PseudoKind::Disabled(want) => {
+            crate::dom::form_state::disabled(me.key.handle()) == Some(want)
+        }
         // Корень документа — `<html>`: не структурный по месту среди соседей.
         PseudoKind::Root => me.tag == "html",
         PseudoKind::HasSlotted => has_slotted_holds(sel, pseudo, me),
@@ -172,19 +175,4 @@ pub(super) fn has_slotted_holds(sel: &Selector, pseudo: &str, me: &Ancestor) -> 
         };
         list.iter().any(|s| matches(s, &c.anc, &c.path[..], sibs))
     })
-}
-
-/// `:is()`/`:where()` (и устаревшие `:matches()`/`:any()`) по виду
-/// псевдокласса. `None` — не этот псевдокласс.
-pub(super) fn is_holds(
-    sel: &Selector,
-    pseudo: &str,
-    me: &Ancestor,
-    path: &[Ancestor],
-    sibs: Sibs,
-) -> Option<bool> {
-    match sel.pseudo_of(pseudo) {
-        (prepared, PseudoKind::Is) => Some(list_holds(prepared, me, path, sibs)),
-        _ => None,
-    }
 }

@@ -21,6 +21,7 @@ overlay!(
     inherited_font,
     InheritedFont,
     font_size,
+    font_size_origin,
     font_weight,
     italic,
     oblique,

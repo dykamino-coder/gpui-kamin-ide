@@ -49,6 +49,7 @@ pub(super) const SOURCES: &[&str] = &[
     include_str!("../../../../html-style/src/style/cascade/compute/background.rs"),
     include_str!("../../../../html-style/src/style/cascade/compute/longhands.rs"),
     include_str!("../../../../html-style/src/style/cascade/compute/fonts.rs"),
+    include_str!("../../../../html-style/src/style/cascade/compute/font_defaults.rs"),
     include_str!("../../../../html-style/src/style/cascade/compute/text.rs"),
     include_str!("../../../../html-style/src/style/cascade/inherit/containing.rs"),
     include_str!("../../../../html-style/src/style/cascade/inherit/context.rs"),

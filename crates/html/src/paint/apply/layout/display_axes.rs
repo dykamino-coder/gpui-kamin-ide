@@ -143,7 +143,7 @@ pub(super) fn layout_flex_axes(
     d
 }
 
-pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
+pub(super) fn layout_display(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div {
     d.style().block_flow = Some(grid_flow_axes::block(c));
     match c.reset_box_layout.display {
         // Блок в GPUI — дефолт; отдельного вызова не требует.
@@ -172,20 +172,22 @@ pub(super) fn layout_display(mut d: Div, c: &BoxStyle) -> Div {
         }
         Some(Display::InlineGrid) => {
             d = d.flex_shrink_0();
-            d = grid_style(d, c);
+            d = grid_style(d, c, vcx);
         }
         Some(Display::TableRow) => d = d.flex().flex_row(),
         // Ячейка ведёт себя как блок; саму решётку строит контейнер.
         Some(Display::TableCell) => d = d.flex().flex_col(),
         // Контейнер таблицы собирается отдельной веткой сборки дерева.
         Some(Display::Table) | Some(Display::InlineTable) => {}
-        Some(Display::Grid) => d = grid_style(d, c),
+        Some(Display::Grid) => d = grid_style(d, c, vcx),
+        // The root also establishes a block formatting context (CSS 2.1
+        // section 9.4.1); its child margins cannot collapse through it.
         // `display: flow-root` is a block container that establishes a new
         // block formatting context (css-display-3 §2.2): the native block
         // layout must not collapse its children's margins through it
         // (CSS 2.1 §8.3.1). Blink: `CreatesNewFormattingContext()`.
-        Some(Display::Block) | Some(Display::ListItem)
-            if c.reset_context.flow_root == Some(true) =>
+        None | Some(Display::Block) | Some(Display::ListItem)
+            if c.reset_context.flow_root == Some(true) || c.reset_context.root_box =>
         {
             d.style().display = Some(gpui::Display::FlowRoot);
         }

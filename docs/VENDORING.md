@@ -60,6 +60,12 @@ Windows-изменения DirectWrite/DirectX не являются перен�
 
 ## Политика изменений
 
+The bounded `layout_snapshot_unpainted_narrower` contract admits an unpainted
+overflowing wrapper only when its host guarantees stable inline-start content
+at narrower widths and limits reuse accordingly. The arbitrary-width
+`layout_snapshot_unpainted` contract is unchanged. An upstream proposal is
+recorded privately; external publication has not been requested.
+
 Контракт границы paint policy хозяина и механизмов GPUI включён в rustdoc
 `PaintCtx` из `vendor/gpui/src/window/paint_contract.md`. Он определяет
 гарантии snapshot/replay, live identity прохода/группы и восстановление

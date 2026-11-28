@@ -42,10 +42,12 @@ fn state(doc: &Document) -> String {
     )
 }
 
+mod color_scheme;
 mod damage;
 mod differential;
 mod invalidation;
 mod media;
+mod nested_groups;
 mod rebox;
 mod records;
 mod repaint;

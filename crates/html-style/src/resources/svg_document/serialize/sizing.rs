@@ -78,7 +78,7 @@ pub fn serialize_viewport(
     let (w0, h0) = viewport;
     let grown = w > w0 + 0.5 || h > h0 + 0.5 || shifted;
     for (k, v) in &e.attrs {
-        if k == "width" || k == "height" {
+        if k == "width" || k == "height" || k == "color" {
             continue;
         }
         out.push(' ');
@@ -103,15 +103,21 @@ pub fn serialize_viewport(
                 continue;
             }
         }
-        escape_attr(v, &mut out);
+        if k == "style" {
+            escape_attr(&super::color::without_inline_color(v), &mut out);
+        } else {
+            escape_attr(v, &mut out);
+        }
         out.push('"');
     }
+    let color = super::color::write(e, crate::style::values::value::Color::BLACK, &mut out);
     out.push('>');
     // Опорная коробка `view-box` для CSS-обрезки детей (`synth_clip`): корень
     // пишется здесь, а не в `write_element`.
     let cx = SerializeCx {
         view_box: view_box_ratio(e).unwrap_or(viewport),
         in_clip: false,
+        color,
     };
     for child in &e.children {
         match child {

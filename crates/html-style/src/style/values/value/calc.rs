@@ -18,6 +18,8 @@ pub(super) struct Calc<'a> {
     /// Parsing a deferred tree (`calc_tree`): length leaves are checked by
     /// TYPE only; their units are compared by the fold once bases exist.
     pub(super) typing: bool,
+    // Font-size math containing a length is absolute, even after cancellation.
+    pub(super) has_length: bool,
     pub(super) rest: &'a str,
 }
 
@@ -27,6 +29,7 @@ impl<'a> Calc<'a> {
             rest,
             recording: None,
             typing: false,
+            has_length: false,
         }
     }
 
@@ -35,12 +38,14 @@ impl<'a> Calc<'a> {
             rest,
             recording: self.recording.take(),
             typing: self.typing,
+            has_length: self.has_length,
         }
     }
 
     pub(super) fn resume(&mut self, sub: Self) {
         self.rest = sub.rest;
         self.recording = sub.recording;
+        self.has_length |= sub.has_length;
     }
 
     pub(super) fn arguments(
@@ -151,7 +156,9 @@ impl<'a> Calc<'a> {
         if let Some(v) = super::calc_math::constant_or_angle(head) {
             return self.record_value(v);
         }
-        self.record_value(Val::Len(super::atom::Atom::parse(head, vcx)?.sum()))
+        let atom = super::atom::Atom::parse(head, vcx)?;
+        self.has_length |= !atom.is_percentage();
+        self.record_value(Val::Len(atom.sum()))
     }
 }
 

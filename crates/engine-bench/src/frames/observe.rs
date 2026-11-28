@@ -65,6 +65,7 @@ impl Frames {
             "wheel_step_px": if self.scroll { json!(self.step) } else { Value::Null },
             "wheel_position": self.wheel_position.map(|(x, y)| json!([x, y])),
             "root_scroll_offset": offset.0.map(|(x, y)| json!([x, y])),
+            "root_scroll_max": offset.1.map(|(x, y)| json!([x, y])),
             "dispatch_to_frame_ms": self.dispatched.take().map(|t| t.elapsed().as_secs_f64() * 1000.0),
             "builds_inside_draw": inside,
             "content_replays": contents.saturating_sub(if cold { 0 } else { self.before_contents }),

@@ -69,6 +69,13 @@ pub enum Len {
 }
 
 impl Len {
+    /// Percentage-only font-size math keeps generic-family scaling. Length
+    /// terms suppress it, including zero terms that disappear during folding.
+    pub(crate) fn absolute_font_math(raw: &str, vcx: ValueCx<'_>) -> bool {
+        let mut calc = Calc::new(raw);
+        calc.expr(vcx).is_none() || calc.has_length
+    }
+
     /// Разбор для `word-spacing` и `letter-spacing`: там доля берётся от кегля
     /// так же, как `em`, поэтому смешанное `calc(400% + 1em)` складывается в
     /// одну длину вместо того чтобы пропасть (`word-spacing-001`).

@@ -79,7 +79,11 @@ impl Computed {
                 // между целями и заложниками нет (`auto 50px` красен в колонках
                 // и зелен в рядах) — нужен разбор по контексту, а не по форме
                 // тела.
-                if let Some(list) = parse_tracks(v, vcx).filter(|l| l.len() > 1) {
+                // Deferred lengths require the native track representation,
+                // including a single auto-repeat body containing calc().
+                if let Some(list) = parse_tracks(v, vcx)
+                    .filter(|l| l.len() > 1 || l.iter().any(|t| t.lengths_pending(|_| true)))
+                {
                     self.reset_grid.grid_cols = count_tracks(v);
                     self.reset_grid.grid_tracks = Some(list);
                 }
@@ -112,7 +116,9 @@ impl Computed {
                 // Только когда вокруг повтора ЕСТЬ свои дорожки: одинокий
                 // повтор целиком ведёт прежний путь раскладки, он считает
                 // число повторов точнее (доли, содержимое, `fit-content`).
-                if let Some(list) = parse_tracks(v, vcx).filter(|l| l.len() > 1) {
+                if let Some(list) = parse_tracks(v, vcx)
+                    .filter(|l| l.len() > 1 || l.iter().any(|t| t.lengths_pending(|_| true)))
+                {
                     self.reset_grid.grid_rows = Some(list);
                 }
                 let (max_auto, max_fr) = auto_fill_max(v);
