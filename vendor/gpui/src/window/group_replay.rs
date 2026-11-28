@@ -75,6 +75,28 @@ impl Window {
         (!self.retained_replayable(prepaint, &ungrouped)).then(|| "commands are not replayable".into())
     }
 
+    /// Whether a cached view whose last paint made `groups` of the rendered
+    /// frame's list can replay it (`reuse_view_paint`): its groups are copied
+    /// from the rendered frame, so the commands must come from there too.
+    pub(crate) fn view_groups_replayable(&self, groups: &Range<usize>) -> bool {
+        groups.is_empty()
+            || (self.replay_source().is_none()
+                && self.layer_recording.is_none()
+                && groups.end <= self.rendered_frame.scene.groups.len())
+    }
+
+    /// Replay a cached view's paint `range` with the composition `groups` it
+    /// made (`view_groups_replayable`): the commands alone would composite
+    /// labels whose groups this frame never made (a masked, filtered or
+    /// blended box vanishes, or takes another group's pixels). Returns the
+    /// range the copied groups take in this frame's list.
+    pub(crate) fn reuse_view_paint(&mut self, range: Range<PaintIndex>, groups: Range<usize>) -> Range<usize> {
+        let copied = self.replay_groups(groups, None);
+        self.reuse_paint(range);
+        self.next_frame.scene.relabel = 0;
+        copied
+    }
+
     /// Copy the `groups` of the rendered frame's list (made by a record or by
     /// a deferred draw) to the end of this frame's list, scrolled by
     /// `scrolled` (the plan's node shifts and clips in scene pixels, with each

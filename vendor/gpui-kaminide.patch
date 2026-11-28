@@ -35559,7 +35559,7 @@ index 0000000000000000000000000000000000000000..3e03218444cdd66fc87c1b4311ab49c7
 +        && previous.background_color == run.background_color
 +}
 diff --git a/vendor/gpui/src/view.rs b/vendor/gpui/src/view.rs
-index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e3f940a500d133b43c9ce90720d8f3c7c364b1f6
+index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..72b33f457731aadc193c2aeaf610794422e3308b
 --- a/vendor/gpui/src/view.rs
 +++ b/vendor/gpui/src/view.rs
 @@ -26,0 +27,2 @@
@@ -35602,14 +35602,42 @@ index f24a4da9b7906e1c1f8dfd110f75fd6ef9c5aad8..e3f940a500d133b43c9ce90720d8f3c7
 +        self.read(cx).cached_style()
 +    }
 +
-@@ -332,0 +362,3 @@
+@@ -297,0 +327,3 @@
++    /// KaminIDE patch: the composition groups `paint_range` made in its
++    /// frame's list (`Window::reuse_view_paint`).
++    paint_groups: Range<usize>,
+@@ -332,0 +365,3 @@
 +            if self.cached_style.is_none() {
 +                self.cached_style = self.view.as_ref().unwrap().cached_style(cx);
 +            }
-@@ -490,0 +523,3 @@
+@@ -489,0 +525 @@
++                    && window.view_groups_replayable(&element_state.paint_groups)
+@@ -490,0 +527,3 @@
 +                    // KaminIDE patch: счётчик переигранных вью (`frame_perf`).
 +                    crate::frame_perf::REUSED_VIEWS
 +                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+@@ -518,0 +558 @@
++                        paint_groups: 0..0,
+@@ -562,2 +602,5 @@
+-
+-                    if let Some(element) = element {
++                    let groups_start = window.next_frame.scene.groups.len();
++
++                    // KaminIDE patch: a reused paint brings the composition
++                    // groups it made, renumbered into this frame's list.
++                    let groups = if let Some(element) = element {
+@@ -566,0 +610 @@
++                        groups_start..window.next_frame.scene.groups.len()
+@@ -568,2 +612,5 @@
+-                        window.reuse_paint(element_state.paint_range.clone());
+-                    }
++                        window.reuse_view_paint(
++                            element_state.paint_range.clone(),
++                            element_state.paint_groups.clone(),
++                        )
++                    };
+@@ -572,0 +620 @@
++                    element_state.paint_groups = groups;
 diff --git a/vendor/gpui/src/window.rs b/vendor/gpui/src/window.rs
 index 259a451ab16b7ec1900ba7b9a9ca9a7e197e5d94..f5d83981c32935be64509169a958367ada11b4e5
 --- a/vendor/gpui/src/window.rs
@@ -38871,10 +38899,10 @@ index 0000000000000000000000000000000000000000..d92e0a4660a9b8a3fed30c85682b80f7
 +}
 diff --git a/vendor/gpui/src/window/group_replay.rs b/vendor/gpui/src/window/group_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..728455f8bfd30316f1052658a412639e8aae4467
+index 0000000000000000000000000000000000000000..4b8ac3333950c73cf98e4e8a5521290975e629d2
 --- /dev/null
 +++ b/vendor/gpui/src/window/group_replay.rs
-@@ -0,0 +1,164 @@
+@@ -0,0 +1,186 @@
 +//! KaminIDE patch: the composition groups of a retained paint record
 +//! (`scene::group_replay`).
 +//!
@@ -38950,6 +38978,28 @@ index 0000000000000000000000000000000000000000..728455f8bfd30316f1052658a412639e
 +        let mut ungrouped = paint.clone();
 +        ungrouped.groups = (0, 0);
 +        (!self.retained_replayable(prepaint, &ungrouped)).then(|| "commands are not replayable".into())
++    }
++
++    /// Whether a cached view whose last paint made `groups` of the rendered
++    /// frame's list can replay it (`reuse_view_paint`): its groups are copied
++    /// from the rendered frame, so the commands must come from there too.
++    pub(crate) fn view_groups_replayable(&self, groups: &Range<usize>) -> bool {
++        groups.is_empty()
++            || (self.replay_source().is_none()
++                && self.layer_recording.is_none()
++                && groups.end <= self.rendered_frame.scene.groups.len())
++    }
++
++    /// Replay a cached view's paint `range` with the composition `groups` it
++    /// made (`view_groups_replayable`): the commands alone would composite
++    /// labels whose groups this frame never made (a masked, filtered or
++    /// blended box vanishes, or takes another group's pixels). Returns the
++    /// range the copied groups take in this frame's list.
++    pub(crate) fn reuse_view_paint(&mut self, range: Range<PaintIndex>, groups: Range<usize>) -> Range<usize> {
++        let copied = self.replay_groups(groups, None);
++        self.reuse_paint(range);
++        self.next_frame.scene.relabel = 0;
++        copied
 +    }
 +
 +    /// Copy the `groups` of the rendered frame's list (made by a record or by

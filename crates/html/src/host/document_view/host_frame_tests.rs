@@ -126,6 +126,41 @@ fn host_only_frames_skip_every_engine_entry_and_keep_document_layers(cx: &mut Te
     }
 }
 
+/// The cached document view replays its composition groups on host-only
+/// frames: its commands alone composited labels of groups the frame never
+/// made, and masked or blended boxes vanished whenever only the host repainted.
+#[gpui::test]
+fn host_only_frames_keep_the_document_composition_groups(cx: &mut TestAppContext) {
+    let html = "<style>body{margin:0}</style>\
+        <div style='width:60px;height:40px;background:red;border-top-right-radius:30px 20px;\
+        box-shadow:inset -4px 4px 0 0 blue'></div>\
+        <div style='width:30px;height:30px;background:lime;mix-blend-mode:multiply'></div>";
+    let (host, cx) = cx.add_window_view(move |window, cx| {
+        let page = DocumentView::open(
+            &mut Document::builder(html, ""),
+            size(px(400.), px(300.)),
+            window,
+            cx,
+        )
+        .unwrap();
+        Host { page, pulse: false }
+    });
+    frame(cx);
+    frame(cx);
+    let built = cx.update(|window, _| window.painted_groups());
+    assert!(built.0.len() >= 2, "the page made no groups: {built:?}");
+    for pulse in [true, false, true] {
+        cx.update(|_, cx| {
+            host.update(cx, |host, cx| {
+                host.pulse = pulse;
+                cx.notify();
+            })
+        });
+        draw(cx);
+        assert_eq!(cx.update(|window, _| window.painted_groups()), built);
+    }
+}
+
 #[gpui::test]
 fn root_document_view_also_skips_an_unchanged_window_frame(cx: &mut TestAppContext) {
     let (_one, _reader) = crate::why::test_reader();
