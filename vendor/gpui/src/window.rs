@@ -86,6 +86,7 @@ mod retained; mod group_replay;
 mod hover_view;
 pub use hover_view::HoverView;
 mod scroll_deferred;
+mod local_deferred;
 mod scroll_masks;
 mod scroll_nodes;
 mod scroll_replay; mod scroll_refusal; mod scroll_still;
@@ -1056,6 +1057,9 @@ pub(crate) struct TooltipRequest {
 }
 
 pub(crate) struct DeferredDraw {
+    // A stacking root already painted this draw inside its retained scene.
+    // KaminIDE patch: a retained root owns these draws, including cache replay.
+    local: bool,
     current_view: EntityId,
     priority: usize,
     parent_node: DispatchNodeId,
@@ -1070,6 +1074,8 @@ pub(crate) struct DeferredDraw {
     absolute_offset: Point<Pixels>,
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    // KaminIDE patch: local draws move with copies of their containing scene.
+    paint_space: Option<crate::scene::scroll_marks::SceneSpace>,
     // KaminIDE patch: the composition groups its paint made in the frame's
     // list; a reused draw copies them (`scroll_deferred::reuse_deferred_paint`).
     pub(crate) groups: Range<usize>,
@@ -2058,24 +2064,15 @@ impl Window {
                     });
                     (foreground_turn, window_id)
                 };
-                // This must be checked before accessing App: if this request
-                // arrived re-entrantly while a draw is on this thread's stack
-                // (e.g. via a nested message pump in the Windows window
-                // procedure), drawing would nest draws, and even touching the
-                // App would panic on its already-mutable borrow. Skip instead;
-                // the platform leaves the window invalidated (or re-invalidates
-                // it), so a fresh request arrives once the in-progress draw
-                // unwinds. Remember force_render so the deferred frame still
-                // bypasses the view cache.
-                //
-                // Returning here skips `complete_frame`, which on Wayland would
-                // stall the window's frame callbacks (no `surface.commit()`) —
-                // but calling it would hit the App borrow panic above, and this
-                // branch is unreachable there in practice: only Windows pumps
-                // platform events (and thus requests frames) mid-draw.
+                // A nested native callback must not borrow App. Retain both
+                // presentation and render demand, then ask the platform to
+                // retry after this draw unwinds.
                 if draw_in_progress() {
                     log::debug!("deferring re-entrant window draw request");
                     deferred_force_render |= request_frame_options.force_render;
+                    needs_present
+                        .set(needs_present.get() || request_frame_options.require_presentation);
+                    invalidator.wake_platform();
                     #[cfg(feature = "profiler")]
                     profiler::journal::record_reentrant_frame_skipped(window_id, Instant::now());
                     return;
@@ -2094,7 +2091,8 @@ impl Window {
                 // - Thermal pressure (Serious/Critical): cap to ~60fps
                 // - Inactive window (not focused): cap to ~30fps to save energy
                 let min_frame_interval = if request_frame_options.require_presentation
-                    || (!request_frame_options.force_render
+                    || needs_present.get()
+                    || (!force_render
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
@@ -2157,12 +2155,12 @@ impl Window {
                 // Keep presenting if input was recently arriving at a high rate (>= 60fps).
                 // Once high-rate input is detected, we sustain presentation for 1 second
                 // to prevent display underclocking during active input.
-                let needs_present = request_frame_options.require_presentation
+                let should_present = request_frame_options.require_presentation
                     || needs_present.get()
                     || input_rate_tracker.borrow_mut().is_high_rate();
 
                 let should_draw = invalidator.is_dirty() || force_render;
-                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={needs_present}");
+                log::debug!(target: "gpui::frame", "decision draw={should_draw} force={force_render} present={should_present}");
                 if should_draw {
                     measure("frame duration", || {
                         handle
@@ -2179,7 +2177,7 @@ impl Window {
                                 let t1 = std::time::Instant::now();
                                 // KaminIDE patch: a drawn frame that changed
                                 // nothing on screen is neither rastered nor presented.
-                                window.present_drawn(request_frame_options.require_presentation);
+                                window.present_drawn(should_present);
                                 {
                                     use crate::frame_perf::*;
                                     use std::sync::atomic::Ordering::Relaxed;
@@ -2194,7 +2192,7 @@ impl Window {
                             })
                             .log_err();
                     })
-                } else if needs_present {
+                } else if should_present {
                     handle
                         .update(&mut cx, |_, window, _| {
                             // KaminIDE patch: presenting the drawn frame again
@@ -2224,13 +2222,17 @@ impl Window {
                 // after this frame (the window was re-invalidated mid-draw, or
                 // animations scheduled next-frame callbacks), re-arm the frame
                 // source explicitly.
-                if invalidator.is_dirty() || !next_frame_callbacks.borrow().is_empty() {
+                if invalidator.is_dirty()
+                    || !next_frame_callbacks.borrow().is_empty()
+                    || needs_present.get()
+                    || input_rate_tracker.borrow_mut().is_high_rate()
+                {
                     invalidator.wake_platform();
                 }
                 log::debug!(target: "gpui::frame", "complete dirty={} next={}",
                     invalidator.is_dirty(), next_frame_callbacks.borrow().len());
                 #[cfg(feature = "profiler")]
-                if !should_draw {
+                if !should_draw && !should_present {
                     profiler::journal::record_frame_skipped(
                         window_id,
                         Instant::now(),
@@ -4131,6 +4133,13 @@ impl Window {
         self.invalidator.replace_views(views);
     }
 
+    /// KaminIDE patch: whether a view's rendering step is invalidated for the next draw.
+    /// Includes descendant notifications and explicit window refreshes.
+    pub fn view_needs_rendering(&mut self, view: EntityId, cx: &App) -> bool {
+        self.invalidate_entities();
+        self.refreshing || self.dirty_views.contains(&view) || self.is_inspector_picking(cx)
+    }
+
     #[profiling::function]
     fn present(&mut self) {
         #[cfg(feature = "profiler")]
@@ -4387,7 +4396,49 @@ impl Window {
 
     fn prepaint_deferred_draws(&mut self, cx: &mut App) {
         assert_eq!(self.element_id_stack.len(), 0);
+        self.prepaint_deferred_range(0, false, cx);
+    }
 
+    /// KaminIDE patch: resolve deferred descendants inside a retained stacking root, before
+    /// the host continues prepainting its following siblings.
+    pub fn prepaint_local_deferred(
+        &mut self,
+        root: &RetainedPrepaint,
+        cx: &mut App,
+    ) -> Range<usize> {
+        let start = root.range().start.deferred_draws_index;
+        self.prepaint_deferred_range(start, true, cx);
+        start..self.next_frame.deferred_draws.len()
+    }
+
+    fn prepaint_deferred_range(&mut self, start: usize, local: bool, cx: &mut App) {
+        self.with_deferred_environment(|window| {
+            window.prepaint_deferred_range_inner(start, local, cx)
+        });
+    }
+
+    // KaminIDE patch: local deferred passes preserve their caller, including unwind.
+    fn with_deferred_environment<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
+        let state = (
+            self.element_id_stack.clone(),
+            self.text_style_stack.clone(),
+            self.next_frame.dispatch_tree.active_node_id(),
+        );
+        self.with_restore(
+            state,
+            |window, state| {
+                window.element_id_stack = mem::take(&mut state.0);
+                window.text_style_stack = mem::take(&mut state.1);
+                if let Some(node) = state.2 {
+                    window.next_frame.dispatch_tree.set_active_node(node);
+                }
+            },
+            f,
+        )
+        .0
+    }
+
+    fn prepaint_deferred_range_inner(&mut self, start: usize, local: bool, cx: &mut App) {
         // Process deferred draws in multiple rounds to support nesting.
         // Each round processes all current deferred draws, which may push new ones.
         //
@@ -4398,7 +4449,7 @@ impl Window {
         // slices on the next frame. Moving the draws out and re-appending them
         // shifts the indices of nested draws, causing reused subtrees to graft
         // the wrong deferred draws and panic in the dispatch tree.
-        let mut round_start = 0;
+        let mut round_start = start;
         let mut depth = 0;
         loop {
             let round_end = self.next_frame.deferred_draws.len();
@@ -4414,8 +4465,14 @@ impl Window {
             traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
 
             for deferred_draw_ix in traversal_order {
+                if !local && self.next_frame.deferred_draws[deferred_draw_ix].local {
+                    continue;
+                }
+                self.next_frame.deferred_draws[deferred_draw_ix].local = local;
                 let _render_scope = self.render_contexts.enter_snapshot(
-                    self.next_frame.deferred_draws[deferred_draw_ix].render_contexts.clone(),
+                    self.next_frame.deferred_draws[deferred_draw_ix]
+                        .render_contexts
+                        .clone(),
                 );
                 // KaminIDE patch: a dirty isolated view is drawn again alone.
                 self.rebuild_isolated(deferred_draw_ix, cx);
@@ -4440,7 +4497,8 @@ impl Window {
                 let entered = self.enter_deferred_prepaint(deferred_draw_ix);
                 if let Some(mut element) = element {
                     let mut layout_owner = self.next_frame.deferred_draws[deferred_draw_ix]
-                        .layout_owner.clone();
+                        .layout_owner
+                        .clone();
                     self.with_retained_layout(&mut layout_owner, |window| {
                         window.with_rendered_view(current_view, |window| {
                             window.with_rem_size(Some(rem_size), |window| {
@@ -4468,21 +4526,42 @@ impl Window {
 
     fn paint_deferred_draws(&mut self, cx: &mut App) {
         assert_eq!(self.element_id_stack.len(), 0);
+        self.paint_deferred_range(0..self.next_frame.deferred_draws.len(), false, cx);
+    }
 
+    /// KaminIDE patch: paint deferred descendants in their stacking root's scene. These draws
+    /// are omitted from the window's later overlay pass, including cache reuse.
+    pub fn paint_local_deferred(&mut self, range: Range<usize>, cx: &mut App) {
+        self.paint_deferred_range(range, true, cx);
+    }
+
+    fn paint_deferred_range(&mut self, range: Range<usize>, local: bool, cx: &mut App) {
+        self.with_deferred_environment(|window| {
+            window.paint_deferred_range_inner(range, local, cx)
+        });
+    }
+
+    fn paint_deferred_range_inner(&mut self, range: Range<usize>, local: bool, cx: &mut App) {
         // Paint all deferred draws in priority order.
         // Since prepaint has already processed nested deferreds, we just paint them all.
         if self.next_frame.deferred_draws.len() == 0 {
             return;
         }
 
-        let traversal_order = self.deferred_draw_traversal_order();
+        let mut traversal_order = range.collect::<SmallVec<[usize; 8]>>();
+        traversal_order.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
         let mut deferred_draws = mem::take(&mut self.next_frame.deferred_draws);
         for deferred_draw_ix in traversal_order {
             let mut deferred_draw = &mut deferred_draws[deferred_draw_ix];
-            let _render_scope = self.render_contexts
+            if deferred_draw.local != local {
+                continue;
+            }
+            let _render_scope = self
+                .render_contexts
                 .enter_snapshot(deferred_draw.render_contexts.clone());
             self.element_id_stack
                 .clone_from(&deferred_draw.element_id_stack);
+            self.text_style_stack = deferred_draw.text_style_stack.clone();
             self.next_frame
                 .dispatch_tree
                 .set_active_node(deferred_draw.parent_node);
@@ -4505,21 +4584,18 @@ impl Window {
                 self.leave_deferred_paint(entered);
             } else {
                 let range = deferred_draw.paint_range.clone();
-                self.reuse_deferred_paint(&mut deferred_draw.scroll, range, deferred_draw.groups.clone());
+                self.reuse_deferred_paint(
+                    &mut deferred_draw.scroll,
+                    range,
+                    deferred_draw.groups.clone(),
+                );
             }
             let paint_end = self.paint_index();
             deferred_draw.paint_range = paint_start..paint_end;
+            deferred_draw.paint_space = Some(self.next_frame.scene.scroll.space);
             deferred_draw.groups = groups_start..self.next_frame.scene.groups.len();
         }
         self.next_frame.deferred_draws = deferred_draws;
-        self.element_id_stack.clear();
-    }
-
-    fn deferred_draw_traversal_order(&mut self) -> SmallVec<[usize; 8]> {
-        let deferred_count = self.next_frame.deferred_draws.len();
-        let mut sorted_indices = (0..deferred_count).collect::<SmallVec<[_; 8]>>();
-        sorted_indices.sort_by_key(|ix| self.next_frame.deferred_draws[*ix].priority);
-        sorted_indices
     }
 
     pub(crate) fn prepaint_index(&self) -> PrepaintStateIndex {
@@ -4589,6 +4665,7 @@ impl Window {
                 [range.start.deferred_draws_index..range.end.deferred_draws_index]
                 .iter()
                 .map(|deferred_draw| DeferredDraw {
+                    local: deferred_draw.local,
                     current_view: deferred_draw.current_view,
                     parent_node: reused_subtree.refresh_node_id(deferred_draw.parent_node),
                     element_id_stack: deferred_draw.element_id_stack.clone(),
@@ -4602,6 +4679,7 @@ impl Window {
                     absolute_offset: deferred_draw.absolute_offset,
                     prepaint_range: deferred_draw.prepaint_range.clone(),
                     paint_range: deferred_draw.paint_range.clone(),
+                    paint_space: deferred_draw.paint_space,
                     groups: deferred_draw.groups.clone(),
                     isolated: deferred_draw.isolated.clone(),
                     scroll: owners.copy(&deferred_draw.scroll),
@@ -4691,6 +4769,8 @@ impl Window {
                 self.rendered_frame.scene.scroll.space
             }
         };
+        let here = self.next_frame.scene.scroll.space;
+        self.land_local_deferred(&scenes, from, here, |at| landed + at - scenes.start);
         self.land_scroll_paint(scenes, landed, from);
     }
 
@@ -5430,6 +5510,7 @@ impl Window {
         self.invalidator.debug_assert_prepaint();
         let parent_node = self.next_frame.dispatch_tree.active_node_id().unwrap();
         self.next_frame.deferred_draws.push(DeferredDraw {
+            local: false,
             current_view: self.current_view(),
             parent_node,
             element_id_stack: self.element_id_stack.clone(),
@@ -5443,6 +5524,7 @@ impl Window {
             absolute_offset,
             prepaint_range: PrepaintStateIndex::default()..PrepaintStateIndex::default(),
             paint_range: PaintIndex::default()..PaintIndex::default(),
+            paint_space: None,
             groups: 0..0,
             isolated: None,
             scroll,
@@ -9765,6 +9847,9 @@ impl Window {
     }
 }
 
+#[cfg(all(test, feature = "profiler"))]
+mod frame_demand_tests;
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -9837,10 +9922,17 @@ mod tests {
             (Some(Instant::now()), FrameRequestSource::LocalSchedule),
             (None, FrameRequestSource::NativeCallback),
         ] {
+            let input_at = Instant::now();
+            journal::record_input(journal::InputTiming {
+                kind: "test",
+                start: input_at,
+                end: input_at,
+                caused_invalidation: false,
+            });
             platform_window.simulate_frame_request(RequestFrameOptions {
                 signal_at,
                 signal_source: source,
-                require_presentation: true,
+                require_presentation: false,
                 ..Default::default()
             });
             let entries = collector.collect_unseen().entries;
@@ -9870,6 +9962,18 @@ mod tests {
                 .expect("completed no-render boundary");
             assert!(signal_index < skip_index);
         }
+        platform_window.simulate_frame_request(RequestFrameOptions {
+            require_presentation: false,
+            ..Default::default()
+        });
+        let entries = collector.collect_unseen().entries;
+        assert!(entries.iter().any(|entry| matches!(
+            entry, ForegroundJournalEntry::PlatformSignal(signal)
+                if signal.window_id == window.window_id()
+        )));
+        assert!(!entries.iter().any(|entry| matches!(
+            entry, ForegroundJournalEntry::Boundary(IntervalBoundary::FrameSkipped(_))
+        )), "an idle request must not seal an empty interval");
     }
 
     #[cfg(feature = "profiler")]

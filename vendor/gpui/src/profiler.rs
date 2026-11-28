@@ -1,7 +1,8 @@
 #[cfg(feature = "profiler")]
 use hdrhistogram::Histogram;
 use itertools::Itertools;
-use scheduler::{Instant, SpawnTime};
+pub use scheduler::Instant;
+use scheduler::SpawnTime;
 #[cfg(feature = "profiler")]
 use smallvec::SmallVec;
 use std::{
@@ -734,32 +735,10 @@ pub fn set_trace_enabled(enabled: bool) -> bool {
     }
 }
 
-#[cfg(any(feature = "bench-support", all(test, feature = "profiler")))]
-pub(crate) struct TraceGuard;
-
-#[cfg(any(feature = "bench-support", all(test, feature = "profiler")))]
-pub(crate) fn trace_scope() -> TraceGuard {
-    let incremented = TRACE_STATE.fetch_update(Ordering::AcqRel, Ordering::Acquire, |state| {
-        (state & TRACE_SCOPE_COUNT_MASK < TRACE_SCOPE_COUNT_MASK).then_some(state + 1)
-    });
-    assert!(incremented.is_ok(), "too many active profiler trace scopes");
-    TraceGuard
-}
-
-#[cfg(any(feature = "bench-support", all(test, feature = "profiler")))]
-impl Drop for TraceGuard {
-    fn drop(&mut self) {
-        let previous_state =
-            TRACE_STATE.fetch_update(Ordering::AcqRel, Ordering::Acquire, |state| {
-                (state & TRACE_SCOPE_COUNT_MASK > 0).then_some(state - 1)
-            });
-        match previous_state {
-            Ok(1) => clear_trace_buffers(),
-            Ok(_) => {}
-            Err(_) => debug_assert!(false, "profiler trace scope count underflowed"),
-        }
-    }
-}
+#[cfg(feature = "profiler")]
+mod trace_scope;
+#[cfg(feature = "profiler")]
+pub use trace_scope::{TraceGuard, trace_scope};
 
 /// Returns whether profiler trace collection is enabled.
 pub fn trace_enabled() -> bool {

@@ -1,0 +1,1 @@
+Frame demand: retain forced rendering and presentation across reentry, throttling and high-rate input; re-arm the platform only while dirty views, frame callbacks, pending presentation or input sustain remain. Opt-in host logging correlates demand and completed callbacks.

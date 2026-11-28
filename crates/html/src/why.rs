@@ -12,6 +12,23 @@
 use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
+mod element_kinds;
+mod layout_inputs;
+mod layout_work;
+pub use layout_inputs::to_json as layout_inputs;
+mod memory;
+pub use element_kinds::to_json as request_layout_kinds;
+mod paint_work;
+mod report;
+pub(crate) mod root;
+mod text;
+pub use report::{Report, Watch, raster};
+pub use text::changes as owner_changes;
+#[cfg(feature = "why-profiler")]
+mod window;
+#[cfg(feature = "why-profiler")]
+pub use window::{IdleCpuWindow, WindowJournal};
+
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
 pub(crate) use kamin_style::journal::{note, note_at};
@@ -76,7 +93,7 @@ pub fn is_code(code: &str) -> bool {
 #[must_use = "the journal records only while the subscription lives"]
 pub struct Subscription {
     _journal: kamin_style::journal::Subscription,
-    _frames: trace::Trace,
+    _frames: gpui::dirty_sources::trace::Trace,
 }
 
 /// Start recording for a new reader.
@@ -136,7 +153,7 @@ pub fn to_json(entry: &Entry) -> Value {
 #[cfg(test)]
 pub(crate) struct TestReader {
     _journal: kamin_style::journal::ThreadSubscription,
-    _frames: trace::Trace,
+    _frames: gpui::dirty_sources::trace::Trace,
 }
 
 /// Serializes the tests of this crate that subscribe, each reading the notes

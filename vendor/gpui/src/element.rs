@@ -176,6 +176,13 @@ impl<T: IntoElement> FluentBuilder for T {}
 /// An object that can be drawn to the screen. This is the trait that distinguishes "views" from
 /// other entities. Views are `Entity`'s which `impl Render` and drawn to the screen.
 pub trait Render: 'static + Sized {
+    /// Opt into subtree caching with a definite layout size. Notify this entity
+    /// whenever its contents change; a window refresh also invalidates the cache.
+    // KaminIDE patch: an entity can opt into the existing view cache through AnyView.
+    fn cached_style(&self) -> Option<crate::StyleRefinement> {
+        None
+    }
+
     /// Render this view into an element tree.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement;
 }

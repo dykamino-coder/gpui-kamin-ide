@@ -82,6 +82,45 @@ in the bench JSON). See also [recorded peaks and source exports](memprof-peak.md
    differently, so one logical stack can appear as a `+N`/`-N` pair of rows; the subsystem totals
    are not affected.
 
+## Unchanged-window CPU
+
+Run a `why-profiler` viewer with `--time PAGE_DIRECTORY --why JOURNAL_DIRECTORY --idle`.
+After its frame series it serves an event-driven journal control endpoint and waits without
+polling. On Windows, observe its exact child process, including its creation time:
+
+```powershell
+python -I scripts/memprof.py idle --pid VIEWER_PID --journal JOURNAL_DIRECTORY --seconds 5 --quit
+```
+
+The external observer reads raw process cycle time, kernel/user time in 100 ns ticks and QPC
+checkpoints. It publishes them to the engine's schema-1 `why.json`; it does not report a private
+CPU estimate. The journal's `idle_samples` include the raw checkpoints, duration, unrounded
+deltas, platform callbacks, draws, presentations, skipped callbacks by reason, reentry and lost
+foreground entries. `quiet` requires at least five seconds, zero raw CPU deltas and zero activity
+or loss. The journal interval covers the CPU interval; command handling occurs outside the CPU
+checkpoints. Aggregate `observations.platform_activity` also records activity across the series.
+
+The command exits unsuccessfully for any nonzero result. A rounded `0%` CPU value does not pass.
+
+For input acceptance on a hidden Windows desktop, the same viewer also watches
+`input-control.json`. Publish a complete JSON file by atomic rename, using a fresh `id`:
+
+```json
+{"id":"mouse-1","op":"mouse","count":160,"interval_ms":100,"x":700,"y":400}
+```
+
+Coordinates are window-local CSS pixels. The pointer moves over seven adjacent pixels;
+choose a document area whose hover target remains the same. The viewer calls
+`Window::dispatch_event` for each mouse move, so the ordinary input journal records receipt
+and invalidation. This avoids Windows tracking the physical pointer on another desktop and
+generating artificial leave/enter events. It checks GPUI dispatch, rather than OS message delivery.
+`input-reply.json` reports `running`, then `complete`, with the request id. A replacement
+command cancels the previous series; closing the idle transport cancels it too. Series are
+limited to 600 events and 60 seconds. Their timers exist only while a requested series runs.
+The input endpoint is separate from the CPU observer's control endpoint, allowing a finite
+series to cover the observer's CPU interval. Use the engine journal's actual input counts
+and raw CPU checkpoints to assess that interval.
+
 ## The profiler build
 
 A release build misleads a profile in two ways, and `memprof.py build` removes both:

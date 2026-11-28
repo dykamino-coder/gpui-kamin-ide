@@ -1,1 +1,1 @@
-Frame demand: wake idle Windows windows asynchronously through the existing GPUI invalidator, coalescing WM_PAINT and retaining paced vsync retry during native draws; weak window ownership prevents stale HWND requests.
+Frame demand: per-window pending demand wakes a shared worker parked without a timeout; consume-before-post retains requests arriving during native or reentrant draws, DirectManipulation inertia and renderer recovery, with stop and notify before joining the worker. Weak window ownership prevents stale HWND requests.

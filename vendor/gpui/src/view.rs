@@ -24,6 +24,8 @@ use std::{
 pub struct AnyView {
     entity: AnyEntity,
     render: fn(&AnyView, &mut Window, &mut App) -> AnyElement,
+    // KaminIDE patch: preserve the entity's opt-in cache contract after erasure.
+    cached_style: fn(&AnyView, &App) -> Option<StyleRefinement>,
 }
 
 impl<V: Render> From<Entity<V>> for AnyView {
@@ -31,6 +33,7 @@ impl<V: Render> From<Entity<V>> for AnyView {
         AnyView {
             entity: value.into_any(),
             render: any_view::render::<V>,
+            cached_style: any_view::cached_style::<V>,
         }
     }
 }
@@ -50,6 +53,7 @@ impl AnyView {
         AnyWeakView {
             entity: self.entity.downgrade(),
             render: self.render,
+            cached_style: self.cached_style,
         }
     }
 
@@ -61,6 +65,7 @@ impl AnyView {
             Err(entity) => Err(Self {
                 entity,
                 render: self.render,
+                cached_style: self.cached_style,
             }),
         }
     }
@@ -88,6 +93,10 @@ impl Eq for AnyView {}
 /// than a concrete type, but it participates in the reactive graph exactly like any
 /// other view via [`ViewElement`].
 impl View for AnyView {
+    fn cached_style(&self, cx: &App) -> Option<StyleRefinement> {
+        (self.cached_style)(self, cx)
+    }
+
     fn entity_id(&self) -> Option<EntityId> {
         Some(self.entity.entity_id())
     }
@@ -122,6 +131,7 @@ impl IntoElement for AnyView {
 pub struct AnyWeakView {
     entity: AnyWeakEntity,
     render: fn(&AnyView, &mut Window, &mut App) -> AnyElement,
+    cached_style: fn(&AnyView, &App) -> Option<StyleRefinement>,
 }
 
 impl AnyWeakView {
@@ -131,6 +141,7 @@ impl AnyWeakView {
         Some(AnyView {
             entity,
             render: self.render,
+            cached_style: self.cached_style,
         })
     }
 }
@@ -140,6 +151,7 @@ impl<V: 'static + Render> From<WeakEntity<V>> for AnyWeakView {
         AnyWeakView {
             entity: view.into(),
             render: any_view::render::<V>,
+            cached_style: any_view::cached_style::<V>,
         }
     }
 }
@@ -160,6 +172,14 @@ impl std::fmt::Debug for AnyWeakView {
 
 mod any_view {
     use crate::{AnyElement, AnyView, App, IntoElement, Render, Window};
+
+    // KaminIDE patch: the erased view uses the same definite-size cache as a typed view.
+    pub(crate) fn cached_style<V: Render>(
+        view: &AnyView,
+        cx: &App,
+    ) -> Option<crate::StyleRefinement> {
+        view.clone().downcast::<V>().unwrap().read(cx).cached_style()
+    }
 
     pub(crate) fn render<V: 'static + Render>(
         view: &AnyView,
@@ -190,6 +210,11 @@ mod any_view {
 /// get a blanket impl below; implement it by hand only when a component needs both
 /// parent-supplied props *and* a backing entity for identity.
 pub trait View: 'static + Sized {
+    /// Default definite layout for an entity-backed cached subtree.
+    fn cached_style(&self, _cx: &App) -> Option<StyleRefinement> {
+        None
+    }
+
     /// This view's identity, if it has one. A view typically holds the backing
     /// entity as a field and returns its [`EntityId`] here.
     ///
@@ -218,6 +243,10 @@ impl<T: RenderOnce> View for T {
 
 /// An entity that renders itself (`Render`) is a `View` keyed on its own id.
 impl<T: Render> View for Entity<T> {
+    fn cached_style(&self, cx: &App) -> Option<StyleRefinement> {
+        self.read(cx).cached_style()
+    }
+
     fn entity_id(&self) -> Option<EntityId> {
         Some(Entity::entity_id(self))
     }
@@ -330,6 +359,9 @@ impl<V: View> Element for ViewElement<V> {
     ) -> (LayoutId, Self::RequestLayoutState) {
         if let Some(entity_id) = self.entity_id {
             // Stateful path: create a reactive boundary.
+            if self.cached_style.is_none() {
+                self.cached_style = self.view.as_ref().unwrap().cached_style(cx);
+            }
             let view = &mut self.view;
             request_layout_view(
                 entity_id,
