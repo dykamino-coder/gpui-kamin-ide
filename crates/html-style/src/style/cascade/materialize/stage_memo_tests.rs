@@ -112,7 +112,7 @@ fn two_parent_variants_in_one_frame_both_keep_their_record() {
     materialize(&parsed.nodes, &root, vcx);
     let p = element(&parsed.nodes, "p");
     let plain = BoxStyle::shared(root.clone());
-    let mut banded = BoxStyle::shared(root.clone());
+    let mut banded = BoxStyle::shared(root);
     banded.inline_decoration.band_owner = 275;
     box_style(&plain, &p.style, vcx);
     box_style(&banded, &p.style, vcx);
