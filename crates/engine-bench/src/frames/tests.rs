@@ -14,6 +14,8 @@ fn a_wheel_sample_requires_the_root_to_scroll_by_the_step() {
     // `--scroll-back`: the document's ends clamp a step, nothing else does.
     assert!(ok((0., 8800.), (0., 9000.), 600., true));
     assert!(ok((0., 300.), (0., 0.), -600., true));
+    assert!(ok((0., 0.), (0., 0.), 0., true));
+    assert!(ok((0., 0.), (0., 9000.), 100_000_000., true));
     assert!(!ok((0., 8800.), (0., 9000.), 600., false));
     assert!(!ok((0., 0.), (0., 0.), 600., true));
 }

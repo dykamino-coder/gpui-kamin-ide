@@ -7,6 +7,8 @@ pub(crate) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--run
     Default: 800x600, 30 runs per mode, both modes. Windows, release profile only.\n\
     Relayout alternates the CSS viewport width by one pixel on the same Document; capture stays fixed.\n\
 Scroll dispatches one wheel step of 120 px down beside the root bar, in its visible content (viewport centre if unavailable).\n\
+    With --scroll-back, --scroll-step is finite and nonnegative: zero captures the root at rest;\n\
+    a large step clamps to the end. This changes the input, not the default wheel sample.\n\
     Edit alternates the input and a local edit (--edit, default text) through Document::update,\n\
     then checks every captured edit frame against a fresh document; missing captures cannot pass.\n\
     insert copies and remove deletes the first leaf element after the middle; --edit-markup FILE is\n\

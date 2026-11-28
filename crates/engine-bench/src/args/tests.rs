@@ -1,6 +1,30 @@
 use super::Args;
 
 #[test]
+fn scroll_step_supports_stationary_and_end_clamped_captures() {
+    let page = std::env::temp_dir().join(format!(
+        "engine-bench-scroll-step-{}.html",
+        std::process::id()
+    ));
+    std::fs::write(&page, "<p>scroll</p>").unwrap();
+    let parse = |step: &str| {
+        Args::parse(
+            [page.to_str().unwrap(), "--scroll-step", step]
+                .into_iter()
+                .map(str::to_owned),
+        )
+    };
+    for (value, expected) in [("0", 0.), ("0.5", 0.5), ("100000000", 100_000_000.)] {
+        assert_eq!(parse(value).unwrap().unwrap().scroll_step, expected);
+    }
+    for value in ["NaN", "inf", "-1", "1e99"] {
+        let error = parse(value).err().unwrap().to_string();
+        assert!(error.contains("finite and nonnegative"), "{value}: {error}");
+    }
+    std::fs::remove_file(page).unwrap();
+}
+
+#[test]
 fn markup_configuration_is_owned_by_each_parse_session() {
     let page = std::env::temp_dir().join("engine-bench-session-config-test.html");
     std::fs::write(&page, "<p>x</p>").unwrap();

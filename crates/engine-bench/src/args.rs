@@ -207,8 +207,8 @@ impl Args {
                 "--plan" => out.plan = Some(value.into()),
                 "--scroll-step" => {
                     out.scroll_step = value.parse()?;
-                    if !(1.0..=100_000.0).contains(&out.scroll_step) {
-                        return Err("scroll step must be 1..100000 CSS pixels".into());
+                    if !out.scroll_step.is_finite() || out.scroll_step < 0.0 {
+                        return Err("scroll step must be finite and nonnegative".into());
                     }
                 }
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
