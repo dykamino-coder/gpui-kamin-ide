@@ -3,6 +3,11 @@ use std::panic::Location;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
 
+#[cfg(feature = "test-support")]
+mod layout_budget;
+#[cfg(feature = "test-support")]
+pub use layout_budget::LayoutPassBudget;
+
 /// Events kept between two takes; later ones are only counted.
 const EVENTS: usize = 1024;
 static READERS: AtomicUsize = AtomicUsize::new(0);
@@ -75,6 +80,8 @@ pub fn push(kind: &'static str, site: &'static Location<'static>) {
 pub fn push_with(kind: &'static str, site: &'static Location<'static>, detail: impl FnOnce() -> String) {
     if enabled() {
         let detail = detail();
+        #[cfg(feature = "test-support")]
+        layout_budget::observe(kind, &detail);
         let mut log = LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         match log.0.len() < EVENTS {
             true => log.0.push(Event { kind, site, detail }),
