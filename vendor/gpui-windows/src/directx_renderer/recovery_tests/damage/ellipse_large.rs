@@ -1,5 +1,5 @@
-//! Области углов CSS могут пересекать середину коробки: растр сравнивается
-//! с независимой маской контура, включая внутренний край неравной рамки.
+//! CSS corner domains can cross the box midlines: compare the raster with
+//! an independent contour mask, including the inner edge of unequal borders.
 
 use super::*;
 
@@ -26,11 +26,11 @@ fn corners_beyond_the_midlines_keep_their_whole_coverage() {
             (140., 140., [(16., 16.), (80., 80.), (16., 16.), (80., 80.)]),
             (150., 100., [(120., 60.), (30., 20.), (90., 80.), (30., 40.)]),
         ] {
-            // Вращение проверяет все четыре угла и обе оси без зависимости
-            // от конкретной страницы или выбранной четверти шейдера.
+            // Rotation checks all four corners and both axes independently
+            // of any page or the quadrant selected by the shader.
             for turn in 0..4 {
                 let (w, h) = if turn % 2 == 0 { (w, h) } else { (h, w) };
-                let radii = std::array::from_fn::<_, 4, _>(|i| {
+                let radii: [(f32, f32); 4] = std::array::from_fn(|i| {
                     let (rx, ry) = radii[(i + 4 - turn) % 4];
                     if turn % 2 == 0 { (rx, ry) } else { (ry, rx) }
                 });

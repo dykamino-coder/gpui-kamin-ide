@@ -17028,12 +17028,12 @@ index 0000000000000000000000000000000000000000..3095d9ce85f608387ed29925895e5a38
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..41114acef0b724a90894fdfd78f5e49ee13cb354
+index 0000000000000000000000000000000000000000..c1321b21b32039b995e6bdb706c3339774a97caf
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
 @@ -0,0 +1,71 @@
-+//! Области углов CSS могут пересекать середину коробки: растр сравнивается
-+//! с независимой маской контура, включая внутренний край неравной рамки.
++//! CSS corner domains can cross the box midlines: compare the raster with
++//! an independent contour mask, including the inner edge of unequal borders.
 +
 +use super::*;
 +
@@ -17060,11 +17060,11 @@ index 0000000000000000000000000000000000000000..41114acef0b724a90894fdfd78f5e49e
 +            (140., 140., [(16., 16.), (80., 80.), (16., 16.), (80., 80.)]),
 +            (150., 100., [(120., 60.), (30., 20.), (90., 80.), (30., 40.)]),
 +        ] {
-+            // Вращение проверяет все четыре угла и обе оси без зависимости
-+            // от конкретной страницы или выбранной четверти шейдера.
++            // Rotation checks all four corners and both axes independently
++            // of any page or the quadrant selected by the shader.
 +            for turn in 0..4 {
 +                let (w, h) = if turn % 2 == 0 { (w, h) } else { (h, w) };
-+                let radii = std::array::from_fn::<_, 4, _>(|i| {
++                let radii: [(f32, f32); 4] = std::array::from_fn(|i| {
 +                    let (rx, ry) = radii[(i + 4 - turn) % 4];
 +                    if turn % 2 == 0 { (rx, ry) } else { (ry, rx) }
 +                });
@@ -21006,7 +21006,7 @@ index 0000000000000000000000000000000000000000..9593de1082541b5a4d44292dbb315619
 +    }
 +}
 diff --git a/vendor/gpui-windows/src/shaders.hlsl b/vendor/gpui-windows/src/shaders.hlsl
-index ba89c6873354fb7449b8294878e080a68c3dd29b..5185ad8c117ff714d1967cec336297a824f6f3e5
+index ba89c6873354fb7449b8294878e080a68c3dd29b..3865c5397039d004693f07696a2d5149457e5a67
 --- a/vendor/gpui-windows/src/shaders.hlsl
 +++ b/vendor/gpui-windows/src/shaders.hlsl
 @@ -9 +9,2 @@
@@ -21379,8 +21379,8 @@ index ba89c6873354fb7449b8294878e080a68c3dd29b..5185ad8c117ff714d1967cec336297a8
 +    return max(corner_to_point.x, corner_to_point.y);
 +}
 +
-+// CSS ограничивает суммы соседних радиусов, а не каждый радиус половиной
-+// коробки. Область большого угла может пересечь обе средние линии.
++// CSS limits sums of adjacent radii, not each radius to half the box.
++// A large corner's domain can cross both midlines.
 +float4 ellipse_corner(float2 p, float2 half_size, float4 rx, float4 ry) {
 +    float2 sign = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
 +    uint at = p.y < 0.0 ? (p.x < 0.0 ? 0u : 1u) : (p.x < 0.0 ? 3u : 2u);

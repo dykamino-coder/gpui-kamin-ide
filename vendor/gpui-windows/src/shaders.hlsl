@@ -791,8 +791,8 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     return max(corner_to_point.x, corner_to_point.y);
 }
 
-// CSS ограничивает суммы соседних радиусов, а не каждый радиус половиной
-// коробки. Область большого угла может пересечь обе средние линии.
+// CSS limits sums of adjacent radii, not each radius to half the box.
+// A large corner's domain can cross both midlines.
 float4 ellipse_corner(float2 p, float2 half_size, float4 rx, float4 ry) {
     float2 sign = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
     uint at = p.y < 0.0 ? (p.x < 0.0 ? 0u : 1u) : (p.x < 0.0 ? 3u : 2u);
