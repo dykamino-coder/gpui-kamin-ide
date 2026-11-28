@@ -47,10 +47,6 @@ impl Plan {
             return None;
         }
         let keys = self.keys.take();
-        if keys.is_empty() {
-            records.refuse(Refusal::TextOnly);
-            return None;
-        }
         let Some(atoms) = paths(nodes, keys) else {
             records.refuse(Refusal::AtomPath);
             return None;
