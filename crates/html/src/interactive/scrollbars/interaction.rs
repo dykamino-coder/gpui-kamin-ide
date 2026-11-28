@@ -67,13 +67,21 @@ pub(crate) fn prepaint(
     if freeze {
         return Vec::new();
     }
-    super::modern::bars(c, handle, selected, range, insets, bounds)
-        .into_iter()
-        .map(|bar| HitBar {
-            hitbox: window.insert_hitbox(bar.lane, HitboxBehavior::Normal),
-            bar,
-        })
-        .collect()
+    super::modern::bars(
+        c,
+        handle,
+        selected,
+        range,
+        insets,
+        bounds,
+        window.scale_factor(),
+    )
+    .into_iter()
+    .map(|bar| HitBar {
+        hitbox: window.insert_hitbox(bar.lane, HitboxBehavior::Normal),
+        bar,
+    })
+    .collect()
 }
 impl Interaction {
     pub(crate) fn paint(
@@ -137,6 +145,9 @@ mod tests {
                 travel: 10.0,
                 maximum: 20.0,
                 reverse: false,
+                button: 3.0,
+                scale: 1.0,
+                classic: false,
             },
             0.0,
             0.0,

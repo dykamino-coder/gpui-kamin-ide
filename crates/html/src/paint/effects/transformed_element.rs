@@ -118,25 +118,6 @@ fn flatten_plane(f: &[[f32; 4]; 4], center: (f32, f32)) -> Option<gpui::Transfor
     })
 }
 
-/// Обратная аффинная `[[a, b, tx], [c, d, ty]]`.
-///
-/// Нужна ровно затем, чтобы снять долю родителя: gpui складывает вложенные
-/// `with_transformation` как `outer∘inner` (css-transforms-1: матрица предка
-/// применяется последней), поэтому ребёнок объёмного контекста, желая
-/// оказаться на абсолютной `G`, обязан втолкнуть `F_родителя⁻¹ ∘ G`.
-pub(super) fn invert_affine(m: [[f32; 3]; 2]) -> Option<gpui::TransformationMatrix> {
-    let (a, b, tx) = (m[0][0], m[0][1], m[0][2]);
-    let (c, d, ty) = (m[1][0], m[1][1], m[1][2]);
-    let det = a * d - b * c;
-    if det.abs() < 1e-9 {
-        return None;
-    }
-    Some(gpui::TransformationMatrix {
-        rotation_scale: [[d / det, -b / det], [-c / det, a / det]],
-        translation: [(b * ty - d * tx) / det, (c * tx - a * ty) / det],
-    })
-}
-
 impl Transformed {
     pub(crate) fn new(child: AnyElement, frame: crate::layout::cx::FrameCx<'_>) -> Self {
         Transformed {

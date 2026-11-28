@@ -3210,6 +3210,17 @@ impl Window {
         quads
     }
 
+    /// Paths in the rendered frame, including retained layers.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_paths(&self) -> Vec<Path<ScaledPixels>> {
+        let scene = &self.rendered_frame.scene;
+        let mut paths = scene.paths.clone();
+        for layer in scene.layer_contents() {
+            paths.extend(layer.scene().paths.iter().cloned());
+        }
+        paths
+    }
+
     /// KaminIDE patch: the areas the most recently rendered frame hit-tests
     /// (each hitbox's bounds within its content mask), in insertion order,
     /// and how many deferred draws it painted.
@@ -6484,6 +6495,7 @@ impl Window {
             mask_once,
             mask_clip,
             projection: None,
+            plane: None,
             fragments: Vec::new(),
             label_dropped: false,
         });

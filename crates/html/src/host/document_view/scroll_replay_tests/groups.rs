@@ -16,7 +16,7 @@ type Groups = (Vec<gpui::Bounds<gpui::ScaledPixels>>, Vec<String>);
 /// The drawn areas of the group labels and each group that draws with its
 /// bounds and drawn quads (translation folded into the bounds, orders
 /// dropped), sorted.
-pub(super) fn groups(cx: &mut VisualTestContext) -> Groups {
+pub(in super::super) fn groups(cx: &mut VisualTestContext) -> Groups {
     let (labels, groups, viewport) = cx.update(|window, _| {
         let (labels, groups) = window.painted_groups();
         (

@@ -166,7 +166,7 @@ mod built_at_offset;
 mod canvas;
 mod canvas_extent;
 mod deferred;
-mod groups;
+pub(super) mod groups;
 mod pure_translation;
 mod rotated;
 mod why;

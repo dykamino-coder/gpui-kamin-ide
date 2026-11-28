@@ -10,6 +10,28 @@ pub trait PlaneBuild: std::fmt::Debug {
     fn moved(&self, delta: Point<Pixels>) -> std::rc::Rc<dyn PlaneBuild>;
 }
 
+/// Preserve overflow relative to the plane's source box when it moves.
+#[derive(Debug)]
+pub(super) struct Ink {
+    pub build: std::rc::Rc<dyn PlaneBuild>,
+    pub edges: [f32; 4],
+}
+
+impl PlaneBuild for Ink {
+    fn spec(&self) -> PlaneSpec {
+        let mut spec = self.build.spec();
+        spec.rect.0 += self.edges[0];
+        spec.rect.1 += self.edges[1];
+        spec.rect.2 += self.edges[2];
+        spec.rect.3 += self.edges[3];
+        spec
+    }
+
+    fn moved(&self, delta: Point<Pixels>) -> std::rc::Rc<dyn PlaneBuild> {
+        std::rc::Rc::new(Self { build: self.build.moved(delta), edges: self.edges })
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct Raster(pub std::rc::Rc<dyn PlaneBuild>);
 
@@ -27,10 +49,10 @@ impl PaintGroup {
         let build = build.moved(delta.map(|v| Pixels(v.0 / scale)));
         let spec = build.spec();
         self.projection = spec.projection;
-        if !self.polygon.is_empty() {
-            self.polygon = near_clip(&plane_corners(&spec.full, spec.outer, spec.rect))
-                .map(|(points, _)| to_points(&points)).unwrap_or_default();
-        }
+        self.polygon = match near_clip(&plane_corners(&spec.full, spec.outer, spec.rect)) {
+            Some((points, true)) => to_points(&points),
+            _ => Vec::new(),
+        };
         self.plane = Some((build, *scale));
     }
 }

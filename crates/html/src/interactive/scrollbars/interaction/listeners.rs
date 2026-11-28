@@ -38,11 +38,29 @@ impl Interaction {
                     }) * 0.875;
                     let direction = if coordinate < start { 1. } else { -1. }
                         * if bar.reverse { -1. } else { 1. };
+                    let lane_start = f32::from(if bar.axis == 0 {
+                        bar.lane.left()
+                    } else {
+                        bar.lane.top()
+                    });
+                    let lane_end = f32::from(if bar.axis == 0 {
+                        bar.lane.right()
+                    } else {
+                        bar.lane.bottom()
+                    });
+                    let distance = if bar.classic
+                        && (coordinate < lane_start + bar.button
+                            || coordinate >= lane_end - bar.button)
+                    {
+                        40.
+                    } else {
+                        page
+                    };
                     let mut target = animator.target();
                     if bar.axis == 0 {
-                        target.x += px(page * direction);
+                        target.x += px(distance * direction);
                     } else {
-                        target.y += px(page * direction);
+                        target.y += px(distance * direction);
                     }
                     animator.to(target, ScrollBehavior::Smooth, Source::Keyboard, window, cx);
                     cx.stop_propagation();

@@ -38,6 +38,7 @@ pub struct TransformPivot {
     /// The painter's own function of where the box lies, when it builds the
     /// matrix itself (`built_by`): the fields above then hold no inputs.
     build: Option<Rc<dyn TransformBuild>>,
+    pub(crate) motion: Option<crate::ScrollMotion>,
 }
 
 /// A matrix the painter builds by its own function of where the box lies (a
@@ -92,7 +93,7 @@ impl TransformPivot {
             snap_quarter(&mut local, snap, scale_factor);
         }
         let built = outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.built).compose(local);
-        TransformPivot { linear, translation, base, offset, scale_factor, snap, outer, local, fill, built, build: None }
+        TransformPivot { linear, translation, base, offset, scale_factor, snap, outer, local, fill, built, build: None, motion: None }
     }
 
     /// The pivot of a matrix `build` makes, painted under `outer`.
@@ -100,7 +101,7 @@ impl TransformPivot {
         let local = build.matrix();
         let built = outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.built).compose(local);
         let (linear, translation, base, offset) = ([[1.0, 0.0], [0.0, 1.0]], [0.0; 2], Point::default(), [0.0; 2]);
-        TransformPivot { linear, translation, base, offset, scale_factor, snap: None, outer, local, fill: None, built, build: Some(build) }
+        TransformPivot { linear, translation, base, offset, scale_factor, snap: None, outer, local, fill: None, built, build: Some(build), motion: None }
     }
 
     /// The matrix to paint under (an outer transform composes it).
@@ -116,6 +117,15 @@ impl TransformPivot {
     /// The matrix primitives painted under this pivot hold.
     pub fn matrix(&self) -> TransformationMatrix {
         self.built
+    }
+
+    /// Resolve each ancestor at its own spatial location, including nested scrolls.
+    pub fn current_matrix(&self) -> TransformationMatrix {
+        let mut local = self.clone();
+        local.outer = None;
+        let delta = self.motion.as_ref().map_or(Point::default(), |motion| motion.delta());
+        let moved = local.moved(delta.map(|v| v.scale(self.scale_factor)));
+        self.outer.as_ref().map_or(TransformationMatrix::unit(), |outer| outer.current_matrix()).compose(moved.local)
     }
 
     /// The pivot of the same box moved by `offset` (device pixels): every

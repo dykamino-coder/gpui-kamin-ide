@@ -356,7 +356,10 @@ impl Window {
             scene,
             projection: spec.projection,
             corners: plane_corners(&spec.full, spec.outer, rect),
-            build: spec.build,
+            build: spec.build.map(|(build, scale)| {
+                let edges = [rect.0 - spec.rect.0, rect.1 - spec.rect.1, rect.2 - spec.rect.2, rect.3 - spec.rect.3];
+                (std::rc::Rc::new(replay::Ink { build, edges }) as std::rc::Rc<dyn PlaneBuild>, scale)
+            }),
         };
         match slot {
             Some(i) if self.plane_contexts.len() == depth => {

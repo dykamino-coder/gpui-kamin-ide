@@ -20,6 +20,7 @@ pub(crate) enum NodeSource {
         on: Box<NodeSource>,
         base: Point<Pixels>,
         at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
+        device_grid: bool,
     },
 }
 
@@ -37,7 +38,7 @@ impl NodeSource {
             }
             NodeSource::Viewport { .. } | NodeSource::Visible(_) => Point::default(),
             NodeSource::Anchor(offset) => offset(),
-            NodeSource::Follow { on, base, at } => at(on.offset(scale) - *base),
+            NodeSource::Follow { on, base, at, .. } => at(on.offset(scale) - *base),
         }
     }
 }

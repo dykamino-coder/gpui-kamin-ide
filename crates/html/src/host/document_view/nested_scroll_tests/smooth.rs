@@ -13,6 +13,18 @@ fn at(cx: &mut VisualTestContext, ms: u64) {
     });
 }
 
+fn arrows(cx: &mut VisualTestContext) -> Vec<String> {
+    cx.update(|window, _| window.painted_paths())
+        .into_iter()
+        .filter(|path| !path.bounds.intersect(&path.content_mask.bounds).is_empty())
+        .map(|mut path| {
+            path.id = gpui::PathId(0);
+            path.order = 0;
+            format!("{path:?}")
+        })
+        .collect()
+}
+
 #[gpui::test]
 fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
     for (reversed, classic, perspective) in [
@@ -68,6 +80,9 @@ fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
             );
             if ms % 32 == 0 {
                 let replayed = painted(vcx);
+                let paths = arrows(vcx);
+                let groups = super::super::scroll_replay_tests::groups::groups(vcx);
+                let maps = vcx.update(|w, _| w.painted_plane_maps());
                 let size = vcx.update(|window, _| window.viewport_size());
                 for size in [gpui::size(size.width, size.height + px(1.)), size] {
                     vcx.simulate_resize(size);
@@ -78,6 +93,17 @@ fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
                         "reversed={reversed}, classic={classic}, perspective={perspective}, vsync {ms}: {diff}"
                     );
                 }
+                assert_eq!(paths, arrows(vcx), "arrow states at {ms}");
+                assert_eq!(
+                    groups,
+                    super::super::scroll_replay_tests::groups::groups(vcx),
+                    "nested groups at {ms}"
+                );
+                assert_eq!(
+                    maps,
+                    vcx.update(|w, _| w.painted_plane_maps()),
+                    "nested maps at {ms}"
+                );
             }
         }
         let journal = crate::why::take().journal;

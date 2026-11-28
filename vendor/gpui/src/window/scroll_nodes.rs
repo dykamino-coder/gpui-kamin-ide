@@ -257,6 +257,28 @@ impl Window {
         at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        self.scroll_follower_prepaint(id, on, at, false, f)
+    }
+
+    /// A native thumb whose source geometry lies on the device pixel grid.
+    pub fn with_scroll_grid_follower_prepaint<R>(
+        &mut self,
+        id: ScrollNodeId,
+        on: &ScrollHandle,
+        at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.scroll_follower_prepaint(id, Some(on), at, true, f)
+    }
+
+    fn scroll_follower_prepaint<R>(
+        &mut self,
+        id: ScrollNodeId,
+        on: Option<&ScrollHandle>,
+        at: Rc<dyn Fn(Point<Pixels>) -> Point<Pixels>>,
+        device_grid: bool,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         let on = match on {
             Some(handle) => NodeSource::Handle(handle.clone()),
             None => match self.next_frame.scroll_node_stack.last() {
@@ -266,7 +288,7 @@ impl Window {
         };
         let (chain, base) = (self.content_mask().bounds, on.offset(self.scale_factor()));
         let now = at(Point::default());
-        self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at });
+        self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at, device_grid });
         let result = f(self);
         self.end_scroll_node_prepaint(Some(0));
         result

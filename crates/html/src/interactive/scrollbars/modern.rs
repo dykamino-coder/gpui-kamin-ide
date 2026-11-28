@@ -154,7 +154,7 @@ pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
         };
         let id = gpui::ScrollNodeId::follower(handle, axis);
         if maximum > 0.0 {
-            window.with_scroll_follower_prepaint(id, Some(handle), std::rc::Rc::new(along), |_| {});
+            window.with_scroll_grid_follower_prepaint(id, handle, std::rc::Rc::new(along), |_| {});
         }
         if bar.classic {
             super::buttons::follow(bar, handle, window);

@@ -55,7 +55,7 @@ impl ScrollReplay {
     pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
         let node = self.node(id);
         let shift = node.shift.scale(scale);
-        let shift = shift.map(|v| if node.whole || (v.0 - v.0.round()).abs() < 1e-3 { ScaledPixels(v.0.round()) } else { v });
+        let shift = shift.map(|v| if node.whole { ScaledPixels(v.0.round()) } else { v });
         (shift, node.clip.scale(scale))
     }
 }
@@ -371,7 +371,7 @@ impl Window {
                 // follower (a scrollbar thumb, a sticky box) is placed by its
                 // own function of the offset, unsnapped, so it moves exactly.
                 let device = shift.scale(self.scale_factor());
-                let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { .. });
+                let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { device_grid: false, .. });
                 // Painted offsets are whole device pixels (`ScrollHandle::painted`)
                 // up to the f32 error of their CSS values.
                 let off = |v: f32| (v - v.round()).abs() > 1e-3;
