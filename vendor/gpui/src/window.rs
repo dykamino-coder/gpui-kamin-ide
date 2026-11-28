@@ -1557,8 +1557,11 @@ pub struct Window {
     /// Incremented every time focus moves. Used to invalidate a
     /// pending keyboard activation state when focus changes.
     pub(crate) focus_generation: u64,
-    /// KaminIDE patch: dispatched inputs and focus moves (`interaction_epoch`).
+    /// KaminIDE patch: inputs that changed element state, and focus moves
+    /// (`interaction_epoch`).
     interaction_epoch: u64,
+    /// KaminIDE patch: invalidations hover styles made (`Window::notify_hover`).
+    pub(crate) hover_notifies: usize,
     /// KaminIDE patch: frames drawn so far (Window::frame_serial).
     pub(crate) frame_serial: u64,
     pending_input: Option<PendingInput>,
@@ -2524,6 +2527,7 @@ impl Window {
             focus_enabled: true,
             focus_generation: 0,
             interaction_epoch: 0,
+            hover_notifies: 0,
             frame_serial: 0,
             pending_input: None,
             pending_modifier: ModifierState::default(),
@@ -7373,13 +7377,10 @@ impl Window {
         #[cfg(feature = "profiler")]
         self.window_profiler.begin_input(event.kind_name());
         let update_count_before = self.invalidator.update_count();
-        // KaminIDE patch: any input may change element state of retained subtrees.
-        // A wheel step moves scroll offsets, which retained records replay
-        // through their scroll nodes (`retained_scrolled`); a listener that
-        // changes anything else on a wheel notifies its view.
-        if !matches!(event, PlatformInput::ScrollWheel(_)) {
-            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
-        }
+        // KaminIDE patch: a wheel step moves scroll offsets, which retained records
+        // replay through their scroll nodes (`retained_scrolled`).
+        let wheel = matches!(event, PlatformInput::ScrollWheel(_));
+        let hovers_before = self.hover_notifies;
         // Track input modality for focus-visible styling and hover suppression.
         // Hover is suppressed during keyboard modality so that keyboard navigation
         // doesn't show hover highlights on the item under the mouse cursor.
@@ -7533,6 +7534,15 @@ impl Window {
         // is the last chance for drag listeners to see the pointer leave and reset their state.
         self.promote_external_drag_to_platform(&event, cx);
 
+        // KaminIDE patch: an input changed element state of retained subtrees only if
+        // it or a listener asked for a redraw (a modality switch changes hover
+        // suppression), apart from the hover styles, which a retained subtree paints
+        // itself (`layer_hover_changes`). An input that changes nothing (a pointer
+        // move over content without hover styles) keeps every retained record.
+        let invalidated = self.invalidator.update_count().wrapping_sub(update_count_before);
+        if !wheel && invalidated > self.hover_notifies.wrapping_sub(hovers_before) {
+            self.interaction_epoch = self.interaction_epoch.wrapping_add(1);
+        }
         let caused_invalidation = self.invalidator.update_count() > update_count_before;
         if caused_invalidation {
             self.input_rate_tracker.borrow_mut().record_input();
@@ -7799,15 +7809,10 @@ impl Window {
 
     fn dispatch_key_event(&mut self, event: &dyn Any, cx: &mut App) {
         if self.invalidator.is_dirty() {
-            // KaminIDE patch: this frame shows the state before the key's
-            // handlers run, so it is drawn at the epoch before this input
-            // (`dispatch_event` counted it): a retained subtree replays here
-            // and judges the input once its handlers ran.
-            let (epoch, before) = (self.interaction_epoch, self.interaction_epoch.wrapping_sub(1));
-            self.interaction_epoch = before;
+            // KaminIDE patch: this frame shows the state before the key's handlers
+            // run; `dispatch_event` counts the input after them, so a retained
+            // subtree replays here and judges the input once its handlers ran.
             self.draw(cx).clear(cx);
-            // Inputs the draw itself counted (a focus change) stay counted.
-            self.interaction_epoch = epoch.wrapping_add(self.interaction_epoch.wrapping_sub(before));
         }
 
         let node_id = self.focus_node_id_in_rendered_frame(self.focus);

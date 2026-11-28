@@ -122,9 +122,26 @@ impl Window {
     }
 
     /// Counter of window inputs that can change element state without the
-    /// host's knowledge: dispatched platform events and focus changes.
+    /// host's knowledge: dispatched platform events whose listeners asked for a
+    /// redraw (other than for a hover style), and focus changes.
     pub fn interaction_epoch(&self) -> u64 {
         self.interaction_epoch
+    }
+
+    /// Counter of redraws hover styles asked for (`notify_hover`): a retained
+    /// subtree that cannot repaint its hover boxes itself compares it.
+    pub fn hover_epoch(&self) -> usize {
+        self.hover_notifies
+    }
+
+    /// Notify `view` that a hover style of its element changed. A retained
+    /// subtree paints the hover its boxes show itself (`layer_hover_changes`),
+    /// so this redraw is no input that changed element state (`interaction_epoch`).
+    pub(crate) fn notify_hover(&mut self, view: crate::EntityId, cx: &mut crate::App) {
+        let before = self.invalidator.update_count();
+        cx.notify(view);
+        let made = self.invalidator.update_count().wrapping_sub(before);
+        self.hover_notifies = self.hover_notifies.wrapping_add(made);
     }
 
     /// Callbacks scheduled for the next frame so far in this draw. A subtree
