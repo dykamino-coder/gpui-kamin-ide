@@ -134,7 +134,7 @@ impl Document {
         let media = self.state.media();
         let fonts = self.state.text.metrics.font_context();
         let state = super::state::DocState::continuing(media, &self.state);
-        let candidate = match Self::try_source(
+        let mut candidate = match Self::try_source(
             source,
             theme_css,
             self.base_url.clone(),
@@ -151,6 +151,7 @@ impl Document {
         };
         crate::document::boxes::BoxTree::edit(&candidate.state.boxes)
             .replace(&candidate.nodes, &candidate.state.values);
+        candidate.root_phases = self.root_phases.clone();
         *self = candidate;
         Ok(self.report())
     }

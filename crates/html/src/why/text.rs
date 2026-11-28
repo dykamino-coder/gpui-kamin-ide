@@ -4,13 +4,19 @@
 
 use serde_json::Value;
 use std::collections::BTreeMap;
+
+mod activity;
+mod frames;
+mod memory;
+mod raster;
+mod roots;
+mod window;
+use frames::frames;
+use raster::raster;
 use std::fmt::Write;
 
 /// Owners present in either report whose bytes changed, largest change first.
-pub(super) fn changes(
-    before: &BTreeMap<String, u64>,
-    now: &BTreeMap<String, u64>,
-) -> Vec<(String, i64)> {
+pub fn changes(before: &BTreeMap<String, u64>, now: &BTreeMap<String, u64>) -> Vec<(String, i64)> {
     let mut out: Vec<(String, i64)> = before
         .keys()
         .chain(now.keys())
@@ -24,49 +30,6 @@ pub(super) fn changes(
         .collect();
     out.sort_by_key(|(k, d)| (std::cmp::Reverse(d.unsigned_abs()), k.clone()));
     out
-}
-
-const SHOWN_OWNERS: usize = 8;
-
-/// The raster line of a captured frame, then its GPU wait, command submission
-/// and the bench's own copy of the frame to memory (not engine work).
-fn raster(s: &mut String, r: &Value) {
-    if r.is_null() {
-        return;
-    }
-    let tag = |k: &str, a: &str, b: &str| {
-        r[k].as_str()
-            .map_or(String::new(), |w| format!("{a}{w}{b}"))
-    };
-    let full_by = tag("full_by", " by ", "") + &tag("shift_miss", " (not a move: ", ")");
-    let delta = r["delta"]
-        .as_array()
-        .map(|d| format!(" delta {},{} moved_px {}", d[0], d[1], r["moved_px"]))
-        .unwrap_or_default();
-    let rects: Vec<String> = r["rects"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|q| format!("{},{} {}x{}", q[0], q[1], q[2], q[3]))
-        .collect();
-    let _ = writeln!(
-        s,
-        "  raster {}{full_by}{delta} rects {} raster_px {} [{}]",
-        r["plan"].as_str().unwrap_or("?"),
-        r["rects_count"],
-        r["raster_px"],
-        rects.join(" | ")
-    );
-    if let Some(c) = r["shift_compare"].as_str() {
-        let _ = writeln!(s, "  compared {c}");
-    }
-    let _ = writeln!(
-        s,
-        "  gpu_wait {:.3} ms submit {:.3} ms capture_copy {:.3} ms",
-        r["gpu_wait_ms"].as_f64().unwrap_or(0.0),
-        r["submit_ms"].as_f64().unwrap_or(0.0),
-        r["capture_copy_ms"].as_f64().unwrap_or(0.0)
-    );
 }
 
 /// The text form of `why.json`.
@@ -120,6 +83,8 @@ pub(super) fn render(out: &Value) -> String {
         super::paint_work::render_frame(&mut s, f);
         super::layout_work::render(&mut s, &f["layout_work"]);
         super::element_kinds::render(&mut s, &f["request_layout_kinds"]);
+        roots::render(&mut s, &f["between"]["document_roots"], "root before");
+        roots::render(&mut s, &f["document_roots"], "root");
         super::layout_inputs::render(&mut s, &f["layout_inputs"]);
         let phases: Vec<String> = f["phases_ms"]
             .as_object()
@@ -135,6 +100,7 @@ pub(super) fn render(out: &Value) -> String {
             let _ = writeln!(s, "  phase  {}", phases.join(" "));
         }
         raster(&mut s, &f["raster"]);
+        window::render(&mut s, f);
         if let Some(line) = f["gpu_batches"].as_str() {
             let _ = writeln!(s, "  {line}");
         }
@@ -155,26 +121,12 @@ pub(super) fn render(out: &Value) -> String {
                 line(&mut s, "  miss", e);
             }
         }
-        let m = &f["memory"];
-        let _ = writeln!(
-            s,
-            "  memory heap owners {} bytes, gpu {} bytes, process private {} bytes, outside the owners' report {} bytes",
-            m["heap_bytes"], m["gpu_bytes"], m["process_private_bytes"], m["outside_owners_bytes"]
-        );
-        for c in m["changed_bytes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .take(SHOWN_OWNERS)
-        {
-            let _ = writeln!(
-                s,
-                "  memory {:+} {}",
-                c[1].as_i64().unwrap_or(0),
-                text(&c[0])
-            );
-        }
+        memory::frame(&mut s, &f["memory"]);
     }
+    for sample in out["memory_samples"].as_array().into_iter().flatten() {
+        memory::sample(&mut s, sample);
+    }
+    activity::render(&mut s, out);
     s
 }
 
@@ -191,60 +143,6 @@ fn line(s: &mut String, label: &str, c: &Value) {
         text(&c["code"]),
         text(&c["site"])
     );
-}
-
-/// The frame events in order, repeats of one event in a row as `xN`, and a
-/// summary of draws and renders with the requests after the first render
-/// (who asked for a frame beyond the expected one).
-fn frames(s: &mut String, label: &str, events: &Value, dropped: &Value) {
-    let all = events.as_array().map_or(&[][..], Vec::as_slice);
-    if all.is_empty() {
-        return;
-    }
-    let count = |kind: &str| all.iter().filter(|e| e["kind"] == kind).count();
-    let first_render = all.iter().position(|e| e["kind"] == "render");
-    let late: Vec<String> = first_render
-        .map(|at| &all[at + 1..])
-        .unwrap_or_default()
-        .iter()
-        .filter(|e| {
-            e["kind"] != "draw"
-                && e["kind"] != "render"
-                && !text(&e["kind"]).starts_with("scroll_node.")
-        })
-        .map(|e| format!("{} at {}", text(&e["kind"]), text(&e["site"])))
-        .collect();
-    let _ = write!(
-        s,
-        "{label} draws={} renders={}",
-        count("draw"),
-        count("render")
-    );
-    if !late.is_empty() {
-        let _ = write!(s, "; requested after the first render: {}", late.join(", "));
-    }
-    let _ = writeln!(s);
-    let mut at = 0;
-    while at < all.len() {
-        let run = all[at..].iter().take_while(|e| *e == &all[at]).count();
-        let times = if run > 1 {
-            format!(" x{run}")
-        } else {
-            String::new()
-        };
-        let detail = text(&all[at]["detail"]);
-        let sep = if detail.is_empty() { "" } else { ": " };
-        let _ = writeln!(
-            s,
-            "{label}   {}{times} at {}{sep}{detail}",
-            text(&all[at]["kind"]),
-            text(&all[at]["site"])
-        );
-        at += run;
-    }
-    if dropped.as_u64().unwrap_or(0) > 0 {
-        let _ = writeln!(s, "{label}   ... {dropped} more not kept");
-    }
 }
 
 fn pairs(s: &mut String, label: &str, v: &Value) {

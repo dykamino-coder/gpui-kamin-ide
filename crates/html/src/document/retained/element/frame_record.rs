@@ -28,6 +28,11 @@ impl Retained {
             window.with_element_state::<Record, _>(id, |record, window| {
                 let before = window.next_frame_callback_count();
                 let mut record = record.unwrap_or_default();
+                record.placement = Some(super::super::placement::Placement::capture(
+                    bounds,
+                    self.builder.opts.viewport,
+                    window,
+                ));
                 let epoch = record.begin(&self.builder.store, window);
                 // A tree the document step built already counted its reason.
                 let replay = self.tree.is_none().then(|| {
@@ -63,6 +68,7 @@ impl Retained {
                     self.same_prepaint =
                         plan.is_none() && prepaint.preserves_window_slots(&record.prepaint);
                     record.prepaint = prepaint;
+                    self.deferred = Some(window.prepaint_local_deferred(&record.prepaint, cx));
                     self.scroll_plan = plan;
                     return ((), record);
                 }
@@ -96,11 +102,12 @@ impl Retained {
                     }
                     None => self.build_in(bounds, window, cx),
                 };
-                self.scheduled += window.next_frame_callback_count().saturating_sub(before);
                 record.inputs = self.key.clone().map(|frame| {
                     Inputs::new(frame, key, window, std::mem::take(&mut self.layout_inputs))
                 });
                 record.prepaint = prepaint;
+                self.deferred = Some(window.prepaint_local_deferred(&record.prepaint, cx));
+                self.scheduled += window.next_frame_callback_count().saturating_sub(before);
                 record.paint = RetainedPaint::default();
                 record.layered = None;
                 record.layer = None;
@@ -144,7 +151,13 @@ impl Retained {
                 return ((), record);
             };
             let before = window.next_frame_callback_count();
-            let (paint, layered) = self.builder.record_paint(window, |w| tree.paint(w, cx));
+            let deferred = self.deferred.take();
+            let (paint, layered) = self.builder.record_paint(window, |w| {
+                tree.paint(w, cx);
+                if let Some(range) = deferred {
+                    w.paint_local_deferred(range, cx);
+                }
+            });
             record.layered = layered;
             record.layer = self.builder.store.layer_version();
             if let Some(flow) = &self.flow {
