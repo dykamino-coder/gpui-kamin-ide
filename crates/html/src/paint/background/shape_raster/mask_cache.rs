@@ -51,7 +51,7 @@ mod tests {
     fn opposite_corner_domains_intersect_without_filling_the_far_corner() {
         let r = parse_rrect("100 100 0 0 100 100 0 0", 100.0, 100.0, 1.0).unwrap();
         let mask = uncached(&r, 100, 100).unwrap();
-        let bytes = mask.as_bytes(0);
+        let bytes = mask.as_bytes(0).unwrap();
         let alpha = |x: usize, y: usize| bytes[(y * 100 + x) * 4 + 3];
         assert_eq!(alpha(50, 50), 255);
         for (x, y) in [(9, 9), (90, 90), (49, 0), (0, 49), (99, 50), (50, 99)] {

@@ -21,6 +21,7 @@ fn corners_beyond_the_midlines_keep_their_whole_coverage() {
     let gpu = DirectXDevices::new().unwrap();
     let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
     for device in [&gpu, &warp] {
+        let mut renderer = offscreen(device, W, H);
         for (w, h, radii) in [
             (180., 90., [(90., 90.), (90., 90.), (0., 0.), (0., 0.)]),
             (90., 160., [(80., 120.), (0., 0.), (10., 40.), (0., 0.)]),
@@ -51,7 +52,6 @@ fn corners_beyond_the_midlines_keep_their_whole_coverage() {
                     let mut scene = Scene::default();
                     scene.quads.push(q);
                     scene.note_frame_damage(&Scene::default(), 1, (W, H));
-                    let mut renderer = offscreen(device, W, H);
                     renderer.draw(&scene, WindowBackgroundAppearance::Opaque).unwrap();
                     let got = target_bytes(&mut renderer);
                     for y in 0..h as usize {

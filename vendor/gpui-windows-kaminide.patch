@@ -17028,7 +17028,7 @@ index 0000000000000000000000000000000000000000..3095d9ce85f608387ed29925895e5a38
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..e3474e3a9f89b567f0384762711e255d24cad500
+index 0000000000000000000000000000000000000000..8f10e9691cc184e011224943c280dc542bc943e2
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
 @@ -0,0 +1,73 @@
@@ -17055,6 +17055,7 @@ index 0000000000000000000000000000000000000000..e3474e3a9f89b567f0384762711e255d
 +    let gpu = DirectXDevices::new().unwrap();
 +    let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
 +    for device in [&gpu, &warp] {
++        let mut renderer = offscreen(device, W, H);
 +        for (w, h, radii) in [
 +            (180., 90., [(90., 90.), (90., 90.), (0., 0.), (0., 0.)]),
 +            (90., 160., [(80., 120.), (0., 0.), (10., 40.), (0., 0.)]),
@@ -17085,7 +17086,6 @@ index 0000000000000000000000000000000000000000..e3474e3a9f89b567f0384762711e255d
 +                    let mut scene = Scene::default();
 +                    scene.quads.push(q);
 +                    scene.note_frame_damage(&Scene::default(), 1, (W, H));
-+                    let mut renderer = offscreen(device, W, H);
 +                    renderer.draw(&scene, WindowBackgroundAppearance::Opaque).unwrap();
 +                    let got = target_bytes(&mut renderer);
 +                    for y in 0..h as usize {
