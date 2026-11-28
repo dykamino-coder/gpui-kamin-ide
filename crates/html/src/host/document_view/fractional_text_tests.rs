@@ -3,7 +3,7 @@ use gpui::{
     Bounds, DevicePixels, Font, FontId, FontMetrics, FontRun, GlyphId, LineLayout, NoopTextSystem,
     Pixels, PlatformTextSystem, RenderGlyphParams, Size, TextRenderingMode, point, size,
 };
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 // Deterministic fractional metrics keep tests independent of installed fonts.
 pub(super) struct FractionalTextSystem;

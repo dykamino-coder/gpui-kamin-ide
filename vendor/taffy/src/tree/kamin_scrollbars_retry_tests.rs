@@ -71,6 +71,57 @@ fn axis_query_does_not_publish_layout_or_visit_an_unrelated_tree() {
     );
 }
 
+#[test]
+fn intrinsic_block_measure_does_not_publish_a_scrollbar_decision() {
+    let mut tree: TaffyTree<()> = TaffyTree::new();
+    let scroller = tree
+        .new_leaf(Style {
+            size: Size {
+                width: length(40.0),
+                height: auto(),
+            },
+            overflow: Point {
+                x: Overflow::Hidden,
+                y: Overflow::Hidden,
+            },
+            scrollbar_width: BAR,
+            kamin_scrollbars: ScrollbarLayout::new(Point { x: true, y: false }, false, false, None),
+            ..Default::default()
+        })
+        .unwrap();
+    let measure = |input, _, _: Option<&mut ()>, style: &Style| {
+        crate::compute_leaf_layout(
+            input,
+            style,
+            |_, _| 0.0,
+            |_, _| Size {
+                width: 80.0,
+                height: 20.0,
+            },
+        )
+    };
+    let space = Size {
+        width: AvailableSpace::Definite(40.0),
+        height: AvailableSpace::MaxContent,
+    };
+    let before = *tree.layout(scroller).unwrap();
+    let intrinsic =
+        tree.compute_size_with_measure(scroller, space, crate::RequestedAxis::Vertical, measure);
+    assert_eq!(
+        intrinsic.size,
+        Size {
+            width: 40.0,
+            height: 20.0
+        }
+    );
+    assert_eq!(tree.style(scroller).unwrap().overflow.x, Overflow::Hidden);
+    assert_eq!(*tree.layout(scroller).unwrap(), before);
+    tree.compute_layout_with_measure(scroller, space, measure)
+        .unwrap();
+    assert_eq!(tree.style(scroller).unwrap().overflow.x, Overflow::Scroll);
+    assert_eq!(tree.layout(scroller).unwrap().scrollbar_size.height, BAR);
+}
+
 fn measured_chain(depth: usize) -> usize {
     let (mut tree, root, positioned, scroller, child) = intrinsic_fixture(false);
     let mut style = tree.style(child).unwrap().clone();
