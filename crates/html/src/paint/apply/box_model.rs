@@ -222,6 +222,10 @@ fn apply_radius(mut d: Div, c: &Computed, vcx: ValueCx<'_>) -> Div {
     if c.radius_masked(vcx) || c.reset_border.border_shape.is_some() {
         return d;
     }
+    if c.radius_elliptic(vcx) {
+        d.style().corner_ellipse = Some(Box::new(ellipse_radii(c, vcx)));
+        return d;
+    }
     let r = &c.reset_border.radius;
     let resolve = |l: Option<Len>| radius_px(c, l, vcx);
     for (val, corner) in [(r.tl, 0u8), (r.tr, 1), (r.br, 2), (r.bl, 3)] {

@@ -169,6 +169,16 @@ pub(super) fn paint_border_colors(
     // полупрозрачная сторона ложилась дважды, полосой поверх квада (эталоны
     // `grid-gap-decorations-*` с `border-right: 6px solid rgba(…/.5)` темнели
     // до двух слоёв). Полосы красят и стороны без своего цвета — см. там же.
+    // Elliptical corners: the quad paints the sides in their colours
+    // (`apply::ellipse_radii`), with the colours as painted here.
+    if mixed
+        && c.radius_elliptic(vcx)
+        && let Some(e) = d.style().corner_ellipse.as_mut()
+    {
+        e.side_colors = Some(std::array::from_fn(|i| {
+            crate::paint::background::border_paint(c, c.used_border_color(i), vcx).to_hsla()
+        }));
+    }
     let strips = mixed && c.reset_border.border_shape.is_none();
     if !border_image_on
         && !crate::paint::background::single_corner::eligible(c)

@@ -90,15 +90,21 @@ pub(super) fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rr
 /// прямой стороны — её толщина; css-borders-4 §corner-shaping: «nearly
 /// consistent distance … or linearly increasing if widths differ»).
 ///
-/// Угол — суперэллипс `|x|^p + |y|^p = 1`, `p = 2^K` (спека и JS-эталон WPT
-/// `render-corner-shape.js`; в тексте алгоритма спеки показатель записан с
-/// опечаткой). Выпуклый (K ≥ 0) — от внутреннего центра угла; вогнутый
-/// (K < 0) — точка внутри коробки, если она СНАРУЖИ суперэллипса того же
-/// |K| с центром во внешней вершине (зеркало через диагональ). Расстояние —
-/// первого порядка `f/|∇f|`; для K=1 сохранена прежняя формула (точная у
-/// окружности), чтобы не сдвинуть ни одного пикселя старых масок.
+/// The corner is a superellipse `|x|^p + |y|^p = 1`, `p = 2^K`, as in the
+/// WPT reference `render-corner-shape.js` (the spec algorithm has an exponent
+/// typo). Convex corners use the inner centre; concave corners use the
+/// complement of the same |K| superellipse centred at the outer vertex.
+/// First-order distance `f/|grad f|`; the K=1 formula is exact for a circle.
+/// Rationalizing the norm difference preserves precision near the edge.
 fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
     let ring = r.ring.unwrap_or([0.0; 4]);
+    let edges = [-py, px_ - fw, py - fh, -px_];
+    let mut closest = (edges[0], ring[0]);
+    for (i, &d) in edges.iter().enumerate().skip(1) {
+        if d > closest.0 {
+            closest = (d, ring[i]);
+        }
+    }
     // Внешняя вершина угла, направление внутрь, индексы сторон t/r/b/l по x и y.
     let corners = [
         (0.0, 0.0, 1.0, 1.0, 3usize, 0usize), // tl: лево, верх
@@ -143,7 +149,11 @@ fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
             if (k - 1.0).abs() < crate::tolerance::CORNER_CURVATURE_EPS {
                 let dd = (dx * dx + dy * dy).sqrt();
                 let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / dd.max(1e-6);
-                ((dd - 1.0) / grad.max(1e-6), dx / rx, dy / ry)
+                let small = ex.min(ey);
+                let other = 1.0 - ex.max(ey);
+                let numerator = small * (small - 2.0) + other * other;
+                let norm_minus_one = numerator / (dd + 1.0);
+                (norm_minus_one / grad.max(1e-6), dx / rx, dy / ry)
             } else {
                 let p = 2f32.powf(k);
                 let f = dx.powf(p) + dy.powf(p) - 1.0;
@@ -158,18 +168,13 @@ fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
         };
         let n = (gx * gx + gy * gy).sqrt().max(1e-6);
         let erode = ((gx / n) * ring[side_x]).hypot((gy / n) * ring[side_y]);
-        return (d, erode);
-    }
-    // Прямые стороны: расстояние до ближайшей, толщина — её.
-    let edges = [-py, px_ - fw, py - fh, -px_]; // t r b l
-    let (mut best, mut idx) = (edges[0], 0);
-    for (i, e) in edges.iter().enumerate().skip(1) {
-        if *e > best {
-            best = *e;
-            idx = i;
+        // Intersect the corner constraints, including opposite domains
+        // crossing both midlines, with the straight sides of the box.
+        if d > closest.0 {
+            closest = (d, erode);
         }
     }
-    (best, ring[idx])
+    closest
 }
 
 /// Покрытие точки контуром: заливка либо кольцо (внешний контур минус его

@@ -109,6 +109,13 @@ impl Report {
             .filter(|&(i, name)| *name != "write_ns" && after[i] != watch.path[i])
             .map(|(i, name)| ((*name).into(), json!(after[i].wrapping_sub(watch.path[i]))))
             .collect();
+        // Paint groups the elements built since the last sample, by reason.
+        let group_reasons: serde_json::Map<String, Value> = crate::group_reasons::REASONS
+            .iter()
+            .zip(crate::group_reasons::take())
+            .filter(|&(_, n)| n != 0)
+            .map(|(name, n)| ((*name).into(), json!(n)))
+            .collect();
         for (key, value) in fields.as_object().into_iter().flatten() {
             entry[key] = value.clone();
         }
@@ -117,7 +124,7 @@ impl Report {
             "built": counts.0, "replayed": counts.1,
             "builds_inside_draw": counts.2,
             "verdict": if counts.0 > 0 { "built" } else if counts.1 > 0 { "replayed" } else { "none" },
-            "paint_path": path, "memory": memory, "between": watch.between,
+            "paint_path": path, "group_reasons": group_reasons, "memory": memory, "between": watch.between,
         });
         for (key, value) in common.as_object().into_iter().flatten() {
             entry[key] = value.clone();

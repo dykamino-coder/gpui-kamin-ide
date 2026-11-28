@@ -32,6 +32,19 @@ pub(crate) fn grouped_wrapper(
         && clip_inset.is_none()
         && c.reset_mask.clip_edges.is_none()
         && c.reset_mask.clip_xywh.is_none();
+    let clipped = clip_rect.is_some()
+        || clip_inset.is_some()
+        || c.reset_mask.clip_edges.is_some()
+        || c.reset_mask.clip_xywh.is_some();
+    crate::group_reasons::note(crate::group_reasons::of(
+        blur,
+        blend,
+        !polygon.is_empty(),
+        mask.as_ref(),
+        clipped,
+        c.reset_mask.clip_shape.is_some(),
+        c.ellipse_quad_refusal(),
+    ));
     let mut wrapper = crate::paint::effects::grouped_element::Grouped::new(el, frame);
     wrapper.spill = pure_isolation || mask_geometry::unclipped(c);
     wrapper.blur = blur;
