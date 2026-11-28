@@ -35,6 +35,7 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
+        "Completed live passes release former-document geometry, retained-layout lookup and dispatch capacity; stable passes reuse their storage and the opt-in owner walk reports retained and dispatch containers.",
         "Effect lifetime diagnostics: opt-in batch journal reports immutable mask uploads and texture owners released when the complete scene stops using their effect kind.",
         "Moved frames: a frame whose largest scroll node moved by whole device pixels is compared, cell by cell and with retained layers expanded, against the last frame moved by that step (both cut by the moved window); where they agree a renderer may copy the kept pixels, and the rest becomes at most four damage rectangles (`Scene::frame_shift`). Layer sources stay held from recording to present so the comparison reads what the last frame drew.",
         "Analytic gradients: immutable geometry and arbitrary sRGB stops belong to retained commands; replay, splicing, damage comparison and group batches preserve content while remapping scene-local descriptor indices.",
@@ -153,6 +154,7 @@ FIXES = {
         "Tests: modal text-selection tests wait out the wall-clock modal animation as well as stepping the test clock.",
     ],
     "taffy": [
+        "Live node payloads use dense releasable pages behind stable generational IDs; retiring nodes releases empty pages while preserving survivor layout, context and links.",
         "Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.",
         "Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.",
         "Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.",

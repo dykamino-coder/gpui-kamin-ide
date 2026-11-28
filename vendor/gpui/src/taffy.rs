@@ -21,6 +21,8 @@ pub(crate) use exact_leaf::ExactLeaf;
 mod box_edges;
 // KaminIDE patch: the frame tree survives frames (`retained`).
 mod retained;
+// KaminIDE patch: pass storage follows the geometry used by the last pass.
+mod pass_storage;
 // KaminIDE patch: equal node styles of a tree share one allocation.
 mod style_share;
 // KaminIDE patch: boxes laid out with the inputs of the last pass (layout journal).
@@ -48,6 +50,7 @@ impl TaffyLayoutEngine {
         table::<(LayoutId, (f32, f32))>(sink, path, self.placed_origins.capacity());
         table::<LayoutId>(sink, path, self.computed_layouts.capacity());
         vec(sink, path, &self.layout_bounds_scratch_space);
+        self.retained.heap_report(sink);
     }
 }
 
@@ -278,12 +281,11 @@ impl TaffyLayoutEngine {
     }
 
     /// KaminIDE patch: before a node insertion that would grow the full node storage,
-    /// grow it once to the frame's element count (`expected`, a hint read only then)
-    /// instead of doubling: on a first frame of 10^5 elements doubling copied the
-    /// 2 KiB nodes about twice and held the old and new storage together.
-    /// Trees below `RESERVE_FROM_NODES` keep doubling: the element count exceeds
-    /// the node count, and on a small page the larger buffer raised the peak
-    /// working set (p06: 141 -> 153 MB) while doubling there copies under 9 MB.
+    /// reserve for the frame's element count (`expected`, a hint read only then).
+    /// Payload pages keep growth from copying all NodeData values, while this
+    /// hint avoids repeated growth of the key and relationship tables.
+    /// Small trees and independent probes grow from their own node requests:
+    /// the frame's element count can greatly exceed their actual node count.
     pub(crate) fn reserve_nodes_when_full(&mut self, expected: impl FnOnce() -> usize) {
         if self.frame_tree
             && self.taffy.node_storage_full()
@@ -305,11 +307,7 @@ impl TaffyLayoutEngine {
             self.taffy.clear();
             self.styles.clear();
         }
-        self.absolute_unrounded.clear();
-        self.absolute_layout_bounds.clear();
-        self.root_origins.clear();
-        self.placed_origins.clear();
-        self.computed_layouts.clear();
+        self.clear_pass_storage();
     }
 
     /// KaminIDE patch: поставить корень отдельного дерева (`layout_as_root`)

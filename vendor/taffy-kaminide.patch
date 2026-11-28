@@ -1,30 +1,31 @@
 # KaminIDE patches — taffy 0.14.0 (DioxusLabs/taffy 2d936b7701f64b0fe95e50f1bfdcfc65a9f88f6f, cargo package)
 #
-# 1. Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.
-# 2. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
-# 3. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
-# 4. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
-# 5. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
-# 6. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
-# 7. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
-# 8. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
-# 9. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
-# 10. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
-# 11. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
-# 12. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
-# 13. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
-# 14. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
-# 15. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
-# 16. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
-# 17. Packaging: retain the selected source/examples; omit the upstream generated test module.
-# 18. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
-# 19. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
-# 20. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
-# 21. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
-# 22. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
-# 23. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
-# 24. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
-# 25. Layout-decided scrollbars (CSS Overflow 3 section 3): a box whose overflow:auto bars layout decides is laid out with its guessed bars, and when its scrollable overflow (a scroll range proxy excluded) asks for others, only that box is laid out again in the same pass, at most twice, a bar that appeared staying (Blink AddScrollbarFreeze); the viewport publishes its gutter first, and out-of-flow boxes built for another root gutter resolve their insets against the decided one; a parent records the decided scrollbar size. Descendant gutter changes invalidate intrinsic ancestor measurements and repeat their size selection with transaction-frozen bars; empty grid and lane tracks contribute their in-flow overflow area.
+# 1. Live node payloads use dense releasable pages behind stable generational IDs; retiring nodes releases empty pages while preserving survivor layout, context and links.
+# 2. Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.
+# 3. Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.
+# 4. Upstream #1353: retain the used physical relative-position vector separately from Layout.location in block, flex, grid and lanes, including vertical block-flow conversion.
+# 5. Native stack depth: construct already-boxed per-container flex constants in a separate non-inlined preparation frame before descending into children, and keep the non-inlined logical-axis adapter out of the identity fast path when parent and children already use the physical horizontal LTR coordinate system. Complete output adaptation, out-of-flow placement and cache cloning after recursive container layout returns, in separate native frames. Intrinsic measurements retain margin-collapse metadata so empty deep blocks remain cacheable.
+# 6. Export final flex lines and item geometry; preserve flex sizing while applying fragmentation consumed space on either physical block axis and in either direction, retaining used automatic minima for scroll/monolithic items (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings). Line membership fixed before fragmentation is addressed by the exported line indices in both wrap directions. Negative row line growth suppresses the gap at a break after alignment: later lines move towards block-start and only a content-sized container shrinks (css-gaps-1 section 2).
+# 7. Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).
+# 8. Leaf measurement returns baselines so flex/grid baseline alignment uses text metrics.
+# 9. CSS sizing: intrinsic constraints, aspect ratios, box sizing and percentage resolution.
+# 10. Flex/grid/block layout: carry CSS margins, baselines and track sizing through layout.
+# 11. Grid/subgrid/lanes: retain local track sizing, masonry and physical baseline algorithms with their regression fixtures.
+# 12. Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.
+# 13. Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.
+# 14. Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.
+# 15. Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.
+# 16. Upstream #1320/#1335: accept length-percentage calc in auto-repeat tracks and count outer flex margins once; retain compressible controls per CSS Sizing 3 instead of #1351.
+# 17. Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.
+# 18. Packaging: retain the selected source/examples; omit the upstream generated test module.
+# 19. calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
+# 20. Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.
+# 21. Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.
+# 22. Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.
+# 23. Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.
+# 24. Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.
+# 25. Grid contribution memo: a grid of 64 or more items without subgrids or margin-trim keeps, for one layout pass only, the last min-content, max-content and minimum contribution of each item per axis, keyed bit for bit by its grid area size (and the container inner size for the minimum); it is read only where the item's per-query cache is empty and fills that cache as the measurement would, so repeated size queries of one pass (a flex column asking min- and max-content heights) give identical results without reaching the items (css-grid-1 section 11.5).
+# 26. Layout-decided scrollbars (CSS Overflow 3 section 3): a box whose overflow:auto bars layout decides is laid out with its guessed bars, and when its scrollable overflow (a scroll range proxy excluded) asks for others, only that box is laid out again in the same pass, at most twice, a bar that appeared staying (Blink AddScrollbarFreeze); the viewport publishes its gutter first, and out-of-flow boxes built for another root gutter resolve their insets against the decided one; a parent records the decided scrollbar size. Descendant gutter changes invalidate intrinsic ancestor measurements and repeat their size selection with transaction-frozen bars; empty grid and lane tracks contribute their in-flow overflow area.
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -26743,6 +26744,342 @@ index 0000000000000000000000000000000000000000..e1bb528c21bf12b4d4ef85838468f408
 +    assert_eq!(**tree.get_node_context(unrelated).unwrap(), 3);
 +    assert!(tree.parent(child).is_none());
 +}
+diff --git a/vendor/taffy/src/tree/node_storage.rs b/vendor/taffy/src/tree/node_storage.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3a97b2d90a6fb7b531e464b7a2c3322b4cc541d1
+--- /dev/null
++++ b/vendor/taffy/src/tree/node_storage.rs
+@@ -0,0 +1,171 @@
++//! KaminIDE patch: stable generational IDs with payload pages owned by live nodes.
++//!
++//! SlotMap keeps its small key/location table, so a deleted ID never names a new
++//! node. Dense pages hold the large NodeData values. Removing a node moves only
++//! the last value and releases each emptied page, including after navigation.
++
++use super::NodeData;
++use crate::util::sys::Vec;
++use core::ops::{Index, IndexMut};
++use slotmap::{DefaultKey, SlotMap};
++
++// Allocation granularity, not a cache limit: all live nodes are stored.
++const PAGE_NODES: usize = 64;
++type Entry = (DefaultKey, NodeData);
++
++#[derive(Debug, Clone)]
++pub(super) struct NodeStorage {
++    locations: SlotMap<DefaultKey, usize>,
++    pages: Vec<Vec<Entry>>,
++}
++
++impl NodeStorage {
++    pub(super) fn with_capacity(capacity: usize) -> Self {
++        let mut storage = Self {
++            locations: SlotMap::with_capacity(capacity),
++            pages: Vec::new(),
++        };
++        storage.reserve(capacity);
++        storage
++    }
++
++    pub(super) fn len(&self) -> usize {
++        self.locations.len()
++    }
++
++    pub(super) fn capacity(&self) -> usize {
++        let payloads = self.pages.last().map_or(0, |last| {
++            (self.pages.len() - 1) * PAGE_NODES + last.capacity()
++        });
++        self.locations.capacity().min(payloads)
++    }
++
++    pub(super) fn reserve(&mut self, additional: usize) {
++        self.locations.reserve(additional);
++        let nodes = self.len() + additional;
++        let needed = (nodes + PAGE_NODES - 1) / PAGE_NODES;
++        while self.pages.len() < needed {
++            self.pages.push(Vec::new());
++        }
++        for (index, page) in self.pages.iter_mut().enumerate().take(needed) {
++            let wanted = (nodes - index * PAGE_NODES).min(PAGE_NODES);
++            page.reserve_exact(wanted.saturating_sub(page.len()));
++        }
++    }
++
++    pub(super) fn insert(&mut self, value: NodeData) -> DefaultKey {
++        let index = self.len();
++        if index == self.pages.len() * PAGE_NODES {
++            // Independent layout probes often contain just one node. Their
++            // first page grows with live payloads instead of reserving 64.
++            let capacity = if index == 0 { 0 } else { PAGE_NODES };
++            self.pages.push(Vec::with_capacity(capacity));
++        }
++        let key = self.locations.insert(index);
++        let page = &mut self.pages[index / PAGE_NODES];
++        if page.len() == page.capacity() {
++            let capacity = (page.len() * 2).clamp(1, PAGE_NODES);
++            page.reserve_exact(capacity - page.len());
++        }
++        page.push((key, value));
++        key
++    }
++
++    pub(super) fn remove(&mut self, key: DefaultKey) -> Option<NodeData> {
++        let index = self.locations.remove(key)?;
++        let remaining = self.len();
++        let last = self.pages[remaining / PAGE_NODES]
++            .pop()
++            .expect("live node has a payload");
++        let removed = if index == remaining {
++            last
++        } else {
++            self.locations[last.0] = index;
++            core::mem::replace(
++                &mut self.pages[index / PAGE_NODES][index % PAGE_NODES],
++                last,
++            )
++        };
++        self.pages
++            .truncate((remaining + PAGE_NODES - 1) / PAGE_NODES);
++        Some(removed.1)
++    }
++
++    pub(super) fn clear(&mut self) {
++        self.locations.clear();
++        self.pages.clear();
++    }
++
++    pub(super) fn contains_key(&self, key: DefaultKey) -> bool {
++        self.locations.contains_key(key)
++    }
++
++    pub(super) fn get(&self, key: DefaultKey) -> Option<&NodeData> {
++        let &index = self.locations.get(key)?;
++        Some(&self.pages[index / PAGE_NODES][index % PAGE_NODES].1)
++    }
++
++    pub(super) fn get_mut(&mut self, key: DefaultKey) -> Option<&mut NodeData> {
++        let &index = self.locations.get(key)?;
++        Some(&mut self.pages[index / PAGE_NODES][index % PAGE_NODES].1)
++    }
++
++    pub(super) fn keys(&self) -> impl Iterator<Item = DefaultKey> + '_ {
++        self.locations.keys()
++    }
++
++    pub(super) fn values(&self) -> impl Iterator<Item = &NodeData> {
++        self.pages
++            .iter()
++            .flat_map(|page| page.iter().map(|entry| &entry.1))
++    }
++
++    #[cfg(feature = "std")]
++    pub(super) fn heap_report(&self, sink: &mut dyn FnMut(&'static str, *const u8, usize)) {
++        use core::mem::size_of;
++        use slotmap::Key;
++        let path = "layout/taffy-nodes";
++        let stride = size_of::<(usize, u32)>();
++        let start = self
++            .locations
++            .iter()
++            .next()
++            .map_or(core::ptr::null(), |(key, value)| {
++                let index = (key.data().as_ffi() & 0xffff_ffff) as usize;
++                (value as *const usize)
++                    .cast::<u8>()
++                    .wrapping_sub(index * stride)
++            });
++        sink(path, start, (self.locations.capacity() + 1) * stride);
++        sink(
++            path,
++            self.pages.as_ptr().cast(),
++            self.pages.capacity() * size_of::<Vec<Entry>>(),
++        );
++        for page in &self.pages {
++            sink(
++                path,
++                page.as_ptr().cast(),
++                page.capacity() * size_of::<Entry>(),
++            );
++        }
++    }
++}
++
++impl Index<DefaultKey> for NodeStorage {
++    type Output = NodeData;
++
++    fn index(&self, key: DefaultKey) -> &Self::Output {
++        self.get(key).expect("invalid node key")
++    }
++}
++
++impl IndexMut<DefaultKey> for NodeStorage {
++    fn index_mut(&mut self, key: DefaultKey) -> &mut Self::Output {
++        self.get_mut(key).expect("invalid node key")
++    }
++}
++
++#[cfg(test)]
++#[path = "node_storage_tests.rs"]
++mod tests;
+diff --git a/vendor/taffy/src/tree/node_storage_tests.rs b/vendor/taffy/src/tree/node_storage_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3da22093c7492da65d604d707657c5d1c9e0ae1a
+--- /dev/null
++++ b/vendor/taffy/src/tree/node_storage_tests.rs
+@@ -0,0 +1,153 @@
++use super::{NodeData, NodeStorage, PAGE_NODES};
++use crate::{
++    Style, TaffyTree,
++    geometry::Size,
++    prelude::{TaffyMaxContent, length},
++};
++
++#[test]
++fn a_tiny_probe_reserves_only_its_requested_payloads() {
++    let mut empty = NodeStorage::with_capacity(0);
++    empty.insert(NodeData::new(Style::default().into()));
++    assert_eq!(empty.pages.len(), 1);
++    assert!(empty.pages[0].capacity() <= 2);
++    assert_eq!(empty.capacity(), empty.pages[0].capacity());
++    let mut hinted = NodeStorage::with_capacity(16);
++    assert_eq!(hinted.pages[0].capacity(), 16);
++    assert_eq!(hinted.capacity(), 16);
++    for _ in 0..65 {
++        hinted.insert(NodeData::new(Style::default().into()));
++    }
++    assert_eq!(hinted.pages[0].capacity(), PAGE_NODES);
++    assert_eq!(hinted.pages.len(), 2);
++    assert!(
++        hinted
++            .pages
++            .iter()
++            .all(|page| page.capacity() <= PAGE_NODES)
++    );
++}
++
++#[test]
++fn removal_moves_payloads_without_changing_survivor_or_recycled_key_identity() {
++    let mut nodes = NodeStorage::with_capacity(0);
++    let keys: Vec<_> = (0..257)
++        .map(|index| {
++            let mut value = NodeData::new(Style::default().into());
++            value.content_shift = index as f32;
++            nodes.insert(value)
++        })
++        .collect();
++    for index in (0..keys.len()).filter(|index| index % 3 != 1) {
++        assert_eq!(
++            nodes.remove(keys[index]).unwrap().content_shift,
++            index as f32
++        );
++        assert!(nodes.get(keys[index]).is_none());
++        assert!(nodes.remove(keys[index]).is_none());
++    }
++    for index in (0..keys.len()).filter(|index| index % 3 == 1) {
++        assert_eq!(nodes[keys[index]].content_shift, index as f32);
++    }
++    assert_eq!(
++        nodes.pages.len(),
++        (nodes.len() + PAGE_NODES - 1) / PAGE_NODES
++    );
++    let replacement = nodes.insert(NodeData::new(Style::default().into()));
++    assert!(nodes.get(replacement).is_some());
++    for (index, key) in keys.iter().enumerate() {
++        if index % 3 == 1 {
++            assert_eq!(nodes[*key].content_shift, index as f32);
++        } else {
++            assert_ne!(replacement, *key);
++            assert!(nodes.get(*key).is_none());
++        }
++    }
++}
++
++#[test]
++fn clear_releases_payloads_and_invalidates_keys_without_resetting_generations() {
++    let mut nodes = NodeStorage::with_capacity(1000);
++    let old = nodes.insert(NodeData::new(Style::default().into()));
++    nodes.clear();
++    assert!(nodes.pages.is_empty());
++    let new = nodes.insert(NodeData::new(Style::default().into()));
++    assert_ne!(old, new);
++    assert!(nodes.get(old).is_none());
++    assert_eq!(nodes.values().count(), 1);
++}
++
++#[cfg(feature = "std")]
++#[test]
++fn a_large_retired_tree_releases_payload_pages_and_keeps_live_layout_context_and_links() {
++    let mut tree = TaffyTree::new();
++    tree.disable_rounding();
++    let child = tree
++        .new_leaf_with_context(
++            Style {
++                size: Size {
++                    width: length(23.0),
++                    height: length(17.0),
++                },
++                ..Style::default()
++            },
++            42,
++        )
++        .unwrap();
++    let root = tree.new_with_children(Style::default(), &[child]).unwrap();
++    let dead: Vec<_> = (0..4096)
++        .map(|_| tree.new_leaf(Style::default()).unwrap())
++        .collect();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    let layout = *tree.layout(child).unwrap();
++    let footprint = |tree: &TaffyTree<i32>| {
++        let mut bytes = 0;
++        tree.heap_report(&mut |owner, _, count| {
++            if owner == "layout/taffy-nodes" {
++                bytes += count;
++            }
++        });
++        bytes
++    };
++    let before = footprint(&tree);
++    tree.retain_nodes(|node| node == root || node == child);
++    let after = footprint(&tree);
++    assert!(
++        after < before / 4,
++        "retired payload storage: {before} -> {after}"
++    );
++    assert_eq!(tree.total_node_count(), 2);
++    assert_eq!(tree.parent(child), Some(root));
++    assert_eq!(tree.children(root).unwrap(), [child]);
++    assert_eq!(tree.get_node_context(child), Some(&42));
++    assert_eq!(*tree.layout(child).unwrap(), layout);
++    assert!(!tree.dirty(child).unwrap());
++    for node in &dead {
++        assert!(!tree.nodes.contains_key((*node).into()));
++    }
++    tree.set_style(
++        child,
++        Style {
++            size: Size {
++                width: length(31.0),
++                height: length(19.0),
++            },
++            ..Style::default()
++        },
++    )
++    .unwrap();
++    tree.compute_layout(root, Size::MAX_CONTENT).unwrap();
++    assert_eq!(
++        tree.layout(child).unwrap().size,
++        Size {
++            width: 31.0,
++            height: 19.0
++        }
++    );
++    let added = tree.new_leaf_with_context(Style::default(), 7).unwrap();
++    assert!(!dead.contains(&added));
++    tree.add_child(root, added).unwrap();
++    assert_eq!(tree.parent(added), Some(root));
++    assert_eq!(tree.get_node_context(added), Some(&7));
++    assert_eq!(tree.get_node_context(child), Some(&42));
++}
 diff --git a/vendor/taffy/src/tree/oof_borrow_tests.rs b/vendor/taffy/src/tree/oof_borrow_tests.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..470c2abf10b55232be2af7ce2d0c76c64c9ff29c
@@ -27552,10 +27889,10 @@ index 0000000000000000000000000000000000000000..b0fc2848470fc19591b0d6de89044aa1
 +        .collect()
 +}
 diff --git a/vendor/taffy/src/tree/taffy_tree.rs b/vendor/taffy/src/tree/taffy_tree.rs
-index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a830472a003a4
+index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..8895088df8026434553892df13baa2863e4c6ced
 --- a/vendor/taffy/src/tree/taffy_tree.rs
 +++ b/vendor/taffy/src/tree/taffy_tree.rs
-@@ -7,0 +8,22 @@
+@@ -7,0 +8,25 @@
 +/// KaminIDE patch: a node style, shared by the nodes that have the same one.
 +///
 +/// A `Style` is about 1 KiB and the boxes of one frame tree mostly repeat a few styles, so a
@@ -27578,7 +27915,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +mod kamin_scrollbar_dependencies;
 +#[path = "node_lifetime.rs"]
 +mod node_lifetime;
-@@ -69,2 +91,6 @@
++#[path = "node_storage.rs"]
++mod node_storage;
++use node_storage::NodeStorage;
+@@ -69,2 +94,6 @@
 -            TaffyError::InvalidChildNode(child) => write!(f, "Child Node {child:?} is not in the TaffyTree instance"),
 -            TaffyError::InvalidInputNode(node) => write!(f, "Supplied Node {node:?} is not in the TaffyTree instance"),
 +            TaffyError::InvalidChildNode(child) => {
@@ -27587,16 +27927,16 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            TaffyError::InvalidInputNode(node) => {
 +                write!(f, "Supplied Node {node:?} is not in the TaffyTree instance")
 +            }
-@@ -97 +123 @@
+@@ -97 +126 @@
 -    pub(crate) style: Style,
 +    pub(crate) style: SharedStyle,
-@@ -105 +131,4 @@
+@@ -105 +134,4 @@
 -    pub(crate) final_layout: Layout,
 +    ///
 +    /// KaminIDE patch: written only by rounding and allocated then; a tree that does not round
 +    /// reads `unrounded_layout` and no longer carries a second `Layout` in every node.
 +    pub(crate) final_layout: Option<Box<Layout>>,
-@@ -108,0 +138,7 @@
+@@ -108,0 +141,7 @@
 +
 +    /// KaminIDE patch: the host relies on this node's id as the identity of
 +    /// its subtree (`pin_identity`), so the node must not be reset into another
@@ -27604,7 +27944,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    pub(crate) identity_pinned: bool,
 +    /// Transaction-local gutter changes; fits beside the existing boolean flags.
 +    pub(crate) scrollbar_state: u8,
-@@ -119 +155,73 @@
+@@ -119 +158,73 @@
 -}
 +    /// Tracks published by the parent subgrid layout, outside the native cache key.
 +    #[cfg(feature = "grid")]
@@ -27679,22 +28019,22 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +
 +/// KaminIDE patch: the final layout of a node that rounding has not written yet.
 +static NO_FINAL_LAYOUT: Layout = Layout::new();
-@@ -124 +232 @@
+@@ -124 +235 @@
 -    pub const fn new(style: Style) -> Self {
 +    pub const fn new(style: SharedStyle) -> Self {
-@@ -129 +237 @@
+@@ -129 +240 @@
 -            final_layout: Layout::new(),
 +            final_layout: None,
-@@ -130,0 +239,2 @@
+@@ -130,0 +242,2 @@
 +            identity_pinned: false,
 +            scrollbar_state: 0,
-@@ -132,0 +243,5 @@
+@@ -132,0 +246,5 @@
 +            #[cfg(feature = "grid")]
 +            subgrid_tracks: None,
 +            pct_parent_h: None,
 +            content_shift: 0.0,
 +            fragmentation: None,
-@@ -143,0 +259,10 @@
+@@ -143,0 +262,10 @@
 +
 +    /// KaminIDE patch: the fragmentation inputs, defaults when none was set.
 +    fn fragmentation(&self) -> &NodeFragmentation {
@@ -27705,7 +28045,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    fn fragmentation_mut(&mut self) -> &mut NodeFragmentation {
 +        self.fragmentation.get_or_insert_with(|| Box::new(NodeFragmentation::NONE))
 +    }
-@@ -168,0 +294,32 @@
+@@ -152 +280 @@
+-    nodes: SlotMap<DefaultKey, NodeData>,
++    nodes: NodeStorage,
+@@ -168,0 +297,32 @@
 +
 +    /// KaminIDE patch: `calc()` pairs referenced by the styles of this tree's nodes
 +    /// (`kamin_calc`); cleared with the nodes.
@@ -27738,7 +28081,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    pub peak: usize,
 +    /// Contributions read from the memos instead of the items.
 +    pub hits: u64,
-@@ -173,0 +331,194 @@
+@@ -173,0 +334,194 @@
 +    }
 +}
 +
@@ -27765,7 +28108,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +                sink("layout/taffy-nodes", items.as_ptr().cast(), items.capacity() * size_of::<T>());
 +            }
 +        }
-+        slots(sink, &self.nodes);
++        self.nodes.heap_report(sink);
 +        slots(sink, &self.children);
 +        slots(sink, &self.parents);
 +        // The node contexts are a hash table of (index, value, version) entries.
@@ -27933,10 +28276,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            self.mark_dirty(node)?;
 +        }
 +        Ok(())
-@@ -260 +611 @@
+@@ -260 +614 @@
 -            self.nodes[node_id.into()].final_layout
 +            self.nodes[node_id.into()].final_layout.as_deref().copied().unwrap_or(NO_FINAL_LAYOUT)
-@@ -277,0 +629,20 @@
+@@ -277,0 +632,20 @@
 +    /// Nodes touched by gutter settling; reset when this layout/query view ends.
 +    pub(crate) scrollbar_touched: kamin_scrollbar_dependencies::ScrollbarTouched,
 +    /// KaminIDE patch: grid item contributions kept for this layout pass only: the view lives for
@@ -27957,7 +28300,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        self.0.capacity() * core::mem::size_of::<(NodeId, crate::compute::ContributionMemo)>()
 +            + self.0.iter().map(|(_, memo)| memo.heap_bytes()).sum::<usize>()
 +    }
-@@ -283,0 +655,19 @@
+@@ -283,0 +658,19 @@
 +    /// Resolve keyword-based calc-size axes before the final native dispatch.
 +    fn compute_child_layout(
 +        &mut self,
@@ -27977,10 +28320,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        )
 +    }
 +
-@@ -287 +677 @@
+@@ -287 +680 @@
 -    fn compute_child_layout(
 +    fn compute_child_layout_inner(
-@@ -299,0 +690,13 @@
+@@ -299,0 +693,13 @@
 +        #[cfg(feature = "flexbox")]
 +        if self.taffy.nodes[node_id.into()]
 +            .style
@@ -27994,7 +28337,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            }
 +        }
 +
-@@ -306,33 +709,28 @@
+@@ -306,33 +712,28 @@
 -            let display_mode = tree.taffy.nodes[node_id.into()].style.display;
 -            let has_children = tree.child_count(node_id) > 0;
 -
@@ -28056,7 +28399,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            #[cfg(feature = "grid")]
 +            (Display::Grid, false) if !self.taffy.nodes[node_id.into()].has_context => {
 +                compute_grid_layout(self, node_id, inputs)
-@@ -340,3 +738,36 @@
+@@ -340,3 +741,36 @@
 -
 -            output
 -        })
@@ -28096,7 +28439,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            compute_oof_layout(self, node_id, &mut output);
 +        }
 +        output
-@@ -397,6 +828,12 @@
+@@ -397,6 +831,12 @@
 -        self.taffy.nodes[node_id.into()].unrounded_layout = *layout;
 -    }
 -
@@ -28115,7 +28458,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline(always)]
 +    fn resolve_calc_value(&self, val: *const (), basis: f32) -> f32 {
 +        calc_value(val, basis)
-@@ -419,0 +857,7 @@
+@@ -419,0 +860,7 @@
 +    fn take_intrinsic_size_change(&mut self, node_id: NodeId) -> bool {
 +        let state = &mut self.taffy.nodes[node_id.into()].scrollbar_state;
 +        let changed = *state & kamin_scrollbar_dependencies::SIZE_DIRTY != 0;
@@ -28123,7 +28466,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        changed
 +    }
 +
-@@ -442,0 +887,12 @@
+@@ -442,0 +890,12 @@
 +    }
 +
 +    fn kamin_oof_area_shift(&self, node_id: NodeId) -> Option<crate::geometry::Rect<f32>> {
@@ -28136,7 +28479,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline(always)]
 +    fn kamin_oof_is_proxy(&self, node_id: NodeId) -> bool {
 +        self.taffy.nodes[node_id.into()].style.kamin_scrollbars.proxy()
-@@ -520,0 +977,34 @@
+@@ -520,0 +980,34 @@
 +
 +    // KaminIDE patch: store geometry only after the final placement pass.
 +    fn set_detailed_flex_info(&mut self, node_id: NodeId, info: crate::tree::DetailedFlexInfo) {
@@ -28171,7 +28514,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    fn flex_fragmentation(&self, node: NodeId) -> bool {
 +        self.taffy.nodes[node.into()].fragmentation().flex_fragmentation
 +    }
-@@ -541,0 +1032,22 @@
+@@ -541,0 +1035,22 @@
 +    fn take_contribution_memo(&mut self, node_id: NodeId) -> Option<crate::compute::ContributionMemo> {
 +        #[cfg(test)]
 +        if self.taffy.contribution_memo_use.off {
@@ -28194,7 +28537,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        self.grid_memos.0.push((node_id, memo));
 +    }
 +
-@@ -544,0 +1057,21 @@
+@@ -544,0 +1060,21 @@
 +    }
 +
 +    fn get_subgrid_tracks(&self, node_id: NodeId) -> Option<crate::style::SubgridTracks> {
@@ -28216,10 +28559,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            node.subgrid_tracks = tracks.map(Box::new);
 +            node.cache.clear();
 +        }
-@@ -565 +1098 @@
+@@ -565 +1101 @@
 -        self.taffy.nodes[node_id.into()].final_layout = *layout;
 +        **self.taffy.nodes[node_id.into()].final_layout.get_or_insert_with(|| Box::new(NO_FINAL_LAYOUT)) = *layout;
-@@ -586,0 +1120,25 @@
+@@ -586,0 +1123,25 @@
 +    #[cfg(feature = "flexbox")]
 +    /// KaminIDE patch: Whether a row-flex descendant requires a percentage height basis.
 +    fn row_uses_pct_height(&self, node: NodeId) -> bool {
@@ -28245,7 +28588,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        })
 +    }
 +
-@@ -606 +1164,34 @@
+@@ -601 +1162 @@
+-            nodes: SlotMap::with_capacity(capacity),
++            nodes: NodeStorage::with_capacity(capacity),
+@@ -606 +1167,34 @@
 -        }
 +            #[cfg(feature = "std")]
 +            calc: Default::default(),
@@ -28281,12 +28627,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[cfg(feature = "std")]
 +    pub fn share_calc_registry<C>(&mut self, source: &TaffyTree<C>) {
 +        self.calc = source.calc.clone();
-@@ -620,2 +1211,2 @@
+@@ -620,2 +1214,2 @@
 -    pub fn new_leaf(&mut self, layout: Style) -> TaffyResult<NodeId> {
 -        let id = self.nodes.insert(NodeData::new(layout));
 +    pub fn new_leaf(&mut self, layout: impl Into<SharedStyle>) -> TaffyResult<NodeId> {
 +        let id = self.nodes.insert(NodeData::new(layout.into()));
-@@ -631,2 +1222,6 @@
+@@ -631,2 +1225,6 @@
 -    pub fn new_leaf_with_context(&mut self, layout: Style, context: NodeContext) -> TaffyResult<NodeId> {
 -        let mut data = NodeData::new(layout);
 +    pub fn new_leaf_with_context(
@@ -28295,12 +28641,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        context: NodeContext,
 +    ) -> TaffyResult<NodeId> {
 +        let mut data = NodeData::new(layout.into());
-@@ -645,2 +1240,2 @@
+@@ -645,2 +1243,2 @@
 -    pub fn new_with_children(&mut self, layout: Style, children: &[NodeId]) -> TaffyResult<NodeId> {
 -        let id = NodeId::from(self.nodes.insert(NodeData::new(layout)));
 +    pub fn new_with_children(&mut self, layout: impl Into<SharedStyle>, children: &[NodeId]) -> TaffyResult<NodeId> {
 +        let id = NodeId::from(self.nodes.insert(NodeData::new(layout.into())));
-@@ -666,0 +1262,115 @@
+@@ -666,0 +1265,115 @@
 +        #[cfg(feature = "std")]
 +        self.calc
 +            .lock()
@@ -28416,7 +28762,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        for node in orphaned {
 +            let _ = self.mark_dirty(node);
 +        }
-@@ -873,0 +1584,23 @@
+@@ -873,0 +1587,23 @@
 +    /// KaminIDE patch: the digest of the inputs of the node's most recent full layout
 +    /// (`Cache::performed_input_key`), `None` before its first one or for a removed node.
 +    pub fn performed_input_key(&self, node: NodeId) -> Option<u64> {
@@ -28429,8 +28775,8 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        self.nodes.len() >= self.nodes.capacity()
 +    }
 +
-+    /// KaminIDE patch: grow the node storage to hold `expected` nodes at once. A node
-+    /// is about 2 KiB, so doubling up to a large tree copies the whole tree again.
++    /// KaminIDE patch: reserve keys, relationships and payload pages for `expected`
++    /// live nodes. Existing payload pages stay in place when the tree grows.
 +    pub fn reserve_nodes(&mut self, expected: usize) {
 +        let additional = expected.saturating_sub(self.nodes.len());
 +        if expected > self.nodes.capacity() {
@@ -28440,12 +28786,12 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        }
 +    }
 +
-@@ -897,2 +1630,2 @@
+@@ -897,2 +1633,2 @@
 -    pub fn set_style(&mut self, node: NodeId, style: Style) -> TaffyResult<()> {
 -        self.nodes[node.into()].style = style;
 +    pub fn set_style(&mut self, node: NodeId, style: impl Into<SharedStyle>) -> TaffyResult<()> {
 +        self.nodes[node.into()].style = style.into();
-@@ -908,0 +1642,31 @@
+@@ -908,0 +1645,31 @@
 +    /// KaminIDE patch: whether the style of `node` equals `style`, by allocation or value.
 +    #[inline]
 +    pub fn style_equals(&self, node: NodeId, style: &SharedStyle) -> bool {
@@ -28477,10 +28823,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        Ok(self.nodes[node.into()].style.clone())
 +    }
 +
-@@ -913 +1677 @@
+@@ -913 +1680 @@
 -            Ok(&self.nodes[node.into()].final_layout)
 +            Ok(self.nodes[node.into()].final_layout.as_deref().unwrap_or(&NO_FINAL_LAYOUT))
-@@ -916,0 +1681,8 @@
+@@ -916,0 +1684,8 @@
 +    }
 +
 +    /// KaminIDE patch: y offset of the node's children inside its box (a
@@ -28489,7 +28835,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +    #[inline]
 +    pub fn content_shift(&self, node: NodeId) -> f32 {
 +        self.nodes[node.into()].content_shift
-@@ -977 +1749,10 @@
+@@ -937 +1712 @@
+-            nodes: &mut SlotMap<DefaultKey, NodeData>,
++            nodes: &mut NodeStorage,
+@@ -977 +1752,10 @@
 -        let mut taffy_view = TaffyView { taffy: self, measure_function };
 +        #[cfg(feature = "std")]
 +        let _calc = self.calc_scope();
@@ -28501,7 +28850,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            grid_memos: Default::default(),
 +            measure_function,
 +        };
-@@ -984,0 +1766,26 @@
+@@ -984,0 +1769,26 @@
 +    /// KaminIDE patch: query one intrinsic axis without performing or replacing final layout.
 +    pub fn compute_size_with_measure<MeasureFunction>(
 +        &mut self,
@@ -28528,10 +28877,10 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        }, #[cfg(feature = "block_layout")] None)
 +    }
 +
-@@ -988 +1795 @@
+@@ -988 +1798 @@
 -            compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO)
 +            compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
-@@ -1003 +1810,6 @@
+@@ -1003 +1813,6 @@
 -            measure_function: |inputs, _, _, style| compute_leaf_layout(inputs, style, |_, _| 0.0, |_, _| Size::ZERO),
 +            scrollbar_touched: Default::default(),
 +            #[cfg(feature = "grid")]
@@ -28539,7 +28888,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +            measure_function: |inputs, _, _, style| {
 +                compute_leaf_layout(inputs, style, calc_value, |_, _| Size::ZERO)
 +            },
-@@ -1029,0 +1842,54 @@
+@@ -1029,0 +1845,54 @@
 +    }
 +
 +    #[test]
@@ -28594,7 +28943,7 @@ index c8eb01ea8785f74df2df9cef5c1f8b9ae95c2b41..d9da60d1ba304ce2132e30b0909a8304
 +        assert_eq!(*tree.layout(root).unwrap(), final_layout);
 +        tree.compute_layout_with_measure(root, max, &mut measure).unwrap();
 +        assert_eq!(tree.layout(root).unwrap().size, Size { width: 60.0, height: 10.0 });
-@@ -1543 +2409,81 @@
+@@ -1543 +2412,81 @@
 -}
 +
 +    #[test]
