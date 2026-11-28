@@ -25,6 +25,8 @@ mod computed_output;
 mod kamin_scrollbars;
 #[path = "kamin_scrollbar_dependencies.rs"]
 mod kamin_scrollbar_dependencies;
+pub use kamin_scrollbar_dependencies::LayoutDependencyEvent;
+use kamin_scrollbar_dependencies::TaffyConfig;
 #[path = "node_lifetime.rs"]
 mod node_lifetime;
 #[cfg(feature = "block_layout")]
@@ -100,19 +102,6 @@ impl core::fmt::Display for TaffyError {
 
 #[cfg(feature = "std")]
 impl std::error::Error for TaffyError {}
-
-/// Global configuration values for a TaffyTree instance
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct TaffyConfig {
-    /// Whether to round layout values
-    pub(crate) use_rounding: bool,
-}
-
-impl Default for TaffyConfig {
-    fn default() -> Self {
-        Self { use_rounding: true }
-    }
-}
 
 /// Layout information for a given [`Node`](crate::node::Node)
 ///

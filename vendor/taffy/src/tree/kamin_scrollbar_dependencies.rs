@@ -4,6 +4,45 @@
 use super::*;
 use crate::geometry::{Point, Size};
 
+/// A native layout decision, including the constraints that distinguish speculative probes.
+#[derive(Clone, Debug)]
+pub struct LayoutDependencyEvent {
+    /// Stable event code.
+    pub kind: &'static str,
+    /// The box whose gutter changed or whose layout must repeat.
+    pub node: NodeId,
+    /// Constraints of this invocation.
+    pub inputs: LayoutInput,
+    /// Result before the dependency retry.
+    pub output: LayoutOutput,
+    /// Whether this box changed its own gutter.
+    pub own_gutter: bool,
+    /// Whether a descendant invalidated this box.
+    pub descendant_gutter: bool,
+}
+
+/// Global configuration values for a TaffyTree instance
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TaffyConfig {
+    /// Whether to round layout values
+    pub(crate) use_rounding: bool,
+    /// Optional observer of scrollbar decisions and the ancestor passes they invalidate.
+    pub(super) layout_observer: Option<fn(LayoutDependencyEvent)>,
+}
+
+impl Default for TaffyConfig {
+    fn default() -> Self {
+        Self { use_rounding: true, layout_observer: None }
+    }
+}
+
+impl<NodeContext> TaffyTree<NodeContext> {
+    /// Observe native dependency retries. With no observer, no event is constructed.
+    pub fn set_layout_observer(&mut self, observer: Option<fn(LayoutDependencyEvent)>) {
+        self.config.layout_observer = observer;
+    }
+}
+
 /// An active ancestor must repeat its layout with the settled descendant gutter.
 const DIRTY: u8 = 1;
 /// Intrinsic size selection must run again, independently of the local layout retry.
@@ -119,6 +158,16 @@ where
                 self.kamin_settle_scrollbars(node_id, inputs, &output, &mut settling);
             if !own_bars_changed && self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY == 0 {
                 return output;
+            }
+            if let Some(observe) = self.taffy.config.layout_observer {
+                observe(LayoutDependencyEvent {
+                    kind: "layout.dependency_retry",
+                    node: node_id,
+                    inputs,
+                    output: output.clone(),
+                    own_gutter: own_bars_changed,
+                    descendant_gutter: self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY != 0,
+                });
             }
             #[cfg(feature = "grid")]
             self.grid_memos.0.retain(|(grid, _)| *grid != node_id);
