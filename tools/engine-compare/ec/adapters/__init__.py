@@ -39,6 +39,9 @@ class Policy:
 
 
 QUICK = Policy(min_repeats=1, max_repeats=1)
+# The empty page every engine also opens: its memory is the engine's constant price (process, window, device), which
+# the report shows apart and subtracts from each page.
+BLANK = '<!doctype html><html><head><title>blank</title></head><body></body></html>'
 
 
 def last_error(text, limit=160):

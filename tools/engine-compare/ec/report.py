@@ -176,7 +176,10 @@ def main(cfg, a):
     (out.with_suffix('.rows.json')).write_text(json.dumps({'rows': rows, 'memory': [dict(cls=k[0], page=k[1], engine=k[2], **v)
                                                            for k, v in mem.items()]}, default=str), encoding='utf-8')
     out.write_text(render(cfg, rows, mem, bounds, vers, classes, T, a.title, passes), encoding='utf-8')
-    print(f'report: {out} ({len(rows)} cells); rows for diff: {out.with_suffix(".rows.json")}')
+    from . import memory
+    n, nb = memory.write(out.with_suffix('.memory.csv'), mem)
+    print(f'report: {out} ({len(rows)} cells); rows for diff: {out.with_suffix(".rows.json")}; '
+          f'memory: {out.with_suffix(".memory.csv")} ({n} rows, {nb} against the best other engine)')
 
 
 def why(x, T):

@@ -17,6 +17,7 @@ from .. import metrics as M
 from .. import records as REC
 from .. import winproc as W
 from ..config import CLASSES, file_version
+from . import BLANK
 
 DEF = 'browser-4'  # 4: classify absent S before startup; 3: adaptive repeat visits (adapters.Policy); 2: probe-ec.html (stuck scroll steps skip the MozAfterPaint guard), Servo screenshots
 # The probe's MozAfterPaint guard waits 250 ms for a paint; a scroll step that did not move the scroller paints nothing,
@@ -180,6 +181,8 @@ class Browser:
         marks, samples = extra
         pk, sd = M.tree_memory(samples, marks)
         rec['memory'] = {'peak_bytes': pk, 'steady_bytes': sd, 'empty': None if pk else 'no memory samples'}
+        rec['memory'].update(M.tree_private(samples, marks))
+        rec['memory']['blank'] = self._blank(s, lane, cls, policy, to)
         first = res
         frames = {c: (v or {}).get('frames') for c, v in (res.get('cpu') or {}).items()}
         last = s.tree.snap()  # calibration: the warm browser's cycles per CPU millisecond so far
@@ -211,6 +214,24 @@ class Browser:
                 r['empty'] = (M.scroll_empty_reason(first) if ph == 'S' else None) or 'no frames of this phase in the probe result'
         rec['visits'] = visits; rec['wall_s'] = time.perf_counter() - t0
         return rec
+
+    def _blank(self, s, lane, cls, policy, timeout):
+        """Memory of the same warm browser on an empty page (same visit: load, steady window), once per build x class;
+        the report subtracts it from every page. None when the empty page did not open."""
+        f = self.cfg.store / '_blank' / f'{self.name}-{self.version()}-{cls}-mem-v1.json'
+        if f.exists():
+            return json.loads(f.read_text(encoding='utf-8'))
+        page = lane.work / f'blank-{self.name}.html'; page.write_text(BLANK, encoding='utf-8')
+        res, _, extra = s.visit({'probe': str(page), 'cases': '', 'steadyMs': policy.steady_ms, 'cpuCases': [],
+                                 'cpuFrames': policy.cpu_frames, 'trace': False}, timeout)
+        if res is None or res.get('status') != 'ok':
+            return None
+        marks, samples = extra
+        pk, sd = M.tree_memory(samples, marks)
+        b = {'peak_bytes': pk, 'steady_bytes': sd, **M.tree_private(samples, marks)}
+        b.pop('after_phase', None)
+        f.parent.mkdir(parents=True, exist_ok=True); f.write_text(json.dumps(b), encoding='utf-8')
+        return b
 
     @staticmethod
     def _add(rec, res, phases):

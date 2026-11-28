@@ -52,6 +52,16 @@ plan runner): one process per page and class runs cold, R, the four edits and S 
 inputs, selectors and scroll step count as the other engines; CPU per frame is the process user + kernel time over each
 series divided by its frames. A phase the harness refuses keeps its named reason in the cell.
 
+## Memory
+
+Every engine records the working set and the private bytes of its whole process tree: the peak over the visit
+(highest sample) and the median of the steady window after load. Browsers also record the tree at the end of each
+CPU loop (`after_phase`, e.g. after `--cpu-frames 200` scroll steps or edits). Each engine also opens an empty page
+once per build and class (cached in the store under `_blank`): that is its constant price of process, window and
+device. `report` writes `<out>.memory.csv` with every number raw, the empty page's value and the difference, the empty
+pages as their own rows (page `_blank`), and `<out>.memory.best.csv` with our rows against the lowest other engine
+(the difference where both sides have one, else raw).
+
 ## Warm-up
 
 The first run of a fresh executable pays the cold disk cache and the GPU driver's shader cache (memory up by a third,
