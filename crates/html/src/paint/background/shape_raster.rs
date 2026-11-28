@@ -99,6 +99,13 @@ pub(super) fn parse_rrect(args: &str, fw: f32, fh: f32, scale: f32) -> Option<Rr
 /// окружности), чтобы не сдвинуть ни одного пикселя старых масок.
 fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
     let ring = r.ring.unwrap_or([0.0; 4]);
+    let edges = [-py, px_ - fw, py - fh, -px_];
+    let mut closest = (edges[0], ring[0]);
+    for (i, &d) in edges.iter().enumerate().skip(1) {
+        if d > closest.0 {
+            closest = (d, ring[i]);
+        }
+    }
     // Внешняя вершина угла, направление внутрь, индексы сторон t/r/b/l по x и y.
     let corners = [
         (0.0, 0.0, 1.0, 1.0, 3usize, 0usize), // tl: лево, верх
@@ -158,18 +165,13 @@ fn contour_dist(px_: f32, py: f32, fw: f32, fh: f32, r: &Rrect) -> (f32, f32) {
         };
         let n = (gx * gx + gy * gy).sqrt().max(1e-6);
         let erode = ((gx / n) * ring[side_x]).hypot((gy / n) * ring[side_y]);
-        return (d, erode);
-    }
-    // Прямые стороны: расстояние до ближайшей, толщина — её.
-    let edges = [-py, px_ - fw, py - fh, -px_]; // t r b l
-    let (mut best, mut idx) = (edges[0], 0);
-    for (i, e) in edges.iter().enumerate().skip(1) {
-        if *e > best {
-            best = *e;
-            idx = i;
+        // Intersect the corner constraints, including opposite domains
+        // crossing both midlines, with the straight sides of the box.
+        if d > closest.0 {
+            closest = (d, erode);
         }
     }
-    (best, ring[idx])
+    closest
 }
 
 /// Покрытие точки контуром: заливка либо кольцо (внешний контур минус его

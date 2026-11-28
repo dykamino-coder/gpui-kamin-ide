@@ -793,22 +793,31 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
 
 // CSS limits sums of adjacent radii, not each radius to half the box.
 // A large corner's domain can cross both midlines.
-float4 ellipse_corner(float2 p, float2 half_size, float4 rx, float4 ry) {
+float4 ellipse_corner(float2 p, float2 half_size, float4 rx, float4 ry, out float distance) {
     float2 sign = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
     uint at = p.y < 0.0 ? (p.x < 0.0 ? 0u : 1u) : (p.x < 0.0 ? 3u : 2u);
+    float4 corner = float4(sign, rx[at], ry[at]);
+    distance = max(abs(p.x) - half_size.x, abs(p.y) - half_size.y);
     [unroll] for (uint i = 0u; i < 4u; ++i) {
         float2 s = float2(i == 0u || i == 3u ? -1.0 : 1.0, i < 2u ? -1.0 : 1.0);
         precise float2 v = half_size - p * s;
         if (all(v >= 0.0) && v.x < rx[i] && v.y < ry[i]) {
-            return float4(s, rx[i], ry[i]);
+            precise float d = ellipse_box_sdf(p * s - half_size, float2(rx[i], ry[i]));
+            // Opposite corner domains may overlap; the shape is inside all
+            // their curves as well as the straight sides of the box.
+            if (d > distance) {
+                distance = d;
+                corner = float4(s, rx[i], ry[i]);
+            }
         }
     }
-    return float4(sign, rx[at], ry[at]);
+    return corner;
 }
 
 float ellipse_rect_sdf(float2 p, float2 half_size, float4 rx, float4 ry) {
-    float4 corner = ellipse_corner(p, half_size, rx, ry);
-    return ellipse_box_sdf(p * corner.xy - half_size, corner.zw);
+    precise float distance;
+    ellipse_corner(p, half_size, rx, ry, distance);
+    return distance;
 }
 
 // KaminIDE patch: the premultiplied source an elliptical quad hands the
@@ -856,10 +865,10 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
     float4 rx = float4(quad.corner_radii.top_left, quad.corner_radii.top_right,
                       quad.corner_radii.bottom_right, quad.corner_radii.bottom_left);
     float4 ry = quad.ellipse.radii_y;
-    float4 corner = ellipse_corner(center_to_point, half_size, rx, ry);
+    precise float outer_sdf;
+    float4 corner = ellipse_corner(center_to_point, half_size, rx, ry, outer_sdf);
     bool left = corner.x < 0.0;
     bool top = corner.y < 0.0;
-    precise float outer_sdf = ellipse_box_sdf(center_to_point * corner.xy - half_size, corner.zw);
     float4 color = background_color;
     float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
                           quad.border_widths.right, quad.border_widths.bottom);

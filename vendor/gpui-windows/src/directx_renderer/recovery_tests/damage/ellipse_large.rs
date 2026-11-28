@@ -4,15 +4,16 @@
 use super::*;
 
 fn coverage(x: f32, y: f32, w: f32, h: f32, radii: [(f32, f32); 4]) -> f32 {
+    let mut distance = (-x).max(-y).max(x - w).max(y - h);
     for ((rx, ry), (vx, vy)) in radii.into_iter().zip([(x, y), (w - x, y), (w - x, h - y), (x, h - y)]) {
         if rx > 0. && ry > 0. && vx >= 0. && vy >= 0. && vx < rx && vy < ry {
             let (ex, ey) = (1. - vx / rx, 1. - vy / ry);
             let dd = (ex * ex + ey * ey).sqrt();
             let grad = ((ex / rx) * (ex / rx) + (ey / ry) * (ey / ry)).sqrt() / dd.max(1e-6);
-            return (0.5 - (dd - 1.) / grad.max(1e-6)).clamp(0., 1.);
+            distance = distance.max((dd - 1.) / grad.max(1e-6));
         }
     }
-    (0.5 - (-x).max(-y).max(x - w).max(y - h)).clamp(0., 1.)
+    (0.5 - distance).clamp(0., 1.)
 }
 
 #[test]
@@ -25,6 +26,7 @@ fn corners_beyond_the_midlines_keep_their_whole_coverage() {
             (90., 160., [(80., 120.), (0., 0.), (10., 40.), (0., 0.)]),
             (140., 140., [(16., 16.), (80., 80.), (16., 16.), (80., 80.)]),
             (150., 100., [(120., 60.), (30., 20.), (90., 80.), (30., 40.)]),
+            (100., 100., [(100., 100.), (0., 0.), (100., 100.), (0., 0.)]),
         ] {
             // Rotation checks all four corners and both axes independently
             // of any page or the quadrant selected by the shader.
