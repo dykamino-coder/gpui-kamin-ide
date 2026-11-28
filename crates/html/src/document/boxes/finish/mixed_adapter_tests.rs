@@ -81,7 +81,7 @@ fn runs_drop_out_on_other_text_or_inputs_and_leave_nothing_half_used() {
     upper.inh.text_flow.text_transform = Some(crate::style::computed::TextTransform::Upper);
     assert!(tree.mixed_text(&p.children, &upper).is_none());
     let b = match &p.children[1] {
-        Node::Element(b) => b.style.used().style,
+        Node::Element(b) => BoxStyle::shared(b.style.used().style),
         _ => panic!("b"),
     };
     let runs = || Runs::new(tree.mixed_text(&p.children, &style).unwrap());

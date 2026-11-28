@@ -184,7 +184,13 @@ pub(super) async fn sample_once(
         ).into());
     }
     let pixels = &frame.pixels;
-    if (pixels.width, pixels.height) != args.viewport {
+    // The capture is in device pixels: the CSS viewport at the device scale
+    // (KAMIN_FORCE_SCALE), rounded up as the window sizes its target.
+    let scale = kamin_html::host::instrumentation::from_env()
+        .scale_factor
+        .unwrap_or(1.);
+    let device = |css: u32| (css as f32 * scale).ceil() as u32;
+    if (pixels.width, pixels.height) != (device(args.viewport.0), device(args.viewport.1)) {
         return Err(format!(
             "capture size {}x{} differs from requested viewport",
             pixels.width, pixels.height

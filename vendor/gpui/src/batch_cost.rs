@@ -30,6 +30,17 @@ struct Totals {
     full_by: Vec<(&'static str, u64)>,
     /// Pixels of the path intermediate the path batches cleared and drew.
     path_intermediate_px: f64,
+    path_msaa_create: u64,
+    path_msaa_drop: u64,
+    path_msaa_alloc_bytes: u64,
+    mask_upload_create: u64,
+    mask_upload_alloc_bytes: u64,
+    effect_target_drop: u64,
+    effect_target_release_bytes: u64,
+    natural_image_create: u64,
+    natural_image_raster: u64,
+    natural_image_raster_bytes: u64,
+    natural_image_drop: u64,
 }
 
 /// The index of path batches in [`KINDS`].
@@ -54,6 +65,24 @@ pub struct BatchCost {
 }
 
 impl BatchCost {
+    /// A cached natural-image upload identity (no resident derived pixels).
+    pub fn natural_image_created(&self) {
+        self.with(|t| t.natural_image_create += 1);
+    }
+
+    /// Pixels produced transiently for an atlas upload, not kept by the image.
+    pub fn natural_image_rasterized(&self, bytes: u64) {
+        self.with(|t| {
+            t.natural_image_raster += 1;
+            t.natural_image_raster_bytes += bytes;
+        });
+    }
+
+    /// Upload identities released by source death or cache budget eviction.
+    pub fn natural_images_dropped(&self, count: u64) {
+        self.with(|t| t.natural_image_drop += count);
+    }
+
     fn with(&self, f: impl FnOnce(&mut Totals)) {
         if let Ok(mut guard) = self.totals.lock() {
             f(guard.get_or_insert_with(Totals::default));
@@ -79,6 +108,35 @@ impl BatchCost {
     /// reached nothing and drew nothing).
     pub fn intermediate(&self, px: f64) {
         self.with(|t| t.path_intermediate_px += px);
+    }
+
+    /// A successfully allocated path intermediate, in descriptor bytes.
+    pub fn path_target_created(&self, bytes: u64) {
+        self.with(|t| {
+            t.path_msaa_create += 1;
+            t.path_msaa_alloc_bytes += bytes;
+        });
+    }
+
+    /// A path intermediate released by its renderer owner.
+    pub fn path_target_dropped(&self) {
+        self.with(|t| t.path_msaa_drop += 1);
+    }
+
+    /// A newly uploaded immutable group mask, in texture descriptor bytes.
+    pub fn mask_uploaded(&self, bytes: u64) {
+        self.with(|t| {
+            t.mask_upload_create += 1;
+            t.mask_upload_alloc_bytes += bytes;
+        });
+    }
+
+    /// Effect textures released because the complete scene no longer uses them.
+    pub fn effect_targets_dropped(&self, count: u64, bytes: u64) {
+        self.with(|t| {
+            t.effect_target_drop += count;
+            t.effect_target_release_bytes += bytes;
+        });
     }
 
     /// The plan of a window frame of `window_px` pixels: how much is painted
@@ -159,7 +217,16 @@ impl BatchCost {
     /// Строка для `diag.log` за период; счётчики обнуляются.
     pub fn take_line(&self) -> Option<String> {
         let t = self.totals.lock().ok()?.take()?;
-        if t.frames == 0 && t.plans == [0; 3] {
+        if t.frames == 0
+            && t.plans == [0; 3]
+            && t.path_msaa_create == 0
+            && t.path_msaa_drop == 0
+            && t.mask_upload_create == 0
+            && t.effect_target_drop == 0
+            && t.natural_image_create == 0
+            && t.natural_image_raster == 0
+            && t.natural_image_drop == 0
+        {
             return None;
         }
         let per = |v: f64| v / t.frames.max(1) as f64;
@@ -201,9 +268,20 @@ impl BatchCost {
             String::new()
         };
         Some(format!(
-            "[gpu] frames={}{frame_gpu} {} per frame: {kinds}; top quads: {detail}",
+            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} mask_upload_create={} mask_upload_alloc_bytes={} effect_target_drop={} effect_target_release_bytes={} natural_image_create={} natural_image_raster={} natural_image_raster_bytes={} natural_image_drop={} per frame: {kinds}; top quads: {detail}",
             t.frames,
-            plan_summary(&t)
+            plan_summary(&t),
+            t.path_msaa_create,
+            t.path_msaa_drop,
+            t.path_msaa_alloc_bytes,
+            t.mask_upload_create,
+            t.mask_upload_alloc_bytes,
+            t.effect_target_drop,
+            t.effect_target_release_bytes,
+            t.natural_image_create,
+            t.natural_image_raster,
+            t.natural_image_raster_bytes,
+            t.natural_image_drop
         ))
     }
 }

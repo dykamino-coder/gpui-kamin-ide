@@ -3,7 +3,7 @@
 use crate::layout::options::RenderOpts;
 use crate::layout::writing_mode::native_vertical;
 use crate::render::paragraph::edges::in_edge;
-use crate::style::computed::{BoxStyle, Computed};
+use crate::style::computed::BoxStyle;
 use crate::text::inline;
 use gpui::px;
 
@@ -27,14 +27,14 @@ pub(crate) fn paragraph_spans(
             inherited.reset_context.para_vertical.is_some(),
             inherited.reset_context.para_vertical == Some(true),
         )
-        .ortho_limit(inherited.reset_context.ortho_limit.map(px))
+        .ortho_limit(inherited.tree.ortho_limit.map(px))
         .vertical_central_baseline(!inherited.wm().alphabetic_baseline())
         .rotated_central(rotated_central(inherited))
         .vertical_counter_clockwise(
             inherited.reset_context.para_vertical == Some(false) && inherited.wm().sideways(),
         )
         .vertical_inline_constraint(
-            inherited.reset_context.orthogonal_inline,
+            inherited.tree.orthogonal_inline,
             native_vertical::keyword(inherited),
         )
         .plaintext(
@@ -126,7 +126,7 @@ pub(crate) fn paragraph_spans(
                 opts.cx.text_fonts(),
                 opts.cx.vcx(),
             ),
-            (inherited.wm().turned() || inherited.wm().vertical())
+            (inherited.turned_line() || inherited.wm().vertical())
                 .then(|| inherited.wm().sideways_lr()),
             opts.cx.ruby.layers.as_ref(),
             opts.cx.text_fonts(),
@@ -138,8 +138,8 @@ pub(crate) fn paragraph_spans(
 }
 
 /// Rotated vertical line set with a central dominant baseline (mixed/upright).
-pub(super) fn rotated_central(inherited: &Computed) -> bool {
-    inherited.wm().turned() && !inherited.wm().alphabetic_baseline()
+pub(super) fn rotated_central(inherited: &crate::style::computed::BoxStyle) -> bool {
+    inherited.turned_line() && !inherited.wm().alphabetic_baseline()
 }
 
 /// Relative offsets are physical (CSS 2.1 §9.4.3), but a rotated vertical line
@@ -151,12 +151,12 @@ pub(super) fn rotated_central(inherited: &Computed) -> bool {
 #[allow(clippy::type_complexity)]
 pub(super) fn rotate_rel_spans(
     spans: Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))>,
-    inherited: &crate::style::computed::Computed,
+    inherited: &crate::style::computed::BoxStyle,
 ) -> Vec<(std::ops::Range<usize>, (f32, f32), (f32, f32))> {
-    if !inherited.wm().turned() {
+    if !inherited.turned_line() {
         return spans;
     }
-    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited, d);
+    let turn = |d: (f32, f32)| crate::text::inline::to_rotated_frame(inherited.line_wm(), d);
     spans
         .into_iter()
         .map(|(r, d, b)| (r, turn(d), turn(b)))

@@ -13,7 +13,7 @@
 //! бокс раскладывается горизонтально («уложен плашмя»), а режим письма (направление блоков и
 //! `sideways`) остаётся абзацевым. Поэтому значение различает `vertical()` (раскладка вертикальна
 //! в текущей системе координат) и блочный поток режима (`block_rl()`, `sideways()`) и помнит,
-//! что бокс стоит в повёрнутой строке (`turned()`).
+//! whether the box sits in a turned line: that is the box fact `BoxStyle::turned_line`.
 use super::Computed;
 
 mod keyword;
@@ -31,8 +31,6 @@ pub struct WritingMode {
     rl: bool,
     /// `sideways-*`, also when laid flat.
     sideways: bool,
-    /// Inside the horizontal clone of a turned vertical paragraph.
-    turned: bool,
     rtl: bool,
     orientation: TextOrientation,
 }
@@ -45,17 +43,13 @@ impl WritingMode {
             vertical,
             rl: vertical && rl,
             sideways: vertical && sideways,
-            turned: false,
             rtl,
             orientation: TextOrientation::Mixed,
         }
     }
 
     pub fn of(style: &Computed) -> Self {
-        Self {
-            turned: style.reset_text_box.turned_line,
-            ..WritingProps::of(style).wm()
-        }
+        WritingProps::of(style).wm()
     }
 
     /// Laid out vertically in the current coordinate space: a vertical mode, except inside a
@@ -72,11 +66,6 @@ impl WritingMode {
     /// `sideways-rl` / `sideways-lr`.
     pub fn sideways(self) -> bool {
         self.sideways
-    }
-
-    /// The box sits in a turned vertical line (rotation model).
-    pub fn turned(self) -> bool {
-        self.turned
     }
 
     /// `sideways-lr` (also laid flat): the one mode whose line runs bottom-to-top (§3.1).
@@ -105,11 +94,11 @@ impl WritingMode {
         self.sideways || self.text_sideways()
     }
 
-    /// The writing mode of the LINE the box sits in: a turned line is vertical even though
-    /// its clone is laid flat.
-    pub fn line(self) -> Self {
+    /// The writing mode of the LINE the box sits in: a turned line (`TreeFacts::turned_line`)
+    /// is vertical even though its clone is laid flat.
+    pub fn on_line(self, turned: bool) -> Self {
         Self {
-            vertical: self.vertical || self.turned,
+            vertical: self.vertical || turned,
             ..self
         }
     }

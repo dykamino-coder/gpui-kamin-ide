@@ -48,7 +48,7 @@ pub fn note(c: &mut Computed, key: &str, v: &str) {
 
 /// Whether the inline (`justify`) and block (`align`) axes of grid lanes
 /// container `s` run against the writing mode's start-to-end direction.
-fn reversed_axes(s: &Computed) -> Option<(bool, bool)> {
+pub(super) fn reversed_axes(s: &Computed) -> Option<(bool, bool)> {
     if s.reset_box_layout.display != Some(Display::GridLanes) && !s.reset_grid.lanes_taffy {
         return None;
     }
@@ -84,7 +84,7 @@ fn flip_justify(j: &mut Option<Justify>) {
 
 /// Resolves the flow keywords of `c` against its own and its parent's lanes
 /// direction.
-pub(super) fn resolve(parent: &Computed, c: &mut BoxStyle) {
+pub(super) fn resolve(parent_axes: Option<(bool, bool)>, c: &mut BoxStyle) {
     if c.reset_flex.align_flow == 0 {
         return;
     }
@@ -110,7 +110,7 @@ pub(super) fn resolve(parent: &Computed, c: &mut BoxStyle) {
             flip_align(&mut c.reset_flex.align_items);
         }
     }
-    if let Some((inline_rev, block_rev)) = reversed_axes(parent) {
+    if let Some((inline_rev, block_rev)) = parent_axes {
         if has(JUSTIFY_SELF) && inline_rev {
             flip_align(&mut c.reset_flex.justify_self);
         }
@@ -150,7 +150,7 @@ mod tests {
         note(&mut c, "align-content", "flow-start");
         c.reset_flex.justify_content = Some(Justify::WmStart);
         c.reset_flex.align_content = Some(Justify::WmStart);
-        resolve(&Computed::default(), &mut c);
+        resolve(reversed_axes(&Computed::default()), &mut c);
         assert_eq!(c.reset_flex.justify_content, Some(Justify::WmEnd));
         assert_eq!(c.reset_flex.align_content, Some(Justify::WmStart));
     }
@@ -161,12 +161,12 @@ mod tests {
         let mut c = BoxStyle::default();
         note(&mut c, "align-self", "flow-end");
         c.reset_flex.align_self = Some(Align::End);
-        resolve(&parent, &mut c);
+        resolve(reversed_axes(&parent), &mut c);
         assert_eq!(c.reset_flex.align_self, Some(Align::Start));
         // `start` is not flow relative.
         note(&mut c, "align-self", "start");
         c.reset_flex.align_self = Some(Align::Start);
-        resolve(&parent, &mut c);
+        resolve(reversed_axes(&parent), &mut c);
         assert_eq!(c.reset_flex.align_self, Some(Align::Start));
     }
 }

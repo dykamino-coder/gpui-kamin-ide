@@ -17,7 +17,11 @@ pub(crate) struct RootBars {
 }
 
 impl RootBars {
-    /// A diagnostic wheel target in the visible root content, beside its bar.
+    /// A diagnostic wheel target: the root's vertical bar lane, whose hit
+    /// area is the root's own, so the wheel scrolls the root whatever the
+    /// content beside the bar holds (a nested scroller), as a browser
+    /// scrolls the box whose scrollbar the wheel is over. Without a lane
+    /// (overlay or no bar), the visible content beside where it would be.
     #[cfg(feature = "engine-bench")]
     pub(crate) fn wheel_position(&self, window: &Window) -> Option<gpui::Point<Pixels>> {
         let edges = self.style.borders();
@@ -25,17 +29,16 @@ impl RootBars {
             Some(crate::style::values::value::Len::Px(v)) => v,
             _ => 0.0,
         };
-        let gutter = self.extent.insets();
-        let insets = [
+        let borders = [
             edge(edges.left),
             edge(edges.top),
             edge(edges.right),
             edge(edges.bottom),
         ];
-        let insets = std::array::from_fn(|i| insets[i] + gutter[i]);
         wheel_position(
             self.bounds,
-            insets,
+            borders,
+            self.extent.insets(),
             self.handle
                 .bounds()
                 .intersect(&Bounds::new(gpui::Point::default(), window.viewport_size())),
@@ -92,17 +95,34 @@ impl RootBars {
     }
 }
 
-/// Native bounds can include replay overscan. Target the visible content box,
-/// excluding its borders and reserved gutters, clipped to the native listener.
+/// The centre of the vertical gutter on the bar's side (`left`) inside the
+/// borders, its height clipped to the native listener `clip` (which can
+/// include replay overscan); without a gutter, the visible content box
+/// beside it, excluding borders and gutters.
 #[cfg(any(feature = "engine-bench", test))]
 fn wheel_position(
     bounds: Bounds<Pixels>,
-    insets: [f32; 4],
+    borders: [f32; 4],
+    gutter: [f32; 4],
     clip: Bounds<Pixels>,
     left: bool,
     scale: f32,
 ) -> Option<gpui::Point<Pixels>> {
     use gpui::{point, px};
+    let lane = if left { gutter[0] } else { gutter[2] };
+    if lane > 0.0 {
+        let x = if left {
+            bounds.left() + px(borders[0] + lane / 2.0)
+        } else {
+            bounds.right() - px(borders[2] + lane / 2.0)
+        };
+        let top = (bounds.top() + px(borders[1] + gutter[1])).max(clip.top());
+        let bottom = (bounds.bottom() - px(borders[3] + gutter[3])).min(clip.bottom());
+        if bottom > top && x >= clip.left() && x < clip.right() {
+            return Some(point(x, (top + bottom) / 2.0));
+        }
+    }
+    let insets: [f32; 4] = std::array::from_fn(|i| borders[i] + gutter[i]);
     let bounds = Bounds::from_corners(
         point(bounds.left() + px(insets[0]), bounds.top() + px(insets[1])),
         point(
@@ -131,19 +151,42 @@ mod tests {
     use gpui::{point, px, size};
 
     #[test]
-    fn wheel_target_excludes_gutters_and_native_overscan() {
+    fn wheel_target_is_the_centre_of_the_vertical_lane() {
         let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(800.0), px(600.0)));
         let native = Bounds::new(
             point(px(-4000.0), px(-4000.0)),
             size(px(8785.0), px(8600.0)),
         );
+        // A horizontal bar's gutter shortens the lane; borders move it in.
         assert_eq!(
-            wheel_position(bounds, [0.0, 0.0, 15.0, 0.0], native, false, 1.0),
+            wheel_position(bounds, [0.0; 4], [0.0, 0.0, 15.0, 15.0], native, false, 1.0),
+            Some(point(px(792.5), px(292.5)))
+        );
+        assert_eq!(
+            wheel_position(
+                bounds,
+                [2.0, 0.0, 0.0, 0.0],
+                [15.0, 0.0, 0.0, 0.0],
+                native,
+                true,
+                2.0
+            ),
+            Some(point(px(9.5), px(300.0)))
+        );
+    }
+
+    #[test]
+    fn without_a_lane_the_target_is_the_content_beside_the_bar() {
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(800.0), px(600.0)));
+        // A lane outside the listener is no target either.
+        let clip = Bounds::new(point(px(0.0), px(0.0)), size(px(785.0), px(600.0)));
+        assert_eq!(
+            wheel_position(bounds, [0.0; 4], [0.0, 0.0, 15.0, 0.0], clip, false, 1.0),
             Some(point(px(784.5), px(300.0)))
         );
         assert_eq!(
-            wheel_position(bounds, [15.0, 0.0, 0.0, 0.0], native, true, 2.0),
-            Some(point(px(15.25), px(300.0)))
+            wheel_position(bounds, [0.0; 4], [0.0; 4], bounds, false, 2.0),
+            Some(point(px(799.75), px(300.0)))
         );
     }
 
@@ -151,17 +194,17 @@ mod tests {
     fn clipped_narrow_and_empty_scrollports_keep_the_target_inside() {
         let bounds = Bounds::new(point(px(2.0), px(3.0)), size(px(0.125), px(1.0)));
         assert_eq!(
-            wheel_position(bounds, [0.0; 4], bounds, false, 1.0),
+            wheel_position(bounds, [0.0; 4], [0.0; 4], bounds, false, 1.0),
             Some(bounds.center())
         );
         assert_eq!(
-            wheel_position(bounds, [0.0; 4], Bounds::default(), false, 1.0),
+            wheel_position(bounds, [0.0; 4], [0.0; 4], Bounds::default(), false, 1.0),
             None
         );
         let large = Bounds::new(point(px(-10.0), px(-10.0)), size(px(100.0), px(100.0)));
         let clip = Bounds::new(point(px(5.0), px(6.0)), size(px(20.0), px(10.0)));
         assert_eq!(
-            wheel_position(large, [0.0; 4], clip, false, 1.0),
+            wheel_position(large, [0.0; 4], [0.0; 4], clip, false, 1.0),
             Some(point(px(24.5), px(11.0)))
         );
     }

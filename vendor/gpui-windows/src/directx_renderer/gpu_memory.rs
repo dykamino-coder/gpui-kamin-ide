@@ -50,12 +50,17 @@ impl DirectXRenderer {
             if let Some(back) = &resources.back_buffer {
                 whole("gpu/target/back-buffer", back);
             }
-            whole("gpu/target/path-msaa", &resources.path_intermediate_msaa_texture);
+            if let Some(texture) = &resources.path_intermediate_msaa_texture {
+                whole("gpu/target/path-msaa", texture);
+            }
         }
         if let Some((_, _, scratch)) = &self.retained.scratch {
             whole("gpu/target/shift-scratch", scratch);
         }
         let blur = &self.blur;
+        for texture in blur.mask_cache.textures() {
+            whole("gpu/group/mask", texture);
+        }
         let single = [
             ("gpu/group/stage", &blur.stage),
             ("gpu/group/level-backdrop", &blur.level_backdrop),

@@ -45,11 +45,6 @@
     "reason": "FragCx несёт implicit in_stack_copy вместо явного resume; удалить поле в P22 после последних consumers P10/P21."
   },
   {
-    "file": "crates/html/src/style/cascade/inherit/context.rs",
-    "task": "cascade-7b-R10",
-    "reason": "Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers."
-  },
-  {
     "file": "crates/html/src/style/computed/box_style.rs",
     "task": "cascade-7b-R10",
     "reason": "Used values остаются в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."

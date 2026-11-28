@@ -44,13 +44,35 @@ fn an_owned_deferred_draw_paints_under_its_scroll_node(cx: &mut TestAppContext) 
             let node = &frame.scroll_nodes[owner];
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             assert!(!painted.is_empty());
-            assert!(node.more.is_empty() && !node.torn);
+            assert!(node.more.is_empty() && node.torn.is_none());
             let marks = frame.scene.scroll.within(&painted);
             assert!(!marks.is_empty() && marks.iter().all(|mark| mark.node == node.id));
             let hitboxes = draw.prepaint_range.start.hitboxes_index..draw.prepaint_range.end.hitboxes_index;
             assert!(!hitboxes.is_empty());
             let marked = frame.scroll_hitboxes.iter().filter(|mark| hitboxes.contains(&(mark.index as usize)));
             assert!(marked.clone().count() == hitboxes.len() && marked.into_iter().all(|mark| mark.node == node.id));
+        })
+        .unwrap();
+}
+
+/// DevTools names the command of an owned draw that no node marks: the
+/// draw, the line that deferred it, its element and the command.
+#[crate::test]
+fn an_unmarked_command_of_a_deferred_draw_is_named(cx: &mut TestAppContext) {
+    let window = draw(cx, true);
+    window
+        .update(cx, |_, window, _| {
+            let end = PrepaintStateIndex { deferred_draws_index: window.rendered_frame.deferred_draws.len(), ..Default::default() };
+            let whole = PrepaintStateIndex::default()..end;
+            assert_eq!(window.deferred_refusal_detail(&whole), None, "every command of the draw is marked");
+            let frame = &mut window.rendered_frame;
+            let paint = &frame.deferred_draws[0].paint_range;
+            let painted = paint.start.scene_index..paint.end.scene_index;
+            frame.scene.scroll.marks.retain(|mark| !painted.contains(&(mark.op as usize)));
+            let detail = window.deferred_refusal_detail(&whole).expect("the unmarked command is named");
+            for part in ["deferred draw 0", "window/scroll_deferred/tests.rs:", "Name(\"scroller\")", "Unmarked: command", "quad at"] {
+                assert!(detail.contains(part), "{part} in {detail}");
+            }
         })
         .unwrap();
 }

@@ -53,7 +53,7 @@ fn context_uses_the_box_parent_and_keeps_computed_inheritance() {
         let boxed = box_style(&parent, own, parsed.values());
         assert_eq!(boxed.context.parent_grid, grid);
         assert_eq!(boxed.context.parent_flex_grid, flex_grid);
-        assert_eq!(boxed.context.cb_wm, parent.wm().line());
+        assert_eq!(boxed.context.cb_wm, parent.line_wm());
         assert_eq!(boxed.inh.font.font_size, before.inh.font.font_size);
         assert!(Rc::ptr_eq(&before, &own.computed()));
         let ordinary = box_style(&BoxStyle::default(), own, parsed.values());
@@ -206,9 +206,33 @@ fn quirks_height_preserves_materialized_values_and_box_ancestor_inputs() {
     let boxed = box_style(&parent, own, parsed.values());
     assert_eq!(parent.quirk_pct_base, Some(200.0));
     assert_eq!(boxed.reset_box_layout.height, Some(Len::Px(100.0)));
-    assert_eq!(boxed.context.cb_wm, parent.wm().line());
+    assert_eq!(boxed.context.cb_wm, parent.line_wm());
     assert!(boxed.context.applicability.rtl);
     // Existing DOM quirks fixup resolves this percentage before materialization.
     assert_eq!(identity.reset_box_layout.height, Some(Len::Px(100.0)));
     assert!(Rc::ptr_eq(&identity, &own.computed()));
+}
+
+#[test]
+fn propagated_decorations_share_one_list_and_leave_computed_unshared() {
+    let parsed = crate::dom::parse(
+        r#"<p style="text-decoration:underline"><span><b>x</b></span></p>"#,
+        "",
+    );
+    let find =
+        |tag: &str| crate::dom::test_support::find(&parsed.nodes, &|e| e.tag == tag).unwrap();
+    materialize(
+        &parsed.nodes,
+        &Rc::new(Computed::default()),
+        parsed.values(),
+    );
+    let p = box_style(&BoxStyle::default(), &find("p").style, parsed.values());
+    let span = box_style(&p, &find("span").style, parsed.values());
+    let b = box_style(&span, &find("b").style, parsed.values());
+    // css-text-decor-3 §2.1: the line reaches the descendants as used box values.
+    assert!(span.underline() && b.underline());
+    assert!(Rc::ptr_eq(&span.decors, &b.decors));
+    // The box stage writes no used value into the shared computed style.
+    assert!(Rc::ptr_eq(b.style_rc(), &find("b").style.computed()));
+    assert_eq!(find("b").style.cascaded().reset_text_box.td_lines, None);
 }

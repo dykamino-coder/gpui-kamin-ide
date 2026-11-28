@@ -37,6 +37,8 @@ mod counters;
 mod hover_repaint_tests;
 #[cfg(test)]
 mod hover_replay_tests;
+#[cfg(test)]
+mod input_replay_tests;
 mod snapshot;
 pub use snapshot::FrameCounters;
 #[cfg(test)]
@@ -195,6 +197,8 @@ impl Document {
 mod extent_settle_tests;
 #[cfg(test)]
 mod moved_glyph_tests;
+#[cfg(test)]
+mod scroll_open_tests;
 
 #[cfg(test)]
 mod deferred_group_tests;

@@ -23,6 +23,8 @@ mod damage;
 // KaminIDE patch (BR-31A): dropped frames are presented by the next paint.
 mod present;
 mod analytic_gradient;
+mod path_target;
+mod effect_targets;
 
 #[test]
 fn effects_follow_device_generation_after_repeated_recovery() {
