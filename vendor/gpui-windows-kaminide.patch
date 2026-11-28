@@ -17028,10 +17028,10 @@ index 0000000000000000000000000000000000000000..3095d9ce85f608387ed29925895e5a38
 +}
 diff --git a/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..8f10e9691cc184e011224943c280dc542bc943e2
+index 0000000000000000000000000000000000000000..ef4606e3555d4cd9ec8f6a989f4d62b893499e89
 --- /dev/null
 +++ b/vendor/gpui-windows/src/directx_renderer/recovery_tests/damage/ellipse_large.rs
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,76 @@
 +//! CSS corner domains can cross the box midlines: compare the raster with
 +//! an independent contour mask, including the inner edge of unequal borders.
 +
@@ -17056,6 +17056,7 @@ index 0000000000000000000000000000000000000000..8f10e9691cc184e011224943c280dc54
 +    let warp = DirectXDevices::with_instrumentation(crate::GpuAdapterPreference::Software, gpui::Instrumentation::default()).unwrap();
 +    for device in [&gpu, &warp] {
 +        let mut renderer = offscreen(device, W, H);
++        let mut frame_id = 0;
 +        for (w, h, radii) in [
 +            (180., 90., [(90., 90.), (90., 90.), (0., 0.), (0., 0.)]),
 +            (90., 160., [(80., 120.), (0., 0.), (10., 40.), (0., 0.)]),
@@ -17085,7 +17086,9 @@ index 0000000000000000000000000000000000000000..8f10e9691cc184e011224943c280dc54
 +                    q.border_color = hsla(0., 0., 1., 1.);
 +                    let mut scene = Scene::default();
 +                    scene.quads.push(q);
-+                    scene.note_frame_damage(&Scene::default(), 1, (W, H));
++                    // Independent scenes need distinct frame IDs on a reused target.
++                    frame_id += 1;
++                    scene.note_frame_damage(&Scene::default(), frame_id, (W, H));
 +                    renderer.draw(&scene, WindowBackgroundAppearance::Opaque).unwrap();
 +                    let got = target_bytes(&mut renderer);
 +                    for y in 0..h as usize {
