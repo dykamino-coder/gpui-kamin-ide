@@ -74,7 +74,9 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
             assert_eq!(oof.completion, Completion::Complete);
             for (id, expected) in asides.iter().zip([
                 (0, 0., 0., 85.), (0, first_height, 0., 85.),
-                (1, 20., 0., 85.), (0, 7., 0., 85.),
+                // `top: 7px` with a static inline position stays in its
+                // placeholder's column (after the forced break), at 7.
+                (1, 20., 0., 85.), (1, 7., 0., 85.),
             ]) {
                 // A positioned fragment's `kid` is its flow's input index.
                 let input = stack.oof.geometry.flows.iter().position(|s| s.id == *id).expect("input");
@@ -120,6 +122,56 @@ fn direct_children_resolve_insets_and_percentages_against_the_host_box(
         }).unwrap();
         let rect = geometry.flows.iter().find(|f| f.id == aside).expect("positioned flow").metrics.normal_rect();
         assert_eq!(rect, Bounds { origin: point(px(105.), px(60.)), size: size(px(105.), px(10.)) });
+        gpui::div()
+    });
+}
+
+/// A positioned box whose containing block is a transformed descendant keeps
+/// that box's flow place in the source: the host's own box does not move it.
+#[gpui::test]
+fn nested_containing_block_keeps_its_flow_place_in_the_host_box(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        for (markup, col_w, host_box, expected) in [
+            (
+                "<section style='columns:4;gap:0;column-fill:auto;width:100px;height:50px'><div style='height:20px'></div><div style='transform:scaleY(2);transform-origin:bottom;height:150px'><div><aside style='position:absolute;width:100%;height:100%'></aside></div></div></section>",
+                25., (100., Some(50.)), (0., 20., 25., 150.),
+            ),
+            (
+                "<section style='columns:3;gap:0;column-fill:auto;width:150px;height:100px'><div style='transform:rotate(180deg);transform-origin:bottom center;height:77px'><aside style='position:absolute;top:100px;width:100%;height:200px'></aside></div></section>",
+                50., (150., Some(100.)), (0., 100., 50., 200.),
+            ),
+        ] {
+            let tree = crate::document::parsed::parse(markup, "");
+            let mut opts = RenderOpts {
+                viewport: (400., 400.), normal_line_height: 1.2,
+                text: Default::default(), cx: Default::default(), frag: Default::default(),
+            };
+            opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
+            opts.cx.values.viewport = opts.viewport;
+            crate::style::cascade::materialize::materialize(
+                &tree, opts.root_style().style_rc(), opts.cx.vcx(),
+            );
+            let host = super::tests::section(&tree).clone();
+            let mut merged = crate::style::cascade::materialize::box_style(
+                &opts.root_style(), &host.style, opts.cx.vcx(),
+            );
+            merged.self_node = host.node_id;
+            let (x, y, w, h) = expected;
+            for host_box in [None, Some(host_box)] {
+                let geometry = crate::layout::positioned::containing_block::metrics::layout::collect_nodes(
+                    &host.children, &merged, col_w, host_box, &opts, window, app,
+                );
+                let flows: Vec<_> = geometry.flows.iter()
+                    .map(|f| (f.id, f.owner, f.metrics.normal_rect())).collect();
+                assert_eq!(flows.len(), 1, "{host_box:?}: {flows:?}");
+                assert_eq!(
+                    flows[0].2,
+                    Bounds { origin: point(px(x), px(y)), size: size(px(w), px(h)) },
+                    "{host_box:?}: {flows:?}",
+                );
+            }
+        }
         gpui::div()
     });
 }
