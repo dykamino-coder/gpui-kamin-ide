@@ -55,9 +55,8 @@ fn derive(style: &Computed, mut font: gpui::Font, base_px: f32, vcx: ValueCx<'_>
     }
     // Кегль куска: без него разный размер в строке собрать в один блок было
     // нельзя (см. `single_block`).
-    // TRANSITIONAL(cascade-7b-font-size-adjust): A03-backend после F2 должен подгонять каждый нативный fallback face; TextRun пока передаёт только размер first available face.
-    let font_size = font_style
-        .font_size
-        .map(|_| gpui::px(style.used_font(base_px, vcx).size_px));
+    crate::text::fonts::size_adjust::apply(style, &mut font, vcx);
+    let font_size = (font_style.font_size.is_some() || style.font_adjustment().is_some())
+        .then(|| gpui::px(style.used_font(base_px, vcx).size_px));
     (font, font_size)
 }
