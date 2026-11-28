@@ -10,7 +10,7 @@ use crate::style::values::value::{Len, px_lossy_zero};
 use crate::values::ValueCx;
 
 impl Computed {
-    /// Use the group mask for elliptical, shaped, or oversized nonuniform corners.
+    /// Use the group mask for shaped corners and corners that clip content.
     pub fn radius_masked(&self, vcx: ValueCx<'_>) -> bool {
         self.radius_masked_with(
             crate::style::computed::single_corner::eligible(self),
@@ -19,7 +19,96 @@ impl Computed {
         )
     }
 
+    /// The quad draws elliptical corners itself (`gpui::EllipseRadii`).
+    pub fn radius_elliptic(&self, vcx: ValueCx<'_>) -> bool {
+        self.radius_elliptic_with(
+            crate::style::computed::single_corner::eligible(self),
+            self.reset_effects.shadows.is_empty(),
+            vcx,
+        )
+    }
+
     pub fn radius_masked_with(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
+        self.radius_beyond_circles(single_corner, shadows_empty, vcx) && !self.ellipse_quad_draws()
+    }
+
+    pub fn radius_elliptic_with(
+        &self,
+        single_corner: bool,
+        shadows_empty: bool,
+        vcx: ValueCx<'_>,
+    ) -> bool {
+        self.radius_beyond_circles(single_corner, shadows_empty, vcx) && self.ellipse_quad_draws()
+    }
+
+    /// Corners a quad with quarter-ellipse corners draws (css-backgrounds-3
+    /// §5.1, §5.5): elliptical, percentage or overlapping radii of a box
+    /// whose corners shape only its own background, border and shadows (no
+    /// content clip, which the group mask still cuts), with a solid border of
+    /// one colour or none, plain `round` corners and lengths the quad
+    /// resolves (no `calc()` mixing a percentage). Blink draws these as one
+    /// elliptical `SkRRect`; a group with a mask is an offscreen surface per
+    /// box (99.8 % of the groups of a page drawn in CSS).
+    fn ellipse_quad_draws(&self) -> bool {
+        self.ellipse_quad_refusal().is_none()
+    }
+
+    /// Why a quad does not draw these corners (`ellipse_quad_draws`), named
+    /// for the DevTools journal: `corner_shape`, `calc`, `border_shape`,
+    /// `border_image`, `border_style`, `border_colours` or `clip`.
+    pub fn ellipse_quad_refusal(&self) -> Option<&'static str> {
+        let b = &self.reset_border;
+        let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
+        // Solid, or `double` on every painted side at least 3px wide (two
+        // lines and a gap, `apply::double_border`); narrower double sides
+        // paint solid there and here alike.
+        let widths = {
+            let w = self.borders();
+            [w.top, w.right, w.bottom, w.left].map(px_lossy_zero)
+        };
+        let styles = b.border_side_styles;
+        let doubled = (0..4).any(|i| widths[i] >= 3.0 && styles[i] == Some(10));
+        let double_whole =
+            (0..4).all(|i| widths[i] <= 0.0 || (styles[i] == Some(10) && widths[i] >= 3.0));
+        let solid = styles
+            .iter()
+            .all(|s| matches!(s, None | Some(0 | 1 | 9 | 10)))
+            && (!doubled || double_whole);
+        let one_colour = b.border_colors.iter().all(|c| *c == b.border_colors[0]);
+        let calc = |l: &Len| matches!(l, Len::Calc(_));
+        let calculated = [b.radius.tl, b.radius.tr, b.radius.br, b.radius.bl]
+            .iter()
+            .flatten()
+            .any(calc)
+            || b.radius_ell
+                .iter()
+                .flatten()
+                .flatten()
+                .any(|(x, y)| calc(x) || calc(y));
+        let clips = self.reset_context.contain_paint == Some(true)
+            || self.reset_context.scroller
+            || !visible(self.reset_box_layout.overflow_x)
+            || !visible(self.reset_box_layout.overflow_y);
+        let patterned = b.border_dashed == Some(true) || b.border_dotted == Some(true) || !solid;
+        [
+            (self.corner_shaped(), "corner_shape"),
+            (calculated, "calc"),
+            (b.border_shape.is_some(), "border_shape"),
+            (b.border_image.is_some(), "border_image"),
+            (patterned, "border_style"),
+            (doubled && !one_colour, "border_colours"),
+            (clips, "clip"),
+        ]
+        .into_iter()
+        .find_map(|(refused, why)| refused.then_some(why))
+    }
+
+    fn radius_beyond_circles(
         &self,
         single_corner: bool,
         shadows_empty: bool,
@@ -139,3 +228,7 @@ impl Computed {
         w > 0.0 && h > 0.0 && !uniform && max_r > w.min(h) * 0.5 + 0.01
     }
 }
+
+#[cfg(test)]
+#[path = "radius_mask_tests.rs"]
+mod tests;

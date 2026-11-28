@@ -58,6 +58,7 @@ fn codes_are_unique_and_cover_frame_misses_and_refusals() {
     let unique: std::collections::HashSet<_> = CODES.iter().collect();
     assert_eq!(unique.len(), CODES.len());
     for code in [
+        "layout.dependency_retry",
         "frame_miss.key",
         "frame_miss.scroll_deferreddraws",
         "paint_path.refused_no_layer",

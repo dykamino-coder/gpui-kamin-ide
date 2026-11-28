@@ -35,6 +35,7 @@ mod depth_tests;
 pub use kamin_style::budget;
 #[cfg(test)]
 pub mod coverage;
+pub mod group_reasons;
 pub mod paint_path;
 pub mod why;
 /// The memory report's walk state (`Document::heap_report`) for hosts and DevTools.

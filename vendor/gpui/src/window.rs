@@ -1456,6 +1456,8 @@ pub struct Window {
     /// KaminIDE patch: open 3D rendering contexts (`paint_plane_context`).
     pub(crate) plane_contexts: Vec<plane3d::PlaneContext>,
     pub(crate) element_opacity: f32,
+    /// KaminIDE patch: vertical corner radii (logical px) of the quads now painted (`with_corner_ellipse`).
+    pub(crate) corner_ellipse: Option<([Pixels; 4], u32, Option<[Hsla; 4]>)>,
     /// KaminIDE patch: the fill bounds of the box recorded again (layer_box).
     pub(crate) box_fill: Option<Bounds<Pixels>>,
     /// KaminIDE patch: the hover hitbox of the box whose own paint opens a run next (layer_box).
@@ -2458,6 +2460,7 @@ impl Window {
             scroll_interest_margin: Pixels::ZERO,
             hit_scope: None,
             element_opacity: 1.0,
+            corner_ellipse: None,
             box_fill: None,
             run_hover: None,
             band_split: false,
@@ -5021,6 +5024,15 @@ impl Window {
         self.with_restore(previous_opacity, |window, previous| window.element_opacity = *previous, f).0
     }
 
+    /// KaminIDE patch: paint `f` with elliptical corners: every quad it
+    /// paints takes `radii_y` (logical px; top left, top right, bottom
+    /// right, bottom left) as the vertical radii of its corners, its own
+    /// corner radii being the horizontal ones, and `style` as its border's
+    /// paints circular corners.
+    pub fn with_corner_ellipse<R>(&mut self, radii_y: Option<([Pixels; 4], u32, Option<[Hsla; 4]>)>, f: impl FnOnce(&mut Self) -> R) -> R {
+        let previous = std::mem::replace(&mut self.corner_ellipse, radii_y);
+        self.with_restore(previous, |window, previous| window.corner_ellipse = *previous, f).0
+    }
     /// Perform prepaint on child elements in a "retryable" manner, so that any side effects
     /// of prepaints can be discarded before prepainting again. This is used to support autoscroll
     /// where we need to prepaint children to detect the autoscroll bounds, then adjust the
@@ -5697,6 +5709,17 @@ impl Window {
             corner_radii: quad.corner_radii.scale(scale_factor),
             border_widths: quad.border_widths.scale(scale_factor),
             border_style: quad.border_style,
+            ellipse: match self.corner_ellipse {
+                Some((r, style, sides)) => crate::CornerEllipse {
+                    radii_y: r.map(|v| (v * scale_factor).0),
+                    on: 1,
+                    style,
+                    sides: u32::from(sides.is_some()),
+                    pad: 0,
+                    side_colors: sides.unwrap_or_default().map(|c| c.opacity(opacity)),
+                },
+                None => crate::CornerEllipse::default(),
+            },
         };
 
         // The strip split below restricts screen-space content masks, which

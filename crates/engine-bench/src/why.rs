@@ -108,6 +108,14 @@ impl Watch {
             .filter(|&(i, name)| *name != "write_ns" && after[i] != self.path[i])
             .map(|(i, name)| ((*name).into(), json!(after[i].wrapping_sub(self.path[i]))))
             .collect();
+        // Paint groups the elements built since the last sample, by reason.
+        let taken = kamin_html::group_reasons::take();
+        let group_reasons: serde_json::Map<String, Value> = kamin_html::group_reasons::REASONS
+            .iter()
+            .zip(taken)
+            .filter(|&(_, n)| n != 0)
+            .map(|(name, n)| ((*name).into(), json!(n)))
+            .collect();
         let mut entry = kamin_html::why::to_json(&kamin_html::why::take());
         // Primitives and painted area by batch kind since the last sample (`[gpu]`,
         // with GPU time per kind under KAMIN_DIAG_GPU_TIMING=1).
@@ -127,6 +135,7 @@ impl Watch {
             "verdict": if built > 0 { "built" } else if replayed > 0 { "replayed" } else { "none" },
             "error": error,
             "paint_path": path,
+            "group_reasons": group_reasons,
             "phases_ms": phases,
             "paint_work": work.map(super::work::Sample::paint_profile),
             "layout_work": work.map(super::work::Sample::layout_profile),
