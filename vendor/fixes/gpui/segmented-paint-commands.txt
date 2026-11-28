@@ -1,0 +1,1 @@
+Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.

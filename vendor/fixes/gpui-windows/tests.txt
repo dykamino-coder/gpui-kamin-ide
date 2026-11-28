@@ -1,0 +1,1 @@
+Tests: initialize unfragmented backdrop fixtures against the paired GPUI surface fields.

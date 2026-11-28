@@ -1,0 +1,1 @@
+Intrinsic queries: expose the existing cached ComputeSize traversal for a requested axis without performing final root layout.

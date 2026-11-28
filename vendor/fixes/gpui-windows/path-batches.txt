@@ -1,0 +1,1 @@
+Path batches: a batch clears and rasterizes its 4x multisampled intermediate only within the whole pixels its paths' clipped bounds reach inside the target and the bound scissor, draws nothing when that area is empty, and its sprites average the samples in integers themselves, so the intermediate has no resolved copy and no whole-window clear or resolve.

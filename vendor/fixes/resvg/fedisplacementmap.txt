@@ -1,0 +1,1 @@
+feDisplacementMap: demultiply the displacement image and apply scale once; otherwise displacement escapes the filter region (upstream issue linebender/resvg#1019).

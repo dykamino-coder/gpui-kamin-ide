@@ -1,0 +1,1 @@
+Highlighter: share immutable captures on hits; bound retained capture bytes and entry count (including empty results), evict FIFO without sorting and bypass oversize entries.

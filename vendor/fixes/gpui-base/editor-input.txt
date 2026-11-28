@@ -1,0 +1,1 @@
+Editor input: minimap/scroll coordinates, incremental highlighting and run traversal.

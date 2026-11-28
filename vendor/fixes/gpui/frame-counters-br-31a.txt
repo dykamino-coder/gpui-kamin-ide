@@ -1,0 +1,1 @@
+Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.

@@ -1,0 +1,1 @@
+Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.

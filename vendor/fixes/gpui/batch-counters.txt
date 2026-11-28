@@ -1,0 +1,1 @@
+Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.

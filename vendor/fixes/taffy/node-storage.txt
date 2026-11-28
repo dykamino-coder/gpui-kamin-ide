@@ -1,0 +1,1 @@
+Node storage: node_storage_full and reserve_nodes let a host grow the node, children and parent storage once to an expected node count.

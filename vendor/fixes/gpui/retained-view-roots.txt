@@ -1,0 +1,1 @@
+Retained view roots: Render can opt typed and erased views into the definite-size view cache; hosts query view invalidation before preparing. Root-local deferred descendants prepaint and paint within the retained scene, stay below later host siblings, and survive cache/scroll replay without a window overlay pass. Scoped calls restore the caller on unwind.

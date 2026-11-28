@@ -1,0 +1,1 @@
+SVG 2 geometry properties: applicable CSS cx/cy/r/rx/ry/x/y/width/height/d override presentation attributes; pathLength scales strokes.

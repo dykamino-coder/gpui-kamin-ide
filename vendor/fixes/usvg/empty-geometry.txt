@@ -1,0 +1,1 @@
+Empty geometry: do not create filtered groups for zero-size/empty shapes or images (SVG 2 sections 9-12).

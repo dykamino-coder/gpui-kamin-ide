@@ -1,0 +1,1 @@
+Upstream #1293: borrow OOF candidate slices while retaining lazy ownership and hoisted-child lifecycle.

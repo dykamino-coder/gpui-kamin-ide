@@ -1,0 +1,1 @@
+DevTools journal: expose the existing scoped profiler subscription and its clock type so embedded hosts share draw/presentation observations without replacing another reader.

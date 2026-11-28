@@ -1,0 +1,1 @@
+Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.

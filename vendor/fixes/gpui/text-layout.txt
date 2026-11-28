@@ -1,0 +1,1 @@
+Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.

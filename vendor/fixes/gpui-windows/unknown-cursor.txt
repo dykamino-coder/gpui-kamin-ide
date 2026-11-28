@@ -1,0 +1,1 @@
+Unknown cursor: when GetCursorPos fails (a desktop that takes no input, a locked session) the pointer is reported outside the client area, not at the screen origin, so it hovers no hitbox.

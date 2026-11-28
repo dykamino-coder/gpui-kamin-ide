@@ -1,0 +1,1 @@
+Preserve snapshots of referenced definitions and their resource bases, including imported images.

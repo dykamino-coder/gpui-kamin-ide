@@ -1,0 +1,1 @@
+Presentation never blocks the UI thread (BR-31A): Present uses DXGI_PRESENT_DO_NOT_WAIT; a frame dropped by it or by the frame-latency gate keeps the gate count it took and makes the next paint present the current scene; Present time and dropped frames feed the frame counters.

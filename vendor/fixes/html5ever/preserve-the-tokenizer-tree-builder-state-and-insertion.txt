@@ -1,0 +1,1 @@
+Preserve the tokenizer/tree-builder state and insertion rules for those tokens.

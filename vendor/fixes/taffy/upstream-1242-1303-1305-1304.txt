@@ -1,0 +1,1 @@
+Upstream #1242/#1303/#1305/#1304: stretch edge-adjoining margins, float identity/readback, relative painting and complete exclusion bands.

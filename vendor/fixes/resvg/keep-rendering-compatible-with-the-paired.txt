@@ -1,0 +1,1 @@
+Keep rendering compatible with the paired usvg parser/tree changes; apply usvg first (docs/VENDORING.md).

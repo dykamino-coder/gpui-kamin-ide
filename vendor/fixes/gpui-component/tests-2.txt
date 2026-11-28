@@ -1,0 +1,1 @@
+Tests: modal text-selection tests wait out the wall-clock modal animation as well as stepping the test clock.

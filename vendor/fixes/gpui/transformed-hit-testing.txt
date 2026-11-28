@@ -1,0 +1,1 @@
+Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.

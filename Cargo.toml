@@ -137,7 +137,7 @@ gpui-base = { path = "vendor/gpui-base" }
 taffy = { path = "vendor/taffy" }
 # Vendored resvg + usvg: upstream linebender/resvg main 77b12f49 (0.48.1 +
 # fixes) with KaminIDE patches (feDisplacementMap, feConvolveMatrix bias,
-# feColorMatrix rounding, 1:1 pattern sampling) — see vendor/resvg-kaminide.patch.
+# feColorMatrix rounding, 1:1 pattern sampling) — see vendor/fixes/resvg/.
 # usvg moves with resvg: upstream resvg main needs the new usvg enum variants.
 resvg = { path = "vendor/resvg" }
 usvg = { path = "vendor/usvg" }

@@ -1,0 +1,1 @@
+Grid fragmentation: block space inserted after the tracks of one physical axis keeps unfragmented track sizing and content alignment, moves following tracks, grows spanning areas and a content-sized container, and reaches subgrids inside their span (CSS Grid 2 sections 9 and 12).

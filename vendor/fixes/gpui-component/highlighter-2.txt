@@ -1,0 +1,1 @@
+Highlighter: resolve styles afresh so mutable/reused theme resolvers cannot return stale colors; invalidate captures after text/tree changes.

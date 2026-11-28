@@ -1,0 +1,1 @@
+Scroll replay: rebase transformed primitive bounds together with the matrix so gradient-local coordinates match a fresh paint without large cancelling translations.

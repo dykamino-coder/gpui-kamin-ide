@@ -1,0 +1,1 @@
+Fixed-background replay: stationary viewport content uses an independently scrolling clip; canvas clips stay anchored. Position-dependent complex clips rebuild instead of translating.

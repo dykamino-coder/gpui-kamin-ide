@@ -1,0 +1,1 @@
+Typed path-tree construction: resolve bounds, ordered luminance masks, clipping and linearRGB blur through the existing renderer without XML serialization.

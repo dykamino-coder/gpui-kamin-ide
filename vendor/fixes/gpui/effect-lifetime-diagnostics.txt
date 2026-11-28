@@ -1,0 +1,1 @@
+Effect lifetime diagnostics: opt-in batch journal reports immutable mask uploads and texture owners released when the complete scene stops using their effect kind.

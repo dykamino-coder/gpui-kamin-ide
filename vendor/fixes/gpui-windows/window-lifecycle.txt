@@ -1,0 +1,1 @@
+Window lifecycle: per-window rendering/resize policy and deterministic WPT scale.

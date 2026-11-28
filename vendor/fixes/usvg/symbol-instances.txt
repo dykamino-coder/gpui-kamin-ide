@@ -1,0 +1,1 @@
+Symbol instances: display:none suppresses rendering; use dimensions override symbol dimensions (SVG 2 section 5.6.2).

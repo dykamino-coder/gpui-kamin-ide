@@ -1,0 +1,1 @@
+Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.

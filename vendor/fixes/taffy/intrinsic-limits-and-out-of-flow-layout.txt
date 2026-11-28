@@ -1,0 +1,1 @@
+Intrinsic limits and out-of-flow layout: preserve containing sizes and CSS min/max constraints across measurement passes.

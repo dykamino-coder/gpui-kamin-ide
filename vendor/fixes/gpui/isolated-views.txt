@@ -1,0 +1,1 @@
+Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.

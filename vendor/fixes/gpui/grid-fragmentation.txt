@@ -1,0 +1,1 @@
+Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).

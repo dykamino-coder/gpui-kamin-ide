@@ -1,0 +1,1 @@
+Patterns: use nearest sampling for device-aligned 1:1 tiles so their edges do not blur or acquire seams.

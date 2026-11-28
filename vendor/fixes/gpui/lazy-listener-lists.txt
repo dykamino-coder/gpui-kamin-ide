@@ -1,0 +1,1 @@
+Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).

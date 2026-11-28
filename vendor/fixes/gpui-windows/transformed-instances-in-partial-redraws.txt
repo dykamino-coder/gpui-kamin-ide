@@ -1,0 +1,1 @@
+Transformed instances in partial redraws: a frame drawn within rectangles draws an instance a matrix moves once, with its own content mask, under each rectangle's scissor; cutting its mask to a rectangle would clip its triangles anew (SV_ClipDistance, clipped as geometry on WARP) and move its edge pixels away from the whole frame's.

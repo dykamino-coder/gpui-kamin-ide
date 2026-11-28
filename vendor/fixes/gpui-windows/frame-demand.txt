@@ -1,0 +1,1 @@
+Frame demand: per-window pending demand wakes a shared worker parked without a timeout; consume-before-post retains requests arriving during native or reentrant draws, DirectManipulation inertia and renderer recovery, with stop and notify before joining the worker. Weak window ownership prevents stale HWND requests.

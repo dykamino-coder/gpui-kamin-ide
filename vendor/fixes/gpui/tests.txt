@@ -1,0 +1,1 @@
+Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.

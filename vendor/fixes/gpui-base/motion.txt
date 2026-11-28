@@ -1,0 +1,1 @@
+Motion: a full-length transition lasts exactly its policy duration (f64 instead of f32 duration arithmetic), so it finishes and stops requesting frames on time.

@@ -1,0 +1,1 @@
+Admission: opt-in fallible driver and sink operation hooks stop canonical tokenization/tree repair immediately, including EOF recovery; preflight growable token and tree-builder buffers.

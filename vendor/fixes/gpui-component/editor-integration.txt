@@ -1,0 +1,1 @@
+Editor integration: root overlays and WebView hosting; expose a scrollbar policy hook so product geometry belongs to the application.

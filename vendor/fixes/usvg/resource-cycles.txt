@@ -1,0 +1,1 @@
+Resource cycles: traverse the cross-resource graph, use chains and gradient href chains; discard closing edges instead of recursing indefinitely.

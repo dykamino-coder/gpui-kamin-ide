@@ -3,8 +3,11 @@
 
 Crate archives come from crates.io and are verified by SHA-256; Git sources are
 fetched by full commit id, which verifies their content. Each base is then passed
-to `vendor/regenerate-patch.py --check`, so a stale patch, a patch that no longer
-applies, or a vendor tree that differs from base + patch fails the run.
+to `vendor/regenerate-patch.py`, which generates the complete patch, applies it to
+the base and requires the result to equal the vendor tree byte for byte. A
+committed generated patch, a missing fix record, a wrong upstream revision or a
+patch that does not reproduce the tree fails the run. `--out DIR` keeps the
+generated patches for review.
 """
 
 import argparse
@@ -22,6 +25,7 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 REGENERATE = ROOT / "vendor" / "regenerate-patch.py"
+TAFFY_LOCK = ROOT / "vendor" / "taffy-upstream.Cargo.lock"
 
 # crates.io archives: name, version, SHA-256 from the crates.io index.
 CRATES = {
@@ -119,34 +123,12 @@ def taffy_base(work):
     out.mkdir(parents=True)
     unpack(packages[0].read_bytes(), out)
     base = out / packages[0].name.removesuffix(".crate")
-    (base / "Cargo.lock").write_bytes(recorded_lock("taffy", work))
+    # `cargo package` resolves the newest compatible dependencies, so a fresh
+    # lockfile depends on the registry date rather than the pinned commit. The
+    # lockfile packaged at import time is recorded instead; every other file of
+    # the base is still rebuilt from the pinned commit.
+    (base / "Cargo.lock").write_bytes(TAFFY_LOCK.read_bytes().replace(b"\r\n", b"\n"))
     return base
-
-
-def recorded_lock(crate, work):
-    """Lockfile `cargo package` produced when the patch was generated.
-
-    Packaging resolves the newest compatible dependencies, so a fresh lockfile
-    depends on the registry date rather than the pinned commit. Recover the
-    recorded one by reversing the patch's lockfile section on the vendor copy;
-    every other file of the base is still verified independently.
-    """
-    rel = f"vendor/{crate}/Cargo.lock"
-    patch = (ROOT / "vendor" / f"{crate}-kaminide.patch").read_bytes()
-    header = f"diff --git a/{rel} b/{rel}\n".encode()
-    lock = (ROOT / rel).read_bytes().replace(b"\r\n", b"\n")
-    start = patch.find(header)
-    if start < 0:
-        return lock
-    end = patch.find(b"\ndiff --git ", start + len(header))
-    section = patch[start:] if end < 0 else patch[start:end + 1]
-    temp = work / "lock-reverse"
-    shutil.rmtree(temp, ignore_errors=True)
-    (temp / "vendor" / crate).mkdir(parents=True)
-    (temp / rel).write_bytes(lock)
-    subprocess.run(["git", "apply", "-R", "--unidiff-zero", "--whitespace=nowarn", "-"],
-                   input=section, cwd=temp, check=True)
-    return (temp / rel).read_bytes()
 
 
 def base_for(crate, work):
@@ -161,6 +143,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("crates", nargs="*", help=f"vendor crates to check (default: {' '.join(ALL)})")
     parser.add_argument("--work", type=Path, help="reusable download/base directory")
+    parser.add_argument("--out", type=Path, help="write each generated <crate>-kaminide.patch here")
     args = parser.parse_args()
     crates = args.crates or ALL
     unknown = sorted(set(crates) - set(ALL))
@@ -175,8 +158,9 @@ def main():
         failed = []
         for crate in crates:
             base = base_for(crate, work)
+            mode = ["--out", str((args.out / f"{crate}-kaminide.patch").resolve())] if args.out else ["--check"]
             result = subprocess.run([sys.executable, str(REGENERATE), crate, str(base),
-                                     "--scratch", str(scratch), "--check"], cwd=ROOT)
+                                     "--scratch", str(scratch), *mode], cwd=ROOT)
             if result.returncode:
                 failed.append(crate)
         if failed:

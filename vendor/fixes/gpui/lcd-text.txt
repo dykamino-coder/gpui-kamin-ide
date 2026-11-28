@@ -1,0 +1,1 @@
+LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.

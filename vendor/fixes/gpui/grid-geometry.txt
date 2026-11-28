@@ -1,0 +1,1 @@
+Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.

@@ -1,0 +1,1 @@
+External use follows the document resource policy and secure static processing, including nested SVG images; imported references retain their source URL bases.

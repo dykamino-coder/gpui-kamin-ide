@@ -1,0 +1,1 @@
+DirectX groups: one frame-domain staging surface preserves GPU interpolation exactly; scissored writes, dirty-rectangle clears, bounded pooled retained surfaces with blur margins, and rectangle-only blend backdrop copies.

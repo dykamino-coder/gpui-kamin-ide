@@ -1,0 +1,1 @@
+Process shutdown: drain deferred native window destruction for at most 5 s (logged if a window is never released), stop and join owned vsync threads while pumping messages, then release GPU/text devices before leaving the platform loop. A window revokes its OLE drop target in WM_DESTROY, while the HWND is alive, so a window destroyed by the system releases it.

@@ -1,0 +1,1 @@
+Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.

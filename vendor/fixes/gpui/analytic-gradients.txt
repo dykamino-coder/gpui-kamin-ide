@@ -1,0 +1,1 @@
+Analytic gradients: immutable geometry and arbitrary sRGB stops belong to retained commands; replay, splicing, damage comparison and group batches preserve content while remapping scene-local descriptor indices.

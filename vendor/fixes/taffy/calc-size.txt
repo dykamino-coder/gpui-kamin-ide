@@ -1,0 +1,1 @@
+calc-size: resolve retained keyword bases separately for intrinsic contributions and used sizes; preserve CSS automatic minima.
