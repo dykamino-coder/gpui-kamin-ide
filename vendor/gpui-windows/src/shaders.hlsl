@@ -791,6 +791,26 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     return max(corner_to_point.x, corner_to_point.y);
 }
 
+// CSS ограничивает суммы соседних радиусов, а не каждый радиус половиной
+// коробки. Область большого угла может пересечь обе средние линии.
+float4 ellipse_corner(float2 p, float2 half_size, float4 rx, float4 ry) {
+    float2 sign = float2(p.x < 0.0 ? -1.0 : 1.0, p.y < 0.0 ? -1.0 : 1.0);
+    uint at = p.y < 0.0 ? (p.x < 0.0 ? 0u : 1u) : (p.x < 0.0 ? 3u : 2u);
+    [unroll] for (uint i = 0u; i < 4u; ++i) {
+        float2 s = float2(i == 0u || i == 3u ? -1.0 : 1.0, i < 2u ? -1.0 : 1.0);
+        precise float2 v = half_size - p * s;
+        if (all(v >= 0.0) && v.x < rx[i] && v.y < ry[i]) {
+            return float4(s, rx[i], ry[i]);
+        }
+    }
+    return float4(sign, rx[at], ry[at]);
+}
+
+float ellipse_rect_sdf(float2 p, float2 half_size, float4 rx, float4 ry) {
+    float4 corner = ellipse_corner(p, half_size, rx, ry);
+    return ellipse_box_sdf(p * corner.xy - half_size, corner.zw);
+}
+
 // KaminIDE patch: the premultiplied source an elliptical quad hands the
 // blender: `colour * alpha` and alpha in 8-bit steps, times the coverage in
 // 8-bit steps, the product rounded to a step in integers. Left as a float
@@ -808,17 +828,17 @@ float4 blend_source(float4 color, float coverage) {
 // KaminIDE patch: distance to the edge of the quad's box inset by `inset`
 // (left, top, right, bottom), each corner's radii `r` shrunk by the insets of
 // its two sides (css-backgrounds-3 §5.4); far outside when nothing is left.
-float inset_ellipse_sdf(float2 center_to_point, float2 half_size, float4 inset, float2 r,
-                        bool left, bool top) {
+float inset_ellipse_sdf(float2 center_to_point, float2 half_size, float4 inset, float4 rx, float4 ry) {
     precise float2 inner_min = inset.xy - half_size;
     precise float2 inner_max = half_size - inset.zw;
     precise float2 inner_half = (inner_max - inner_min) / 2.;
     if (inner_half.x <= 0.0 || inner_half.y <= 0.0) {
         return 1.0e6;
     }
-    float2 side = float2(left ? inset.x : inset.z, top ? inset.y : inset.w);
     precise float2 inner_point = center_to_point - (inner_min + inner_max) / 2.;
-    precise float d = ellipse_box_sdf(abs(inner_point) - inner_half, max(r - side, 0.0));
+    precise float4 inner_rx = max(rx - inset.xzzx, 0.0);
+    precise float4 inner_ry = max(ry - inset.yyww, 0.0);
+    precise float d = ellipse_rect_sdf(inner_point, inner_half, inner_rx, inner_ry);
     return d;
 }
 
@@ -833,13 +853,13 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
                              float4 border_color) {
     precise float2 half_size = quad.bounds.size / 2.;
     precise float2 center_to_point = local_position - quad.bounds.origin - half_size;
-    bool left = center_to_point.x < 0.0;
-    bool top = center_to_point.y < 0.0;
-    float rx = pick_corner_radius(center_to_point, quad.corner_radii);
-    float ry = top ? (left ? quad.ellipse.radii_y.x : quad.ellipse.radii_y.y)
-                   : (left ? quad.ellipse.radii_y.w : quad.ellipse.radii_y.z);
-    float2 r = float2(rx, ry);
-    precise float outer_sdf = ellipse_box_sdf(abs(center_to_point) - half_size, r);
+    float4 rx = float4(quad.corner_radii.top_left, quad.corner_radii.top_right,
+                      quad.corner_radii.bottom_right, quad.corner_radii.bottom_left);
+    float4 ry = quad.ellipse.radii_y;
+    float4 corner = ellipse_corner(center_to_point, half_size, rx, ry);
+    bool left = corner.x < 0.0;
+    bool top = corner.y < 0.0;
+    precise float outer_sdf = ellipse_box_sdf(center_to_point * corner.xy - half_size, corner.zw);
     float4 color = background_color;
     float4 edges = float4(quad.border_widths.left, quad.border_widths.top,
                           quad.border_widths.right, quad.border_widths.bottom);
@@ -849,12 +869,12 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
     // antialiased pixel there takes no border colour.
     precise float covered = saturate(0.5 - outer_sdf);
     if (any(edges != 0.0) && covered > 0.0) {
-        precise float inner = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges, r, left, top));
+        precise float inner = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges, rx, ry));
         precise float ring = covered - inner;
         if (quad.ellipse.style == 1u) {
             float4 line_width = round(edges / 3.0);
-            precise float outer_line = covered - saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, line_width, r, left, top));
-            precise float inner_line = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges - line_width, r, left, top)) - inner;
+            precise float outer_line = covered - saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, line_width, rx, ry));
+            precise float inner_line = saturate(0.5 - inset_ellipse_sdf(center_to_point, half_size, edges - line_width, rx, ry)) - inner;
             ring = max(outer_line, 0.0) + max(inner_line, 0.0);
         }
         if (quad.ellipse.sides != 0u) {
@@ -862,7 +882,7 @@ float4 quad_fragment_ellipse(Quad quad, float2 local_position, float4 background
             // from the box's corner to the inner edge's corner (Blink
             // `BoxBorderPainter` clips each side to that miter): the signed
             // distance to it weighs the two colours.
-            precise float2 from_edge = half_size - abs(center_to_point);
+            precise float2 from_edge = half_size - center_to_point * corner.xy;
             // `precise` throughout (the colour conversion included): one
             // rounding per operation, so GPU and WARP pick the same bytes.
             float2 width = float2(left ? edges.x : edges.z, top ? edges.y : edges.w);
