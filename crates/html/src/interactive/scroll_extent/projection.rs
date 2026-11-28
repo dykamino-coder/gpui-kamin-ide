@@ -62,7 +62,7 @@ impl Wrap for Projected {
     }
 
     fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        let native = self.projection.handle.offset();
+        let native = self.projection.handle.painted_offset(window.scale_factor());
         let shift = point(
             if self.projection.reverse[0] {
                 -native.x * 2.0
