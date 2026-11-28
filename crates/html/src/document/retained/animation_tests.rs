@@ -89,9 +89,8 @@ fn stopped_hover_transition_changes_once_then_holds_the_sample(cx: &mut TestAppC
     cx.simulate_mouse_move(point(px(500.), px(500.)), None, Modifiers::default());
     frame(cx);
     cx.update(|window, _| window.take_frame_requests());
+    // The entering pointer asks for a redraw: the move draws the frame that changes the target.
     cx.simulate_mouse_move(point(px(5.), px(5.)), None, Modifiers::default());
-    cx.update(|window, _| window.take_frame_requests());
-    frame(cx);
     let changed = cx.update(|_, app| view.read(app).doc.animation_frame().unwrap());
     assert!(
         changed.hover_target_changed,
@@ -129,9 +128,8 @@ fn live_hover_transition_requests_its_next_sample(cx: &mut TestAppContext) {
     cx.simulate_mouse_move(point(px(500.), px(500.)), None, Modifiers::default());
     frame(cx);
     cx.update(|window, _| window.take_frame_requests());
+    // The entering pointer asks for a redraw: the move draws the frame that changes the target.
     cx.simulate_mouse_move(point(px(5.), px(5.)), None, Modifiers::default());
-    cx.update(|window, _| window.take_frame_requests());
-    frame(cx);
     assert!(cx.update(|_, app| {
         view.read(app)
             .doc

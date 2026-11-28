@@ -8,7 +8,7 @@ pub(super) fn release_on_mouse_up<S: Copy + 'static>(
     dragging: fn(&mut S) -> &mut bool,
     window: &mut Window,
 ) {
-    window.on_mouse_event(move |_e: &MouseUpEvent, phase, _window, _cx| {
+    window.on_mouse_event(move |_e: &MouseUpEvent, phase, window, _cx| {
         if !phase.bubble() {
             return;
         }
@@ -17,6 +17,9 @@ pub(super) fn release_on_mouse_up<S: Copy + 'static>(
         if *active {
             *active = false;
             state.set(value);
+            // The drag ended: a retained frame recorded while it ran is stale
+            // (`gpui::Window::interaction_epoch` counts inputs that redraw).
+            window.refresh();
         }
     });
 }
