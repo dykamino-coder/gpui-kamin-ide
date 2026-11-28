@@ -65,7 +65,7 @@ pub fn start(
     // Reject the complete path before dispatching its first event.
     cx.update(|window, _| {
         let size = window.viewport_size();
-        series.x + 6.0 < size.width.0 && series.y < size.height.0
+        series.x + 6.0 < f32::from(size.width) && series.y < f32::from(size.height)
     })?
     .then_some(())
     .ok_or("input path lies outside the window")?;
