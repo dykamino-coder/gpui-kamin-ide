@@ -60,6 +60,8 @@ TEST_FILTERS = {
         "directx_renderer::path_pass::tests::",
         "directx_renderer::recovery_tests::damage",
         "directx_renderer::recovery_tests::path_target::",
+        "directx_renderer::recovery_tests::effect_targets::",
+        "directx_renderer::mask_uploads::tests::",
         "directx_renderer::group_atlas",
         "window::drop_target",
     ],

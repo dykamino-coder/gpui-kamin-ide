@@ -47,6 +47,20 @@ fn resource_events_report_exact_bytes_even_without_a_drawn_frame() {
     cost.path_target_created(16 * 32 * 24);
     cost.path_target_dropped();
     let line = cost.take_line().unwrap();
-    assert!(line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"), "{line}");
+    assert!(
+        line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"),
+        "{line}"
+    );
+    assert!(cost.take_line().is_none());
+}
+
+#[test]
+fn effect_events_report_exact_totals_and_reset_without_a_frame() {
+    let cost = BatchCost::default();
+    cost.mask_uploaded(24);
+    cost.mask_uploaded(40);
+    cost.effect_targets_dropped(2, 64);
+    let line = cost.take_line().unwrap();
+    assert!(line.contains("mask_upload_create=2 mask_upload_alloc_bytes=64 effect_target_drop=2 effect_target_release_bytes=64"), "{line}");
     assert!(cost.take_line().is_none());
 }
