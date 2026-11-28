@@ -10,7 +10,7 @@
 
 use crate::document::boxes::MixedText;
 use crate::document::boxes::inline::ItemKind;
-use crate::style::computed::Computed;
+use crate::style::computed::BoxStyle;
 
 pub(crate) struct Runs {
     mixed: MixedText,
@@ -29,7 +29,7 @@ impl Runs {
     }
 
     /// The prepared run of the next non-empty text node `raw` lowered with `style`.
-    pub(crate) fn next(&mut self, raw: &str, style: &Computed) -> Option<&str> {
+    pub(crate) fn next(&mut self, raw: &str, style: &BoxStyle) -> Option<&str> {
         if self.diverged {
             return None;
         }
@@ -41,7 +41,7 @@ impl Runs {
         found.map(|range| &self.mixed.text.text()[range])
     }
 
-    fn find(&mut self, raw: &str, style: &Computed) -> Option<std::ops::Range<usize>> {
+    fn find(&mut self, raw: &str, style: &BoxStyle) -> Option<std::ops::Range<usize>> {
         let source = &self.mixed.source;
         let offset = source.items()[self.at..]
             .iter()
@@ -61,7 +61,7 @@ impl Runs {
                 .iter()
                 .flat_map(|inputs| inputs.iter())
                 .find(|(id, _)| *id == item.box_id)
-                .is_some_and(|(_, inputs)| inputs.matches(style))
+                .is_some_and(|(_, inputs)| inputs.matches(style, style.tree.ruby_suppress_breaks))
         {
             return None;
         }

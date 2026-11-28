@@ -3,7 +3,6 @@
 //! (`shift_overlays`; CSS 2.1 §9.4.3) и перевод физического смещения в до-поворотный кадр
 //! повёрнутой вертикальной строки (`to_rotated_frame`; css-writing-modes-4 §7.1).
 
-use crate::style::computed::Computed;
 use crate::style::values::value::px_lossy_zero;
 use crate::text::inline::*;
 use gpui::{AnyElement, ParentElement, Styled};
@@ -59,7 +58,13 @@ pub(crate) fn overlay_in_row(
 /// `css-position/static-position/v{lr,rl}-*`. Поэтому сдвиг по y не идёт
 /// отбивкой, а копится в `OverlayAt::rot_dy` и прикладывается `lines.rs`
 /// одним округлением вместе с местом в строке.
-pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool) -> Vec<Piece> {
+/// `rotated`: the pieces sit in a turned line.
+pub(super) fn shift_overlays(
+    pieces: Vec<Piece>,
+    style: &crate::style::box_input::BoxStyleInput,
+    rotated: bool,
+) -> Vec<Piece> {
+    let rotated = rotated.then(|| style.wm().on_line(style.tree.turned_line));
     if style.reset_positioned.position != Some(crate::style::computed::Position::Relative) {
         return pieces;
     }
@@ -73,10 +78,9 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
     }
     // Rotated paragraphs are typeset horizontally and turned afterwards: express
     // the physical relative offset in the pre-rotation frame, as the text runs do.
-    let (rx, ry) = if rotated {
-        to_rotated_frame(style, (dx, dy))
-    } else {
-        (dx, dy)
+    let (rx, ry) = match rotated {
+        Some(line) => to_rotated_frame(line, (dx, dy)),
+        None => (dx, dy),
     };
     pieces
         .into_iter()
@@ -103,7 +107,7 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
                     ..at
                 },
             ),
-            Piece::Overlay(el, at) if rotated => Piece::Overlay(
+            Piece::Overlay(el, at) if rotated.is_some() => Piece::Overlay(
                 el,
                 OverlayAt {
                     rot_dx: at.rot_dx + rx,
@@ -127,9 +131,12 @@ pub(super) fn shift_overlays(pieces: Vec<Piece>, style: &Computed, rotated: bool
 /// Physical offset -> pre-rotation frame of a rotated vertical line: a clockwise
 /// turn sends the line axis (+x) to screen-down and the block axis (+y) to
 /// screen-left; `sideways-lr` turns the other way (css-writing-modes-4 §7.1).
-pub(crate) fn to_rotated_frame(style: &Computed, (dx, dy): (f32, f32)) -> (f32, f32) {
+pub(crate) fn to_rotated_frame(
+    line: crate::style::computed::writing_mode::WritingMode,
+    (dx, dy): (f32, f32),
+) -> (f32, f32) {
     use crate::style::computed::writing_mode::Turn;
-    if style.wm().line().line_turn() == Turn::CounterClockwise {
+    if line.line_turn() == Turn::CounterClockwise {
         (-dy, dx)
     } else {
         (dy, -dx)

@@ -75,7 +75,7 @@ pub(crate) fn atom_element(
     // Повёрнутый абзац вертикального письма (`rotated_line`) набирается
     // горизонтально, но ось строки там вертикальна.
     let inline_axis_only = !inherited.wm().vertical()
-        && !inherited.wm().turned()
+        && !inherited.turned_line()
         && !e.style.cascaded().wm().vertical()
         && keyword(e.style.used().reset_box_layout.width)
         && !keyword(e.style.used().reset_box_layout.height);

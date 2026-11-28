@@ -23,7 +23,7 @@ pub(crate) fn physical(
     // writing mode, including an explicitly orthogonal mode. Only the
     // enclosing paragraph's text is turned (CSS Writing Modes 4, section 4.3).
     if !text_turn(&opts.cx)
-        || !flow.wm().turned()
+        || !flow.turned_line()
         || e.style.used().reset_context.inline_display == Some(true)
         || !(matches!(
             e.style.used().reset_box_layout.display,
@@ -51,7 +51,7 @@ pub(crate) fn physical(
             context.wm().block_rl(),
             context.wm().sideways(),
         ));
-    context.reset_text_box.turned_line = false;
+    context.tree.turned_line = false;
     context.reset_context.lines_reversed = None;
     context.reset_context.para_vertical = None;
     let mut child =
@@ -65,10 +65,10 @@ pub(crate) fn physical(
     if (dx, dy) != (0.0, 0.0) {
         child.style.used_mut().reset_positioned.inset = Default::default();
     }
-    let (sx, sy) = crate::text::inline::to_rotated_frame(flow, (dx, dy));
+    let (sx, sy) = crate::text::inline::to_rotated_frame(flow.line_wm(), (dx, dy));
     let central = !flow.wm().alphabetic_baseline();
-    let ccw = flow.wm().line().line_turn()
-        == crate::style::computed::writing_mode::Turn::CounterClockwise;
+    let ccw =
+        flow.line_wm().line_turn() == crate::style::computed::writing_mode::Turn::CounterClockwise;
     let physical = opts.cx.contracts.build.element(&child, &context, opts);
     let mut wrapper = opts
         .cx
@@ -113,7 +113,7 @@ pub(crate) fn resolved(e: &Element, flow: &Computed) -> Option<Element> {
     .flatten()
 }
 
-pub(crate) fn margin(style: &Computed, flow: &Computed) -> Sides {
+pub(crate) fn margin(style: &Computed, flow: &crate::style::computed::BoxStyle) -> Sides {
     crate::text::inline::physical_sides::side_values(flow, style.reset_box_layout.margin)
 }
 

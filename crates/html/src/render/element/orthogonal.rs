@@ -104,7 +104,7 @@ pub(crate) fn orthogonal_limit(
             // (table-cell-002), а `max-height` определённого размера не даёт
             // — поэтому вето сужено до случая без своей `height`.
             if !e.style.cascaded().wm().vertical()
-                || merged.reset_context.ortho_limit.is_none()
+                || merged.tree.ortho_limit.is_none()
                 || h.is_some()
             {
                 set_ortho_limit(merged, avail, opts);
@@ -128,7 +128,7 @@ pub(crate) fn orthogonal_limit(
         // `srl-049` зелены при том же дефекте).
         if !own_limit
             && merged.wm().vertical()
-            && let Some(l) = merged.reset_context.ortho_limit
+            && let Some(l) = merged.tree.ortho_limit
         {
             let b = e.style.used().borders();
             let edges = px_of(b.top).unwrap_or(0.0)
@@ -146,11 +146,11 @@ pub(crate) fn orthogonal_limit(
 /// (`document::boxes::used`) instead of a copy each; a style only this box
 /// holds is written in place, and an unchanged limit is not written at all.
 fn set_ortho_limit(merged: &mut BoxStyle, limit: f32, opts: &RenderOpts) {
-    if merged.reset_context.ortho_limit == Some(limit) {
+    if merged.tree.ortho_limit == Some(limit) {
         return;
     }
     if std::rc::Rc::strong_count(merged.style_rc()) == 1 {
-        merged.reset_context.ortho_limit = Some(limit);
+        merged.tree.ortho_limit = Some(limit);
         return;
     }
     let role = crate::document::boxes::used::UsedRole::OrthoLimit(limit.to_bits());
@@ -160,7 +160,7 @@ fn set_ortho_limit(merged: &mut BoxStyle, limit: f32, opts: &RenderOpts) {
         merged.set_style_rc(found);
         return;
     }
-    merged.reset_context.ortho_limit = Some(limit);
+    merged.tree.ortho_limit = Some(limit);
     let used = merged.style_rc().clone();
     opts.cx.doc().boxes.borrow().used.insert(&base, role, used);
 }

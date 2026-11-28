@@ -52,7 +52,7 @@ pub(super) async fn collect_element(
         // CSS Ruby box fixup suppresses the break that an empty block would
         // introduce. Its inlinified zero-size box must not create a soft
         // opportunity through our U+FFFC atom placeholder either (UAX14 LB11).
-        let join = inherited.reset_text_box.ruby_suppress_breaks
+        let join = inherited.tree.ruby_suppress_breaks
             && e.children.is_empty()
             && !crate::layout::box_kind::replaced_tag(e)
             && matches!(st.reset_box_layout.width, None | Some(Len::Px(0.0)))
@@ -220,7 +220,7 @@ pub(super) async fn collect_element(
     };
     let anchors = &cx.layout.layout().anchors;
     let kids = crate::text::inline::inline_box::mark_inline_box(kids, e, &merged, anchors);
-    out.extend(shift_overlays(kids, &st, merged.wm().turned()));
+    out.extend(shift_overlays(kids, &st, merged.turned_line()));
     if let Some(mark) = close {
         out.push(piece(mark.to_string(), control()));
     }
