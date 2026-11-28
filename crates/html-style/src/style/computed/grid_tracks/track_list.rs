@@ -32,7 +32,9 @@ pub(in crate::style::computed) fn parse_tracks(
             let value: f32 = fr.trim().parse().ok()?;
             return (value.is_finite() && value >= 0.0).then_some(Track::Fr(value));
         }
-        match Len::parse(t, vcx) {
+        // CSS Grid 2 §7.2.1 accepts <length-percentage>; keep its mixed
+        // arithmetic until the grid supplies the percentage basis.
+        match Len::parse_mixed(t, vcx) {
             Some(Len::Px(px)) => Some(Track::Px(px)),
             Some(Len::Pct(p)) => Some(Track::Pct(p)),
             // Единицы шрифта откладываются: раньше они роняли разбор, а с

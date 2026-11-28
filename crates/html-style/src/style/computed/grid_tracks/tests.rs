@@ -31,7 +31,7 @@ fn board_appearance_grid_tracks_keep_math_and_reject_invalid_components() {
         font: Some(FontCx::new("", 20.0)),
         ..Default::default()
     };
-    let value = Len::parse("calc(25% + 2em)", vcx).unwrap();
+    let value = Len::parse_mixed("calc(25% + 2em)", vcx).unwrap();
     assert_eq!(cx.math_terms(value, vcx), Some((0.25, 40.0)));
     assert_eq!(cx.px(value, vcx), None);
     assert_eq!(

@@ -83,7 +83,12 @@ mod tests {
              <code style='font-size:calc(100% + 0px)' id=p>x</code>\
              <div class=mono><span style='font-size:larger' id=q>x</span></div>\
              <div style='font-size:medium'><span style='font-size:larger' id=s>x</span></div>",
-            "",
+            crate::style::ua::BROWSER_CSS,
+        );
+        crate::style::cascade::materialize::materialize(
+            &parsed.nodes,
+            &std::rc::Rc::new(Computed::default()),
+            parsed.values(),
         );
         for (id, px) in [
             ("a", 13.),
@@ -115,7 +120,12 @@ mod tests {
         }
         let root = crate::dom::parse(
             "<!doctype html><style>html{font-family:monospace}p{font-size:1rem}</style><p id=r>x",
-            "",
+            crate::style::ua::BROWSER_CSS,
+        );
+        crate::style::cascade::materialize::materialize(
+            &root.nodes,
+            &std::rc::Rc::new(Computed::default()),
+            root.values(),
         );
         let node =
             crate::dom::test_support::find(&root.nodes, &|e| e.attr("id") == Some("r")).unwrap();
