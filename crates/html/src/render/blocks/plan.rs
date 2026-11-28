@@ -37,22 +37,20 @@ pub(super) fn prepare(
     cell_bfc: bool,
 ) -> ChildPlan {
     let vcx = opts.cx.vcx();
-    // `content-visibility: hidden`: содержимое пропускается целиком
-    // (css-contain-2 §4) — коробка остаётся, детей нет.
+    // `content-visibility: hidden`: the content is skipped entirely (css-contain-2 §4); the box
+    // stays, without children.
     let (collapsed, ordered_context, under_tf) =
         prepare_children(nodes, inherited, sizes, opts, cell_bfc);
-    // Плавающий блок и выравнивание по базовой линии на элементе гибкого
-    // контейнера или сетки НЕ действуют — так велит CSS. Без этого правила
-    // `float: right` на элементе ряда выкидывал его из раскладки родителя.
+    // Floats and baseline alignment do NOT apply to a flex or grid item, as CSS says. Without
+    // this rule `float: right` on a row item took it out of its parent's layout.
     let collapsed = ordered_children(collapsed, ordered_context, inherited, opts);
     let flex_ctx = matches!(
         inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
     let letter_scope = first_letter_scope::Scope::new(&collapsed, inherited);
-    // Буквица `initial-letter` расшивается в плавающий узел ДО обтекания —
-    // дальше её ведёт `wrap_floats` наравне с авторскими флоатами. В гибком
-    // контейнере и сетке `::first-letter` не действует — там не трогаем.
+    // An `initial-letter` drop cap becomes a float node BEFORE wrapping: `wrap_floats` then
+    // handles it like an authored float. `::first-letter` does not apply in flex and grid.
     let collapsed = if ordered_context {
         collapsed
     } else {
@@ -65,18 +63,15 @@ pub(super) fn prepare(
             opts,
         )
     };
-    // §8.3.1: поле первого ребёнка примыкает к верхнему полю содержащего
-    // блока, только если того не отделяют ни рамка, ни отбивка и он не
-    // заводит своего контекста форматирования.
+    // §8.3.1: the first child's margin adjoins the top margin of its containing block only
+    // when no border or padding separates them and the block starts no formatting context.
     let cb_top_open = !own_context_style(inherited)
         && zero_len(inherited.reset_box_layout.padding.top)
         && zero_len(inherited.borders().top);
-    // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
-    // горизонтального письма: в гибком и сетке `float` не
-    // действует (css-flexbox-1 §3, css-grid-1 §6.1).
-    // Хост работает и в вертикальном письме: план в логических осях,
-    // перевод в физику при сборке. Float sides are line-relative (left =
-    // line-left), independent of `direction` (css-writing-modes-4 §6.3), so
+    // The measured band host (`band_flow.rs`) only in a BLOCK container: in flex and grid
+    // `float` does not apply (css-flexbox-1 §3, css-grid-1 §6.1). The host works in vertical
+    // writing too: the plan is in logical axes, made physical at build. Float
+    // sides are line-relative (left = line-left), independent of `direction` (css-writing-modes-4 §6.3), so
     // RTL hosts use the same plan; paragraphs handle RTL within the bands.
     // `sideways-lr` uses the same logical bands; physical holders and shape
     // profiles start at the bottom line edge (css-writing-modes-4 §6.3).
@@ -108,29 +103,24 @@ pub(super) fn prepare(
         ),
         flex_ctx,
     );
-    // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
-    // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
-    // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
-    // просила обратного.
+    // We render a block as a flex column whose children shrink by default; normal flow has no
+    // such thing: a child taller than its parent must overflow, not shrink. So in flow the
+    // children do not shrink unless the markup asked for it.
     let flex_context = matches!(
         inherited.reset_box_layout.display,
         Some(Display::Flex) | Some(Display::InlineFlex)
     );
     let collapsed = flow_children(collapsed, ordered_context, inherited, opts, flex_context);
-    // §9.9 шаг 8: позиционированная коробка рисуется ПОВЕРХ содержимого
-    // потока, а порядок краски у нас — порядок детей. В обычном потоке это
-    // делает верхний слой, но в сетке и гибком контейнере он выключен
-    // (`!ordered_context` у гейтов ниже), и абсолютный ребёнок оказывался под
-    // соседями. Здесь его достаточно переставить в конец: место он берёт не
-    // из потока (в раскладку сетки такой ребёнок не входит), поэтому
-    // перестановка меняет только краску.
-    // Вынесенный абсолют всё же РВЁТ прогон текста: каждая непрерывная
-    // последовательность текстовых детей — свой анонимный элемент
-    // (css-flexbox-1 §4, css-grid-2 §6.1), а абсолютный ребёнок в неё не
-    // входит. После перестановки куски «Two » и «lines» оказывались соседями
-    // и склеивались в один абзац (`anonymous-flex-item-004`,
-    // `anonymous-grid-item-001`). `run_breaks` — индексы в новом списке, перед
-    // которыми накопленный абзац закрывается.
+    // CSS 2.1 §9.9 step 8: a positioned box paints OVER the flow content, and our paint order
+    // is the order of children. In normal flow the top layer does it; in a grid or flex
+    // container it is off (`!ordered_context` below), so an absolute child went under its
+    // siblings. Moving it to the end is enough: it takes no place in the flow (grid layout
+    // does not place it), so the move changes only the paint.
+    // A moved absolute child still BREAKS the text run: each run of text children is its own
+    // anonymous item (css-flexbox-1 §4, css-grid-2 §6.1) and the absolute child is not in it.
+    // After the move the pieces "Two " and "lines" became neighbours and merged into one
+    // paragraph (`anonymous-flex-item-004`, `anonymous-grid-item-001`). `run_breaks`: indices
+    // in the new list before which the pending paragraph closes.
     let mut run_breaks: Vec<usize> = vec![];
     let collapsed: Vec<Node> = if ordered_context {
         let in_flow = |n: &Node| match n {
