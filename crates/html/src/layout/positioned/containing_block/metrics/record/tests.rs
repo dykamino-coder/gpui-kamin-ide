@@ -162,6 +162,20 @@ fn static_margin_edge_uses_the_parent_direction(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+fn all_auto_block_child_of_its_cb_records_its_flow_position(cx: &mut gpui::TestAppContext) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        for (margin, expected) in [("", point(px(8.), px(38.))), ("margin:5px 0 0 3px;", point(px(11.), px(43.)))] {
+            let html = format!("<section style='position:relative;width:120px;padding:8px;border:4px solid'><div style='height:30px'></div><div style='position:absolute;{margin}width:10px;height:10px'></div><div style='height:20px'></div></section>");
+            let (snapshot, id) = sample(&html, 200., window, app);
+            let metrics = snapshot.get(id).expect("static position recorded from the probe");
+            assert_eq!(metrics.normal_offset, expected, "{margin}");
+        }
+        gpui::div()
+    });
+}
+
+#[gpui::test]
 fn recording_requires_final_membership_and_both_constraints(cx: &mut gpui::TestAppContext) {
     let cx = cx.add_empty_window();
     cx.draw(

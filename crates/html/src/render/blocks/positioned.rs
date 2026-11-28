@@ -114,7 +114,10 @@ pub(crate) fn static_position_layer(
     )
     .unwrap_or(0.0);
     let stretch = !inherited.wm().rtl() && !inherited.wm().vertical();
-    let built = if (ml != 0.0 || mt != 0.0) && !below {
+    // In place (`below`, or source geometry recorded without paint, see
+    // `taken`) the layout gives the margin itself.
+    let in_place = below || cx.position.geometry_record.is_some();
+    let built = if (ml != 0.0 || mt != 0.0) && !in_place {
         let wrap = div().absolute().left(px(ml)).top(px(mt));
         let wrap = if stretch { wrap.right(px(mr)) } else { wrap };
         wrap.child(built).into_any_element()
@@ -139,7 +142,12 @@ pub(crate) fn static_position_layer(
     // Абсолют на статической позиции — тоже шаг 8: в собирателе
     // он встаёт среди позиционированных по ключу, а не поверх
     // всех соседей контейнера.
-    let taken = if below {
+    // Source geometry is recorded without paint (`geometry_record`): the late
+    // layer would lay the box out at the end of its parent and move it onto
+    // the probe only when painting, so the source box and the flow it
+    // continues would start at different places. Laid out in place, the box
+    // is at its static position in layout itself (CSS 2.1 §10.3.7, §10.6.4).
+    let taken = if in_place {
         Some(built)
     } else if paint_last_ok(e, nodes.after(idx), cx) {
         cx.position.state.late_push(

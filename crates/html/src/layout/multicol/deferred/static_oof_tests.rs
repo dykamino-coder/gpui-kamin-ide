@@ -76,7 +76,9 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
                 (0, 0., 0., 85.), (0, first_height, 0., 85.),
                 (1, 20., 0., 85.), (0, 7., 0., 85.),
             ]) {
-                let fragments: Vec<_> = oof.iter().filter(|f| f.kid == *id as usize)
+                // A positioned fragment's `kid` is its flow's input index.
+                let input = stack.oof.geometry.flows.iter().position(|s| s.id == *id).expect("input");
+                let fragments: Vec<_> = oof.iter().filter(|f| f.kid == input)
                     .map(|f| (f.col, f.y, f.from, f.h)).collect();
                 assert_eq!(fragments, [expected], "fragments of {id}");
             }
