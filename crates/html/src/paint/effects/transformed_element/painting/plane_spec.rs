@@ -120,6 +120,7 @@ pub(super) fn plane_spec(
         outer,
         rect,
         masked: true,
+        build: None,
     }
 }
 

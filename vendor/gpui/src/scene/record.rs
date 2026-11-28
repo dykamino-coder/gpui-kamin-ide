@@ -33,6 +33,7 @@ impl Scene {
                 b
             }),
             projection: group.projection.map(|m| geometry::projection(m, offset)),
+            plane: group.plane.clone(),
             fragments: group.fragments.iter().map(|fragment| {
                 fragment.iter().map(|p| *p + offset).collect()
             }).collect(),

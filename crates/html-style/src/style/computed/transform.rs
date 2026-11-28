@@ -4,6 +4,8 @@ mod compose;
 mod flat;
 pub use flat::FlatTransform;
 mod matrices4;
+mod perspective_frame;
+pub use perspective_frame::PerspectiveInputs;
 
 /// `transform`: поворот, масштаб и сдвиг при отрисовке.
 ///
@@ -65,7 +67,7 @@ pub struct Transform {
 /// объёмным путём ПРЯМЫХ детей. Разделяемая ячейка, а не стек кадра:
 /// абсолютный ребёнок с `z-index`/`fixed` рисуется отложенным слоем
 /// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
-pub type PerspectiveFrame = std::rc::Rc<std::cell::Cell<Option<[[f32; 4]; 4]>>>;
+pub type PerspectiveFrame = std::rc::Rc<std::cell::RefCell<Option<PerspectiveInputs>>>;
 
 /// Ячейка объёмного контекста `transform-style: preserve-3d`
 /// (css-transforms-2 §accumulated-3d-transformation-matrix): накопленная

@@ -35,11 +35,20 @@ fn depth_planes_scroll_without_building_and_match_fresh(cx: &mut TestAppContext)
         );
         if [32, 96, 496].contains(&ms) {
             let offset = root(&view, vcx).offset();
-            assert_same(
-                &format!("3D vsync {ms}"),
-                &painted(vcx),
-                &fresh_quads(cx, &html, offset),
+            let (fresh, groups, maps) = fresh_with(cx, &html, offset, |c| {
+                (
+                    painted(c),
+                    super::groups::groups(c),
+                    c.update(|w, _| w.painted_plane_maps()),
+                )
+            });
+            assert_eq!(super::groups::groups(vcx), groups, "3D groups at {ms}");
+            assert_eq!(
+                vcx.update(|w, _| w.painted_plane_maps()),
+                maps,
+                "3D maps at {ms}"
             );
+            assert_same(&format!("3D vsync {ms}"), &painted(vcx), &fresh);
         }
     }
     let journal = crate::why::take().journal;

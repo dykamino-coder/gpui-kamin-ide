@@ -11,6 +11,7 @@ impl Window {
         projection: Option<[f32; 9]>,
         polygon: Vec<Point<ScaledPixels>>,
         fragments: Vec<Vec<Point<ScaledPixels>>>,
+        plane: Option<(std::rc::Rc<dyn PlaneBuild>, f32)>,
     ) -> u32 {
         let hoisted = inner.take_backdrops();
         let mut nested = std::mem::take(&mut inner.groups);
@@ -31,6 +32,7 @@ impl Window {
             polygon,
             projection,
             fragments,
+            plane,
             ..Default::default()
         });
         self.next_frame.scene.adopt_backdrops(hoisted);

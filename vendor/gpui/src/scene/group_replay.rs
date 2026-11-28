@@ -220,7 +220,9 @@ impl Scene {
         };
         scene.relabel = 0;
         scene.finish();
-        Scene::copy_group(group, scene, shift)
+        let mut copy = Scene::copy_group(group, scene, shift);
+        copy.move_plane(shift);
+        copy
     }
 }
 

@@ -89,7 +89,7 @@ mod scroll_deferred;
 mod scroll_masks;
 mod scroll_nodes;
 mod scroll_replay; mod scroll_refusal; mod scroll_still;
-pub use scroll_nodes::{ScrollNodeId, ScrollSegment};
+pub use scroll_nodes::{ScrollMotion, ScrollNodeId, ScrollSegment};
 pub use scroll_replay::ScrollReplay; pub use scroll_refusal::ScrollRefusal;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
@@ -124,7 +124,7 @@ pub use update_rendering::ElementPlace;
 pub use retained_layout::{ElementIdContext, ElementLayoutContext, RetainedLayout};
 use layout_inputs::PrepaintRoots;
 pub use layout_inputs::LayoutInputId;
-pub use plane3d::PlaneSpec;
+pub use plane3d::{PlaneBuild, PlaneSpec};
 pub use image_sampling::ImageSampling;
 
 pub use a11y::A11ySubtreeBuilder;

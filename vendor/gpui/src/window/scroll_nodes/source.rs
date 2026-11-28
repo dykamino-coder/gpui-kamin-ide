@@ -11,6 +11,8 @@ pub(crate) enum NodeSource {
         anchored: bool,
     },
     Anchor(Rc<dyn Fn() -> Point<Pixels>>),
+    /// Retained paint selected by live spatial state (scrollbar end buttons).
+    Visible(Rc<dyn Fn() -> bool>),
     /// A follower (`with_scroll_follower_prepaint`): its offset is `at` of
     /// the change of another node's offset since `base`, the offset that
     /// node had when the follower prepainted.
@@ -33,7 +35,7 @@ impl NodeSource {
                 handle.clamp_to_range();
                 ScrollHandle::painted(handle.offset(), handle.max_offset(), scale)
             }
-            NodeSource::Viewport { .. } => Point::default(),
+            NodeSource::Viewport { .. } | NodeSource::Visible(_) => Point::default(),
             NodeSource::Anchor(offset) => offset(),
             NodeSource::Follow { on, base, at } => at(on.offset(scale) - *base),
         }
@@ -41,6 +43,10 @@ impl NodeSource {
 }
 
 impl NodeSource {
+    pub(crate) fn visible(&self) -> bool {
+        match self { Self::Visible(when) => when(), _ => true }
+    }
+
     pub(crate) fn replay_shift(
         &self,
         parent: Point<Pixels>,

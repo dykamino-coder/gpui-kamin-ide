@@ -30,23 +30,23 @@ pub(crate) fn layer_spaces(operations: &[PaintOperation]) -> Vec<SceneSpace> {
 
 /// Identity of a scroll node across frames: the scroll handle's shared state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ScrollNodeId(pub(crate) usize);
+pub struct ScrollNodeId(pub(crate) usize, pub(crate) usize);
 
 impl ScrollNodeId {
     /// The node of a scroll handle: stable while any clone of it lives.
     pub fn of(handle: &ScrollHandle) -> Self {
-        Self(handle.node_identity())
+        Self(handle.node_identity(), 0)
     }
 
     /// The node of a host's anchor: stable while 	oken lives.
     pub fn of_token<T>(token: &Rc<T>) -> Self {
-        Self(Rc::as_ptr(token) as *const () as usize)
+        Self(Rc::as_ptr(token) as *const () as usize, 0)
     }
 
     /// A follower node of a scroll handle (its scrollbar thumb on `axis`):
-    /// the handle's state is aligned, so the low bits name the follower.
+    /// the second identity component names a stable part of the handle.
     pub fn follower(handle: &ScrollHandle, axis: usize) -> Self {
-        Self(handle.node_identity() | (1 + (axis & 1)))
+        Self(handle.node_identity(), 1 + axis)
     }
 }
 
@@ -77,6 +77,7 @@ pub(crate) struct ScrollNodeRecord {
     /// Where the node's offset is read when a replay plans: the container's
     /// scroll handle, or the host's function for an anchor.
     pub(crate) source: NodeSource,
+    pub(crate) visible: bool,
     /// Scene commands of the node's children; empty until they paint.
     pub(crate) paint: Option<Range<usize>>,
     /// The scene `paint` counts in: a layer's while one records.
@@ -123,6 +124,8 @@ impl ScrollNodeRecord {
 
 mod anchor_trace;
 mod source;
+mod motion;
+pub use motion::ScrollMotion;
 pub(crate) use source::NodeSource;
 
 /// Pairing of scroll node paints with their prepaints in one frame.
@@ -163,6 +166,16 @@ pub struct ScrollSegment {
 }
 
 impl Window {
+    /// Retain both states of conditional spatial paint; replay selects its clip.
+    pub fn with_scroll_visibility_prepaint<R>(
+        &mut self, id: ScrollNodeId, when: Rc<dyn Fn() -> bool>, f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.open_scroll_node(id, self.content_mask().bounds, Point::default(), NodeSource::Visible(when));
+        let result = f(self);
+        self.end_scroll_node_prepaint(Some(0));
+        result
+    }
+
     /// Prepaint the children of a scroll container as a scroll node: `f` runs
     /// with the node open, so nodes it opens are its children.
     pub fn with_scroll_node_prepaint<R>(
@@ -307,16 +320,18 @@ impl Window {
         // and outside prepaint the stack is empty, so the base is zero.
         let base = self.element_offset_stack.last().copied().unwrap_or_default();
         let children_offset = base + offset;
+        let visible = source.visible();
         self.next_frame.scroll_nodes.push(ScrollNodeRecord {
             id,
             parent,
             offset,
             children_offset,
-            clip,
+            clip: if visible { clip } else { Bounds::default() },
             chain,
             interest,
             anchored,
             source,
+            visible,
             paint: None,
             painted_in: None,
             more: Vec::new(),

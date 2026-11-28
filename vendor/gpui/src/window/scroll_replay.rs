@@ -38,12 +38,13 @@ pub(super) struct PlannedNode {
     clip: Bounds<Pixels>,
     chain: Bounds<Pixels>,
     interest: Bounds<Pixels>,
+    visibility_changed: bool,
 }
 
 impl ScrollReplay {
     /// Whether nothing moves (a plain replay draws the same).
     pub fn is_still(&self) -> bool {
-        self.nodes.iter().all(|node| node.shift == Point::default())
+        self.nodes.iter().all(|node| node.shift == Point::default() && !node.visibility_changed)
     }
 
     pub(super) fn node(&self, id: ScrollNodeId) -> &PlannedNode {
@@ -54,7 +55,7 @@ impl ScrollReplay {
     pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
         let node = self.node(id);
         let shift = node.shift.scale(scale);
-        let shift = if node.whole { shift.map(|v| ScaledPixels(v.0.round())) } else { shift };
+        let shift = shift.map(|v| if node.whole || (v.0 - v.0.round()).abs() < 1e-3 { ScaledPixels(v.0.round()) } else { v });
         (shift, node.clip.scale(scale))
     }
 }
@@ -75,7 +76,7 @@ impl Window {
         self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
             .iter()
             .chain(self.deferred_scroll_nodes(&range))
-            .any(|node| node.source.offset(self.scale_factor()) != node.offset)
+            .any(|node| node.source.offset(self.scale_factor()) != node.offset || node.source.visible() != node.visible)
     }
 
     /// Plan the replay of a record made in the rendered frame with each of its
@@ -354,10 +355,12 @@ impl Window {
                 let parent_shift = parent.map_or(Point::default(), |parent| parent.shift);
                 // An anchor's mask stays in the viewport; a node's moves with its parent.
                 let chain = if node.anchored { node.chain } else { moved(node.chain, parent_shift) };
+                let visible = node.source.visible();
                 let clip = match parent {
                     Some(parent) => parent.clip.intersect(&chain),
-                    None => node.clip,
+                    None => chain,
                 };
+                let clip = if visible { clip } else { Bounds::default() };
                 let shift = node.source.replay_shift(parent_shift, node.offset, new);
                 // A matrix without its pivot is drawn only where it was built.
                 if node.unpivoted && shift != Point::default() {
@@ -392,7 +395,7 @@ impl Window {
                 }
                 slots.insert(index as u32, plan.nodes.len());
                 plan.by_id.insert(node.id, plan.nodes.len());
-                plan.nodes.push(PlannedNode { offset: new, shift, whole: !follower, clip, chain, interest });
+                plan.nodes.push(PlannedNode { offset: new, shift, whole: !follower, clip, chain, interest, visibility_changed: visible != node.visible });
             }
         }
         // Paint that follows a moved node's offset outside it (a thumb).
@@ -466,6 +469,7 @@ impl Window {
         let frame = &mut self.next_frame;
         for (node, planned) in frame.scroll_nodes[start.scroll_nodes_index..].iter_mut().zip(&plan.nodes[slots]) {
             node.offset = planned.offset;
+            node.visible = node.source.visible();
             // KaminIDE patch: the children landed moved by the plan (`scroll_step`).
             node.children_offset += planned.shift;
             node.clip = planned.clip;

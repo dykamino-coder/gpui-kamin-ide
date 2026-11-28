@@ -15,15 +15,32 @@ fn at(cx: &mut VisualTestContext, ms: u64) {
 
 #[gpui::test]
 fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
-    for reversed in [false, true] {
-        let content = if reversed {
+    for (reversed, classic, perspective) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (true, true, false),
+        (false, true, true),
+    ] {
+        let mut content: String = if reversed {
             "<div style='width:3000px;height:80px;background:linear-gradient(90deg,red,blue)'></div>".into()
         } else {
             rows(300)
         };
+        if perspective {
+            content = format!(
+                "<div style='transform:rotateY(20deg);opacity:.5;background:lime'>{content}</div>"
+            );
+        }
+        let theme = if classic {
+            "scrollbar-color:#345 #ddd"
+        } else {
+            ""
+        };
+        let depth = if perspective { "perspective:500px" } else { "" };
         let axis = if reversed { "direction:rtl" } else { "" };
         let html = format!(
-            "{STYLE}<div style='height:200px;width:300px;overflow:scroll;{axis}'>{content}</div>{}",
+            "{STYLE}<div style='height:200px;width:300px;overflow:scroll;{axis};{theme};{depth}'>{content}</div>{}",
             rows(100)
         );
         let mut app = cx.clone();
@@ -46,7 +63,7 @@ fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
             assert_eq!(
                 vcx.update(|_, cx| view.read(cx).document.retained_frames().0),
                 before,
-                "reversed={reversed}, vsync {ms}: {:?}",
+                "reversed={reversed}, classic={classic}, perspective={perspective}, vsync {ms}: {:?}",
                 crate::why::take()
             );
             if ms % 32 == 0 {
@@ -57,7 +74,9 @@ fn nested_and_reversed_smooth_frames_only_translate(cx: &mut TestAppContext) {
                     at(vcx, ms);
                 }
                 if let Err(diff) = same_paint(&replayed, &painted(vcx)) {
-                    panic!("reversed={reversed}, vsync {ms}: {diff}");
+                    panic!(
+                        "reversed={reversed}, classic={classic}, perspective={perspective}, vsync {ms}: {diff}"
+                    );
                 }
             }
         }

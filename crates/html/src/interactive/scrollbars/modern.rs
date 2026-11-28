@@ -13,6 +13,9 @@ pub(super) struct Bar {
     pub travel: f32,
     pub maximum: f32,
     pub reverse: bool,
+    pub button: f32,
+    pub scale: f32,
+    pub classic: bool,
 }
 
 pub(super) fn bars(
@@ -22,9 +25,10 @@ pub(super) fn bars(
     range: [f32; 2],
     insets: [f32; 4],
     bounds: Bounds<Pixels>,
+    scale: f32,
 ) -> Vec<Bar> {
     let width = c.reset_box_layout.scroll.thickness();
-    if !super::uses_modern(c) || width == 0.0 || c.inh.ui.hidden == Some(true) {
+    if width == 0.0 || c.inh.ui.hidden == Some(true) {
         return Vec::new();
     }
     let edge = |v| match v {
@@ -70,12 +74,18 @@ pub(super) fn bars(
                     size(px(width), px(length)),
                 )
             };
-            let available = (length - 6.0).max(0.0);
+            let button = if super::uses_modern(c) {
+                3.0
+            } else {
+                width.min(length / 2.0)
+            };
+            let available = (length - 2.0 * button).max(0.0);
             let thumb_len = (available * length / (length + range[axis]).max(1.0))
                 .max(width)
                 .min(available);
             let travel = (available - thumb_len).max(0.0);
-            let position = 3.0 + travel_at(axis, travel, range[axis], reverse[axis], offset);
+            let position =
+                button + travel_at(axis, travel, range[axis], reverse[axis], offset, scale);
             let thumb = if axis == 0 {
                 Bounds::new(
                     point(lane.left() + px(position), lane.top() + px(3.0)),
@@ -94,16 +104,27 @@ pub(super) fn bars(
                 travel,
                 maximum: range[axis],
                 reverse: reverse[axis],
+                button,
+                scale,
+                classic: !super::uses_modern(c),
             }
         })
         .collect()
 }
 
 /// How far along its travel a thumb lies at scroll offset `offset`.
-fn travel_at(axis: usize, travel: f32, maximum: f32, reverse: bool, offset: Point<Pixels>) -> f32 {
+fn travel_at(
+    axis: usize,
+    travel: f32,
+    maximum: f32,
+    reverse: bool,
+    offset: Point<Pixels>,
+    scale: f32,
+) -> f32 {
     let start = -f32::from(if axis == 0 { offset.x } else { offset.y });
     let start = if reverse { maximum - start } else { start };
-    travel * (start / maximum.max(1.0)).clamp(0.0, 1.0)
+    // Native thumbs lie on the device grid, as does their retained displacement.
+    (travel * (start / maximum.max(1.0)).clamp(0.0, 1.0) * scale).round() / scale
 }
 
 /// Prepaint each thumb as a follower of the scroller's node: a scrolled
@@ -111,19 +132,20 @@ fn travel_at(axis: usize, travel: f32, maximum: f32, reverse: bool, offset: Poin
 /// compositor places a scrollbar thumb from the scroll offset.
 pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
     let base = handle.offset();
-    for bar in bars.iter().filter(|bar| bar.maximum > 0.0) {
+    for bar in bars {
         let Bar {
             axis,
             travel,
             maximum,
             reverse,
+            scale,
             ..
         } = *bar;
-        let from = travel_at(axis, travel, maximum, reverse, base);
+        let from = travel_at(axis, travel, maximum, reverse, base, scale);
         let source = handle.clone();
         let along = move |_: Point<Pixels>| {
             // Content snaps to device pixels; the thumb follows the CSS offset.
-            let by = px(travel_at(axis, travel, maximum, reverse, source.offset()) - from);
+            let by = px(travel_at(axis, travel, maximum, reverse, source.offset(), scale) - from);
             if axis == 0 {
                 point(by, px(0.0))
             } else {
@@ -131,7 +153,12 @@ pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
             }
         };
         let id = gpui::ScrollNodeId::follower(handle, axis);
-        window.with_scroll_follower_prepaint(id, Some(handle), std::rc::Rc::new(along), |_| {});
+        if maximum > 0.0 {
+            window.with_scroll_follower_prepaint(id, Some(handle), std::rc::Rc::new(along), |_| {});
+        }
+        if bar.classic {
+            super::buttons::follow(bar, handle, window);
+        }
     }
 }
 

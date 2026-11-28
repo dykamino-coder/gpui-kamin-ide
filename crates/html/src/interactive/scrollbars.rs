@@ -1,7 +1,7 @@
-//! Покраска полос прокрутки HTML (CSS Overflow 3 §5, CSS Scrollbars 1 §2–3): классические
-//! полосы с дорожкой, кнопками и ползунком в цветах `scrollbar-color` или Windows по умолчанию,
-//! либо современные накладные полосы без заданных цветов. GPUI даёт прокрутку, но покраску
-//! полос намеренно оставляет клиенту.
+//! РџРѕРєСЂР°СЃРєР° РїРѕР»РѕСЃ РїСЂРѕРєСЂСѓС‚РєРё HTML (CSS Overflow 3 В§5, CSS Scrollbars 1 В§2вЂ“3): РєР»Р°СЃСЃРёС‡РµСЃРєРёРµ
+//! РїРѕР»РѕСЃС‹ СЃ РґРѕСЂРѕР¶РєРѕР№, РєРЅРѕРїРєР°РјРё Рё РїРѕР»Р·СѓРЅРєРѕРј РІ С†РІРµС‚Р°С… `scrollbar-color` РёР»Рё Windows РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ,
+//! Р»РёР±Рѕ СЃРѕРІСЂРµРјРµРЅРЅС‹Рµ РЅР°РєР»Р°РґРЅС‹Рµ РїРѕР»РѕСЃС‹ Р±РµР· Р·Р°РґР°РЅРЅС‹С… С†РІРµС‚РѕРІ. GPUI РґР°С‘С‚ РїСЂРѕРєСЂСѓС‚РєСѓ, РЅРѕ РїРѕРєСЂР°СЃРєСѓ
+//! РїРѕР»РѕСЃ РЅР°РјРµСЂРµРЅРЅРѕ РѕСЃС‚Р°РІР»СЏРµС‚ РєР»РёРµРЅС‚Сѓ.
 mod buttons;
 pub(crate) mod interaction;
 mod modern;
@@ -20,9 +20,8 @@ pub(crate) fn visible(c: &Computed, selected: [bool; 2]) -> [bool; 2] {
     std::array::from_fn(|axis| overflow[axis] == Some(Overflow::Scroll) && selected[axis])
 }
 
-/// Prepaint the follower nodes of the bars' thumbs (`modern::follow`); the
-/// classic theme's arrows change with the offset too, so it stays a
-/// dependent (`Window::paint_scroll_dependent`).
+/// Retain thumb motion and conditional end-button paint in spatial nodes.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn follow(
     c: &Computed,
     handle: &ScrollHandle,
@@ -32,7 +31,15 @@ pub(crate) fn follow(
     bounds: Bounds<Pixels>,
     window: &mut Window,
 ) {
-    let bars = modern::bars(c, handle, selected, range, insets, bounds);
+    let bars = modern::bars(
+        c,
+        handle,
+        selected,
+        range,
+        insets,
+        bounds,
+        window.scale_factor(),
+    );
     modern::follow(&bars, handle, window);
 }
 
@@ -50,7 +57,15 @@ pub(crate) fn paint(
 ) {
     if uses_modern(c) {
         // Each thumb paints under its follower node (`follow`).
-        let bars = modern::bars(c, handle, selected, range, insets, bounds);
+        let bars = modern::bars(
+            c,
+            handle,
+            selected,
+            range,
+            insets,
+            bounds,
+            window.scale_factor(),
+        );
         modern::paint(c, &bars, handle, alpha, window);
         return;
     }
@@ -59,19 +74,6 @@ pub(crate) fn paint(
     if width == 0.0 || c.inh.ui.hidden == Some(true) {
         return;
     }
-    if bars.iter().any(|shown| *shown) {
-        window.paint_scroll_dependent(handle);
-    }
-    let edges = c.borders();
-    let edge = |v| match v {
-        Some(crate::style::values::value::Len::Px(v)) => v,
-        _ => 0.0,
-    };
-    let mut b = bounds;
-    b.origin.x += px(edge(edges.left));
-    b.origin.y += px(edge(edges.top));
-    b.size.width -= px(edge(edges.left) + edge(edges.right));
-    b.size.height -= px(edge(edges.top) + edge(edges.bottom));
     let paint_color = |mut color: Color| {
         for filter in c.paint_filter_ops() {
             color = filter.apply(color);
@@ -96,98 +98,50 @@ pub(crate) fn paint(
         paint_color(color(163, 163, 163)),
         paint_color(color(80, 80, 80)),
     ];
-    let offset = handle.offset();
-    let reversed = super::scrollbar_gutter::reversed(c);
-    for axis in 0..2 {
-        if !bars[axis] {
-            continue;
+    let geometry = modern::bars(
+        c,
+        handle,
+        selected,
+        range,
+        insets,
+        bounds,
+        window.scale_factor(),
+    );
+    for bar in &geometry {
+        window.paint_quad(fill(bar.lane, track));
+        if bar.maximum > 0.0 {
+            let mut rect = bar.thumb;
+            // Classic thumbs leave two pixels across the lane.
+            if bar.axis == 0 {
+                rect.origin.y -= px(1.0);
+                rect.size.height += px(2.0);
+            } else {
+                rect.origin.x -= px(1.0);
+                rect.size.width += px(2.0);
+            }
+            window.with_scroll_node_paint(
+                gpui::ScrollNodeId::follower(handle, bar.axis),
+                |window| {
+                    window.paint_quad(fill(rect, thumb));
+                },
+            );
         }
-        let (length, start, maximum) = if axis == 0 {
-            (
-                f32::from(b.size.width) - insets[0] - insets[2],
-                -f32::from(offset.x),
-                range[0],
-            )
-        } else {
-            (
-                f32::from(b.size.height) - insets[1] - insets[3],
-                -f32::from(offset.y),
-                range[1],
-            )
-        };
-        let start = if reversed[axis] {
-            maximum - start
-        } else {
-            start
-        };
-        let length = length.max(0.0);
-        let lane = if axis == 0 {
-            Bounds::new(
-                point(b.left() + px(insets[0]), b.bottom() - px(width)),
-                size(px(length), px(width)),
-            )
-        } else {
-            Bounds::new(
-                point(
-                    if super::scrollbar_gutter::on_left(c) {
-                        b.left()
-                    } else {
-                        b.right() - px(width)
-                    },
-                    b.top() + px(insets[1]),
-                ),
-                size(px(width), px(length)),
-            )
-        };
-        window.paint_quad(fill(lane, track));
-        // Classic scrollbars have an arrow button at either end. The thumb
-        // moves only on the intervening track (Blink ScrollbarTheme geometry).
-        let button = width.min(length / 2.0);
         buttons::paint(
-            lane,
-            axis,
-            button,
-            start,
-            maximum,
+            bar,
+            handle,
             (arrows, c.used_scrollbar_colors().map(|_| thumb)),
             window,
         );
-        let travel = (length - 2.0 * button).max(0.0);
-        let view = length;
-        let thumb_len = (travel * view / (view + maximum)).max(width).min(travel);
-        let position = button
-            + if maximum > 0.0 {
-                (travel - thumb_len) * (start / maximum).clamp(0.0, 1.0)
-            } else {
-                0.0
-            };
-        if maximum > 0.0 {
-            let rect = if axis == 0 {
-                Bounds::new(
-                    point(lane.left() + px(position), lane.top() + px(2.0)),
-                    size(px(thumb_len), px(width - 4.0)),
-                )
-            } else {
-                Bounds::new(
-                    point(lane.left() + px(2.0), lane.top() + px(position)),
-                    size(px(width - 4.0), px(thumb_len)),
-                )
-            };
-            window.paint_quad(fill(rect, thumb));
-        }
     }
     if bars == [true, true] {
-        let corner = Bounds::new(
-            point(
-                if super::scrollbar_gutter::on_left(c) {
-                    b.left()
-                } else {
-                    b.right() - px(width)
-                },
-                b.bottom() - px(width),
+        let vertical = &geometry[1];
+        let horizontal = &geometry[0];
+        window.paint_quad(fill(
+            Bounds::new(
+                point(vertical.lane.left(), horizontal.lane.top()),
+                size(vertical.lane.size.width, horizontal.lane.size.height),
             ),
-            size(px(width), px(width)),
-        );
-        window.paint_quad(fill(corner, track));
+            track,
+        ));
     }
 }

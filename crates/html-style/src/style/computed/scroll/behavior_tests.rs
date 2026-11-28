@@ -23,9 +23,12 @@ fn behavior_uses_the_regular_cascade_and_explicit_inheritance() {
     for reset in ["auto", "initial", "unset", "revert", "revert-layer"] {
         own.apply_one("scroll-behavior", "smooth", vcx);
         own.apply_one("scroll-behavior", reset, vcx);
-        assert_eq!(
-            inherit(&own).reset_box_layout.scroll.smooth,
-            Some(false),
+        assert!(
+            !inherit(&own)
+                .reset_box_layout
+                .scroll
+                .smooth
+                .unwrap_or(false),
             "{reset}"
         );
     }

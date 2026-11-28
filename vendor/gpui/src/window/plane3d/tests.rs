@@ -16,6 +16,7 @@ fn spec(full: [[f32; 4]; 4]) -> PlaneSpec {
         outer: TransformationMatrix::unit(),
         rect: (0.0, 0.0, SIDE, SIDE),
         masked: false,
+        build: None,
     }
 }
 

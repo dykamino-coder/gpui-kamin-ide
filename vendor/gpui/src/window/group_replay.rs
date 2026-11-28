@@ -149,6 +149,12 @@ impl Window {
         (labels, scene.groups.iter().map(|group| (group.bounds, group.scene.quads.clone())).collect())
     }
 
+    /// Residual plane maps used by composition, in group order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_plane_maps(&self) -> Vec<Option<[f32; 9]>> {
+        self.rendered_frame.scene.groups.iter().map(|group| group.projection).collect()
+    }
+
     /// The draw sequence of each group of the rendered frame (`painted_sequence`).
     #[cfg(any(test, feature = "test-support"))]
     pub fn painted_group_sequences(&self) -> Vec<Vec<(String, Bounds<ScaledPixels>)>> {
