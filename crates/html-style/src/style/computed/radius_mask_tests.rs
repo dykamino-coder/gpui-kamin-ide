@@ -53,6 +53,34 @@ fn elliptical_corners_with_sides_of_two_colours_are_drawn_by_the_quad() {
 }
 
 #[test]
+fn elliptical_corners_with_an_inner_shadow_keep_the_mask() {
+    // The inner shadow's ring is cut to the elliptical padding edge only by
+    // the mask; drawn by the quad it lay square (and rotated with the box).
+    for shadow in [
+        "inset -2px 2px 0 0 red",
+        "inset 0 0 4px 1px red",
+        "inset -1em 1em red",
+    ] {
+        let decided = decide(&[
+            ("border-top-right-radius", "14px 29px"),
+            ("box-shadow", shadow),
+        ]);
+        assert_eq!(decided, (false, true, Some("inset_shadow")), "{shadow}");
+    }
+}
+
+#[test]
+fn elliptical_corners_with_an_outer_shadow_stay_with_the_quad() {
+    let decided = decide(&[
+        ("border-radius", "50% / 30%"),
+        ("width", "200px"),
+        ("height", "100px"),
+        ("box-shadow", "0 0 4px 2px red"),
+    ]);
+    assert_eq!(decided, (true, false, None));
+}
+
+#[test]
 fn elliptical_corners_that_clip_content_keep_the_mask() {
     let decided = decide(&[("border-radius", "20px / 10px"), ("overflow", "hidden")]);
     assert_eq!(decided, (false, true, Some("clip")));
