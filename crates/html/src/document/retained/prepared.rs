@@ -69,6 +69,9 @@ impl Document {
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
     ) {
+        self.state
+            .text
+            .set_device_scale(window.scale_factor(), self.state.values());
         self.retained.prepared.take();
         let Some(key) = FrameKey::of(opts) else {
             return;

@@ -78,6 +78,20 @@ pub(crate) fn extents(font: &gpui::Font, size: f32, native: (f32, f32)) -> (f32,
     (result[0], result[1])
 }
 
+/// Apply face descriptors before quantizing the used extents to the device grid.
+pub(crate) fn used_extents(
+    font: &gpui::Font,
+    size: f32,
+    native: (f32, f32),
+    scale: f32,
+) -> (f32, f32) {
+    let (a, d) = extents(font, size, native);
+    (
+        crate::text::metrics::used_metric(a, scale),
+        crate::text::metrics::used_metric(d, scale),
+    )
+}
+
 pub(crate) fn normal_line(
     family: &str,
     native: f32,
@@ -89,13 +103,14 @@ pub(crate) fn normal_line(
         return native;
     }
     let (a, d, _) = crate::text::metrics::vmetrics_px(family, 1.0, fonts, vcx);
-    crate::font_facts::UsedFont::override_metrics(
+    let parts = crate::font_facts::UsedFont::override_metrics(
         1.0,
         [a, d, (native - a - d).max(0.0)],
         [ascent, descent, gap],
-    )
-    .into_iter()
-    .sum()
+    );
+    let line = parts.into_iter().sum();
+    crate::text::metrics::register_normal_parts(line, parts[0], parts[1], fonts);
+    line
 }
 
 #[cfg(test)]
@@ -109,6 +124,18 @@ mod tests {
         for invalid in ["normal", "-1%", "NaN%", "inf%", "20px", "10% 20%"] {
             assert_eq!(percentage(invalid), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn used_extents_and_half_leading_share_the_device_grid() {
+        let font = gpui::font("synthetic");
+        let (a, d) = used_extents(&font, 16.0, (14.484375, 3.390625), 1.25);
+        assert_eq!((a, d), (14.4, 3.2));
+        let baseline = crate::text::metrics::used_baseline(18.4, a, d, 1.25);
+        assert!((baseline - 14.4).abs() < 0.00001);
+        // Explicit line height stays exact; the end leading receives the remainder.
+        let baseline = crate::text::metrics::used_baseline(19.3, a, d, 1.25);
+        assert!((baseline - 15.2).abs() < 0.00001);
     }
 
     #[test]

@@ -30,13 +30,14 @@ impl Paragraph {
         };
         let ts = window.text_system();
         let id = ts.resolve_font(&strut.font);
-        strut.metrics = crate::text::fonts::metric_overrides::extents(
+        strut.metrics = crate::text::fonts::metric_overrides::used_extents(
             &strut.font,
             f32::from(strut.size),
             (
                 f32::from(ts.ascent(id, strut.size)),
                 f32::from(ts.descent(id, strut.size)).abs(),
             ),
+            window.scale_factor(),
         );
     }
 

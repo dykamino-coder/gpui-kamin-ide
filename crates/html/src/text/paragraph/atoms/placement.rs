@@ -20,13 +20,14 @@ impl Paragraph {
             let id = window.text_system().resolve_font(&run.font);
             let size = run.font_size.unwrap_or(self.font_size);
             let ts = window.text_system();
-            let (ascent, descent) = crate::text::fonts::metric_overrides::extents(
+            let (ascent, descent) = crate::text::fonts::metric_overrides::used_extents(
                 &run.font,
                 f32::from(size),
                 (
                     f32::from(ts.ascent(id, size)),
                     f32::from(ts.descent(id, size)).abs(),
                 ),
+                window.scale_factor(),
             );
             self.strut = (ascent, descent, f32::from(ts.x_height(id, size)));
         }

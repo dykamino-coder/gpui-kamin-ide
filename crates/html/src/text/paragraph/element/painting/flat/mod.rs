@@ -8,6 +8,7 @@
 
 mod cull;
 mod fragments;
+mod journal;
 mod rows;
 
 use crate::layout::fragment::line_admission;
@@ -29,9 +30,7 @@ impl Paragraph {
             size: size(bounds.size.width + self.width_nudge, bounds.size.height),
         };
         let segs = self.measure(window);
-        if self.run_metrics.len() != self.runs.len() {
-            self.refresh_run_metrics(window);
-        }
+        self.journal_geometry(bounds, window);
         let count = self.lines.len();
         // Надбавки строк от сдвинутых кусков: шаг до следующей строки и
         // сдвиг набора внутри своей.

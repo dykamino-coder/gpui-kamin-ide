@@ -53,13 +53,14 @@ impl Paragraph {
                 .size_px);
             let ts = window.text_system();
             let id = ts.resolve_font(&font);
-            let metrics = crate::text::fonts::metric_overrides::extents(
+            let metrics = crate::text::fonts::metric_overrides::used_extents(
                 &font,
                 f32::from(size),
                 (
                     f32::from(ts.ascent(id, size)),
                     f32::from(ts.descent(id, size)).abs(),
                 ),
+                window.scale_factor(),
             );
             if let Some(r) = self.inline_box_rect(segs, s..e, edges, metrics, bounds) {
                 crate::layout::positioned::anchor::register_inline_anchor(

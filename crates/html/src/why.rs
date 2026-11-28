@@ -59,6 +59,7 @@ pub const CODES: &[&str] = &[
     "plan_text.refused",
     "scroll_extent.layout_bars",
     "scroll_extent.relayout",
+    "text.line_geometry",
 ];
 
 /// Whether `code` belongs to the protocol: listed, or a frame miss or a

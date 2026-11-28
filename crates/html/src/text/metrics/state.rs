@@ -1,10 +1,14 @@
 //! Метрики шрифтов и колбэки измерения, принадлежащие одному документу.
 
 use super::{FontContext, Probe, VProbe};
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::{Cell, RefCell},
+    collections::HashMap,
+};
 
 #[derive(Default)]
 pub(crate) struct Metrics {
+    pub(crate) scale: Cell<f32>,
     pub(super) platform: RefCell<FontContext>,
     pub(super) space: RefCell<Option<super::space::SpaceProbe>>,
     pub(super) probe: RefCell<Option<Probe>>,

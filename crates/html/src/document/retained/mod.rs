@@ -102,6 +102,8 @@ mod builder;
 #[cfg(test)]
 mod line_split_tests;
 #[cfg(test)]
+mod metric_scale_tests;
+#[cfg(test)]
 mod replay_tests;
 #[cfg(test)]
 mod resize_tests;

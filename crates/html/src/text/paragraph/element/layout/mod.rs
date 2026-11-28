@@ -24,6 +24,7 @@ impl Paragraph {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, LayoutId) {
+        self.metric_scale = window.scale_factor();
         self.invalidate_prepared();
         // Атомы раскладываются ДО замера: их ширина — продвижение распорки,
         // высота растит строку (см. `lay_atoms`).
@@ -53,13 +54,14 @@ impl Paragraph {
         {
             let ts = window.text_system();
             let id = ts.resolve_font(&font);
-            self.strut_box = crate::text::fonts::metric_overrides::extents(
+            self.strut_box = crate::text::fonts::metric_overrides::used_extents(
                 &font,
                 f32::from(size),
                 (
                     f32::from(ts.ascent(id, size)),
                     f32::from(ts.descent(id, size)).abs(),
                 ),
+                window.scale_factor(),
             );
         }
         self.measure_first_strut(window);
