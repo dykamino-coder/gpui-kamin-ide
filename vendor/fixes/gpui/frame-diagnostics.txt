@@ -1,0 +1,1 @@
+Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.

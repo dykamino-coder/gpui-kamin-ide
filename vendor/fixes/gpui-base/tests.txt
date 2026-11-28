@@ -1,0 +1,1 @@
+Tests: use crate-local markdown and initialize extended GPUI font/run fields so standalone regressions compile.

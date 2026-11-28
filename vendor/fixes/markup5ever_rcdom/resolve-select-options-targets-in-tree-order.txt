@@ -1,0 +1,1 @@
+Resolve select options/targets in tree order; static reset respects disabled, multiple and display size instead of selecting an arbitrary BFS result.

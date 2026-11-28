@@ -1,0 +1,1 @@
+Cache modes: an entry's sizing mode and collapsible margins are part of its key, so a node measured in more than one mode in one pass (a grid in a flex item) keeps the entries of each mode instead of dropping all of them on every mode change.

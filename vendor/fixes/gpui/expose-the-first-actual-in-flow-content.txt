@@ -1,0 +1,1 @@
+Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.

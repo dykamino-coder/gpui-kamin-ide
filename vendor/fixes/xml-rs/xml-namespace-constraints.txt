@@ -1,0 +1,1 @@
+XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits.

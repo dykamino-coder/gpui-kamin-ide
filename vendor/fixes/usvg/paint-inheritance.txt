@@ -1,0 +1,1 @@
+Paint inheritance: empty gradient/pattern transforms preserve href inheritance; singular transforms use the fallback paint.

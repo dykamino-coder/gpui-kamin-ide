@@ -1,0 +1,1 @@
+Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.

@@ -1,0 +1,1 @@
+Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped.

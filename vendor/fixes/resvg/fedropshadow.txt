@@ -1,0 +1,1 @@
+feDropShadow: convert shadow colors only for linearRGB; an extra sRGB conversion incorrectly lightens the shadow.

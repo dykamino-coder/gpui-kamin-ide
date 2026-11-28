@@ -1,0 +1,1 @@
+Populate selectedcontent from the selected option during parsing and at finish.

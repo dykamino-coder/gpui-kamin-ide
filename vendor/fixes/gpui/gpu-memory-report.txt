@@ -1,0 +1,1 @@
+GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.

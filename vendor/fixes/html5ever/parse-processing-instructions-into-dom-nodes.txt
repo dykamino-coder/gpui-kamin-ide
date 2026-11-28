@@ -1,0 +1,1 @@
+Parse processing instructions into DOM nodes instead of bogus comments.

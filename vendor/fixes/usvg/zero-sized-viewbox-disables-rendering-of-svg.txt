@@ -1,0 +1,1 @@
+Zero-sized viewBox disables rendering of svg, symbol, marker and pattern (SVG 2 section 8.6).

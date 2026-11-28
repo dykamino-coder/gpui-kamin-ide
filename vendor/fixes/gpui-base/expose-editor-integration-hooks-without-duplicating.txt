@@ -1,0 +1,1 @@
+Expose editor integration hooks without duplicating Base's input implementation; use explicit application-owned prepaint instrumentation.

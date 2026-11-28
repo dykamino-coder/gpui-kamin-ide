@@ -1,0 +1,1 @@
+Zero em size: a run at font-size 0 is shaped blank (no glyph, no advance, zero extent); a line of such runs is not shaped, a mixed line shapes them at a stand-in size no neighbour uses and drops their glyph runs.

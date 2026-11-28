@@ -1,0 +1,1 @@
+Font-size-adjust: each fallback face that a normalized run selects is pinned before shaping as its own format range at its raw-metric used size, with CSS-run boundaries and native vertical design advances.

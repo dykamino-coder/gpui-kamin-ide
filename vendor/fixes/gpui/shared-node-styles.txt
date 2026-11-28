@@ -1,0 +1,1 @@
+Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.

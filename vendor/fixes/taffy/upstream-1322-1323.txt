@@ -1,0 +1,1 @@
+Upstream #1322/#1323: export final border-box baselines independently of grouping margins and relative paint offsets; preserve first/last physical X/Y channels and scroll clamping.

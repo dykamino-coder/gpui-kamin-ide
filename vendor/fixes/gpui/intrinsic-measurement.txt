@@ -1,0 +1,1 @@
+Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.

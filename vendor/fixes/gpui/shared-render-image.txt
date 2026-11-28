@@ -1,0 +1,1 @@
+Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.

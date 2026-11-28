@@ -1,0 +1,1 @@
+Deferred frames: consume the pending forced request even when the incoming draw is already forced, preventing a stale extra presentation.

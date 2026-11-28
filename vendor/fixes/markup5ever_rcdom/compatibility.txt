@@ -1,0 +1,1 @@
+Compatibility: use the shared html5ever/markup5ever/xml5ever 0.40 tree interfaces.

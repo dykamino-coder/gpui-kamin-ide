@@ -1,0 +1,1 @@
+External use resources: resolve URLs/fragments through an authoritative injectable loader, preserving standalone bounded local reads and shared cycle/depth/allocation limits.

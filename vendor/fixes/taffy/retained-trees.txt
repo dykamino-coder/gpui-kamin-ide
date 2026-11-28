@@ -1,0 +1,1 @@
+Retained trees: retain_nodes drops unkept nodes in one sweep through a key list it keeps between sweeps (a small per-frame sweep allocates nothing), reset_node reuses a node's storage for a fresh node, children_slice/has_node_context read without allocating, and style_equals/adopt_equal_style compare and swap in an equal shared style without clearing the node's cache.

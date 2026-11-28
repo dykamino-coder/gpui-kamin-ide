@@ -1,0 +1,1 @@
+feConvolveMatrix: multiply bias by bounded output alpha, as required by Filter Effects 1.

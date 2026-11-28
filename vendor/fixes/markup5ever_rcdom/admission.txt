@@ -1,0 +1,1 @@
+Admission: fallible canonical sink mutations retain storage leases, bound payload/work and release partial trees iteratively, including selectedcontent and weak parent owners.

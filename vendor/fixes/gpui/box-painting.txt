@@ -1,0 +1,1 @@
+Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.

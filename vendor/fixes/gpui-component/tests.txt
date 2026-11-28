@@ -1,0 +1,1 @@
+Tests: retain exact upstream fixtures so published-crate tests do not depend on the original monorepo layout.

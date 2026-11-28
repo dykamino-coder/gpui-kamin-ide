@@ -1,0 +1,1 @@
+Atlas lifetime: keep only live texture slots with monotonic checked ids; reclaim empty pages without tombstones or stale-scene id reuse.

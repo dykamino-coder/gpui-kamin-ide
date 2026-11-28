@@ -1,0 +1,1 @@
+Effect lifetime: complete scenes, including kept frames, retain only their needed scratch and immutable mask uploads; embedded captures have independent scratch. Mask uploads are reported as GPU owners and scenes with more than 64 masks reuse their uploads without a count cliff.

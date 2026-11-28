@@ -1,0 +1,1 @@
+Font fallback normalization: carry a typed raw metric target in the shared fallback configuration, including font identity and shaping cache keys, without growing Font or FontRun.

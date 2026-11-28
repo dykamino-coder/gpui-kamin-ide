@@ -1,0 +1,1 @@
+Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.

@@ -1,0 +1,1 @@
+Packaging: retain the selected source/examples; omit the upstream generated test module.

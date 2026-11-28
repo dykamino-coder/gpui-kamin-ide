@@ -1,0 +1,1 @@
+Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.

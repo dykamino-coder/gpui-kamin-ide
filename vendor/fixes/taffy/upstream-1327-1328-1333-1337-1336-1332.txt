@@ -1,0 +1,1 @@
+Upstream #1327/#1328/#1333/#1337/#1336/#1332: avoid temporary allocation and unused stretch probes while preserving final metadata, baseline groups and percentage bases.

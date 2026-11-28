@@ -1,0 +1,1 @@
+Natural image lifetime: cache only lazy upload identities with weak sources and single-entry LRU eviction; derived CPU pixels exist only during upload. Report resident CPU mask blocks across nested and retained scenes and opt-in natural raster work in the batch journal.

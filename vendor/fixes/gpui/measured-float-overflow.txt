@@ -1,0 +1,1 @@
+Measured float overflow: independently measured hosts return scrollable extents separately from normal-flow size; child contributions use native clipping, containment and relative offsets.

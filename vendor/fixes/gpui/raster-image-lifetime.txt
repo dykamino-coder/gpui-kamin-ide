@@ -1,0 +1,1 @@
+Raster image lifetime: each window tracks uploads with weak CPU-image owners and shared scene leases, including replay, clipping, transforms and retained scene copies. CPU cache eviction and the final scene release remove the atlas tile; natural resampling uses the same upload owner.

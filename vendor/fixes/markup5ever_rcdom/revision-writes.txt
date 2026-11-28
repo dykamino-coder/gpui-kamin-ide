@@ -1,0 +1,1 @@
+Revision writes: expose a document-owned text factory and swap admitted sibling storage together with its lease for reversible child-list edits.

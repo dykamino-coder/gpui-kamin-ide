@@ -1,0 +1,1 @@
+feColorMatrix: round normalized channels to the nearest byte (CSS Color 4 section 5.1) instead of truncating.

@@ -1,0 +1,1 @@
+Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.

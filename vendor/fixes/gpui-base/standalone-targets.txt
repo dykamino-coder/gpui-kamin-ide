@@ -1,0 +1,1 @@
+Standalone targets: the benches use GPUI's criterion 0.8 bench harness; the unused network client dev-dependency (native aws-lc-sys) is not declared.

@@ -1,0 +1,1 @@
+Frame diagnostics: opt-in host logging exposes native draw force and pending force without changing requests.

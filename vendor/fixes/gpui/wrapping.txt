@@ -1,0 +1,1 @@
+Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.

@@ -1,0 +1,1 @@
+Identity: document-scoped POD slot/generation keys are assigned at node creation; weak lookup and allocation-free retirement on actual Drop preserve detached JS-owned nodes without ABA.

@@ -1,0 +1,1 @@
+Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.

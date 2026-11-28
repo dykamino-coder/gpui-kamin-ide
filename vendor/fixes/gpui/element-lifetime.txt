@@ -1,0 +1,1 @@
+Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.

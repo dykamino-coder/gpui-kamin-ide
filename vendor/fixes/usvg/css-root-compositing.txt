@@ -1,0 +1,1 @@
+CSS root compositing: accept a typed computed opacity before resolving explicit inheritance, then leave only the root group to its external paint owner; nested SVG resources retain their own context.

@@ -1,0 +1,1 @@
+Retained group pixel auditing is an explicit GPUI_GROUP_SCRUB=1 diagnostic; normal frames validate content and resource identity without staging readbacks or audit redraws. Only a busy GPU defers an audit readback; device failures propagate to renderer recovery.

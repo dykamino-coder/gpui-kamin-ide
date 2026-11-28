@@ -1,0 +1,1 @@
+Measured float overflow: expose the shared child contribution calculation so independently measured hosts use the same clipping and containment rule as native layout.

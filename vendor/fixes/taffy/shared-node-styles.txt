@@ -1,0 +1,1 @@
+Shared node styles: a node holds its Style behind SharedStyle (Rc, as Style is not Send) so equal styles of a tree may share one allocation (new_leaf/new_with_children/set_style accept Style or SharedStyle, shared_style hands it out); subgrid tracks are boxed.

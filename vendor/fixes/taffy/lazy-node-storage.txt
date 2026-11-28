@@ -1,0 +1,1 @@
+Lazy node storage: the size-only measure entries of a node's cache are allocated by its first measurement and kept by clear; the final (rounded) layout is allocated only by rounding, a tree without rounding reads the unrounded layout.

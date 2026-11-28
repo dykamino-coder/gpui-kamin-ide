@@ -1,0 +1,1 @@
+Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
