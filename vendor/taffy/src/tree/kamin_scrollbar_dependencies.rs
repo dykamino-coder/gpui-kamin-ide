@@ -21,7 +21,7 @@ pub struct LayoutDependencyEvent {
     pub descendant_gutter: bool,
 }
 
-// Keep diagnostic event temporaries out of every recursive layout stack frame.
+/// Keep diagnostic event temporaries out of every recursive layout stack frame.
 #[cold]
 #[inline(never)]
 fn observe_dependency_retry(

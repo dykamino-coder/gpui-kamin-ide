@@ -23887,7 +23887,7 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..03d09c26621a896135a8141f77de8c496375910a
+index 0000000000000000000000000000000000000000..234bca5df5d6670f83865475d2b4176552c7c815
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
 @@ -0,0 +1,208 @@
@@ -23914,7 +23914,7 @@ index 0000000000000000000000000000000000000000..03d09c26621a896135a8141f77de8c49
 +    pub descendant_gutter: bool,
 +}
 +
-+// Keep diagnostic event temporaries out of every recursive layout stack frame.
++/// Keep diagnostic event temporaries out of every recursive layout stack frame.
 +#[cold]
 +#[inline(never)]
 +fn observe_dependency_retry(
