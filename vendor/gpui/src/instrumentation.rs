@@ -62,6 +62,9 @@ pub struct LayoutInputCounts {
     pub whole: u64,
     /// The largest such subtrees (their parent changed): how many skips.
     pub skips: u64,
+    /// Full layouts the passes computed rather than took from a box's cache
+    /// (`taffy::compute::performed_layouts`): the layout work, by box.
+    pub performed: u64,
 }
 
 /// Counts of [`LayoutInputCounts`] since the last `take`; disabled, nothing is walked.
@@ -84,6 +87,7 @@ impl LayoutInputs {
             counts.same += pass.same;
             counts.whole += pass.whole;
             counts.skips += pass.skips;
+            counts.performed += pass.performed;
         }
     }
 

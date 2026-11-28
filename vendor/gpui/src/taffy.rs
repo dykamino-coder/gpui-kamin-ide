@@ -657,6 +657,7 @@ impl TaffyLayoutEngine {
         );
 
         let _taffy_started = std::time::Instant::now();
+        let performed = taffy::compute::performed_layouts();
         self.taffy
             .compute_layout_with_measure(
                 id.into(),
@@ -666,6 +667,9 @@ impl TaffyLayoutEngine {
                 },
             )
             .expect(EXPECT_MESSAGE);
+        if let Some((_, noted)) = &mut self.noted {
+            noted.performed += taffy::compute::performed_layouts() - performed;
+        }
         self.finish_geometry(id, logical_space, scale_factor);
         crate::frame_perf::TAFFY_US.fetch_add(
             _taffy_started.elapsed().as_micros() as u32,

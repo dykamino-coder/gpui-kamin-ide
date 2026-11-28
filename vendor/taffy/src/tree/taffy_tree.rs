@@ -562,14 +562,32 @@ impl<NodeContext> TraversePartialTree for TaffyTree<NodeContext> {
 // TraverseTree impl for TaffyTree
 impl<NodeContext> TraverseTree for TaffyTree<NodeContext> {}
 
+/// KaminIDE patch: the input a node's cached results are keyed by. A node whose own
+/// layout reads nothing of its parent's size (`Style::reads_parent_size`) is the same
+/// under a parent of any size, so its key leaves that size out: a width change of the
+/// window lays out again only the boxes that follow it, not a fixed box and all inside
+/// it (Blink `CalculateSizeBasedLayoutCacheStatus`, decided here by what the box reads).
+/// A measured leaf's function is opaque (it is handed the parent size) and keeps it.
+fn cache_key(node: &NodeData, input: &LayoutInput) -> LayoutInput {
+    let mut key = *input;
+    if !node.has_context && !node.style.reads_parent_size() {
+        key.parent_size = Size::NONE;
+    }
+    key
+}
+
 // CacheTree impl for TaffyTree
 impl<NodeContext> CacheTree for TaffyTree<NodeContext> {
     fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
-        self.nodes[node_id.into()].cache.get(input)
+        let node = &mut self.nodes[node_id.into()];
+        let key = cache_key(node, input);
+        node.cache.get(&key)
     }
 
     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
-        self.nodes[node_id.into()].cache.store(input, layout_output)
+        let node = &mut self.nodes[node_id.into()];
+        let key = cache_key(node, input);
+        node.cache.store(&key, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {
@@ -904,11 +922,15 @@ where
     MeasureFunction: FnMut(LayoutInput, NodeId, Option<&mut NodeContext>, &Style) -> LayoutOutput,
 {
     fn cache_get(&mut self, node_id: NodeId, input: &LayoutInput) -> Option<LayoutOutput> {
-        self.taffy.nodes[node_id.into()].cache.get(input)
+        let node = &mut self.taffy.nodes[node_id.into()];
+        let key = cache_key(node, input);
+        node.cache.get(&key)
     }
 
     fn cache_store(&mut self, node_id: NodeId, input: &LayoutInput, layout_output: LayoutOutput) {
-        self.taffy.nodes[node_id.into()].cache.store(input, layout_output)
+        let node = &mut self.taffy.nodes[node_id.into()];
+        let key = cache_key(node, input);
+        node.cache.store(&key, layout_output)
     }
 
     fn cache_clear(&mut self, node_id: NodeId) {

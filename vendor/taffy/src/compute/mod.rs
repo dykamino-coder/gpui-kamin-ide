@@ -294,6 +294,10 @@ where
 
     debug_log_node!(inputs);
 
+    #[cfg(feature = "std")]
+    if inputs.run_mode == RunMode::PerformLayout {
+        PERFORMED.with(|count| count.set(count.get() + 1));
+    }
     let computed_size_and_baselines = compute_uncached(tree, node, inputs);
 
     // Cache result
@@ -303,6 +307,18 @@ where
     debug_pop_node!();
 
     computed_size_and_baselines
+}
+
+#[cfg(feature = "std")]
+std::thread_local! {
+    static PERFORMED: core::cell::Cell<u64> = const { core::cell::Cell::new(0) };
+}
+
+/// KaminIDE patch: full layouts this thread computed rather than took from a node's cache
+/// (`compute_cached_layout`), since the thread began: the layout work, by box.
+#[cfg(feature = "std")]
+pub fn performed_layouts() -> u64 {
+    PERFORMED.with(core::cell::Cell::get)
 }
 
 // KaminIDE patch: cloning/moving the large output is a completion operation,
