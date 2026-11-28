@@ -80,6 +80,19 @@ fn a_batch_that_reaches_nothing_has_no_area() {
 }
 
 #[test]
+fn empty_fractional_masks_do_not_acquire_pixels_when_rounded_outward() {
+    for mask in [[12.25, 13.75, 0., 4.], [12.25, 13.75, 4., 0.]] {
+        let empty = path(10., 10., 40., 40., mask);
+        assert_eq!(path_area(&[empty.clone()], (200, 100), None), None);
+        let visible = path(50., 50., 60., 60., OPEN);
+        assert_eq!(
+            path_area(&[empty, visible], (200, 100), None),
+            Some(region(50, 50, 10, 10))
+        );
+    }
+}
+
+#[test]
 fn bound_scissor_rectangles_unite_and_empty_ones_count_for_nothing() {
     let r = |left, top, right, bottom| RECT {
         left,
