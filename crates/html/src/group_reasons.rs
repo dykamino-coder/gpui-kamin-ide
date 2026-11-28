@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 /// The reasons, in the order of their counters.
-pub const REASONS: [&str; 16] = [
+pub const REASONS: [&str; 17] = [
     // Corners no quad draws, by `Computed::ellipse_quad_refusal`: a
     // rounded-box mask.
     "rounded_mask_corner_shape",
@@ -16,6 +16,7 @@ pub const REASONS: [&str; 16] = [
     "rounded_mask_border_style",
     "rounded_mask_border_colours",
     "rounded_mask_clip",
+    "rounded_mask_inset_shadow",
     "rounded_mask",
     "mask_image",
     "border_shape",
@@ -75,6 +76,7 @@ fn rounded(refusal: Option<&'static str>) -> &'static str {
         Some("border_style") => "rounded_mask_border_style",
         Some("border_colours") => "rounded_mask_border_colours",
         Some("clip") => "rounded_mask_clip",
+        Some("inset_shadow") => "rounded_mask_inset_shadow",
         _ => "rounded_mask",
     }
 }

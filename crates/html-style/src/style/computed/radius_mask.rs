@@ -60,7 +60,8 @@ impl Computed {
 
     /// Why a quad does not draw these corners (`ellipse_quad_draws`), named
     /// for the DevTools journal: `corner_shape`, `calc`, `border_shape`,
-    /// `border_image`, `border_style`, `border_colours` or `clip`.
+    /// `border_image`, `border_style`, `border_colours`, `clip` or
+    /// `inset_shadow`.
     pub fn ellipse_quad_refusal(&self) -> Option<&'static str> {
         let b = &self.reset_border;
         let visible = |o: Option<Overflow>| matches!(o, None | Some(Overflow::Visible));
@@ -95,6 +96,17 @@ impl Computed {
             || !visible(self.reset_box_layout.overflow_x)
             || !visible(self.reset_box_layout.overflow_y);
         let patterned = b.border_dashed == Some(true) || b.border_dotted == Some(true) || !solid;
+        // An inner shadow lies inside the padding edge, its outer edge the
+        // padding box's elliptical corners (css-backgrounds-3 §7.1); its ring
+        // (`decorations::inset_shadows`) is a circular quad that only the
+        // group mask cuts to those ellipses. One still unresolved in font
+        // units waits in `shadow_raw`.
+        let inset_shadow = !self.reset_effects.inset_shadows.is_empty()
+            || self
+                .reset_effects
+                .shadow_raw
+                .as_deref()
+                .is_some_and(|s| s.to_ascii_lowercase().contains("inset"));
         [
             (self.corner_shaped(), "corner_shape"),
             (calculated, "calc"),
@@ -103,6 +115,7 @@ impl Computed {
             (patterned, "border_style"),
             (doubled && !one_colour, "border_colours"),
             (clips, "clip"),
+            (inset_shadow, "inset_shadow"),
         ]
         .into_iter()
         .find_map(|(refused, why)| refused.then_some(why))
