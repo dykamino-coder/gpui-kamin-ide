@@ -604,17 +604,6 @@ impl TaffyLayoutEngine {
         window: &mut Window,
         cx: &mut App,
     ) {
-        // Leaving this here until we have a better instrumentation approach.
-        // println!("Laying out {} children", self.count_all_children(id)?);
-        // println!("Max layout depth: {}", self.max_depth(0, id)?);
-
-        // Output the edges (branches) of the tree in Mermaid format for visualization.
-        // println!("Edges:");
-        // for (a, b) in self.get_edges(id)? {
-        //     println!("N{} --> N{}", u64::from(a), u64::from(b));
-        // }
-        //
-
         crate::frame_perf::LAYOUT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.frame_tree && !self.computed_layouts.contains(&id) {
             let sink = &cx.instrumentation().layout_inputs;
@@ -657,6 +646,9 @@ impl TaffyLayoutEngine {
         );
 
         let _taffy_started = std::time::Instant::now();
+        self.taffy.set_layout_observer(crate::dirty_sources::trace::enabled().then_some(|event| {
+            crate::dirty_sources::trace::push_with(event.kind, std::panic::Location::caller(), || format!("{event:?}"));
+        }));
         self.taffy
             .compute_layout_with_measure(
                 id.into(),
