@@ -15,7 +15,7 @@ use tracing::{
 
 #[path = "timer.rs"]
 mod timer;
-pub use timer::{Timer, time};
+pub use timer::{SelfTimer, Timer, time, time_self};
 #[path = "inputs.rs"]
 mod inputs;
 pub use inputs::{Carry, Repeat, repeat};
