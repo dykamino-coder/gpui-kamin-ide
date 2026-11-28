@@ -165,7 +165,7 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         doc: empty,
                         animation_elapsed: args.animation_time(0),
                         phases: Rc::new(RefCell::new(Phases::default())),
-                        viewport: None,
+                        viewport: Some(args.viewport),
                         step: None,
                         step_opts: None,
                         fresh_scroll: None,

@@ -184,10 +184,12 @@ pub(super) async fn sample_once(
         ).into());
     }
     let pixels = &frame.pixels;
-    if (pixels.width, pixels.height) != args.viewport {
+    if (pixels.width, pixels.height) != args.capture_size() {
         return Err(format!(
-            "capture size {}x{} differs from requested viewport",
-            pixels.width, pixels.height
+            "capture size {}x{} differs from requested physical size {:?}",
+            pixels.width,
+            pixels.height,
+            args.capture_size()
         )
         .into());
     }
