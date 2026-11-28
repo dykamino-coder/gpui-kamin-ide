@@ -81,6 +81,10 @@ pub(super) fn first_in_flow<'a>(
                 // внутри обязан оборвать поиск — иначе отступ предыдущего
                 // блока протекает под анонимную коробку, и строка встаёт на
                 // него выше (`inline-formatting-context-002`).
+                // Out of flow, even an inline tag with text creates no line box.
+                if crate::style::flow::out_of_flow(&ch.style.used()) {
+                    continue;
+                }
                 if ch.style.used().reset_context.inline_display == Some(true) {
                     if replaced_inline(&ch.tag) || holds_line_box(&ch.children) {
                         return None;
