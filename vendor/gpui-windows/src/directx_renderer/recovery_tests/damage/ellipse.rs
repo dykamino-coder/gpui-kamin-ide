@@ -27,7 +27,10 @@ fn coverage(x: f32, y: f32, w: f32, h: f32) -> f32 {
         let (dx, dy) = (1.0 - ex, 1.0 - ey);
         let dd = (dx * dx + dy * dy).sqrt();
         let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / dd.max(1e-6);
-        return (0.5 - (dd - 1.0) / grad.max(1e-6)).clamp(0.0, 1.0);
+        let small = ex.min(ey);
+        let other = 1.0 - ex.max(ey);
+        let norm_minus_one = (small * (small - 2.0) + other * other) / (dd + 1.0);
+        return (0.5 - norm_minus_one / grad.max(1e-6)).clamp(0.0, 1.0);
     }
     let d = [-y, x - w, y - h, -x].into_iter().fold(f32::MIN, f32::max);
     (0.5 - d).clamp(0.0, 1.0)

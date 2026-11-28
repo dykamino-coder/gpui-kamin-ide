@@ -781,11 +781,18 @@ float ellipse_box_sdf(float2 corner_to_point, float2 r) {
     // (no fused multiply-adds), so GPU and WARP reach the same coverage.
     precise float2 v = -corner_to_point;
     if (r.x > 0.0 && r.y > 0.0 && v.x >= 0.0 && v.y >= 0.0 && v.x < r.x && v.y < r.y) {
-        precise float2 e = 1.0 - v / r;
+        precise float2 u = v / r;
+        precise float2 e = 1.0 - u;
         precise float dd = sqrt(e.x * e.x + e.y * e.y);
         precise float2 g = e / r;
         precise float grad = sqrt(g.x * g.x + g.y * g.y) / max(dd, 1e-6);
-        precise float d = (dd - 1.0) / max(grad, 1e-6);
+        // Rationalize |e|-1 before dividing by the gradient: subtracting
+        // nearly equal square roots magnifies adapter rounding at the edge.
+        precise float small = min(u.x, u.y);
+        precise float other = 1.0 - max(u.x, u.y);
+        precise float numerator = small * (small - 2.0) + other * other;
+        precise float norm_minus_one = numerator / (dd + 1.0);
+        precise float d = norm_minus_one / max(grad, 1e-6);
         return d;
     }
     return max(corner_to_point.x, corner_to_point.y);
