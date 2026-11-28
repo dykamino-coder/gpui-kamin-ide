@@ -5,7 +5,7 @@ use crate::style::decoration_paint::{DecorationPaint, PaintInput};
 mod gradient_filter;
 
 pub(super) fn inherit_paint(
-    parent: &BoxStyle,
+    parent: &super::parent_facts::TreeFacts<'_>,
     declared: &Computed,
     own: &Computed,
     c: &mut BoxStyle,
@@ -24,9 +24,9 @@ pub(super) fn inherit_paint(
             let element = c.element_style.is_some();
             let declares_color = declared.declares_color();
             PaintInput {
-                parent: parent.foreground_paint(),
+                parent: parent.foreground,
                 foreground: if !element && !declares_color {
-                    parent.foreground_paint()
+                    parent.foreground
                 } else {
                     crate::style::decoration_paint::ForegroundPaint {
                         color: c.inh.ui.color,
@@ -41,11 +41,11 @@ pub(super) fn inherit_paint(
     let own_filter = c
         .paint_filter()
         .filter(|f| *f != crate::style::computed::Filter::neutral());
-    paint.filter = own_filter.or(parent.paint_filter());
+    paint.filter = own_filter.or(parent.filter);
     paint.filter_ops = if own_filter.is_some() {
         c.paint_filter_ops().to_vec()
     } else {
-        parent.paint_filter_ops().to_vec()
+        parent.filter_ops.to_vec()
     };
     paint.foreground = input.foreground;
     if paint_filter && let Some(f) = paint.filter {

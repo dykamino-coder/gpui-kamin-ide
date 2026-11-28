@@ -23,7 +23,8 @@ impl Frame {
         vcx: ValueCx<'_>,
     ) -> bool {
         if self.marker.borrow().is_empty() {
-            return false;
+            // No proxy: the range the prepaint recorded is its content's.
+            return handle.clamp_to_range();
         }
         // Probes exclude ancestor sticky/scroll projections. Use the same
         // coordinate space for a nested scrollport's origin (Overflow 3 §2.2).
@@ -185,9 +186,16 @@ impl Frame {
         // the scroll range takes the proxy's new size in place (as Blink's
         // `PaintLayerScrollableArea::UpdateAfterLayout` updates the range
         // after layout without laying out again). New bars change the
-        // content box, and an offset past the new range moves the content:
+        // content box, and an offset past the measured range is clamped to
+        // it (the prepaint kept the offset asked for,
+        // `ScrollHandle::measure_range_after_prepaint`; Blink's
+        // `ClampScrollOffsetAfterOverflowChange`), which moves the content:
         // those lay the scrollport out again.
-        if bars_changed || (changed && !handle.resize_item(0, extent)) {
+        let fits = match changed {
+            true => handle.resize_item(0, extent),
+            false => !handle.clamp_to_range(),
+        };
+        if bars_changed || !fits {
             // DevTools `why`: the reason this scrollport is laid out again.
             crate::why::note("scroll_extent.relayout", || {
                 let why = match (bars_changed, classic::refusal(self)) {

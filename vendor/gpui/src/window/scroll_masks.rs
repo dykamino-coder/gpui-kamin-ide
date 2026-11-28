@@ -35,7 +35,7 @@ impl Frame {
         self.scene.scroll.open = None;
         if std::mem::take(&mut self.scene.scroll.lost) {
             if let Some(index) = open {
-                self.scroll_nodes[index as usize].torn = true;
+                self.scroll_nodes[index as usize].tear();
             }
         }
         if std::mem::take(&mut self.scene.scroll.unpivoted) {
@@ -144,7 +144,7 @@ impl Window {
         frame.scene.scroll.open = None;
         if std::mem::take(&mut frame.scene.scroll.lost) {
             if let Some(index) = open {
-                frame.scroll_nodes[index as usize].torn = true;
+                frame.scroll_nodes[index as usize].tear();
             }
         }
         if std::mem::take(&mut frame.scene.scroll.unpivoted) {

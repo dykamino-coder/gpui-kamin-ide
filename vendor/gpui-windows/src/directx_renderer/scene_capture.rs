@@ -33,10 +33,14 @@ impl DirectXRenderer {
             },
         };
         let original = self.resources.replace(isolated);
+        // Embedded captures have their own effect lifetime too. A plain capture
+        // must not discard scratch or masks still used by the window's scene.
+        let original_blur = std::mem::take(&mut self.blur);
         let dimensions = (self.width, self.height);
         (self.width, self.height) = (width, height);
         let result = self.render_to_image(scene, WindowBackgroundAppearance::Transparent);
         self.release_path_target();
+        self.blur = original_blur;
         self.resources = original;
         (self.width, self.height) = dimensions;
         unsafe {

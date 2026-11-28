@@ -2840,12 +2840,25 @@ impl Interactivity {
             // Clamp scroll offset in case scroll max is smaller now (e.g., if children
             // were removed or the bounds became larger).
             let mut scroll_offset = scroll_offset.borrow_mut();
+            let read = *scroll_offset;
 
-            scroll_offset.x = scroll_offset.x.clamp(-scroll_max.x, px(0.));
+            // KaminIDE patch: a range its host measures only after this
+            // prepaint (`ScrollHandle::measure_range_after_prepaint`) is not
+            // known yet: the offset asked for stays, and the host clamps it.
+            let host_range = tracked_scroll_handle.as_deref().is_some_and(|state| state.host_range);
+            if !host_range {
+                *scroll_offset = clamped_offset(*scroll_offset, scroll_max);
+            }
             if scroll_to_bottom {
                 scroll_offset.y = -scroll_max.y;
-            } else {
-                scroll_offset.y = scroll_offset.y.clamp(-scroll_max.y, px(0.));
+            }
+            // KaminIDE patch: DevTools `why` names a prepaint that moved a
+            // scroll offset its layout read (the record then cannot replay).
+            if *scroll_offset != read {
+                let node = self.tracked_scroll_handle.as_ref().map(crate::ScrollNodeId::of);
+                note_clamped(node, read, *scroll_offset, || {
+                    format!("max {scroll_max:?} content {:?} bounds {bounds:?} to bottom {scroll_to_bottom}", self.content_size)
+                });
             }
 
             if let Some(mut scroll_handle_state) = tracked_scroll_handle {
@@ -4678,6 +4691,23 @@ struct ScrollHandleState {
     scroll_to_bottom: bool,
     overflow: Point<Overflow>,
     active_item: Option<ScrollActiveItem>,
+    // KaminIDE patch: its host measures the range after the prepaint
+    // (`measure_range_after_prepaint`).
+    host_range: bool,
+}
+
+/// KaminIDE patch: `offset` inside the scroll range up to `max`.
+fn clamped_offset(offset: Point<Pixels>, max: Point<Pixels>) -> Point<Pixels> {
+    point(offset.x.clamp(-max.x, px(0.)), offset.y.clamp(-max.y, px(0.)))
+}
+
+/// KaminIDE patch: DevTools `why` (`scroll.clamped`): a clamp moved the
+/// offset of `node` from `read` to `now`; `why` tells by what range.
+#[track_caller]
+fn note_clamped(node: Option<crate::ScrollNodeId>, read: Point<Pixels>, now: Point<Pixels>, why: impl FnOnce() -> String) {
+    crate::dirty_sources::trace::push_with("scroll.clamped", core::panic::Location::caller(), || {
+        format!("node {node:?} offset {read:?} -> {now:?}: {}", why())
+    });
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -4800,10 +4830,44 @@ impl ScrollHandle {
             .max(&Default::default());
         let offset = *state.offset.borrow();
         if offset.x < -range.x || offset.y < -range.y {
+            // The range a host measured after the prepaint is known now: the
+            // offset its prepaint kept takes it (`measure_range_after_prepaint`).
+            if state.host_range {
+                let now = clamped_offset(offset, range);
+                *state.offset.borrow_mut() = now;
+                note_clamped(Some(crate::ScrollNodeId::of(self)), offset, now, || format!("measured range {range:?}"));
+            }
             return false;
         }
         state.child_bounds = items;
         state.max_offset = range;
+        true
+    }
+
+    /// KaminIDE patch: the host of this scroller measures its range only
+    /// after the prepaint (`host`): a proxy child sized from what the content
+    /// measured before (`resize_item`). Its prepaint then keeps the offset
+    /// asked for instead of clamping it to a range not measured yet, as CSSOM
+    /// View clamps a scroll position to the scrolling area layout gives (a
+    /// document opened at a restored or fragment offset shows there at once),
+    /// and the host clamps it once measured (`resize_item`, `clamp_to_range`).
+    pub fn measure_range_after_prepaint(&self, host: bool) {
+        self.0.borrow_mut().host_range = host;
+    }
+
+    /// KaminIDE patch: clamp the offset to the range the last prepaint or
+    /// `resize_item` recorded; true when it moved (a layout must place the
+    /// content there).
+    #[track_caller]
+    pub fn clamp_to_range(&self) -> bool {
+        let state = self.0.borrow();
+        let (read, max) = (*state.offset.borrow(), state.max_offset);
+        let now = clamped_offset(read, max);
+        if now == read {
+            return false;
+        }
+        *state.offset.borrow_mut() = now;
+        note_clamped(Some(crate::ScrollNodeId::of(self)), read, now, || format!("range {max:?}"));
         true
     }
 
@@ -6226,6 +6290,75 @@ mod tests {
         scroll_handle.set_offset(point(px(0.), -resized.y));
         assert!(!scroll_handle.resize_item(0, size(px(10.), px(60.))));
         assert_eq!(scroll_handle.max_offset(), resized, "unchanged");
+    }
+
+    /// KaminIDE patch: a scroller whose host measures the range after the
+    /// prepaint keeps the offset asked for past the range of its proxy; the
+    /// measured range clamps it, and the DevTools `why` journal names the
+    /// clamp (`scroll.clamped`), as it names a prepaint's clamp otherwise.
+    #[gpui::test]
+    fn a_host_measured_range_clamps_the_offset_once_measured(cx: &mut TestAppContext) {
+        use crate::dirty_sources::trace;
+        struct Proxy(ScrollHandle);
+
+        impl Render for Proxy {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(
+                    div()
+                        .id("container")
+                        .h(px(50.))
+                        .w(px(100.))
+                        .py(px(4.))
+                        .overflow_y_scroll()
+                        .track_scroll(&self.0)
+                        .child(div().absolute().w(px(10.)).h(px(80.)))
+                        .child(div().w_full().h(px(20.))),
+                )
+            }
+        }
+
+        let _reader = trace::Trace::start();
+        let handle = ScrollHandle::new();
+        let window: AnyWindowHandle = cx.add_window({
+            let handle = handle.clone();
+            move |_, _| Proxy(handle)
+        })
+        .into();
+        let draw = |cx: &mut TestAppContext| {
+            cx.update_window(window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx)
+            })
+            .unwrap()
+        };
+        let node = format!("{:?}", Some(crate::ScrollNodeId::of(&handle)));
+        let clamps = |site: &str| {
+            let (events, _) = trace::take();
+            let clamp = |e: &&trace::Event| e.kind == "scroll.clamped" && e.detail.contains(&node) && e.detail.contains(site);
+            events.iter().filter(clamp).count()
+        };
+        handle.measure_range_after_prepaint(true);
+        handle.set_offset(point(px(0.), px(-100.)));
+        draw(cx);
+        assert_eq!(handle.offset().y, px(-100.), "the prepaint clamped to the proxy's range");
+        assert_eq!(handle.max_offset().y, px(38.));
+        assert_eq!(clamps("-100"), 0, "a clamp was noted");
+        // The host measures 130px: the offset takes the end of that range.
+        assert!(!handle.resize_item(0, size(px(10.), px(130.))));
+        assert_eq!(handle.offset().y, px(-88.));
+        assert_eq!(clamps("measured range"), 1, "the measured clamp is not noted");
+        // Unchanged content: the recorded range clamps it.
+        handle.set_offset(point(px(0.), px(-100.)));
+        assert!(handle.clamp_to_range());
+        assert_eq!(handle.offset().y, px(-38.));
+        assert!(!handle.clamp_to_range(), "within the range");
+        assert_eq!(clamps("range"), 1);
+        // Without a host the prepaint clamps, and says so.
+        handle.measure_range_after_prepaint(false);
+        handle.set_offset(point(px(0.), px(-100.)));
+        draw(cx);
+        assert_eq!(handle.offset().y, px(-38.));
+        assert_eq!(clamps("content"), 1, "the prepaint's clamp is not noted");
     }
 
     struct ContentSizedGrid;
