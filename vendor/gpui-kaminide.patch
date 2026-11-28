@@ -7750,19 +7750,14 @@ index 0cca543ea5d4b0cf45d4509bbfe05c227f8b9255..3aae58a3858f7c9224211ec6d4bbde71
 +        transformation: Default::default(),
 diff --git a/vendor/gpui/src/dirty_sources/trace.rs b/vendor/gpui/src/dirty_sources/trace.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ef1a23e233abc077ea727103e4abbde5252700c5
+index 0000000000000000000000000000000000000000..f6d548b02b2d799bf77960baef6c0a15f815dfd3
 --- /dev/null
 +++ b/vendor/gpui/src/dirty_sources/trace.rs
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,124 @@
 +//! KaminIDE patch (DevTools `why`): bounded frame events shared by diagnostic readers.
 +use std::panic::Location;
 +use std::sync::Mutex;
 +use std::sync::atomic::{AtomicUsize, Ordering::Relaxed};
-+
-+#[cfg(feature = "test-support")]
-+mod layout_budget;
-+#[cfg(feature = "test-support")]
-+pub use layout_budget::LayoutPassBudget;
 +
 +/// Events kept between two takes; later ones are only counted.
 +const EVENTS: usize = 1024;
@@ -7836,8 +7831,6 @@ index 0000000000000000000000000000000000000000..ef1a23e233abc077ea727103e4abbde5
 +pub fn push_with(kind: &'static str, site: &'static Location<'static>, detail: impl FnOnce() -> String) {
 +    if enabled() {
 +        let detail = detail();
-+        #[cfg(feature = "test-support")]
-+        layout_budget::observe(kind, &detail);
 +        let mut log = LOG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
 +        match log.0.len() < EVENTS {
 +            true => log.0.push(Event { kind, site, detail }),
@@ -7884,61 +7877,6 @@ index 0000000000000000000000000000000000000000..ef1a23e233abc077ea727103e4abbde5
 +        mark("after");
 +        assert!(take().0.iter().all(|e| e.kind != "after"));
 +    }
-+}
-diff --git a/vendor/gpui/src/dirty_sources/trace/layout_budget.rs b/vendor/gpui/src/dirty_sources/trace/layout_budget.rs
-new file mode 100644
-index 0000000000000000000000000000000000000000..553886b0e3bf92a64674290b951bb0444d4713cb
---- /dev/null
-+++ b/vendor/gpui/src/dirty_sources/trace/layout_budget.rs
-@@ -0,0 +1,49 @@
-+//! Жёсткий бюджет нативных повторов для тестов сходимости, без часов и таймеров.
-+use std::cell::RefCell;
-+
-+thread_local! {
-+    static BUDGET: RefCell<Option<(usize, usize, Vec<String>)>> = const { RefCell::new(None) };
-+}
-+
-+/// Считает повторы layout в текущем тестовом потоке; превышение — assertion.
-+/// Для наблюдения нужен обычный `Trace`, как и для журнала документа.
-+pub struct LayoutPassBudget;
-+
-+impl LayoutPassBudget {
-+    /// Начать независимый счётчик повторов текущего теста.
-+    pub fn new(limit: usize) -> Self {
-+        BUDGET.with(|budget| {
-+            let mut budget = budget.borrow_mut();
-+            assert!(budget.is_none(), "nested layout pass budget");
-+            *budget = Some((limit, 0, Vec::new()));
-+        });
-+        Self
-+    }
-+
-+    /// Число нативных повторов, включая вложенные измерительные проходы.
-+    pub fn retries(&self) -> usize {
-+        BUDGET.with(|budget| budget.borrow().as_ref().unwrap().1)
-+    }
-+}
-+
-+impl Drop for LayoutPassBudget {
-+    fn drop(&mut self) {
-+        BUDGET.with(|budget| *budget.borrow_mut() = None);
-+    }
-+}
-+
-+pub(super) fn observe(kind: &str, detail: &str) {
-+    if kind != "layout.dependency_retry" {
-+        return;
-+    }
-+    BUDGET.with(|budget| {
-+        let mut budget = budget.borrow_mut();
-+        let Some((limit, count, recent)) = budget.as_mut() else { return };
-+        *count += 1;
-+        if recent.len() == 12 {
-+            recent.remove(0);
-+        }
-+        recent.push(detail.to_owned());
-+        assert!(*count <= *limit, "native layout exceeded {limit} retries:\n{}", recent.join("\n"));
-+    });
 +}
 diff --git a/vendor/gpui/src/element.rs b/vendor/gpui/src/element.rs
 index d6556258e15f7cac891e14861a2cd323fa09f6cf..d8d6d0f51e52162ac2790bf8804bca5783edba9b
