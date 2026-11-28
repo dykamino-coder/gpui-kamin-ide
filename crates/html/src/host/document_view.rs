@@ -187,9 +187,9 @@ fn size_style((width, height): (f32, f32)) -> gpui::SizeRefinement<gpui::Length>
 }
 
 #[cfg(test)]
-mod embedding_tests;
-#[cfg(test)]
 mod bar_wheel_tests;
+#[cfg(test)]
+mod embedding_tests;
 #[cfg(test)]
 mod fixed_hoisted_tests;
 #[cfg(test)]
