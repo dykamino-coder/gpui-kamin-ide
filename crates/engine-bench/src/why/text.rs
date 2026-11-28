@@ -83,6 +83,7 @@ pub(super) fn render(out: &Value) -> String {
             &f["scroll_animation"],
             &f["between"]["scroll_animation"],
         );
+        work::window_frames(&mut s, &f["window_frames"], &f["between"]["window_frames"]);
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render_frame(&mut s, f);
         super::layout_work::render(&mut s, &f["layout_work"]);

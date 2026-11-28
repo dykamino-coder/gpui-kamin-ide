@@ -87,7 +87,11 @@ impl Document {
                         let replay = match self.state.values.resources_unchanged() {
                             true if !self.state.scrolling.preparing() => {
                                 let slot = &self.retained;
-                                record.replay(slot, Some(&key), &environment, window, &self.reuse)
+                                let candidate = record.inputs.as_ref().map_or_else(
+                                    || environment.clone(),
+                                    |inputs| inputs.step_environment(environment.clone()),
+                                );
+                                record.replay(slot, Some(&key), &candidate, window, &self.reuse)
                             }
                             _ if self.state.scrolling.preparing() => {
                                 Err(super::record::FrameMiss::ScrollPrepare.noted())
@@ -108,6 +112,7 @@ impl Document {
                     builder.layout_checked(bounds, window, cx, |phase| {
                         if phase == UpdatePhase::Built {
                             self.retained.builds.set(self.retained.builds.get() + 1);
+                            kamin_style::journal::window_document_build();
                         }
                         observe(phase);
                     });

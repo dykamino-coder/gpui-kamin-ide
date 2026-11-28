@@ -124,6 +124,8 @@ pub struct Journal {
     pub caches: BTreeMap<&'static str, CacheStats>,
     pub scroll_animation_frames: u64,
     pub scroll_animation_builds: u64,
+    pub window_frames: u64,
+    pub window_document_builds: u64,
 }
 
 impl Journal {
@@ -134,6 +136,8 @@ impl Journal {
             caches: BTreeMap::new(),
             scroll_animation_frames: 0,
             scroll_animation_builds: 0,
+            window_frames: 0,
+            window_document_builds: 0,
         }
     }
 
@@ -142,18 +146,13 @@ impl Journal {
             && self.dropped == 0
             && self.caches.is_empty()
             && self.scroll_animation_frames == 0
+            && self.window_frames == 0
+            && self.window_document_builds == 0
     }
 }
 
-/// Count a displayed scroll-animation frame and whether it rebuilt its document.
-pub fn scroll_animation_frame(built: bool) {
-    if enabled() && kept_here() {
-        with(|journal| {
-            journal.scroll_animation_frames += 1;
-            journal.scroll_animation_builds += u64::from(built);
-        });
-    }
-}
+mod frames;
+pub use frames::{scroll_animation_frame, window_document_build, window_frame};
 
 fn with(f: impl FnOnce(&mut Journal)) {
     f(&mut JOURNAL.lock());

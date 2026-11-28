@@ -16,6 +16,10 @@ pub(super) struct Inputs {
 }
 
 impl Inputs {
+    pub(super) fn step_environment(&self, current: WindowKey) -> WindowKey {
+        current.at_recorded_place(&self.environment)
+    }
+
     pub(super) fn new(
         key: FrameKey,
         environment: WindowKey,

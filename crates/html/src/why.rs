@@ -131,6 +131,7 @@ pub fn to_json(entry: &Entry) -> Value {
         "frames": entry.frames.iter().map(|e| json!({"kind": e.kind, "site": site(e.site), "detail": e.detail})).collect::<Vec<_>>(),
         "frames_dropped": entry.frames_dropped,
         "scroll_animation": {"frames": j.scroll_animation_frames, "builds": j.scroll_animation_builds},
+        "window_frames": {"frames": j.window_frames, "builds": j.window_document_builds},
     })
 }
 

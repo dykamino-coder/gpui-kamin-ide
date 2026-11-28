@@ -46,6 +46,16 @@ impl PartialEq for WindowKey {
 }
 
 impl WindowKey {
+    /// Before host layout, the last painted placement is only a replay candidate.
+    /// Prepaint captures the actual placement and validates it again before reuse.
+    pub(super) fn at_recorded_place(mut self, recorded: &Self) -> Self {
+        self.bounds.origin = recorded.bounds.origin;
+        self.content_mask = recorded.content_mask;
+        self.text = recorded.text.clone();
+        self.offset = recorded.offset;
+        self
+    }
+
     /// No hover style asked for a redraw between the two frames.
     pub(super) fn same_hovers(&self, other: &Self) -> bool {
         self.hovers == other.hovers

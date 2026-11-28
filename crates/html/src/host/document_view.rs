@@ -162,3 +162,5 @@ mod scrollbar_convergence_tests;
 mod smooth_scroll_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod window_frame_tests;
