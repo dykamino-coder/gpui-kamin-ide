@@ -1,7 +1,7 @@
-//! Параметры геометрии снимка: конечный масштаб и неотрицательный шаг колеса.
+//! Capture geometry: finite device scale and a nonnegative wheel step.
 
 impl super::Args {
-    /// Размер поверхности в физических пикселях, с округлением оконного backend.
+    /// Physical surface dimensions, rounded by the window backend's conversion.
     pub(crate) fn capture_size(&self) -> (u32, u32) {
         let size = gpui::size(
             gpui::px(self.viewport.0 as f32),
@@ -30,16 +30,6 @@ pub(super) fn scale_factor(value: &str) -> Result<f32, Box<dyn std::error::Error
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn fractional_scale_rounds_the_physical_surface_without_changing_css_viewport() {
-        let mut args = super::super::Args::default();
-        args.viewport = (1446, 900);
-        assert_eq!(args.capture_size(), (1446, 900));
-        args.device_scale_factor = 1.25;
-        assert_eq!(args.capture_size(), (1808, 1125));
-        assert_eq!(args.viewport, (1446, 900));
-    }
-
     #[test]
     fn capture_scale_is_positive_and_finite() {
         for value in ["0", "-1", "NaN", "inf", "1e99"] {

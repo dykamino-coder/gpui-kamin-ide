@@ -11,14 +11,15 @@ fn capture_scale_defaults_to_one_and_preserves_fractional_scale() {
                 .map(str::to_owned),
         )
     };
-    assert_eq!(parse(&[]).unwrap().unwrap().device_scale_factor, 1.);
-    assert_eq!(
-        parse(&["--device-scale-factor", "1.25"])
-            .unwrap()
-            .unwrap()
-            .device_scale_factor,
-        1.25
-    );
+    let base = parse(&["--viewport", "1446x900"]).unwrap().unwrap();
+    assert_eq!(base.device_scale_factor, 1.);
+    assert_eq!(base.capture_size(), (1446, 900));
+    let scaled = parse(&["--viewport", "1446x900", "--device-scale-factor", "1.25"])
+        .unwrap()
+        .unwrap();
+    assert_eq!(scaled.device_scale_factor, 1.25);
+    assert_eq!(scaled.capture_size(), (1808, 1125));
+    assert_eq!(scaled.viewport, base.viewport);
     std::fs::remove_file(page).unwrap();
 }
 
