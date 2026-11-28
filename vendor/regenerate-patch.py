@@ -218,6 +218,12 @@ FIXES = {
 }
 
 
+# Independent memory-lifetime group; keep unrelated patch inventories separate.
+FIXES["gpui"].append(
+    "Natural image lifetime: cache only lazy upload identities with weak sources and single-entry LRU eviction; derived CPU pixels exist only during upload. Report resident CPU mask blocks across nested and retained scenes and opt-in natural raster work in the batch journal."
+)
+
+
 def normalized(path):
     data = path.read_bytes()
     if b"\0" in data:

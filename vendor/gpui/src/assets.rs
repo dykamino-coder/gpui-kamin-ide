@@ -65,6 +65,23 @@ impl PartialEq for RenderImage {
 impl Eq for RenderImage {}
 
 impl RenderImage {
+    /// Resident CPU blocks exposed by an image, without decoding lazy pixels.
+    /// The caller deduplicates addresses shared by scenes and cache owners.
+    /// Opaque shared owners' other storage is reported by their own subsystem.
+    pub(crate) fn heap_report(&self, sink: &mut crate::heap_report::HeapSink, path: &'static str) {
+        crate::heap_report::counted(sink, path, self as *const Self);
+        if self.shared.is_some() {
+            if let Some(bytes) = self.as_bytes(0) {
+                sink(path, bytes.as_ptr(), bytes.len());
+            }
+        } else {
+            for frame in &self.data {
+                let bytes = frame.buffer().as_raw();
+                sink(path, bytes.as_ptr(), bytes.capacity());
+            }
+        }
+    }
+
     /// Create a new image from the given data.
     pub fn new(data: impl Into<SmallVec<[Frame; 1]>>) -> Self {
         static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
