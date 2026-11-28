@@ -35,7 +35,7 @@ impl Sharing {
         own: &Computed,
         vcx: ValueCx<'_>,
     ) -> (Published, bool) {
-        let size = size_key(slot.1.get());
+        let size = size_key(slot.1.container.get());
         let recent = (1..=CAPACITY).map(|back| (self.next + CAPACITY - back) % CAPACITY);
         if let Some(hit) = recent
             .filter_map(|i| self.entries[i].as_ref())

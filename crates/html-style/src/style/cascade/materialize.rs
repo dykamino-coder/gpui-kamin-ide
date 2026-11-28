@@ -25,6 +25,11 @@ pub(crate) use inherited::{inherits_reset, reads_reset_of};
 use materialized::{Inputs, Materialized, inputs, stored};
 mod recompute;
 mod sharing;
+mod stage_memo;
+mod styled;
+pub(crate) use stage_memo::identity;
+pub use stage_memo::{OwnKey, StageMemo};
+use styled::styled;
 mod used;
 mod walk;
 pub use recompute::{recompute_onto, rematerialize};
@@ -35,9 +40,18 @@ use walk::walk;
 #[derive(Default)]
 pub struct ComputedSlot(
     RefCell<Option<Rc<Materialized>>>,
-    Rc<Cell<(Option<f32>, Option<f32>)>>,
+    Rc<SlotShared>,
     gpui::LayoutInputId,
 );
+
+/// What the copies of an element share beside the materialized style: the query container
+/// size it was resolved with and the remembered box stages (`stage_memo`). One allocation,
+/// made with the slot: a copy made before the first stage reads and fills the same records.
+#[derive(Default)]
+pub(crate) struct SlotShared {
+    container: Cell<(Option<f32>, Option<f32>)>,
+    stage: StageMemo,
+}
 
 impl Clone for ComputedSlot {
     fn clone(&self) -> Self {
@@ -71,7 +85,8 @@ impl ComputedSlot {
             .borrow()
             .as_ref()
             .filter(|m| {
-                m.computed.reset_context.cq_size == self.1.get() && m.fits(parent, generation, own)
+                m.computed.reset_context.cq_size == self.1.container.get()
+                    && m.fits(parent, generation, own)
             })
             .map(|m| m.computed.clone())
     }
@@ -92,6 +107,18 @@ impl ComputedSlot {
     /// Материализованный стиль под родителем-элементом, годен ли он под другим родителем или нет.
     pub fn any(&self) -> Option<Rc<Computed>> {
         self.0.borrow().as_ref().map(|m| m.computed.legacy.clone())
+    }
+
+    /// The materialization and the query container size it holds: the computed stage a
+    /// remembered box stage was computed from (`stage_memo`).
+    pub(crate) fn stage_identity(&self) -> (stage_memo::Identity, (Option<f32>, Option<f32>)) {
+        let materialized = self.0.borrow().as_ref().map(stage_memo::identity);
+        (materialized, self.1.container.get())
+    }
+
+    /// The remembered box stages of this style and its element's copies.
+    pub(crate) fn stage_memo(&self) -> &StageMemo {
+        &self.1.stage
     }
 }
 
@@ -122,69 +149,6 @@ pub fn box_style_unpainted(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_
     styled(parent, own, false, vcx)
 }
 
-fn styled(parent: &BoxStyle, own: &SharedStyle, paint: bool, vcx: ValueCx<'_>) -> BoxStyle {
-    let cascaded = own.cascaded();
-    // Перенесённая раскладкой коробка остаётся ребёнком своего родителя по
-    // дереву элементов (css-cascade-5 §7.2); `parent` — её новая коробка-родитель.
-    let moved = own.moved_from();
-    let tree = moved.as_deref().unwrap_or(parent);
-    let element = own.slot().with_parent().map(|(original, element_parent)| {
-        // Только новая computed-стадия родителя-элемента (например, источник
-        // position-try) требует вычислить ребёнка заново. Used-копия её не меняет.
-        let context = tree.element_style.as_ref();
-        let computed = context
-            .and_then(|p| p.variant_for(&element_parent))
-            .map(|p| own.slot().compute(p, cascaded, vcx).legacy)
-            .unwrap_or_else(|| original.clone());
-        crate::style::computed::ElementStyle {
-            original,
-            computed,
-            parent: context.and_then(|p| p.active()),
-        }
-    });
-    let computed = match &element {
-        Some(e) => match own.used_rc() {
-            Some(used) if Rc::ptr_eq(&e.original, &e.computed) => used,
-            Some(used) => {
-                let mut c = (*e.computed).clone();
-                used::lay_used(&mut c, &used, &e.original);
-                Rc::new(c)
-            }
-            None => e.computed.clone(),
-        },
-        // Анонимная коробка наследует от своей коробки-родителя.
-        None => super::compute::compute(parent, cascaded, vcx).legacy,
-    };
-    let view = own.used();
-    // Заданы ли цвета — по каскаду; у стиля без материализации стадия одна.
-    let declared = match own.slot().any() {
-        Some(_) => cascaded,
-        None => &*view,
-    };
-    let mut boxed = super::inherit::box_stage(
-        super::inherit::BoxParents {
-            layout: parent,
-            tree,
-        },
-        declared,
-        &view,
-        crate::style::box_input::BoxStyleInput {
-            style: computed,
-            ..view.clone()
-        },
-        element,
-        paint,
-        vcx,
-    );
-    if !boxed.reset_positioned.position_try_fallbacks.is_empty() {
-        // Варианты коробки, созданной раскладкой из стадии элемента, пересчитывают
-        // каскад этого элемента под его родителем-элементом (css-anchor-position-1
-        // §fallback-rule, css-cascade-5 §7.3.1), а не значения коробки под коробкой-родителем.
-        boxed.try_style = Some(view.try_source.clone().unwrap_or_else(|| own.clone()));
-    }
-    boxed
-}
-
 #[cfg(test)]
 mod format_tests;
 #[cfg(test)]
@@ -207,7 +171,8 @@ impl kamin_heap::HeapSize for ComputedSlot {
         let Ok(slot) = self.0.try_borrow() else {
             return 0;
         };
-        let inputs = ops.at("style/materialized", |ops| ops.shallow(Rc::as_ptr(&self.1)));
+        let inputs = ops.at("style/materialized", |ops| ops.shallow(Rc::as_ptr(&self.1)))
+            + self.1.stage.heap_size(ops);
         let Some(materialized) = slot.as_ref() else {
             return inputs;
         };

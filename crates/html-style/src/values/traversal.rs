@@ -37,6 +37,10 @@ pub struct TraversalState {
     pub media_record: RefCell<Option<crate::style::css::reads::MediaReads>>,
     /// Equal paints of this document's boxes, shared (SharedPaints).
     pub paints: crate::style::decoration_paint::SharedPaints,
+    /// The last parent facts a remembered box stage was keyed by: siblings share one copy
+    /// (`style::cascade::materialize::stage_memo`).
+    pub stage_parent:
+        RefCell<Option<std::rc::Rc<crate::style::cascade::inherit::ParentFacts<'static>>>>,
     /// A walk of one subtree of the built document (`rebuild`).
     rebuild: RefCell<Option<rebuild::Rebuild>>,
 }
