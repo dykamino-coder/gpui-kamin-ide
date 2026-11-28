@@ -56,23 +56,26 @@ impl Computed {
         {
             let own_font = own_px;
             let [_, ch, ex, _] = self.glyph_units(&family, own_font, vcx);
+            // `rem` is the ROOT font size (css-values-4 §6.1.1), not a default 16:
+            // with `html { font-size: 1px }` a `3rem` shadow is 3px, not 48.
+            let rem = crate::style::values::value::root_font_px(vcx);
             if let Some(raw) = self.reset_transforms.transform_raw.take() {
-                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                let px = font_lengths_to_px(&raw, own_font, rem, ex, ch);
                 self.apply_one("transform", &px, vcx);
             }
             if let Some(raw) = self.reset_transforms.transform_origin_raw.take() {
-                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                let px = font_lengths_to_px(&raw, own_font, rem, ex, ch);
                 self.apply_one("transform-origin", &px, vcx);
             }
             if let Some(raw) = self.reset_effects.shadow_raw.take() {
-                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                let px = font_lengths_to_px(&raw, own_font, rem, ex, ch);
                 self.apply_one("box-shadow", &px, vcx);
             }
             // `text-shadow` наследуется ВЫЧИСЛЕННЫМ значением: `em` решается
             // кеглем того элемента, где тень объявлена, а потомки получают уже
             // точки (сырая запись есть только у своего стиля).
             if let Some(raw) = self.reset_text_box.text_shadow_raw.take() {
-                let px = font_lengths_to_px(&raw, own_font, 16.0, ex, ch);
+                let px = font_lengths_to_px(&raw, own_font, rem, ex, ch);
                 self.apply_one("text-shadow", &px, vcx);
             }
         }
