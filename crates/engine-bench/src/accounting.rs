@@ -12,6 +12,8 @@ use std::{collections::BTreeMap, sync::atomic::Ordering::Relaxed, time::Duration
 pub(super) struct Counters {
     pub(super) draw: u32,
     pub(super) present: u32,
+    pub(super) finish: u32,
+    pub(super) damage: u32,
     pub(super) layout: u32,
     pub(super) frames: u32,
     pub(super) readback: Duration,
@@ -24,6 +26,8 @@ impl Counters {
         Self {
             draw: frame_perf::DRAW_US.load(Relaxed),
             present: frame_perf::PRESENT_US.load(Relaxed),
+            finish: frame_perf::FINISH_US.load(Relaxed),
+            damage: frame_perf::DAMAGE_US.load(Relaxed),
             layout: frame_perf::TAFFY_US.load(Relaxed),
             frames: frame_perf::FRAMES.load(Relaxed),
             readback: capture.readback_time(),
@@ -47,6 +51,10 @@ pub(super) struct Input {
     pub(super) timings: Option<BuildTimings>,
     pub(super) layout: Duration,
     pub(super) draw: Duration,
+    /// Closing the drawn frame after paint (`frame_perf::FINISH_US`).
+    pub(super) scene_finish: Duration,
+    /// The frame damage and scroll shift against the last scene (`frame_perf::DAMAGE_US`).
+    pub(super) frame_damage: Duration,
     pub(super) present: Duration,
     pub(super) readback: Duration,
     /// Часть readback после готовности кадра на GPU (копия в память): цена
@@ -114,7 +122,14 @@ pub(super) fn partition(input: Input, phases: &Phases) -> Result<Measured, &'sta
     );
     intervals.insert("raster_gpu_readback", Some(input.present));
     let measured: Duration = intervals.values().flatten().copied().sum();
-    intervals.insert("pipeline_other", Some(subtract(input.total, measured)?));
+    let other = subtract(input.total, measured)?;
+    intervals.insert("pipeline_other", Some(other));
+    // pipeline_other = scene finish + frame damage + rest, exactly: both run
+    // in the draw after paint, outside every phase scope above.
+    let rest = subtract(subtract(other, input.scene_finish)?, input.frame_damage)?;
+    diagnostics.insert("other_scene_finish", Some(ms(input.scene_finish)));
+    diagnostics.insert("other_frame_damage", Some(ms(input.frame_damage)));
+    diagnostics.insert("other_rest", Some(ms(rest)));
     intervals.insert("first_frame_total", Some(input.total));
     Ok(Measured {
         phases: intervals.into_iter().map(|(k, v)| (k, v.map(ms))).collect(),
@@ -140,6 +155,8 @@ mod tests {
             }),
             layout: us(100),
             draw: us(30),
+            scene_finish: us(2),
+            frame_damage: us(1),
             present: us(10),
             readback: us(4),
             copy: us(3),
@@ -170,6 +187,27 @@ mod tests {
         assert_eq!(result.diagnostics["raster_submit"], Some(0.006));
         assert_eq!(result.diagnostics["gpu_wait"], Some(0.001));
         assert_eq!(result.diagnostics["capture"], Some(0.003));
+    }
+
+    #[test]
+    fn pipeline_other_splits_into_scene_finish_frame_damage_and_the_rest() {
+        let mut phases = Phases::default();
+        phases.layout = Some(us(6));
+        let result = partition(input(), &phases).expect("valid nesting");
+        // 60 total - 2 resources - 10 document - 6 layout - 10 present.
+        let other = result.phases["pipeline_other"].expect("other");
+        assert!((other - 0.032).abs() < 1e-12, "{other}");
+        let d = &result.diagnostics;
+        assert_eq!(d["other_scene_finish"], Some(0.002));
+        assert_eq!(d["other_frame_damage"], Some(0.001));
+        let rest = d["other_rest"].expect("rest");
+        assert!((rest - 0.029).abs() < 1e-12, "{rest}");
+        let mut late = input();
+        late.frame_damage = us(40);
+        assert!(
+            partition(late, &phases).is_err(),
+            "a damage longer than the time left outside the phases is ambiguous"
+        );
     }
 
     #[test]

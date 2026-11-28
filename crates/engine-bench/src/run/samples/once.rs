@@ -153,6 +153,8 @@ pub(super) async fn sample_once(
                 timings,
                 layout: Counters::delta(after.layout, before.layout),
                 draw: Counters::delta(after.draw, before.draw),
+                scene_finish: Counters::delta(after.finish, before.finish),
+                frame_damage: Counters::delta(after.damage, before.damage),
                 present: Duration::ZERO,
                 readback: Duration::ZERO,
                 copy: Duration::ZERO,
@@ -202,6 +204,8 @@ pub(super) async fn sample_once(
             timings,
             layout: Counters::delta(after.layout, before.layout),
             draw: Counters::delta(after.draw, before.draw),
+            scene_finish: Counters::delta(after.finish, before.finish),
+            frame_damage: Counters::delta(after.damage, before.damage),
             present: Counters::delta(after.present, before.present),
             readback: after
                 .readback
