@@ -324,6 +324,9 @@ impl<V: View> IntoElement for ViewElement<V> {
 struct ViewElementState {
     prepaint_range: Range<PrepaintStateIndex>,
     paint_range: Range<PaintIndex>,
+    /// KaminIDE patch: the composition groups `paint_range` made in its
+    /// frame's list (`Window::reuse_view_paint`).
+    paint_groups: Range<usize>,
     cache_key: ViewElementCacheKey,
     accessed_entities: FxHashSet<EntityId>,
 }
@@ -519,6 +522,7 @@ fn prepaint_view(
                     && element_state.cache_key.text_style == text_style
                     && !window.dirty_views.contains(&entity_id)
                     && !window.refreshing
+                    && window.view_groups_replayable(&element_state.paint_groups)
                 {
                     // KaminIDE patch: счётчик переигранных вью (`frame_perf`).
                     crate::frame_perf::REUSED_VIEWS
@@ -551,6 +555,7 @@ fn prepaint_view(
                         accessed_entities,
                         prepaint_range: prepaint_start..prepaint_end,
                         paint_range: PaintIndex::default()..PaintIndex::default(),
+                        paint_groups: 0..0,
                         cache_key: ViewElementCacheKey {
                             bounds,
                             content_mask,
@@ -594,17 +599,25 @@ fn paint_view(
                     let mut element_state = element_state.unwrap();
 
                     let paint_start = window.paint_index();
+                    let groups_start = window.next_frame.scene.groups.len();
 
-                    if let Some(element) = element {
+                    // KaminIDE patch: a reused paint brings the composition
+                    // groups it made, renumbered into this frame's list.
+                    let groups = if let Some(element) = element {
                         let refreshing = mem::replace(&mut window.refreshing, true);
                         element.paint(window, cx);
                         window.refreshing = refreshing;
+                        groups_start..window.next_frame.scene.groups.len()
                     } else {
-                        window.reuse_paint(element_state.paint_range.clone());
-                    }
+                        window.reuse_view_paint(
+                            element_state.paint_range.clone(),
+                            element_state.paint_groups.clone(),
+                        )
+                    };
 
                     let paint_end = window.paint_index();
                     element_state.paint_range = paint_start..paint_end;
+                    element_state.paint_groups = groups;
 
                     ((), element_state)
                 },
