@@ -1,11 +1,13 @@
-//! Входы окна, от которых зависит записанный кадр документа: границы,
-//! маска, наследуемый стиль текста, смещение, масштаб, rem, эпоха ввода и
-//! фокуса, активность и вид окна, время снимка анимаций, reduce-motion.
+//! Window inputs the recorded document frame depends on: bounds, content mask,
+//! inherited text style, offset, scale, rem, the epoch of inputs that changed
+//! element state and of focus moves, window activity and appearance, the
+//! animation snapshot time, reduce-motion. An input that changed nothing (a
+//! pointer move over content) keeps the frame (`gpui::Window::interaction_epoch`).
 
 use gpui::{App, Bounds, ContentMask, Pixels, Point, TextStyle, Window, WindowAppearance};
 
 /// Входы окна, от которых зависит записанный кадр.
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub(super) struct WindowKey {
     bounds: Bounds<Pixels>,
     content_mask: ContentMask<Pixels>,
@@ -19,9 +21,36 @@ pub(super) struct WindowKey {
     elapsed: Option<std::time::Duration>,
     reduce_motion: bool,
     animation: (Option<std::time::Duration>, u64),
+    /// Redraws hover styles asked for (`gpui::Window::hover_epoch`): not an input of a
+    /// frame whose scene layer repaints its hover boxes (`Builder::repaint_boxes`), only
+    /// of one without a layer (`WindowKey::same_hovers`).
+    hovers: usize,
+}
+
+/// Equal inputs of the frame, apart from the hover redraws (`hovers`).
+impl PartialEq for WindowKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.bounds == other.bounds
+            && self.content_mask == other.content_mask
+            && self.text == other.text
+            && self.offset == other.offset
+            && self.scale == other.scale
+            && self.rem == other.rem
+            && self.interaction == other.interaction
+            && self.active == other.active
+            && self.appearance == other.appearance
+            && self.elapsed == other.elapsed
+            && self.reduce_motion == other.reduce_motion
+            && self.animation == other.animation
+    }
 }
 
 impl WindowKey {
+    /// No hover style asked for a redraw between the two frames.
+    pub(super) fn same_hovers(&self, other: &Self) -> bool {
+        self.hovers == other.hovers
+    }
+
     /// Name changed inputs without formatting their potentially large values.
     pub(super) fn changed(&self, other: &Self) -> Vec<&'static str> {
         [
@@ -69,6 +98,7 @@ impl WindowKey {
             elapsed: cx.try_global::<gpui::AnimationElapsedTime>().map(|t| t.0),
             reduce_motion: cx.reduce_motion(),
             animation: state.animation.render_key(),
+            hovers: window.hover_epoch(),
         }
     }
 }
