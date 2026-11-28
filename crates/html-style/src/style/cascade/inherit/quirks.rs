@@ -15,7 +15,7 @@ use crate::values::ValueCx;
 /// `LayoutBox::ContainingBlockLogicalHeightForPercentageResolution`
 /// (`SkipContainingBlockForPercentHeightCalculation`).
 pub(super) fn percentage_height(
-    parent: &BoxStyle,
+    parent: &super::parent_facts::LayoutFacts,
     own: &Computed,
     c: &mut BoxStyle,
     vcx: ValueCx<'_>,
@@ -53,7 +53,7 @@ pub(super) fn percentage_height(
         // Доля от определённого блока — тоже опора: флоат `height: 50%`
         // в контейнере 200 даёт потомкам 100 (`intrinsic-percent-
         // replaced-003/004`).
-        Some(L::Pct(k)) if !tabular => match parent.reset_box_layout.height {
+        Some(L::Pct(k)) if !tabular => match parent.height {
             Some(L::Px(h)) => Some(k * h),
             _ => parent.quirk_pct_base.map(|b| k * b),
         },

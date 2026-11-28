@@ -64,6 +64,15 @@ impl DocumentValues {
         self.anchor.clear_frame();
         self.math.clear_frame();
     }
+
+    /// The frame region and how many records it holds: a computation that
+    /// changed it left handles valid for this frame only.
+    pub fn frame_arena_mark(&self) -> (u32, usize) {
+        let len = self.calc.frame.borrow().len()
+            + self.anchor.frame.borrow().len()
+            + self.math.frame.borrow().len();
+        (self.frame_owner.get(), len)
+    }
 }
 
 static NEXT_OWNER: AtomicU32 = AtomicU32::new(1);
