@@ -1680,6 +1680,7 @@ impl DirectXRenderer {
             self.backdrop_pending = false;
         }
         let (quads, start) = if skip { (quads.get(1..).unwrap_or_default(), 1) } else { (quads, start) };
+        let premultiplied = if quads.iter().any(|q| q.ellipse.on != 0) { Some(self.premultiplied_blend()?) } else { None };
         let devices = self.devices.as_ref().context("devices missing")?;
         let params = self
             .globals
@@ -1687,18 +1688,20 @@ impl DirectXRenderer {
             .as_ref()
             .context("batch params buffer missing")?;
         let pipeline = &self.pipelines.quad_pipeline;
-        for (analytic, first, len) in analytic_gradient::program_runs(quads, start) {
+        for (analytic, elliptical, first, len) in analytic_gradient::program_runs(quads, start) {
+            let blend = premultiplied.as_ref().filter(|_| elliptical).unwrap_or(&pipeline.blend_state);
             if analytic {
                 pipeline.bind_gradients(&devices.device_context);
-                pipeline.draw_range_with_program(
+                pipeline.draw_range_blended(
                     &devices.device_context,
                     params,
                     first as u32,
                     len as u32,
                     self.pipelines.quad_gradient.fragment(&devices.device)?,
+                    blend,
                 )?;
             } else {
-                pipeline.draw_range(&devices.device_context, params, first as u32, len as u32)?;
+                pipeline.draw_range_blended(&devices.device_context, params, first as u32, len as u32, &pipeline.fragment, blend)?;
             }
         }
         Ok(())
@@ -2735,6 +2738,20 @@ impl<T> PipelineState<T> {
         instance_count: u32,
         fragment: &ID3D11PixelShader,
     ) -> Result<()> {
+        self.draw_range_blended(device_context, batch_params_buffer, first_instance, instance_count, fragment, &self.blend_state)
+    }
+
+    /// KaminIDE patch: the instance range drawn by `fragment` through
+    /// `blend` (quads with elliptical corners blend premultiplied colour).
+    fn draw_range_blended(
+        &self,
+        device_context: &ID3D11DeviceContext,
+        batch_params_buffer: &ID3D11Buffer,
+        first_instance: u32,
+        instance_count: u32,
+        fragment: &ID3D11PixelShader,
+        blend: &ID3D11BlendState,
+    ) -> Result<()> {
         anyhow::ensure!(
             first_instance as usize + instance_count as usize <= self.buffer_size,
             "DirectX instance range exceeds the {} buffer",
@@ -2747,7 +2764,7 @@ impl<T> PipelineState<T> {
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
             &self.vertex,
             fragment,
-            &self.blend_state,
+            blend,
         );
         unsafe {
             device_context.DrawInstanced(4, instance_count, 0, 0);
