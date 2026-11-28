@@ -19,4 +19,13 @@ impl BoxStyle {
             vcx,
         )
     }
+
+    /// The quad draws the box's elliptical corners (`Computed::radius_elliptic`).
+    pub fn radius_elliptic(&self, vcx: ValueCx<'_>) -> bool {
+        self.style_rc().radius_elliptic_with(
+            super::super::single_corner::box_eligible(self),
+            self.paint_shadows().is_empty(),
+            vcx,
+        )
+    }
 }

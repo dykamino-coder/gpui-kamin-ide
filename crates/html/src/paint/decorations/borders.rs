@@ -38,7 +38,11 @@ pub(crate) fn box_borders(
         }
         // Скругление — как у квада (`apply::apply_radius`): при маске группы
         // или `border-shape` квад углов не получает, и слой тоже.
-        if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
+        if c.radius_elliptic(vcx) && c.reset_border.border_shape.is_none() {
+            // The quad draws the ring's elliptical edges (`Computed::radius_elliptic`).
+            layer.style().corner_ellipse =
+                Some(Box::new(crate::paint::apply::ellipse_radii(c, vcx)));
+        } else if !c.radius_masked(vcx) && c.reset_border.border_shape.is_none() {
             let rad = |l: Option<Len>| crate::paint::apply::radius_px(c, l, vcx).unwrap_or(0.0);
             layer = layer
                 .rounded_tl(px(rad(c.reset_border.radius.tl)))
@@ -54,6 +58,25 @@ pub(crate) fn box_borders(
     // `BorderEdge::GetDoubleBorderStripeWidths`: 50 → 17/16/17, 5 → 2/1/2).
     // Квад и слой рамки её не красят (`apply::double_border`).
     if let Some((colour, [t, r, b, l])) = crate::paint::apply::double_border(c, vcx) {
+        if c.radius_elliptic(vcx) {
+            // One quad draws both lines along the elliptical corners.
+            let mut layer = div()
+                .absolute()
+                .top(px(-t))
+                .left(px(-l))
+                .right(px(-r))
+                .bottom(px(-b))
+                .border_t(px(t))
+                .border_r(px(r))
+                .border_b(px(b))
+                .border_l(px(l))
+                .border_color(colour.to_hsla());
+            let mut radii = crate::paint::apply::ellipse_radii(c, vcx);
+            radii.double = true;
+            layer.style().corner_ellipse = Some(Box::new(radii));
+            out.push(layer.into_any_element());
+            return;
+        }
         let third = |w: f32| (w / 3.0).round();
         let (o_t, o_r, o_b, o_l) = (third(t), third(r), third(b), third(l));
         let mut outer = div()
@@ -143,7 +166,7 @@ pub(crate) fn coloured_borders(
     // stroke-from-border), прямоугольные полосы сторон ей не нужны.
     // A one-colour `double` border is painted whole by its rings.
     let rings = crate::paint::apply::double_border(c, vcx).is_some();
-    if !uniform && !rings && c.reset_border.border_shape.is_none() {
+    if !uniform && !rings && c.reset_border.border_shape.is_none() && !c.radius_elliptic(vcx) {
         let side_px = px_lossy_zero;
         let bw = c.borders();
         let (t, r, b, l) = (

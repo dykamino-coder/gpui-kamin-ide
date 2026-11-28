@@ -48,6 +48,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn opposite_corner_domains_intersect_without_filling_the_far_corner() {
+        let r = parse_rrect("100 100 0 0 100 100 0 0", 100.0, 100.0, 1.0).unwrap();
+        let mask = uncached(&r, 100, 100).unwrap();
+        let bytes = mask.as_bytes(0).unwrap();
+        let alpha = |x: usize, y: usize| bytes[(y * 100 + x) * 4 + 3];
+        assert_eq!(alpha(50, 50), 255);
+        for (x, y) in [(9, 9), (90, 90), (49, 0), (0, 49), (99, 50), (50, 99)] {
+            assert_eq!(alpha(x, y), 0, "at {x},{y}");
+        }
+        for y in 0..100 {
+            for x in 0..100 {
+                assert_eq!(alpha(x, y), alpha(99 - x, 99 - y), "at {x},{y}");
+                assert_eq!(alpha(x, y), alpha(y, x), "at {x},{y}");
+            }
+        }
+    }
+
+    #[test]
     fn equivalent_normalized_radii_share_mask_and_exact_coverage() {
         let a = parse_rrect("12 12 12 12 12 12 12 12", 12.0, 12.0, 1.0).unwrap();
         let b = parse_rrect("50% 50% 50% 50% 50% 50% 50% 50%", 12.0, 12.0, 2.0).unwrap();

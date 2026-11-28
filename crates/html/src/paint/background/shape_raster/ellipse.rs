@@ -28,7 +28,12 @@ pub fn rasterize_ellipse_px(
             // по точкам даёт локальный масштаб — без него сглаживание на
             // вытянутом эллипсе было бы шире с одной стороны.
             let grad = ((dx / rx) * (dx / rx) + (dy / ry) * (dy / ry)).sqrt() / d.max(1e-6);
-            let px_dist = (d - 1.0) / grad.max(1e-6);
+            let ux = (rx - (x as f32 + 0.5 - cx).abs()) / rx;
+            let uy = (ry - (y as f32 + 0.5 - cy).abs()) / ry;
+            let small = ux.min(uy);
+            let other = 1.0 - ux.max(uy);
+            let norm_minus_one = (small * (small - 2.0) + other * other) / (d + 1.0);
+            let px_dist = norm_minus_one / grad.max(1e-6);
             let a = (0.5 - px_dist).clamp(0.0, 1.0);
             let v = (a * 255.0).round() as u8;
             bytes.extend_from_slice(&[v, v, v, v]);

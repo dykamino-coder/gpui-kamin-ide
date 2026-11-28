@@ -1,4 +1,9 @@
-use std::sync::Arc;
+//! Font family fallbacks and raw metric normalization of the selected face.
+
+use std::{
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -6,17 +11,104 @@ use serde::{Deserialize, Serialize};
 /// The fallback fonts that can be configured for a given font.
 /// Fallback fonts family names are stored here.
 #[derive(Default, Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize, JsonSchema)]
-pub struct FontFallbacks(pub Arc<Vec<String>>);
+pub struct FontFallbacks(Arc<FallbackConfig>);
+
+// Unadjusted lists retain their existing JSON array representation.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+enum FallbackConfig {
+    Names(Vec<String>),
+    Adjusted {
+        fonts: Vec<String>,
+        adjustment: FontSizeAdjustment,
+    },
+}
+
+impl Default for FallbackConfig {
+    fn default() -> Self {
+        Self::Names(Vec::new())
+    }
+}
+
+/// A raw face metric from CSS Fonts 5 font-size-adjust.
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug, Deserialize, Serialize, JsonSchema)]
+pub enum FontSizeMetric {
+    XHeight,
+    CapHeight,
+    ZeroAdvance,
+    IdeographicWidth,
+    IdeographicHeight,
+}
+
+/// Target metric relative to the run em, already adjusted for the primary face.
+/// Native fallback divides it by the raw metric of each selected face.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct FontSizeAdjustment {
+    pub metric: FontSizeMetric,
+    pub aspect: f32,
+}
+
+impl PartialEq for FontSizeAdjustment {
+    fn eq(&self, other: &Self) -> bool {
+        self.metric == other.metric && self.aspect.to_bits() == other.aspect.to_bits()
+    }
+}
+impl Eq for FontSizeAdjustment {}
+impl Hash for FontSizeAdjustment {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.metric.hash(state);
+        self.aspect.to_bits().hash(state);
+    }
+}
 
 impl FontFallbacks {
     /// Get the fallback fonts family names
     pub fn fallback_list(&self) -> &[String] {
-        self.0.as_slice()
+        match &*self.0 {
+            FallbackConfig::Names(fonts) | FallbackConfig::Adjusted { fonts, .. } => fonts,
+        }
     }
 
     /// Create a font fallback from a list of strings
     pub fn from_fonts(fonts: Vec<String>) -> Self {
-        FontFallbacks(Arc::new(fonts))
+        FontFallbacks(Arc::new(FallbackConfig::Names(fonts)))
+    }
+
+    /// Normalize each fallback face before shaping, including system fallback.
+    pub fn with_size_adjustment(mut self, adjustment: FontSizeAdjustment) -> Self {
+        let config = Arc::make_mut(&mut self.0);
+        match config {
+            FallbackConfig::Names(fonts) => {
+                *config = FallbackConfig::Adjusted {
+                    fonts: std::mem::take(fonts),
+                    adjustment,
+                };
+            }
+            FallbackConfig::Adjusted {
+                adjustment: target, ..
+            } => *target = adjustment,
+        }
+        self
+    }
+
+    /// Size normalization for native face selection.
+    pub fn size_adjustment(&self) -> Option<FontSizeAdjustment> {
+        match &*self.0 {
+            FallbackConfig::Names(_) => None,
+            FallbackConfig::Adjusted { adjustment, .. } => Some(*adjustment),
+        }
+    }
+
+    /// Preserve the family list when a CSS run resets font-size-adjust.
+    pub fn without_size_adjustment(mut self) -> Self {
+        if self.size_adjustment().is_none() {
+            return self;
+        }
+        let config = Arc::make_mut(&mut self.0);
+        if let FallbackConfig::Adjusted { fonts, .. } = config {
+            *config = FallbackConfig::Names(std::mem::take(fonts));
+        }
+        self
     }
 
     /// KaminIDE patch: a fallback entry that applies only to the given
