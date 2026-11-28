@@ -233,6 +233,7 @@ impl Document {
             nodes: Rc::new(nodes),
             tree: crate::document::scope::next_tree(),
             retained: Default::default(),
+            root_phases: self.root_phases.clone(),
             reuse: self.reuse.clone(),
             restyle: self.restyle.clone(),
             root: self.root.clone(),

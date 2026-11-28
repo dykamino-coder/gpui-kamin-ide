@@ -43,12 +43,14 @@ impl Inputs {
         if !matches {
             crate::why::note("frame_environment.inputs", || {
                 format!(
-                    "window_same={} serial={} -> {} root={} changed={:?}",
+                    "window_same={} serial={} -> {} root={} changed={:?} bounds_old={:?} bounds_new={:?}",
                     self.window == window.window_handle(),
                     self.serial.get(),
                     window.frame_serial(),
                     window.retained_root_environment(),
-                    self.environment.changed(environment)
+                    self.environment.changed(environment),
+                    self.environment.bounds(),
+                    environment.bounds()
                 )
             });
         }
@@ -67,6 +69,8 @@ impl Inputs {
 
 #[derive(Default)]
 pub(super) struct Record {
+    /// One embedding snapshot per live element, preserved across DOM generations.
+    pub(super) placement: Option<super::placement::Placement>,
     pub(super) inputs: Option<Rc<Inputs>>,
     pub(super) prepaint: RetainedPrepaint,
     pub(super) paint: RetainedPaint,

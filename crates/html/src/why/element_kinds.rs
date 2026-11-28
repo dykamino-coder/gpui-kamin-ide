@@ -11,7 +11,8 @@ use std::fmt::Write;
 /// Element types kept per sample.
 const KINDS: usize = 24;
 
-pub(super) fn to_json(costs: Vec<(&'static str, ElementCost)>) -> Value {
+/// Attribute request-layout self-time by element type for the shared journal.
+pub fn to_json(costs: Vec<(&'static str, ElementCost)>) -> Value {
     if costs.is_empty() {
         return Value::Null;
     }

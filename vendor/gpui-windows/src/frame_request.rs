@@ -1,11 +1,13 @@
-//! Спрос на кадр Windows и защита общего UI-потока от вложенной отрисовки.
+//! Retained Windows frame demand and protection against nested UI draws.
 
-use std::{cell::Cell, rc::Rc, sync::atomic::{AtomicBool, Ordering}};
-use gpui_util::ResultExt;
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::Graphics::Gdi::{RedrawWindow, RDW_INVALIDATE};
-use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+use std::{cell::Cell, rc::Rc};
+
+mod pacer;
 use crate::WindowsWindowInner;
+use gpui_util::ResultExt;
+pub(crate) use pacer::{FrameDemand, FramePacer};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
 
 /// Coordinates window draws on the UI thread. Owned by the platform and
 /// shared with every window (like `WindowsPlatformState::cursor_visible`),
@@ -33,7 +35,7 @@ impl DrawCoordinator {
         // draw, through presentation and IME updates). Requests that arrive
         // re-entrantly during GPUI-initiated draws (e.g. key dispatch or
         // opening a window draws synchronously) are deferred by GPUI's
-        // `on_request_frame` callback itself, which no-ops in that case.
+        // `on_request_frame` callback itself, which retains a retry demand.
         if self.drawing.get() {
             None
         } else {
@@ -53,53 +55,33 @@ impl Drop for DrawWindowGuard<'_> {
     }
 }
 
-impl DrawCoordinator {
-    // Запрос из отрисовки обслуживает vsync: немедленный повтор обходил бы
-    // ограничение частоты анимаций и создавал цикл при throttling.
-    fn wake_if_idle(&self, wake: impl FnOnce()) {
-        if !self.drawing.get() {
-            wake();
-        }
-    }
-}
-
 impl WindowsWindowInner {
     pub(crate) fn frame_waker(self: &Rc<Self>) -> Rc<dyn Fn()> {
         let window = Rc::downgrade(self);
         Rc::new(move || {
             if let Some(window) = window.upgrade() {
-                window.state.draw_coordinator.wake_if_idle(|| {
-                    // KaminIDE patch: message-only окно не получает WM_PAINT.
-                    if let Some(pending) = &window.state.offscreen_paint {
-                        post_offscreen_paint(window.hwnd, pending);
-                        return;
-                    }
-                    // Без UPDATENOW: WM_PAINT объединяет запросы и не входит в App
-                    // синхронно из invalidate_view/set_dirty.
-                    unsafe { RedrawWindow(Some(window.hwnd), None, None, RDW_INVALIDATE) }
-                        .ok().log_err();
-                });
+                window.state.frame_demand.request();
             }
         })
     }
 }
 
-/// KaminIDE patch: the offscreen counterpart of an invalidated update region.
-/// At most one paint message is queued per window, like a pending WM_PAINT;
-/// the window clears `pending` when it handles the message.
-pub(crate) fn post_offscreen_paint(hwnd: HWND, pending: &AtomicBool) {
-    if take_offscreen_slot(pending) {
-        let posted = unsafe {
-            PostMessageW(Some(hwnd), crate::events::WM_GPUI_OFFSCREEN_PAINT, WPARAM(0), LPARAM(0))
-        };
-        if posted.log_err().is_none() {
-            pending.store(false, Ordering::Release);
-        }
+/// Posts a slot already claimed by the paced worker. Unlike an update region,
+/// this message survives ValidateRect at the end of an in-progress draw.
+pub(crate) fn post_frame_request(hwnd: HWND, demand: &FrameDemand) {
+    if unsafe {
+        PostMessageW(
+            Some(hwnd),
+            crate::events::WM_GPUI_FRAME_REQUEST,
+            WPARAM(0),
+            LPARAM(0),
+        )
     }
-}
-
-fn take_offscreen_slot(pending: &AtomicBool) -> bool {
-    !pending.swap(true, Ordering::AcqRel)
+    .log_err()
+    .is_none()
+    {
+        demand.handled();
+    }
 }
 
 #[cfg(test)]
@@ -107,35 +89,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn offscreen_paint_requests_coalesce_until_handled() {
-        let pending = AtomicBool::new(false);
-        assert!(take_offscreen_slot(&pending));
-        assert!(!take_offscreen_slot(&pending));
-        assert!(!take_offscreen_slot(&pending));
-        pending.store(false, Ordering::Release);
-        assert!(take_offscreen_slot(&pending));
-    }
-
-    #[test]
-    fn idle_demand_wakes_without_entering_a_draw() {
+    fn nested_draws_defer_and_demand_survives_until_the_guard_unwinds() {
         let coordinator = DrawCoordinator::new();
-        let wakes = Cell::new(0);
-        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
-        assert_eq!(wakes.get(), 1);
-        assert!(coordinator.try_begin_draw().is_some());
-    }
-
-    #[test]
-    fn nested_demand_waits_for_vsync_and_guard_restores_idle_waking() {
-        let coordinator = DrawCoordinator::new();
-        let wakes = Cell::new(0);
+        let demand = FrameDemand::new(std::sync::Arc::new(FramePacer::default()));
         let guard = coordinator.try_begin_draw().unwrap();
         assert!(coordinator.try_begin_draw().is_none());
-        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
-        assert_eq!(wakes.get(), 0);
+        demand.request();
         drop(guard);
-        coordinator.wake_if_idle(|| wakes.set(wakes.get() + 1));
-        assert_eq!(wakes.get(), 1);
         assert!(coordinator.try_begin_draw().is_some());
+        assert!(demand.take());
+        assert!(!demand.take());
     }
 }

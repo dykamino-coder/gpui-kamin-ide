@@ -13,6 +13,7 @@ use std::rc::Rc;
 /// Дерево кадра, собранное и разложенное шагом документа.
 pub(super) struct Prepared {
     pub(super) key: FrameKey,
+    pub(super) phases: crate::why::root::Attempt,
     /// Счётчики до сборки шага: повторная сборка в кадре начинает с них, как
     /// шаг (сборщик кадр делает свой — опции того же ключа).
     pub(super) counters: Option<crate::layout::reuse::Counters>,
@@ -69,20 +70,28 @@ impl Document {
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
     ) {
+        self.root_phases
+            .called(crate::why::root::Work::UpdateRendering);
         self.retained.prepared.take();
         let Some(key) = FrameKey::of(opts) else {
             return;
         };
         let (w, h) = key.viewport;
-        let bounds = gpui::Bounds::new(Default::default(), size(px(w), px(h)));
         window.with_layout_outside_draw(parent, cx, |window, cx| {
             let id = document_id(&self.reuse);
             window.with_global_id(id, |id, window| {
-                let environment =
-                    super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
-                let (epoch, replay) =
-                    window.with_element_state::<super::record::Record, _>(id, |record, window| {
-                        let mut record = record.unwrap_or_default();
+                window.with_element_state::<super::record::Record, _>(id, |record, window| {
+                    let mut record = record.unwrap_or_default();
+                    // This state belongs to the actual embedding, not the host's root.
+                    // Keep it across DOM generations, but never beyond element eviction.
+                    let placement = record.placement.take();
+                    let bounds = placement.as_ref().map_or_else(
+                        || gpui::Bounds::new(Default::default(), size(px(w), px(h))),
+                        |placement| placement.bounds_for(key.viewport),
+                    );
+                    let mut prepare = |window: &mut Window| {
+                        let environment =
+                            super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
                         let epoch = record.begin(&self.reuse, window);
                         let replay = match self.state.values.resources_unchanged() {
                             true if !self.state.scrolling.preparing() => {
@@ -101,33 +110,41 @@ impl Document {
                         let replay = replay
                             .inspect_err(|miss| self.retained.missed(*miss))
                             .is_ok();
-                        ((epoch, replay), record)
-                    });
-                if replay {
-                    return;
-                }
-                let builder = self.frame_builder(opts, &Some(key.clone()));
-                let before = window.next_frame_callback_count();
-                let (tree, flow, layout_inputs) =
-                    builder.layout_checked(bounds, window, cx, |phase| {
-                        if phase == UpdatePhase::Built {
-                            self.retained.builds.set(self.retained.builds.get() + 1);
-                            kamin_style::journal::window_document_build();
+                        if replay {
+                            return;
                         }
-                        observe(phase);
-                    });
-                let checked = CheckedRoot::new(epoch, environment, window);
-                let scheduled = window.next_frame_callback_count().saturating_sub(before);
-                self.retained.prepared.replace(Some(Prepared {
-                    key,
-                    counters: builder.counters.get(),
-                    tree,
-                    flow,
-                    checked,
-                    layout_inputs,
-                    scheduled,
-                    parent: parent.clone(),
-                }));
+                        let mut builder = self.frame_builder(opts, &Some(key.clone()));
+                        builder.phases = self.frame_attempt(opts, true);
+                        let before = window.next_frame_callback_count();
+                        let (tree, flow, layout_inputs) =
+                            builder.layout_checked(bounds, window, cx, |phase| {
+                                if phase == UpdatePhase::Built {
+                                    self.retained.builds.set(self.retained.builds.get() + 1);
+                                    kamin_style::journal::window_document_build();
+                                }
+                                observe(phase);
+                            });
+                        let checked = CheckedRoot::new(epoch, environment, window);
+                        let scheduled = window.next_frame_callback_count().saturating_sub(before);
+                        self.retained.prepared.replace(Some(Prepared {
+                            key: key.clone(),
+                            phases: builder.phases.clone(),
+                            counters: builder.counters.get(),
+                            tree,
+                            flow,
+                            checked,
+                            layout_inputs,
+                            scheduled,
+                            parent: parent.clone(),
+                        }));
+                    };
+                    match &placement {
+                        Some(placement) => placement.enter(window, prepare),
+                        None => prepare(window),
+                    }
+                    record.placement = placement;
+                    ((), record)
+                });
             })
         });
     }
@@ -135,6 +152,24 @@ impl Document {
     /// Кадры, собранные внутри `Window::draw`, а не шагом документа.
     pub fn builds_inside_draw(&self) -> u64 {
         self.retained.inside_draw.get()
+    }
+
+    pub(super) fn frame_attempt(
+        &self,
+        opts: &crate::RenderOpts,
+        prepared: bool,
+    ) -> crate::why::root::Attempt {
+        self.root_phases.begin(
+            self.tree,
+            self.tree,
+            prepared,
+            opts,
+            self.state.root_scroll.is_some(),
+        )
+    }
+
+    pub(crate) fn take_root_phases(&self) -> serde_json::Value {
+        self.root_phases.take()
     }
 
     pub(super) fn frame_builder(
@@ -151,6 +186,8 @@ impl Document {
             store: self.reuse.clone(),
             counters: Cell::new(None),
             layout_keys: key.is_some() && self.state.values.resources_unchanged(),
+            phases: Default::default(),
+            work: self.root_phases.clone(),
         }
     }
 }

@@ -36,7 +36,7 @@ pub(crate) use directx_renderer::*;
 pub(crate) use dispatcher::*;
 pub(crate) use display::*;
 pub(crate) use events::*;
-pub(crate) use frame_request::{DrawCoordinator, post_offscreen_paint};
+pub(crate) use frame_request::{DrawCoordinator, FrameDemand, FramePacer, post_frame_request};
 pub(crate) use keyboard::*;
 pub(crate) use platform::*;
 pub(crate) use system_notifications::*;
@@ -46,8 +46,8 @@ pub(crate) use vsync::*;
 pub(crate) use window::*;
 pub(crate) use wrapper::*;
 
-pub use platform::WindowsPlatform;
 pub use events::RESIZE_PRESENTATION_BOOST;
+pub use platform::WindowsPlatform;
 // KaminIDE patch: kept group images that differed from their redraw.
 pub use directx_renderer::group_scrub_mismatches;
 // KaminIDE patch: stand-only whole-frame check of damage redraw.

@@ -6,7 +6,7 @@ use gpui::LayoutInputCounts;
 use serde_json::{Value, json};
 use std::fmt::Write;
 
-pub(super) fn to_json(counts: LayoutInputCounts) -> Value {
+pub fn to_json(counts: LayoutInputCounts) -> Value {
     if counts.passes == 0 {
         return Value::Null;
     }

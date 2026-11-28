@@ -1,3 +1,4 @@
+mod frame;
 use std::{cell::Cell, rc::Rc, sync::atomic::Ordering};
 
 use anyhow::Context as _;
@@ -29,8 +30,8 @@ pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
 pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_END_SESSION: u32 = WM_USER + 9;
-/// KaminIDE patch: the WM_PAINT of an offscreen (message-only) window.
-pub(crate) const WM_GPUI_OFFSCREEN_PAINT: u32 = WM_USER + 10;
+/// A coalesced paced frame request, independent of the WM_PAINT update region.
+pub(crate) const WM_GPUI_FRAME_REQUEST: u32 = WM_USER + 10;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -104,7 +105,7 @@ impl WindowsWindowInner {
             WM_ERASEBKGND => Some(1),
             WM_NCHITTEST => self.handle_hit_test_msg(handle, lparam),
             WM_PAINT => self.handle_paint_msg(handle),
-            WM_GPUI_OFFSCREEN_PAINT => self.handle_offscreen_paint_msg(handle),
+            WM_GPUI_FRAME_REQUEST => self.handle_frame_request_msg(handle),
             WM_CLOSE => self.handle_close_msg(),
             WM_DESTROY => self.handle_destroy_msg(handle),
             WM_QUERYENDSESSION => Some(1),
@@ -283,10 +284,10 @@ impl WindowsWindowInner {
         // (замер probe: кадр есть за 0.02 с, на экране его нет).
         // KaminIDE patch: an offscreen window has no compositor to lose a
         // present, so it gets no boost (no unrequested frames after WM_SIZE).
-        if self.state.offscreen_paint.is_none() {
-            self.state.resize_boost_until.set(Some(
-                std::time::Instant::now() + RESIZE_PRESENTATION_BOOST,
-            ));
+        if !self.state.offscreen {
+            self.state
+                .resize_boost_until
+                .set(Some(std::time::Instant::now() + RESIZE_PRESENTATION_BOOST));
         }
         // The new size is presented now, focused or not.
         self.draw_window(
@@ -315,6 +316,7 @@ impl WindowsWindowInner {
             self.state
                 .invalidate_devices
                 .store(true, std::sync::atomic::Ordering::Release);
+            self.state.frame_demand.request();
         }
         if let Some(mut callback) = self.state.callbacks.resize.take() {
             callback(new_logical_size, scale_factor);
@@ -377,12 +379,9 @@ impl WindowsWindowInner {
         self.draw_window(handle, NativeDraw::paint(boosted || dropped))
     }
 
-    /// KaminIDE patch: one coalesced offscreen paint; requests arriving while
-    /// it draws post the next one.
-    fn handle_offscreen_paint_msg(&self, handle: HWND) -> Option<isize> {
-        if let Some(pending) = &self.state.offscreen_paint {
-            pending.store(false, Ordering::Release);
-        }
+    /// Release the message slot before drawing so reentrant demand survives.
+    fn handle_frame_request_msg(&self, handle: HWND) -> Option<isize> {
+        self.state.frame_demand.handled();
         self.handle_paint_msg(handle)
     }
 
@@ -942,7 +941,12 @@ impl WindowsWindowInner {
         let new_dpi = wparam.loword() as f32;
 
         let is_maximized = self.state.is_maximized();
-        let new_scale_factor = self.state.display.get().forced_scale.unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
+        let new_scale_factor = self
+            .state
+            .display
+            .get()
+            .forced_scale
+            .unwrap_or(new_dpi / USER_DEFAULT_SCREEN_DPI as f32);
         self.state.scale_factor.set(new_scale_factor);
         self.state.border_offset.update(handle).log_err();
 
@@ -1013,7 +1017,10 @@ impl WindowsWindowInner {
             log::error!("No monitor detected!");
             return None;
         }
-        let new_display = WindowsDisplay::new(WindowsDisplay::display_id_for_monitor(new_monitor), self.state.display.get().forced_scale)?;
+        let new_display = WindowsDisplay::new(
+            WindowsDisplay::display_id_for_monitor(new_monitor),
+            self.state.display.get().forced_scale,
+        )?;
         self.state.display.set(new_display);
         Some(0)
     }
@@ -1375,69 +1382,13 @@ impl WindowsWindowInner {
         // between) is treated as a forced render so it both clears
         // `skip_draws` and bypasses the view cache.
         self.state.force_render_pending.set(true);
+        self.state.frame_demand.request();
         Some(0)
     }
 
     fn handle_dm_pointer_hit_test(&self, wparam: WPARAM) -> Option<isize> {
         self.state.direct_manipulation.on_pointer_hit_test(wparam);
         None
-    }
-
-    #[inline]
-    fn draw_window(&self, handle: HWND, draw: NativeDraw) -> Option<isize> {
-        let NativeDraw { force_render, require_presentation } = draw;
-        log::debug!(target: "gpui::frame", "native force={} present={} pending={}",
-            force_render, require_presentation, self.state.force_render_pending.get());
-        let Some(_guard) = self.state.draw_coordinator.try_begin_draw() else {
-            log::debug!("deferring re-entrant draw of window {handle:?}");
-            if force_render {
-                self.state.force_render_pending.set(true);
-            }
-            // Validate the region so a nested message pump doesn't keep
-            // re-dispatching WM_PAINT for the still-invalid region in a busy
-            // loop until the in-progress draw unwinds. The vsync thread
-            // re-invalidates every window on each vsync (see
-            // `begin_vsync_thread`), so the deferred frame still gets drawn,
-            // at most one vsync late.
-            unsafe { ValidateRect(Some(handle), None).ok().log_err() };
-            return Some(0);
-        };
-        let mut request_frame = self.state.callbacks.request_frame.take()?;
-
-        self.state.direct_manipulation.update();
-
-        let events = self.state.direct_manipulation.drain_events();
-        if !events.is_empty() {
-            if let Some(mut func) = self.state.callbacks.input.take() {
-                for event in events {
-                    func(event);
-                }
-                self.state.callbacks.input.set(Some(func));
-            }
-        }
-
-        let force_render = consume_force_render(force_render, &self.state.force_render_pending);
-        if force_render {
-            // Re-enable drawing after a device loss recovery. The forced render
-            // will rebuild the scene with fresh atlas textures.
-            self.state.renderer.borrow_mut().mark_drawable();
-        }
-        let (signal_at, signal_source) = self.state.frame_signal.take().map_or(
-            (None, FrameRequestSource::NativeCallback),
-            |(at, source)| (Some(at), source),
-        );
-        request_frame(RequestFrameOptions {
-            require_presentation,
-            force_render,
-            signal_at,
-            signal_source,
-        });
-
-        self.state.callbacks.request_frame.set(Some(request_frame));
-        self.update_ime_enabled(handle);
-        unsafe { ValidateRect(Some(handle), None).ok().log_err() };
-
-        Some(0)
     }
 
     #[inline]
@@ -1899,7 +1850,10 @@ mod forced_frame_tests {
         for incoming in [false, true] {
             for deferred in [false, true] {
                 let pending = Cell::new(deferred);
-                assert_eq!(consume_force_render(incoming, &pending), incoming || deferred);
+                assert_eq!(
+                    consume_force_render(incoming, &pending),
+                    incoming || deferred
+                );
                 assert!(!consume_force_render(false, &pending));
             }
         }

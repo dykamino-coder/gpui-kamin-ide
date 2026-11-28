@@ -307,7 +307,9 @@ impl Window {
             let draw = &self.rendered_frame.deferred_draws[index];
             let (nodes, painted, nested) = self.deferred_scroll_part(draw).map_err(|refusal| at(refusal))?;
             plan.draws.insert(index, parts.len() - 1);
-            parts.push((nodes, painted, &self.rendered_frame.scene, draw.groups.clone()));
+            // KaminIDE patch: root-local deferred commands belong to the retained scene.
+            let scene = if draw.local { source } else { &self.rendered_frame.scene };
+            parts.push((nodes, painted, scene, draw.groups.clone()));
             owners.push(Some(draw.scroll.owner));
             draws.extend(nested);
             next += 1;
@@ -418,15 +420,16 @@ impl Window {
                 return Err(at(ScrollRefusal::Groups));
             }
         }
-        // So do those of its deferred draws, in the frame's scene
-        // (`reuse_deferred_paint`).
+        // So do those of its deferred draws, in their owning scene
+        // (`reuse_deferred_paint`). Local draws are inside the retained root.
         let frame = &self.rendered_frame;
         for draw in plan.draws.keys().map(|&index| &frame.deferred_draws[index]) {
             let painted = draw.paint_range.start.scene_index..draw.paint_range.end.scene_index;
             let groups = draw.groups.clone();
             if !groups.is_empty() {
-                let labels = frame.scene.group_labels(painted, groups.clone());
-                if !frame.scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
+                let scene = if draw.local { source } else { &frame.scene };
+                let labels = scene.group_labels(painted, groups.clone());
+                if !scene.groups_scrollable(groups, &labels, |id| plan.by_id.contains_key(&id)) {
                     return Err(at(ScrollRefusal::Groups));
                 }
             }
@@ -529,13 +532,15 @@ impl Window {
             .map(|&(id, at, _)| (id, at))
             .collect();
         edges.extend(dependents.iter().map(|&(_, at)| (at, 0)));
+        edges.extend(self.local_deferred_edges(&scenes, space));
         edges.sort_unstable();
         edges.dedup();
         let node = |id: ScrollNodeId| plan.scaled(id, scale);
         let source = layer.as_deref().map_or(&self.rendered_frame.scene, |layer| layer.scene());
         let from = self.next_frame.scene.paint_operations.len();
-        self.next_frame.scene.replay_scrolled(scenes, source, node, &mut edges);
+        self.next_frame.scene.replay_scrolled(scenes.clone(), source, node, &mut edges);
         let land = |old: usize| edges[edges.partition_point(|edge| edge.0 < old)].1;
+        self.land_local_deferred(&scenes, space, here, land);
         let landed: Vec<_> = dependents.iter().map(|&(id, at)| (id, land(at), here)).collect();
         self.next_frame.scroll_dependents.extend(landed);
         for (index, paint, _, main) in mine {

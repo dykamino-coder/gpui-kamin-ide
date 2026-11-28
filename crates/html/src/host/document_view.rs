@@ -16,6 +16,8 @@ pub struct DocumentView {
     focus: FocusHandle,
     place: Option<ElementPlace>,
     _step: Subscription,
+    #[cfg(feature = "why-profiler")]
+    journal: Option<crate::why::WindowJournal>,
 }
 
 impl DocumentView {
@@ -40,9 +42,35 @@ impl DocumentView {
         let view = cx.weak_entity();
         let step = window.on_update_rendering(move |window, app| {
             let _ = view.update(app, |view, cx| {
-                if let Some(place) = &view.place {
+                #[cfg(feature = "why-profiler")]
+                let mut sample = view.journal.as_ref().map(|j| j.begin(&view.document));
+                if let Some(place) = &view.place
+                    && window.view_needs_rendering(cx.entity_id(), cx)
+                {
                     view.document
-                        .update_rendering(&view.opts, place, window, cx, |_| {});
+                        .update_rendering(&view.opts, place, window, cx, |phase| {
+                            #[cfg(feature = "why-profiler")]
+                            if let Some(sample) = &mut sample {
+                                sample.phase(phase);
+                            }
+                            #[cfg(not(feature = "why-profiler"))]
+                            let _ = phase;
+                        });
+                    #[cfg(feature = "why-profiler")]
+                    if let Some(sample) = &mut sample {
+                        sample.prepared();
+                    }
+                }
+                #[cfg(feature = "why-profiler")]
+                if let Some(sample) = sample {
+                    let weak = cx.weak_entity();
+                    window.defer(cx, move |_, cx| {
+                        let _ = weak.update(cx, |view, _| {
+                            if let Some(journal) = &view.journal {
+                                journal.drawn(sample, &view.document);
+                            }
+                        });
+                    });
                 }
             });
         });
@@ -62,6 +90,8 @@ impl DocumentView {
             },
             focus: cx.focus_handle(),
             _step: step,
+            #[cfg(feature = "why-profiler")]
+            journal: None,
         }
     }
 
@@ -91,6 +121,14 @@ impl DocumentView {
     pub fn document_mut(&mut self) -> &mut Document {
         &mut self.document
     }
+
+    /// Attach the shared DevTools frame journal. Without a recorder there
+    /// are no diagnostic clocks, checkpoints or memory walks in this view.
+    #[cfg(feature = "why-profiler")]
+    pub fn set_journal(&mut self, journal: crate::why::WindowJournal, window: &Window, cx: &App) {
+        journal.sample_memory("open", &self.document, window, cx);
+        self.journal = Some(journal);
+    }
 }
 
 fn css_size(viewport: Size<Pixels>) -> (f32, f32) {
@@ -107,6 +145,13 @@ impl Focusable for DocumentView {
 }
 
 impl Render for DocumentView {
+    fn cached_style(&self) -> Option<gpui::StyleRefinement> {
+        Some(gpui::StyleRefinement {
+            size: size_style(self.opts.viewport),
+            ..Default::default()
+        })
+    }
+
     fn render(&mut self, window: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         self.place = Some(window.element_place());
         let root = self.document.state_rc().root_scroll.clone();
@@ -138,14 +183,28 @@ impl Render for DocumentView {
     }
 }
 
+fn size_style((width, height): (f32, f32)) -> gpui::SizeRefinement<gpui::Length> {
+    gpui::SizeRefinement {
+        width: Some(px(width).into()),
+        height: Some(px(height).into()),
+    }
+}
+
 #[cfg(test)]
 mod bar_wheel_tests;
+#[cfg(test)]
+mod embedding_tests;
 #[cfg(test)]
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
 #[cfg(test)]
 mod fractional_text_tests;
+#[cfg(test)]
+mod host_frame_tests;
+#[cfg(test)]
+#[cfg(feature = "why-profiler")]
+mod journal_tests;
 #[cfg(test)]
 mod nested_scroll_tests;
 #[cfg(test)]
