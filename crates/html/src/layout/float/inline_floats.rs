@@ -25,10 +25,20 @@ pub(crate) fn transparent(e: &Element) -> bool {
 }
 
 pub(crate) fn transparent_with_clear(e: &Element, clearance_possible: bool) -> bool {
+    transparent_box(e, clearance_possible, true)
+}
+
+/// `with_margins: false` asks whether the box would be transparent without its
+/// margins, without a copy of the element that drops them.
+fn transparent_box(e: &Element, clearance_possible: bool, with_margins: bool) -> bool {
     let s = &e.style.used();
     let zero = |v| matches!(v, None | Some(crate::style::values::value::Len::Px(0.0)));
     let undecorated = [
-        s.reset_box_layout.margin,
+        if with_margins {
+            s.reset_box_layout.margin
+        } else {
+            Default::default()
+        },
         s.reset_box_layout.padding,
         s.borders(),
     ]
@@ -66,7 +76,7 @@ pub(crate) fn transparent_with_clear(e: &Element, clearance_possible: bool) -> b
         && s.reset_text_box.vertical_shift_len.is_none()
         // Своё письмо и направление — объявленные: вычисленные наследуются.
         && e.style.cascaded().inh.writing.writing_mode.is_none()
-        && !s.reset_text_box.turned_line
+        && !s.tree.turned_line
         && e.style.cascaded().inh.writing.rtl.is_none()
 }
 
@@ -78,9 +88,7 @@ fn split(node: Node, parent: &BoxStyle, vcx: ValueCx<'_>) -> Vec<Node> {
     // in-flow fragment. Keep its margins there, while the floats belong to
     // the block's shared exclusion space, not an atomic paragraph child.
     let margin_fragment = if !transparent(e) {
-        let mut bare = e.clone();
-        bare.style.used_mut().reset_box_layout.margin = Default::default();
-        transparent(&bare)
+        transparent_box(e, true, false)
             && e.style
                 .cascaded()
                 .inh

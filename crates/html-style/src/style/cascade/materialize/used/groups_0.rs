@@ -3,11 +3,7 @@ use super::*;
 overlay!(
     reset_text_box,
     ResetTextBox,
-    text_shadow_ink,
-    underline,
-    line_through,
     text_align_match_parent,
-    ruby_unit,
     ruby_suppress_breaks,
     text_box_trim_start,
     text_box_trim_end,
@@ -34,9 +30,7 @@ overlay!(
     td_color,
     td_thickness,
     td_inset,
-    decors,
-    ruby_role,
-    turned_line
+    ruby_role
 );
 overlay!(
     reset_cascade,

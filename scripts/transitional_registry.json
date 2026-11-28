@@ -50,11 +50,6 @@
     "reason": "Фильтрация OOF перед children теряет static position среди соседей; удалить отказ в P08 после записи static rect и отдельного OOF resume."
   },
   {
-    "file": "crates/html/src/style/cascade/inherit/context.rs",
-    "task": "cascade-7b-R10",
-    "reason": "Запись box context ребёнка копирует общий Computed через BoxStyle::DerefMut; удалить после переноса этих полей в BoxStyle и перевода paint/layout-made readers."
-  },
-  {
     "file": "crates/html/src/style/computed/box_style.rs",
     "task": "cascade-7b-R10",
     "reason": "Used values остаются в Computed, поэтому differing write клонирует весь стиль; удалить общий storage после перевода paint и layout-made readers на BoxStyle."

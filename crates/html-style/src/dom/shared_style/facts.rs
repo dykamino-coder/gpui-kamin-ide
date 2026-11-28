@@ -17,8 +17,9 @@ pub(super) struct BoxFacts {
     pub(super) decor_box: Option<u64>,
     /// Block layout's used cross-axis placement of the box (`set_flow_align`).
     pub(super) flow_align: Option<Align>,
-    /// What the ancestors of a layout-made box establish (TreeFacts).
-    pub(super) tree: crate::box_facts::TreeFacts,
+    /// What the ancestors of a layout-made box establish and the used values
+    /// layout gave the box (TreeFacts).
+    pub(super) tree: crate::style::computed::TreeFacts,
 }
 
 /// Equal box facts: shared parts by identity, the plain values by value. Block
@@ -92,5 +93,24 @@ impl SharedStyle {
     /// Set the block layout placement (`flow_align`) of this box.
     pub fn set_flow_align(&mut self, align: Align) {
         self.edit_facts(|facts| facts.flow_align = Some(align));
+    }
+
+    /// The used values layout gave this box and the box stage hands down
+    /// (`TreeFacts`), beside the shared computed style.
+    pub fn tree(&self) -> crate::style::computed::TreeFacts {
+        self.box_facts
+            .as_deref()
+            .map(|f| f.tree)
+            .unwrap_or_default()
+    }
+
+    /// Edit the box's used values (`tree`); an edit that changes nothing
+    /// keeps the shared facts.
+    pub fn edit_tree(&mut self, edit: impl FnOnce(&mut crate::style::computed::TreeFacts)) {
+        let mut tree = self.tree();
+        edit(&mut tree);
+        if tree != self.tree() {
+            self.edit_facts(|facts| facts.tree = tree);
+        }
     }
 }

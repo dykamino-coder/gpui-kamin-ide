@@ -43,7 +43,10 @@ pub(super) fn collect_text(
     let retained = runs
         .filter(|_| !t.is_empty())
         .and_then(|runs| runs.next(t, inherited).map(str::to_owned));
-    let text = retained.unwrap_or_else(|| normalize_text(t, inherited, case, ends_with_zwsp(out)));
+    let text = retained.unwrap_or_else(|| {
+        let suppress = inherited.tree.ruby_suppress_breaks;
+        normalize_text(t, inherited, suppress, case, ends_with_zwsp(out))
+    });
     if !text.is_empty() {
         out.push(Piece::Text {
             text,
@@ -56,11 +59,12 @@ pub(super) fn collect_text(
 pub(crate) fn normalize_text(
     t: &str,
     inherited: &crate::style::computed::Computed,
+    suppress_breaks: bool,
     case: &mut text_case::Context,
     previous_zwsp: bool,
 ) -> String {
     let ruby_text;
-    let t = if inherited.reset_text_box.ruby_suppress_breaks && t.contains('\n') {
+    let t = if suppress_breaks && t.contains('\n') {
         ruby_text = t.replace('\n', " ");
         &ruby_text
     } else {

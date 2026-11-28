@@ -4,7 +4,7 @@
 //! предела родителя, ближайшего scrollport и ICB, а используемый размер
 //! зажимается своими min/max; внутренний минимум может превысить запасное место.
 
-pub use crate::box_facts::AxisSizes;
+pub use crate::box_facts::{AxisSizes, InlineConstraint};
 
 impl AxisSizes {
     pub fn limit(self) -> Option<f32> {
@@ -24,14 +24,6 @@ pub enum InlineKeyword {
     MinContent,
     MaxContent,
     FitContent,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct InlineConstraint {
-    pub available: f32,
-    pub fixed: Option<f32>,
-    pub min: Option<f32>,
-    pub max: Option<f32>,
 }
 
 impl InlineConstraint {

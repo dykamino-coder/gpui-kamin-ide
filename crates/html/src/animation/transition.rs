@@ -91,7 +91,20 @@ impl Element for Transition {
         cx: &mut App,
     ) {
         child.paint(window, cx);
-        let hovered = hitbox.is_hovered(window);
+        let hovered = hitbox.is_hovered(window); // The pointer that enters or leaves starts the transition: an input that
+        // changes element state, so a retained frame painted before it is stale
+        // (`gpui::Window::interaction_epoch` counts inputs whose listeners redraw).
+        // A replayed frame keeps this listener, so it tracks the last state it saw.
+        let (target, seen) = (
+            hitbox.clone(),
+            std::rc::Rc::new(std::cell::Cell::new(hovered)),
+        );
+        window.on_mouse_event(move |_: &gpui::MouseMoveEvent, phase, window, _| {
+            let now = target.is_hovered(window);
+            if phase.bubble() && seen.replace(now) != now {
+                window.refresh();
+            }
+        });
         let Some(global_id) = id else { return };
         let frame = self.doc.animation.sample(window, cx);
         // Hitboxes establish the target after layout. A stopped snapshot keeps

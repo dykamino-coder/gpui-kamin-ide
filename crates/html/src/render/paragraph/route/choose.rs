@@ -140,7 +140,7 @@ pub(crate) fn route_pieces(
         // только для кусков, стоячих ЦЕЛИКОМ: смешанный кусок потребовал бы
         // резки на прогоны по ориентации.
         let vert_style;
-        let style = if style.wm().turned()
+        let style = if style.turned_line()
             && !style.wm().sideways()
             && t.chars().any(upright_in_mixed)
             && t.chars().all(|c| c.is_whitespace() || upright_in_mixed(c))
@@ -183,8 +183,8 @@ pub(crate) fn route_pieces(
         indent.px,
         inherited.inh.text_flow.nowrap == Some(true),
         &mut render_text,
-        !inherited.wm().vertical() && !inherited.wm().turned(),
-        (inherited.wm().turned()).then_some(inherited.wm().block_rl()),
+        !inherited.wm().vertical() && !inherited.turned_line(),
+        (inherited.turned_line()).then_some(inherited.wm().block_rl()),
         &opts.cx,
     );
     let row = match record {

@@ -33,7 +33,7 @@ pub(super) async fn special_node(
     if e.tag == "br" {
         // Blink inline_items_builder.cc:58-62 suppresses forced breaks
         // in ruby columns, including bases, until they can be fragmented.
-        if inherited.reset_text_box.ruby_suppress_breaks {
+        if inherited.tree.ruby_suppress_breaks {
             return true;
         }
         cx.case.boundary();

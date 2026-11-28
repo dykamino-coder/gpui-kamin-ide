@@ -49,6 +49,7 @@ mod group_region;
 mod group_stage;
 // KaminIDE patch: a path batch works within the pixels its paths reach.
 mod path_pass;
+mod path_target;
 mod gaussian;
 mod group_atlas;
 mod group_batch;
@@ -449,7 +450,7 @@ struct DirectXResources {
     // Path intermediate texture (with MSAA). KaminIDE patch: the path sprites
     // read its samples (`path_pass`); there is no resolved copy.
     path_intermediate_srv: Option<ID3D11ShaderResourceView>,
-    path_intermediate_msaa_texture: ID3D11Texture2D,
+    path_intermediate_msaa_texture: Option<ID3D11Texture2D>,
     path_intermediate_msaa_view: Option<ID3D11RenderTargetView>,
 
     // Cached viewport
@@ -923,6 +924,7 @@ impl DirectXRenderer {
         within: Option<&[Region]>,
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
+        self.release_unused_path_target(scene);
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
         self.backdrop_pending = self.backdrop.is_some();
         self.layer_cache.begin_frame();
@@ -1576,6 +1578,7 @@ impl DirectXRenderer {
     ) -> Result<()> {
         // KaminIDE patch: recreated buffers hold no known frame (`retained.rs`).
         self.forget_target();
+        self.release_path_target();
         let devices = self.devices.as_ref().context("devices missing")?;
         unsafe { devices.device_context.OMSetRenderTargets(None, None) };
         let resources = self.resources.as_mut().context("resources missing")?;
@@ -2802,6 +2805,7 @@ struct PathSprite {
 
 impl Drop for DirectXRenderer {
     fn drop(&mut self) {
+        self.release_path_target();
         #[cfg(debug_assertions)]
         if let Some(devices) = &self.devices {
             report_live_objects(&devices.device).ok();
@@ -2883,7 +2887,7 @@ fn create_resources(
     (ID3D11Texture2D, Option<ID3D11Texture2D>),
     Option<ID3D11RenderTargetView>,
     Option<ID3D11ShaderResourceView>,
-    ID3D11Texture2D,
+    Option<ID3D11Texture2D>,
     Option<ID3D11RenderTargetView>,
     D3D11_VIEWPORT,
 )> {
@@ -2895,8 +2899,9 @@ fn create_resources(
         None => None,
     };
     let render_target = (render_target, back_buffer);
+    // KaminIDE patch: a reachable path batch allocates its intermediate.
     let (path_intermediate_msaa_texture, path_intermediate_msaa_view, path_intermediate_srv) =
-        create_path_intermediate_msaa_texture_and_view(&devices.device, width, height)?;
+        (None, None, None);
     let viewport = D3D11_VIEWPORT {
         TopLeftX: 0.0,
         TopLeftY: 0.0,
