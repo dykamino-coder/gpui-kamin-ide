@@ -3,6 +3,7 @@
 mod blank_runs;
 mod css_weight;
 mod fallbacks;
+mod size_adjust;
 
 use std::{
     borrow::Cow,
@@ -418,7 +419,7 @@ impl DirectWriteState {
                         font,
                         font_collection,
                         components,
-                        &this.system_font_collection,
+                        &[&this.custom_font_collection, &this.system_font_collection],
                     )
                 })?;
 
@@ -534,7 +535,7 @@ impl DirectWriteState {
         }: &Font,
         collection: &IDWriteFontCollection1,
         components: &DirectWriteComponents,
-        system_font_collection: &IDWriteFontCollection1,
+        fallback_collections: &[&IDWriteFontCollection1],
     ) -> Option<FontInfo> {
         const SYSTEM_UI_FONT_NAME: &str = ".SystemUIFont";
         let factory = &components.factory;
@@ -657,14 +658,9 @@ impl DirectWriteState {
                 let direct_write_features =
                     unsafe { Self::generate_font_features(factory, features).log_err()? };
                 let fallbacks = font_fallbacks.as_ref().and_then(|fallbacks| {
-                    Self::generate_font_fallbacks(
-                        fallbacks,
-                        None,
-                        factory,
-                        system_font_collection,
-                    )
-                    .log_err()
-                    .flatten()
+                    Self::generate_font_fallbacks(fallbacks, None, factory, fallback_collections)
+                        .log_err()
+                        .flatten()
                 });
                 // KaminIDE patch: те же подстановки, но только для своего
                 // семейства — для строк из нескольких семейств (`layout_fallbacks`).
@@ -673,7 +669,7 @@ impl DirectWriteState {
                         fallbacks,
                         Some(family_name),
                         factory,
-                        system_font_collection,
+                        fallback_collections,
                     )
                     .log_err()
                     .flatten()
@@ -759,6 +755,7 @@ impl DirectWriteState {
                     && x.font_collection == y.font_collection
                     && x.face_key == y.face_key
                     && x.features_key == y.features_key
+                    && x.fallback_key == y.fallback_key
             });
             if !joins {
                 ranges += 1;
@@ -813,6 +810,8 @@ impl DirectWriteState {
             let mut vert_ranges: Vec<(u32, u32)> = Vec::new();
             // KaminIDE patch: UTF-16 ranges of blank runs, dropped by the renderer.
             let mut blank_ranges: Vec<(u32, u32)> = Vec::new();
+            // KaminIDE patch: runs whose fallback faces are normalized (`size_adjust`).
+            let mut adjusted: Vec<size_adjust::AdjustedRun> = Vec::new();
             {
                 let mut u8_at = 0usize;
                 let mut u16_at = 0u32;
@@ -829,6 +828,20 @@ impl DirectWriteState {
                     }
                     if blank_runs::is_blank(run.font_size) && len16 > 0 {
                         blank_ranges.push((u16_at, len16));
+                    }                    if len16 > 0
+                        && !blank_runs::is_blank(run.font_size)
+                        && self.fonts[run.font_id.0]
+                            .fallback_key
+                            .as_ref()
+                            .and_then(FontFallbacks::size_adjustment)
+                            .is_some()
+                    {
+                        adjusted.push(size_adjust::AdjustedRun {
+                            start: u16_at,
+                            len: len16,
+                            font: run.font_id,
+                            size: run.font_size.as_f32(),
+                        });
                     }
                     u8_at += run.len;
                     u16_at += len16;
@@ -858,7 +871,9 @@ impl DirectWriteState {
                         &components.locale,
                     )?
                     .cast()?;
-                if let Some(fallbacks) = self.layout_fallbacks(components, font_runs)? {
+                let fallbacks = self.layout_fallbacks(components, font_runs)?;
+
+                if let Some(fallbacks) = fallbacks {
                     format.SetFontFallback(&fallbacks)?;
                 }
 
@@ -925,6 +940,7 @@ impl DirectWriteState {
                     && font_info.font_collection == base.font_collection
                     && font_info.face_key == base.face_key
                     && font_info.features_key == base.features_key
+                    && font_info.fallback_key == base.fallback_key
                 {
                     if run.font_id != applied {
                         folded.push((run_utf8_start, run.len, run.font_id));
@@ -959,6 +975,9 @@ impl DirectWriteState {
                     text_range,
                 )?;
                 text_layout.SetTypography(&font_info.features, text_range)?;
+            }
+            if !adjusted.is_empty() {
+                self.pin_adjusted_faces(components, &text_layout, text_wide, &adjusted)?;
             }
 
             // KaminIDE patch: подъём и спуск строки — от ПЕРВОГО ДОСТУПНОГО
@@ -1772,22 +1791,6 @@ impl DirectWriteState {
                     width: width as f32,
                     height: height as f32,
                 },
-            })
-        }
-    }
-
-    fn get_advance(&self, font_id: FontId, glyph_id: GlyphId) -> Result<Size<f32>> {
-        unsafe {
-            let font = &self.fonts[font_id.0].font_face;
-            let glyph_indices = [glyph_id.0 as u16];
-            let mut metrics = [DWRITE_GLYPH_METRICS::default()];
-            font.GetDesignGlyphMetrics(glyph_indices.as_ptr(), 1, metrics.as_mut_ptr(), false)?;
-
-            let metrics = &metrics[0];
-
-            Ok(Size {
-                width: metrics.advanceWidth as f32,
-                height: 0.0,
             })
         }
     }
