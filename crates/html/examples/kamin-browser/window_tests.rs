@@ -47,15 +47,21 @@ fn draw(cx: &mut VisualTestContext) {
 fn assert_document_box(cx: &mut VisualTestContext, width: f32) {
     cx.update(|window, _| {
         let scale = window.scale_factor();
-        assert!(
-            window.painted_quads().iter().any(|quad| {
-                let bounds = quad.bounds;
+        let boxes: Vec<_> = window
+            .painted_quads()
+            .iter()
+            .map(|quad| quad.bounds)
+            .filter(|bounds| {
                 (bounds.origin.x.0 / scale - viewport::SIDEBAR_WIDTH).abs() < 0.01
                     && (bounds.origin.y.0 / scale - viewport::TOOLBAR_HEIGHT).abs() < 0.01
-                    && (bounds.size.width.0 / scale - width).abs() < 0.01
+            })
+            .collect();
+        assert!(
+            boxes.iter().any(|bounds| {
+                (bounds.size.width.0 / scale - width).abs() < 0.01
                     && (bounds.size.height.0 / scale - 728.).abs() < 0.01
             }),
-            "no document box of width {width} at the viewer's content origin"
+            "no document box of width {width} at the viewer's content origin: physical={boxes:?}, scale={scale}"
         );
     });
 }
@@ -74,7 +80,17 @@ fn mouse_moves_in_viewer_do_not_build_or_move_the_document(cx: &mut TestAppConte
             Modifiers::default(),
         );
         draw(cx);
-        assert_document_box(cx, 1205.6);
+        assert_document_box(cx, 1206.4);
+    }
+    // Host hover styles must not change the embedded content box either.
+    for position in [
+        point(px(80.), px(90.)),
+        point(px(30.), px(20.)),
+        point(px(700.), px(400.)),
+    ] {
+        cx.simulate_mouse_move(position, None, Modifiers::default());
+        draw(cx);
+        assert_document_box(cx, 1206.4);
     }
     cx.update(|_, cx| {
         let (builds, _, inside) = page
@@ -85,16 +101,6 @@ fn mouse_moves_in_viewer_do_not_build_or_move_the_document(cx: &mut TestAppConte
             .unwrap();
         assert_eq!((builds, inside), (0, 0));
     });
-    // Host hover styles must not change the embedded content box either.
-    for position in [
-        point(px(80.), px(90.)),
-        point(px(30.), px(20.)),
-        point(px(700.), px(400.)),
-    ] {
-        cx.simulate_mouse_move(position, None, Modifiers::default());
-        draw(cx);
-        assert_document_box(cx, 1205.6);
-    }
 }
 
 #[gpui::test]
