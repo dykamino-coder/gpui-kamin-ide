@@ -1753,6 +1753,8 @@ pub struct Quad {
     pub border_color: Hsla,
     pub corner_radii: Corners<ScaledPixels>,
     pub border_widths: Edges<ScaledPixels>,
+    /// KaminIDE patch: elliptical corners (`CornerEllipse`); off: circular.
+    pub ellipse: CornerEllipse,
     /// KaminIDE patch: преобразование квада (`transform` в CSS).
     ///
     /// У спрайтов оно было с самого начала, у квадов — нет, поэтому повернуть
@@ -1763,6 +1765,35 @@ pub struct Quad {
     /// Поле идёт ПОСЛЕДНИМ и обязано совпадать с концом `struct Quad` в
     /// `shaders.hlsl`: раскладка структуры уезжает молча, без ошибки сборки.
     pub transformation: TransformationMatrix,
+}
+
+/// KaminIDE patch: the vertical radii of a quad's corners, its
+/// `corner_radii` holding the horizontal ones (css-backgrounds-3 §5.1:
+/// `border-radius: H / V` gives each corner a quarter ellipse; a percentage
+/// on a box that is not square does too). Radii come already reduced by the
+/// one factor of §5.5, so the quad does not clamp them. The shader draws the
+/// border's inner edge as the outer ellipse shrunk by the border widths of
+/// its two sides (§5.4). Without it (`on == 0`) a corner is the circle of
+/// its `corner_radii`. Blink draws such a box as one `SkRRect` (elliptical
+/// radii per corner) rather than through a mask.
+#[derive(Default, Debug, Copy, Clone, PartialEq)]
+#[repr(C)]
+pub struct CornerEllipse {
+    /// Vertical radius per corner: top left, top right, bottom right, bottom left.
+    pub radii_y: [f32; 4],
+    /// Nonzero: the corners are the ellipses `corner_radii` by `radii_y`.
+    pub on: u32,
+    /// The border's style: 0 solid, 1 double (two lines of a third of the
+    /// width each, css-backgrounds-3 §4.2).
+    pub style: u32,
+    /// Nonzero: the sides take `side_colors` instead of the quad's border
+    /// colour, meeting on each corner's diagonal from the outer to the inner
+    /// corner (css-backgrounds-3 §4.4).
+    pub sides: u32,
+    /// Layout padding to 16 bytes (`shaders.hlsl`).
+    pub pad: u32,
+    /// Top, right, bottom and left side colours (`sides`).
+    pub side_colors: [Hsla; 4],
 }
 
 impl From<Quad> for Primitive {
