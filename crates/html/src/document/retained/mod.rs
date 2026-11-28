@@ -76,6 +76,7 @@ mod moved_rows_tests;
 mod paint_damage_tests;
 #[cfg(all(test, windows))]
 mod paint_pixels_tests;
+mod placement;
 mod prepared;
 #[cfg(test)]
 mod rebuild_key_tests;
@@ -109,6 +110,8 @@ mod resize_tests;
 mod restyle_run_tests;
 #[cfg(test)]
 mod reuse_tests;
+#[cfg(test)]
+mod root_phase_tests;
 #[cfg(test)]
 mod svg_paint_tests;
 #[cfg(test)]
@@ -172,11 +175,17 @@ impl Document {
     /// Собрать кадр документа в коробке области просмотра (`opts.viewport`)
     /// либо повторить прошлый, если ни один его вход не изменился.
     pub fn render_viewport(&self, opts: &crate::RenderOpts) -> AnyElement {
+        self.root_phases
+            .called(crate::why::root::Work::RenderViewport);
         let key = FrameKey::of(opts);
         let candidate =
             self.retained.inputs(key.as_ref()).is_ok() && self.state.values.resources_unchanged();
         let prepared = self.retained.take_prepared(&key);
-        let builder = self.frame_builder(opts, &key);
+        let mut builder = self.frame_builder(opts, &key);
+        builder.phases = prepared.as_ref().map_or_else(
+            || self.frame_attempt(opts, false),
+            |prepared| prepared.phases.clone(),
+        );
         element::Retained::new(self.retained.clone(), key, builder, candidate, prepared)
             .into_any_element()
     }

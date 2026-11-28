@@ -46,6 +46,11 @@ impl PartialEq for WindowKey {
 }
 
 impl WindowKey {
+    /// The exact logical bounds compared by the frame key, for the shared journal.
+    pub(super) fn bounds(&self) -> Bounds<Pixels> {
+        self.bounds
+    }
+
     /// No hover style asked for a redraw between the two frames.
     pub(super) fn same_hovers(&self, other: &Self) -> bool {
         self.hovers == other.hovers

@@ -18,6 +18,7 @@ impl Document {
         );
         self.reuse.rebase(&self.nodes, &next.nodes, restyled);
         next.reuse = self.reuse.clone();
+        next.root_phases = self.root_phases.clone();
     }
 
     /// The names the attribute mutations of `batch` change, for the rebuild

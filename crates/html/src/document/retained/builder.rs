@@ -21,6 +21,8 @@ pub(super) struct Builder {
     /// No resource changed since the previous frame: the window's frame tree
     /// may keep measured leaves by their layout keys (gpui::Window::with_layout_keys).
     pub(super) layout_keys: bool,
+    pub(super) phases: crate::why::root::Attempt,
+    pub(super) work: crate::why::root::Journal,
 }
 
 impl Builder {
@@ -37,6 +39,7 @@ impl Builder {
         drawn: bool,
         hover: gpui::HoverView,
     ) -> (AnyElement, Option<Rc<FlowReuse>>) {
+        let _phase = self.phases.enter(crate::why::root::Phase::Build);
         let (w, h) = self.opts.viewport;
         let again = self.counters.get().is_some();
         match self.counters.get() {
