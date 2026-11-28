@@ -58,6 +58,9 @@ impl DirectXRenderer {
             whole("gpu/target/shift-scratch", scratch);
         }
         let blur = &self.blur;
+        for texture in blur.mask_cache.textures() {
+            whole("gpu/group/mask", texture);
+        }
         let single = [
             ("gpu/group/stage", &blur.stage),
             ("gpu/group/level-backdrop", &blur.level_backdrop),
