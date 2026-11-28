@@ -97,9 +97,40 @@ fn records_stay_bounded_per_style() {
         box_style(&BoxStyle::new(parent), &p.style, vcx);
     }
     let held = p.style.stage_memo().0.borrow().len();
-    assert_eq!(held, 1);
+    assert_eq!(held, ENTRIES);
     // One record: the remembered box style and its keys, the parent facts shared by siblings.
     assert!(entry_bytes() < 2 * std::mem::size_of::<BoxStyle>());
+}
+
+#[test]
+fn two_parent_variants_in_one_frame_both_keep_their_record() {
+    // An inline box is built under its parent with and without the parent's band: the
+    // stage of the child holds for both, frame after frame.
+    let parsed = crate::dom::parse(r#"<body><p>a</p></body>"#, "");
+    let vcx = parsed.values();
+    let root = Rc::new(Computed::default());
+    materialize(&parsed.nodes, &root, vcx);
+    let p = element(&parsed.nodes, "p");
+    let plain = BoxStyle::shared(root.clone());
+    let mut banded = BoxStyle::shared(root);
+    banded.inline_decoration.band_owner = 275;
+    box_style(&plain, &p.style, vcx);
+    box_style(&banded, &p.style, vcx);
+    let _reader = crate::journal::test_reader();
+    drop(crate::journal::take());
+    for _frame in 0..2 {
+        assert_eq!(find(&plain, &p.style, vcx), Ok(()));
+        assert_eq!(find(&banded, &p.style, vcx), Ok(()));
+    }
+    // The journal counts a request once: the record of the other variant is not a miss.
+    let journal = crate::journal::take();
+    let stage = &journal.caches["box_stage.parent"];
+    assert_eq!(
+        (stage.hits, stage.misses.len()),
+        (4, 0),
+        "{:?}",
+        stage.misses
+    );
 }
 
 #[test]

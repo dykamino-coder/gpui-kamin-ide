@@ -141,7 +141,9 @@ pub(super) fn element_style(
     }
     let mut painted_bg = merged.inline_decoration.band_color.is_some();
     if own_border && !own_bg && !painted_bg {
-        let id = BORDER_BAND.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // The node number, not a running count: the band is the same in every build,
+        // so the box stage of the descendants keeps its record (ParentFacts).
+        let id = e.node_id;
         merged.inline_decoration.band_color = Some(Color {
             r: (id % 251) as f32 / 251.0,
             g: ((id / 251) % 251) as f32 / 251.0,

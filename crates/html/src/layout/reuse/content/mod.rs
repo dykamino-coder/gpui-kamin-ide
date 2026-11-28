@@ -20,7 +20,7 @@ pub(super) mod inert;
 mod key;
 mod record;
 pub(crate) mod shared;
-pub(super) use key::{inert_node, inert_tree};
+pub(super) use key::{inert_node, inert_tree, key as box_key};
 
 use super::replay::{PendingReplay, Replay, ReplayRecord, ReplaySlot};
 use super::{Counters, FlowReuse};
@@ -167,8 +167,10 @@ impl FlowReuse {
             .all(|item| item.replays_clipped() && item.hovers_hold(&self.hover));
         let images = || opts.cx.vcx().doc.replay_image_reads(&record.images);
         if !clean || cut || !record.key.same(&content.key, record.widths) || !images() {
+            crate::work::add!(ContentsRefusedBeforeLayout, 1);
             return None;
         }
+        crate::work::add!(ContentsReplayed, 1);
         if record.widths {
             // The replayed output read the widths: so does this build, for
             // the records of the subtrees around it.

@@ -78,15 +78,38 @@ fn width_dependent_atoms_are_refused_by_name(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn text_paragraphs_are_refused_by_name(cx: &mut TestAppContext) {
+fn text_paragraphs_are_kept_across_width_changes(cx: &mut TestAppContext) {
+    // A width change breaks the lines of each paragraph again without building it:
+    // the frame at every width equals a fresh document's (`compare`).
     let text = "alpha beta gamma delta ".repeat(12);
     let rows: String = (0..40).map(|i| format!("<p>{i} {text}</p>")).collect();
     let page = format!("<body style='margin:0'><div style='padding:1px'>{rows}</div></body>");
     let stats = compare(cx, &page, &[401., 300., 400.]);
-    let text_only = stats.refused[Refusal::TextOnly as usize];
     assert!(
-        stats.recorded == 0 && text_only >= 40,
-        "text-only paragraphs must not be kept: {stats:?}"
+        stats.recorded >= 40 && stats.resumed >= 2 * 40,
+        "text paragraphs were built again: {stats:?}"
+    );
+}
+
+#[gpui::test]
+fn anonymous_runs_and_atom_content_are_kept_by_their_flow(cx: &mut TestAppContext) {
+    // Runs between blocks have an anonymous box (no element of their own) and text inside
+    // an inline-block lies one atom deep: both are kept and broken again at a new width.
+    let text = "alpha beta gamma delta ".repeat(6);
+    let rows: String = (0..20)
+        .map(|i| {
+            format!(
+                "<div>{i} run {text}<p>block</p>{text} \
+                 <span style='display:inline-block;width:120px'>{text}</span></div>"
+            )
+        })
+        .collect();
+    let page = format!("<body style='margin:0'>{rows}</body>");
+    let stats = compare(cx, &page, &[401., 300., 400.]);
+    let refused = |r: Refusal| stats.refused[r as usize];
+    assert!(
+        refused(Refusal::NoBox) == 0 && refused(Refusal::Clamp) == 0 && stats.resumed >= 60,
+        "anonymous runs or atom content were built again: {stats:?}"
     );
 }
 

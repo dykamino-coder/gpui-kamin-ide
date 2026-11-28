@@ -88,6 +88,13 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
         vcx.doc.viewport.set_icb_scroll_insets(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
+    if e.tag == "html-viewport" && merged.tree.orthogonal_scrollport.is_some() {
+        // The window's scrollport is the initial containing block, which the readers of
+        // the nearest scrollport fall back to (`orthogonal_inline::available`). Carrying
+        // its sizes down would put the window width into the parent facts of every box
+        // of the document, and a width change would miss every box stage.
+        merged.tree.orthogonal_scrollport = inherited.tree.orthogonal_scrollport;
+    }
     merged
 }
 
