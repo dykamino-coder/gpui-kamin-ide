@@ -28,7 +28,9 @@ pub(crate) mod subtree;
 mod values;
 
 pub(crate) use clamp::ClampContext;
-pub(crate) use constraints::{BoxConstraints, FragmentConstraints, WidthBasis, WidthSink};
+pub(crate) use constraints::{
+    BoxConstraints, FragmentConstraints, WidthBasis, WidthSink, scoped::ScopedWidths,
+};
 pub(crate) use contracts::BuildContext;
 pub use deferred::DeferredPaintContext;
 pub(crate) use fragmentation::FragmentationContext;

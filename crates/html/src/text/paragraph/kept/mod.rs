@@ -33,6 +33,7 @@ impl KeptSlot {
         self.0.take()
     }
 
+    #[cfg(test)]
     pub(crate) fn is_filled(&self) -> bool {
         let kept = self.0.take();
         let filled = kept.is_some();
@@ -98,6 +99,15 @@ impl Kept {
     /// The state of a resumed paragraph in this frame.
     fn resumed(&mut self) -> Option<&mut State> {
         self.0.as_deref_mut().filter(|s| s.lazy.is_some())
+    }
+}
+
+impl Drop for Paragraph {
+    fn drop(&mut self) {
+        // Only a recorded or resumed paragraph that was not painted holds a slot.
+        if self.kept.0.is_some() {
+            self.keep_painted();
+        }
     }
 }
 
@@ -181,8 +191,10 @@ impl Paragraph {
         }
     }
 
-    /// After the paint: move into the slot, without the frame's elements and
-    /// frame state. A paragraph with an atom off its kept size is not kept.
+    /// After the paint, or when a discarded build drops it unpainted: move into
+    /// the slot, without the frame's elements and frame state, so the build that
+    /// replaces it in the same frame takes it too. A paragraph with an atom off
+    /// its kept size is not kept.
     pub(crate) fn keep_painted(&mut self) {
         let Some(s) = self.kept.0.as_deref_mut() else {
             return;

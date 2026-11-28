@@ -22,7 +22,7 @@ pub fn key_of(e: &crate::dom::Element) -> u64 {
 /// `normal` (в том числе не задано) при непустой `position-area`
 /// (§position-anchor: «normal: If position-area is none, behaves as none.
 /// Otherwise, behaves as auto»).
-pub(super) fn wants_implicit(c: &Computed) -> bool {
+pub(crate) fn wants_implicit(c: &Computed) -> bool {
     match &c.reset_positioned.position_anchor {
         Some(PositionAnchor::Auto) => true,
         Some(PositionAnchor::Normal) | None => c.reset_positioned.position_area.is_some(),

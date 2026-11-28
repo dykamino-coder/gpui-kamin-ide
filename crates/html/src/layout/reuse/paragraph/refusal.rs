@@ -33,10 +33,12 @@ pub(crate) enum Refusal {
     AtomPath,
     /// The paragraph holds what a later frame could not lay out without a build.
     Paragraph,
+    /// The nodes make no piece (collapsed white space): an empty box, nothing to keep.
+    Empty,
 }
 
 /// The number of refusals (`KeepStats::refused`).
-pub(crate) const REFUSALS: usize = Refusal::Paragraph as usize + 1;
+pub(crate) const REFUSALS: usize = Refusal::Empty as usize + 1;
 
 impl Refusal {
     /// The `why` journal's work counter of this refusal.
@@ -83,6 +85,9 @@ impl Refusal {
             }
             Refusal::Paragraph => {
                 crate::work::add!(ParagraphsRefusedParagraph, 1);
+            }
+            Refusal::Empty => {
+                crate::work::add!(ParagraphsRefusedEmpty, 1);
             }
         }
     }
