@@ -45,7 +45,7 @@ impl Window {
         self.retained_continuity
             .retain(|record| record.strong_count() != 0);
         let record = Rc::new(Continuity {
-            window: self.window_handle(),
+            window: Window::window_handle(self),
             prepaint: prepaint.clone(),
             paint: paint.clone(),
             prepaint_serial: Cell::new(self.frame_serial()),
