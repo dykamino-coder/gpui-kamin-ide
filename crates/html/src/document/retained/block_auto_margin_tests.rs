@@ -6,70 +6,77 @@ use gpui::{TestAppContext, px, size};
 
 #[gpui::test]
 fn board_appearance_auto_margins_follow_the_final_constrained_width(cx: &mut TestAppContext) {
-    for width in [375.0_f32, 800.0, 1440.0] {
-        for (rule, expected) in [
-            ("", width),
-            ("max-width:20em", width.min(400.0)),
-            ("width:80%;max-width:20em", (width * 0.8).min(400.0)),
-            ("width:200px", 200.0),
-            ("max-width:20ch", -1.0),
-            ("width:80%;max-width:20ch", -0.8),
-            ("max-width:20em;padding:0 20px", width.min(440.0)),
-            (
-                "width:80%;max-width:20em;padding:0 20px",
-                (width * 0.8 + 40.0).min(440.0),
-            ),
-        ] {
-            let html = format!(
-                "<style>html,body{{margin:0;font-size:20px}}div{{height:20px;\
+    for child in ["", "<span>x</span>", "<div style='height:0'></div>"] {
+        for width in [375.0_f32, 800.0, 1440.0] {
+            for (rule, expected) in [
+                ("", width),
+                ("max-width:20em", width.min(400.0)),
+                ("width:80%;max-width:20em", (width * 0.8).min(400.0)),
+                ("width:200px", 200.0),
+                ("max-width:20ch", -1.0),
+                ("width:80%;max-width:20ch", -0.8),
+                ("max-width:20em;padding:0 20px", width.min(440.0)),
+                (
+                    "width:80%;max-width:20em;padding:0 20px",
+                    (width * 0.8 + 40.0).min(440.0),
+                ),
+            ] {
+                let html = format!(
+                    "<style>html,body{{margin:0;font-size:20px}}div{{height:20px;\
                  margin:0 auto;background:blue;{rule}}}#unit{{width:20ch;height:1px;\
-                 margin:0;background:red}}</style><div></div><div id=unit></div>"
-            );
-            let mut app = cx.clone();
-            let (view, vcx) = open(&mut app, &html);
-            vcx.simulate_resize(size(px(width), px(300.0)));
-            vcx.update(|_, cx| view.update(cx, |view, _| view.viewport = (width, 300.0)));
-            frame(vcx);
-            let (boxes, ch_limit, painted) = vcx.update(|window, _| {
-                let scale = window.scale_factor();
-                let quads = window.painted_quads();
-                let painted = format!("{quads:?}");
-                let ch_limit = quads
-                    .iter()
-                    .find(|q| q.background.as_solid() == Some(gpui::red()))
-                    .expect("reference glyph width")
-                    .bounds
-                    .size
-                    .width
-                    .0
-                    / scale;
-                let boxes = quads
-                    .into_iter()
-                    .filter(|quad| quad.background.as_solid() == Some(gpui::blue()))
-                    .map(|quad| {
-                        (
-                            (quad.bounds.origin.x.0 + quad.transformation.translation[0]) / scale,
-                            quad.bounds.size.width.0 / scale,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                (boxes, ch_limit, painted)
-            });
-            let expected = if expected < 0.0 {
-                (width * -expected).min(ch_limit)
-            } else {
-                expected
-            };
-            assert_eq!(boxes.len(), 1, "{width} {rule}: {boxes:?}; {painted}");
-            let (x, actual) = boxes[0];
-            assert!(
-                (actual - expected).abs() <= 1.0,
-                "{width} {rule}: {boxes:?}"
-            );
-            assert!(
-                (x - (width - expected) / 2.0).abs() <= 1.0,
-                "{width} {rule}: {boxes:?}"
-            );
+                 margin:0;background:red}}</style><div>{child}</div><div id=unit></div>"
+                );
+                let mut app = cx.clone();
+                let (view, vcx) = open(&mut app, &html);
+                vcx.simulate_resize(size(px(width), px(300.0)));
+                vcx.update(|_, cx| view.update(cx, |view, _| view.viewport = (width, 300.0)));
+                frame(vcx);
+                let (boxes, ch_limit, painted) = vcx.update(|window, _| {
+                    let scale = window.scale_factor();
+                    let quads = window.painted_quads();
+                    let painted = format!("{quads:?}");
+                    let ch_limit = quads
+                        .iter()
+                        .find(|q| q.background.as_solid() == Some(gpui::red()))
+                        .expect("reference glyph width")
+                        .bounds
+                        .size
+                        .width
+                        .0
+                        / scale;
+                    let boxes = quads
+                        .into_iter()
+                        .filter(|quad| quad.background.as_solid() == Some(gpui::blue()))
+                        .map(|quad| {
+                            (
+                                (quad.bounds.origin.x.0 + quad.transformation.translation[0])
+                                    / scale,
+                                quad.bounds.size.width.0 / scale,
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    (boxes, ch_limit, painted)
+                });
+                let expected = if expected < 0.0 {
+                    (width * -expected).min(ch_limit)
+                } else {
+                    expected
+                };
+                assert_eq!(
+                    boxes.len(),
+                    1,
+                    "{width} {rule} {child}: {boxes:?}; {painted}"
+                );
+                let (x, actual) = boxes[0];
+                assert!(
+                    (actual - expected).abs() <= 1.0,
+                    "{width} {rule}: {boxes:?}"
+                );
+                assert!(
+                    (x - (width - expected) / 2.0).abs() <= 1.0,
+                    "{width} {rule}: {boxes:?}"
+                );
+            }
         }
     }
 }

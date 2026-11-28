@@ -188,25 +188,11 @@ pub(super) async fn generic_box_stack(
         if e.style.used().reset_box_layout.width.is_none() {
             d = d.flex_shrink_0();
         }
-    } else if e.style.used().reset_box_layout.display.is_none() {
-        // Блок без явного `display` — блочная раскладка taffy, а не
-        // гибкая колонка. Колонка навязывала детям сжатие: ребёнок
-        // выше родителя ужимался, тогда как браузер даёт ему вылезти.
-        // Схлопывание вертикальных отступов при этом делает сама
-        // раскладка — включая протекание через пустой блок.
-        d = d.flex().flex_col();
-        // The column stands for a block container: its baselines are those of
-        // the first/last child that has one (CSS 2.1 §10.8.1), not a baseline
-        // synthesized from the first child's edge (subgrid/baseline-001-ref:
-        // an empty sized block before a text block).
-        d.style().block_baselines = Some(true);
-        // rtl-прижим переполняющих блоков — ТОЧЕЧНЫЙ align_self End
-        // детям с заданной шириной (в blocks): items_end на контейнере
-        // снимал stretch у всех, и абзац в rtl ужимался до текста —
-        // text-align внутри пустел (text-align-end-001: bw=124.8
-        // вместо 300). Известный след: spot-механика
-        // `abs-pos-border-offset-*` полагалась на items_end.
     }
+    // Preserve the native block formatting context (CSS 2 §9.4.1). A flex
+    // column instead shrink-wraps auto-width children with auto inline margins;
+    // block layout fills their containing block before min/max constraints and
+    // auto-margin distribution (§10.3.3, §10.4).
     // Ряд по умолчанию — но не тогда, когда письмо справа налево:
     // там ряд обязан идти в обратную сторону, и общая ветка его
     // разворот отменяла. Письмо — СЛИТОЕ: `direction` наследуется

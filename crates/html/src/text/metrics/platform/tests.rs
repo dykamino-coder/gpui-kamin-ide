@@ -55,10 +55,10 @@ fn installed_alias_generic_mono_and_language_keep_the_existing_order() {
     assert_eq!(snapshot.mono_family(None), "Consolas");
     assert_eq!(snapshot.mono_family(Some("JA-jp")), "MS Gothic");
     assert_eq!(snapshot.mono_family(Some("en")), "Consolas");
-    // M preserves the old named-family-first branch; changing list order is S.
+    // CSS Fonts 4 section 2.1 keeps generics in the authored list order.
     assert_eq!(
         family(&doc, "serif, Ahem").inh.font.font_family.as_deref(),
-        Some("Ahem")
+        Some("Times New Roman")
     );
 }
 
