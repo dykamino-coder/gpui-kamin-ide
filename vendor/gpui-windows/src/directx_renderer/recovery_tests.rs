@@ -24,6 +24,7 @@ mod damage;
 mod present;
 mod analytic_gradient;
 mod lazy_programs;
+mod path_target;
 
 #[test]
 fn effects_follow_device_generation_after_repeated_recovery() {
