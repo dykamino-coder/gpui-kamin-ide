@@ -73,6 +73,12 @@ impl ColumnStack {
                 });
                 match probe {
                     Some((f, margin)) if source.static_block => (f.col, f.y + margin),
+                    // A static inline position lies in the column that holds
+                    // the placeholder (css-position-3 §static-position); the
+                    // block position resolves against the container itself.
+                    Some((f, _)) if source.static_inline => {
+                        (f.col, offset(source.metrics.normal_rect()))
+                    }
                     _ => (0, offset(source.metrics.normal_rect())),
                 }
             } else {

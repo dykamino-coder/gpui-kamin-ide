@@ -95,6 +95,7 @@ impl Recorder {
                 fixed: flow.fixed.get(),
                 inside_fixed: parent_fixed,
                 static_block: flow.static_block.get(),
+                static_inline: flow.static_inline.get(),
                 root,
                 native,
                 transform: flow.transform,

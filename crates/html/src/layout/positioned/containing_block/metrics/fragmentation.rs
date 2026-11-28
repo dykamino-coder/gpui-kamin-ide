@@ -30,6 +30,8 @@ pub(crate) struct Source {
     pub(crate) fixed: bool,
     pub(crate) inside_fixed: bool,
     pub(crate) static_block: bool,
+    /// Both inline insets are `auto`: the inline position is static.
+    pub(crate) static_inline: bool,
     /// Outermost enclosing absolute/fixed flow (itself at the top): its own
     /// capture paints every nested continuation once (`paint::continuation`).
     pub(crate) root: u64,
@@ -50,6 +52,7 @@ struct Flow {
     policy: Cell<FixedPolicy>,
     fixed: Cell<bool>,
     static_block: Cell<bool>,
+    static_inline: Cell<bool>,
     /// Anchor-positioned: the settling pass places it (`layout::source`).
     anchored: bool,
     transform: Option<crate::style::computed::FlatTransform>,
@@ -91,22 +94,20 @@ impl Recording {
         if let Some(flow) = self.flows.iter().find(|f| f.id == id) {
             flow.fixed
                 .set(style.reset_positioned.position == Some(Position::Fixed));
-            let edges = if self.axis.is_vertical() {
-                [
-                    style.reset_positioned.inset.left,
-                    style.reset_positioned.inset.right,
-                ]
+            let inset = style.reset_positioned.inset;
+            let (horizontal, vertical) = ([inset.left, inset.right], [inset.top, inset.bottom]);
+            let (block, inline) = if self.axis.is_vertical() {
+                (horizontal, vertical)
             } else {
-                [
-                    style.reset_positioned.inset.top,
-                    style.reset_positioned.inset.bottom,
-                ]
+                (vertical, horizontal)
             };
-            flow.static_block.set(
+            let free = |edges: [_; 2]| {
                 !edges
                     .into_iter()
-                    .any(crate::layout::positioned::predicates::edge_set),
-            );
+                    .any(crate::layout::positioned::predicates::edge_set)
+            };
+            flow.static_block.set(free(block));
+            flow.static_inline.set(free(inline));
             flow.policy.set(FixedPolicy::for_box(
                 style.reset_positioned.position == Some(Position::Fixed),
                 style.fixed_cb_node != 0,
@@ -170,6 +171,7 @@ impl Recorder {
                     policy: Cell::new(FixedPolicy::Fragment),
                     fixed: Cell::new(false),
                     static_block: Cell::new(false),
+                    static_inline: Cell::new(false),
                     anchored: anchored(e),
                     transform: crate::style::computed::FlatTransform::of(
                         &crate::style::computed::BoxStyle::shared(e.style.used()),
