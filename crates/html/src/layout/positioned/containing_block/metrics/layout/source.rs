@@ -9,6 +9,8 @@ use gpui::{
     App, AvailableSpace, Bounds, Div, IntoElement, ParentElement, Styled, Window, div, px, size,
 };
 use std::rc::Rc;
+mod children;
+use children::Children;
 
 pub(crate) fn collect(
     kids: &[Element],
@@ -63,32 +65,6 @@ pub(crate) fn collect_paged(
         window,
         cx,
     )
-}
-
-enum Children<'a> {
-    Elements(&'a [Element]),
-    Nodes(&'a [Node], Option<(f32, Option<f32>)>),
-}
-
-impl Children<'_> {
-    fn elements(&self) -> Box<dyn Iterator<Item = &Element> + '_> {
-        match self {
-            Self::Elements(kids) => Box::new(kids.iter()),
-            Self::Nodes(nodes, _) => Box::new(nodes.iter().filter_map(|n| match n {
-                Node::Element(e) => Some(e),
-                _ => None,
-            })),
-        }
-    }
-    fn build(&self, parent: &BoxStyle, opts: &RenderOpts) -> Vec<gpui::AnyElement> {
-        match self {
-            Self::Elements(kids) => kids
-                .iter()
-                .map(|c| opts.cx.contracts.build.element(c, parent, opts))
-                .collect(),
-            Self::Nodes(nodes, _) => opts.cx.contracts.build.blocks(nodes, parent, opts),
-        }
-    }
 }
 
 fn collect_in(
