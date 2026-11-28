@@ -5,9 +5,10 @@
 //! on the container's box style and on a few scalars of its context, and on the width
 //! only when the preparation read it. A frame at a new width takes the list as it was:
 //! Blink keeps its layout tree across a resize and Gecko its frame tree; neither rebuilds
-//! the box structure for a new width. The key is the container's box and build epoch
-//! (any change of the DOM or of a style below it, a script mutation included), its box
-//! values, the nodes it was given, the scalars, and the outside widths only when read.
+//! the box structure for a new width. The key is the container's box and build epoch (an
+//! anonymous container: its parent's kept copies), its box values, the nodes it was given
+//! compared shallowly (an edit below them, a script mutation included, gives them new
+//! children snapshots), the scalars, and the widths only when the preparation read them.
 
 use super::FlowReuse;
 use crate::dom::{BoxId, Node};
@@ -38,7 +39,9 @@ pub(crate) struct PlanStats {
 }
 
 struct Entry {
-    owner: BoxId,
+    /// The container's box; an anonymous container has none and is known by its nodes,
+    /// the copies its parent's kept list holds.
+    owner: Option<BoxId>,
     /// `BoxTree::build_epoch` of the owner when the list was prepared.
     at: u32,
     /// The nodes the container was given: address and length of the slice, and the nodes.
@@ -103,7 +106,7 @@ impl Entry {
 }
 
 struct Key<'a> {
-    owner: BoxId,
+    owner: Option<BoxId>,
     at: u32,
     nodes: (usize, usize),
     sources: &'a [Node],
@@ -133,12 +136,14 @@ impl FlowReuse {
                 Some((id, boxes.build_epoch(id)?))
             })
             .flatten();
-        let Some((owner, at)) = owner else {
-            crate::work::add!(ChildPlansNoBox, 1);
-            plans.count(|s| s.no_box += 1);
-            return Rc::new(make());
+        let (owner, at, id) = match owner {
+            Some((owner, at)) => (Some(owner), at, super::content::box_key(owner)),
+            None => {
+                crate::work::add!(ChildPlansNoBox, 1);
+                plans.count(|s| s.no_box += 1);
+                (None, 0, (nodes.as_ptr() as u64).rotate_right(1))
+            }
         };
-        let id = super::content::box_key(owner);
         let key = Key {
             owner,
             at,
