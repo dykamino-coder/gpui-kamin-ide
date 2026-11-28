@@ -195,6 +195,8 @@ mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;
 #[cfg(test)]
+mod fractional_text_tests;
+#[cfg(test)]
 mod host_frame_tests;
 #[cfg(test)]
 #[cfg(feature = "why-profiler")]
@@ -209,5 +211,7 @@ mod resize_tests;
 mod scroll_record_tests;
 #[cfg(test)]
 mod scroll_replay_tests;
+#[cfg(test)]
+mod scrollbar_convergence_tests;
 #[cfg(test)]
 mod tests;

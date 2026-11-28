@@ -45,6 +45,7 @@ pub const CODES: &[&str] = &[
     "draw",
     "render",
     "layout_retry",
+    "layout.dependency_retry",
     // Scroll node pairing (gpui `window/scroll_nodes.rs`).
     "scroll_node.open_anchor",
     "scroll_node.paint_paired",
