@@ -156,6 +156,7 @@ impl Element for Retained {
     ) {
         let Some(id) = id else { return };
         self.paint_record(id, window, cx);
+        self.builder.state.scrolling.painted(!self.replay);
         if let Some((bars, hits)) = self.root_bars.take() {
             bars.paint(&hits, window);
         }

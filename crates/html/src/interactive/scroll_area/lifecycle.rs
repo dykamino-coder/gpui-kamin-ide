@@ -11,6 +11,7 @@ impl Element for ScrollArea {
         crate::interactive::scroll_extent::Frame,
         LayoutId,
         crate::interactive::scrollbars::interaction::Interaction,
+        crate::interactive::scroll_animation::Scroll,
     );
     type PrepaintState = (
         Bounds<Pixels>,
@@ -34,7 +35,10 @@ impl Element for ScrollArea {
                 state.handle = root.handle.clone();
                 root.axes.set([h, v]);
             }
-            state.extent.set_handle(state.handle.clone());
+            state
+                .extent
+                .set_handle(state.handle.clone(), window.scale_factor());
+            let animation = self.animator(&mut state);
             let (layout_id, el) = {
                 let frame = state.extent.begin(self.tree.as_deref());
                 let mut el = super::timed_build(&build, &state.handle, (h, v), frame);
@@ -50,6 +54,7 @@ impl Element for ScrollArea {
                         state.extent.clone(),
                         layout_id,
                         state.interaction.clone(),
+                        animation,
                     ),
                 ),
                 state,
@@ -83,23 +88,8 @@ impl Element for ScrollArea {
                 ((), state.unwrap_or_default())
             });
         }
-        // Match CSS border painting: inset the unrounded box, not a rounded
-        // border box. A relocated prepaint_at node must retain its new bounds.
-        let exact = Bounds {
-            origin: window.layout_origin_unrounded(child.3),
-            size: window.layout_size_unrounded(child.3),
-        };
-        let half = gpui::px(0.5 / window.scale_factor().max(0.01) + 1e-4);
-        let near = |a: Pixels, b: Pixels| (a - b).abs() <= half;
-        let paint_bounds = if near(exact.left(), bounds.left())
-            && near(exact.top(), bounds.top())
-            && near(exact.right(), bounds.right())
-            && near(exact.bottom(), bounds.bottom())
-        {
-            exact
-        } else {
-            bounds
-        };
+        let paint_bounds = self.paint_bounds(bounds, child.3, window);
+        child.5.recorded(window.scroll_interest_margin());
         if let (Some(parent), Some(tree)) = (&self.parent_extent, self.tree.as_deref()) {
             parent.record_border_box(
                 tree.node_id,
@@ -182,23 +172,7 @@ impl Element for ScrollArea {
                 window.refresh();
             });
         }
-        let bars = RootBars {
-            style: self.style.clone(),
-            freeze: self.freeze_scrollbars,
-            handle: child.1.clone(),
-            extent: child.2.clone(),
-            interaction: child.4.clone(),
-            bounds: paint_bounds,
-        };
-        // The root scrollport's bars follow the offset: the document's frame
-        // element draws them after its record each frame (`RootBars`).
-        let hitbars = match self.root.as_ref().filter(|root| root.hosted.get()) {
-            Some(root) => {
-                root.bars.replace(Some(Rc::new(bars)));
-                Vec::new()
-            }
-            None => bars.prepaint(window),
-        };
+        let hitbars = self.prepaint_bars(child, paint_bounds, window);
         (paint_bounds, hitbox, hitbars)
     }
 
@@ -220,14 +194,24 @@ impl Element for ScrollArea {
         let hidden = Some(crate::style::computed::Overflow::Hidden);
         let layout = &self.style.reset_box_layout;
         let wheel = [layout.overflow_x != hidden, layout.overflow_y != hidden];
-        super::wheel::listen(paint_bounds.1.clone(), child.1.clone(), wheel, window);
+        super::wheel::listen(
+            paint_bounds.1.clone(),
+            child.1.clone(),
+            child.5.clone(),
+            wheel,
+            window,
+        );
         crate::hooks::paint_reopen(window, |window| child.0.paint(window, cx));
         if self.root.as_ref().is_some_and(|root| root.hosted.get()) {
             return;
         }
-        let alpha = child
-            .4
-            .paint(self.freeze_scrollbars, &paint_bounds.2, &child.1, window);
+        let alpha = child.4.paint(
+            self.freeze_scrollbars,
+            &paint_bounds.2,
+            &child.1,
+            &child.5,
+            window,
+        );
         crate::interactive::scrollbars::paint(
             &self.style,
             &child.1,

@@ -120,8 +120,10 @@ pub(super) fn follow(bars: &[Bar], handle: &ScrollHandle, window: &mut Window) {
             ..
         } = *bar;
         let from = travel_at(axis, travel, maximum, reverse, base);
-        let along = move |change: Point<Pixels>| {
-            let by = px(travel_at(axis, travel, maximum, reverse, base + change) - from);
+        let source = handle.clone();
+        let along = move |_: Point<Pixels>| {
+            // Content snaps to device pixels; the thumb follows the CSS offset.
+            let by = px(travel_at(axis, travel, maximum, reverse, source.offset()) - from);
             if axis == 0 {
                 point(by, px(0.0))
             } else {

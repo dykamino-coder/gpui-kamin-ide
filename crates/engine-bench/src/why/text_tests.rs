@@ -21,6 +21,7 @@ fn a_frame_reads_as_verdict_cause_line_and_cache_reason() {
             "detail": "1 deferred draws in the record, made at: crates/html/src/paint/stacking.rs:121"},
             {"code": "frame_miss.key", "site": "a.rs:1", "detail": ""},
             {"code": "frame_miss.key", "site": "a.rs:1", "detail": ""}],
+        "scroll_animation": {"frames": 3, "builds": 0},
         "causes_dropped": 0, "paint_path": {"refused_no_layer": 1}, "phases_ms": {"layout": 2.5, "paint": null},
         "caches": {"gradient_tiles": {"hits": 3, "misses": {"evicted": 2}, "examples": []}},
         "memory": {"heap_bytes": 9, "changed_bytes": [["style/computed", 4]]},
@@ -39,6 +40,7 @@ fn a_frame_reads_as_verdict_cause_line_and_cache_reason() {
     ));
     assert!(s.contains("cause x2  frame_miss.key at a.rs:1\n"));
     assert!(s.contains("path  refused_no_layer=1"));
+    assert!(s.contains("scroll animation frames 3 / builds 0"));
     assert!(s.contains("phase  layout=2.500"));
     assert!(s.contains("gradient_tiles: hits=3 misses: evicted=2"));
     assert!(s.contains("memory +4 style/computed"));

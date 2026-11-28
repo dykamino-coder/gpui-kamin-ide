@@ -1,35 +1,48 @@
-//! The DevTools `why` journal names the refusal of a scroll replay with the
-//! line that decided it. (Which deferred draw refused, and where it was
-//! made, is the gpui fork's check: `window/scroll_deferred/tests.rs`; the
-//! engine's positioned and sticky boxes replay with their scroll node.)
+//! Depth planes replay through motion, including paint entering the visible clip.
 
 use super::*;
+use crate::document::ScrollBehavior;
+use gpui::AnimationElapsedTime;
+use std::time::Duration;
 
 #[gpui::test]
-fn a_scroll_step_built_for_a_3d_plane_names_the_refusal(cx: &mut TestAppContext) {
-    // A plane of a 3D context: its group cannot move with a scroll node.
+fn depth_planes_scroll_without_building_and_match_fresh(cx: &mut TestAppContext) {
     let html = rows(
-        "<div style='perspective:100px'><div style='transform:rotateY(20deg);opacity:.5'>x</div></div>",
+        "<div style='perspective:100px'><div style='transform:rotateY(20deg);opacity:.5'>x</div></div><div style='height:350px'></div><div style='perspective:100px'><div style='transform:rotateY(-15deg);background:lime'>entering</div></div>",
     );
     let mut app = cx.clone();
     let (view, vcx) = open(&mut app, &html);
-    frame(vcx);
+    vcx.update(|_, cx| cx.set_global(AnimationElapsedTime(Duration::ZERO)));
     let (_one, _sub) = crate::why::test_reader();
-    let (b0, _) = frames(&view, vcx);
-    wheel_by(vcx, -120.);
-    frame(vcx);
-    let (b1, _) = frames(&view, vcx);
+    let (built, _) = frames(&view, vcx);
+    vcx.update(|window, cx| {
+        view.read(cx)
+            .document
+            .scroll_to(0., 120., ScrollBehavior::Smooth, window, cx);
+    });
+    for ms in (16..=500).step_by(16) {
+        vcx.update(|window, cx| {
+            cx.set_global(AnimationElapsedTime(Duration::from_millis(ms)));
+            window.simulate_next_frame(cx);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        assert_eq!(
+            frames(&view, vcx).0,
+            built,
+            "vsync {ms}: {:?}",
+            crate::why::take()
+        );
+        if [32, 96, 496].contains(&ms) {
+            let offset = root(&view, vcx).offset();
+            assert_same(
+                &format!("3D vsync {ms}"),
+                &painted(vcx),
+                &fresh_quads(cx, &html, offset),
+            );
+        }
+    }
     let journal = crate::why::take().journal;
-    assert!(b1 > b0, "the step was built: {journal:?}");
-    let cause = journal
-        .causes
-        .iter()
-        .find(|c| c.code.starts_with("frame_miss.scroll_"))
-        .unwrap_or_else(|| panic!("no scroll refusal in {journal:?}"));
-    assert!(
-        cause.site().contains("window/scroll_replay.rs:"),
-        "{} at {}",
-        cause.code,
-        cause.site()
-    );
+    assert!(journal.scroll_animation_frames > 1);
+    assert_eq!(journal.scroll_animation_builds, 0);
 }

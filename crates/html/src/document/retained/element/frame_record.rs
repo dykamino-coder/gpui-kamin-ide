@@ -20,7 +20,7 @@ impl Retained {
         // A document under its root scroller records past the viewport, so a
         // wheel step replays the frame moved (`gpui::Window::plan_scrolled_replay`).
         let margin = if self.builder.state.root_scroll.is_some() {
-            px(SCROLL_INTEREST_PX)
+            self.builder.state.scrolling.margin()
         } else {
             px(0.)
         };
@@ -30,7 +30,13 @@ impl Retained {
                 let mut record = record.unwrap_or_default();
                 let epoch = record.begin(&self.builder.store, window);
                 // A tree the document step built already counted its reason.
-                let replay = self.tree.is_none().then(|| {
+                let preparing = self.builder.state.scrolling.preparing();
+                if preparing {
+                    crate::why::note("scroll_animation.prepare", || {
+                        format!("interest margin {}px", f32::from(margin))
+                    });
+                }
+                let replay = (self.tree.is_none() && !preparing).then(|| {
                     let store = &self.builder.store;
                     let replay = record.replay(&self.slot, self.key.as_ref(), &key, window, store);
                     let boxes = |replay| match self.builder.repaint_boxes(window, cx) {
@@ -171,8 +177,3 @@ impl Retained {
         });
     }
 }
-
-/// How far past the root scrollport a document records its frame (each
-/// side): Blink's cull rect expansion for composited scrollers
-/// (`kCullRectPixelDistanceToExpand`, cull_rect.cc). Step 3 sizes it by memory.
-const SCROLL_INTEREST_PX: f32 = 4000.;

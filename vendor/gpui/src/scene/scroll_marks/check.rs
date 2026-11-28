@@ -15,8 +15,8 @@ impl Scene {
     }
 
     /// Whether `range` can be replayed scrolled: its commands keep their
-    /// orders under one shift (no bottom layer or depth sorting, balanced
-    /// layers), and inside each node's scene range (`nodes`) every command is
+    /// orders under one shift (balanced layers and depth metadata), and
+    /// inside each node's scene range (`nodes`) every command is
     /// a marked primitive, a marked layer of one node holding marked
     /// primitives of it, or a reservoir with what it drew. Otherwise the
     /// first command that refuses.
@@ -25,21 +25,24 @@ impl Scene {
         range: &Range<usize>,
         nodes: impl Iterator<Item = Range<usize>>,
     ) -> Result<(), ScrollRefusal> {
-        let mut layers = 0usize;
+        let (mut layers, mut contexts, mut planes) = (0usize, 0usize, 0usize);
         for operation in &self.paint_operations[range.clone()] {
             match operation {
                 PaintOperation::StartLayer(..) => layers += 1,
                 PaintOperation::EndLayer => layers = layers.checked_sub(1).ok_or(ScrollRefusal::UnbalancedLayer)?,
                 PaintOperation::StartBottomLayer => return Err(ScrollRefusal::BottomLayer),
-                PaintOperation::StartDepthContext
-                | PaintOperation::EndDepthContext
-                | PaintOperation::StartDepthPlane(_)
-                | PaintOperation::EndDepthPlane => return Err(ScrollRefusal::DepthSort),
+                PaintOperation::StartDepthContext => contexts += 1,
+                PaintOperation::EndDepthContext => contexts = contexts.checked_sub(1).ok_or(ScrollRefusal::DepthSort)?,
+                PaintOperation::StartDepthPlane(_) => planes += 1,
+                PaintOperation::EndDepthPlane => planes = planes.checked_sub(1).ok_or(ScrollRefusal::DepthSort)?,
                 _ => {}
             }
         }
         if layers != 0 {
             return Err(ScrollRefusal::UnbalancedLayer);
+        }
+        if contexts != 0 || planes != 0 {
+            return Err(ScrollRefusal::DepthSort);
         }
         nodes.into_iter().try_for_each(|node| self.node_check(&node, &|_| false).map_err(|(refusal, _)| refusal))
     }
@@ -104,6 +107,7 @@ impl Scene {
                 (PaintOperation::Reservoir(_), _) => return Err((ScrollRefusal::LayerReservoir, at)),
                 (PaintOperation::StartBottomLayer, _) => return Err((ScrollRefusal::BottomLayer, at)),
                 (PaintOperation::EndLayer, _) => return Err((ScrollRefusal::UnbalancedLayer, at)),
+                (PaintOperation::StartDepthContext | PaintOperation::EndDepthContext | PaintOperation::StartDepthPlane(_) | PaintOperation::EndDepthPlane, None) => {}
                 _ => return Err((ScrollRefusal::DepthSort, at)),
             }
             at += 1;

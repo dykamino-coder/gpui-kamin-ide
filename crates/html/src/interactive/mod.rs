@@ -3,6 +3,7 @@
 pub mod frame;
 pub mod resizable;
 pub mod scroll;
+pub mod scroll_animation;
 pub mod scroll_area;
 pub mod scroll_box;
 pub(super) mod scroll_target;

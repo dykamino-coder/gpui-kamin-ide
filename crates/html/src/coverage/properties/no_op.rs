@@ -40,10 +40,6 @@ pub(super) const PROPERTIES: &[Prop] = &[
     ),
     no("-webkit-font-smoothing", "то же самое: решает растеризатор"),
     m("tab-size", "4"),
-    no(
-        "scroll-behavior",
-        "плавная прокрутка — свойство ленты, задаётся в коде",
-    ),
     no("touch-action", "жестов касания в настольном окне нет"),
     no("overscroll-behavior", "цепочки прокрутки за край нет"),
     imp(

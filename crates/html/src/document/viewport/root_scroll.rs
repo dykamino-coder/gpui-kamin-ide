@@ -6,6 +6,7 @@ use std::cell::Cell;
 #[derive(Default)]
 pub(crate) struct RootScroll {
     pub(crate) handle: ScrollHandle,
+    pub(crate) animation: std::cell::RefCell<Option<crate::interactive::scroll_animation::Scroll>>,
     pub(crate) axes: Cell<[bool; 2]>,
     /// Inputs that only moved the offset (a scroll key): the document frame
     /// does not count them as interaction (`WindowKey::capture`) and
@@ -22,13 +23,22 @@ pub(crate) struct RootScroll {
 }
 
 impl RootScroll {
-    pub(crate) fn key(&self, event: &KeyDownEvent) -> bool {
+    pub(crate) fn key(
+        &self,
+        event: &KeyDownEvent,
+        window: &mut gpui::Window,
+        cx: &gpui::App,
+    ) -> bool {
         let modifiers = event.keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
             return false;
         }
         let handle = &self.handle;
-        let before = handle.offset();
+        let animation = self.animation.borrow();
+        let Some(animation) = animation.as_ref() else {
+            return false;
+        };
+        let before = animation.target();
         let max = handle.max_offset();
         let page = (f32::from(handle.bounds().size.height) - 40.).max(1.);
         let mut next = before;
@@ -60,7 +70,8 @@ impl RootScroll {
         if next == before {
             return false;
         }
-        handle.set_offset(next);
+        use crate::interactive::scroll_animation::{ScrollBehavior, Source};
+        animation.to(next, ScrollBehavior::Smooth, Source::Keyboard, window, cx);
         self.scroll_inputs
             .set(self.scroll_inputs.get().wrapping_add(1));
         self.pressed.set(Some(event.keystroke.key.clone()));

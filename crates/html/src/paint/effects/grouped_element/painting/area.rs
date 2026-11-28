@@ -95,13 +95,11 @@ pub(crate) fn group_area(
     // только порядок сложения): смешиваемый ребёнок на 50 точек за краем
     // контейнера (`mix-blend-mode-overflowing-child`) и кольцо 10 точек
     // (`-blended-element-with-transparent-pixels`) обязаны попасть в кадр.
-    // Буфер группы — во всё окно, поэтому и область композита — окно;
-    // обрезку предков несёт маска содержимого самого композита.
+    // The recorded area includes the ancestor's scroll interest and moves
+    // with the content. The renderer allocates only its viewport intersection,
+    // so spilling paint remains covered during replay without repainting.
     let area = if group.spill {
-        Bounds {
-            origin: gpui::point(px(0.0), px(0.0)),
-            size: window.viewport_size(),
-        }
+        window.content_mask().bounds
     } else {
         area
     };

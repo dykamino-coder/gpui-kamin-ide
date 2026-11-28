@@ -30,29 +30,8 @@ fn fresh_quads(cx: &mut TestAppContext, html: &str, offset: gpui::Point<Pixels>)
     fresh_with(cx, html, offset, painted)
 }
 
-/// What `read` reads from the frame of a new tree built at `offset`.
-fn fresh_with<T>(
-    cx: &mut TestAppContext,
-    html: &str,
-    offset: gpui::Point<Pixels>,
-    read: impl FnOnce(&mut VisualTestContext) -> T,
-) -> T {
-    let mut app = cx.clone();
-    let (view, fresh) = open(&mut app, html);
-    root(&view, fresh).set_offset(offset);
-    fresh.update(|_, cx| {
-        view.update(cx, |view, cx| {
-            view.document
-                .update(&format!("{html}<!-- fresh -->"), "")
-                .unwrap();
-            cx.notify();
-        })
-    });
-    frame(fresh);
-    frame(fresh);
-    assert_eq!(root(&view, fresh).offset(), offset);
-    read(fresh)
-}
+mod fresh;
+use fresh::fresh_with;
 
 fn assert_same(step: &str, after: &[Painted], fresh: &[Painted]) {
     if let Err(diff) = same_paint(after, fresh) {
@@ -134,7 +113,17 @@ fn scroll_keys_replay_near_steps_and_build_far_jumps(cx: &mut TestAppContext) {
     // End and Home leave the recorded rect (8000 px of rows): a fresh build,
     // still the same frame as a new tree at that offset.
     for key in ["end", "pageup", "home"] {
-        step(cx, &html, key, |c| c.simulate_keystrokes(key), &view, vcx);
+        step(
+            cx,
+            &html,
+            key,
+            |c| {
+                c.simulate_keystrokes(key);
+                frame(c);
+            },
+            &view,
+            vcx,
+        );
     }
 }
 
@@ -172,6 +161,7 @@ fn scripted_viewport_scroll_matches_fresh_and_then_replays(cx: &mut TestAppConte
     }
 }
 
+mod animation;
 mod built_at_offset;
 mod canvas;
 mod canvas_extent;

@@ -85,11 +85,14 @@ impl Document {
                         let mut record = record.unwrap_or_default();
                         let epoch = record.begin(&self.reuse, window);
                         let replay = match self.state.values.resources_unchanged() {
-                            true => {
+                            true if !self.state.scrolling.preparing() => {
                                 let slot = &self.retained;
                                 record.replay(slot, Some(&key), &environment, window, &self.reuse)
                             }
-                            false => Err(super::record::FrameMiss::Resources.noted()),
+                            _ if self.state.scrolling.preparing() => {
+                                Err(super::record::FrameMiss::ScrollPrepare.noted())
+                            }
+                            _ => Err(super::record::FrameMiss::Resources.noted()),
                         };
                         let replay = replay
                             .inspect_err(|miss| self.retained.missed(*miss))

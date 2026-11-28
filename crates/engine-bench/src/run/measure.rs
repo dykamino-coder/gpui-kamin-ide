@@ -28,9 +28,15 @@ pub(crate) async fn measure(
     let mut snapshot_pending = args.snapshot.as_deref();
     if matches!(
         args.mode,
-        Mode::Warm | Mode::Relayout | Mode::Scroll | Mode::Edit
+        Mode::Warm | Mode::Relayout | Mode::Scroll | Mode::Smooth | Mode::Edit
     ) {
         sample(cx, window, fonts, args, Step::Cold(None), capture, luid).await?;
+    }
+    if args.mode == Mode::Smooth {
+        modes.insert(
+            "smooth-scroll".into(),
+            super::smooth::run(cx, window, args, capture).await?,
+        );
     }
     if args.mode == Mode::Edit {
         let (edits, work) = crate::edits::run(cx, window, fonts, args, capture, luid).await?;

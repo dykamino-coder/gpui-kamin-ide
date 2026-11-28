@@ -8,6 +8,8 @@ use gpui::ScrollRefusal;
 pub(in crate::document::retained) enum FrameMiss {
     /// Document resources changed since the record (images, fonts).
     Resources,
+    /// Prepare the complete trajectory before changing the scroll offset.
+    ScrollPrepare,
     /// No record was published: none yet, or its element state was dropped.
     Unpublished,
     /// The record was painted under a transform, opacity, mask or group.
@@ -39,8 +41,9 @@ pub(in crate::document::retained) enum FrameMiss {
 const SCROLL: [ScrollRefusal; ScrollRefusal::ALL.len()] = ScrollRefusal::ALL;
 
 /// Reasons before the scrolled replay refusals, in counter order.
-const PLAIN: [(FrameMiss, &str); 13] = [
+const PLAIN: [(FrameMiss, &str); 14] = [
     (FrameMiss::Resources, "resources"),
+    (FrameMiss::ScrollPrepare, "scroll_prepare"),
     (FrameMiss::Unpublished, "unpublished"),
     (FrameMiss::NotRoot, "not_root"),
     (FrameMiss::Commands, "commands"),
@@ -86,6 +89,7 @@ impl FrameMiss {
     pub(in crate::document::retained) fn code(self) -> &'static str {
         match self {
             FrameMiss::Resources => "frame_miss.resources",
+            FrameMiss::ScrollPrepare => "frame_miss.scroll_prepare",
             FrameMiss::Unpublished => "frame_miss.unpublished",
             FrameMiss::NotRoot => "frame_miss.not_root",
             FrameMiss::Commands => "frame_miss.commands",

@@ -37,6 +37,7 @@ pub(super) fn box_layout(g: &ResetBoxLayout) -> bool {
         calc_size_max: _,
     } = g;
     let ScrollStyle {
+        smooth: _,
         colors,
         forced: _,
         width: _,

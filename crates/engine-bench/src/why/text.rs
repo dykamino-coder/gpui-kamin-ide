@@ -26,48 +26,10 @@ pub(super) fn changes(
     out
 }
 
-const SHOWN_OWNERS: usize = 8;
+mod work;
+use work::{pairs, raster};
 
-/// The raster line of a captured frame, then its GPU wait, command submission
-/// and the bench's own copy of the frame to memory (not engine work).
-fn raster(s: &mut String, r: &Value) {
-    if r.is_null() {
-        return;
-    }
-    let tag = |k: &str, a: &str, b: &str| {
-        r[k].as_str()
-            .map_or(String::new(), |w| format!("{a}{w}{b}"))
-    };
-    let full_by = tag("full_by", " by ", "") + &tag("shift_miss", " (not a move: ", ")");
-    let delta = r["delta"]
-        .as_array()
-        .map(|d| format!(" delta {},{} moved_px {}", d[0], d[1], r["moved_px"]))
-        .unwrap_or_default();
-    let rects: Vec<String> = r["rects"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|q| format!("{},{} {}x{}", q[0], q[1], q[2], q[3]))
-        .collect();
-    let _ = writeln!(
-        s,
-        "  raster {}{full_by}{delta} rects {} raster_px {} [{}]",
-        r["plan"].as_str().unwrap_or("?"),
-        r["rects_count"],
-        r["raster_px"],
-        rects.join(" | ")
-    );
-    if let Some(c) = r["shift_compare"].as_str() {
-        let _ = writeln!(s, "  compared {c}");
-    }
-    let _ = writeln!(
-        s,
-        "  gpu_wait {:.3} ms submit {:.3} ms capture_copy {:.3} ms",
-        r["gpu_wait_ms"].as_f64().unwrap_or(0.0),
-        r["submit_ms"].as_f64().unwrap_or(0.0),
-        r["capture_copy_ms"].as_f64().unwrap_or(0.0)
-    );
-}
+const SHOWN_OWNERS: usize = 8;
 
 /// The text form of `why.json`.
 pub(super) fn render(out: &Value) -> String {
@@ -116,6 +78,11 @@ pub(super) fn render(out: &Value) -> String {
         if f["causes_dropped"].as_u64().unwrap_or(0) > 0 {
             let _ = writeln!(s, "  cause  ... {} more not kept", f["causes_dropped"]);
         }
+        work::animation(
+            &mut s,
+            &f["scroll_animation"],
+            &f["between"]["scroll_animation"],
+        );
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render(&mut s, &f["paint_work"]);
         super::layout_work::render(&mut s, &f["layout_work"]);
@@ -244,18 +211,6 @@ fn frames(s: &mut String, label: &str, events: &Value, dropped: &Value) {
     }
     if dropped.as_u64().unwrap_or(0) > 0 {
         let _ = writeln!(s, "{label}   ... {dropped} more not kept");
-    }
-}
-
-fn pairs(s: &mut String, label: &str, v: &Value) {
-    let all: Vec<String> = v
-        .as_object()
-        .into_iter()
-        .flatten()
-        .map(|(k, n)| format!("{k}={n}"))
-        .collect();
-    if !all.is_empty() {
-        let _ = writeln!(s, "  {label} {}", all.join(" "));
     }
 }
 

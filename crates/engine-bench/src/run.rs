@@ -15,6 +15,7 @@ use serde_json::json;
 use std::time::Instant;
 use waits::wait;
 mod measure;
+mod smooth;
 pub(super) use measure::measure;
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 

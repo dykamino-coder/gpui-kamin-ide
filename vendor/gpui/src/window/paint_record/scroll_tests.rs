@@ -8,14 +8,14 @@ use super::*;
 use crate::scene::{PaintOperation, Primitive};
 use crate::{Context, IntoElement, Quad, Render, ScrollHandle, ScrollNodeId, TestAppContext, div};
 
-struct Empty;
+pub(super) struct Empty;
 impl Render for Empty {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
     }
 }
 
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
+pub(super) fn rect(x: f32, y: f32, w: f32, h: f32) -> Bounds<Pixels> {
     Bounds::new(point(px(x), px(y)), size(px(w), px(h)))
 }
 

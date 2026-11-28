@@ -11,7 +11,9 @@ pub(super) fn prepare(
     args: &Args,
     index: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let elapsed = args.animation_time(index);
+    let elapsed = (args.mode != super::args::Mode::Smooth)
+        .then_some(())
+        .and_then(|()| args.animation_time(index));
     window.update(cx, |view, _, _| {
         view.animation_elapsed = elapsed;
         view.doc.set_animation_elapsed(elapsed);

@@ -140,3 +140,4 @@ fn a_nested_step_under_a_sticky_box_replays(cx: &mut TestAppContext) {
 }
 
 mod axis;
+mod smooth;

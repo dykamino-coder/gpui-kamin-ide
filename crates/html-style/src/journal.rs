@@ -122,6 +122,8 @@ pub struct Journal {
     /// Causes past the bound, not kept.
     pub dropped: u64,
     pub caches: BTreeMap<&'static str, CacheStats>,
+    pub scroll_animation_frames: u64,
+    pub scroll_animation_builds: u64,
 }
 
 impl Journal {
@@ -130,11 +132,26 @@ impl Journal {
             causes: Vec::new(),
             dropped: 0,
             caches: BTreeMap::new(),
+            scroll_animation_frames: 0,
+            scroll_animation_builds: 0,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.causes.is_empty() && self.dropped == 0 && self.caches.is_empty()
+        self.causes.is_empty()
+            && self.dropped == 0
+            && self.caches.is_empty()
+            && self.scroll_animation_frames == 0
+    }
+}
+
+/// Count a displayed scroll-animation frame and whether it rebuilt its document.
+pub fn scroll_animation_frame(built: bool) {
+    if enabled() && kept_here() {
+        with(|journal| {
+            journal.scroll_animation_frames += 1;
+            journal.scroll_animation_builds += u64::from(built);
+        });
     }
 }
 

@@ -120,7 +120,11 @@ impl Render for DocumentView {
             .bg(gpui::white())
             .track_focus(&self.focus)
             .on_key_down(move |event, window, cx| {
-                if focus.is_focused(window) && root.as_ref().is_some_and(|root| root.key(event)) {
+                if focus.is_focused(window)
+                    && root
+                        .as_ref()
+                        .is_some_and(|root| root.key(event, window, cx))
+                {
                     cx.stop_propagation();
                     window.refresh();
                 }
@@ -150,5 +154,7 @@ mod resize_tests;
 mod scroll_record_tests;
 #[cfg(test)]
 mod scroll_replay_tests;
+#[cfg(test)]
+mod smooth_scroll_tests;
 #[cfg(test)]
 mod tests;

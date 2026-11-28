@@ -364,7 +364,7 @@ impl Window {
         let start = frame.scene.paint_operations.len();
         frame.scroll_nodes[index].paint = Some(start..start);
         frame.scroll_nodes[index].painted_in = Some(frame.scene.scroll.space);
-        frame.scroll_nodes[index].pending = true;
+        (frame.scroll_nodes[index].pending, frame.scene.scroll.has_nodes) = (true, true);
         // Inside an open layer or depth context its commands take orders a
         // moved copy cannot give again (`Scene::scrollable` sees only its range).
         if !frame.scene.at_root() {

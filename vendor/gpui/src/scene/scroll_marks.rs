@@ -14,6 +14,7 @@
 
 pub(crate) mod carry;
 mod check;
+mod depth;
 pub(crate) mod pivots;
 use super::*;
 use crate::ScrollNodeId;
@@ -37,19 +38,8 @@ pub(crate) struct ScrollMark {
     pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
 }
 
-/// Which scene a command index counts in: each scene has its own, kept by
-/// a copy of the scene (a layer's content written while a frame holds it).
-/// A scroll node painted while a layer records has its range in the layer's
-/// scene, not the frame's (`Window::begin_scroll_node_paint`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SceneSpace(u32);
-
-impl Default for SceneSpace {
-    fn default() -> Self {
-        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
+mod space;
+pub(crate) use space::SceneSpace;
 
 /// The scroll marks of a scene, sorted by command.
 #[derive(Default)]
@@ -72,6 +62,8 @@ pub(crate) struct ScrollBook {
     /// where it lands (`Window::with_copies_marked`); a node opened inside
     /// the record marks its commands as usual.
     pub(crate) record_base: Option<usize>,
+    /// A node paired inside this scene, including nodes with no commands.
+    pub(crate) has_nodes: bool,
     /// While a paint record lands: the marks of the nodes it opened inside
     /// itself, carried to its copy (carry).
     pub(crate) carry: Option<Box<carry::Carry>>,
@@ -100,6 +92,7 @@ impl ScrollBook {
         self.open = None;
         self.carry = None;
         self.relayed.clear();
+        self.has_nodes = false;
         (self.pivot, self.unpivoted) = (None, false);
         self.pivots.clear();
         self.copying = None;
@@ -137,7 +130,6 @@ impl Scene {
             // Dormant where its order is known: from the bounds tree, or the
             // order of the layer it paints in (a text line, `Window::paint_layer`).
             let order = match self.layer_stack.last().copied() {
-                _ if !self.depth.contexts.is_empty() => None,
                 None => Some(self.tree_mut().insert(ordered) * ORDER_STEP),
                 Some(BOTTOM_LAYER) => None,
                 Some(layer) => Some(layer),
@@ -296,10 +288,9 @@ impl Scene {
     /// from its marked primitives, then shared by the frames that replay it):
     /// each frame draws only its primitives that (own + shift) ∩ chain shows,
     /// found through its tile grid, in their paint order, moved by the
-    /// node's total shift. Runs of commands with one shift are copied as
-    /// `replay` copies a range, so a run keeps its relative orders and lies
-    /// above what it overlaps before it. The caller checked `scrollable` and
-    /// that this scene is at its root (no open layer or depth context).
+    /// node's total shift. Flat runs keep their relative orders; depth
+    /// metadata orders newly visible primitives in their original planes.
+    /// The destination starts at its root (no open layer or depth context).
     pub(crate) fn replay_scrolled(
         &mut self,
         range: Range<usize>,
@@ -307,7 +298,9 @@ impl Scene {
         node: impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
         edges: &mut [(usize, usize)],
     ) {
-        // Where each of dges (old command indices, sorted) lands here.
+        if prev.has_depth(&range) {
+            return self.replay_depth_scrolled(range, prev, &node, edges);
+        }
         let mut edge = 0;
         let marks = prev.scroll.within(&range);
         let mut marks = marks.iter().peekable();

@@ -80,6 +80,8 @@ fn a_viewport_fixed_box_stays_while_the_root_scrolls(cx: &mut TestAppContext) {
     assert_eq!(boxes(cx), vec![(0., 100.)], "wheel");
     cx.simulate_keystrokes("end");
     frame(cx);
+    frame(cx);
+    frame(cx);
     assert!(root(&view, cx).offset().y < px(-1000.));
     assert_eq!(boxes(cx), vec![(0., 100.)], "end");
     cx.simulate_keystrokes("home pagedown");

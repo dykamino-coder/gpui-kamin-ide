@@ -1,10 +1,17 @@
 //! Consume wheel input only when this CSS scrollport actually moves.
 
+use crate::interactive::scroll_animation::{Scroll, ScrollBehavior, Source};
 use gpui::{DispatchPhase, Hitbox, ScrollHandle, ScrollWheelEvent, Window, point, px};
 use std::cell::Cell;
 
 /// `wheel`: the axes a wheel scrolls (`overflow: hidden` ones scroll only by script).
-pub(super) fn listen(hitbox: Hitbox, handle: ScrollHandle, wheel: [bool; 2], window: &mut Window) {
+pub(super) fn listen(
+    hitbox: Hitbox,
+    handle: ScrollHandle,
+    animation: Scroll,
+    wheel: [bool; 2],
+    window: &mut Window,
+) {
     let before = Cell::new(handle.offset());
     window.on_mouse_event(move |event: &ScrollWheelEvent, phase, window, cx| {
         if !hitbox.should_handle_scroll(window) {
@@ -14,6 +21,22 @@ pub(super) fn listen(hitbox: Hitbox, handle: ScrollHandle, wheel: [bool; 2], win
             before.set(handle.offset());
             return;
         }
+        if !event.delta.precise() {
+            // Native GPUI already applied the step. Restore the displayed
+            // position; discrete inputs extend the goal, never the last frame.
+            handle.set_offset(before.get());
+            let delta = event.delta.pixel_delta(window.line_height());
+            let target = animation.target()
+                + point(
+                    if wheel[0] { delta.x } else { px(0.) },
+                    if wheel[1] { delta.y } else { px(0.) },
+                );
+            if animation.to(target, ScrollBehavior::Smooth, Source::Wheel, window, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
+        animation.cancel();
         // GPUI applies the native delta before this adapter's bubble callback,
         // where the content is hit: inside the scrollport's clip. Over the rest
         // of the scrollport (a bar's gutter) nothing moved it, and the wheel
