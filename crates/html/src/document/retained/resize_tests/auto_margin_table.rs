@@ -4,7 +4,7 @@
 use super::super::layered_replay_tests::scene;
 use super::super::tests::{frame, open};
 use super::{replayed, resize};
-use gpui::TestAppContext;
+use gpui::{Modifiers, TestAppContext, point, px};
 
 #[gpui::test]
 fn table_auto_margins_follow_free_space_after_replaying_an_overflow(cx: &mut TestAppContext) {
@@ -16,6 +16,9 @@ fn table_auto_margins_follow_free_space_after_replaying_an_overflow(cx: &mut Tes
         );
         let mut app = cx.clone();
         let (view, vcx) = open(&mut app, &html);
+        // Hover listeners under the default pointer at the origin prevent
+        // recording; this test isolates width-dependent auto margins.
+        vcx.simulate_mouse_move(point(px(395.), px(290.)), None, Modifiers::default());
         frame(vcx);
         resize(&view, vcx, 401.);
         let before = replayed(&view, vcx);
