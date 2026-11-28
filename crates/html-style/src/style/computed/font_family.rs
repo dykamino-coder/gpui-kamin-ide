@@ -120,6 +120,8 @@ mod tests {
                 .into_iter()
                 .collect(),
         ));
+        // Initial root metrics already created a registry snapshot.
+        doc.font_inputs_changed();
         doc
     }
 
