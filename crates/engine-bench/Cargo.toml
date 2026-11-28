@@ -25,6 +25,7 @@ gpui.workspace = true
 gpui-platform.workspace = true
 mimalloc.workspace = true
 kamin-alloc.workspace = true
+kamin-profiler = { path = "../profiler" }
 kamin-heap = { path = "../heap", optional = true }
 futures = "0.3"
 log = "0.4"

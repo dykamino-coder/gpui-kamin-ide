@@ -1781,6 +1781,7 @@ dependencies = [
  "kamin-alloc",
  "kamin-heap",
  "kamin-html",
+ "kamin-profiler",
  "log",
  "markup5ever_rcdom 0.39.0+unofficial",
  "mimalloc",
@@ -3889,6 +3890,7 @@ dependencies = [
 name = "kamin-alloc"
 version = "1.0.132"
 dependencies = [
+ "kamin-profiler",
  "mimalloc",
 ]
 
@@ -3906,6 +3908,9 @@ version = "1.0.132"
 [[package]]
 name = "kamin-heap"
 version = "1.0.132"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "kamin-html"
@@ -3922,6 +3927,7 @@ dependencies = [
  "image",
  "kamin-font-facts",
  "kamin-heap",
+ "kamin-profiler",
  "kamin-style",
  "kurbo 0.13.1",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -3972,6 +3978,16 @@ version = "1.0.132"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "kamin-profiler"
+version = "1.0.132"
+dependencies = [
+ "kamin-heap",
+ "serde",
+ "serde_json",
+ "windows 0.62.2",
 ]
 
 [[package]]

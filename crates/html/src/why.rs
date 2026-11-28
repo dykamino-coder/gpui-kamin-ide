@@ -13,8 +13,12 @@ use gpui::dirty_sources::trace;
 use serde_json::{Value, json};
 
 pub use gpui::dirty_sources::trace::Event as FrameEvent;
+pub use kamin_profiler::{journal::Resource as MemoryResource, process::Adapter as MemoryAdapter};
+
+mod memory;
 pub use kamin_style::journal::{CacheStats, Cause, Journal, SCHEMA, caches_held, enabled};
 pub(crate) use kamin_style::journal::{note, note_at};
+pub use memory::Reader;
 
 /// Stable codes of the protocol (renamed only with a schema bump): causes,
 /// cache miss reasons and frame events.
@@ -87,13 +91,16 @@ pub fn subscribe() -> Subscription {
 }
 
 /// What was recorded since the last take.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Entry {
     pub journal: Journal,
     /// Requests of frames, draws and renders, in order.
     pub frames: Vec<FrameEvent>,
     /// Frame events past the bound, not kept.
     pub frames_dropped: u64,
+    /// Explicit process/resource publications from this window's reader.
+    pub memory: Vec<kamin_profiler::journal::Entry>,
+    pub memory_dropped: u64,
 }
 
 /// Everything recorded since the last take.
@@ -103,6 +110,8 @@ pub fn take() -> Entry {
         journal: kamin_style::journal::take(),
         frames,
         frames_dropped,
+        memory: Vec::new(),
+        memory_dropped: 0,
     }
 }
 
@@ -128,6 +137,8 @@ pub fn to_json(entry: &Entry) -> Value {
         }))).collect::<serde_json::Map<_, _>>(),
         "frames": entry.frames.iter().map(|e| json!({"kind": e.kind, "site": site(e.site), "detail": e.detail})).collect::<Vec<_>>(),
         "frames_dropped": entry.frames_dropped,
+        "memory_samples": entry.memory,
+        "memory_samples_dropped": entry.memory_dropped,
     })
 }
 

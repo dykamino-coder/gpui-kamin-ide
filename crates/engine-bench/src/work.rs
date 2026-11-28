@@ -36,6 +36,7 @@ pub(super) struct Sample {
 /// Адаптер GPU процесса для счётчиков: открывается один раз до первого замера, чтобы
 /// фабрика DXGI не попадала в окно кадра и в CPU его фаз.
 pub(super) struct Adapter {
+    pub(super) journal_luid: (i32, u32),
     #[cfg(feature = "work-counters")]
     gpu: super::usage::Adapter,
     /// The layout units of the previous sample (kamin_html::work::repeat).
@@ -51,6 +52,7 @@ impl Adapter {
         #[cfg(not(feature = "work-counters"))]
         let _ = luid;
         Self {
+            journal_luid: luid,
             #[cfg(feature = "work-counters")]
             gpu: super::usage::Adapter::open(luid),
             #[cfg(feature = "work-counters")]
