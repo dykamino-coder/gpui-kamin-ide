@@ -93,12 +93,18 @@ impl ColumnStack {
                 self.axis,
                 bounds.origin,
                 block,
-                (if wrap { col % self.count } else { col }) as f32 * (w + self.gap),
+                self.column_inline_offset(col),
                 w,
                 at,
                 h,
             ),
         })
+    }
+
+    /// Inline offset of column `col` from the first column of its row.
+    pub(crate) fn column_inline_offset(&self, col: usize) -> f32 {
+        let col = if self.wraps() { col % self.count } else { col };
+        col as f32 * (self.col_w.get() + self.gap)
     }
 
     pub(crate) fn plan_oof(&self, normal: &Plan, bounds: Bounds<Pixels>) {

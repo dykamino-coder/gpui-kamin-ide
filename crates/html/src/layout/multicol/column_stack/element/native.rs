@@ -71,6 +71,14 @@ impl ColumnStack {
             } else {
                 rect.left()
             };
+            // A direct child's inline inset resolves against the container, its
+            // containing block (css-multicol-1 §2, CSS 2.1 §10.3.7): only a
+            // static inline position lies in the placeholder's column.
+            let inline = if flow.owner == 0 && !flow.static_inline {
+                inline - gpui::px(self.column_inline_offset(f.col))
+            } else {
+                inline
+            };
             let destination =
                 geometry::slice(self.axis, actual.rect, inline.into(), inline_size, f.y, f.h)
                     .origin;

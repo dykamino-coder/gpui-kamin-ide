@@ -237,7 +237,11 @@ fn build(
     if let Some(paged) = paged {
         paged.end();
     }
-    let mut root = frame.into_any_element();
+    // The source paints only into its own record (`Native::record`): paint
+    // it defers to step 8 (CSS 2.1 Appendix E: a transformed or positioned
+    // child of its flow) drains there, not in the pass of the document that
+    // paints the source's container.
+    let mut root = crate::hooks::paint_stacking(frame).into_any_element();
     // Нулевой owner — прямой OOF, а настоящий id родителя нужен его CB.
     // Обе метки ссылаются на тот же LayoutId без дополнительной коробки.
     root = super::super::record::wrap(0, parent, root, &opts);
