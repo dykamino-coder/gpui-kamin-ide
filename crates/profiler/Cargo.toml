@@ -1,0 +1,33 @@
+[package]
+name = "kamin-profiler"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[features]
+default = []
+allocations = ["dep:kamin-heap"]
+
+[[bin]]
+name = "kamin_memprof"
+path = "src/bin/memprof.rs"
+required-features = ["allocations"]
+
+[dependencies]
+kamin-heap = { path = "../heap", optional = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Dxgi",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Performance",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Threading",
+  "Win32_System_WindowsProgramming",
+] }
+
+[lints]
+workspace = true

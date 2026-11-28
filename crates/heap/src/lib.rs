@@ -12,6 +12,9 @@
 use impls::counted_header;
 use std::collections::{BTreeMap, HashSet};
 
+pub mod fold;
+pub mod live;
+
 /// Состояние одного обхода: текущий путь отчёта, счёт байт по путям,
 /// уже встреченные общие блоки и необязательный приёмник блоков.
 pub struct Ops<'a> {

@@ -12,6 +12,7 @@
 //! by unscanned stacks, OS memory, or leaked `Rc` cycles.
 
 mod analyze;
+mod read;
 mod scan;
 mod unrooted;
 mod write;
@@ -48,6 +49,7 @@ pub const NONE: u32 = u32::MAX;
 pub const FLAG_UNHELD: u8 = 1;
 /// A representative of a cycle with no external holder, such as a leaked `Rc` cycle.
 pub const FLAG_CYCLE: u8 = 2;
+pub use read::ReadLimits;
 
 /// The retention graph and its analysis.
 #[derive(Debug, Default)]
@@ -129,5 +131,13 @@ impl Graph {
     /// Write the binary graph consumed by `scripts/memprof_retain.py`.
     pub fn write(&self, out: &mut impl std::io::Write, header: &str) -> std::io::Result<()> {
         write::write(self, out, header)
+    }
+
+    /// Read a bounded graph, validating all indices before it can be queried.
+    pub fn read(
+        input: &mut impl std::io::Read,
+        limits: ReadLimits,
+    ) -> std::io::Result<(Self, String)> {
+        read::read(input, limits)
     }
 }

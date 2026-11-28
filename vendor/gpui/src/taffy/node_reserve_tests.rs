@@ -1,5 +1,5 @@
 //! KaminIDE patch: only the window's frame tree grows to the frame's element count,
-//! and only once it is large; small trees keep doubling.
+//! and only once it is large; small trees grow from their own node requests.
 
 use super::{RESERVE_FROM_NODES, TaffyLayoutEngine};
 use std::cell::Cell;
@@ -28,7 +28,7 @@ fn a_full_large_frame_tree_grows_once_to_the_hint() {
 }
 
 #[test]
-fn a_small_full_frame_tree_keeps_doubling() {
+fn a_small_full_frame_tree_does_not_read_the_frame_hint() {
     let mut engine = TaffyLayoutEngine::new();
     fill(&mut engine, 1);
     assert!(engine.taffy.total_node_count() < RESERVE_FROM_NODES);

@@ -3,27 +3,10 @@
 use serde_json::{Value, json};
 #[cfg(feature = "work-counters")]
 pub(super) mod gpu;
-use windows::Win32::{
-    Foundation::FILETIME,
-    System::{
-        ProcessStatus::{
-            GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS, PROCESS_MEMORY_COUNTERS_EX,
-        },
-        Threading::{GetCurrentProcess, GetProcessTimes},
-    },
-};
 
 /// CPU cycles of every thread of this process so far (QueryProcessCycleTime).
 pub(super) fn cycles() -> u64 {
-    let mut cycles = 0;
-    // Pseudo handle of this process; the out value lives until the call returns.
-    unsafe {
-        let _ = windows::Win32::System::WindowsProgramming::QueryProcessCycleTime(
-            GetCurrentProcess(),
-            &mut cycles,
-        );
-    }
-    cycles
+    kamin_profiler::process::cycles().value.unwrap_or(0)
 }
 
 /// Cycles per millisecond of process CPU over the whole run: converts the exact
@@ -47,40 +30,22 @@ pub(super) struct Snapshot {
 }
 
 impl Snapshot {
-    pub(super) fn read() -> windows::core::Result<Self> {
-        let (mut created, mut exited, mut kernel, mut user) = (
-            FILETIME::default(),
-            FILETIME::default(),
-            FILETIME::default(),
-            FILETIME::default(),
-        );
-        let mut memory = PROCESS_MEMORY_COUNTERS_EX {
-            cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32,
-            ..Default::default()
+    pub(super) fn read() -> Result<Self, String> {
+        let sample = kamin_profiler::process::read_counters();
+        let value = |field: kamin_profiler::process::Field<u64>| {
+            field.value.ok_or_else(|| {
+                field
+                    .unavailable
+                    .unwrap_or_else(|| "process counter unavailable".into())
+            })
         };
-        // Псевдодескриптор своего процесса; буферы живут до возврата API.
-        unsafe {
-            GetProcessTimes(
-                GetCurrentProcess(),
-                &mut created,
-                &mut exited,
-                &mut kernel,
-                &mut user,
-            )?;
-            GetProcessMemoryInfo(
-                GetCurrentProcess(),
-                (&raw mut memory).cast::<PROCESS_MEMORY_COUNTERS>(),
-                memory.cb,
-            )?;
-        }
-        let ticks = |t: FILETIME| (u64::from(t.dwHighDateTime) << 32) | u64::from(t.dwLowDateTime);
         Ok(Self {
             allocations: super::allocations::Snapshot::read(),
-            cpu_100ns: ticks(kernel) + ticks(user),
-            rss: memory.WorkingSetSize as u64,
-            commit: memory.PrivateUsage as u64,
-            peak_rss: memory.PeakWorkingSetSize as u64,
-            peak_commit: memory.PeakPagefileUsage as u64,
+            cpu_100ns: value(sample.cpu_100ns)?,
+            rss: value(sample.working_set_bytes)?,
+            commit: value(sample.private_commit_bytes)?,
+            peak_rss: value(sample.lifetime_peak_working_set_bytes)?,
+            peak_commit: value(sample.lifetime_peak_private_commit_bytes)?,
         })
     }
     pub(super) fn json(self) -> Value {

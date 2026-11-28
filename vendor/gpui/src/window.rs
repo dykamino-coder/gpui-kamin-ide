@@ -9715,6 +9715,7 @@ impl Frame {
         vec(sink, path, &self.input_handlers);
         vec(sink, path, &self.tooltip_requests);
         vec(sink, path, &self.cursor_styles);
+        self.dispatch_tree.heap_report(sink);
         self.scene.heap_report(sink);
     }
 }

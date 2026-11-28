@@ -27,6 +27,9 @@ mod kamin_scrollbars;
 mod kamin_scrollbar_dependencies;
 #[path = "node_lifetime.rs"]
 mod node_lifetime;
+#[path = "node_storage.rs"]
+mod node_storage;
+use node_storage::NodeStorage;
 #[cfg(feature = "block_layout")]
 use crate::block::BlockContext;
 use crate::geometry::Size;
@@ -274,7 +277,7 @@ impl NodeData {
 #[derive(Debug, Clone)]
 pub struct TaffyTree<NodeContext = ()> {
     /// The [`NodeData`] for each node stored in this tree
-    nodes: SlotMap<DefaultKey, NodeData>,
+    nodes: NodeStorage,
 
     /// Functions/closures that compute the intrinsic size of leaf nodes
     node_context_data: SecondaryMap<DefaultKey, NodeContext>,
@@ -354,7 +357,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
                 sink("layout/taffy-nodes", items.as_ptr().cast(), items.capacity() * size_of::<T>());
             }
         }
-        slots(sink, &self.nodes);
+        self.nodes.heap_report(sink);
         slots(sink, &self.children);
         slots(sink, &self.parents);
         // The node contexts are a hash table of (index, value, version) entries.
@@ -1156,7 +1159,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
         TaffyTree {
             // TODO: make this method const upstream,
             // so constructors here can be const
-            nodes: SlotMap::with_capacity(capacity),
+            nodes: NodeStorage::with_capacity(capacity),
             children: SlotMap::with_capacity(capacity),
             parents: SlotMap::with_capacity(capacity),
             node_context_data: SecondaryMap::with_capacity(capacity),
@@ -1593,8 +1596,8 @@ impl<NodeContext> TaffyTree<NodeContext> {
         self.nodes.len() >= self.nodes.capacity()
     }
 
-    /// KaminIDE patch: grow the node storage to hold `expected` nodes at once. A node
-    /// is about 2 KiB, so doubling up to a large tree copies the whole tree again.
+    /// KaminIDE patch: reserve keys, relationships and payload pages for `expected`
+    /// live nodes. Existing payload pages stay in place when the tree grows.
     pub fn reserve_nodes(&mut self, expected: usize) {
         let additional = expected.saturating_sub(self.nodes.len());
         if expected > self.nodes.capacity() {
@@ -1706,7 +1709,7 @@ impl<NodeContext> TaffyTree<NodeContext> {
     /// Marks the layout of this node and its ancestors as outdated
     pub fn mark_dirty(&mut self, node: NodeId) -> TaffyResult<()> {
         fn mark_dirty_recursive(
-            nodes: &mut SlotMap<DefaultKey, NodeData>,
+            nodes: &mut NodeStorage,
             parents: &SlotMap<DefaultKey, Option<NodeId>>,
             node_key: DefaultKey,
         ) {

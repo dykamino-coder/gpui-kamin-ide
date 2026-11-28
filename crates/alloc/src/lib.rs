@@ -18,6 +18,11 @@
 
 use std::ffi::{c_int, c_long};
 
+#[cfg(feature = "profiler")]
+mod profiled;
+#[cfg(feature = "profiler")]
+pub use profiled::Profiled;
+
 // Символы `mi_option_*` даёт статическая библиотека из `libmimalloc-sys`.
 use mimalloc as _;
 
