@@ -9,8 +9,28 @@ use std::cell::Cell;
 /// The viewport facts of one document.
 #[derive(Default)]
 pub struct ViewportFacts {
+    device_scale: Cell<f32>,
     unit_insets: Cell<[f32; 2]>,
     icb_scroll_insets: Cell<[f32; 4]>,
+}
+
+impl super::DocumentValues {
+    /// The CSS-to-device pixel ratio; detached documents start at one.
+    pub fn device_scale(&self) -> f32 {
+        match self.viewport.device_scale.get() {
+            0.0 => 1.0,
+            scale => scale,
+        }
+    }
+
+    /// Invalidate computed lengths and font metrics before a synchronous read.
+    pub fn set_device_scale(&self, scale: f32) {
+        assert!(scale.is_finite() && scale > 0.0);
+        if self.device_scale() != scale {
+            self.viewport.device_scale.set(scale);
+            self.font_inputs_changed();
+        }
+    }
 }
 
 impl ViewportFacts {

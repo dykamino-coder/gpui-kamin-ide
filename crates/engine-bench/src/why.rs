@@ -6,7 +6,8 @@
 //! by owner with what grew. A failed sample keeps its entry with the error.
 //! `why.json` (schema `kamin_html::why::SCHEMA`) is for the browser panel
 //! and `tools/engine-compare`; `why.txt` for people; `--why-compare A B`
-//! reads two of them (`compare`).
+//! reads two of them (`compare`). Detailed text geometry is opt-in with
+//! `KAMIN_DIAG_TEXT_GEOMETRY=1`, so ordinary journal timing stays comparable.
 
 pub(super) mod compare;
 mod element_kinds;
@@ -51,8 +52,13 @@ impl Watch {
             return Ok(None);
         }
         READER.with(|r| {
-            r.borrow_mut()
-                .get_or_insert_with(kamin_html::why::subscribe);
+            r.borrow_mut().get_or_insert_with(|| {
+                if std::env::var_os("KAMIN_DIAG_TEXT_GEOMETRY").is_some_and(|v| v == "1") {
+                    kamin_html::why::subscribe_text_geometry()
+                } else {
+                    kamin_html::why::subscribe()
+                }
+            });
         });
         let between = kamin_html::why::to_json(&kamin_html::why::take());
         let frames = window.read_with(cx, |view, _| view.doc.frame_counters())?;

@@ -7,6 +7,9 @@ use serde_json::{Value, json};
 
 impl Paragraph {
     pub(super) fn journal_geometry(&self, bounds: Bounds<Pixels>, window: &mut gpui::Window) {
+        if !crate::why::text_geometry_enabled() {
+            return;
+        }
         crate::why::note("text.line_geometry", || {
             let metrics = self.measure_runs(window);
             self.geometry_snapshot(bounds, &metrics).to_string()
@@ -51,6 +54,7 @@ impl Paragraph {
             .collect();
         json!({"origin": [f32::from(bounds.origin.x), f32::from(bounds.origin.y)],
             "size": [f32::from(bounds.size.width), f32::from(bounds.size.height)],
+            "glyph_nudge": [f32::from(self.glyph_nudge.x), f32::from(self.glyph_nudge.y)],
             "line_height": f32::from(self.line_height), "text_bytes": self.text.len(),
             "strut": self.strut,
             "vertical": self.vertical, "reversed": self.lines_reversed,

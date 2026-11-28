@@ -150,6 +150,8 @@ pub fn box_style_unpainted(parent: &BoxStyle, own: &SharedStyle, vcx: ValueCx<'_
 }
 
 #[cfg(test)]
+mod border_scale_tests;
+#[cfg(test)]
 mod format_tests;
 #[cfg(test)]
 mod paint_tests;
