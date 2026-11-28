@@ -97,3 +97,33 @@ fn a_fitting_unpainted_wrapper_takes_the_flow_width() {
     let layout = replaced.taffy.layout(stand_in).unwrap();
     assert_eq!((layout.size.width, layout.size.height), (200.0, 40.0));
 }
+
+#[test]
+fn an_auto_margin_wrapper_has_a_bounded_snapshot_only_while_overflowing() {
+    fn auto_wrapper(engine: &mut TaffyLayoutEngine) -> NodeId {
+        let wrap = wrapper(engine, 500.0);
+        let child = engine.taffy.children(wrap).unwrap()[0];
+        let mut style = engine.taffy.style(child).unwrap().clone();
+        style.margin.left = LengthPercentageAuto::auto();
+        style.margin.right = LengthPercentageAuto::auto();
+        engine.taffy.set_style(child, style).unwrap();
+        wrap
+    }
+    let mut engine = TaffyLayoutEngine::new();
+    let wrap = auto_wrapper(&mut engine);
+    flow(&mut engine, 300.0, wrap);
+    let leaf = engine.unpainted_leaf_narrower(LayoutId::from(wrap)).unwrap();
+    for width in [200.0, 299.0, 300.0] {
+        let mut real = TaffyLayoutEngine::new();
+        let wrap = auto_wrapper(&mut real);
+        let root = flow(&mut real, width, wrap);
+        let mut replaced = TaffyLayoutEngine::new();
+        let stand_in: NodeId = replaced.request_exact_leaf(&leaf).into();
+        let replaced_root = flow(&mut replaced, width, stand_in);
+        assert_eq!(seen(&real, root, wrap), seen(&replaced, replaced_root, stand_in), "{width}");
+    }
+    flow(&mut engine, 700.0, wrap);
+    assert!(engine.unpainted_leaf_narrower(LayoutId::from(wrap)).is_none());
+    let child = engine.taffy.children(wrap).unwrap()[0];
+    assert_eq!(engine.taffy.layout(child).unwrap().location.x, 100.0);
+}

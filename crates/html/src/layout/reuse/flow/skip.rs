@@ -2,7 +2,7 @@
 //! корневого потока.
 
 use super::super::Record;
-use super::super::recorder::{Making, Pending};
+use super::super::recorder::{Making, Pending, Unpainted};
 use super::{Counters, FlowCx, Mark};
 use crate::dom::Element;
 use crate::layout::options::RenderOpts;
@@ -29,9 +29,19 @@ impl FlowCx {
         }
         let child = out.last_mut()?;
         // Обёртка таблицы у начального края: лист снимается сквозь неё.
-        let unpainted = child
+        let unpainted = if child
             .downcast_mut::<crate::hooks::Hooked<crate::layout::table::StartWrapper>>()
-            .is_some();
+            .is_some()
+        {
+            Unpainted::AnyWidth
+        } else if child
+            .downcast_mut::<crate::hooks::Hooked<crate::layout::table::OverflowWrapper>>()
+            .is_some()
+        {
+            Unpainted::Narrower
+        } else {
+            Unpainted::No
+        };
         // The one allocation of a block being recorded: its record. What the
         // frame measures of it goes with the build's list (`Pending`).
         let record = std::rc::Rc::new(Record::new(

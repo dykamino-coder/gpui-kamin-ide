@@ -44,29 +44,38 @@
 # 42. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
 # 43. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
 # 44. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 45. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 46. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 47. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 48. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 49. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 50. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 51. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 52. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 53. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 54. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 55. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 56. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 57. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 58. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 59. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
-# 60. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
-# 61. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
-# 62. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
-# 63. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
+# 45. Bounded unpainted layout snapshots: expose overflowing wrapper leaves to hosts that guarantee stable content only at narrower widths, without weakening the arbitrary-width snapshot contract. The host must bound reuse by the recorded wrapper width.
+# 46. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 47. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 48. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 49. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 50. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 51. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 52. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 53. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 54. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 55. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 56. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 57. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 58. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 59. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 60. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 61. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
+# 62. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
+# 63. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
+# 64. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
 
+diff --git a/vendor/gpui/.cargo-ok b/vendor/gpui/.cargo-ok
+deleted file mode 100644
+index 5f8b795830acbab5961c1a28c76a7916c9631493..0000000000000000000000000000000000000000
+--- a/vendor/gpui/.cargo-ok
++++ /dev/null
+@@ -1 +0,0 @@
+-{"v":1}
+\ No newline at end of file
 diff --git a/vendor/gpui/Cargo.lock b/vendor/gpui/Cargo.lock
 deleted file mode 100644
 index c09b2c7977d933310de9e8fdac42ffeab6888395..0000000000000000000000000000000000000000
@@ -27582,10 +27591,10 @@ index 0000000000000000000000000000000000000000..41bfa96be3910c80d3d97d8498f8e1ff
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf.rs b/vendor/gpui/src/taffy/exact_leaf.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..57accdaab98ec411b785f2fdec1390f032739811
+index 0000000000000000000000000000000000000000..8baf05f8743cee1f812641c3467db5794ffa21a6
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf.rs
-@@ -0,0 +1,220 @@
+@@ -0,0 +1,228 @@
 +//! KaminIDE patch: an exact leaf standing in for a laid out subtree.
 +//!
 +//! A host that skips building a settled subtree still needs its parent to
@@ -27689,6 +27698,14 @@ index 0000000000000000000000000000000000000000..57accdaab98ec411b785f2fdec1390f0
 +    /// width at which the content is laid out the same.
 +    pub(crate) fn unpainted_leaf(&self, id: LayoutId) -> Option<ExactLeaf> {
 +        self.leaf(id, true)
++    }
++
++    /// An overflowing unpainted wrapper with a bounded caller guarantee:
++    /// its content stays at inline-start at every width no larger than its
++    /// current width. The caller must restrict reuse to that range.
++    pub(crate) fn unpainted_leaf_narrower(&self, id: LayoutId) -> Option<ExactLeaf> {
++        let leaf = self.leaf(id, true)?;
++        (leaf.min_width > leaf.size.width).then_some(leaf)
 +    }
 +
 +    fn leaf(&self, id: LayoutId, unpainted: bool) -> Option<ExactLeaf> {
@@ -27808,10 +27825,10 @@ index 0000000000000000000000000000000000000000..57accdaab98ec411b785f2fdec1390f0
 +}
 diff --git a/vendor/gpui/src/taffy/exact_leaf_tests.rs b/vendor/gpui/src/taffy/exact_leaf_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d6a3f0c4dc5c61bac740558ae085d90fb07d4004
+index 0000000000000000000000000000000000000000..47a4e06545f3a592cacb759aefe084d65bbb408a
 --- /dev/null
 +++ b/vendor/gpui/src/taffy/exact_leaf_tests.rs
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,129 @@
 +//! KaminIDE patch: the leaf of an unpainted wrapper stands in for the wrapper
 +//! and its content at every parent width at which the content is the same.
 +
@@ -27910,6 +27927,36 @@ index 0000000000000000000000000000000000000000..d6a3f0c4dc5c61bac740558ae085d90f
 +    flow(&mut replaced, 200.0, stand_in);
 +    let layout = replaced.taffy.layout(stand_in).unwrap();
 +    assert_eq!((layout.size.width, layout.size.height), (200.0, 40.0));
++}
++
++#[test]
++fn an_auto_margin_wrapper_has_a_bounded_snapshot_only_while_overflowing() {
++    fn auto_wrapper(engine: &mut TaffyLayoutEngine) -> NodeId {
++        let wrap = wrapper(engine, 500.0);
++        let child = engine.taffy.children(wrap).unwrap()[0];
++        let mut style = engine.taffy.style(child).unwrap().clone();
++        style.margin.left = LengthPercentageAuto::auto();
++        style.margin.right = LengthPercentageAuto::auto();
++        engine.taffy.set_style(child, style).unwrap();
++        wrap
++    }
++    let mut engine = TaffyLayoutEngine::new();
++    let wrap = auto_wrapper(&mut engine);
++    flow(&mut engine, 300.0, wrap);
++    let leaf = engine.unpainted_leaf_narrower(LayoutId::from(wrap)).unwrap();
++    for width in [200.0, 299.0, 300.0] {
++        let mut real = TaffyLayoutEngine::new();
++        let wrap = auto_wrapper(&mut real);
++        let root = flow(&mut real, width, wrap);
++        let mut replaced = TaffyLayoutEngine::new();
++        let stand_in: NodeId = replaced.request_exact_leaf(&leaf).into();
++        let replaced_root = flow(&mut replaced, width, stand_in);
++        assert_eq!(seen(&real, root, wrap), seen(&replaced, replaced_root, stand_in), "{width}");
++    }
++    flow(&mut engine, 700.0, wrap);
++    assert!(engine.unpainted_leaf_narrower(LayoutId::from(wrap)).is_none());
++    let child = engine.taffy.children(wrap).unwrap()[0];
++    assert_eq!(engine.taffy.layout(child).unwrap().location.x, 100.0);
 +}
 diff --git a/vendor/gpui/src/taffy/final_geometry.rs b/vendor/gpui/src/taffy/final_geometry.rs
 new file mode 100644
@@ -42363,10 +42410,10 @@ index 0000000000000000000000000000000000000000..9d92561b810c8a95400783f1054dbeed
 +}
 diff --git a/vendor/gpui/src/window/retained.rs b/vendor/gpui/src/window/retained.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ff69f618fde9472c476db7222ef8572e65aeabf6
+index 0000000000000000000000000000000000000000..040b5829bf9b22693a2e61af1afc5654fb1acf79
 --- /dev/null
 +++ b/vendor/gpui/src/window/retained.rs
-@@ -0,0 +1,882 @@
+@@ -0,0 +1,892 @@
 +//! KaminIDE patch: host-keyed retained subtrees across frames.
 +//!
 +//! Entity views are cached by `Context::notify`; a host engine that owns its
@@ -43157,6 +43204,16 @@ index 0000000000000000000000000000000000000000..ff69f618fde9472c476db7222ef8572e
 +        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
 +    }
 +
++    /// The leaf of an unpainted wrapper whose content overflows its width.
++    /// The caller guarantees that the content stays at inline-start at every
++    /// width no larger than the current wrapper width, and must restrict reuse
++    /// to that range. This weaker, bounded guarantee does not satisfy
++    /// [`Self::layout_snapshot_unpainted`]'s contract at arbitrary widths.
++    pub fn layout_snapshot_unpainted_narrower(&self, id: LayoutId) -> Option<LayoutSnapshot> {
++        let leaf = self.layout_engine.as_ref()?.unpainted_leaf_narrower(id)?;
++        Some(LayoutSnapshot { leaf, scale: self.scale_factor() })
++    }
++
 +    /// Position in this pass's layout requests; pass it to `capture_layout`
 +    /// after requesting a subtree.
 +    pub fn layout_request_position(&self) -> usize {
@@ -43249,7 +43306,6 @@ index 0000000000000000000000000000000000000000..ff69f618fde9472c476db7222ef8572e
 +            .request_exact_leaf(&snapshot.leaf)
 +    }
 +}
-\ No newline at end of file
 diff --git a/vendor/gpui/src/window/retained_layout.rs b/vendor/gpui/src/window/retained_layout.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..acb6311084a1fa2aa73a360b52bd034ea0e532ea

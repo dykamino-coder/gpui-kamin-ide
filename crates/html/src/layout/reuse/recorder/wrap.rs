@@ -3,7 +3,7 @@
 //! (`Skip`) идут в обёртке блока: своей (`Recorder`) или в далёкой
 //! (`far::FarRecorder`), если блок пишется и для неё, — одна обёртка на блок.
 
-use super::{Output, Pending, far};
+use super::{Output, Pending, Unpainted, far};
 use crate::hooks::Wrap;
 use crate::layout::reuse::width::reusable_range;
 use crate::layout::reuse::{FlowReuse, lines::with_record, scaled};
@@ -39,6 +39,20 @@ pub(in crate::layout::reuse) struct Skip<'a> {
 }
 
 impl Pending {
+    pub(super) fn resizable(&self) -> Option<(f32, f32)> {
+        let m = &self.making;
+        let flow = self.record.key.flow_width();
+        let (lo, hi) = reusable_range(m.width, m.border.get(), flow, m.lines.slack())?;
+        // Auto margins only prove nonpositive free space here: a wider flow
+        // can move the content, so cap reuse at the recorded flow width.
+        let hi = if m.unpainted == Unpainted::Narrower {
+            hi.min(flow?)
+        } else {
+            hi
+        };
+        Some((lo, hi))
+    }
+
     /// The record in the making already stands for its block at every wider
     /// flow: the block prepainted and painted inertly (its sink in `ink`),
     /// and its layout holds there (`width::reusable_range`: a fixed width, or
@@ -46,18 +60,10 @@ impl Pending {
     /// (`far::FarRecorder`).
     pub(in crate::layout::reuse) fn holds_wider_flows(&self, ink: &InkSinkList) -> bool {
         let m = &self.making;
-        let range = || {
-            reusable_range(
-                m.width,
-                m.border.get(),
-                self.record.key.flow_width(),
-                m.lines.slack(),
-            )
-        };
         m.quiet.get()
             && m.painted.get()
             && m.ink(ink).is_some_and(|(_, tainted)| !tainted)
-            && range().is_some_and(|(_, hi)| hi == f32::INFINITY)
+            && self.resizable().is_some_and(|(_, hi)| hi == f32::INFINITY)
     }
 }
 
@@ -116,8 +122,12 @@ impl Skip<'_> {
         };
         let scale = window.scale_factor();
         let snapshot = match unpainted {
-            true => window.layout_snapshot_unpainted(id),
-            false => window.layout_snapshot(id),
+            Unpainted::AnyWidth => window.layout_snapshot_unpainted(id),
+            Unpainted::Narrower => self
+                .pending(|p| p.record.key.flow_width() == Some(width))
+                .filter(|same| *same)
+                .and_then(|_| window.layout_snapshot_unpainted_narrower(id)),
+            Unpainted::No => window.layout_snapshot(id),
         };
         let origin = scaled(window.layout_origin_unrounded(id), scale);
         // Коробка далеко от экрана: блок, скорее всего, далёкий, и повтор ему
@@ -138,7 +148,9 @@ impl Skip<'_> {
         self.pending(|p| {
             let making = &p.making;
             making.hits.set(hits.map(device));
-            if unpainted && let Some(snapshot) = &snapshot {
+            if unpainted != Unpainted::No
+                && let Some(snapshot) = &snapshot
+            {
                 // Переполненная таблица держит свою ширину полом сама: для
                 // `width::reusable_range` блок так же широк, как она.
                 making.border.set(snapshot.width());

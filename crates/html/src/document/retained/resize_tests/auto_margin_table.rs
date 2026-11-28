@@ -1,0 +1,34 @@
+//! Table auto margins resolve to zero on overflow and absorb positive free
+//! space (CSS 2 sections 10.3.3 and 17.5.2.2; Flexbox section 8.1).
+
+use super::super::layered_replay_tests::scene;
+use super::super::tests::{frame, open};
+use super::{replayed, resize};
+use gpui::TestAppContext;
+
+#[gpui::test]
+fn table_auto_margins_follow_free_space_after_replaying_an_overflow(cx: &mut TestAppContext) {
+    for margins in ["margin:0 auto", "margin-left:auto", "margin-right:auto"] {
+        let html = format!(
+            "<!doctype html><style>body{{margin:0}}table{{border-spacing:0;{margins}}}\
+             td{{padding:0}}td div{{width:500px;height:20px;background:blue}}</style>\
+             <table><tr><td><div></div></td></tr></table>"
+        );
+        let mut app = cx.clone();
+        let (view, vcx) = open(&mut app, &html);
+        frame(vcx);
+        resize(&view, vcx, 401.);
+        let before = replayed(&view, vcx);
+        resize(&view, vcx, 400.);
+        assert_eq!(replayed(&view, vcx) - before, 1, "{margins}");
+        for width in [600., 399., 800., 400.] {
+            resize(&view, vcx, width);
+            let actual = scene(vcx);
+            let mut fresh_app = cx.clone();
+            let (fresh, fresh_cx) = open(&mut fresh_app, &html);
+            fresh_cx.update(|_, cx| fresh.update(cx, |v, _| v.viewport.0 = width));
+            frame(fresh_cx);
+            assert_eq!(actual, scene(fresh_cx), "{margins} at {width}");
+        }
+    }
+}
