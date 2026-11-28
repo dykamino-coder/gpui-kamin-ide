@@ -87,8 +87,8 @@ fn check_page(cx: &mut TestAppContext, html: &str, nested: bool) {
             "both nested scrollports need both bars: {journal:?}"
         );
     }
-    eprintln!(
-        "nested:{nested}: {} native dependency retries",
-        budget.retries()
+    assert!(
+        budget.retries() > 0,
+        "fixture must exercise native layout dependency retries"
     );
 }
