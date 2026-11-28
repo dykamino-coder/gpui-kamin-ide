@@ -16,6 +16,7 @@
 
 mod key;
 mod plan;
+mod resume;
 #[cfg(test)]
 mod tests;
 
@@ -23,7 +24,7 @@ use super::{Counters, FlowReuse};
 use crate::dom::{BoxId, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
-use crate::text::paragraph::{AtomFn, AtomSource, KeptAtoms, KeptSlot, LazyBuild, Paragraph};
+use crate::text::paragraph::{AtomFn, KeptSlot, Paragraph};
 use key::ParaKey;
 pub(crate) use plan::{Plan, Sealed};
 use std::cell::Cell;
@@ -44,6 +45,8 @@ pub(crate) struct KeepStats {
     pub(crate) recorded: u64,
     pub(crate) resumed: u64,
     pub(crate) refused: [u64; refusal::REFUSALS],
+    /// Records that did not hold, by reason (`resume::Miss`).
+    pub(crate) missed: [u64; resume::MISSES],
 }
 
 /// The records of a document's kept paragraphs, by `key::id`.
@@ -84,6 +87,10 @@ impl Records {
         why.note();
     }
 
+    fn miss(&self, why: resume::Miss) {
+        self.count(|s| s.missed[why as usize] += 1);
+    }
+
     /// Drop the records no build took or made in the last two frames.
     fn prune(&self, epoch: u64) {
         if self.pruned.replace(epoch) != epoch {
@@ -122,13 +129,15 @@ pub(crate) fn start(
     let epoch = flow.store.epoch.get();
     records.prune(epoch);
     // A run of an anonymous box carries a style naming no element (`self_node` 0): its
-    // owner is the box whose published flow the nodes are (`BoxTree::flow_of`), one per
-    // flow, or for a render copy of a box's children the parent box of its elements
-    // (`owner_of`), whose keys no other run holds; the record key names that owner.
+    // owner is the box whose published flow the nodes are (`BoxTree::flow_of`), for a
+    // render copy of a box's children the parent box of its elements (`owner_of`), else
+    // the block whose lines the run makes (`InlineContext::trim_para`), whose build epoch
+    // covers every node below it. The record key names that owner and the run's nodes.
     let owner = {
         let boxes = opts.cx.doc().boxes.borrow();
+        let block = || (opts.cx.inline.trim_para).and_then(|(block, _)| boxes.box_of(block));
         let owner = match inherited.self_node {
-            0 => boxes.flow_of(nodes).or_else(|| boxes.owner_of(nodes)),
+            0 => (boxes.flow_of(nodes).or_else(|| boxes.owner_of(nodes))).or_else(block),
             node => boxes.box_of(node),
         };
         owner.map(|id| (id, boxes.clock()))
@@ -157,7 +166,7 @@ pub(crate) fn start(
         node => key::id(node, nodes),
     };
     let start = Counters::read(&opts.cx);
-    if let Some(para) = resume(&flow, id, (nodes, inherited, opts), start, builder) {
+    if let Some(para) = resume::resume(&flow, id, (nodes, inherited, opts), start, builder) {
         records.count(|s| s.resumed += 1);
         crate::work::add!(ParagraphsResumed, 1);
         return Ok(para);
@@ -180,6 +189,7 @@ pub(crate) fn start(
         start,
         keys: Cell::new(Vec::new()),
         refusal: Cell::new(None),
+        widths: plan::Widths::track(opts),
     })))
 }
 
@@ -190,7 +200,10 @@ fn note_no_box(nodes: &[Node], inherited: &BoxStyle) {
         let first: Vec<String> = (nodes.iter().take(3))
             .map(|n| match n {
                 Node::Element(e) => format!("<{} {:x}>", e.tag, e.node_id),
-                Node::Text(t) => format!("text {}", t.as_str().len()),
+                Node::Text(t) => {
+                    let blank = t.as_str().trim_ascii().is_empty();
+                    format!("text {} blank {blank}", t.as_str().len())
+                }
             })
             .collect();
         format!(
@@ -201,40 +214,4 @@ fn note_no_box(nodes: &[Node], inherited: &BoxStyle) {
             nodes.len()
         )
     });
-}
-
-/// The kept paragraph of record `id`, if it holds (see the module).
-fn resume(
-    flow: &Rc<FlowReuse>,
-    id: u64,
-    (nodes, inherited, opts): (&[Node], &BoxStyle, &RenderOpts),
-    start: Counters,
-    builder: AtomBuilder,
-) -> Option<Paragraph> {
-    if !flow.allow || flow.again {
-        return None;
-    }
-    let record = flow.store.paragraphs.with(|map| map.get(&id).cloned())?;
-    let clean = {
-        let boxes = opts.cx.doc().boxes.borrow();
-        boxes.build_epoch(record.owner)? <= record.at
-            && record.at <= boxes.clock()
-            && !boxes.resized_by_siblings(record.owner, record.at)
-    };
-    if !clean || !record.key.holds(inherited, opts) || !record.slot.is_filled() {
-        return None;
-    }
-    let para = record.slot.take()?;
-    let source = match para.kept_atoms() {
-        Some(atoms) => AtomSource::of(nodes, &atoms)?,
-        None => AtomSource::of(nodes, &KeptAtoms::default())?,
-    };
-    let (from, to) = record.counters;
-    start.advanced(from, to).write(&opts.cx);
-    record.seen.set(flow.store.epoch.get());
-    let lazy = LazyBuild::new(source, builder(inherited, opts, record.flow_text));
-    let para = para
-        .resume(record.slot.clone(), lazy)
-        .measure_context(&opts.cx);
-    Some(para.rebind_selection(opts.selection_color()))
 }

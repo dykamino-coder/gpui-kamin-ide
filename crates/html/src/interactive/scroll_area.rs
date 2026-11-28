@@ -25,6 +25,7 @@ fn timed_build(
     frame: Option<super::scroll_extent::Frame>,
 ) -> AnyElement {
     crate::work::time!(_build, ScrollBuildNs);
+    crate::work::time_self!(_own, BuildSelfScrollNs);
     build(handle, h, v, frame)
 }
 

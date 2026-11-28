@@ -113,6 +113,72 @@ fn anonymous_runs_and_atom_content_are_kept_by_their_flow(cx: &mut TestAppContex
     );
 }
 
+#[gpui::test]
+fn runs_that_start_with_an_inline_element_are_kept_by_their_flow(cx: &mut TestAppContext) {
+    // A list of links with nested lists: the run of an item before its nested list starts
+    // with an inline element, whose box (if any) does not name the run's flow; the run's
+    // text does. The frame at each width equals a fresh document's.
+    let text = "alpha beta gamma delta ".repeat(4);
+    let items: String = (0..20)
+        .map(|i| format!("<li><a href='#{i}'>{i} {text}</a> {text}<ol><li>{text}</li></ol></li>"))
+        .collect();
+    // Markers are left out: a marker run (generated text, no source) has no box of its own yet.
+    let page = format!("<body style='margin:0;list-style:none'><ol>{items}</ol></body>");
+    let stats = compare(cx, &page, &[401., 300., 400.]);
+    assert!(
+        stats.refused[Refusal::NoBox as usize] == 0 && stats.resumed >= 2 * 40,
+        "runs were built again: {stats:?}"
+    );
+}
+
+#[gpui::test]
+fn paragraphs_with_generated_content_are_kept(cx: &mut TestAppContext) {
+    // A pseudo-element names its originating element as its implicit anchor; in flow it
+    // reads no other box, so its paragraph is kept like any other.
+    let text = "alpha beta gamma delta ".repeat(10);
+    let rows: String = (0..20).map(|i| format!("<p>{i} {text}</p>")).collect();
+    let page = format!(
+        "<style>p::before{{content:'\u{a7} '}} p::after{{content:' end'}}</style>\
+         <body style='margin:0'>{rows}</body>"
+    );
+    let stats = compare(cx, &page, &[401., 300., 400.]);
+    assert!(
+        stats.refused[Refusal::Subtree as usize] == 0 && stats.resumed >= 2 * 20,
+        "paragraphs with generated content were built again: {stats:?}"
+    );
+}
+
+#[gpui::test]
+fn text_in_shrink_to_fit_atoms_is_kept(cx: &mut TestAppContext) {
+    // An inline-block of automatic width gets its constraint from the line; the build of
+    // its paragraph reads no width, so a new constraint only breaks its lines again.
+    let text = "alpha beta gamma delta ".repeat(8);
+    let rows: String = (0..20)
+        .map(|i| format!("<div>{i} <span style='display:inline-block'>{text}</span></div>"))
+        .collect();
+    let page = format!("<body style='margin:0'>{rows}</body>");
+    let stats = compare(cx, &page, &[401., 300., 400.]);
+    assert!(
+        stats.resumed >= 2 * 20,
+        "atom text was built again: {stats:?}"
+    );
+}
+
+#[gpui::test]
+fn every_recording_follows_a_named_miss(cx: &mut TestAppContext) {
+    // Every record that does not give a frame its paragraph is counted by reason
+    // (`paragraphs_miss_<reason>` in the journal).
+    let text = "alpha beta gamma delta ".repeat(12);
+    let rows: String = (0..10).map(|i| format!("<p>{i} {text}</p>")).collect();
+    let page = format!("<body style='margin:0'>{rows}</body>");
+    let stats = compare(cx, &page, &[401., 300.]);
+    let missed: u64 = stats.missed.iter().sum();
+    assert!(stats.resumed >= 10, "{stats:?}");
+    // A record is made only by a build that took none: every recording after the first
+    // frame's has a named miss.
+    assert!(stats.recorded <= 10 + missed, "{stats:?}");
+}
+
 /// Atoms in a scroll container: the atoms scrolled into the window after a
 /// width change are painted as a fresh document paints them.
 #[gpui::test]

@@ -15,7 +15,7 @@ use tracing::{
 
 #[path = "timer.rs"]
 mod timer;
-pub use timer::{Timer, time};
+pub use timer::{SelfTimer, Timer, time, time_self};
 #[path = "inputs.rs"]
 mod inputs;
 pub use inputs::{Carry, Repeat, repeat};
@@ -62,6 +62,8 @@ struct Totals {
     observer: Option<Arc<dyn Fn(Phase) + Send + Sync>>,
     /// Наносекунды внутри observer ([observed]).
     observed_ns: AtomicU64,
+    /// Time of the self-timed intervals nested in the open one, ns (`timer::SelfTimer`).
+    nested_ns: AtomicU64,
     allocations: Option<fn() -> (u64, u64)>,
     /// Layout units seen by [inputs::repeat].
     inputs: std::sync::Mutex<inputs::Inputs>,
@@ -111,6 +113,7 @@ impl Session {
             counts: std::array::from_fn(|_| std::array::from_fn(|_| AtomicU64::new(0))),
             observer,
             observed_ns: AtomicU64::new(0),
+            nested_ns: AtomicU64::new(0),
             allocations,
             inputs: Default::default(),
             sites: Default::default(),
