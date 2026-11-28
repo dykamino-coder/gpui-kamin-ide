@@ -114,6 +114,7 @@ fn placed_replay_declines_records_with_groups_and_open_layers() {
         mask_once: 0,
         mask_clip: None,
         projection: None,
+        plane: None,
         fragments: Vec::new(),
         label_dropped: false,
     });

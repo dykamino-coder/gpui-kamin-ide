@@ -23245,10 +23245,10 @@ index 0000000000000000000000000000000000000000..2eb631500017d1d6979911eb112e589b
 +}
 diff --git a/vendor/gpui/src/scene/replay_tests.rs b/vendor/gpui/src/scene/replay_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..3e00ae506e6205060d83e33cedc7e0b11b882e24
+index 0000000000000000000000000000000000000000..19fe768ce698d8080a79da8353d842105fb54f61
 --- /dev/null
 +++ b/vendor/gpui/src/scene/replay_tests.rs
-@@ -0,0 +1,219 @@
+@@ -0,0 +1,220 @@
 +//! KaminIDE patch: the one-pass placed replay equals copy + replay.
 +
 +use super::*;
@@ -23365,6 +23365,7 @@ index 0000000000000000000000000000000000000000..3e00ae506e6205060d83e33cedc7e0b1
 +        mask_once: 0,
 +        mask_clip: None,
 +        projection: None,
++        plane: None,
 +        fragments: Vec::new(),
 +        label_dropped: false,
 +    });
