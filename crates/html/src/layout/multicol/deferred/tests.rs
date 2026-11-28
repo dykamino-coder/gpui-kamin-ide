@@ -123,7 +123,10 @@ fn deferred_width_preserves_the_full_width_float_measurement_contract(
             gpui::point(gpui::px(0.), gpui::px(0.)),
             gpui::size(gpui::px(400.), gpui::px(400.)),
             |window, app| {
-                assert_eq!(recipe.recorded_children(width, window, app).0.len(), 3);
+                assert_eq!(
+                    recipe.recorded_children(width, None, window, app).0.len(),
+                    3
+                );
                 gpui::div()
             },
         );

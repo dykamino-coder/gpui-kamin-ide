@@ -40,7 +40,7 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
             assert_eq!(measured.stackable.as_ref().unwrap().len(), 2);
             assert_eq!(measured.oof_static.iter().map(|(at, _)| *at).collect::<Vec<_>>(), [0, 1, 2, 2]);
             let geometry = crate::layout::positioned::containing_block::metrics::layout::collect_nodes(
-                &measured.source, &merged, 100., &opts, window, app,
+                &measured.source, &merged, 100., Some((210., Some(70.))), &opts, window, app,
             );
             assert_eq!(geometry.flows.len(), 4);
             // Block flow records the static position as the box's normal
@@ -83,6 +83,43 @@ fn direct_static_anchors_survive_filtering_and_a_changed_normal_sibling(
                 assert_eq!(fragments, [expected], "fragments of {id}");
             }
         }
+        gpui::div()
+    });
+}
+
+#[gpui::test]
+fn direct_children_resolve_insets_and_percentages_against_the_host_box(
+    cx: &mut gpui::TestAppContext,
+) {
+    let cx = cx.add_empty_window();
+    cx.draw(point(px(0.), px(0.)), size(px(400.), px(400.)), |window, app| {
+        let tree = crate::document::parsed::parse(
+            "<section style='position:relative;columns:2;column-gap:10px;column-fill:auto;width:210px;height:70px'><div style='height:150px'></div><aside style='position:absolute;right:0;bottom:0;width:50%;height:10px'></aside></section>",
+            "",
+        );
+        let mut opts = RenderOpts {
+            viewport: (400., 400.), normal_line_height: 1.2,
+            text: Default::default(), cx: Default::default(), frag: Default::default(),
+        };
+        opts.cx.values.doc = crate::layout::cx::BuildDoc::of(tree.doc.clone());
+        opts.cx.values.viewport = opts.viewport;
+        crate::style::cascade::materialize::materialize(
+            &tree, opts.root_style().style_rc(), opts.cx.vcx(),
+        );
+        let host = super::tests::section(&tree).clone();
+        let mut merged = crate::style::cascade::materialize::box_style(
+            &opts.root_style(), &host.style, opts.cx.vcx(),
+        );
+        // The host's own box style carries its node, as the element build gives it.
+        merged.self_node = host.node_id;
+        let geometry = crate::layout::positioned::containing_block::metrics::layout::collect_nodes(
+            &host.children, &merged, 100., Some((210., Some(70.))), &opts, window, app,
+        );
+        let aside = host.children.iter().find_map(|n| match n {
+            Node::Element(c) if c.tag == "aside" => Some(c.node_id), _ => None,
+        }).unwrap();
+        let rect = geometry.flows.iter().find(|f| f.id == aside).expect("positioned flow").metrics.normal_rect();
+        assert_eq!(rect, Bounds { origin: point(px(105.), px(60.)), size: size(px(105.), px(10.)) });
         gpui::div()
     });
 }

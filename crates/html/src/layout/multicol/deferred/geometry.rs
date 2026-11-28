@@ -7,6 +7,7 @@ impl Recipe {
         &self,
         host: &Element,
         width: f32,
+        host_box: Option<(f32, Option<f32>)>,
         window: &mut Window,
         cx: &mut App,
     ) -> RenderOpts {
@@ -20,6 +21,7 @@ impl Recipe {
                     &host.children,
                     &self.merged,
                     width,
+                    host_box,
                     &opts,
                     window,
                     cx,

@@ -14,7 +14,7 @@ impl Recipe {
         window: &mut Window,
         cx: &mut App,
     ) -> Vec<StackChild> {
-        self.recorded_children(width, window, cx).0
+        self.recorded_children(width, None, window, cx).0
     }
 
     // Сборка детей — свой кадр: раскладка их копий в `prepare` вложена глубже.
@@ -22,13 +22,14 @@ impl Recipe {
     pub(super) fn recorded_children(
         &self,
         width: f32,
+        host_box: Option<(f32, Option<f32>)>,
         window: &mut Window,
         cx: &mut App,
     ) -> (Vec<StackChild>, std::rc::Rc<Snapshot>) {
         let vertical = self.axis.is_vertical();
         let reverse = self.axis == crate::layout::fragment::types::StackAxis::VerticalRl;
         let host = self.resolved_host(width);
-        let opts = self.geometry_options(&host, width, window, cx);
+        let opts = self.geometry_options(&host, width, host_box, window, cx);
         let geometry = opts.cx.position.geometry.clone().unwrap_or_default();
         // Тот же dispatch по каждому ребёнку, что у стопки известной ширины.
         let plan = crate::layout::multicol::measure::plan_at(

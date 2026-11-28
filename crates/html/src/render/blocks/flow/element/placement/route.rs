@@ -89,7 +89,19 @@ pub(crate) fn layer_route(
                     e.tag.as_str(),
                     "img" | "iframe" | "video" | "canvas" | "object" | "embed" | "svg"
                 )));
-    let far_abs = far_abs || far_fixed;
+    // A host recorded in its own box (`layout::collect_nodes`) lays its flow
+    // out at a column's width: a direct child that resolves insets or
+    // percentages against the host (CSS 2.1 §10.1) goes to the host's layer.
+    // Boxes at their static position need no containing-block geometry.
+    let host_abs = abs_like
+        && !tf_fixed
+        && cx
+            .position
+            .geometry_record
+            .as_ref()
+            .is_some_and(|r| r.host != 0 && r.host == inherited.self_node)
+        && !crate::layout::positioned::static_position::at_static_position(&e.style.used());
+    let far_abs = far_abs || far_fixed || host_abs;
     // A negative `z-index` box whose containing block is the ICB goes
     // to the ICB layer too, painted in the bottom layer (`Underlay`,
     // CSS 2.1 §9.9 step 3): in place it was positioned from its

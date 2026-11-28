@@ -29,6 +29,9 @@ pub(crate) struct Recorder {
     pub(super) records: RefCell<HashMap<u64, gpui::Point<Pixels>>>,
     /// Anchored boxes the settling pass could not anchor (`record::settle`).
     pub(crate) unsettled: RefCell<std::collections::HashSet<u64>>,
+    /// The host laid out in its own box (`layout::collect_nodes`): its direct
+    /// positioned children resolve against that box (CSS 2.1 §10.1).
+    pub(crate) host: u64,
 }
 
 struct Entry {

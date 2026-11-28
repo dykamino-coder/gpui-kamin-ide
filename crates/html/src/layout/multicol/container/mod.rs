@@ -66,10 +66,18 @@ pub(crate) fn multicol_column_stack(
         Vec::new()
     };
     let (e, inherited, opts) = (e.clone(), inherited.clone(), opts.clone());
+    let col_w = line_col_w.or(layout_col_w);
+    // The container's content box: the containing block of its direct
+    // positioned children (css-multicol-1 §2), wider than one column.
+    let host_box = col_w.map(|w| {
+        let cols = f32::from(cols.max(1));
+        (w * cols + used_gap * (cols - 1.0), col_h.or(fixed))
+    });
     crate::layout::positioned::containing_block::metrics::layout::defer(
         source,
         merged.clone(),
-        line_col_w.or(layout_col_w),
+        col_w,
+        host_box,
         opts,
         move |opts| {
             let (e, inherited, opts) = (&e, &inherited, &opts);

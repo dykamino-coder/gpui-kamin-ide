@@ -47,6 +47,7 @@ pub(crate) fn defer(
     kids: Vec<Node>,
     parent: BoxStyle,
     width: Option<f32>,
+    host_box: Option<(f32, Option<f32>)>,
     mut opts: RenderOpts,
     build: impl FnOnce(RenderOpts) -> AnyElement + 'static,
 ) -> AnyElement {
@@ -65,6 +66,7 @@ pub(crate) fn defer(
         kids,
         parent,
         width: width.unwrap(),
+        host_box,
         opts,
         build: Some(Box::new(build)),
         child: None,
@@ -76,6 +78,7 @@ struct Original {
     kids: Vec<Node>,
     parent: BoxStyle,
     width: f32,
+    host_box: Option<(f32, Option<f32>)>,
     opts: RenderOpts,
     build: Option<Build>,
     child: Option<AnyElement>,
@@ -88,7 +91,15 @@ impl Wrap for Original {
             .expect("original layout built the fragment tree")
     }
     fn request_layout(&mut self, window: &mut Window, cx: &mut App) -> LayoutId {
-        let geometry = collect_nodes(&self.kids, &self.parent, self.width, &self.opts, window, cx);
+        let geometry = collect_nodes(
+            &self.kids,
+            &self.parent,
+            self.width,
+            self.host_box,
+            &self.opts,
+            window,
+            cx,
+        );
         self.opts.cx.position.geometry = Some(geometry);
         let build = self
             .build
@@ -134,6 +145,7 @@ mod tests {
                     vec![Node::Element(kid)],
                     opts.root_style(),
                     Some(100.),
+                    None,
                     opts,
                     move |opts| {
                         assert!(opts.cx.position.state.can_defer(true, 0, false));

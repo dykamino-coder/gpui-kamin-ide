@@ -124,7 +124,9 @@ impl Recipe {
         stack.forced_h = None;
         stack.balance_failure = None;
         stack.col_w.set(width);
-        let (children, geometry) = self.recorded_children(width, window, cx);
+        let cols = stack.count.max(1) as f32;
+        let host_box = Some((width * cols + stack.gap * (cols - 1.0), self.fixed));
+        let (children, geometry) = self.recorded_children(width, host_box, window, cx);
         stack.children = children;
         stack.oof.geometry = geometry;
         if stack.fixed_height.is_some() {

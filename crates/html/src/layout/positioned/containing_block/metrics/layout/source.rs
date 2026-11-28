@@ -30,15 +30,20 @@ pub(crate) fn collect(
 }
 
 /// A host's child list in normal flow, which records direct positioned children's static positions.
+/// `host_box`: the host's content box (inline size, definite block size) when the flow is
+/// narrower than the host (a column): the host, not the column, is the containing block of
+/// its direct positioned children (CSS 2.1 §10.1, css-multicol-1 §2).
 pub(crate) fn collect_nodes(
     kids: &[Node],
     parent: &BoxStyle,
     width: f32,
+    host_box: Option<(f32, Option<f32>)>,
     opts: &RenderOpts,
     window: &mut Window,
     cx: &mut App,
 ) -> Rc<Snapshot> {
-    collect_in(Children::Nodes(kids), parent, width, None, opts, window, cx)
+    let kids = Children::Nodes(kids, host_box);
+    collect_in(kids, parent, width, None, opts, window, cx)
 }
 
 pub(crate) fn collect_paged(
@@ -50,7 +55,7 @@ pub(crate) fn collect_paged(
     cx: &mut App,
 ) -> Rc<Snapshot> {
     collect_in(
-        Children::Nodes(kids),
+        Children::Nodes(kids, None),
         parent,
         page.0.0,
         Some((page.0.1, page.1)),
@@ -62,14 +67,14 @@ pub(crate) fn collect_paged(
 
 enum Children<'a> {
     Elements(&'a [Element]),
-    Nodes(&'a [Node]),
+    Nodes(&'a [Node], Option<(f32, Option<f32>)>),
 }
 
 impl Children<'_> {
     fn elements(&self) -> Box<dyn Iterator<Item = &Element> + '_> {
         match self {
             Self::Elements(kids) => Box::new(kids.iter()),
-            Self::Nodes(nodes) => Box::new(nodes.iter().filter_map(|n| match n {
+            Self::Nodes(nodes, _) => Box::new(nodes.iter().filter_map(|n| match n {
                 Node::Element(e) => Some(e),
                 _ => None,
             })),
@@ -81,7 +86,7 @@ impl Children<'_> {
                 .iter()
                 .map(|c| opts.cx.contracts.build.element(c, parent, opts))
                 .collect(),
-            Self::Nodes(nodes) => opts.cx.contracts.build.blocks(nodes, parent, opts),
+            Self::Nodes(nodes, _) => opts.cx.contracts.build.blocks(nodes, parent, opts),
         }
     }
 }
@@ -163,7 +168,15 @@ fn build(
     crate::layout::fragment::geometry::Node,
     gpui::Size<gpui::Pixels>,
 ) {
-    let recorder = Rc::new(Recorder::for_fragments(kids.elements(), parent, opts));
+    let host_box = match kids {
+        Children::Nodes(_, host_box) if page.is_none() => *host_box,
+        _ => None,
+    };
+    let mut recorder = Recorder::for_fragments(kids.elements(), parent, opts);
+    if host_box.is_some() {
+        recorder.host = parent.self_node;
+    }
+    let recorder = Rc::new(recorder);
     let mut opts = opts.clone();
     opts.cx.position = Default::default();
     opts.cx.deferred = Default::default();
@@ -180,7 +193,7 @@ fn build(
         .map(|_| crate::layout::page::paged::PagedBuild::begin());
     opts.frag.paged = paged.clone();
     let host_cb = (page.is_none()
-        && matches!(kids, Children::Nodes(_))
+        && matches!(kids, Children::Nodes(..))
         && crate::text::inline::establishes_cb(parent))
     .then(|| {
         crate::layout::positioned::containing_block::LayerScope::cb(
@@ -189,18 +202,32 @@ fn build(
             None,
         )
     });
-    let mut children = kids.build(parent, &opts);
-    if let Some(scope) = host_cb {
-        children.extend(scope.finish());
-    }
+    let children = kids.build(parent, &opts);
+    let layer = host_cb.map(|scope| scope.finish()).unwrap_or_default();
     let is_page = page.is_some();
-    let mut frame = match page {
-        Some((height, frame)) => frame()
+    let mut frame = match (page, host_box) {
+        (Some((height, frame)), _) => frame()
             .relative()
             .w(px(width))
             .h(px(height))
-            .children(children),
-        None => div().block().w(px(width)).children(children),
+            .children(children)
+            .children(layer),
+        // The flow keeps the column's width; the host's layer lays the
+        // host's direct positioned children out in the host's own box.
+        (None, Some((inline, block))) => {
+            let host = div().relative().w(px(inline));
+            let host = match block {
+                Some(block) => host.h(px(block)),
+                None => host,
+            };
+            host.child(div().block().w(px(width)).children(children))
+                .children(layer)
+        }
+        (None, None) => div()
+            .block()
+            .w(px(width))
+            .children(children)
+            .children(layer),
     };
     if let Some(icb) = icb {
         frame = frame
