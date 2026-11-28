@@ -4017,10 +4017,13 @@ impl Window {
                 });
         }
 
+        // KaminIDE patch: the time after paint is the journal's (`frame_perf`).
+        let finish_start = std::time::Instant::now();
         retained_layout::release_frame_layouts();
         self.layout_engine.as_mut().unwrap().clear();
         self.text_system().finish_frame();
         self.next_frame.finish(&mut self.rendered_frame);
+        let damage_start = std::time::Instant::now();
         // KaminIDE patch: where the new scene paints otherwise than the one this
         // window drew last (scene/damage.rs); a renderer that keeps its target
         // redraws only there.
@@ -4033,6 +4036,12 @@ impl Window {
         self.next_frame
             .scene
             .note_frame_damage_moved(&self.rendered_frame.scene, self.frame_serial + 1, device, moved);
+        {
+            use crate::frame_perf::{DAMAGE_US, FINISH_US};
+            use std::sync::atomic::Ordering::Relaxed;
+            FINISH_US.fetch_add((damage_start - finish_start).as_micros() as u32, Relaxed);
+            DAMAGE_US.fetch_add(damage_start.elapsed().as_micros() as u32, Relaxed);
+        }
 
         self.invalidator.set_phase(DrawPhase::Focus);
         let previous_focus_path = self.rendered_frame.focus_path();

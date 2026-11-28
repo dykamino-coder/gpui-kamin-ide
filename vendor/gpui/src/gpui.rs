@@ -210,6 +210,12 @@ pub mod frame_perf {
     pub static HITTEST_US: AtomicU32 = AtomicU32::new(0);
     /// Время фазы paint (сбор примитивов), мкс.
     pub static PAINT_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch: closing a drawn frame after paint (frame layouts
+    /// released, layout engine and text system frame ends, `Frame::finish`), µs.
+    pub static FINISH_US: AtomicU32 = AtomicU32::new(0);
+    /// KaminIDE patch: the frame damage against the last drawn scene, the
+    /// scroll step that may move it included (`scene::damage`), µs.
+    pub static DAMAGE_US: AtomicU32 = AtomicU32::new(0);
     /// Узлов раскладки заведено за период.
     pub static LAYOUT_NODES: AtomicU32 = AtomicU32::new(0);
     /// Вызовов `compute_layout` (полных проходов раскладки) за период.

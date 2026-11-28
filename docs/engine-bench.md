@@ -85,6 +85,13 @@ software`) it is the frame's CPU raster on WARP's threads. The comparison tool
 (`tools/engine-compare`) subtracts `capture` always and `gpu_wait` on a hardware
 adapter only, and reports `gpu_wait` apart.
 
+`pipeline_other` is split the same way into `other_scene_finish` (GPUI
+`FINISH_US`: closing the drawn frame after paint, that is releasing the frame's
+layouts, the layout engine and text system frame ends and `Frame::finish`),
+`other_frame_damage` (GPUI `DAMAGE_US`: the damage against the last drawn scene,
+the scroll step that may move it included) and `other_rest` (scheduling,
+orchestration and GPUI work outside the root callbacks and these two scopes).
+
 With `--why`, every captured frame also reports its raster plan (`keep`, `full` and
 why, `within`, or `shift`: the kept canvas moved by a scroll step, with the moved
 area), the rectangles rasterized and their pixels, and the capture's wait for the
