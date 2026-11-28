@@ -202,11 +202,7 @@ pub(crate) fn static_position_layer(
             } else {
                 holder
             };
-            out.push(
-                holder
-                    .child(kept)
-                    .into_any_element(),
-            );
+            out.push(holder.child(kept).into_any_element());
             if below {
                 if !contiguous {
                     below_run_start = out.len() - 1;
