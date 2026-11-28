@@ -10,7 +10,7 @@ impl DirectWriteState {
         fallbacks: &FontFallbacks,
         base_family: Option<&str>,
         factory: &IDWriteFactory5,
-        system_font_collection: &IDWriteFontCollection1,
+        collections: &[&IDWriteFontCollection1],
     ) -> Result<Option<IDWriteFontFallback>> {
         if fallbacks.fallback_list().is_empty() {
             return Ok(None);
@@ -18,7 +18,6 @@ impl DirectWriteState {
         unsafe {
             let builder = factory.CreateFontFallbackBuilder()?;
             let base_family = base_family.map(HSTRING::from);
-            let font_set = &system_font_collection.GetFontSet()?;
             for entry in fallbacks.fallback_list() {
                 // KaminIDE patch: запись `Семейство@3000-30FF,31F0-31FF`
                 // ограничивает подстановку семейства этими диапазонами
@@ -26,20 +25,21 @@ impl DirectWriteState {
                 // только под свою письменность, остальное по-прежнему идёт
                 // системной подстановкой. Запись без `@` — как раньше.
                 let (family_name, only) = FontFallbacks::split_restricted(entry);
-                let Some(fonts) = font_set
-                    .GetMatchingFonts(
-                        &HSTRING::from(family_name),
-                        DWRITE_FONT_WEIGHT_NORMAL,
-                        DWRITE_FONT_STRETCH_NORMAL,
-                        DWRITE_FONT_STYLE_NORMAL,
-                    )
-                    .log_err()
-                else {
-                    continue;
-                };
-                // upstream: семейства нет — запись пропускается, а не роняет
-                // весь список подстановок.
-                let Ok(font_face) = fonts.GetFontFaceReference(0) else {
+                // Authored fallback families use the same collection order as
+                // primary selection: downloaded faces precede installed faces.
+                let Some((collection, font_face)) = collections.iter().find_map(|collection| {
+                    let fonts = collection
+                        .GetFontSet()
+                        .ok()?
+                        .GetMatchingFonts(
+                            &HSTRING::from(family_name),
+                            DWRITE_FONT_WEIGHT_NORMAL,
+                            DWRITE_FONT_STRETCH_NORMAL,
+                            DWRITE_FONT_STYLE_NORMAL,
+                        )
+                        .ok()?;
+                    Some((*collection, fonts.GetFontFaceReference(0).ok()?))
+                }) else {
                     continue;
                 };
                 let font = font_face.CreateFontFace()?;
@@ -75,7 +75,7 @@ impl DirectWriteState {
                 builder.AddMapping(
                     &unicode_ranges,
                     &[target_family_name.as_ptr()],
-                    None,
+                    collection,
                     None,
                     base_family
                         .as_ref()

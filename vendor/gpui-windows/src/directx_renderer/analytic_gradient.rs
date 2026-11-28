@@ -40,14 +40,17 @@ impl GradientProgram {
 }
 
 /// Splits `quads` (instances `first..`) into maximal runs of one program and
-/// yields `(analytic, first_instance, count)` in paint order. Runs keep the
-/// primitive order exactly, so splitting never reorders overlapping quads.
-pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, usize, usize)> + '_ {
+/// one blender and yields `(analytic, elliptical, first_instance, count)` in
+/// paint order: quads with elliptical corners hand the blender premultiplied
+/// colour (`quad_fragment_ellipse`). Runs keep the primitive order exactly,
+/// so splitting never reorders overlapping quads.
+pub(super) fn program_runs(quads: &[Quad], first: usize) -> impl Iterator<Item = (bool, bool, usize, usize)> + '_ {
     let mut at = 0;
+    let key = |q: &Quad| (q.is_analytic_gradient(), q.ellipse.on != 0);
     std::iter::from_fn(move || {
-        let analytic = quads.get(at)?.is_analytic_gradient();
-        let len = quads[at..].iter().take_while(|q| q.is_analytic_gradient() == analytic).count();
-        let run = (analytic, first + at, len);
+        let (analytic, elliptical) = key(quads.get(at)?);
+        let len = quads[at..].iter().take_while(|q| key(q) == (analytic, elliptical)).count();
+        let run = (analytic, elliptical, first + at, len);
         at += len;
         Some(run)
     })
