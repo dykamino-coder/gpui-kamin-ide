@@ -18,12 +18,6 @@ pub(crate) fn paint_atomic(div: Div) -> Div {
     crate::paint::coordinator::atomic(div)
 }
 
-/// A stacking scope of its own: positioned and step-8 paint deferred under
-/// `div` (CSS 2.1 Appendix E) drains at its end, not in an enclosing pass.
-pub(crate) fn paint_stacking(div: Div) -> Div {
-    crate::paint::coordinator::box_policy(div, false, true)
-}
-
 pub(crate) use crate::paint::coordinator::LineCapture;
 
 /// Paint a block and capture the paint it deferred past its own output.
