@@ -37,6 +37,10 @@ struct Totals {
     mask_upload_alloc_bytes: u64,
     effect_target_drop: u64,
     effect_target_release_bytes: u64,
+    natural_image_create: u64,
+    natural_image_raster: u64,
+    natural_image_raster_bytes: u64,
+    natural_image_drop: u64,
 }
 
 /// The index of path batches in [`KINDS`].
@@ -61,6 +65,24 @@ pub struct BatchCost {
 }
 
 impl BatchCost {
+    /// A cached natural-image upload identity (no resident derived pixels).
+    pub fn natural_image_created(&self) {
+        self.with(|t| t.natural_image_create += 1);
+    }
+
+    /// Pixels produced transiently for an atlas upload, not kept by the image.
+    pub fn natural_image_rasterized(&self, bytes: u64) {
+        self.with(|t| {
+            t.natural_image_raster += 1;
+            t.natural_image_raster_bytes += bytes;
+        });
+    }
+
+    /// Upload identities released by source death or cache budget eviction.
+    pub fn natural_images_dropped(&self, count: u64) {
+        self.with(|t| t.natural_image_drop += count);
+    }
+
     fn with(&self, f: impl FnOnce(&mut Totals)) {
         if let Ok(mut guard) = self.totals.lock() {
             f(guard.get_or_insert_with(Totals::default));
@@ -201,6 +223,9 @@ impl BatchCost {
             && t.path_msaa_drop == 0
             && t.mask_upload_create == 0
             && t.effect_target_drop == 0
+            && t.natural_image_create == 0
+            && t.natural_image_raster == 0
+            && t.natural_image_drop == 0
         {
             return None;
         }
@@ -243,7 +268,7 @@ impl BatchCost {
             String::new()
         };
         Some(format!(
-            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} mask_upload_create={} mask_upload_alloc_bytes={} effect_target_drop={} effect_target_release_bytes={} per frame: {kinds}; top quads: {detail}",
+            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} mask_upload_create={} mask_upload_alloc_bytes={} effect_target_drop={} effect_target_release_bytes={} natural_image_create={} natural_image_raster={} natural_image_raster_bytes={} natural_image_drop={} per frame: {kinds}; top quads: {detail}",
             t.frames,
             plan_summary(&t),
             t.path_msaa_create,
@@ -252,7 +277,11 @@ impl BatchCost {
             t.mask_upload_create,
             t.mask_upload_alloc_bytes,
             t.effect_target_drop,
-            t.effect_target_release_bytes
+            t.effect_target_release_bytes,
+            t.natural_image_create,
+            t.natural_image_raster,
+            t.natural_image_raster_bytes,
+            t.natural_image_drop
         ))
     }
 }

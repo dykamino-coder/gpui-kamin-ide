@@ -99,13 +99,15 @@ impl Wrap for ViewportAnchor {
 
     fn prepaint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
         // GPUI scroll offsets are non-positive: content moves up and left.
-        let shift = -self.scroll.offset();
+        // The translation the frame paints (`ScrollHandle::painted_offset`).
+        let scale = window.scale_factor();
+        let shift = -self.scroll.painted_offset(scale);
         let child = &mut self.child;
         // A scroll anchor: a replay that moves the root scroll node cancels
         // the move for the box as this shift does (`with_scroll_anchor_prepaint`).
         let scroll = self.scroll.clone();
         let counter: std::rc::Rc<dyn Fn() -> gpui::Point<Pixels>> =
-            std::rc::Rc::new(move || -scroll.offset());
+            std::rc::Rc::new(move || -scroll.painted_offset(scale));
         let id = gpui::ScrollNodeId::of_token(&self.token);
         window.with_scroll_anchor_prepaint(id, counter, |window| {
             window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))

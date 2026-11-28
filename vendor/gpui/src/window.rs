@@ -2430,7 +2430,7 @@ impl Window {
             is_resizable,
             is_minimizable,
             sprite_atlas,
-            natural_images: Default::default(),
+            natural_images: natural_image::Cache::new(cx.instrumentation()),
             sprite_pattern: None,
             image_uploads: Default::default(),
             text_system,
@@ -3926,6 +3926,7 @@ impl Window {
         self.read_states.states.clear();
         // KaminIDE patch: the empty base style new elements share must not outlive them.
         crate::elements::refinement_share::release_empty();
+        self.natural_images.release_unused();
         self.image_uploads.release_unused();
         drawn
     }
@@ -9760,6 +9761,7 @@ impl Window {
             engine.heap_report(sink);
         }
         self.text_system.heap_report(sink);
+        self.natural_images.heap_report(sink);
     }
 }
 
