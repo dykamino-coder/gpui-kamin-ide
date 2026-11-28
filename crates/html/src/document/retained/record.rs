@@ -51,6 +51,11 @@ impl Inputs {
         matches
     }
 
+    /// No hover style asked for a redraw since the recording (`WindowKey::same_hovers`).
+    pub(super) fn same_hovers(&self, environment: &WindowKey) -> bool {
+        self.environment.same_hovers(environment)
+    }
+
     pub(super) fn replayed(&self, window: &Window) {
         self.serial.set(window.frame_serial());
     }

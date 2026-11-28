@@ -1,11 +1,10 @@
-//! Сохраняемый кадр: неизменный документ повторяется, любой изменённый вход
-//! (опции хоста, ввод окна, живая анимация, новое дерево) собирает кадр заново.
+//! Retained frame: an unchanged document replays, any changed input (host
+//! options, an input that changed element state, live animation, a new tree)
+//! builds the frame again; inputs that change nothing: `input_replay_tests`.
 
 use super::box_repaint_tests::frames;
 use crate::{Document, RenderOpts};
-use gpui::{
-    Context, IntoElement, Modifiers, Render, TestAppContext, VisualTestContext, Window, point, px,
-};
+use gpui::{Context, IntoElement, Render, TestAppContext, VisualTestContext, Window};
 
 pub(super) struct View {
     pub(super) doc: Document,
@@ -114,24 +113,6 @@ fn viewport_change_rebuilds(cx: &mut TestAppContext) {
     assert_eq!(frames(&view, cx), (builds + 1, replays));
     frame(cx);
     assert_eq!(frames(&view, cx), (builds + 1, replays + 1));
-}
-
-#[gpui::test]
-fn window_input_rebuilds(cx: &mut TestAppContext) {
-    let expected = super::box_repaint_tests::fresh(cx, PAGE);
-    let (view, cx) = open(cx, PAGE);
-    frame(cx);
-    let (builds, replays) = frames(&view, cx);
-    let inside = super::l0_tests::builds(&view, cx).1;
-    cx.simulate_mouse_move(point(px(30.), px(30.)), None, Modifiers::default());
-    frame(cx);
-    let (after, again) = frames(&view, cx);
-    assert!(after > builds, "input did not rebuild the frame");
-    assert_eq!(again, replays);
-    assert_eq!(super::l0_tests::builds(&view, cx).1, inside);
-    assert_eq!(super::box_repaint_tests::quads(cx), expected);
-    frame(cx);
-    assert_eq!(frames(&view, cx), (after, again + 1));
 }
 
 #[gpui::test]
