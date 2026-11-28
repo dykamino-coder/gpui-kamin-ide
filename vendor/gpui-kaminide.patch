@@ -8491,7 +8491,7 @@ index ddf324a6b26b861ca0e7ef1c2ede3d648abe82a2..24c6a6761b5262c0b97f2e44d531f4ed
 +            false => window.defer_draw_at(child, element_offset, self.priority, None, self.site),
 +        }
 diff --git a/vendor/gpui/src/elements/div.rs b/vendor/gpui/src/elements/div.rs
-index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa385720b0c
+index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..855aed6e7b140c10e3d9e3904ff911115d9be538
 --- a/vendor/gpui/src/elements/div.rs
 +++ b/vendor/gpui/src/elements/div.rs
 @@ -131 +131 @@
@@ -9388,7 +9388,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +                });
 @@ -2489,0 +2866 @@
 +                scroll_handle_state.padding = padding_size;
-@@ -2518,113 +2895,109 @@
+@@ -2493 +2870,3 @@
+-            *scroll_offset
++            // KaminIDE patch: the children move by the translation the frame
++            // paints, whole device pixels; the position stays exact.
++            ScrollHandle::painted(*scroll_offset, scroll_max, window.scale_factor())
+@@ -2518,113 +2897,109 @@
 -        window.with_optional_element_state::<InteractiveElementState, _>(
 -            global_id,
 -            |element_state, window| {
@@ -9611,7 +9616,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +                                element_state.as_deref_mut(),
 +                                window,
 +                                cx,
-@@ -2632,2 +3005,28 @@
+@@ -2632,2 +3007,28 @@
 -                        });
 -                    });
 +                            self.paint_scroll_listener(hitbox, &style, window, cx);
@@ -9642,51 +9647,51 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +                            }
 +                        }
 +                    })
-@@ -2635,4 +3034,2 @@
+@@ -2635,4 +3036,2 @@
 -
 -                ((), element_state)
 -            },
 -        );
 +            });
 +        });
-@@ -2789 +3186,3 @@
+@@ -2789 +3188,3 @@
 -        for listener in self.mouse_down_listeners.drain(..) {
 +        let mut no_listeners = InteractivityListeners::default();
 +        let listeners = self.listeners.as_deref_mut().unwrap_or(&mut no_listeners);
 +        for listener in listeners.mouse_down_listeners.drain(..) {
-@@ -2796 +3195 @@
+@@ -2796 +3197 @@
 -        for listener in self.mouse_up_listeners.drain(..) {
 +        for listener in listeners.mouse_up_listeners.drain(..) {
-@@ -2803 +3202 @@
+@@ -2803 +3204 @@
 -        for listener in self.mouse_pressure_listeners.drain(..) {
 +        for listener in listeners.mouse_pressure_listeners.drain(..) {
-@@ -2810 +3209 @@
+@@ -2810 +3211 @@
 -        for listener in self.mouse_move_listeners.drain(..) {
 +        for listener in listeners.mouse_move_listeners.drain(..) {
-@@ -2817 +3216 @@
+@@ -2817 +3218 @@
 -        for listener in self.mouse_exit_listeners.drain(..) {
 +        for listener in listeners.mouse_exit_listeners.drain(..) {
-@@ -2824 +3223 @@
+@@ -2824 +3225 @@
 -        for listener in self.file_drop_exit_listeners.drain(..) {
 +        for listener in listeners.file_drop_exit_listeners.drain(..) {
-@@ -2831 +3230 @@
+@@ -2831 +3232 @@
 -        for listener in self.scroll_wheel_listeners.drain(..) {
 +        for listener in listeners.scroll_wheel_listeners.drain(..) {
-@@ -2838 +3237 @@
+@@ -2838 +3239 @@
 -        for listener in self.pinch_listeners.drain(..) {
 +        for listener in listeners.pinch_listeners.drain(..) {
-@@ -2845 +3244,2 @@
+@@ -2845 +3246,2 @@
 -        if self.hover_style.is_some()
 +        let has_hover_style = self.rare.as_deref().is_some_and(|rare| rare.hover_style.is_some());
 +        if has_hover_style
-@@ -2847 +3247,2 @@
+@@ -2847 +3249,2 @@
 -            || cx.active_drag.is_some() && !self.drag_over_styles.is_empty()
 +            || cx.active_drag.is_some()
 +                && self.listeners.as_ref().is_some_and(|listeners| !listeners.drag_over_styles.is_empty())
-@@ -2850 +3251 @@
+@@ -2850 +3253 @@
 -            let hover_state = self.hover_style.as_ref().and_then(|_| {
 +            let hover_state = has_hover_style.then_some(()).and_then(|_| {
-@@ -2858,7 +3259,8 @@
+@@ -2858,7 +3261,8 @@
 -            window.on_mouse_event(move |_: &MouseMoveEvent, phase, window, cx| {
 -                let hovered = hitbox.is_hovered(window);
 -                let was_hovered = hover_state
@@ -9702,10 +9707,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +                    let hovered = hitbox.is_hovered(window);
 +                    let was_hovered = hover_state.borrow().element;
 +                    if phase == DispatchPhase::Capture && hovered != was_hovered {
-@@ -2866 +3268 @@
+@@ -2866 +3270 @@
 -                        cx.notify(current_view);
 +                        window.notify_hover(current_view, cx);
-@@ -2868,5 +3270,5 @@
+@@ -2868,5 +3272,5 @@
 -                }
 -            });
 -        }
@@ -9716,10 +9721,10 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        }
 +
 +        if let Some(group_hover) = self.rare.as_deref().and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -2888 +3290 @@
+@@ -2888 +3292 @@
 -                            cx.notify(current_view);
 +                            window.notify_hover(current_view, cx);
-@@ -2897,5 +3299,5 @@
+@@ -2897,5 +3301,5 @@
 -        let mut drag_listener = mem::take(&mut self.drag_listener);
 -        let drop_listeners = mem::take(&mut self.drop_listeners);
 -        let click_listeners = mem::take(&mut self.click_listeners);
@@ -9730,25 +9735,25 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        let click_listeners = self.take_listeners(|l| &mut l.click_listeners);
 +        let aux_click_listeners = self.take_listeners(|l| &mut l.aux_click_listeners);
 +        let can_drop_predicate = self.rare.as_deref_mut().and_then(|rare| rare.can_drop_predicate.take());
-@@ -3133 +3535 @@
+@@ -3133 +3537 @@
 -            if let Some(hover_listener) = self.hover_listener.take() {
 +            if let Some(hover_listener) = self.take_hover_listener() {
-@@ -3152 +3554 @@
+@@ -3152 +3556 @@
 -                let hover_listener_mode = self.hover_listener_mode;
 +                let hover_listener_mode = self.rare().map(|rare| rare.hover_listener_mode).unwrap_or_default();
-@@ -3187 +3589 @@
+@@ -3187 +3591 @@
 -            if let Some(tooltip_builder) = self.tooltip_builder.take() {
 +            if let Some(tooltip_builder) = self.take_tooltip_builder() {
-@@ -3228 +3630 @@
+@@ -3228 +3632 @@
 -                    self.tooltip_show_delay,
 +                    self.rare().and_then(|rare| rare.tooltip_show_delay),
-@@ -3252,2 +3654,3 @@
+@@ -3252,2 +3656,3 @@
 -                    .group_active_style
 -                    .as_ref()
 +                    .rare
 +                    .as_deref()
 +                    .and_then(|rare| rare.group_active_style.as_ref())
-@@ -3275,4 +3678,4 @@
+@@ -3275,4 +3680,4 @@
 -        let key_down_listeners = mem::take(&mut self.key_down_listeners);
 -        let key_up_listeners = mem::take(&mut self.key_up_listeners);
 -        let modifiers_changed_listeners = mem::take(&mut self.modifiers_changed_listeners);
@@ -9757,7 +9762,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        let key_up_listeners = self.take_listeners(|l| &mut l.key_up_listeners);
 +        let modifiers_changed_listeners = self.take_listeners(|l| &mut l.modifiers_changed_listeners);
 +        let action_listeners = self.take_listeners(|l| &mut l.action_listeners);
-@@ -3305,0 +3709,22 @@
+@@ -3305,0 +3711,22 @@
 +    /// KaminIDE patch: the box's own paint (shadows, fill, borders, host
 +    /// painter) under its scene-layer run (`Window::with_run`). A leaf
 +    /// of the paint recursion: its paint state and painter stay out of the
@@ -9780,12 +9785,12 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        });
 +    }
 +
-@@ -3308,2 +3733,2 @@
+@@ -3308,2 +3735,2 @@
 -            .group_hover_style
 -            .as_ref()
 +            .rare()
 +            .and_then(|rare| rare.group_hover_style.as_ref())
-@@ -3404,0 +3830,28 @@
+@@ -3404,0 +3832,28 @@
 +    // KaminIDE patch: construction must finish before descending into a child.
 +    // Inlining would retain the large Style return slot in each recursive caller.
 +    #[inline(never)]
@@ -9814,43 +9819,43 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        )))
 +    }
 +
-@@ -3414,0 +3868 @@
+@@ -3414,0 +3870 @@
 +        let rare = self.rare.as_deref();
-@@ -3417 +3871 @@
+@@ -3417 +3873 @@
 -            if let Some(in_focus_style) = self.in_focus_style.as_ref()
 +            if let Some(in_focus_style) = rare.and_then(|rare| rare.in_focus_style.as_ref())
-@@ -3423 +3877 @@
+@@ -3423 +3879 @@
 -            if let Some(focus_style) = self.focus_style.as_ref()
 +            if let Some(focus_style) = rare.and_then(|rare| rare.focus_style.as_ref())
-@@ -3429 +3883 @@
+@@ -3429 +3885 @@
 -            if let Some(focus_visible_style) = self.focus_visible_style.as_ref()
 +            if let Some(focus_visible_style) = rare.and_then(|rare| rare.focus_visible_style.as_ref())
-@@ -3438 +3892 @@
+@@ -3438 +3894 @@
 -            if let Some(group_hover) = self.group_hover_style.as_ref() {
 +            if let Some(group_hover) = rare.and_then(|rare| rare.group_hover_style.as_ref()) {
-@@ -3458 +3912 @@
+@@ -3458 +3914 @@
 -            if let Some(hover_style) = self.hover_style.as_ref() {
 +            if let Some(hover_style) = rare.and_then(|rare| rare.hover_style.as_ref()) {
-@@ -3481 +3935 @@
+@@ -3481 +3937 @@
 -                if let Some(can_drop_predicate) = &self.can_drop_predicate {
 +                if let Some(can_drop_predicate) = rare.and_then(|rare| rare.can_drop_predicate.as_ref()) {
-@@ -3486 +3940 @@
+@@ -3486 +3942 @@
 -                    for (state_type, group_drag_style) in &self.group_drag_over_styles {
 +                    for (state_type, group_drag_style) in self.listeners.iter().flat_map(|l| &l.group_drag_over_styles) {
-@@ -3496 +3950 @@
+@@ -3496 +3952 @@
 -                    for (state_type, build_drag_over_style) in &self.drag_over_styles {
 +                    for (state_type, build_drag_over_style) in self.listeners.iter().flat_map(|l| &l.drag_over_styles) {
-@@ -3499 +3953,2 @@
+@@ -3499 +3955,2 @@
 -                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx));
 +                            style.refine(&build_drag_over_style(drag.value.as_ref(), window, cx),
 +                            );
-@@ -3515 +3970 @@
+@@ -3515 +3972 @@
 -                && let Some(group) = self.group_active_style.as_ref()
 +                && let Some(group) = rare.and_then(|rare| rare.group_active_style.as_ref())
-@@ -3520 +3975 @@
+@@ -3520 +3977 @@
 -            if let Some(active_style) = self.active_style.as_ref()
 +            if let Some(active_style) = rare.and_then(|rare| rare.active_style.as_ref())
-@@ -3531,64 +3986,66 @@
+@@ -3531,64 +3988,66 @@
 -        if let Some(id) = &self.aria.author_id {
 -            node.set_author_id(id.to_string());
 -        }
@@ -9981,17 +9986,17 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +            }
 +        }
 +        if self.listeners.as_ref().is_some_and(|l| !l.click_listeners.is_empty()) {
-@@ -3600 +4057 @@
+@@ -3600 +4059 @@
 -        for (action, _) in &self.a11y_action_listeners {
 +        for (action, _) in self.listeners.iter().flat_map(|l| &l.a11y_action_listeners) {
-@@ -4102,0 +4560,3 @@
+@@ -4102,0 +4562,3 @@
 +    fn paint_boundary(&self) -> bool { self.element.paint_boundary() }
 +    fn paint_metadata(&self) -> Option<&dyn std::any::Any> { self.element.paint_metadata() }
 +
-@@ -4225,0 +4686,2 @@
+@@ -4225,0 +4688,2 @@
 +    // KaminIDE patch: the padding the last clamp added to the content (`resize_item`).
 +    padding: Size<Pixels>,
-@@ -4229,0 +4692,17 @@
+@@ -4229,0 +4694,17 @@
 +    // KaminIDE patch: its host measures the range after the prepaint
 +    // (`measure_range_after_prepaint`).
 +    host_range: bool,
@@ -10009,7 +10014,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +    crate::dirty_sources::trace::push_with("scroll.clamped", core::panic::Location::caller(), || {
 +        format!("node {node:?} offset {read:?} -> {now:?}: {}", why())
 +    });
-@@ -4250,0 +4730,7 @@
+@@ -4250,0 +4732,7 @@
 +impl ScrollHandle {
 +    /// KaminIDE patch: identity of the shared state, the scroll node's id.
 +    pub(crate) fn node_identity(&self) -> usize {
@@ -10017,13 +10022,47 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +    }
 +}
 +
-@@ -4267,0 +4754,5 @@
+@@ -4267,0 +4756,39 @@
++    /// KaminIDE patch: the scroll translation a frame paints for this handle
++    /// at device `scale` (`Self::painted`).
++    pub fn painted_offset(&self, scale: f32) -> Point<Pixels> {
++        let state = self.0.borrow();
++        let offset = *state.offset.borrow();
++        Self::painted(offset, state.max_offset, scale)
++    }
++
++    /// KaminIDE patch: the scroll offset `offset` (within `0..=max` up and
++    /// left) aligned to whole device pixels at `scale`. The scroll position
++    /// itself stays exact (CSSOM View §6 fractional positions; sub-pixel input
++    /// adds up), but the translation a frame paints moves by whole device
++    /// pixels only, so the frame at any offset is the frame at 0 moved pixel
++    /// for pixel: no box edge, ring or glyph lands between the pixels it snaps
++    /// to on its own. cc snaps a scroll translation the same way in screen
++    /// space (`TransformTree::UpdateSnapping`); Gecko aligns the position.
++    /// An end of the range between two device pixels stays where it is.
++    pub fn painted(offset: Point<Pixels>, max: Point<Pixels>, scale: f32) -> Point<Pixels> {
++        if scale.is_nan() || scale <= 0.0 {
++            return offset;
++        }
++        let align = |v: Pixels, max: Pixels| {
++            let (exact, lo) = (v.0 * scale, -max.0.max(0.0) * scale);
++            let mut d = exact.round();
++            // Toward the inside of the range rather than past its end (an
++            // offset outside a range not measured yet is left to the clamp).
++            if d < lo && exact >= lo {
++                d = lo.ceil();
++            }
++            if d == exact { v } else { px(d / scale) }
++        };
++        point(align(offset.x, max.x), align(offset.y, max.y))
++    }
++
 +    pub(crate) fn has_pending_scroll(&self) -> bool {
 +        let state = self.0.borrow();
 +        state.scroll_to_bottom || state.active_item.is_some()
 +    }
 +
-@@ -4270,0 +4762,74 @@
+@@ -4270,0 +4798,74 @@
 +    }
 +
 +    /// KaminIDE patch: the scroll range a prepaint would record (tests).
@@ -10098,7 +10137,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        *state.offset.borrow_mut() = now;
 +        note_clamped(Some(crate::ScrollNodeId::of(self)), read, now, || format!("range {max:?}"));
 +        true
-@@ -4448,0 +5014,21 @@
+@@ -4448,0 +5050,38 @@
 +
 +    #[test]
 +    fn listener_lists_are_allocated_by_the_first_registration() {
@@ -10120,7 +10159,24 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +                >= 18 * std::mem::size_of::<Vec<()>>()
 +        );
 +    }
-@@ -5268,8 +5854,8 @@
++
++    #[test]
++    fn a_painted_scroll_offset_is_whole_device_pixels_within_the_range() {
++        let p = |y: f32, max: f32, s: f32| {
++            ScrollHandle::painted(point(px(0.), px(y)), point(px(0.), px(max)), s).y.0 * s
++        };
++        let whole = |d: f32| (d - d.round()).abs() < 1e-4;
++        // 53 CSS px at 1.25 are 66.25 device px: the frame moves by 66.
++        assert!((p(-53.0, 500.0, 1.25) + 66.0).abs() < 1e-4);
++        assert_eq!(p(-53.0, 500.0, 1.0), -53.0);
++        assert!((p(-10.3, 500.0, 1.5) + 15.0).abs() < 1e-4);
++        // The end of the range between two device pixels: inside it, not past.
++        let end = p(-100.5, 100.5, 1.25);
++        assert!(whole(end) && end >= -100.5 * 1.25, "{end}");
++        // An offset outside a range not measured yet is left to the clamp.
++        assert!((p(-40.4, 0.0, 1.25) + 51.0).abs() < 1e-4);
++    }
+@@ -5268,8 +5907,8 @@
 -        interactivity.aria.author_id = Some("settings.buffer-font-size".into());
 -        interactivity.aria.label = Some("Buffer Font Size".into());
 -        interactivity.aria.value = Some("15".into());
@@ -10137,7 +10193,7 @@ index fc292f2a81e2ee0c16da4974f7953cdcfcd2c902..241d6011ba3da9e3fb952d16d8614aa3
 +        interactivity.rare_mut().aria.min_numeric_value = Some(6.0);
 +        interactivity.rare_mut().aria.max_numeric_value = Some(72.0);
 +        interactivity.rare_mut().aria.numeric_value_step = Some(1.0);
-@@ -5601,0 +6188,123 @@
+@@ -5601,0 +6241,123 @@
 +    /// KaminIDE patch: a child resized after the prepaint gives the range the
 +    /// next layout gives (padding included), unless the offset lies past it.
 +    #[gpui::test]
@@ -45304,7 +45360,7 @@ index 0000000000000000000000000000000000000000..56cbdc8249d4f8f3dff48c1f10226e23
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes.rs b/vendor/gpui/src/window/scroll_nodes.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..6cef83dccc58a088aa88f0099a0401e0f277fe75
+index 0000000000000000000000000000000000000000..e935a26aa15a309ca53755402eaf44cc1f4977f6
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes.rs
 @@ -0,0 +1,800 @@
@@ -45481,7 +45537,7 @@ index 0000000000000000000000000000000000000000..6cef83dccc58a088aa88f0099a0401e0
 +        clip: Bounds<Pixels>,
 +        f: impl FnOnce(&mut Self) -> R,
 +    ) -> R {
-+        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.offset());
++        let open = self.begin_scroll_node_prepaint(Some((handle, clip)), handle.painted_offset(self.scale_factor()));
 +        let result = f(self);
 +        self.end_scroll_node_prepaint(open);
 +        result
@@ -45561,7 +45617,7 @@ index 0000000000000000000000000000000000000000..6cef83dccc58a088aa88f0099a0401e0
 +                None => return f(self),
 +            },
 +        };
-+        let (chain, base) = (self.content_mask().bounds, on.offset());
++        let (chain, base) = (self.content_mask().bounds, on.offset(self.scale_factor()));
 +        let now = at(Point::default());
 +        self.open_scroll_node(id, chain, now, NodeSource::Follow { on: Box::new(on), base, at });
 +        let result = f(self);
@@ -46184,10 +46240,10 @@ index 0000000000000000000000000000000000000000..8c5b38ee6b87858430e31697eaa29d27
 +}
 diff --git a/vendor/gpui/src/window/scroll_nodes/source.rs b/vendor/gpui/src/window/scroll_nodes/source.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..d15b87d63d3a6cd7c908266545e8512240ac3c74
+index 0000000000000000000000000000000000000000..857cbccb7babf252e27b95767407a74868ee23bc
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_nodes/source.rs
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,55 @@
 +//! Spatial reference frames used by retained scroll replay.
 +
 +use super::*;
@@ -46212,18 +46268,20 @@ index 0000000000000000000000000000000000000000..d15b87d63d3a6cd7c908266545e85122
 +}
 +
 +impl NodeSource {
-+    /// The offset now: a handle's clamped to its scroll range, as prepaint
-+    /// clamps it (written back, so the handle reads what is shown).
-+    pub(crate) fn offset(&self) -> Point<Pixels> {
++    /// The offset now at device `scale`: a handle's clamped to its scroll
++    /// range, as prepaint clamps it (written back, so the handle reads what
++    /// is shown), then the translation a frame paints for it, aligned to
++    /// whole device pixels (`ScrollHandle::painted`), as prepaint moves by.
++    pub(crate) fn offset(&self, scale: f32) -> Point<Pixels> {
 +        match self {
 +            NodeSource::Handle(handle) => {
 +                // DevTools `why` names a clamp that moves it (`scroll.clamped`).
 +                handle.clamp_to_range();
-+                handle.offset()
++                ScrollHandle::painted(handle.offset(), handle.max_offset(), scale)
 +            }
 +            NodeSource::Viewport { .. } => Point::default(),
 +            NodeSource::Anchor(offset) => offset(),
-+            NodeSource::Follow { on, base, at } => at(on.offset() - *base),
++            NodeSource::Follow { on, base, at } => at(on.offset(scale) - *base),
 +        }
 +    }
 +}
@@ -46314,10 +46372,10 @@ index 0000000000000000000000000000000000000000..f79f1792eea18cee4f2a7ff008a6bd4a
 +}
 diff --git a/vendor/gpui/src/window/scroll_replay.rs b/vendor/gpui/src/window/scroll_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67be13bc62e
+index 0000000000000000000000000000000000000000..50e80b5ba30df77a8bc64d693bd46baf7736be88
 --- /dev/null
 +++ b/vendor/gpui/src/window/scroll_replay.rs
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,566 @@
 +//! KaminIDE patch: replay of a retained record with its scroll nodes at new
 +//! offsets (`scroll_nodes`, `scroll_masks`, `scene::scroll_marks`).
 +//!
@@ -46353,6 +46411,8 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +    offset: Point<Pixels>,
 +    /// Shift of the node's children since the record (window pixels).
 +    shift: Point<Pixels>,
++    /// The shift is whole device pixels (not a follower's own function).
++    whole: bool,
 +    clip: Bounds<Pixels>,
 +    chain: Bounds<Pixels>,
 +    interest: Bounds<Pixels>,
@@ -46371,7 +46431,9 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +    /// A planned node's shift and clip in scene pixels (`Scene::replay_scrolled`).
 +    pub(super) fn scaled(&self, id: ScrollNodeId, scale: f32) -> (Point<ScaledPixels>, Bounds<ScaledPixels>) {
 +        let node = self.node(id);
-+        (node.shift.scale(scale), node.clip.scale(scale))
++        let shift = node.shift.scale(scale);
++        let shift = if node.whole { shift.map(|v| ScaledPixels(v.0.round())) } else { shift };
++        (shift, node.clip.scale(scale))
 +    }
 +}
 +
@@ -46391,7 +46453,7 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +        self.rendered_frame.scroll_nodes[range.start.scroll_nodes_index..range.end.scroll_nodes_index]
 +            .iter()
 +            .chain(self.deferred_scroll_nodes(&range))
-+            .any(|node| node.source.offset() != node.offset)
++            .any(|node| node.source.offset(self.scale_factor()) != node.offset)
 +    }
 +
 +    /// Plan the replay of a record made in the rendered frame with each of its
@@ -46469,7 +46531,7 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +                    node.id,
 +                    refused.unwrap_or_default(),
 +                    node.offset,
-+                    node.source.offset()
++                    node.source.offset(self.scale_factor())
 +                ),
 +                None => String::new(),
 +            },
@@ -46504,7 +46566,7 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +                    refused.unwrap_or_default(),
 +                    node.anchored,
 +                    node.offset,
-+                    node.source.offset(),
++                    node.source.offset(self.scale_factor()),
 +                    node.chain,
 +                    node.clip,
 +                    node.parent
@@ -46665,7 +46727,7 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +                if !layered && !node.ranges().all(|painted| painted.start >= span.start && painted.end <= span.end) {
 +                    return Err(at(ScrollRefusal::NodeRange));
 +                }
-+                let new = node.source.offset();
++                let new = node.source.offset(self.scale_factor());
 +                let parent = node.parent.and_then(|parent| slots.get(&parent)).map(|&parent| plan.nodes[parent]);
 +                let parent_shift = parent.map_or(Point::default(), |parent| parent.shift);
 +                // An anchor's mask stays in the viewport; a node's moves with its parent.
@@ -46685,7 +46747,10 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +                // own function of the offset, unsnapped, so it moves exactly.
 +                let device = shift.scale(self.scale_factor());
 +                let follower = matches!(node.source, scroll_nodes::NodeSource::Follow { .. });
-+                if !follower && (device.x.0.fract() != 0.0 || device.y.0.fract() != 0.0) {
++                // Painted offsets are whole device pixels (`ScrollHandle::painted`)
++                // up to the f32 error of their CSS values.
++                let off = |v: f32| (v - v.round()).abs() > 1e-3;
++                if !follower && (off(device.x.0) || off(device.y.0)) {
 +                    return Err(at_node(ScrollRefusal::Fractional, index));
 +                }
 +                // A node whose children painted nothing as it (hidden, or painted
@@ -46705,7 +46770,7 @@ index 0000000000000000000000000000000000000000..7bdbfccf54b60f9bcfbe8ec3c6d3b67b
 +                }
 +                slots.insert(index as u32, plan.nodes.len());
 +                plan.by_id.insert(node.id, plan.nodes.len());
-+                plan.nodes.push(PlannedNode { offset: new, shift, clip, chain, interest });
++                plan.nodes.push(PlannedNode { offset: new, shift, whole: !follower, clip, chain, interest });
 +            }
 +        }
 +        // Paint that follows a moved node's offset outside it (a thumb).

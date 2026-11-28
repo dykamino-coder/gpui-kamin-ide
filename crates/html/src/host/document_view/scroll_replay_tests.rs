@@ -177,6 +177,7 @@ mod canvas;
 mod canvas_extent;
 mod deferred;
 mod groups;
+mod pure_translation;
 mod rotated;
 mod why;
 
