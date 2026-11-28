@@ -116,10 +116,21 @@ fn two_parent_variants_in_one_frame_both_keep_their_record() {
     banded.inline_decoration.band_owner = 275;
     box_style(&plain, &p.style, vcx);
     box_style(&banded, &p.style, vcx);
+    let _reader = crate::journal::test_reader();
+    drop(crate::journal::take());
     for _frame in 0..2 {
         assert_eq!(find(&plain, &p.style, vcx), Ok(()));
         assert_eq!(find(&banded, &p.style, vcx), Ok(()));
     }
+    // The journal counts a request once: the record of the other variant is not a miss.
+    let journal = crate::journal::take();
+    let stage = &journal.caches["box_stage.parent"];
+    assert_eq!(
+        (stage.hits, stage.misses.len()),
+        (4, 0),
+        "{:?}",
+        stage.misses
+    );
 }
 
 #[test]

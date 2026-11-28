@@ -137,9 +137,8 @@ pub(super) async fn collect_element(
     {
         (pad[1], pad[3]) = (0.0, 0.0);
     }
-    // Box identity of the edge spacers: the line painter moves them
-    // to the outermost visual fragments after bidi reordering. The node number,
-    // not a running count: every build gives the box the same style.
+    // Box identity of the edge spacers (moved to the outermost visual fragments after
+    // bidi reordering): the node number, so every build gives the box the same style.
     let box_id = if mlead != 0.0 || lead != 0.0 || trail != 0.0 || mtrail != 0.0 {
         u32::try_from(e.node_id).unwrap_or(u32::MAX).max(1)
     } else {

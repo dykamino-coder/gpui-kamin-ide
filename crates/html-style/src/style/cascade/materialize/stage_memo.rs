@@ -77,21 +77,28 @@ impl Entry {
         let parent = self.parent.first_difference(q.parent);
         let element = !same_element(self.element_parent.as_ref(), q.element_parent);
         if parent.is_some() || element || !anonymous {
-            // DevTools `why`: which parent input of the stage changed.
-            let reason = parent.unwrap_or(if element {
-                "element_parent"
-            } else {
-                "anonymous"
-            });
-            crate::journal::cache_miss("box_stage.parent", reason, || {
-                self.parent.difference_detail(q.parent)
-            });
             return Err(Miss::Parent);
         }
         if self.viewport.is_some_and(|v| v != viewport(q.vcx)) {
             return Err(Miss::Viewport);
         }
         Ok(())
+    }
+
+    /// DevTools `why` of a stage that missed on its parent: which parent input of this
+    /// record changed. Noted once per request, so a record of another parent variant that
+    /// holds is a hit, not a miss.
+    fn note_parent_miss(&self, q: &Query<'_>) {
+        let reason = self.parent.first_difference(q.parent).unwrap_or(
+            if !same_element(self.element_parent.as_ref(), q.element_parent) {
+                "element_parent"
+            } else {
+                "anonymous"
+            },
+        );
+        crate::journal::cache_miss("box_stage.parent", reason, || {
+            self.parent.difference_detail(q.parent)
+        });
     }
 }
 /// The remembered box stages of one style. It lives in the allocation the copies of its
@@ -112,7 +119,7 @@ impl StageMemo {
     pub(crate) fn find(&self, q: &Query<'_>) -> Result<BoxStyle, Miss> {
         let entries = &self.0;
         let doc = doc_inputs(q.vcx);
-        let mut reason = Miss::First;
+        let mut reason = (Miss::First, None);
         let entries = entries.borrow();
         let same_kind = |e: &&Entry| e.paint == q.paint && e.moved == q.moved;
         for entry in entries.iter().filter(same_kind) {
@@ -122,15 +129,21 @@ impl StageMemo {
                     if entry.viewport.is_some() {
                         crate::values::viewport_reads::note(q.vcx);
                     }
+                    crate::journal::cache_hit("box_stage.parent");
                     return Ok(entry.out.clone());
                 }
                 // A record of this copy of the element names the input that changed; a
                 // record of another parent variant of the same stages may still hold.
-                Err(miss) if reason == Miss::First || reason == Miss::Own => reason = miss,
+                Err(miss) if matches!(reason.0, Miss::First | Miss::Own) => {
+                    reason = (miss, Some(entry));
+                }
                 Err(_) => {}
             }
         }
-        Err(reason)
+        if let (Miss::Parent, Some(entry)) = reason {
+            entry.note_parent_miss(q);
+        }
+        Err(reason.0)
     }
 
     /// Remember `out` computed for `q`; `read_viewport` — its values read the viewport size.
