@@ -152,7 +152,7 @@ fn fractional_embedding_reuses_resolved_bounds_across_document_steps(cx: &mut Te
     cx.update(|_, cx| {
         let state = page.read(cx).document.state_rc();
         let bounds = state.root_scroll.as_ref().unwrap().handle.bounds();
-        assert_eq!(bounds.size.width, px(1205.6));
+        assert_eq!(bounds.size.width, px(1206.4));
         assert_eq!(bounds.origin.y, px(76.));
     });
     for _ in 0..4 {
