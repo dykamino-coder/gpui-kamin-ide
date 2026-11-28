@@ -100,6 +100,8 @@ pub struct Document {
     tree: u64,
     /// Записи сохраняемого кадра этого дерева (`render_viewport`).
     retained: Rc<retained::Slot>,
+    /// Document-owned phase observations survive revisions, without a global registry.
+    root_phases: crate::why::root::Journal,
     /// Записи блоков корневого потока; переживают `update` (`layout::reuse`).
     reuse: Rc<crate::layout::reuse::Store>,
     /// Тексты листов, правила и контексты проб перерасчёта стиля между правками ревизий

@@ -62,8 +62,12 @@ impl Builder {
             observe(UpdatePhase::Built);
             let (_, inputs) = window.record_layout_inputs(|window| {
                 window.with_layout_keys(self.layout_keys && !retry, |window| {
-                    tree.request_layout(window, cx);
+                    {
+                        let _phase = self.phases.enter(crate::why::root::Phase::RequestLayout);
+                        tree.request_layout(window, cx);
+                    }
                     observe(UpdatePhase::Requested);
+                    let _phase = self.phases.enter(crate::why::root::Phase::Layout);
                     tree.layout_as_root(space, window, cx);
                 })
             });

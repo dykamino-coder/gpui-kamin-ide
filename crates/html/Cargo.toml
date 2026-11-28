@@ -23,6 +23,10 @@ default = ["heap-report"]
 wpt-harness = []
 # Observational document timers for the standalone phase benchmark.
 engine-bench = []
+# DevTools frame journal with GPUI's existing presentation observations.
+why-profiler = ["engine-bench", "gpui/profiler"]
+# Keep the existing viewer build command on the shared journal feature.
+viewer-timing = ["why-profiler"]
 work-counters = ["kamin-style/work-counters"]
 # Отчёт памяти по владельцам для стенда (docs/memprof.md); обход только по запросу.
 heap-report = ["dep:kamin-heap", "kamin-style/heap-report"]
@@ -30,6 +34,10 @@ heap-report = ["dep:kamin-heap", "kamin-style/heap-report"]
 [[example]]
 name = "wptrun"
 required-features = ["wpt-harness"]
+
+[[example]]
+name = "kamin-browser"
+test = true
 
 [dependencies]
 # The DevTools `why` protocol form (`why::to_json`).
@@ -88,6 +96,8 @@ image = { version = "0.25", default-features = false, features = [
 resvg = { version = "0.48.0", default-features = false, features = ["text", "raster-images"] }
 
 [dev-dependencies]
+# Native file notifications keep an unchanged viewer asleep.
+notify = "8.2.0"
 # Ожидание события завершённого GPU-кадра в WPT-стенде.
 futures = "0.3"
 # Настоящие фазы GPUI на тестовой платформе для проверки порядка краски.
@@ -101,9 +111,12 @@ windows = { version = "0.62", features = [
   "Win32_Graphics_Gdi",
   "Win32_Storage_Xps",
   "Win32_Storage_FileSystem",
+  "Win32_System_Performance",
   "Win32_System_ProcessStatus",
+  "Win32_System_Com",
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Controls_Dialogs",
 ] }
 encoding_rs = "0.8"
 # SHA контекста и снимков; та же версия уже используется в workspace lockfile.

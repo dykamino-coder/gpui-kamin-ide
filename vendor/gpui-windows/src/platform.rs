@@ -1,3 +1,4 @@
+mod frame_loop;
 mod gpu;
 use std::{
     cell::{Cell, RefCell},
@@ -46,9 +47,8 @@ use gpui::*;
 struct TrackedWindow {
     handle: SafeHwnd,
     frame_signal: Arc<PlatformFrameSignal>,
-    /// KaminIDE patch: set for an offscreen (message-only) window, which never
-    /// receives WM_PAINT; see `post_offscreen_paint`.
-    offscreen_paint: Option<Arc<AtomicBool>>,
+    frame_demand: Arc<FrameDemand>,
+    offscreen: bool,
 }
 
 impl TrackedWindow {
@@ -65,6 +65,7 @@ pub struct WindowsPlatform {
     /// Set to stop the current `VSyncProvider` thread, which runs while windowed.
     vsync_stop: RefCell<Option<Arc<AtomicBool>>>,
     vsync_threads: RefCell<Vec<std::thread::JoinHandle<()>>>,
+    frame_pacer: Arc<FramePacer>,
     live_windows: Rc<Cell<usize>>,
     // The below members will never change throughout the entire lifecycle of the app.
     /// Created with `headless()`: never windowed, and without a real text system.
@@ -303,6 +304,7 @@ impl WindowsPlatform {
             has_package_identity: has_package_identity(),
             drop_target_helper,
             invalidate_devices: Arc::new(AtomicBool::new(false)),
+            frame_pacer: Arc::new(FramePacer::default()),
             app_identity: RefCell::new(None),
             system_notifications: RefCell::new(SystemNotificationState::new()),
         })
@@ -351,6 +353,7 @@ impl WindowsPlatform {
             offscreen: self.offscreen_windows.get(),
             directx_devices: self.inner.state.directx_devices.borrow().clone().unwrap(),
             invalidate_devices: self.invalidate_devices.clone(),
+            frame_pacer: self.frame_pacer.clone(),
             draw_coordinator: self.inner.state.draw_coordinator.clone(),
         }
     }
@@ -445,7 +448,11 @@ impl WindowsPlatform {
 
     /// Creates the DirectX devices that windows draw with, and starts vsync.
     fn attach_gpu(&self) -> Result<()> {
-        let devices = DirectXDevices::with_instrumentation(self.gpu_adapter_preference.clone(), self.inner.state.instrumentation.borrow().clone()).context("Creating DirectX devices")?;
+        let devices = DirectXDevices::with_instrumentation(
+            self.gpu_adapter_preference.clone(),
+            self.inner.state.instrumentation.borrow().clone(),
+        )
+        .context("Creating DirectX devices")?;
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.handle_gpu_lost(&devices)?;
         }
@@ -458,90 +465,13 @@ impl WindowsPlatform {
     fn detach_gpu(&self) {
         if let Some(stop) = self.vsync_stop.borrow_mut().take() {
             // Not joined: the thread can be sending this thread a message. It exits after its
-            // next vsync, and drops its reference to the devices then.
-            stop.store(true, Ordering::Release);
+            // wake, and drops its reference to the devices then.
+            self.frame_pacer.stop(&stop);
         }
         if let Some(text_system) = &self.direct_write_text_system {
             text_system.release_gpu();
         }
         self.inner.state.directx_devices.borrow_mut().take();
-    }
-
-    fn begin_vsync_thread(&self) {
-        let Some(directx_devices) = self.inner.state.directx_devices.borrow().clone() else {
-            return;
-        };
-        let Some(direct_write_text_system) = &self.direct_write_text_system else {
-            return;
-        };
-        let stop = Arc::new(AtomicBool::new(false));
-        *self.vsync_stop.borrow_mut() = Some(stop.clone());
-        let mut directx_device = directx_devices;
-        let platform_window: SafeHwnd = self.handle.into();
-        let validation_number = self.inner.validation_number;
-        let all_windows = Arc::downgrade(&self.raw_window_handles);
-        let text_system = Arc::downgrade(direct_write_text_system);
-        let invalidate_devices = self.invalidate_devices.clone();
-
-        let thread = std::thread::Builder::new()
-            .name("VSyncProvider".to_owned())
-            .spawn(move || {
-                let vsync_provider = VSyncProvider::new();
-                loop {
-                    let signal_source = vsync_provider.wait_for_vsync();
-                    let signal_at = PlatformFrameSignal::capture(scheduler::Instant::now);
-                    if stop.load(Ordering::Acquire) {
-                        break;
-                    }
-                    if check_device_lost(&directx_device.device)
-                        || invalidate_devices.fetch_and(false, Ordering::Acquire)
-                    {
-                        if let Err(err) = handle_gpu_device_lost(
-                            &mut directx_device,
-                            platform_window.as_raw(),
-                            validation_number,
-                            &all_windows,
-                            &text_system,
-                        ) {
-                            panic!("Device lost: {err}");
-                        }
-                    }
-                    let Some(all_windows) = all_windows.upgrade() else {
-                        break;
-                    };
-                    for hwnd in all_windows.read().iter() {
-                        // KaminIDE patch: a message-only window is never
-                        // visible and gets no WM_PAINT; its paced frame comes
-                        // as one coalesced posted message per vsync.
-                        if let Some(pending) = &hwnd.offscreen_paint {
-                            if let Some(signal_at) = signal_at {
-                                hwnd.frame_signal.record(signal_at, signal_source);
-                            }
-                            post_offscreen_paint(hwnd.as_raw(), pending);
-                            continue;
-                        }
-                        unsafe {
-                            if let Some(signal_at) = signal_at {
-                                if IsWindowVisible(hwnd.as_raw()).as_bool()
-                                    && !IsIconic(hwnd.as_raw()).as_bool()
-                                {
-                                    hwnd.frame_signal.record(signal_at, signal_source);
-                                } else {
-                                    // Hidden windows may not consume WM_PAINT until shown again.
-                                    hwnd.frame_signal.take();
-                                }
-                            }
-                            RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE)
-                                .ok()
-                                .log_err();
-                        }
-                    }
-                }
-            })
-            .unwrap();
-        let mut threads = self.vsync_threads.borrow_mut();
-        threads.retain(|thread| !shutdown::thread_has_exited(thread));
-        threads.push(thread);
     }
 }
 
@@ -787,11 +717,26 @@ impl Platform for WindowsPlatform {
     }
 
     fn displays(&self) -> Vec<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::displays(self.inner.state.instrumentation.borrow().config().scale_factor)
+        WindowsDisplay::displays(
+            self.inner
+                .state
+                .instrumentation
+                .borrow()
+                .config()
+                .scale_factor,
+        )
     }
 
     fn primary_display(&self) -> Option<Rc<dyn PlatformDisplay>> {
-        WindowsDisplay::primary_monitor(self.inner.state.instrumentation.borrow().config().scale_factor).map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
+        WindowsDisplay::primary_monitor(
+            self.inner
+                .state
+                .instrumentation
+                .borrow()
+                .config()
+                .scale_factor,
+        )
+        .map(|display| Rc::new(display) as Rc<dyn PlatformDisplay>)
     }
 
     #[cfg(feature = "screen-capture")]
@@ -825,7 +770,8 @@ impl Platform for WindowsPlatform {
         self.raw_window_handles.write().push(TrackedWindow {
             handle: handle.into(),
             frame_signal: window.state.frame_signal.clone(),
-            offscreen_paint: window.state.offscreen_paint.clone(),
+            frame_demand: window.state.frame_demand.clone(),
+            offscreen: window.state.offscreen,
         });
 
         Ok(Box::new(window))
@@ -1430,7 +1376,7 @@ impl WindowsPlatformInner {
 impl Drop for WindowsPlatform {
     fn drop(&mut self) {
         if let Some(stop) = self.vsync_stop.borrow_mut().take() {
-            stop.store(true, Ordering::Release);
+            self.frame_pacer.stop(&stop);
         }
         unsafe {
             if let Some(notification) = self.suspend_resume_notification.borrow_mut().take() {
@@ -1462,6 +1408,7 @@ pub(crate) struct WindowCreationInfo {
     /// Flag to instruct the `VSyncProvider` thread to invalidate the directx devices
     /// as resizing them has failed, causing us to have lost at least the render target.
     pub(crate) invalidate_devices: Arc<AtomicBool>,
+    pub(crate) frame_pacer: Arc<FramePacer>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
 }
@@ -1747,10 +1694,15 @@ fn handle_gpu_device_lost(
     std::thread::sleep(std::time::Duration::from_millis(350));
 
     let preference = directx_devices.adapter_preference.clone();
-    let generation = directx_devices.context.generation.checked_add(1).context("GPU generation overflow")?;
+    let generation = directx_devices
+        .context
+        .generation
+        .checked_add(1)
+        .context("GPU generation overflow")?;
     let instrumentation = directx_devices.instrumentation.clone();
     *directx_devices = try_to_recover_from_device_lost(|| {
-        DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone()).context("Failed to recreate new DirectX devices after device lost")
+        DirectXDevices::with_instrumentation(preference.clone(), instrumentation.clone())
+            .context("Failed to recreate new DirectX devices after device lost")
     })?;
     directx_devices.context.generation = generation;
     log::info!("DirectX devices successfully recreated.");
