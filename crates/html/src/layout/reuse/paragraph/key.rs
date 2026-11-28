@@ -25,7 +25,8 @@ pub(super) struct ParaKey {
     /// How deep in inline atoms the paragraph lies (`ClampCx::atom_depth`).
     atom_depth: u32,
     /// The content of an atom is built for the atom's own constraint (its widths,
-    /// `key_widths`), which the build reads: the record holds only at the same one.
+    /// `key_widths`): if the build read it (`plan::Widths`), the record holds only
+    /// at the same one; `None` — not an input.
     atom_widths: Option<(Option<f32>, Option<f32>)>,
 }
 
@@ -56,20 +57,41 @@ impl ParaKey {
         }
     }
 
-    /// The paragraph of `inherited` under `opts` has this input.
-    pub(super) fn holds(&self, inherited: &BoxStyle, opts: &RenderOpts) -> bool {
+    /// The build read no width of the atom it lies in: the atom's constraint is
+    /// no input of the record.
+    pub(super) fn width_free(&mut self) {
+        self.atom_widths = None;
+    }
+
+    /// The first input of the paragraph of `inherited` under `opts` that is
+    /// not this one, by name; `None`: the record holds.
+    pub(super) fn changed(&self, inherited: &BoxStyle, opts: &RenderOpts) -> Option<&'static str> {
         let cx = &opts.cx;
-        self.ids == ids(inherited)
-            && self.atom_depth == cx.clamp.atom_depth
-            && self.atom_widths == atom_widths(cx)
-            && self.avail_h == cx.constraints.avail_h
-            && self.cell_bfc == cx.constraints.cell_bfc
-            && self.normal_line_height == opts.normal_line_height
-            && self.fonts == cx.doc().values.font_generation()
-            && self.viewport.1 == opts.viewport.1
-            && (!self.reads_viewport || self.viewport.0 == opts.viewport.0)
-            && *self.text == opts.text
-            && self.inherited.same_box_values(inherited)
+        let same = [
+            (self.ids == ids(inherited), "ids"),
+            (self.atom_depth == cx.clamp.atom_depth, "atom_depth"),
+            (
+                self.atom_widths.is_none() || self.atom_widths == atom_widths(cx),
+                "atom_widths",
+            ),
+            (self.avail_h == cx.constraints.avail_h, "avail_h"),
+            (self.cell_bfc == cx.constraints.cell_bfc, "cell_bfc"),
+            (
+                self.normal_line_height == opts.normal_line_height,
+                "normal_line_height",
+            ),
+            (self.fonts == cx.doc().values.font_generation(), "fonts"),
+            (self.viewport.1 == opts.viewport.1, "viewport_height"),
+            (
+                !self.reads_viewport || self.viewport.0 == opts.viewport.0,
+                "viewport_width",
+            ),
+            (*self.text == opts.text, "text_style"),
+        ];
+        if let Some(&(_, name)) = same.iter().find(|(same, _)| !same) {
+            return Some(name);
+        }
+        (!self.inherited.same_box_values(inherited)).then_some("inherited")
     }
 }
 
@@ -78,8 +100,10 @@ fn ids(s: &BoxStyle) -> [u64; 4] {
 }
 
 /// The record key of the paragraph of `nodes` in container `self_node`: the
-/// keys of its top-level elements and the lengths of its texts. A changed
-/// node inside moves the container's build epoch, not this key.
+/// keys of its top-level elements, the source text node each text starts with
+/// (the text itself if it has none) and the lengths of the texts, so two runs of
+/// one block differ. A changed node inside moves the container's build epoch,
+/// not this key.
 pub(super) fn id(self_node: u64, nodes: &[Node]) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     self_node.hash(&mut h);
@@ -87,7 +111,13 @@ pub(super) fn id(self_node: u64, nodes: &[Node]) -> u64 {
     for n in nodes {
         match n {
             Node::Element(e) => e.node_id.hash(&mut h),
-            Node::Text(t) => t.as_str().len().hash(&mut h),
+            Node::Text(t) => {
+                t.as_str().len().hash(&mut h);
+                match t.first_source() {
+                    Some(source) => source.hash(&mut h),
+                    None => t.as_str().hash(&mut h),
+                }
+            }
         }
     }
     h.finish()
@@ -128,7 +158,10 @@ pub(super) fn subtree(nodes: &[Node], opts: &RenderOpts) -> Result<bool, super::
     let mut reads = false;
     for n in nodes {
         let Node::Element(e) = n else { continue };
-        if !super::super::content::inert_tree(e, vcx) {
+        if !super::super::plain::all_elements(e, |e| inert(e, vcx)) {
+            crate::why::note("paragraph.subtree", || {
+                format!("{:?}", super::super::plain::not_inert(e, vcx))
+            });
             return Err(super::Refusal::Subtree);
         }
         // A kept paragraph keeps no note of the hover it paints.
@@ -143,6 +176,19 @@ pub(super) fn subtree(nodes: &[Node], opts: &RenderOpts) -> Result<bool, super::
             });
     }
     Ok(reads)
+}
+
+/// Box `e` of a kept paragraph is inert (`content::inert_node`). Every
+/// pseudo-element names its originating element as its implicit anchor; only a
+/// box that refers to it (`position-anchor: auto`, a `position-area`) reads
+/// another box's geometry, and an in-flow one is not anchor-positioned at all.
+fn inert(e: &Element, vcx: crate::values::ValueCx<'_>) -> bool {
+    let style = e.style.used();
+    let positioned = &style.reset_positioned;
+    super::super::plain::replayable_node(e, vcx)
+        && positioned.anchor_name.is_none()
+        && (positioned.implicit_anchor.is_none()
+            || !crate::layout::positioned::anchor::wants_implicit(&style))
 }
 
 /// Atom `e` has its own inline size in px and no margin, padding or height

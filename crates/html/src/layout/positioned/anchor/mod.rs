@@ -52,6 +52,7 @@ use settle::DefaultAnchor;
 mod probe;
 pub use probe::key_of;
 pub use probe::probe_for;
+pub(crate) use probe::wants_implicit;
 mod tf_stack;
 pub(crate) use tf_stack::TransformContext;
 pub(super) use tf_stack::containing_bounds;

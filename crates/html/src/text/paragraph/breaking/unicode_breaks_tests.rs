@@ -49,7 +49,7 @@ fn paragraph(text: &str, atoms: &[AtomAt]) -> Paragraph {
 
 #[test]
 fn ruby_lookup_preserves_first_slot_and_empty_probe_semantics() {
-    let p = paragraph(
+    let mut p = paragraph(
         "\u{feff}\u{feff}x",
         &[
             (3, Some((Some('a'), Some('z')))),
@@ -61,7 +61,7 @@ fn ruby_lookup_preserves_first_slot_and_empty_probe_semantics() {
     assert_eq!(p.ruby_edges(0), None);
     assert_eq!(p.ruby_edges(1), None);
     let mut probe = paragraph("\u{feff}\u{feff}x", &[]);
-    probe.atom_boxes = p.atom_boxes;
+    probe.atom_boxes = std::mem::take(&mut p.atom_boxes);
     assert_eq!(probe.ruby_edges(3), None);
 }
 

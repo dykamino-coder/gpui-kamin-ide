@@ -76,12 +76,13 @@ impl Settings {
     }
 
     /// The fields of probe `p`, which its measures left as `probe` made them
-    /// (a plain probe: no fitting or atoms rewrite its runs or struts).
-    pub(super) fn from_probe(p: Paragraph) -> Self {
+    /// (a plain probe: no fitting or atoms rewrite its runs or struts). The
+    /// paragraph keeps itself on drop (`kept`), so its fields are taken.
+    pub(super) fn from_probe(mut p: Paragraph) -> Self {
         Self {
             text_hash: p.text_hash(),
-            text: p.text,
-            runs: p.runs,
+            text: std::mem::take(&mut p.text),
+            runs: std::mem::take(&mut p.runs),
             font_size: p.font_size,
             line_height: p.line_height,
             align: p.align,
@@ -90,22 +91,25 @@ impl Settings {
             clamp_tag: p.clamp_tag,
             clamp: p.clamp,
             clamp_force: p.clamp_force,
-            measures: p.measures,
-            paint_context: p.paint_context,
-            inline_measure: p.inline_measure,
+            measures: std::mem::take(&mut p.measures),
+            paint_context: std::mem::take(&mut p.paint_context),
+            inline_measure: std::mem::take(&mut p.inline_measure),
             lines_reversed: p.lines_reversed,
             vertical_central_baseline: p.vertical_central_baseline,
             vertical_ccw: p.vertical_ccw,
-            tab_stop: p.tab_stop,
+            tab_stop: std::mem::replace(
+                &mut p.tab_stop,
+                crate::text::paragraph::tabs::TabStops::uniform(0.0),
+            ),
             indent: p.indent,
             hanging: p.hanging,
-            flow: p.flow,
+            flow: std::mem::take(&mut p.flow),
             ruby_trim: p.ruby_trim,
             ruby_unit: p.ruby_unit,
             ruby_justify: p.ruby_justify,
             strut_box: p.strut_box,
-            first_strut: p.first_strut,
-            run_metrics: p.run_metrics,
+            first_strut: std::mem::take(&mut p.first_strut),
+            run_metrics: std::mem::take(&mut p.run_metrics),
             strut: p.strut,
         }
     }

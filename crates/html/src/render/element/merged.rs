@@ -14,6 +14,7 @@ use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 
 pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> BoxStyle {
+    crate::work::time_self!(_own, BuildSelfMergedNs);
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
