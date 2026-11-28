@@ -180,6 +180,41 @@ impl Window {
         Ok((nodes, paint.start.scene_index..paint.end.scene_index, nested))
     }
 
+    /// Why a deferred draw of the rendered record `range` (its own draws,
+    /// then the draws nested in them, as `plan_scrolled_replay` takes them)
+    /// refuses a scrolled replay by its commands, for DevTools: the first
+    /// draw whose paint range holds a command no node marks, the line that
+    /// deferred it, its element, its owner node and the command
+    /// (`Scene::scroll_refusal_detail`).
+    pub(super) fn deferred_refusal_detail(&self, range: &Range<PrepaintStateIndex>) -> Option<String> {
+        let frame = &self.rendered_frame;
+        let space = frame.scene.scroll.space;
+        let mut draws: Vec<usize> = (range.start.deferred_draws_index..range.end.deferred_draws_index).collect();
+        let mut next = 0;
+        while let Some(&index) = draws.get(next) {
+            next += 1;
+            let Some(draw) = frame.deferred_draws.get(index) else { continue };
+            let (prepaint, paint) = (&draw.prepaint_range, &draw.paint_range);
+            draws.extend(prepaint.start.deferred_draws_index..prepaint.end.deferred_draws_index);
+            let painted = paint.start.scene_index..paint.end.scene_index;
+            let nodes = frame.scroll_nodes.get(prepaint.start.scroll_nodes_index..prepaint.end.scroll_nodes_index);
+            let nodes = nodes.unwrap_or_default().iter().filter(|node| node.painted_in == Some(space));
+            let Some(detail) = frame.scene.scroll_refusal_detail(std::iter::once(painted).chain(nodes.flat_map(|node| node.ranges()))) else {
+                continue;
+            };
+            let owner = draw.scroll.owner.and_then(|at| frame.scroll_nodes.get(at as usize)).map(|node| node.id);
+            let element: Vec<String> = draw.element_id_stack.iter().rev().take(3).map(|id| format!("{id:?}")).collect();
+            return Some(format!(
+                "deferred draw {index} (priority {}) deferred at {}:{} under {}, owner node {owner:?}: {detail}",
+                draw.priority,
+                draw.site.file().replace('\\', "/"),
+                draw.site.line(),
+                element.join(" < ")
+            ));
+        }
+        None
+    }
+
     /// The nodes of the rendered frame's deferred draws registered in
     /// `range` (a record's prepaint range).
     pub(super) fn deferred_scroll_nodes(&self, range: &Range<PrepaintStateIndex>) -> impl Iterator<Item = &ScrollNodeRecord> {

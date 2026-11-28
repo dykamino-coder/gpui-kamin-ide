@@ -20,7 +20,13 @@ impl Scene {
             .find_map(|tag| tag.routes.iter().find(admits).copied()));
         let mut tags = capture.primitives.iter();
         let mut primitive_index = 0;
+        // KaminIDE patch: a marked command lands under its node; where each lands (`marks`).
+        let at_segment = |route: PaintSegment| ((route.destination - route.source).scale(scale), extent);
+        let mut map = layer_route.and_then(|route| { let (offset, clip) = at_segment(route); self.segment_mapping(offset, clip) });
+        let mut marks = self.scroll.marks.iter().peekable();
         for (source, operation) in self.paint_operations.iter().enumerate() {
+            let mark = marks.next_if(|mark| mark.op as usize == source);
+            let (before, mut landings) = (output.paint_operations.len(), 0);
             match operation {
                 PaintOperation::Primitive(primitive) => {
                     let tag = tags.next().expect("captured primitive tag");
@@ -54,10 +60,16 @@ impl Scene {
                         let clip = Tag::clip_chain(tag.clips.as_ref(), excluded, route, scale, extent);
                         let clip = tag.admission(route, scale, clip);
                         let offset = (route.destination - route.source).scale(scale);
-                        record::geometry::primitive(&mut primitive, offset, Some(clip));
                         let (at, quads) = (output.paint_operations.len(), output.quads.len());
-                        output.insert_image_primitive(primitive, &self.book.images);
+                        match mark {
+                            Some(mark) => output.insert_marked(primitive, mark, offset, clip, &self.book.images),
+                            None => {
+                                record::geometry::primitive(&mut primitive, offset, Some(clip));
+                                output.insert_image_primitive(primitive, &self.book.images);
+                            }
+                        }
                         if output.paint_operations.len() > at {
+                            landings += 1;
                             let quad = (output.quads.len() > quads).then_some(quads);
                             let placed = crate::scene::layer::Placed { offset, clip: Some(clip) };
                             crate::scene::layer::PlacedMap::set(&mut output.book.placed_map, source, at, quad, placed);
@@ -70,9 +82,20 @@ impl Scene {
                     let delta = route.map_or(Point::default(), |route| (route.destination - route.source).scale(scale));
                     output.push_layer(record::geometry::bounds(*bounds, delta).union(&extent));
                 }
+                // A dormant command lands at its segment's place, under its node again.
+                PaintOperation::Dormant(primitive) if mark.is_some() && layer_route.or(first).is_some() => {
+                    let (Some(mark), Some(route)) = (mark, layer_route.or(first)) else { unreachable!() };
+                    let (offset, clip) = at_segment(route);
+                    output.insert_marked(Primitive::clone(primitive), mark, offset, clip, &self.book.images);
+                }
                 _ => output.replay_operation(operation.clone()),
             }
+            if let Some(map) = map.as_mut() {
+                let landed = output.paint_operations.len() > before;
+                map.push(landed.then_some(before), landings > 1);
+            }
         }
+        self.relay_segment(&mut output, map);
         self.segment_backdrops(&mut output, id, ordinal, scale, extent, excluded);
         output.finish();
         (output, first.map(|route| entry.unwrap_or(route)))

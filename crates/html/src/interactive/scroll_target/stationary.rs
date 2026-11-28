@@ -35,10 +35,12 @@ impl Wrap for Stationary {
         // A scroll anchor: a replay that moves the scroller's node cancels the
         // move for the decorations, as the exact offset below does here (a
         // fixed box hangs on the viewport the same way, `ViewportAnchor`).
-        let handle = self.handle.clone();
-        let counter: Rc<dyn Fn() -> gpui::Point<Pixels>> = Rc::new(move || -handle.offset());
+        // The translation the frame paints (`ScrollHandle::painted_offset`).
+        let (handle, scale) = (self.handle.clone(), window.scale_factor());
+        let counter: Rc<dyn Fn() -> gpui::Point<Pixels>> =
+            Rc::new(move || -handle.painted_offset(scale));
         let id = gpui::ScrollNodeId::of_token(&self.token);
-        let (child, shift) = (&mut self.child, -self.handle.offset());
+        let (child, shift) = (&mut self.child, -self.handle.painted_offset(scale));
         window.with_scroll_anchor_prepaint(id, counter, |window| {
             window.with_content_mask_replaced(clip, |window| {
                 window.with_exact_element_offset(shift, |window| child.prepaint(window, cx));

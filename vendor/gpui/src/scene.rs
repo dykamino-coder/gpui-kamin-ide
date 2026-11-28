@@ -9,6 +9,7 @@ pub(crate) use layer::{Binding, BoxContents, BoxEnv, RunPainter, BoxRange, Layer
 pub(crate) use layer::no_run;
 mod damage;
 pub(crate) mod image_resources;
+mod heap_masks;
 mod record; mod group_replay; pub(crate) use group_replay::GroupLabel;
 #[doc(hidden)]
 pub use damage::{DAMAGE_TILE, FrameShift, SHIFT_KIND_NAMES, SHIFT_KINDS, SHIFT_RECTS, SceneDamage, ShiftStats, set_shift_budget_us};
@@ -40,6 +41,7 @@ impl Scene {
         vec(sink, path, &self.surfaces);
         vec(sink, path, &self.book.layers);
         vec(sink, path, &self.book.layer_order);
+        heap_masks::report(self, sink);
     }
 }
 
@@ -890,14 +892,27 @@ impl Scene {
             let mut operation = self.relabeled(operation);
             // KaminIDE patch: the mark of a node the record opened inside itself.
             let carried = self.carried(index);
-            if !place(&mut operation) {
-                layer::PlacedMap::skip(&mut self.book.placed_map);
-                self.land_carried(None, None, shift);
-                continue;
-            }
+            let shown = place(&mut operation);
+            let carried = match carried {
+                Some(mark) => match self.carried_landing(&mut operation, mark, shown, index) {
+                    Some(mark) => Some(mark),
+                    None => {
+                        layer::PlacedMap::skip(&mut self.book.placed_map);
+                        self.land_gone();
+                        continue;
+                    }
+                },
+                None if !shown => {
+                    layer::PlacedMap::skip(&mut self.book.placed_map);
+                    self.land_carried(None, None, shift);
+                    continue;
+                }
+                None => None,
+            };
             // KaminIDE patch: a moved copy builds its matrices from the moved pivots.
             if let PaintOperation::Primitive(primitive) = &mut operation
                 && self.scroll.open.is_none()
+                && carried.is_none()
             {
                 self.copied_pivot(primitive, index, false);
             }

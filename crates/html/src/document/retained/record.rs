@@ -142,7 +142,16 @@ impl Record {
         let refusal = refusal.or(read.then_some(FrameMiss::ScrollRead));
         if let Some(refusal) = refusal {
             // The next frame misses for this reason; the journal names it now, at the publish.
-            crate::why::note("frame_unpublished", || refusal.code().into());
+            // A scroll read names the scroller, what the layout read and what it is now.
+            let change = self
+                .inputs
+                .as_ref()
+                .filter(|_| refusal == FrameMiss::ScrollRead);
+            let change = change.and_then(|inputs| inputs.layout.scroll_change());
+            crate::why::note("frame_unpublished", || match change {
+                Some(change) => format!("{}: {change}", refusal.code()),
+                None => refusal.code().into(),
+            });
         }
         let inputs = self
             .inputs

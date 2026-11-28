@@ -101,7 +101,9 @@ pub(super) fn launch(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         std::env::set_var("GPUI_NO_ERROR_DIALOG", "1");
     }
     let mut instrumentation = kamin_html::host::instrumentation::from_env();
-    instrumentation.scale_factor = Some(1.);
+    // Scale 1 unless KAMIN_FORCE_SCALE asks for another (a fractional
+    // device-pixel scale such as 1.25 for the pure-translation check).
+    instrumentation.scale_factor = Some(instrumentation.scale_factor.unwrap_or(1.));
     // The journal names the element types that spend request_layout.
     instrumentation.request_layout = args.why.is_some();
     let (capture, sink) = kamin_html::host::capture::CaptureSession::open();
