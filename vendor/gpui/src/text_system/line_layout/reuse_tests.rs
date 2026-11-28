@@ -80,9 +80,9 @@ fn reusing_a_frame_from_its_start_then_the_rest_keeps_it_whole() {
     line(&cache, "b");
     let end = cache.layout_index();
     cache.finish_frame();
-    cache.reuse_layouts(start.clone()..middle.clone());
+    assert!(cache.reuse_layouts(start.clone()..middle.clone()));
     let after_prepaint = cache.layout_index();
-    cache.reuse_layouts(middle..end.clone());
+    assert!(cache.reuse_layouts(middle..end.clone()));
     assert_eq!(used(&cache.current_frame.read()), ["a", "b"]);
     assert_eq!(cached(&cache.current_frame.read()), ["a", "b"]);
     assert!(cache.previous_frame.lock().lines.is_empty());
@@ -104,7 +104,7 @@ fn reusing_part_of_a_frame_moves_only_that_part() {
     line(&cache, "b");
     let end = cache.layout_index();
     cache.finish_frame();
-    cache.reuse_layouts(middle.clone()..end.clone());
+    assert!(!cache.reuse_layouts(middle.clone()..end.clone()));
     assert_eq!(used(&cache.current_frame.read()), ["b"]);
     assert_eq!(cached(&cache.previous_frame.lock()), ["a"]);
     cache.reuse_layouts(start..middle);
@@ -117,7 +117,7 @@ fn a_frame_that_laid_out_lines_already_reuses_one_by_one() {
     let cache = cache();
     let range = frame(&cache, &["a", "b"]);
     line(&cache, "c");
-    cache.reuse_layouts(range);
+    assert!(!cache.reuse_layouts(range));
     assert_eq!(used(&cache.current_frame.read()), ["c", "a", "b"]);
     assert_eq!(cached(&cache.current_frame.read()), ["a", "b", "c"]);
 }

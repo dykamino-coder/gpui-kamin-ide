@@ -14,6 +14,9 @@
 
 pub(crate) mod carry;
 mod check;
+mod depth;
+#[cfg(test)]
+mod live_tests;
 pub(crate) mod pivots;
 use super::*;
 use crate::ScrollNodeId;
@@ -37,19 +40,8 @@ pub(crate) struct ScrollMark {
     pub(crate) pivot: Option<std::rc::Rc<TransformPivot>>,
 }
 
-/// Which scene a command index counts in: each scene has its own, kept by
-/// a copy of the scene (a layer's content written while a frame holds it).
-/// A scroll node painted while a layer records has its range in the layer's
-/// scene, not the frame's (`Window::begin_scroll_node_paint`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct SceneSpace(u32);
-
-impl Default for SceneSpace {
-    fn default() -> Self {
-        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
+mod space;
+pub(crate) use space::SceneSpace;
 
 /// The scroll marks of a scene, sorted by command.
 #[derive(Default)]
@@ -72,6 +64,8 @@ pub(crate) struct ScrollBook {
     /// where it lands (`Window::with_copies_marked`); a node opened inside
     /// the record marks its commands as usual.
     pub(crate) record_base: Option<usize>,
+    /// A node paired inside this scene, including nodes with no commands.
+    pub(crate) has_nodes: bool,
     /// While a paint record lands: the marks of the nodes it opened inside
     /// itself, carried to its copy (carry).
     pub(crate) carry: Option<Box<carry::Carry>>,
@@ -100,6 +94,7 @@ impl ScrollBook {
         self.open = None;
         self.carry = None;
         self.relayed.clear();
+        self.has_nodes = false;
         (self.pivot, self.unpivoted) = (None, false);
         self.pivots.clear();
         self.copying = None;
@@ -137,7 +132,6 @@ impl Scene {
             // Dormant where its order is known: from the bounds tree, or the
             // order of the layer it paints in (a text line, `Window::paint_layer`).
             let order = match self.layer_stack.last().copied() {
-                _ if !self.depth.contexts.is_empty() => None,
                 None => Some(self.tree_mut().insert(ordered) * ORDER_STEP),
                 Some(BOTTOM_LAYER) => None,
                 Some(layer) => Some(layer),
@@ -296,10 +290,9 @@ impl Scene {
     /// from its marked primitives, then shared by the frames that replay it):
     /// each frame draws only its primitives that (own + shift) ∩ chain shows,
     /// found through its tile grid, in their paint order, moved by the
-    /// node's total shift. Runs of commands with one shift are copied as
-    /// `replay` copies a range, so a run keeps its relative orders and lies
-    /// above what it overlaps before it. The caller checked `scrollable` and
-    /// that this scene is at its root (no open layer or depth context).
+    /// node's total shift. Flat runs keep their relative orders; depth
+    /// metadata orders newly visible primitives in their original planes.
+    /// The destination starts at its root (no open layer or depth context).
     pub(crate) fn replay_scrolled(
         &mut self,
         range: Range<usize>,
@@ -307,7 +300,9 @@ impl Scene {
         node: impl Fn(ScrollNodeId) -> (Point<ScaledPixels>, Bounds<ScaledPixels>),
         edges: &mut [(usize, usize)],
     ) {
-        // Where each of dges (old command indices, sorted) lands here.
+        if prev.has_depth(&range) {
+            return self.replay_depth_scrolled(range, prev, &node, edges);
+        }
         let mut edge = 0;
         let marks = prev.scroll.within(&range);
         let mut marks = marks.iter().peekable();
@@ -356,10 +351,17 @@ impl Scene {
             run.push(PaintOperation::Dormant(std::rc::Rc::new(Primitive::Quad(Default::default()))));
             reservoir.run.draw(reservoir.shift, reservoir.raised, chain, &mut run);
             reservoir.drawn = (run.len() - 1) as u32;
-            let tree = reservoir.run.tree.clone();
-            let graft = crate::bounds_tree::Graft::new(tree, reservoir.shift, Some(chain), reservoir.raised / ORDER_STEP);
+            let source = if reservoir.run.live {
+                // The old index is valid only for translation. A spatially
+                // rebuilt projection orders against its current drawn bounds.
+                ReplaySource::Pack
+            } else {
+                let tree = reservoir.run.tree.clone();
+                let graft = crate::bounds_tree::Graft::new(tree, reservoir.shift, Some(chain), reservoir.raised / ORDER_STEP);
+                ReplaySource::Graft(graft, true)
+            };
             run[0] = PaintOperation::Reservoir(Box::new(reservoir));
-            if !self.replay_shifted(&run, ReplaySource::Graft(graft, true), &prev.book.images, |_| true) {
+            if !self.replay_shifted(&run, source, &prev.book.images, |_| true) {
                 for operation in &run {
                     self.replay_image_operation(operation.clone(), &prev.book.images);
                 }
@@ -479,6 +481,9 @@ impl Item {
     cells: Vec<u32>,
     tiled: Vec<u32>,
     spread: Vec<u32>,
+    /// A pivot can change its projection as its spatial inputs move. Its
+    /// old bounds translated by the scroll delta cannot index that geometry.
+    live: bool,
     /// Where the items land, as the bounds tree would hold them, packed once
     /// and grafted moved by the shift and clipped by the chain each frame.
     tree: std::rc::Rc<crate::bounds_tree::BoundsTree<ScaledPixels>>,
@@ -496,6 +501,7 @@ pub(crate) struct ReservoirOp {
 
 impl Run {
     fn new(node: ScrollNodeId, items: Vec<Item>) -> Self {
+        let live = items.iter().any(|item| item.pivot.is_some());
         // The grid and the tree hold the top commands: a layer stands for
         // what it holds, as `Scene::packed` and the bounds tree see it.
         let mut top = Vec::with_capacity(items.len());
@@ -524,7 +530,7 @@ impl Run {
             .map(|&index| {
                 let shown = items[index as usize].placed.intersect(&items[index as usize].own);
                 let (left, right, top, bottom) = span(&shown);
-                let wide = shown.is_empty() || (right - left + 1) * (bottom - top + 1) > SPREAD;
+                let wide = live || shown.is_empty() || (right - left + 1) * (bottom - top + 1) > SPREAD;
                 if wide {
                     spread.push(index);
                 } else {
@@ -563,7 +569,7 @@ impl Run {
         let mut tree = crate::bounds_tree::BoundsTree::packed(rects, |coordinate| coordinate.0);
         tree.freeze();
         let tree = std::rc::Rc::new(tree);
-        Run { node, items, origin: area.origin, columns, rows, cells: counts, tiled, spread, tree }
+        Run { node, items, origin: area.origin, columns, rows, cells: counts, tiled, spread, live, tree }
     }
 
     /// Append every command of the run moved by `shift` and raised by
@@ -605,13 +611,40 @@ impl Run {
         picked.dedup();
         for index in picked {
             let item = &self.items[index as usize];
-            if item.placed.intersect(&item.own.intersect(&seen)).is_empty() {
+            if !self.live && item.placed.intersect(&item.own.intersect(&seen)).is_empty() {
                 continue;
             }
             match item.piece {
                 Piece::Layer(_) => {
+                    let start = out.len();
                     for inner in &self.items[index as usize..(item.end as usize).max(index as usize + 1)] {
                         inner.draw(shift, raised, seen, out);
+                    }
+                    if self.live {
+                        // Text layers order their contents as one unit. Their
+                        // source bounds need the same live projection as glyphs.
+                        let mut open: Vec<(usize, Option<Bounds<ScaledPixels>>)> = Vec::new();
+                        for at in start..out.len() {
+                            match &out[at] {
+                                PaintOperation::StartLayer(..) => open.push((at, None)),
+                                PaintOperation::Primitive(p) => {
+                                    let bounds = placed_bounds(p).intersect(&p.content_mask().bounds);
+                                    if !bounds.is_empty() {
+                                        for (_, ink) in &mut open {
+                                            *ink = Some(ink.map_or(bounds, |ink| ink.union(&bounds)));
+                                        }
+                                    }
+                                }
+                                PaintOperation::EndLayer => {
+                                    if let Some((begin, ink)) = open.pop() {
+                                        if let PaintOperation::StartLayer(bounds, _) = &mut out[begin] {
+                                            *bounds = ink.unwrap_or_default();
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                 }
                 _ => item.draw(shift, raised, seen, out),
@@ -636,13 +669,16 @@ impl Item {
         match &self.piece {
             Piece::Primitive(primitive) => {
                 let mask = self.own.intersect(&seen);
-                if self.placed.intersect(&mask).is_empty() {
+                if mask.is_empty() {
                     return;
                 }
                 let mut primitive = primitive.clone();
                 record::geometry::scrolled(&mut primitive, shift, self.pivot.as_deref());
                 *primitive.order_mut() += raised;
                 primitive.content_mask_mut().bounds = record::geometry::bounds(mask, shift);
+                if placed_bounds(&primitive).intersect(&primitive.content_mask().bounds).is_empty() {
+                    return;
+                }
                 out.push(PaintOperation::Primitive(primitive));
             }
             Piece::Layer(order) => {

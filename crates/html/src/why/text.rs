@@ -32,6 +32,7 @@ pub fn changes(before: &BTreeMap<String, u64>, now: &BTreeMap<String, u64>) -> V
     out
 }
 
+mod work;
 /// The text form of `why.json`.
 pub(super) fn render(out: &Value) -> String {
     let mut s = String::new();
@@ -79,6 +80,12 @@ pub(super) fn render(out: &Value) -> String {
         if f["causes_dropped"].as_u64().unwrap_or(0) > 0 {
             let _ = writeln!(s, "  cause  ... {} more not kept", f["causes_dropped"]);
         }
+        work::animation(
+            &mut s,
+            &f["scroll_animation"],
+            &f["between"]["scroll_animation"],
+        );
+        work::window_frames(&mut s, &f["window_frames"], &f["between"]["window_frames"]);
         pairs(&mut s, "path ", &f["paint_path"]);
         super::paint_work::render_frame(&mut s, f);
         super::layout_work::render(&mut s, &f["layout_work"]);

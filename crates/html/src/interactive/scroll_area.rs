@@ -7,6 +7,7 @@ use crate::style::computed::BoxStyle;
 use crate::values::ValueCx;
 use gpui::{AnyElement, ElementId};
 mod lifecycle;
+mod prepaint;
 mod root_bars;
 pub(crate) use root_bars::RootBars;
 mod wheel;
@@ -44,6 +45,7 @@ pub struct ScrollArea {
     values: crate::values::ValueDoc,
     freeze_scrollbars: bool,
     root: Option<Rc<crate::document::viewport::RootScroll>>,
+    animation: Rc<super::scroll_animation::Tracker>,
 }
 
 impl ScrollArea {
@@ -58,6 +60,7 @@ impl ScrollArea {
             values: vcx.keep(),
             freeze_scrollbars: false,
             root: None,
+            animation: Default::default(),
             id,
             horizontal,
             vertical,
@@ -71,6 +74,11 @@ impl ScrollArea {
     pub(crate) fn with_style(mut self, style: BoxStyle, freeze: bool) -> Self {
         self.freeze_scrollbars = freeze;
         self.style = style;
+        self
+    }
+
+    pub(crate) fn with_animation(mut self, tracker: Rc<super::scroll_animation::Tracker>) -> Self {
+        self.animation = tracker;
         self
     }
 
@@ -106,4 +114,21 @@ struct Persistent {
     handle: gpui::ScrollHandle,
     extent: super::scroll_extent::Frame,
     interaction: super::scrollbars::interaction::Interaction,
+    animation: Option<super::scroll_animation::Scroll>,
+}
+
+impl ScrollArea {
+    fn animator(&self, state: &mut Persistent) -> super::scroll_animation::Scroll {
+        if let Some(root) = &self.root {
+            state.animation = root.animation.borrow().clone();
+        }
+        let animation = state.animation.get_or_insert_with(|| {
+            super::scroll_animation::Scroll::new(state.handle.clone(), self.animation.clone())
+        });
+        animation.set_smooth(self.style.reset_box_layout.scroll.smooth == Some(true));
+        if let Some(root) = &self.root {
+            root.animation.replace(Some(animation.clone()));
+        }
+        animation.clone()
+    }
 }

@@ -94,11 +94,18 @@ impl Document {
                             super::window_key::WindowKey::capture(bounds, window, cx, &self.state);
                         let epoch = record.begin(&self.reuse, window);
                         let replay = match self.state.values.resources_unchanged() {
-                            true => {
+                            true if !self.state.scrolling.preparing() => {
                                 let slot = &self.retained;
-                                record.replay(slot, Some(&key), &environment, window, &self.reuse)
+                                let candidate = record.inputs.as_ref().map_or_else(
+                                    || environment.clone(),
+                                    |inputs| inputs.step_environment(environment.clone()),
+                                );
+                                record.replay(slot, Some(&key), &candidate, window, &self.reuse)
                             }
-                            false => Err(super::record::FrameMiss::Resources.noted()),
+                            _ if self.state.scrolling.preparing() => {
+                                Err(super::record::FrameMiss::ScrollPrepare.noted())
+                            }
+                            _ => Err(super::record::FrameMiss::Resources.noted()),
                         };
                         let replay = replay
                             .inspect_err(|miss| self.retained.missed(*miss))
@@ -113,6 +120,7 @@ impl Document {
                             builder.layout_checked(bounds, window, cx, |phase| {
                                 if phase == UpdatePhase::Built {
                                     self.retained.builds.set(self.retained.builds.get() + 1);
+                                    kamin_style::journal::window_document_build();
                                 }
                                 observe(phase);
                             });

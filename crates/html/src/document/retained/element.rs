@@ -174,6 +174,8 @@ impl Element for Retained {
         let _phase = self.builder.phases.enter(crate::why::root::Phase::Paint);
         let Some(id) = id else { return };
         self.paint_record(id, window, cx);
+        kamin_style::journal::window_frame();
+        self.builder.state.scrolling.painted(!self.replay);
         if let Some((bars, hits)) = self.root_bars.take() {
             bars.paint(&hits, window);
         }

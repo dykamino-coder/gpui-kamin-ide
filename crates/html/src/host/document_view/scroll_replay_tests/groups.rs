@@ -16,8 +16,18 @@ type Groups = (Vec<gpui::Bounds<gpui::ScaledPixels>>, Vec<String>);
 /// The drawn areas of the group labels and each group that draws with its
 /// bounds and drawn quads (translation folded into the bounds, orders
 /// dropped), sorted.
-fn groups(cx: &mut VisualTestContext) -> Groups {
-    let (labels, groups) = cx.update(|window, _| window.painted_groups());
+pub(in super::super) fn groups(cx: &mut VisualTestContext) -> Groups {
+    let (labels, groups, viewport) = cx.update(|window, _| {
+        let (labels, groups) = window.painted_groups();
+        (
+            labels,
+            groups,
+            gpui::Bounds::new(
+                gpui::Point::default(),
+                window.viewport_size().scale(window.scale_factor()),
+            ),
+        )
+    });
     let mut areas: Vec<_> = labels.into_iter().map(|(_, area)| area).collect();
     areas.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
     // A group of a label out of view draws nothing; how many such groups a
@@ -38,6 +48,9 @@ fn groups(cx: &mut VisualTestContext) -> Groups {
                 })
                 .collect();
             quads.sort();
+            // A reserve hull may move outside the window; the renderer allocates
+            // its viewport intersection (group_region::Region::for_group).
+            let bounds = bounds.intersect(&viewport);
             format!("{bounds:?} {quads:?}")
         })
         .collect();

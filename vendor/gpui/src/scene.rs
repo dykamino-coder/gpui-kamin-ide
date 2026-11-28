@@ -139,6 +139,8 @@ pub struct PaintGroup {
     /// — обратная гомография 3×3 (по строкам) «точка кадра → точка буфера»;
     /// композит берёт выборку буфера в H⁻¹·p (перспективно точно).
     pub projection: Option<[f32; 9]>,
+    /// Source inputs of a retained plane and their logical-to-device scale.
+    pub plane: Option<(std::rc::Rc<dyn crate::PlaneBuild>, f32)>,
     /// KaminIDE patch: куски плоскости после BSP-разреза — свой выпуклый
     /// многоугольник на каждую метку (`PaintSurface::fragment`).
     pub fragments: Vec<Vec<Point<ScaledPixels>>>,

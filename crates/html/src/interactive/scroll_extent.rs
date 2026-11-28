@@ -54,6 +54,7 @@ pub struct Frame {
     bars: Rc<Cell<[bool; 2]>>,
     reverse: Rc<Cell<[bool; 2]>>,
     handle: Rc<RefCell<Option<gpui::ScrollHandle>>>,
+    scale: Rc<Cell<f32>>,
     reserved: Rc<Cell<[f32; 2]>>,
     range: Rc<Cell<[f32; 2]>>,
     insets: Rc<Cell<[f32; 4]>>,
@@ -75,6 +76,7 @@ impl Default for Frame {
             bars: Rc::default(),
             reverse: Rc::default(),
             handle: Rc::default(),
+            scale: Rc::new(Cell::new(1.0)),
             reserved: Rc::default(),
             range: Rc::default(),
             insets: Rc::default(),
@@ -85,7 +87,8 @@ impl Default for Frame {
     }
 }
 impl Frame {
-    pub(super) fn set_handle(&self, handle: gpui::ScrollHandle) {
+    pub(super) fn set_handle(&self, handle: gpui::ScrollHandle, scale: f32) {
+        self.scale.set(scale);
         *self.handle.borrow_mut() = Some(handle);
     }
     pub(super) fn parent_for(frame: Option<&Self>, id: u64) -> Option<Self> {

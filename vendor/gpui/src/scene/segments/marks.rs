@@ -43,7 +43,8 @@ impl Scene {
     /// The landing map of a segment copy of this draft, moved by `offset`
     /// and clipped by `clip`, when the draft holds marks to follow.
     pub(super) fn segment_mapping(&self, offset: Point<ScaledPixels>, clip: Bounds<ScaledPixels>) -> Option<Box<Carry>> {
-        (!self.scroll.marks.is_empty()).then(|| Carry::mapping(self.paint_operations.len(), offset, Some(clip)))
+        (self.scroll.has_nodes || !self.scroll.marks.is_empty() || !self.scroll.relayed.is_empty())
+            .then(|| Carry::mapping(self.paint_operations.len(), offset, Some(clip)))
     }
 
     /// Relay the draft's nodes through the segment copy `output` made (`map`).

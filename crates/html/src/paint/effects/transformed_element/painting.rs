@@ -85,7 +85,6 @@ pub(super) fn paint_body(
     // сдвиги ×sf, m34 = −1/(d·sf). Сам элемент перспективой не трогается
     // (она действует только на детей) и идёт своим путём как прежде.
     if let (Some(d), Some(frame)) = (group.perspective, group.perspective_frame.as_ref()) {
-        use crate::style::computed::{Transform, mul4};
         let px = group
             .perspective_origin_px
             .0
@@ -94,18 +93,13 @@ pub(super) fn paint_body(
             .perspective_origin_px
             .1
             .unwrap_or(h * group.perspective_origin.1);
-        let (px_d, py_d) = (
-            (f32::from(raw_origin.x) + px) * scale_factor,
-            (f32::from(raw_origin.y) + py) * scale_factor,
-        );
-        let p = mul4(
-            mul4(
-                Transform::translate4(px_d, py_d, 0.0),
-                Transform::perspective4(d * scale_factor),
-            ),
-            Transform::translate4(-px_d, -py_d, 0.0),
-        );
-        frame.set(Some(p));
+        frame.set(crate::style::computed::PerspectiveInputs {
+            distance: d,
+            base: raw_origin,
+            origin: (px, py),
+            scale: scale_factor,
+            motion: window.scroll_motion(),
+        });
     }
     // Плоский путь годится, только когда объёмного контекста рядом нет:
     // и владелец `preserve-3d`, и его ребёнок идут по 4×4, даже когда

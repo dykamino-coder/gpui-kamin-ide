@@ -22,6 +22,8 @@ use crate::scene::scroll_marks::carry::{Carry, Relay};
 mod tests;
 #[cfg(test)]
 mod reentry_tests;
+#[cfg(test)]
+mod empty_tests;
 
 impl Window {
     /// `replay_placed_carrying` of the record `scene`, landing the nodes it
@@ -33,11 +35,11 @@ impl Window {
         clip: Option<Bounds<ScaledPixels>>,
     ) -> bool {
         // A record's marks are those of the nodes it opened (`ScrollBook::record_base`).
-        let marked = !scene.scroll.marks.is_empty();
-        if marked {
-            self.next_frame.scene.scroll.carry = Some(Carry::of(scene, offset, clip));
-        }
+        let marked = scene.scroll.has_nodes || !scene.scroll.marks.is_empty() || !scene.scroll.relayed.is_empty();
         let start = self.next_frame.scene.paint_operations.len();
+        if marked {
+            self.next_frame.scene.scroll.carry = Some(Carry::of(scene, offset, clip, start));
+        }
         let done = self.replay_placed_carrying(scene, offset, clip);
         let carry = self.next_frame.scene.scroll.carry.take();
         let carry = carry.filter(|carry| done && carry.landed.len() == scene.paint_operations.len());

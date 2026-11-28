@@ -210,4 +210,5 @@ properties! {
     Continue: "continue" => [reset_fragmentation.clamp_continue, inh.text_flow.clamp_legacy, reset_fragmentation.clamp_discard];
     TextBoxTrim: "text-box-trim" => [reset_text_box.text_box_trim_start, reset_text_box.text_box_trim_end];
     UserSelect: "user-select" => [reset_context.user_select];
+    ScrollBehavior: "scroll-behavior" => [reset_box_layout.scroll.smooth];
 }

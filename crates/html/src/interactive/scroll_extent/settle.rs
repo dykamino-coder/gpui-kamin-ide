@@ -54,7 +54,7 @@ impl Frame {
             f32::from(bounds.size.width) - border[0] - border[2] - gutter[0],
             f32::from(bounds.size.height) - border[1] - border[3] - gutter[1],
         ];
-        let offset = handle.offset();
+        let offset = handle.painted_offset(self.scale.get());
         let mut end = [origin[0] + view[0], origin[1] + view[1]];
         // DevTools `why`: what reaches the far end of the range on each axis.
         let mut far = [(("the view", tree.node_id), 0.0f32); 2];

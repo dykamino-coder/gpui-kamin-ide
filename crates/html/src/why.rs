@@ -77,6 +77,7 @@ pub const CODES: &[&str] = &[
     "plan_text.refused",
     "scroll_extent.layout_bars",
     "scroll_extent.relayout",
+    "scroll_animation.prepare",
 ];
 
 /// Whether `code` belongs to the protocol: listed, or a frame miss or a
@@ -146,6 +147,8 @@ pub fn to_json(entry: &Entry) -> Value {
         }))).collect::<serde_json::Map<_, _>>(),
         "frames": entry.frames.iter().map(|e| json!({"kind": e.kind, "site": site(e.site), "detail": e.detail})).collect::<Vec<_>>(),
         "frames_dropped": entry.frames_dropped,
+        "scroll_animation": {"frames": j.scroll_animation_frames, "builds": j.scroll_animation_builds},
+        "window_frames": {"frames": j.window_frames, "builds": j.window_document_builds},
     })
 }
 

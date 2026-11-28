@@ -19,6 +19,7 @@ pub(super) fn open<'a>(
         view.focus.focus(window, cx);
         view
     });
+    cx.update(|_, cx| cx.set_global(gpui::AnimationElapsedTime(std::time::Duration::ZERO)));
     frame(cx);
     frame(cx);
     (view, cx)
@@ -26,6 +27,13 @@ pub(super) fn open<'a>(
 
 pub(super) fn frame(cx: &mut VisualTestContext) {
     cx.update(|window, cx| {
+        let elapsed = cx
+            .try_global::<gpui::AnimationElapsedTime>()
+            .map_or(std::time::Duration::ZERO, |t| t.0);
+        cx.set_global(gpui::AnimationElapsedTime(
+            elapsed + std::time::Duration::from_secs(1),
+        ));
+        window.simulate_next_frame(cx);
         window.refresh();
         window.draw(cx).clear(cx);
     });
@@ -62,8 +70,12 @@ fn plain_root_scrolls_with_wheel_and_keys(cx: &mut TestAppContext) {
     assert!(offset(&view, cx).y < px(0.));
     cx.simulate_keystrokes("end");
     frame(cx);
+    frame(cx);
+    frame(cx);
     assert!(offset(&view, cx).y < px(-1000.));
     cx.simulate_keystrokes("home");
+    frame(cx);
+    frame(cx);
     frame(cx);
     assert_eq!(offset(&view, cx).y, px(0.));
     cx.simulate_keystrokes("pagedown");
@@ -122,6 +134,8 @@ fn hiding_a_previously_scrollable_root_disables_keys(cx: &mut TestAppContext) {
     frame(cx);
     cx.simulate_keystrokes("end");
     frame(cx);
+    frame(cx);
+    frame(cx);
     assert_eq!(offset(&view, cx).y, px(0.));
 }
 
@@ -142,6 +156,8 @@ fn nested_wheel_scrolls_the_inner_box_before_the_document(cx: &mut TestAppContex
     assert!(offset(&view, cx).y < px(0.));
     cx.simulate_keystrokes("home");
     frame(cx);
+    frame(cx);
+    frame(cx);
     wheel(cx, 250., 150.);
     frame(cx);
     assert!(offset(&view, cx).y < px(0.));
@@ -156,6 +172,8 @@ fn foreign_focus_does_not_scroll_the_root(cx: &mut TestAppContext) {
         focus
     });
     cx.simulate_keystrokes("end");
+    frame(cx);
+    frame(cx);
     frame(cx);
     assert_eq!(offset(&view, cx).y, px(0.));
     drop(foreign);

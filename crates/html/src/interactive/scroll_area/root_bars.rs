@@ -14,6 +14,7 @@ pub(crate) struct RootBars {
     pub(super) extent: crate::interactive::scroll_extent::Frame,
     pub(super) interaction: crate::interactive::scrollbars::interaction::Interaction,
     pub(super) bounds: Bounds<Pixels>,
+    pub(super) animation: crate::interactive::scroll_animation::Scroll,
 }
 
 impl RootBars {
@@ -79,9 +80,9 @@ impl RootBars {
         hitbars: &[crate::interactive::scrollbars::interaction::HitBar],
         window: &mut Window,
     ) {
-        let alpha = self
-            .interaction
-            .paint(self.freeze, hitbars, &self.handle, window);
+        let alpha =
+            self.interaction
+                .paint(self.freeze, hitbars, &self.handle, &self.animation, window);
         crate::interactive::scrollbars::paint(
             &self.style,
             &self.handle,

@@ -4,6 +4,10 @@ mod compose;
 mod flat;
 pub use flat::FlatTransform;
 mod matrices4;
+mod perspective_frame;
+pub use perspective_frame::{PerspectiveFrame, PerspectiveInputs};
+mod frame3d;
+pub use frame3d::{Frame3d, Frame3dBuild};
 
 /// `transform`: поворот, масштаб и сдвиг при отрисовке.
 ///
@@ -58,26 +62,6 @@ pub struct Transform {
     /// Identity or a single 2D scale function, eligible for primitive interpolation.
     pub(crate) scale_primitive: bool,
 }
-
-/// Ячейка матрицы перспективы элемента в точках устройства
-/// (css-transforms-2 §perspective-matrix-computation): заводится при
-/// разборе `perspective`, наполняется его `Transformed::paint`, читается
-/// объёмным путём ПРЯМЫХ детей. Разделяемая ячейка, а не стек кадра:
-/// абсолютный ребёнок с `z-index`/`fixed` рисуется отложенным слоем
-/// (`defers`), когда `paint` родителя уже вышел; ячейка переживает кадр.
-pub type PerspectiveFrame = std::rc::Rc<std::cell::Cell<Option<[[f32; 4]; 4]>>>;
-
-/// Ячейка объёмного контекста `transform-style: preserve-3d`
-/// (css-transforms-2 §accumulated-3d-transformation-matrix): накопленная
-/// 4×4 в точках устройства И собственная аффинная доля
-/// `[[a, b, tx], [c, d, ty]]`, которую владелец уже втолкнул в gpui.
-/// Ребёнок кладёт себя по `flatten(A · C)`, а родительскую долю обязан
-/// снять сам: `with_transformation` складывает вложения как `inner∘outer`
-/// (`vendor/gpui/src/window.rs`; обратный порядок ломает тесты
-/// css-writing-modes). Ячейка, а не стек кадра, — по той же причине,
-/// что у перспективы: абсолютный ребёнок с `z-index`/`fixed` рисуется
-/// отложенным слоем, когда `paint` владельца уже вышел.
-pub type Frame3d = std::rc::Rc<std::cell::Cell<Option<([[f32; 4]; 4], [[f32; 3]; 2])>>>;
 
 /// Единичная 4×4.
 pub const IDENTITY4: [[f32; 4]; 4] = [

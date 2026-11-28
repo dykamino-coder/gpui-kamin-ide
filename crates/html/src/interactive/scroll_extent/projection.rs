@@ -76,18 +76,29 @@ impl Wrap for Projected {
             },
         );
         let child = &mut self.child;
+        let reverse = self.projection.reverse;
+        let along = std::rc::Rc::new(move |delta: gpui::Point<Pixels>| {
+            point(
+                if reverse[0] { -delta.x * 2.0 } else { px(0.) },
+                if reverse[1] { -delta.y * 2.0 } else { px(0.) },
+            )
+        });
+        let id = gpui::ScrollNodeId::of_token(&self.projection.link);
         self.projection.link.applied(shift, || {
-            window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
+            window.with_scroll_follower_prepaint(
+                id,
+                Some(&self.projection.handle),
+                along,
+                |window| {
+                    window.with_exact_element_offset(shift, |window| child.prepaint(window, cx))
+                },
+            )
         });
     }
 
     fn paint(&mut self, _: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
-        // A reversed axis moves the content against the offset outside the
-        // scroll node's own shift: a replay that moves the node needs a build.
-        if self.projection.reverse.iter().any(|reverse| *reverse) {
-            window.paint_scroll_dependent(&self.projection.handle);
-        }
-        self.child.paint(window, cx);
+        let id = gpui::ScrollNodeId::of_token(&self.projection.link);
+        window.with_scroll_node_paint(id, |window| self.child.paint(window, cx));
     }
 }
 
@@ -109,7 +120,7 @@ mod tests {
         let mut root = anon_element("div", vec![]);
         root.node_id = 7;
         let frame = Frame::default();
-        frame.set_handle(ScrollHandle::default());
+        frame.set_handle(ScrollHandle::default(), 1.0);
         {
             frame.begin(Some(&root));
             let parent = {

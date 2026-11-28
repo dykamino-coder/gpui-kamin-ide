@@ -118,7 +118,8 @@ impl Window {
     /// `matrix()` the current transformation): primitives drawn through
     /// that matrix keep its inputs, so a scrolled replay moves them as a
     /// fresh paint there would build them.
-    pub fn with_transform_pivot<R>(&mut self, pivot: crate::TransformPivot, f: impl FnOnce(&mut Self) -> R) -> R {
+    pub fn with_transform_pivot<R>(&mut self, mut pivot: crate::TransformPivot, f: impl FnOnce(&mut Self) -> R) -> R {
+        pivot.motion = Some(self.scroll_motion());
         let outer = self.transform_pivot.replace(std::rc::Rc::new(pivot));
         let result = f(self);
         self.transform_pivot = outer;

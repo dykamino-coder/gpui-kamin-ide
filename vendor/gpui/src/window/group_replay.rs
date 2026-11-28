@@ -144,9 +144,18 @@ impl Window {
         let scenes = std::iter::once(scene).chain(scene.groups.iter().map(|group| &*group.scene));
         let labels = scenes
             .flat_map(|scene| scene.surfaces.iter().filter(|surface| surface.group > 0))
+            // Retained planes keep their reservoir and label when their
+            // raster becomes empty; the compositor allocates no buffer.
+            .filter(|surface| scene.groups.get(surface.group as usize - 1).is_some_and(|group| !group.bounds.is_empty()))
             .map(|surface| (surface.group, surface.bounds.intersect(&surface.content_mask.bounds)))
             .collect();
         (labels, scene.groups.iter().map(|group| (group.bounds, group.scene.quads.clone())).collect())
+    }
+
+    /// Residual plane maps with a nonempty raster, in group order.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn painted_plane_maps(&self) -> Vec<Option<[f32; 9]>> {
+        self.rendered_frame.scene.groups.iter().filter(|group| !group.bounds.is_empty()).map(|group| group.projection).collect()
     }
 
     /// The draw sequence of each group of the rendered frame (`painted_sequence`).

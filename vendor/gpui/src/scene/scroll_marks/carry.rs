@@ -26,6 +26,8 @@ pub(crate) type Relay = (SceneSpace, Vec<Box<Carry>>);
 pub(crate) struct Carry {
     marks: Vec<ScrollMark>,
     next: usize,
+    /// Where the copy began, also meaningful when it kept no commands.
+    start: usize,
     offset: Point<ScaledPixels>,
     clip: Option<Bounds<ScaledPixels>>,
     pub(crate) landed: Vec<u32>,
@@ -36,15 +38,15 @@ pub(crate) struct Carry {
 impl Carry {
     /// Carry the marks of `source`, a finished record's scene, landing
     /// moved by `offset` and clipped by `clip`.
-    pub(crate) fn of(source: &Scene, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
+    pub(crate) fn of(source: &Scene, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>, start: usize) -> Box<Self> {
         let landed = Vec::with_capacity(source.paint_operations.len());
-        Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, offset, clip, landed, kept: Vec::new() })
+        Box::new(Carry { marks: source.scroll.marks.clone(), next: 0, start, offset, clip, landed, kept: Vec::new() })
     }
 
     /// Where a copy made command by command (a frozen segment) put the
     /// commands of its source, moved by `offset` and clipped by `clip`.
     pub(crate) fn mapping(len: usize, offset: Point<ScaledPixels>, clip: Option<Bounds<ScaledPixels>>) -> Box<Self> {
-        Box::new(Carry { marks: Vec::new(), next: 0, offset, clip, landed: Vec::with_capacity(len), kept: Vec::new() })
+        Box::new(Carry { marks: Vec::new(), next: 0, start: 0, offset, clip, landed: Vec::with_capacity(len), kept: Vec::new() })
     }
 
     /// Note where the next source command landed: `None` gone, or `twice`
@@ -89,7 +91,7 @@ impl Carry {
             None => {
                 let after = self.landed.get(range.start..)?.iter().find(kept).copied();
                 let before = self.landed[..range.start].iter().rev().find(kept).map(|&at| at + 1);
-                after.or(before)? as usize
+                after.or(before).map_or(self.start, |at| at as usize)
             }
         };
         Some(start..start + len)

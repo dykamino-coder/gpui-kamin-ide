@@ -122,6 +122,10 @@ pub struct Journal {
     /// Causes past the bound, not kept.
     pub dropped: u64,
     pub caches: BTreeMap<&'static str, CacheStats>,
+    pub scroll_animation_frames: u64,
+    pub scroll_animation_builds: u64,
+    pub window_frames: u64,
+    pub window_document_builds: u64,
 }
 
 impl Journal {
@@ -130,13 +134,25 @@ impl Journal {
             causes: Vec::new(),
             dropped: 0,
             caches: BTreeMap::new(),
+            scroll_animation_frames: 0,
+            scroll_animation_builds: 0,
+            window_frames: 0,
+            window_document_builds: 0,
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.causes.is_empty() && self.dropped == 0 && self.caches.is_empty()
+        self.causes.is_empty()
+            && self.dropped == 0
+            && self.caches.is_empty()
+            && self.scroll_animation_frames == 0
+            && self.window_frames == 0
+            && self.window_document_builds == 0
     }
 }
+
+mod frames;
+pub use frames::{scroll_animation_frame, window_document_build, window_frame};
 
 fn with(f: impl FnOnce(&mut Journal)) {
     f(&mut JOURNAL.lock());

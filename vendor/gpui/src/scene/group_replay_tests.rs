@@ -116,7 +116,7 @@ fn renumbering_reaches_dormant_labels_without_touching_the_shared_command() {
 /// frame with mask `mask`, under the node when `marked`), each holding a
 /// command under a scroll node.
 fn labelled(mask: Bounds<ScaledPixels>, marked: bool) -> Scene {
-    let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 1000., 1000.));
+    let (node, chain) = (crate::ScrollNodeId(7, 0), rect(0., 0., 1000., 1000.));
     let mut frame = Scene::default();
     let mut nested = Scene { in_group: true, ..Scene::default() };
     nested.scroll.open = Some((node, chain));
@@ -154,7 +154,7 @@ fn a_group_whose_label_its_node_dropped_is_hidden_and_copied_by_any_replay() {
     // Drawn under its node, the group moves with it.
     let frame = labelled(rect(0., 0., 10., 10.), true);
     let found = frame.group_labels(0..frame.paint_operations.len(), 0..2);
-    assert_eq!(found, vec![GroupLabel::Unmarked, GroupLabel::Under(crate::ScrollNodeId(7))]);
+    assert_eq!(found, vec![GroupLabel::Unmarked, GroupLabel::Under(crate::ScrollNodeId(7, 0))]);
 }
 #[test]
 fn moving_nested_groups_into_the_frame_renumbers_their_dormant_labels() {
@@ -162,7 +162,7 @@ fn moving_nested_groups_into_the_frame_renumbers_their_dormant_labels() {
     // group's scene names the nested group after the frame's list grew,
     // as a drawn label does (`shift_group_ids`): the enclosing group then
     // finds it under its node, and a scrolled replay moves both.
-    let (node, chain) = (crate::ScrollNodeId(7), rect(0., 0., 100., 100.));
+    let (node, chain) = (crate::ScrollNodeId(7, 0), rect(0., 0., 100., 100.));
     let mut nested = Scene { in_group: true, ..Scene::default() };
     nested.scroll.open = Some((node, chain));
     nested.insert_primitive(quad(200., 0.));

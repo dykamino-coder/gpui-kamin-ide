@@ -14,6 +14,8 @@ pub use inherit::inherit;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ScrollStyle {
+    /// CSS Overflow 3: non-inherited; the root's value applies to the viewport.
+    pub smooth: Option<bool>,
     pub forced: [bool; 2],
     pub width: Option<u8>,
     pub gutter: Option<u8>,
@@ -42,6 +44,16 @@ impl ScrollStyle {
 impl Computed {
     pub fn apply_scroll(&mut self, key: &str, v: &str, hit: &mut bool, vcx: ValueCx<'_>) {
         match key {
+            "scroll-behavior" => {
+                if let Some(smooth) = match v {
+                    "auto" | "initial" | "unset" => Some(false),
+                    "smooth" => Some(true),
+                    _ => None,
+                } {
+                    self.accept_declaration();
+                    self.reset_box_layout.scroll.smooth = Some(smooth);
+                }
+            }
             "scrollbar-gutter" => {
                 let parts: Vec<_> = v.split_whitespace().collect();
                 let gutter = match parts.as_slice() {
@@ -224,3 +236,6 @@ mod tests {
         assert_eq!(local.reset_box_layout.scroll.gutter, None);
     }
 }
+
+#[cfg(test)]
+mod behavior_tests;

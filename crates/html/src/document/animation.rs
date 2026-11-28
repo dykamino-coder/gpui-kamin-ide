@@ -13,6 +13,7 @@ impl Document {
     /// a stopped snapshot does not request an animation loop itself.
     pub fn set_animation_elapsed(&self, elapsed: Option<Duration>) {
         self.state.animation.set_elapsed(elapsed);
+        self.state.scrolling.set_elapsed(elapsed);
     }
 
     /// Read animation work in the last prepared window frame without advancing

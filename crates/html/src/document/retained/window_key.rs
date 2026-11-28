@@ -46,6 +46,16 @@ impl PartialEq for WindowKey {
 }
 
 impl WindowKey {
+    /// Before host layout, the last painted placement is only a replay candidate.
+    /// Prepaint captures the actual placement and validates it again before reuse.
+    pub(super) fn at_recorded_place(mut self, recorded: &Self) -> Self {
+        self.bounds.origin = recorded.bounds.origin;
+        self.content_mask = recorded.content_mask;
+        self.text = recorded.text.clone();
+        self.offset = recorded.offset;
+        self
+    }
+
     /// The exact logical bounds compared by the frame key, for the shared journal.
     pub(super) fn bounds(&self) -> Bounds<Pixels> {
         self.bounds
@@ -100,7 +110,12 @@ impl WindowKey {
             interaction: window.interaction_epoch().wrapping_sub(scroll_inputs),
             active: window.is_window_active(),
             appearance: window.appearance(),
-            elapsed: cx.try_global::<gpui::AnimationElapsedTime>().map(|t| t.0),
+            // Snapshot time is an input only after CSS sampled an effect.
+            // Advancing a scroll clock alone must keep the recorded document.
+            elapsed: cx
+                .try_global::<gpui::AnimationElapsedTime>()
+                .filter(|_| state.animation.frame().is_some_and(|f| f.time_dependent))
+                .map(|t| t.0),
             reduce_motion: cx.reduce_motion(),
             animation: state.animation.render_key(),
             hovers: window.hover_epoch(),

@@ -12,6 +12,7 @@ impl Retained {
     ) -> LayoutId {
         if std::mem::take(&mut self.unbuilt) {
             self.slot.builds.set(self.slot.builds.get() + 1);
+            kamin_style::journal::window_document_build();
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
             let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
             self.tree = Some(tree);
@@ -53,6 +54,7 @@ impl Retained {
             self.checked = None;
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
+            kamin_style::journal::window_document_build();
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
             // The old tree goes first: what it took from the records returns there.
             self.tree = None;
@@ -73,6 +75,7 @@ impl Retained {
         let (mut tree, flow, inputs) = self.builder.layout_checked(bounds, window, cx, |phase| {
             if phase == UpdatePhase::Built {
                 self.slot.builds.set(self.slot.builds.get() + 1);
+                kamin_style::journal::window_document_build();
                 self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
             }
         });

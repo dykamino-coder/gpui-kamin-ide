@@ -44,6 +44,7 @@ fn mode(name: &str) -> Result<Mode> {
         "warm" => Mode::Warm,
         "relayout" => Mode::Relayout,
         "scroll" => Mode::Scroll,
+        "smooth-scroll" => Mode::Smooth,
         "edit" => Mode::Edit,
         _ => {
             return Err(format!(

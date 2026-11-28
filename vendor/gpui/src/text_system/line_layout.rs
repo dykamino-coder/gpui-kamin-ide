@@ -488,6 +488,8 @@ pub(crate) struct LineLayoutCache {
     font_generation: Arc<AtomicUsize>,
     /// Records the generation represented by both frame caches.
     cached_font_generation: AtomicUsize,
+    /// KaminIDE patch: prefix carried at identical indices by a whole-frame swap.
+    preserved_prefix: Mutex<Option<LineLayoutIndex>>,
 }
 
 #[derive(Default)]
@@ -510,6 +512,16 @@ struct FrameCache {
 }
 
 impl FrameCache {
+    fn index(&self, font_generation: usize) -> LineLayoutIndex {
+        LineLayoutIndex {
+            font_generation,
+            lines_index: self.used_lines.len(),
+            wrapped_lines_index: self.used_wrapped_lines.len(),
+            lines_by_hash_index: self.used_lines_by_hash.len(),
+            wrapped_lines_by_hash_index: self.used_wrapped_lines_by_hash.len(),
+        }
+    }
+
     /// KaminIDE patch: nothing laid out in this frame yet.
     fn is_empty(&self) -> bool {
         self.lines.is_empty()
@@ -602,6 +614,11 @@ pub(crate) struct LineLayoutIndex {
 }
 
 impl LineLayoutIndex {
+    fn contains(&self, other: &Self) -> bool {
+        self.font_generation == other.font_generation
+            && self.pack()[1..].iter().zip(&other.pack()[1..]).all(|(end, at)| at <= end)
+    }
+
     /// KaminIDE patch: this index in 32-bit words; retained ranges keep many.
     pub(crate) fn pack(&self) -> [u32; 5] {
         [
@@ -640,27 +657,23 @@ impl LineLayoutCache {
             platform_text_system,
             font_generation,
             cached_font_generation: AtomicUsize::new(cached_font_generation),
+            preserved_prefix: Mutex::default(),
         }
     }
 
     pub fn layout_index(&self) -> LineLayoutIndex {
         let font_generation = self.clear_if_font_generation_changed();
         let frame = self.current_frame.read();
-        LineLayoutIndex {
-            font_generation,
-            lines_index: frame.used_lines.len(),
-            wrapped_lines_index: frame.used_wrapped_lines.len(),
-            lines_by_hash_index: frame.used_lines_by_hash.len(),
-            wrapped_lines_by_hash_index: frame.used_wrapped_lines_by_hash.len(),
-        }
+        frame.index(font_generation)
     }
 
-    pub fn reuse_layouts(&self, range: Range<LineLayoutIndex>) {
+    /// Returns whether the copied uses kept their original indices.
+    pub fn reuse_layouts(&self, range: Range<LineLayoutIndex>) -> bool {
         let font_generation = self.clear_if_font_generation_changed();
         if range.start.font_generation != font_generation
             || range.end.font_generation != font_generation
         {
-            return;
+            return false;
         }
         let current_frame = &mut *self.current_frame.write();
         let previous_frame = &mut *self.previous_frame.lock();
@@ -675,8 +688,12 @@ impl LineLayoutCache {
         // cached one frame longer.
         if previous_frame.used_from_start(&range) && current_frame.is_empty() {
             std::mem::swap(current_frame, previous_frame);
-            return;
+            *self.preserved_prefix.lock() = Some(current_frame.index(font_generation));
+            return true;
         }
+        let preserved = self.preserved_prefix.lock().as_ref().is_some_and(|end| end.contains(&range.end));
+        let same = preserved || (current_frame.index(font_generation) == range.start
+            && previous_frame.index(font_generation).contains(&range.end));
 
         // KaminIDE patch: a range the swap above already brought into this
         // frame is past the previous frame's lists: nothing is left to reuse.
@@ -727,6 +744,7 @@ impl LineLayoutCache {
                 current_frame.used_wrapped_lines_by_hash.push(key.clone());
             }
         }
+        same
     }
 
     pub fn truncate_layouts(&self, index: LineLayoutIndex) {
@@ -735,6 +753,7 @@ impl LineLayoutCache {
             return;
         }
         let mut current_frame = &mut *self.current_frame.write();
+        *self.preserved_prefix.lock() = None;
         current_frame.used_lines.truncate(index.lines_index);
         current_frame
             .used_wrapped_lines
@@ -761,6 +780,7 @@ impl LineLayoutCache {
     pub fn finish_frame(&self) {
         let _font_generation = self.clear_if_font_generation_changed();
         let mut curr_frame = self.current_frame.write();
+        *self.preserved_prefix.lock() = None;
         let mut prev_frame = self.previous_frame.lock();
         std::mem::swap(&mut *prev_frame, &mut *curr_frame);
         super::composed::PIECES.finish_frame();
@@ -1189,6 +1209,7 @@ impl LineLayoutCache {
         }
 
         *current_frame = FrameCache::default();
+        *self.preserved_prefix.lock() = None;
         *self.previous_frame.lock() = FrameCache::default();
         super::composed::PIECES.clear();
         self.cached_font_generation

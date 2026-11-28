@@ -86,7 +86,7 @@ pub(super) async fn sample_once(
                     .viewport((args.viewport.0 as f32, args.viewport.1 as f32));
                 // Scroll measures the standalone browser view, whose root scroller
                 // takes the wheel (`host::DocumentView`).
-                let doc = if args.mode == Mode::Scroll {
+                let doc = if matches!(args.mode, Mode::Scroll | Mode::Smooth) {
                     builder.build_root_scroller()?
                 } else {
                     builder.build()?
@@ -173,7 +173,9 @@ pub(super) async fn sample_once(
         || after.frames.wrapping_sub(before.frames) != 1
         || phases.borrow().frame_renders() != 1;
     // Scroll mode's load is no sample: a page may draw again as it loads.
-    if ambiguous && !(args.mode == Mode::Scroll && matches!(step, Step::Cold(_))) {
+    if ambiguous
+        && !(matches!(args.mode, Mode::Scroll | Mode::Smooth) && matches!(step, Step::Cold(_)))
+    {
         return Err(format!(
             "unexpected extra/reused frame: start={seq}, completed={completed}, first={}, latest={}, draws={}, renders={}, layout retries={}; refusing an ambiguous phase sample",
             frame.seq,

@@ -10,6 +10,7 @@ use std::rc::Rc;
 pub struct DocState {
     /// Shared frame time and diagnostics across revisions of this document.
     pub(crate) animation: Rc<crate::animation::clock::Clock>,
+    pub(crate) scrolling: Rc<crate::interactive::scroll_animation::Tracker>,
     /// The full-page view's canonical scroll owner; absent for ordinary builds and print.
     pub(crate) root_scroll: Option<Rc<crate::document::viewport::RootScroll>>,
     /// The single mutable box tree of this line of document revisions.
@@ -67,6 +68,7 @@ impl DocState {
         Rc::new(Self {
             root_scroll: previous.root_scroll.clone(),
             animation: previous.animation.clone(),
+            scrolling: previous.scrolling.clone(),
             boxes: previous.boxes.clone(),
             values: previous.values.clone(),
             layout: Rc::new(crate::layout::layout_state::LayoutState::continuing(
@@ -99,6 +101,7 @@ impl DocState {
         Rc::new(Self {
             root_scroll,
             animation: previous.map(|p| p.animation.clone()).unwrap_or_default(),
+            scrolling: previous.map(|p| p.scrolling.clone()).unwrap_or_default(),
             boxes: previous.map(|p| p.boxes.clone()).unwrap_or_default(),
             values,
             layout: Default::default(),

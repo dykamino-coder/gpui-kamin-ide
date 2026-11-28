@@ -31,7 +31,9 @@ pub(super) fn source(scene: &Scene, fallback: Bounds<ScaledPixels>) -> Bounds<Sc
             ink = Some(ink.map_or(layer.bounds, |b| b.union(&layer.bounds)));
         }
     }
-    ink.filter(|b| finite(*b)).unwrap_or(fallback)
+    // A newly painted plane and a retained reservoir can both have no ink.
+    // Only invalid geometry needs the conservative allocation above.
+    ink.unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -47,6 +49,6 @@ mod tests {
         scene.book.primitive_ink = Some(rect(f32::NAN, 10., 140., 90.));
         assert_eq!(source(&scene, frame), frame);
         scene.book.primitive_ink = None;
-        assert_eq!(source(&scene, frame), frame);
+        assert_eq!(source(&scene, frame), Bounds::default());
     }
 }

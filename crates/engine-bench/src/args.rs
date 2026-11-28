@@ -29,31 +29,8 @@ impl Surface {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Mode {
-    Cold,
-    Warm,
-    Both,
-    Relayout,
-    /// One wheel step on the root scroller before each frame (`frames::WHEEL_STEP`).
-    Scroll,
-    /// Локальная правка разметки между кадрами (`edit::Edit`, `edits`).
-    Edit,
-}
-
-#[cfg(windows)]
-impl Mode {
-    pub(super) fn phases(self) -> &'static [(&'static str, bool)] {
-        match self {
-            Self::Cold => &[("cold", true)],
-            Self::Warm => &[("warm", false)],
-            Self::Both => &[("cold", true), ("warm", false)],
-            Self::Relayout => &[("relayout", false)],
-            Self::Scroll => &[("scroll", false)],
-            Self::Edit => &[],
-        }
-    }
-}
+mod mode;
+pub(super) use mode::Mode;
 
 #[cfg(test)]
 mod tests;
@@ -178,10 +155,11 @@ impl Args {
                         "both" => Mode::Both,
                         "relayout" => Mode::Relayout,
                         "scroll" => Mode::Scroll,
+                        "smooth-scroll" => Mode::Smooth,
                         "edit" => Mode::Edit,
                         _ => {
                             return Err(
-                                "mode must be cold, warm, both, relayout, scroll or edit".into()
+                                "mode must be cold, warm, both, relayout, scroll, smooth-scroll or edit".into()
                             );
                         }
                     };
@@ -228,7 +206,7 @@ impl Args {
             && (out.runs < 5
                 || matches!(
                     out.mode,
-                    Mode::Cold | Mode::Relayout | Mode::Scroll | Mode::Edit
+                    Mode::Cold | Mode::Relayout | Mode::Scroll | Mode::Smooth | Mode::Edit
                 ))
         {
             return Err("memory audit requires at least five unchanged warm frames".into());

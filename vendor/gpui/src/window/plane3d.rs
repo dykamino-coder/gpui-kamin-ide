@@ -11,6 +11,8 @@
 
 mod coverage;
 mod group;
+mod replay;
+pub use replay::PlaneBuild;
 #[cfg(test)]
 mod tests;
 
@@ -31,6 +33,7 @@ struct PlaneRecord {
     scene: Scene,
     projection: Option<[f32; 9]>,
     corners: [[f32; 4]; 4],
+    build: Option<(std::rc::Rc<dyn PlaneBuild>, f32)>,
 }
 
 /// How a plane is painted and composited (all in device pixels of the
@@ -51,6 +54,8 @@ pub struct PlaneSpec {
     pub rect: (f32, f32, f32, f32),
     /// Child masks follow the raster transform (`with_transformation_masked`).
     pub masked: bool,
+    /// Source inputs for retained scrolling, paired with the device scale.
+    pub build: Option<(std::rc::Rc<dyn PlaneBuild>, f32)>,
 }
 
 /// Corners of `rect` mapped by `full` and the outer affine: (x, y, z, w).
@@ -283,7 +288,7 @@ impl Window {
             } else {
                 Vec::new()
             };
-            ids[i] = Some(self.push_plane_group(rec.scene, rec.projection, polygon, fragments));
+            ids[i] = Some(self.push_plane_group(rec.scene, rec.projection, polygon, fragments, rec.build));
         }
         for p in &ordered {
             if let Some(scene) = inline[p.owner].take() {
@@ -322,6 +327,7 @@ impl Window {
                 mem::replace(&mut window.transformation_stack, vec![spec.raster]),
                 mem::replace(&mut window.mask_map, map),
                 mem::take(&mut window.content_mask_stack),
+                mem::replace(&mut window.transform_pivot, spec.build.as_ref().map(|(build, scale)| std::rc::Rc::new(crate::TransformPivot::built_by(std::rc::Rc::new(replay::Raster(build.clone())), *scale, None)))),
             );
             window
                 .with_restore(
@@ -330,6 +336,7 @@ impl Window {
                         mem::swap(&mut window.transformation_stack, &mut state.0);
                         mem::swap(&mut window.mask_map, &mut state.1);
                         mem::swap(&mut window.content_mask_stack, &mut state.2);
+                        mem::swap(&mut window.transform_pivot, &mut state.3);
                     },
                     f,
                 )
@@ -349,6 +356,10 @@ impl Window {
             scene,
             projection: spec.projection,
             corners: plane_corners(&spec.full, spec.outer, rect),
+            build: spec.build.map(|(build, scale)| {
+                let edges = [rect.0 - spec.rect.0, rect.1 - spec.rect.1, rect.2 - spec.rect.2, rect.3 - spec.rect.3];
+                (std::rc::Rc::new(replay::Ink { build, edges }) as std::rc::Rc<dyn PlaneBuild>, scale)
+            }),
         };
         match slot {
             Some(i) if self.plane_contexts.len() == depth => {
@@ -362,7 +373,7 @@ impl Window {
                 };
                 let polygon = if clipped { to_points(&pts) } else { Vec::new() };
                 let id =
-                    self.push_plane_group(record.scene, record.projection, polygon, Vec::new());
+                    self.push_plane_group(record.scene, record.projection, polygon, Vec::new(), record.build);
                 self.insert_plane_mark(id, 0, content_mask);
             }
         }

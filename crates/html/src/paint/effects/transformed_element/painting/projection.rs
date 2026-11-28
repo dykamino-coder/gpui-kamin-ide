@@ -1,8 +1,12 @@
 //! Проекция и окраска плоскости в объёмном контексте CSS transforms.
 
+mod flat3d;
+mod spatial;
 use super::plane_spec;
-use crate::paint::effects::transformed_element::{Transformed, flatten_plane, invert_affine};
+use crate::paint::effects::transformed_element::Transformed;
+use flat3d::Flat3d;
 use gpui::{App, Pixels, Window};
+use spatial::PlaneInputs;
 
 #[allow(clippy::too_many_arguments)]
 // Coordinate indices address corresponding entries in the projection matrices.
@@ -20,7 +24,7 @@ pub(crate) fn paint_3d(
     cx: &mut App,
 ) {
     let paint = group.paint.clone();
-    use crate::style::computed::{det4, mul4};
+    use crate::style::computed::det4;
     let sf = scale_factor;
     let inputs = Flat3d {
         m4: group.m4,
@@ -31,7 +35,7 @@ pub(crate) fn paint_3d(
         raw: [f32::from(raw_origin.x), f32::from(raw_origin.y)],
         origin: (ox, oy),
         scale_factor: sf,
-        perspective: group.under_perspective.as_ref().and_then(|f| f.get()),
+        perspective: group.under_perspective.as_ref().and_then(|f| f.source()),
     };
     let own = inputs.own();
     // Вырожденная 4×4 (`scale3d(2, 2, 0)`, transform3d-scale-004:
@@ -44,47 +48,30 @@ pub(crate) fn paint_3d(
     // перспектива — домножена выше) · C(своя). Обе уже в точках
     // устройства, второй свёртки `S·M·S⁻¹` не возникает — ровно из-за
     // неё «3D full» терял −60.
-    let under = group.under_3d.as_ref().and_then(|f| f.get());
-    let full = match under {
-        Some((a, _)) => mul4(a, own),
-        None => own,
-    };
-    let flat = inputs.flat(&full);
-    // Ячейка для СВОИХ детей — накопленная и своя аффинная доля;
-    // наполняется ДО отрисовки детей, как у перспективы (и ради
-    // отложенных слоёв абсолютов).
-    if let Some(frame) = group.frame_3d.as_ref() {
-        let share = flat.map_or([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], |m| {
-            [
-                [
-                    m.rotation_scale[0][0],
-                    m.rotation_scale[0][1],
-                    m.translation[0],
-                ],
-                [
-                    m.rotation_scale[1][0],
-                    m.rotation_scale[1][1],
-                    m.translation[1],
-                ],
-            ]
-        });
-        frame.set(Some((full, share)));
-    }
+    let under = group.under_3d.as_ref().and_then(|f| f.source());
     let root_3d = group.frame_3d.is_some() && under.is_none();
     let in_context = root_3d || under.is_some();
+    let build = std::rc::Rc::new(PlaneInputs {
+        inputs: inputs.clone(),
+        under,
+        outer: window.current_transformation(),
+        outer_pivot: window.current_transform_pivot(),
+        motion: window.scroll_motion(),
+    });
+    use crate::style::computed::Frame3dBuild;
+    let full = build.matrices().0;
+    let flat = inputs.flat(&full);
+    if let Some(frame) = group.frame_3d.as_ref() {
+        frame.set(build.clone());
+    }
     let child = &mut group.child;
     // Plane of a 3D rendering context, or a box under true perspective:
     // painted flat into a buffer and composited through its exact map
     // (`plane_spec`), planes of one context BSP-sorted and split by gpui.
     if in_context || plane_spec::is_projective(&full) {
-        let current = window.current_transformation();
-        let outer = match under.and_then(|(_, fp)| invert_affine(fp)) {
-            Some(inv) => current.compose(inv),
-            None => current,
-        };
-        let x0 = f32::from(raw_origin.x) * sf;
-        let y0 = f32::from(raw_origin.y) * sf;
-        let spec = plane_spec::plane_spec(&full, flat, outer, (x0, y0, x0 + w * sf, y0 + h * sf));
+        use gpui::PlaneBuild;
+        let mut spec = build.spec();
+        spec.build = Some((build, sf));
         let body = |window: &mut Window| {
             window.paint_plane(spec, |window| {
                 crate::paint::decorations::outline_phase::scoped(
@@ -111,10 +98,8 @@ pub(crate) fn paint_3d(
     // those inputs, and a scrolled replay builds the moved map by them.
     let unit = window.current_transformation() == gpui::TransformationMatrix::unit();
     let outer = (!unit).then(|| window.current_transform_pivot()).flatten();
-    // A parent's perspective is built where the parent lies, which a scroll
-    // inside it does not move (a scroller with `perspective`): such a map
-    // keeps no pivot, and its scrolled replay builds.
-    let pivot = (inputs.perspective.is_none() && (unit || outer.is_some()))
+    // The parent perspective keeps its own spatial source through nested scrolls.
+    let pivot = (unit || outer.is_some())
         .then(|| gpui::TransformPivot::built_by(std::rc::Rc::new(inputs), sf, outer));
     super::with_pivot(pivot, window, |window| {
         window.with_transformation_masked(flat, |window| {
@@ -126,116 +111,4 @@ pub(crate) fn paint_3d(
             )
         })
     });
-}
-
-/// What the flat map of a box's own 4×4 is built from outside a 3D
-/// rendering context: the box, its transform and its parent's perspective,
-/// in logical pixels where it lies. A scroll move shifts where it lies and
-/// builds the map by the operations a fresh paint there runs.
-#[derive(Clone, Debug)]
-struct Flat3d {
-    m4: [[f32; 4]; 4],
-    m4_pct: [[[f32; 4]; 4]; 2],
-    origin_z: Option<f32>,
-    /// The reference box size percentages resolve against.
-    reference: (f32, f32),
-    size: (f32, f32),
-    /// The box origin before device snapping.
-    raw: [f32; 2],
-    /// The transform origin from `raw`.
-    origin: (f32, f32),
-    scale_factor: f32,
-    /// The parent's perspective matrix (device pixels).
-    perspective: Option<[[f32; 4]; 4]>,
-}
-
-impl Flat3d {
-    /// The element's 4×4 in device pixels, under its parent's perspective.
-    fn own(&self) -> [[f32; 4]; 4] {
-        use crate::style::computed::{Transform, mul4};
-        let (sf, (rw, rh)) = (self.scale_factor, self.reference);
-        // CSS px to device px is the similarity S·M·S⁻¹, S = diag(sf, sf, sf,
-        // 1): the translation column of rows 0..2 is multiplied by sf, the w
-        // row of columns 0..2 divided by sf, and m44 is left alone
-        // (`flatten_plane` divides the whole matrix by it: scaling it shrank
-        // every 3D box by 1/sf).
-        let mut own = self.m4;
-        for (i, row) in own.iter_mut().enumerate() {
-            for (j, v) in row.iter_mut().enumerate() {
-                *v += rw * self.m4_pct[0][i][j] + rh * self.m4_pct[1][i][j];
-            }
-        }
-        for row in own.iter_mut().take(3) {
-            row[3] *= sf;
-        }
-        for j in 0..3 {
-            own[3][j] /= sf;
-        }
-        // The origin on three axes, in device px: T(o)·M·T(−o).
-        let oz = self.origin_z.unwrap_or(0.0) * sf;
-        let (ox_d, oy_d) = (
-            (self.raw[0] + self.origin.0) * sf,
-            (self.raw[1] + self.origin.1) * sf,
-        );
-        let own = mul4(
-            mul4(Transform::translate4(ox_d, oy_d, oz), own),
-            Transform::translate4(-ox_d, -oy_d, -oz),
-        );
-        // The DIRECT parent's perspective (§3d-transform-rendering, step 3:
-        // "pre-multiply the parent element's perspective matrix"); with no
-        // preserve-3d stack here, grandchildren do not get it
-        // (perspective-children-only-*). The parent's `paint` filled the cell
-        // in this frame (or an earlier one: it outlives the frame), so a
-        // deferred absolute layer sees it too. A flat child (z = 0) is not
-        // changed by a perspective, hence the 3D path only.
-        match self.perspective {
-            Some(p) => mul4(p, own),
-            None => own,
-        }
-    }
-
-    /// The flat map of `full` at the box's centre.
-    fn flat(&self, full: &[[f32; 4]; 4]) -> Option<gpui::TransformationMatrix> {
-        let (sf, (w, h)) = (self.scale_factor, self.size);
-        let center = ((self.raw[0] + w * 0.5) * sf, (self.raw[1] + h * 0.5) * sf);
-        // Centre behind the eye: take the tangent map at the mean of the corners
-        // that are in front of it (w is linear, so that point is in front too),
-        // so the visible part of a plane crossing w = 0 lands in its buffer
-        // (perspective-split-by-zero-w).
-        flatten_plane(full, center).or_else(|| {
-            let (x0, y0) = (self.raw[0] * sf, self.raw[1] * sf);
-            let (x1, y1) = (x0 + w * sf, y0 + h * sf);
-            let front: Vec<(f32, f32)> = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-                .into_iter()
-                .filter(|(x, y)| {
-                    full[3][0] * x + full[3][1] * y + full[3][3]
-                        > crate::tolerance::HOMOGENEOUS_CLIP_MIN
-                })
-                .collect();
-            if front.is_empty() || front.len() == 4 {
-                return None;
-            }
-            let n = front.len() as f32;
-            let p = front
-                .iter()
-                .fold((0.0, 0.0), |a, b| (a.0 + b.0 / n, a.1 + b.1 / n));
-            flatten_plane(full, p)
-        })
-    }
-}
-
-impl gpui::TransformBuild for Flat3d {
-    fn matrix(&self) -> gpui::TransformationMatrix {
-        self.flat(&self.own())
-            .unwrap_or_else(gpui::TransformationMatrix::unit)
-    }
-
-    fn moved(&self, delta: gpui::Point<Pixels>) -> std::rc::Rc<dyn gpui::TransformBuild> {
-        let (dx, dy) = (f32::from(delta.x), f32::from(delta.y));
-        let raw = [self.raw[0] + dx, self.raw[1] + dy];
-        std::rc::Rc::new(Flat3d {
-            raw,
-            ..self.clone()
-        })
-    }
 }

@@ -15,4 +15,5 @@ pub(super) const PROPERTIES: &[Prop] = &[
         "снимает наведение, курсор и выделение; сквозного клика к элементу под ним нет",
     ),
     m("table-layout", "fixed"),
+    m("scroll-behavior", "smooth"),
 ];
