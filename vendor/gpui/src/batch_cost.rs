@@ -33,6 +33,10 @@ struct Totals {
     path_msaa_create: u64,
     path_msaa_drop: u64,
     path_msaa_alloc_bytes: u64,
+    mask_upload_create: u64,
+    mask_upload_alloc_bytes: u64,
+    effect_target_drop: u64,
+    effect_target_release_bytes: u64,
 }
 
 /// The index of path batches in [`KINDS`].
@@ -95,6 +99,22 @@ impl BatchCost {
     /// A path intermediate released by its renderer owner.
     pub fn path_target_dropped(&self) {
         self.with(|t| t.path_msaa_drop += 1);
+    }
+
+    /// A newly uploaded immutable group mask, in texture descriptor bytes.
+    pub fn mask_uploaded(&self, bytes: u64) {
+        self.with(|t| {
+            t.mask_upload_create += 1;
+            t.mask_upload_alloc_bytes += bytes;
+        });
+    }
+
+    /// Effect textures released because the complete scene no longer uses them.
+    pub fn effect_targets_dropped(&self, count: u64, bytes: u64) {
+        self.with(|t| {
+            t.effect_target_drop += count;
+            t.effect_target_release_bytes += bytes;
+        });
     }
 
     /// The plan of a window frame of `window_px` pixels: how much is painted
@@ -175,7 +195,13 @@ impl BatchCost {
     /// Строка для `diag.log` за период; счётчики обнуляются.
     pub fn take_line(&self) -> Option<String> {
         let t = self.totals.lock().ok()?.take()?;
-        if t.frames == 0 && t.plans == [0; 3] && t.path_msaa_create == 0 && t.path_msaa_drop == 0 {
+        if t.frames == 0
+            && t.plans == [0; 3]
+            && t.path_msaa_create == 0
+            && t.path_msaa_drop == 0
+            && t.mask_upload_create == 0
+            && t.effect_target_drop == 0
+        {
             return None;
         }
         let per = |v: f64| v / t.frames.max(1) as f64;
@@ -217,12 +243,16 @@ impl BatchCost {
             String::new()
         };
         Some(format!(
-            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} per frame: {kinds}; top quads: {detail}",
+            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} mask_upload_create={} mask_upload_alloc_bytes={} effect_target_drop={} effect_target_release_bytes={} per frame: {kinds}; top quads: {detail}",
             t.frames,
             plan_summary(&t),
             t.path_msaa_create,
             t.path_msaa_drop,
-            t.path_msaa_alloc_bytes
+            t.path_msaa_alloc_bytes,
+            t.mask_upload_create,
+            t.mask_upload_alloc_bytes,
+            t.effect_target_drop,
+            t.effect_target_release_bytes
         ))
     }
 }
