@@ -12,19 +12,15 @@ use super::{NodeId, Style, TaffyView};
 use crate::geometry::{Point, Rect, Size};
 use crate::style::{Direction, Overflow};
 use crate::tree::traits::LayoutPartialTreeExt;
-use crate::tree::{LayoutInput, LayoutOutput, RequestedAxis, RunMode};
+use crate::tree::{LayoutInput, LayoutOutput, RunMode};
 use crate::util::ResolveOrZero;
 
 /// Overflow up to this far past the scrollport needs no bar (as the host's scroll range).
 const FIT: f32 = 0.5;
-/// Layouts of one box again per layout of it: one bar can bring the other.
-const PASSES: u8 = 2;
 
 /// What the layouts of one box learned of its bars in one layout of it.
 #[derive(Default)]
 pub(super) struct Settling {
-    /// Layouts of the box again so far.
-    passes: u8,
     /// Bars that appeared in this layout; they stay (no bar flip-flop).
     appeared: Point<bool>,
 }
@@ -61,12 +57,10 @@ where
     }
 
     /// After a layout of `node_id`: whether its content asks for other bars, which are
-    /// then set for the layout again. A final layout decides. A measure of the block
-    /// size at a known or definite inline size (a flex column measures its items so)
-    /// lays the box out as its final layout will, so a bar
-    /// it finds holds for the size the parent takes from it (Blink lays a scroll
-    /// container out with its bars for a flex or grid measure, and freezes them only
-    /// for intrinsic inline sizes); it only adds bars, as it sees only in-flow overflow.
+    /// then set for the layout again. Only a complete layout decides: an intrinsic
+    /// query can skip placement or report overflow under provisional constraints.
+    /// It reads the current gutter without publishing another scrollbar decision.
+    /// A full layout's gutter change invalidates the affected ancestor measurements.
     #[inline(never)]
     pub(super) fn kamin_settle_scrollbars(
         &mut self,
@@ -77,14 +71,7 @@ where
     ) -> bool {
         let style = &self.taffy.nodes[node_id.into()].style;
         let auto = style.kamin_scrollbars.auto();
-        let measure = inputs.run_mode == RunMode::ComputeSize
-            && (inputs.known_dimensions.width.is_some() || inputs.available_space.width.is_definite())
-            && inputs.known_dimensions.height.is_none()
-            && inputs.axis != RequestedAxis::Horizontal;
-        if !(inputs.run_mode == RunMode::PerformLayout || measure)
-            || !(auto.x || auto.y)
-            || settling.passes >= PASSES
-        {
+        if inputs.run_mode != RunMode::PerformLayout || !(auto.x || auto.y) {
             return false;
         }
         let border = style.border.resolve_or_zero(inputs.parent_size.width, |val, basis| self.calc(val, basis));
@@ -106,7 +93,7 @@ where
             if !axis_auto {
                 current
             } else {
-                need || appeared || (measure && current)
+                need || appeared
             }
         };
         let frozen = self.kamin_frozen_scrollbars(node_id, output.size);
@@ -119,7 +106,6 @@ where
         }
         settling.appeared.x |= next.x && !current.x;
         settling.appeared.y |= next.y && !current.y;
-        settling.passes += 1;
         self.kamin_gutter_changed(node_id, next, output.size);
         let mode = |bar: bool| if bar { Overflow::Scroll } else { Overflow::Hidden };
         let node = &mut self.taffy.nodes[node_id.into()];
