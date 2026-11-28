@@ -210,18 +210,22 @@ impl Recording {
             .count()
     }
 
-    pub fn write(&mut self, dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fn snapshot(&mut self) {
         self.poll();
         self.report
             .status(json!({"foreground_entries_lost": self.lost,
             "draws_awaiting_observation": self.pending.len(),
             "draws_without_presentation": self.drawn.len(), "errors": self.errors,
             "platform_activity": self.activity.to_json()}));
+    }
+
+    pub fn write(&mut self, dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        self.snapshot();
         self.report.write(dir)
     }
 
     pub fn to_json(&mut self) -> Value {
-        self.poll();
+        self.snapshot();
         self.report.to_json()
     }
 }

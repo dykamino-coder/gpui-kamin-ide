@@ -102,6 +102,25 @@ checkpoints. Aggregate `observations.platform_activity` also records activity ac
 
 The command exits unsuccessfully for any nonzero result. A rounded `0%` CPU value does not pass.
 
+For input acceptance on a hidden Windows desktop, the same viewer also watches
+`input-control.json`. Publish a complete JSON file by atomic rename, using a fresh `id`:
+
+```json
+{"id":"mouse-1","op":"mouse","count":160,"interval_ms":100,"x":700,"y":400}
+```
+
+Coordinates are window-local CSS pixels. The pointer moves over seven adjacent pixels;
+choose a document area whose hover target remains the same. The viewer calls
+`Window::dispatch_event` for each mouse move, so the ordinary input journal records receipt
+and invalidation. This avoids Windows tracking the physical pointer on another desktop and
+generating artificial leave/enter events. It checks GPUI dispatch, rather than OS message delivery.
+`input-reply.json` reports `running`, then `complete`, with the request id. A replacement
+command cancels the previous series; closing the idle transport cancels it too. Series are
+limited to 600 events and 60 seconds. Their timers exist only while a requested series runs.
+The input endpoint is separate from the CPU observer's control endpoint, allowing a finite
+series to cover the observer's CPU interval. Use the engine journal's actual input counts
+and raw CPU checkpoints to assess that interval.
+
 ## The profiler build
 
 A release build misleads a profile in two ways, and `memprof.py build` removes both:

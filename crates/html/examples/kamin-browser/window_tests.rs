@@ -128,3 +128,46 @@ fn native_resize_releases_scenario_preset_and_reaches_document(cx: &mut TestAppC
     });
     assert_document_box(cx, 1142.4);
 }
+
+#[cfg(feature = "why-profiler")]
+#[gpui::test]
+fn controlled_mouse_series_reaches_input_journal_without_document_work(cx: &mut TestAppContext) {
+    let (view, cx) = open(cx);
+    let series = crate::input_control::MouseSeries::parse(&serde_json::json!({
+        "count":32,"interval_ms":100,"x":700,"y":400
+    }))
+    .unwrap();
+    cx.update(|window, cx| {
+        window.dispatch_event(series.event(0), cx);
+    });
+    draw(cx);
+    let (page, journal) = cx.update(|window, cx| {
+        (
+            view.read(cx).page.clone().unwrap(),
+            kamin_html::why::WindowJournal::new(window, cx),
+        )
+    });
+    let before = cx.update(|_, cx| page.read(cx).document().frame_counters());
+    for index in 0..series.count {
+        cx.update(|window, cx| {
+            window.dispatch_event(series.event(index), cx);
+        });
+    }
+    let recorded = journal.to_json();
+    let activity = &recorded["observations"]["platform_activity"];
+    assert_eq!(activity["process_input_events"]["mouse_move"], 32);
+    assert_eq!(
+        activity["process_input_events"]["invalidating_mouse_move"],
+        0
+    );
+    assert_eq!(activity["draws"], 0);
+    cx.update(|_, cx| {
+        let (builds, _, inside) = page
+            .read(cx)
+            .document()
+            .frame_counters()
+            .since(&before)
+            .unwrap();
+        assert_eq!((builds, inside), (0, 0));
+    });
+}

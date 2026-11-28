@@ -1,6 +1,7 @@
 //! An event-driven DevTools transport; only an external observer waits five seconds.
 
 use futures::{StreamExt, channel::mpsc};
+use gpui::AsyncWindowContext;
 use kamin_html::why::{IdleCpuWindow, WindowJournal};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::{Value, json};
@@ -33,19 +34,28 @@ fn creation_time() -> Result<u64, Box<dyn Error>> {
     Err("idle CPU transport requires Windows process counters".into())
 }
 
-pub async fn serve(journal: &WindowJournal, directory: &Path) -> Result<(), Box<dyn Error>> {
+pub async fn serve(
+    journal: &WindowJournal,
+    directory: &Path,
+    cx: &mut AsyncWindowContext,
+) -> Result<(), Box<dyn Error>> {
     let directory = directory.canonicalize()?;
     let pid = std::process::id();
     let creation = creation_time()?;
     let command = directory.join("idle-control.json");
     let reply = directory.join("idle-reply.json");
     let watched_command = command.clone();
-    let (mut sender, mut receiver) = mpsc::channel(1);
+    let input = directory.join("input-control.json");
+    let watched_input = input.clone();
+    let (mut sender, mut receiver) = mpsc::channel(8);
     let mut watcher = RecommendedWatcher::new(
         move |event: notify::Result<notify::Event>| {
             if event.is_ok_and(|event| {
                 !matches!(event.kind, notify::EventKind::Access(_))
-                    && event.paths.iter().any(|path| path == &watched_command)
+                    && event
+                        .paths
+                        .iter()
+                        .any(|path| path == &watched_command || path == &watched_input)
             }) {
                 let _ = sender.try_send(());
             }
@@ -65,7 +75,25 @@ pub async fn serve(journal: &WindowJournal, directory: &Path) -> Result<(), Box<
     write_reply("", "ready")?;
     let mut last = None;
     let mut active = None;
+    let mut last_input = None;
+    let mut input_task = None;
     while receiver.next().await.is_some() {
+        if input.exists() {
+            let value: Value = serde_json::from_slice(&std::fs::read(&input)?)?;
+            let id = value["id"].as_str().ok_or("input command has no id")?;
+            if last_input.as_deref() != Some(id) {
+                input_task = Some(crate::input_control::start(
+                    &value,
+                    directory.join("input-reply.json"),
+                    journal.clone(),
+                    cx,
+                )?);
+                last_input = Some(id.to_owned());
+            }
+        }
+        if !command.exists() {
+            continue;
+        }
         // The sender publishes through a rename, never a partially written JSON file.
         let value: Value = serde_json::from_slice(&std::fs::read(&command)?)?;
         let id = value["id"].as_str().ok_or("idle command has no id")?;
@@ -93,7 +121,10 @@ pub async fn serve(journal: &WindowJournal, directory: &Path) -> Result<(), Box<
                 active = None;
                 write_reply(id, "complete")?;
             }
-            "quit" => return Ok(()),
+            "quit" => {
+                drop(input_task);
+                return Ok(());
+            }
             _ => return Err("idle operation has no matching observation".into()),
         }
     }

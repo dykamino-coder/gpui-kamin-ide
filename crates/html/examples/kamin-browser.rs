@@ -25,6 +25,9 @@ mod hud;
 #[cfg(feature = "why-profiler")]
 #[path = "kamin-browser/idle_control.rs"]
 mod idle_control;
+#[cfg(feature = "why-profiler")]
+#[path = "kamin-browser/input_control.rs"]
+mod input_control;
 #[path = "kamin-browser/page.rs"]
 mod page;
 #[path = "kamin-browser/paths.rs"]
