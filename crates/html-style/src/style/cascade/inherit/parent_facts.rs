@@ -214,6 +214,7 @@ impl<'a> TreeFacts<'a> {
     }
 }
 
+mod diff;
 mod predicates;
 pub(super) use predicates::transformed;
 use predicates::{child_height_definite, clips, fixed_barrier, multicol};

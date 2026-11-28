@@ -43,29 +43,33 @@ pub(crate) fn wrap_floats(
     if !vcx.clearance_possible {
         return nodes;
     }
-    let cb_px = cb_px();
+    // The width of the containing block is read only by a decision that needs it (a float
+    // host, a box that may not fit beside floats): a flow without one does not depend on it.
+    let width = std::cell::OnceCell::new();
+    let cb_px = || *width.get_or_init(&cb_px);
     // `clear: inherit` — сторона родителя (`clear-005`: `clear: left` на
     // контейнере и `inherit` на ребёнке). Разрешается здесь: своего
     // наследования у ненаследуемого свойства нет, а родительский стиль есть
     // только у вызывающего.
-    let cb = FloatCb {
-        margin_basis: cb_px,
+    let cb = || FloatCb {
+        margin_basis: cb_px(),
         height: cb_height
             .or_else(|| crate::style::values::value::px_strict(parent.reset_box_layout.height)),
         ..FloatCb::of(parent)
     };
-    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, cb_px, vcx);
+    let mut nodes = prepare_float_nodes(nodes, parent, cb_top_open, &cb_px, vcx);
     if let Some(value) = unfloated_flow(
         cb_top_open,
         em,
         measured_ok,
         parent_bfc,
-        cb,
+        &cb,
         &mut nodes,
         vcx,
     ) {
         return value;
     }
+    let cb = cb();
     let mut out: Vec<Node> = vec![];
     let mut i = 0usize;
     while i < nodes.len() {

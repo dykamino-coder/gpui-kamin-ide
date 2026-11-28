@@ -73,6 +73,21 @@ macro_rules! time_work {
 }
 pub use crate::time_work as time;
 
+/// Measure a section's own time: nested self-timed sections count theirs (`SelfTimer`).
+#[cfg(feature = "work-counters")]
+#[macro_export]
+macro_rules! time_self_work {
+    ($guard:ident, $counter:ident) => {
+        let $guard = $crate::work::time_self($crate::work::Counter::$counter);
+    };
+}
+#[cfg(not(feature = "work-counters"))]
+#[macro_export]
+macro_rules! time_self_work {
+    ($guard:ident, $counter:ident) => {};
+}
+pub use crate::time_self_work as time_self;
+
 /// Привязать вложенную работу к фазе, восстановив внешнюю при выходе.
 #[cfg(feature = "work-counters")]
 #[macro_export]
@@ -146,6 +161,7 @@ mod tests {
         crate::work::switch!(NotEvenAPhase);
         crate::work::cache!(unresolved_value, NotAHit, NotAMiss);
         crate::work::time!(_timer, NotEvenACounter);
+        crate::work::time_self!(_own, NotEvenACounter);
         crate::work::inputs!(_unit, panic!("must disappear"));
     }
 

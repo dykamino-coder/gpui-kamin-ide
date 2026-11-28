@@ -20,7 +20,7 @@ pub(crate) fn band_host_nested(
     i: usize,
     em: f32,
     parent_bfc: bool,
-    cb: crate::layout::float::FloatCb,
+    cb: &dyn Fn() -> crate::layout::float::FloatCb,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<(Element, usize)> {
     // Без следующей коробки обычному блоку не нужен общий хост. Проверяем
@@ -28,11 +28,16 @@ pub(crate) fn band_host_nested(
     if !parent_bfc && nodes[i + 1..].iter().all(is_blank) {
         return None;
     }
-    let wm = cb.wm;
     let Node::Element(c) = &nodes[i] else {
         return None;
     };
-    if !has_flow_float(c) || !band_nest_ok(c, em, wm, cb.margin_basis, vcx) {
+    // The containing block (and its width) is read only for a block with floats inside.
+    if !has_flow_float(c) {
+        return None;
+    }
+    let cb = cb();
+    let wm = cb.wm;
+    if !band_nest_ok(c, em, wm, cb.margin_basis, vcx) {
         return None;
     }
     let mut j = i + 1;

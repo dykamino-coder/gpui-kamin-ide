@@ -144,7 +144,7 @@ pub fn strut_font(
 pub(crate) fn band_style(d: &crate::style::inline_decoration::InlineDecoration) -> gpui::BandStyle {
     gpui::BandStyle {
         // A fully transparent band colour only identifies its inline box (see
-        // `BORDER_BAND`): it is kept black (lightness 0) so nothing of it can
+        // `box_paint`): it is kept black (lightness 0) so nothing of it can
         // blend into the border edge, with the id in hue and saturation.
         color: d.band_color.map(|c| {
             if c.a == 0.0 {

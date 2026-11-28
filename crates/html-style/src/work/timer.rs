@@ -61,9 +61,66 @@ impl Drop for Timer {
     }
 }
 
+/// An interval whose counter gets only its own time: the time of self-timed
+/// intervals opened inside it goes to theirs. The self-timed counters of one
+/// tree of calls sum to the time of its outermost interval, as a profiler's
+/// self time does.
+pub struct SelfTimer {
+    start: Option<(Instant, Arc<Totals>, usize, u64)>,
+    counter: Counter,
+    thread: PhantomData<Rc<()>>,
+}
+
+pub fn time_self(counter: Counter) -> SelfTimer {
+    let start = get_default(|dispatch| {
+        dispatch.downcast_ref::<Collector>().map(|c| {
+            let outer = c.0.nested_ns.swap(0, Relaxed);
+            (Instant::now(), c.0.clone(), c.0.phase.load(Relaxed), outer)
+        })
+    });
+    SelfTimer {
+        start,
+        counter,
+        thread: PhantomData,
+    }
+}
+
+impl Drop for SelfTimer {
+    fn drop(&mut self) {
+        if let Some((start, totals, phase, outer)) = &self.start {
+            let ns = u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
+            let nested = totals.nested_ns.swap(outer.saturating_add(ns), Relaxed);
+            totals.counts[*phase][self.counter as usize]
+                .fetch_add(ns.saturating_sub(nested), Relaxed);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{Phase, Session, enter};
+
+    #[test]
+    fn self_timers_count_only_their_own_time() {
+        let session = Session::begin();
+        let outer = time_self(Counter::BuildSelfScrollNs);
+        {
+            let _inner = time_self(Counter::BuildSelfElementNs);
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        drop(outer);
+        let snapshot = session.finish();
+        let at = |c: Counter| snapshot.0[Phase::PipelineOther as usize][c as usize];
+        let (outer, inner) = (
+            at(Counter::BuildSelfScrollNs),
+            at(Counter::BuildSelfElementNs),
+        );
+        assert!(inner >= 20_000_000, "{inner}");
+        assert!(
+            outer < inner / 2,
+            "the outer interval counted the inner one: {outer}"
+        );
+    }
     use super::*;
 
     #[test]

@@ -59,6 +59,8 @@ mod invalidation_tests;
 #[cfg(test)]
 mod kept_paragraph_tests;
 #[cfg(test)]
+mod kept_plan_tests;
+#[cfg(test)]
 mod key_reuse_tests;
 #[cfg(test)]
 mod l0_memory_tests;

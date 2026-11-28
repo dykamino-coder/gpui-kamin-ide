@@ -14,6 +14,7 @@ use crate::style::cascade::materialize::box_style;
 use crate::style::computed::BoxStyle;
 
 pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts) -> BoxStyle {
+    crate::work::time_self!(_own, BuildSelfMergedNs);
     let vcx = opts.cx.vcx();
     let mut merged = box_style(inherited, &e.style, vcx);
     crate::layout::block::inline_splits::restore_containing_block(e, &mut merged);
@@ -88,6 +89,13 @@ pub(crate) fn merged_style(e: &Element, inherited: &BoxStyle, opts: &RenderOpts)
         vcx.doc.viewport.set_icb_scroll_insets(gutters.used);
     }
     orthogonal_inline::resolve(&mut merged, inherited, opts.viewport, e.tag == "html");
+    if e.tag == "html-viewport" && merged.tree.orthogonal_scrollport.is_some() {
+        // The window's scrollport is the initial containing block, which the readers of
+        // the nearest scrollport fall back to (`orthogonal_inline::available`). Carrying
+        // its sizes down would put the window width into the parent facts of every box
+        // of the document, and a width change would miss every box stage.
+        merged.tree.orthogonal_scrollport = inherited.tree.orthogonal_scrollport;
+    }
     merged
 }
 

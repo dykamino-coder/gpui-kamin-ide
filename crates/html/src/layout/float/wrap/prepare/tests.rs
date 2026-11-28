@@ -43,7 +43,7 @@ fn font_relative_float_margins_are_computed_without_changing_percentage_bases() 
         ))],
         &BoxStyle::from(parent),
         false,
-        None,
+        &|| None,
         doc.values(),
     );
     let Node::Element(float) = &nodes[0] else {
@@ -99,7 +99,7 @@ fn computed_margins_admit_a_clamped_float_without_changing_its_own_context() {
         vec![Node::Element(float)],
         &BoxStyle::from(parent.clone()),
         false,
-        None,
+        &|| None,
         doc.values(),
     );
     let (host, next, _, _) = host_for_run(
@@ -187,7 +187,7 @@ fn float_only_inline_keeps_one_margin_fragment_before_its_floats() {
         vec![Node::Element(inline)],
         &BoxStyle::default(),
         false,
-        Some(784.),
+        &|| Some(784.),
         doc.values(),
     );
     assert_eq!(nodes.len(), 3);

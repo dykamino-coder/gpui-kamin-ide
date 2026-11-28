@@ -18,6 +18,7 @@ pub(super) fn styled(
 ) -> BoxStyle {
     // Style share of a frame, hits included (`box_stage_ns` in the journal).
     crate::work::time!(_stage, BoxStageNs);
+    crate::work::time_self!(_own, BuildSelfStageNs);
     // A box layout moved stays a child of its element-tree parent
     // (css-cascade-5 §7.2); `parent` is its new parent box.
     let moved = own.moved_from();

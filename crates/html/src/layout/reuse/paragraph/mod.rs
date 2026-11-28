@@ -16,6 +16,7 @@
 
 mod key;
 mod plan;
+mod resume;
 #[cfg(test)]
 mod tests;
 
@@ -23,7 +24,7 @@ use super::{Counters, FlowReuse};
 use crate::dom::{BoxId, Node};
 use crate::layout::options::RenderOpts;
 use crate::style::computed::BoxStyle;
-use crate::text::paragraph::{AtomFn, AtomSource, KeptAtoms, KeptSlot, LazyBuild, Paragraph};
+use crate::text::paragraph::{AtomFn, KeptSlot, Paragraph};
 use key::ParaKey;
 pub(crate) use plan::{Plan, Sealed};
 use std::cell::Cell;
@@ -35,33 +36,17 @@ pub(crate) type AtomBuilder = fn(&BoxStyle, &RenderOpts, bool) -> AtomFn;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Why a paragraph was built without being kept.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Refusal {
-    /// The build context or the paragraph's route is not plain (`key::plain`).
-    Context,
-    /// A top-level element's subtree is not inert.
-    Subtree,
-    /// An atom's box depends on the available width (a percentage or an
-    /// automatic inline size, percentage edges).
-    AtomWidth,
-    /// An atom inherits from an inline ancestor or has an inline containing block.
-    AtomParent,
-    /// An atom's node has no key or no path below the paragraph's nodes.
-    AtomPath,
-    /// The paragraph holds what a later frame could not lay out without a build.
-    Paragraph,
-    /// The paragraph has no atom: a text-only build is cheap, while keeping
-    /// every such paragraph of a long page costs its whole model in memory.
-    TextOnly,
-}
+mod refusal;
+pub(crate) use refusal::Refusal;
 
 /// Kept paragraphs of a document: recorded, resumed and refused by reason.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct KeepStats {
     pub(crate) recorded: u64,
     pub(crate) resumed: u64,
-    pub(crate) refused: [u64; 7],
+    pub(crate) refused: [u64; refusal::REFUSALS],
+    /// Records that did not hold, by reason (`resume::Miss`).
+    pub(crate) missed: [u64; resume::MISSES],
 }
 
 /// The records of a document's kept paragraphs, by `key::id`.
@@ -99,6 +84,11 @@ impl Records {
 
     fn refuse(&self, why: Refusal) {
         self.count(|s| s.refused[why as usize] += 1);
+        why.note();
+    }
+
+    fn miss(&self, why: resume::Miss) {
+        self.count(|s| s.missed[why as usize] += 1);
     }
 
     /// Drop the records no build took or made in the last two frames.
@@ -138,29 +128,55 @@ pub(crate) fn start(
     let records = &flow.store.paragraphs;
     let epoch = flow.store.epoch.get();
     records.prune(epoch);
+    // A run of an anonymous box carries a style naming no element (`self_node` 0): its
+    // owner is the box whose published flow the nodes are (`BoxTree::flow_of`), for a
+    // render copy of a box's children the parent box of its elements (`owner_of`), else
+    // the block whose lines the run makes (`InlineContext::trim_para`), whose build epoch
+    // covers every node below it. The record key names that owner and the run's nodes.
     let owner = {
         let boxes = opts.cx.doc().boxes.borrow();
-        boxes
-            .box_of(inherited.self_node)
-            .map(|id| (id, boxes.clock()))
+        let block = || (opts.cx.inline.trim_para).and_then(|(block, _)| boxes.box_of(block));
+        let owner = match inherited.self_node {
+            0 => (boxes.flow_of(nodes).or_else(|| boxes.owner_of(nodes))).or_else(block),
+            node => boxes.box_of(node),
+        };
+        owner.map(|id| (id, boxes.clock()))
     };
-    let (Some((owner, at)), true) = (owner, plain && key::plain(inherited, opts)) else {
-        records.refuse(Refusal::Context);
-        return Err(None);
+    let why = match (owner, key::plain(inherited, opts)) {
+        _ if !plain => Err(Refusal::Context),
+        (None, _) => Err(Refusal::NoBox),
+        (Some(_), Err(why)) => Err(why),
+        (Some(owner), Ok(())) => Ok(owner),
+    };
+    let (owner, at) = match why {
+        Ok(owner) => owner,
+        Err(why) => {
+            if why == Refusal::NoBox {
+                note_no_box(nodes, inherited);
+            }
+            records.refuse(why);
+            return Err(None);
+        }
     };
     if opts.cx.contracts.document_root != Some(flow.doc) || nodes.is_empty() {
         return Err(None);
     }
-    let id = key::id(inherited.self_node, nodes);
+    let id = match inherited.self_node {
+        0 => key::id(super::content::box_key(owner), nodes),
+        node => key::id(node, nodes),
+    };
     let start = Counters::read(&opts.cx);
-    if let Some(para) = resume(&flow, id, (nodes, inherited, opts), start, builder) {
+    if let Some(para) = resume::resume(&flow, id, (nodes, inherited, opts), start, builder) {
         records.count(|s| s.resumed += 1);
         crate::work::add!(ParagraphsResumed, 1);
         return Ok(para);
     }
-    let Some(reads_viewport) = key::subtree(nodes, opts) else {
-        records.refuse(Refusal::Subtree);
-        return Err(None);
+    let reads_viewport = match key::subtree(nodes, opts) {
+        Ok(reads) => reads,
+        Err(why) => {
+            records.refuse(why);
+            return Err(None);
+        }
     };
     // Equal containers share one style of the key (`KeyInputs`).
     let key = ParaKey::of(&flow.store.inputs, inherited, opts, reads_viewport);
@@ -173,41 +189,29 @@ pub(crate) fn start(
         start,
         keys: Cell::new(Vec::new()),
         refusal: Cell::new(None),
+        widths: plan::Widths::track(opts),
     })))
 }
 
-/// The kept paragraph of record `id`, if it holds (see the module).
-fn resume(
-    flow: &Rc<FlowReuse>,
-    id: u64,
-    (nodes, inherited, opts): (&[Node], &BoxStyle, &RenderOpts),
-    start: Counters,
-    builder: AtomBuilder,
-) -> Option<Paragraph> {
-    if !flow.allow || flow.again {
-        return None;
-    }
-    let record = flow.store.paragraphs.with(|map| map.get(&id).cloned())?;
-    let clean = {
-        let boxes = opts.cx.doc().boxes.borrow();
-        boxes.build_epoch(record.owner)? <= record.at
-            && record.at <= boxes.clock()
-            && !boxes.resized_by_siblings(record.owner, record.at)
-    };
-    if !clean || !record.key.holds(inherited, opts) || !record.slot.is_filled() {
-        return None;
-    }
-    let para = record.slot.take()?;
-    let source = match para.kept_atoms() {
-        Some(atoms) => AtomSource::of(nodes, &atoms)?,
-        None => AtomSource::of(nodes, &KeptAtoms::default())?,
-    };
-    let (from, to) = record.counters;
-    start.advanced(from, to).write(&opts.cx);
-    record.seen.set(flow.store.epoch.get());
-    let lazy = LazyBuild::new(source, builder(inherited, opts, record.flow_text));
-    let para = para
-        .resume(record.slot.clone(), lazy)
-        .measure_context(&opts.cx);
-    Some(para.rebind_selection(opts.selection_color()))
+/// The `why` journal of a paragraph whose container has no box: which
+/// container and what its first nodes are. Built only for a reader.
+fn note_no_box(nodes: &[Node], inherited: &BoxStyle) {
+    crate::why::note("paragraph.no_box", || {
+        let first: Vec<String> = (nodes.iter().take(3))
+            .map(|n| match n {
+                Node::Element(e) => format!("<{} {:x}>", e.tag, e.node_id),
+                Node::Text(t) => {
+                    let blank = t.as_str().trim_ascii().is_empty();
+                    format!("text {} blank {blank}", t.as_str().len())
+                }
+            })
+            .collect();
+        format!(
+            "container {:x} display {:?} icb {} nodes {} {first:?}",
+            inherited.self_node,
+            inherited.reset_box_layout.display,
+            inherited.reset_context.icb,
+            nodes.len()
+        )
+    });
 }
