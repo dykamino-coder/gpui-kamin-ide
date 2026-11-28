@@ -9,10 +9,12 @@ use gpui::{Modifiers, TestAppContext, point, px};
 #[gpui::test]
 fn table_auto_margins_follow_free_space_after_replaying_an_overflow(cx: &mut TestAppContext) {
     for margins in ["margin:0 auto", "margin-left:auto", "margin-right:auto"] {
+        // Interior flow blocks are eligible for replay; reset the embedded
+        // UA table margins so this fixture isolates horizontal auto margins.
         let html = format!(
-            "<!doctype html><style>body{{margin:0}}table{{border-spacing:0;{margins}}}\
+            "<!doctype html><style>body{{margin:0}}table{{border-spacing:0;margin:0;{margins}}}\
              td{{padding:0}}td div{{width:500px;height:20px;background:blue}}</style>\
-             <table><tr><td><div></div></td></tr></table>"
+             <div></div><table><tr><td><div></div></td></tr></table><div></div>"
         );
         let mut app = cx.clone();
         let (view, vcx) = open(&mut app, &html);

@@ -180,12 +180,14 @@ pub(super) fn layout_display(mut d: Div, c: &BoxStyle, vcx: ValueCx<'_>) -> Div 
         // Контейнер таблицы собирается отдельной веткой сборки дерева.
         Some(Display::Table) | Some(Display::InlineTable) => {}
         Some(Display::Grid) => d = grid_style(d, c, vcx),
+        // The root also establishes a block formatting context (CSS 2.1
+        // section 9.4.1); its child margins cannot collapse through it.
         // `display: flow-root` is a block container that establishes a new
         // block formatting context (css-display-3 §2.2): the native block
         // layout must not collapse its children's margins through it
         // (CSS 2.1 §8.3.1). Blink: `CreatesNewFormattingContext()`.
-        Some(Display::Block) | Some(Display::ListItem)
-            if c.reset_context.flow_root == Some(true) =>
+        None | Some(Display::Block) | Some(Display::ListItem)
+            if c.reset_context.flow_root == Some(true) || c.reset_context.root_box =>
         {
             d.style().display = Some(gpui::Display::FlowRoot);
         }
