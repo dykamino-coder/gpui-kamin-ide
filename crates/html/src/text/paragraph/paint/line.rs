@@ -50,12 +50,13 @@ impl Paragraph {
         // sits on the line's baseline instead of moving the run's glyphs to
         // a baseline of its own (`text-wrap-balance-line-clamp-002`: a 4rem
         // ellipsis with `line-height: 1rem` dropped the clamped line out).
-        let common_base =
-            if visual.len() > 1 || !suffix.is_empty() || self.prepared().has_metric_overrides {
-                self.base_of(range).map(px)
-            } else {
-                None
-            };
+        let shared = visual.len() > 1 || !suffix.is_empty() || self.prepared().has_metric_overrides;
+        let metrics = (shared && self.run_metrics.len() != self.runs.len())
+            .then(|| self.measure_runs(window));
+        let common_base = shared
+            .then(|| self.base_with_metrics(range, metrics.as_deref().unwrap_or(&self.run_metrics)))
+            .flatten()
+            .map(px);
         let mut line_base: Option<Pixels> = common_base;
         let mut line_exact = false;
         let block_mark = self.is_block_mark(suffix);
@@ -105,8 +106,17 @@ impl Paragraph {
             };
             let width = shaped.width;
             let base = (self.line_height - shaped.ascent - shaped.descent) / 2.0 + shaped.ascent;
+            let target = common_base.unwrap_or_else(|| {
+                use crate::text::metrics::{used_baseline, used_metric};
+                px(used_baseline(
+                    f32::from(self.line_height),
+                    used_metric(f32::from(shaped.ascent), self.metric_scale),
+                    used_metric(f32::from(shaped.descent), self.metric_scale),
+                    self.metric_scale,
+                ))
+            });
             if common_base.is_none() {
-                line_base = Some(line_base.map_or(base, |b: Pixels| b.max(base)));
+                line_base = Some(line_base.map_or(target, |b: Pixels| b.max(target)));
             }
             line_exact |= shaped
                 .runs
@@ -120,14 +130,14 @@ impl Paragraph {
                     tail,
                     run.start,
                     point(x, at.y),
-                    Some(common_base.unwrap_or(base)),
+                    Some(target),
                     line_exact,
                     window,
                     cx,
                 );
                 x += ell;
             }
-            let at = point(at.x, at.y + common_base.map_or(px(0.), |line| line - base));
+            let at = point(at.x, at.y + target - base);
             // Подложка прогона (`background` на `<span>`) рисуется ОТДЕЛЬНЫМ
             // вызовом: `paint` кладёт только глифы. Пока его не звали, фон
             // строчного элемента не появлялся вовсе — проверено пробой, где

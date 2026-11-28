@@ -77,6 +77,7 @@ pub const CODES: &[&str] = &[
     "plan_text.refused",
     "scroll_extent.layout_bars",
     "scroll_extent.relayout",
+    "text.line_geometry",
 ];
 
 /// Whether `code` belongs to the protocol: listed, or a frame miss or a
@@ -89,9 +90,18 @@ pub fn is_code(code: &str) -> bool {
         })
 }
 
+static GEOMETRY_READERS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Whether a reader requested the detailed text geometry payload.
+#[inline]
+pub(crate) fn text_geometry_enabled() -> bool {
+    GEOMETRY_READERS.load(std::sync::atomic::Ordering::Relaxed) != 0
+}
+
 /// A reader: the journal and the frame trace record while one lives.
 #[must_use = "the journal records only while the subscription lives"]
 pub struct Subscription {
+    geometry: bool,
     _journal: kamin_style::journal::Subscription,
     _frames: gpui::dirty_sources::trace::Trace,
 }
@@ -99,8 +109,26 @@ pub struct Subscription {
 /// Start recording for a new reader.
 pub fn subscribe() -> Subscription {
     Subscription {
+        geometry: false,
         _journal: kamin_style::journal::subscribe(),
         _frames: trace::Trace::start(),
+    }
+}
+
+/// Subscribe to detailed text geometry as well as the ordinary journal.
+/// Ordinary readers avoid collecting and serializing geometry for every paragraph.
+pub fn subscribe_text_geometry() -> Subscription {
+    let mut reader = subscribe();
+    GEOMETRY_READERS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    reader.geometry = true;
+    reader
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        if self.geometry {
+            GEOMETRY_READERS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 

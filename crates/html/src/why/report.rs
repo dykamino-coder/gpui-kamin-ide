@@ -31,13 +31,22 @@ impl Default for Report {
 
 impl Report {
     pub fn new() -> Self {
+        Self::with_reader(super::subscribe())
+    }
+
+    /// Подробная геометрия включается только явным запросом читателя.
+    pub fn with_text_geometry() -> Self {
+        Self::with_reader(super::subscribe_text_geometry())
+    }
+
+    fn with_reader(reader: super::Subscription) -> Self {
         Self {
             frames: Vec::new(),
             owners: super::memory::Owners::default(),
             memory_samples: Vec::new(),
             idle_samples: Vec::new(),
             status: Value::Null,
-            _reader: super::subscribe(),
+            _reader: reader,
         }
     }
 

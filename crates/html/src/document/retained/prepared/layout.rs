@@ -53,6 +53,9 @@ impl Builder {
             AvailableSpace::Definite(bounds.size.height),
         );
         let mut allow = bounds.origin == Default::default() && window.retained_root_environment();
+        self.state
+            .text
+            .set_device_scale(window.scale_factor(), self.state.values());
         loop {
             let retry = self.counters.get().is_some();
             let (mut tree, flow) = self.build(allow, true, window.hover_view(cx));

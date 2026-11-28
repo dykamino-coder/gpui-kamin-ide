@@ -69,6 +69,7 @@ impl Paragraph {
             runs: Vec::new(),
             font_size: self.font_size,
             line_height: self.line_height,
+            metric_scale: self.metric_scale,
             align: self.align,
             align_last: self.align_last,
             ruby_justify: self.ruby_justify,

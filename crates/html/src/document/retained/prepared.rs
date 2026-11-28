@@ -70,6 +70,9 @@ impl Document {
         cx: &mut App,
         mut observe: impl FnMut(UpdatePhase),
     ) {
+        self.state
+            .text
+            .set_device_scale(window.scale_factor(), self.state.values());
         self.root_phases
             .called(crate::why::root::Work::UpdateRendering);
         self.retained.prepared.take();

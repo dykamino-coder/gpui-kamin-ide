@@ -73,7 +73,7 @@ impl Paragraph {
     /// builder` — та же сумма наибольших подъёма и спуска.
     pub(crate) fn line_extents(&self, range: &std::ops::Range<usize>) -> (f32, f32) {
         let (lh, (sa, sd)) = self.root_line_box(range.start);
-        let a_s = (lh - (sa + sd)) / 2.0 + sa;
+        let a_s = crate::text::metrics::used_baseline(lh, sa, sd, self.metric_scale);
         let (mut top, mut bot) = (a_s, lh - a_s);
         for i in self
             .run_indices(range)
@@ -95,7 +95,7 @@ impl Paragraph {
                 .boxes
                 .first(s)
                 .map_or(lh, |i| self.box_spans[i].1);
-            let a_r = (own - (ra + rd)) / 2.0 + ra;
+            let a_r = crate::text::metrics::used_baseline(own, ra, rd, self.metric_scale);
             let dy = self
                 .prepared()
                 .shifts
@@ -112,7 +112,12 @@ impl Paragraph {
     /// От верха струта до его базовой линии: полулидинг плюс подъём (§10.8.1).
     pub(crate) fn strut_base(&self) -> f32 {
         let (asc, desc, _) = self.strut;
-        (f32::from(self.line_height) - (asc + desc)) / 2.0 + asc
+        crate::text::metrics::used_baseline(
+            f32::from(self.line_height),
+            asc,
+            desc,
+            self.metric_scale,
+        )
     }
 }
 
@@ -133,13 +138,14 @@ impl Paragraph {
                 let id = window.text_system().resolve_font(&run.font);
                 let size = run.font_size.unwrap_or(self.font_size);
                 let ts = window.text_system();
-                crate::text::fonts::metric_overrides::extents(
+                crate::text::fonts::metric_overrides::used_extents(
                     &run.font,
                     f32::from(size),
                     (
                         f32::from(ts.ascent(id, size)),
                         f32::from(ts.descent(id, size)).abs(),
                     ),
+                    window.scale_factor(),
                 )
             })
             .collect()
@@ -151,13 +157,21 @@ impl Paragraph {
     /// прогонов отрезка, полулидинг от высоты строки — ровно как кладёт глифы
     /// сплошной набор (`padding_top + ascent` в `vendor/gpui/.../line.rs`).
     pub(crate) fn base_of(&self, range: &std::ops::Range<usize>) -> Option<f32> {
-        if self.run_metrics.len() != self.runs.len() {
+        self.base_with_metrics(range, &self.run_metrics)
+    }
+
+    pub(crate) fn base_with_metrics(
+        &self,
+        range: &std::ops::Range<usize>,
+        metrics: &[(f32, f32)],
+    ) -> Option<f32> {
+        if metrics.len() != self.runs.len() {
             return None;
         }
         let mut best: Option<(f32, f32)> = None;
         for i in self.run_indices(range) {
             let run = &self.runs[i];
-            let (a, d) = self.run_metrics[i];
+            let (a, d) = metrics[i];
             let e = self.prepared().run_ends[i];
             let s = e - run.len;
             if run.len == 0 || e <= range.start || s >= range.end {
@@ -173,7 +187,14 @@ impl Paragraph {
             }
             best = Some(best.map_or((a, d), |(ba, bd)| (ba.max(a), bd.max(d))));
         }
-        best.map(|(a, d)| (f32::from(self.line_height) - (a + d)) / 2.0 + a)
+        best.map(|(a, d)| {
+            crate::text::metrics::used_baseline(
+                f32::from(self.line_height),
+                a,
+                d,
+                self.metric_scale,
+            )
+        })
     }
 }
 
@@ -194,7 +215,12 @@ impl Paragraph {
     pub(crate) fn shared_base(&self, range: &std::ops::Range<usize>) -> Option<f32> {
         let (lh, (sa, sd)) = self.root_line_box(range.start);
         if self.rotated_central && sa + sd > 0.0 {
-            return Some((lh - (sa + sd)) / 2.0 + sa);
+            return Some(crate::text::metrics::used_baseline(
+                lh,
+                sa,
+                sd,
+                self.metric_scale,
+            ));
         }
         self.base_of(range)
     }

@@ -31,6 +31,7 @@ impl Paragraph {
             runs,
             font_size,
             line_height,
+            metric_scale: 1.0,
             align,
             align_last: None,
             ruby_justify: false,

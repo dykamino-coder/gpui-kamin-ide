@@ -114,6 +114,7 @@ impl Paragraph {
                 .hash(&mut hasher);
             (background_line_gap, underline, strikethrough).hash(&mut hasher);
         }
+        self.metric_scale.to_bits().hash(&mut hasher);
         self.run_metrics.len().hash(&mut hasher);
         for &(a, b) in &self.run_metrics {
             (a.to_bits(), b.to_bits()).hash(&mut hasher);

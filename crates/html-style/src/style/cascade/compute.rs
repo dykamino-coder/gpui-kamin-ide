@@ -18,6 +18,7 @@ use crate::style::values::value::Len;
 use crate::values::ValueCx;
 
 mod background;
+mod borders;
 mod explicit;
 mod fonts;
 mod longhands;
@@ -119,6 +120,7 @@ pub(super) fn build(parent: &Computed, own: &Computed, vcx: ValueCx<'_>) -> Comp
         }
     }
     c.resolve_em(parent_px, vcx);
+    borders::resolve(&mut c, vcx.doc.device_scale());
     // `tab-size` в длине наследуется АБСОЛЮТНОЙ величиной: `5em` при кегле
     // 10px — это 50px и у ребёнка с кеглем 20px, а не его собственные 5em
     // (`tab-size-inheritance-001`).

@@ -6,7 +6,8 @@
 //! memory snapshots show owners and what grew. A failed sample keeps its error.
 //! `why.json` (schema `kamin_html::why::SCHEMA`) is for the browser panel
 //! and `tools/engine-compare`; `why.txt` for people; `--why-compare A B`
-//! reads two of them (`compare`).
+//! reads two of them (`compare`). Detailed text geometry is opt-in with
+//! `KAMIN_DIAG_TEXT_GEOMETRY=1`, so ordinary journal timing stays comparable.
 
 pub(super) mod compare;
 
@@ -38,7 +39,13 @@ impl Watch {
             .read_with(cx, |view, _| {
                 REPORT.with(|report| {
                     let mut report = report.borrow_mut();
-                    let report = report.get_or_insert_with(kamin_html::why::Report::new);
+                    let report = report.get_or_insert_with(|| {
+                        if std::env::var_os("KAMIN_DIAG_TEXT_GEOMETRY").is_some_and(|v| v == "1") {
+                            kamin_html::why::Report::with_text_geometry()
+                        } else {
+                            kamin_html::why::Report::new()
+                        }
+                    });
                     Some(Self(report.watch(&view.doc)))
                 })
             })

@@ -59,7 +59,8 @@ const PROBE_SIZE: f32 = 100.0;
 const FALLBACK: (f32, f32, f32, f32) = (0.5, 0.5, FALLBACK_NORMAL_LINE_HEIGHT, 1.0);
 
 mod normal_px;
-pub(crate) use normal_px::{content_px, normal_px};
+pub(crate) use normal_px::register as register_normal_parts;
+pub(crate) use normal_px::{content_px, normal_px, used_baseline, used_metric};
 
 /// Поставить щуп вертикальных метрик. Зовётся оттуда же, откуда `install_probe`.
 #[cfg(test)]

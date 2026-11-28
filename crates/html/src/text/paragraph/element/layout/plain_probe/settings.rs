@@ -13,6 +13,7 @@ pub(in crate::text::paragraph::element::layout) struct Settings {
     runs: Vec<gpui::TextRun>,
     font_size: gpui::Pixels,
     line_height: gpui::Pixels,
+    metric_scale: f32,
     align: Align,
     wrap: Wrap,
     ortho_limit: Option<gpui::Pixels>,
@@ -49,6 +50,7 @@ impl Settings {
             runs: p.runs.clone(),
             font_size: p.font_size,
             line_height: p.line_height,
+            metric_scale: p.metric_scale,
             align: p.align,
             wrap: p.wrap,
             ortho_limit: p.ortho_limit,
@@ -85,6 +87,7 @@ impl Settings {
             runs: std::mem::take(&mut p.runs),
             font_size: p.font_size,
             line_height: p.line_height,
+            metric_scale: p.metric_scale,
             align: p.align,
             wrap: p.wrap,
             ortho_limit: p.ortho_limit,
@@ -131,6 +134,7 @@ impl Settings {
         )
         .ortho_limit(self.ortho_limit);
         p.prepared.seed_text_hash(self.text_hash);
+        p.metric_scale = self.metric_scale;
         p.clamp_tag = self.clamp_tag;
         p.clamp = self.clamp;
         p.clamp_force = self.clamp_force;
@@ -155,5 +159,28 @@ impl Settings {
         p.run_metrics = self.run_metrics;
         p.strut = self.strut;
         p
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn measure_probes_keep_the_device_grid_for_baselines() {
+        let mut paragraph = Paragraph::new(
+            "sample".into(),
+            Vec::new(),
+            gpui::px(16.),
+            gpui::px(19.3),
+            Align::Left,
+            Wrap::default(),
+        );
+        paragraph.metric_scale = 1.25;
+        paragraph.strut = (14.4, 3.2, 0.);
+        let probe = Settings::of(&paragraph).probe();
+        let moved = Settings::from_probe(probe).into_probe();
+        assert_eq!(moved.metric_scale, 1.25);
+        assert!((moved.strut_base() - 15.2).abs() < 0.0001);
     }
 }

@@ -1,10 +1,9 @@
 //! Модель абзаца `Paragraph`: поля строчной раскладки и состояние документа, общее с зондом.
-use crate::text::paragraph::{atom_fit, decor, tabs};
+use crate::text::paragraph::{Align, Indent, Line, Wrap, atom_fit, decor, tabs};
 use crate::{layout::layout_state::LayoutState, values::ValueDoc};
 mod configuration;
 mod construct;
 mod overflow_config;
-use super::{Align, Indent, Line, Wrap};
 pub use crate::text::paragraph::probes::*;
 use gpui::{AnyElement, Bounds, ElementId, Hsla, Pixels, Point, SharedString, TextRun};
 /// Абзац со своей раскладкой строк.
@@ -22,6 +21,7 @@ pub struct Paragraph {
     pub(super) runs: Vec<TextRun>,
     pub(super) font_size: Pixels,
     pub(super) line_height: Pixels,
+    pub(super) metric_scale: f32,
     pub(super) align: Align,
     /// Выключка последней строки (`text-align-last`), если задана.
     pub(super) align_last: Option<Align>,

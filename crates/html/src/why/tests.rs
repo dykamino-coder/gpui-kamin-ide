@@ -69,3 +69,18 @@ fn codes_are_unique_and_cover_frame_misses_and_refusals() {
         assert!(!is_code(code), "{code}");
     }
 }
+
+#[test]
+fn detailed_geometry_requires_a_reader_and_survives_nested_readers() {
+    let (_one, _thread) = test_reader();
+    let ordinary = Report::new();
+    assert!(!text_geometry_enabled());
+    let first = Report::with_text_geometry();
+    let second = Report::with_text_geometry();
+    assert!(text_geometry_enabled());
+    drop(first);
+    assert!(text_geometry_enabled());
+    drop(second);
+    assert!(!text_geometry_enabled());
+    drop(ordinary);
+}

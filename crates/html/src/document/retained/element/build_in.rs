@@ -10,6 +10,10 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> LayoutId {
+        self.builder
+            .state
+            .text
+            .set_device_scale(window.scale_factor(), self.builder.state.values());
         if std::mem::take(&mut self.unbuilt) {
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
