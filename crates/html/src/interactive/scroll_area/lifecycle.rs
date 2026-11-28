@@ -37,7 +37,7 @@ impl Element for ScrollArea {
             state.extent.set_handle(state.handle.clone());
             let (layout_id, el) = {
                 let frame = state.extent.begin(self.tree.as_deref());
-                let mut el = build(&state.handle, h, v, frame);
+                let mut el = super::timed_build(&build, &state.handle, (h, v), frame);
                 let layout_id = el.request_layout(window, cx);
                 (layout_id, el)
             };

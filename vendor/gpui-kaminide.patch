@@ -1,67 +1,68 @@
 # KaminIDE patches — gpui-pre 0.3.8 (zed 279fe070bb389b79652e52065b2f001edcc0b11b)
 #
-# 1. Moved frames: a frame whose largest scroll node moved by whole device pixels is compared, cell by cell and with retained layers expanded, against the last frame moved by that step (both cut by the moved window); where they agree a renderer may copy the kept pixels, and the rest becomes at most four damage rectangles (`Scene::frame_shift`). Layer sources stay held from recording to present so the comparison reads what the last frame drew.
-# 2. Analytic gradients: immutable geometry and arbitrary sRGB stops belong to retained commands; replay, splicing, damage comparison and group batches preserve content while remapping scene-local descriptor indices.
-# 3. Measured float overflow: independently measured hosts return scrollable extents separately from normal-flow size; child contributions use native clipping, containment and relative offsets.
-# 4. Scroll replay: rebase transformed primitive bounds together with the matrix so gradient-local coordinates match a fresh paint without large cancelling translations.
-# 5. Fixed-background replay: stationary viewport content uses an independently scrolling clip; canvas clips stay anchored. Position-dependent complex clips rebuild instead of translating.
-# 6. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
-# 7. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
-# 8. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
-# 9. Raster image lifetime: each window tracks uploads with weak CPU-image owners and shared scene leases, including replay, clipping, transforms and retained scene copies. CPU cache eviction and the final scene release remove the atlas tile; natural resampling uses the same upload owner.
-# 10. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
-# 11. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
-# 12. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
-# 13. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
-# 14. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
-# 15. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
-# 16. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
-# 17. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
-# 18. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
-# 19. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
-# 20. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
-# 21. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
-# 22. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
-# 23. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
-# 24. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
-# 25. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
-# 26. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
-# 27. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
-# 28. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
-# 29. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
-# 30. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
-# 31. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
-# 32. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
-# 33. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
-# 34. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
-# 35. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
-# 36. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
-# 37. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
-# 38. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
-# 39. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
-# 40. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
-# 41. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
-# 42. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
-# 43. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
-# 44. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
-# 45. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
-# 46. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
-# 47. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
-# 48. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
-# 49. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
-# 50. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
-# 51. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
-# 52. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
-# 53. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
-# 54. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
-# 55. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
-# 56. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
-# 57. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
-# 58. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
-# 59. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
-# 60. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
-# 61. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
-# 62. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
+# 1. Effect lifetime diagnostics: opt-in batch journal reports immutable mask uploads and texture owners released when the complete scene stops using their effect kind.
+# 2. Moved frames: a frame whose largest scroll node moved by whole device pixels is compared, cell by cell and with retained layers expanded, against the last frame moved by that step (both cut by the moved window); where they agree a renderer may copy the kept pixels, and the rest becomes at most four damage rectangles (`Scene::frame_shift`). Layer sources stay held from recording to present so the comparison reads what the last frame drew.
+# 3. Analytic gradients: immutable geometry and arbitrary sRGB stops belong to retained commands; replay, splicing, damage comparison and group batches preserve content while remapping scene-local descriptor indices.
+# 4. Measured float overflow: independently measured hosts return scrollable extents separately from normal-flow size; child contributions use native clipping, containment and relative offsets.
+# 5. Scroll replay: rebase transformed primitive bounds together with the matrix so gradient-local coordinates match a fresh paint without large cancelling translations.
+# 6. Fixed-background replay: stationary viewport content uses an independently scrolling clip; canvas clips stay anchored. Position-dependent complex clips rebuild instead of translating.
+# 7. Embedded document steps: snapshot the current element ancestry and rendering view so preparation outside draw uses the same IDs as nested hosts. No external publication authorized.
+# 8. Shared render image: a validated immutable dense BGRA frame borrows its Arc CPU owner without a pixel clone; CPU consumers can recover that owner, keeping its resource lease alive with the backing.
+# 9. Lazy render image: an owner may produce the dense BGRA frame only when the atlas uploads it, so the image keeps no resident CPU pixel copy; CPU readers decode a transient frame on demand.
+# 10. Raster image lifetime: each window tracks uploads with weak CPU-image owners and shared scene leases, including replay, clipping, transforms and retained scene copies. CPU cache eviction and the final scene release remove the atlas tile; natural resampling uses the same upload owner.
+# 11. Measured subtrees: retain an independent layout engine and identity ancestry through prepaint/paint, restoring caller ownership on unwind; deferred native draws and paint snapshots retain the arena owning their layout IDs, including reentry into an outer arena. Deferred construction restores its original identity, inherited text refinements and rem size without replaying geometry or paint state; immutable ancestry/text snapshots share exact-length slices rather than retaining traversal capacity.
+# 12. Intrinsic measurement: expose size-only axis queries and their purpose, and the axes the parent fixed for a final layout pass, to measured leaves (MeasuredBox) without replacing completed layout geometry or metadata.
+# 13. Settled subtree skipping: ink sinks collect the placed bounds of every primitive a scope offers (culled included, deferred paint snapshots feed the sinks open at capture) and are tainted by input, element state, groups or callbacks unless a scope declares them inert while unseen (counted also where no sink is open and carried out of an isolated scene, for the ink probes of the paint around it); exact layout leaves stand in for inflexible column items whose descendant margins do not adjoin their edges, and are plain leaves of the retained frame tree.
+# 14. Frame diagnostics: opt-in host logging correlates incoming/deferred force, dirty state and completed frame callbacks without changing scheduling.
+# 15. Element lifetime: isolate transient probe allocation with a scoped arena; invalidate handles before destruction and return overflow chunks after the outer draw scope.
+# 16. Container units: publish completed content-box dimensions once per persistent source per frame, settle nested style/layout inputs top-down before paint, and retain persistent element state.
+# 17. Measured static-position rectangles: retain host-local geometry with performed native leaf layout and expose the completed horizontal flex line of a zero-sized marker; completed-pass access rejects dirty/intrinsic results and independent measurement copies cannot replace it. Keep measurement callable with the stacker feature disabled. Upstream proposal is recorded privately for P07; no external publication authorized.
+# 18. Expose the first actual in-flow content baseline from completed layout without remeasurement; list-marker ownership and fragment policy remain in HTML.
+# 19. Upstream #66070: expose completed unrounded normal geometry with tree/pass identity, full root constraint space and device scale, independently of relative/paint placement.
+# 20. Native stack depth: keep Div phase styles on the heap and borrow Style while requesting layout, releasing large construction temporaries before descending into children. Drain atomic paint contexts in a separate frame after child painting returns; finish background, shadow and border temporaries before recursive paint. Isolate accessibility-node construction and completion from recursive prepaint frames. Borrow phase payloads in place while traversing children and move them only after traversal returns. Borrow text refinements in shared child-drawing scopes, finish element-ID temporaries before recursion, and isolate anonymous element-state dispatch from the stateful branch in prepaint and paint.
+# 21. Optional stack growth: measurement/baseline helpers and measured-layout storage compile with the stacker feature disabled, so native-stack depth can be tested without hidden stack switching.
+# 22. Box painting: expose final used parent border/padding read-only so background clips share layout's percentage basis and scale.
+# 23. Expose final Taffy flex line/item geometry and semantic item order and parent identity, typed block-axis/reverse fragmentation growth constraints and caller-owned monolithic classification (CSS Flexbox 1 section 10; Writing Modes 3 logical-to-physical mappings).
+# 24. Grid fragmentation: expose each item's final placement lines on either physical axis and pass block space inserted after grid tracks to Taffy (CSS Grid 2 section 12).
+# 25. Measured hosts: expose the native containing-block size and resolved edges, preserving CSS percentage padding and content-box sizing in probe and final builds.
+# 26. CSS layout: pass measured baselines and intrinsic image sizes into Taffy so flex/grid sizing and alignment use text/image metrics.
+# 27. Host painting: generic child visitors borrow box geometry and opaque metadata inside existing clip/effect scopes; an explicit host callback selects fill bounds. CSS order and text-background/fill policy belong to HTML; no CSS collector, flags or TLS. Device snapping is an explicit geometry mechanism.
+# 28. Text: retain per-run size, spacing, decorations and vertical layout in shaping/cache keys to prevent reuse across incompatible metrics.
+# 29. Tests: retain bundled upstream fonts for SVG regression coverage, import the moved image-fit type explicitly, and preserve the randomized property-test seed/context lifecycle with the supported proptest attribute.
+# 30. Wrapping: keep the upstream editor continuation-state contract separate from CSS previous-character tracking across wrap boundaries.
+# 31. Image fit: retain the visible content box and atlas UV crop for default linear sampling, including cover and positioned images.
+# 32. Resolved path scenes: share markup rasterization and exact BGRA conversion with typed tiny-skia geometry, avoiding generated SVG text.
+# 33. Frame counters (BR-31A): time inside the swap chain Present call and frames the platform dropped instead of waiting are counted beside the present time.
+# 34. Host integration: a unique per-window readback endpoint delivers pixels and copy/map duration; capture sessions, completion subscriptions and first/latest policy belong to the host. Endpoint replacement/drop closes host subscriptions independently of production offscreen scenes. Typed application-owned instrumentation replaces environment switches and global prepaint/batch measurements. Retain animation clock and the identity-transformed profiler overlay.
+# 35. Window traversal: typed host context scopes replace the need for paint/prepaint TLS and follow canonical paint/deferred snapshots.
+# 36. Paint contract: checked window/pass/live-composition snapshots share one guarded replay. RasterFrame retains glyph offset, actual/exact fill transforms, rounded/exact bounds and opaque typed host data with Rc identity; typed scopes replace only their own slot without cloning the map. General replay inherits the caller frame; raster/full replay retain it. Geometry and isolated scenes restore on unwind.
+# 37. Immutable paint commands: capture source paint and host completion once, retain same-draw resources, reopen explicit mechanical ancestor groups, and place ordered commands with a final destination clip through the canonical Scene backend.
+# 38. Segmented paint commands: admit nodes by source slices and unique segment/ordinal placements, preserve shared ancestor effects and scope-owned clip chains, and project hitboxes from one source prepaint with the same placements. A mechanical child-prepaint observer exposes the active clip scope without repeating traversal.
+# 39. calc-size: carry sizing keyword bases and sizing-box calculations into native intrinsic layout.
+# 40. Grid placement: expose completed item row spans from Taffy metadata, preserving implicit lines, source order and dirty-state absence.
+# 41. Grid geometry: read completed tracks by container ID so empty grids use native layout without a synthetic item.
+# 42. Transformed hit testing: prepaint scopes record the inverse affine map and parent clip of a transformed subtree; frame hit testing maps the pointer through the scope chain, singular matrices are unhittable. Upstream proposal is recorded privately; no external publication authorized.
+# 43. Standalone targets: restore the upstream dev-dependencies the crates.io package dropped (published equivalents of the same snapshot) so every example builds; the two network image examples need the rustls/aws-lc-sys reqwest client and require an opt-in feature instead; three examples follow the fork's extended TextRun and calc() lengths and load the bundled upstream Lilex font; copied-layout measurement enters the stack-safe context with the stacker feature; measurement test modules import the measure helper.
+# 44. Text layout: a retained text measurement is reused only at the same device-snapped line height, so a scale-factor or text-style change measures again.
+# 45. Paint presentation scope: Window::with_paint_presentation replays immutable records under an explicit matrix: an exact axis-preserving similarity moves vector commands, masks and flat groups exactly; any other non-singular affine matrix has live-paint parity (primitive matrices compose like with_transformation, masks move only when the axes are kept); without the scope caller transforms are not reapplied.
+# 46. Segment hit scopes: Window::paint_hit_scope and with_prepaint_segment_hit_scopes test single segment placements through the hit scope of the copy that replays them (per-entry scopes in the frame, overriding the hitbox id scope).
+# 47. Segment source clips: Window::with_paint_source_clips re-applies, inside a nested segment recording over the same source coordinates, the clip chain a containing block adds over a base chain.
+# 48. Exact content mask: Window::with_content_mask_exact restores a mask read by content_mask (final window coordinates) without intersection or page-stack rescale; continued roots replayed in a sliced fragment copy are cut by their fragmentainer.
+# 49. LCD text: honor explicit Subpixel independently of system preference only on opaque, pixel-aligned root surfaces; use grayscale for exact glyphs, isolated/recorded scenes, transparent/Mica backdrops and transformed composition.
+# 50. Retained subtrees: preservation of nested window slots across whole-subtree replay for hosts tracking scene versions and line-cache dependencies; public record/replay of prepaint and paint index ranges (the cached-view reuse) for hosts with their own invalidation, a replayability check (no composition group in the subtree or its deferred draws, root paint environment), the next-frame callback count, and an interaction epoch counting dispatched inputs and focus moves. Upstream proposal is recorded privately; no external publication authorized.
+# 51. Frame layout storage: when the window's frame tree is full with at least 4096 nodes, grow it once to the frame's element-arena allocation count instead of doubling 2 KiB nodes; smaller trees keep doubling and independent measurement subtrees size to their own nodes.
+# 52. Shared node styles: equal taffy styles of one layout tree share one allocation through a FIFO of the 8 most recent distinct styles (full equality on hit), cleared with the tree; subtree copies share the source style.
+# 53. Retained frame tree: the window's Taffy tree and its caches survive frames; a request with the inputs of a previous node (parent by first child, children and style; plain leaf by request position and style; measured leaf by a host layout key and style) claims it and takes the pass's shared equal style, unclaimed nodes are recycled or dropped in one sweep, and kept leaves drop their measure closures between frames. Sharing candidates live as long as the kept tree.
+# 54. Lazy listener lists: the twenty listener and drag-style lists of Interactivity live in one block allocated by the first registration; a box without listeners keeps one null pointer (has_pinch_listeners folded into the hitbox predicate).
+# 55. Transparent host wrappers: an ink scope is opened with the host's own object (InkTarget) instead of a sink allocated per scope, the open scopes of a paint context live inline (two before the heap), and an element may decline its dispatch-tree node (Element::dispatch_node, default true) when it sets no key context, focus, handler or deferred draw; thousands of recording wrappers a frame then cost no allocation and no node. Behavior of every other element is unchanged.
+# 56. GPU memory report: a window forwards an on-request walk of the textures its platform renderer holds (owner path, bytes, bytes in use); platforms that do not report it keep the empty default.
+# 57. Update the rendering: host steps registered with Window::on_update_rendering run at the start of every draw before its paint pass; an ElementPlace (element id stack and rendering view) lets a pass outside of the draw build elements with the frame's ids and view. with_layout_outside_draw lays out for the following frame (app frame arena cleared by that draw, the window's engine, the frame line segment); with_layout_read lays out between frames with a private arena, a nested engine, sealed line caches and element states set aside for the next frame. A Div without id lays out in any phase; subtree_layout_bounds lists every placed node of a subtree. The frame tree reserves the request sequence of a pass once, at its first request, for as many nodes as the previous pass requested.
+# 58. Frame damage: the window compares the new scene with the one it drew last, cell by cell (64 device px) over the primitives that can write each cell in raster order, exactly (values without draw order; a group mark equals another only if the groups paint the same, recursively); backdrop filters make the damage unknown. The scene also matches every group with the group of the compared frame that paints the same image, by content and not by index (bucketed by bounds, blur and primitive counts, checked exactly), so inserted, removed and reordered groups keep the others' match.
+# 59. Isolated views: a view drawn in a box its parent lays out (isolated, optional sizer) is a deferred draw that notifying does not propagate to its ancestors; a frame whose only dirty views lie inside isolated views replays the previous root tree and redraws just those draws in their recorded boxes, keeping window control hitboxes and observed entities.
+# 60. Scroll-owned deferred draws: a draw deferred with Deferred::in_scroll_node keeps the scroll node open where it was deferred and prepaints and paints under it in the deferred pass (marks, clip, interest margin, nested nodes); a scrolled replay plans the draw's nodes and paint range as parts of the record, nested draws too, and replays them moved in their own place of the deferred pass. Plain defer_draw keeps refusing a scrolled replay.
+# 61. Layout-decided scrollbars: Style::kamin_scrollbars passes the overflow:auto axes, the viewport, a scroll range proxy and boxes built for a root gutter to Taffy; after layout a div takes the bars layout decided (overflow and its overflow clip offset), and Window::layout_scrollbars reads them.
+# 62. Batch counters: the `[gpu]` line reports batches per frame for every kind and, for paths, the intermediate area the batches used.
+# 63. Transform pivots: a painter that draws through a non-identity matrix keeps the matrix inputs (TransformPivot: linear part, translation, origin from the box, quarter-turn snap, the outer pivot, or the painter's own TransformBuild); a scrolled replay builds the moved matrix from the moved inputs by the function a fresh paint runs, bit for bit, and a node whose such primitive has no pivot refuses a moved replay (ScrollRefusal::Transform).
 #
 # Generated by vendor/regenerate-patch.py; see docs/VENDORING.md.
 # Apply from the repository root: git apply --unidiff-zero this.patch
@@ -5916,10 +5917,10 @@ index 0000000000000000000000000000000000000000..b3546e8d16158b5f111ca8af70696ef9
 +}
 diff --git a/vendor/gpui/src/batch_cost.rs b/vendor/gpui/src/batch_cost.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e12a32f3e
+index 0000000000000000000000000000000000000000..bed41715ad24e90b01998f0015dd241de765a39c
 --- /dev/null
 +++ b/vendor/gpui/src/batch_cost.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,281 @@
 +//! KaminIDE patch: экземпляр счётчиков пачек и времени GPU для приложения.
 +
 +use std::sync::Mutex;
@@ -5955,6 +5956,10 @@ index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e
 +    path_msaa_create: u64,
 +    path_msaa_drop: u64,
 +    path_msaa_alloc_bytes: u64,
++    mask_upload_create: u64,
++    mask_upload_alloc_bytes: u64,
++    effect_target_drop: u64,
++    effect_target_release_bytes: u64,
 +}
 +
 +/// The index of path batches in [`KINDS`].
@@ -6017,6 +6022,22 @@ index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e
 +    /// A path intermediate released by its renderer owner.
 +    pub fn path_target_dropped(&self) {
 +        self.with(|t| t.path_msaa_drop += 1);
++    }
++
++    /// A newly uploaded immutable group mask, in texture descriptor bytes.
++    pub fn mask_uploaded(&self, bytes: u64) {
++        self.with(|t| {
++            t.mask_upload_create += 1;
++            t.mask_upload_alloc_bytes += bytes;
++        });
++    }
++
++    /// Effect textures released because the complete scene no longer uses them.
++    pub fn effect_targets_dropped(&self, count: u64, bytes: u64) {
++        self.with(|t| {
++            t.effect_target_drop += count;
++            t.effect_target_release_bytes += bytes;
++        });
 +    }
 +
 +    /// The plan of a window frame of `window_px` pixels: how much is painted
@@ -6097,7 +6118,13 @@ index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e
 +    /// Строка для `diag.log` за период; счётчики обнуляются.
 +    pub fn take_line(&self) -> Option<String> {
 +        let t = self.totals.lock().ok()?.take()?;
-+        if t.frames == 0 && t.plans == [0; 3] && t.path_msaa_create == 0 && t.path_msaa_drop == 0 {
++        if t.frames == 0
++            && t.plans == [0; 3]
++            && t.path_msaa_create == 0
++            && t.path_msaa_drop == 0
++            && t.mask_upload_create == 0
++            && t.effect_target_drop == 0
++        {
 +            return None;
 +        }
 +        let per = |v: f64| v / t.frames.max(1) as f64;
@@ -6139,12 +6166,16 @@ index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e
 +            String::new()
 +        };
 +        Some(format!(
-+            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} per frame: {kinds}; top quads: {detail}",
++            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} mask_upload_create={} mask_upload_alloc_bytes={} effect_target_drop={} effect_target_release_bytes={} per frame: {kinds}; top quads: {detail}",
 +            t.frames,
 +            plan_summary(&t),
 +            t.path_msaa_create,
 +            t.path_msaa_drop,
-+            t.path_msaa_alloc_bytes
++            t.path_msaa_alloc_bytes,
++            t.mask_upload_create,
++            t.mask_upload_alloc_bytes,
++            t.effect_target_drop,
++            t.effect_target_release_bytes
 +        ))
 +    }
 +}
@@ -6173,10 +6204,10 @@ index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e
 +mod plan_tests;
 diff --git a/vendor/gpui/src/batch_cost/plan_tests.rs b/vendor/gpui/src/batch_cost/plan_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..acb48342f29de7c8f0f3358aab6347a3c3e2c7ee
+index 0000000000000000000000000000000000000000..d9b21784f8af823627026b41e10c06af51bdb24a
 --- /dev/null
 +++ b/vendor/gpui/src/batch_cost/plan_tests.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,66 @@
 +//! KaminIDE patch: the `[gpu]` line of a period: plans, batches, path intermediate.
 +
 +use super::{BatchCost, FramePlan, PATHS};
@@ -6226,7 +6257,21 @@ index 0000000000000000000000000000000000000000..acb48342f29de7c8f0f3358aab6347a3
 +    cost.path_target_created(16 * 32 * 24);
 +    cost.path_target_dropped();
 +    let line = cost.take_line().unwrap();
-+    assert!(line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"), "{line}");
++    assert!(
++        line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"),
++        "{line}"
++    );
++    assert!(cost.take_line().is_none());
++}
++
++#[test]
++fn effect_events_report_exact_totals_and_reset_without_a_frame() {
++    let cost = BatchCost::default();
++    cost.mask_uploaded(24);
++    cost.mask_uploaded(40);
++    cost.effect_targets_dropped(2, 64);
++    let line = cost.take_line().unwrap();
++    assert!(line.contains("mask_upload_create=2 mask_upload_alloc_bytes=64 effect_target_drop=2 effect_target_release_bytes=64"), "{line}");
 +    assert!(cost.take_line().is_none());
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
