@@ -24,6 +24,11 @@ pub(super) fn apply(style: &mut Computed, v: &str, vcx: crate::values::ValueCx<'
     for raw in v.split(',').map(str::trim) {
         let lower = raw.to_ascii_lowercase();
         if !raw.starts_with(['\'', '"']) && is_generic(&lower) {
+            // A generic without a platform face does not match a font;
+            // continue through the authored list (CSS Fonts 4 section 2.1.5).
+            if lower != "monospace" && generic_family(&lower).is_none() {
+                continue;
+            }
             style.inh.font.monospace = Some(lower == "monospace");
             style.inh.font.font_family = generic_family(&lower).map(str::to_owned);
             return;
@@ -134,6 +139,9 @@ mod tests {
             ("'serif', Arial", Some("Arial")),
             ("monospace, Arial", None),
             ("Arial, monospace", Some("Arial")),
+            ("ui-serif, Arial", Some("Arial")),
+            ("ui-sans-serif, Arial", Some("Arial")),
+            ("ui-monospace, Arial", Some("Arial")),
             ("ui-rounded, Arial", Some("Arial")),
         ] {
             let style = family(&doc, value);
