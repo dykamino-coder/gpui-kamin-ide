@@ -111,11 +111,24 @@ impl BoxTree {
         }
     }
 
-    /// The box of the flow published by nodes `nodes`.
+    /// The box of the flow published by nodes `nodes`. A candidate is the owner of a node:
+    /// the nodes of an anonymous run name the run's box (its texts) and the parent of
+    /// their elements, so each distinct one is tried; the mark of its snapshot confirms
+    /// the whole slice.
     pub(crate) fn flow_of(&self, nodes: &[Node]) -> Option<BoxId> {
-        let owner = nodes.iter().find_map(|node| self.owner(node))??;
-        let record = self.get(owner)?;
-        let published = match self.flows.mark(owner) {
+        let mut tried = None;
+        nodes.iter().find_map(|node| {
+            let owner = self.owner(node).flatten()?;
+            (tried.replace(owner) != Some(owner) && self.publishes(owner, nodes)).then_some(owner)
+        })
+    }
+
+    /// Box `owner` published `nodes` as its flow (`flow_of`).
+    fn publishes(&self, owner: BoxId, nodes: &[Node]) -> bool {
+        let Some(record) = self.get(owner) else {
+            return false;
+        };
+        match self.flows.mark(owner) {
             Some(mark) => mark.holds(nodes),
             None => {
                 record.origin == Source::Root
@@ -124,8 +137,7 @@ impl BoxTree {
                         .iter()
                         .all(|node| self.owner(node).is_none_or(|o| o == Some(owner)))
             }
-        };
-        published.then_some(owner)
+        }
     }
 
     /// The box of the flow published by slice `nodes`.

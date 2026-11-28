@@ -19,9 +19,47 @@ pub(crate) struct Plan {
     pub(super) start: Counters,
     pub(super) keys: Cell<Vec<u64>>,
     pub(super) refusal: Cell<Option<Refusal>>,
+    pub(super) widths: Option<Widths>,
+}
+
+/// The outside width reads of the build of a paragraph inside an atom: the
+/// atom's own constraint (`ParaKey::atom_widths`) is an input of the record only
+/// if the build read it, as LayoutNG compares only the constraint-space fields
+/// a layout used.
+pub(super) struct Widths {
+    read: Rc<Cell<bool>>,
+    saved: crate::layout::cx::ScopedWidths,
+}
+
+impl Widths {
+    /// Track the paragraph's build where its key names the atom's widths.
+    pub(super) fn track(opts: &RenderOpts) -> Option<Self> {
+        (opts.cx.clamp.atom_depth > 0).then(|| {
+            let read = Rc::new(Cell::new(false));
+            let saved = opts.cx.constraints.track_scoped(read.clone());
+            Self { read, saved }
+        })
+    }
 }
 
 impl Plan {
+    /// End the tracking of the build's width reads (`Widths`): an atom's
+    /// constraint the build did not read is no input of the record.
+    fn untrack(&mut self, opts: &RenderOpts) {
+        if let Some(Widths { read, saved }) = self.widths.take() {
+            opts.cx.constraints.untrack_scoped(saved);
+            if !read.get() {
+                self.key.width_free();
+            }
+        }
+    }
+
+    /// The paragraph has no pieces: nothing is kept (`Refusal::Empty`).
+    pub(crate) fn empty(mut self, opts: &RenderOpts) {
+        self.untrack(opts);
+        self.flow.store.paragraphs.refuse(Refusal::Empty);
+    }
+
     /// Atom `e` of the paragraph, built with `atom_cx`.
     pub(crate) fn note_atom(&self, e: &Element, atom_cx: &AtomCx) {
         let why = if atom_cx.parent.is_some() || atom_cx.in_inline_cb {
@@ -40,7 +78,13 @@ impl Plan {
     }
 
     /// The plan with the paths of its atoms below `nodes`; `None` if refused.
-    pub(crate) fn seal(self, nodes: &[Node], flow_text: bool) -> Option<Sealed> {
+    pub(crate) fn seal(
+        mut self,
+        nodes: &[Node],
+        flow_text: bool,
+        opts: &RenderOpts,
+    ) -> Option<Sealed> {
+        self.untrack(opts);
         let records = &self.flow.store.paragraphs;
         if let Some(why) = self.refusal.get() {
             records.refuse(why);

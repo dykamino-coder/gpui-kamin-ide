@@ -54,6 +54,8 @@ impl Retained {
             self.scheduled = 0;
             self.slot.builds.set(self.slot.builds.get() + 1);
             self.slot.inside_draw.set(self.slot.inside_draw.get() + 1);
+            // The old tree goes first: what it took from the records returns there.
+            self.tree = None;
             let (tree, flow) = self.builder.build(true, false, window.hover_view(cx));
             self.tree = Some(tree);
             self.flow = flow;
@@ -67,6 +69,7 @@ impl Retained {
         window: &mut Window,
         cx: &mut App,
     ) -> RetainedPrepaint {
+        self.tree = None;
         let (mut tree, flow, inputs) = self.builder.layout_checked(bounds, window, cx, |phase| {
             if phase == UpdatePhase::Built {
                 self.slot.builds.set(self.slot.builds.get() + 1);

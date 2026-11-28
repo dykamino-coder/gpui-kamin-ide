@@ -244,6 +244,6 @@ pub(crate) struct FragmentConstraints {
     pub(crate) parent: BoxConstraints,
 }
 
-#[cfg(test)]
+pub(crate) mod scoped;
 #[cfg(test)]
 mod tests;

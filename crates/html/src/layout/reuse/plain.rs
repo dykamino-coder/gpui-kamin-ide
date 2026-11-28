@@ -244,5 +244,7 @@ mod tests;
 
 mod edges;
 mod image;
+mod reason;
 pub(super) use edges::edges_free;
 pub(super) use image::store_image;
+pub(super) use reason::not_inert;
