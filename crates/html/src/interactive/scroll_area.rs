@@ -15,6 +15,18 @@ use std::rc::Rc;
 type ScrollBuilder =
     Rc<dyn Fn(&gpui::ScrollHandle, bool, bool, Option<super::scroll_extent::Frame>) -> AnyElement>;
 
+/// Element construction of the scroll subtree, style included (`scroll_build_ns`);
+/// nested scroll areas build in their own request_layout, outside this window.
+fn timed_build(
+    build: &ScrollBuilder,
+    handle: &gpui::ScrollHandle,
+    (h, v): (bool, bool),
+    frame: Option<super::scroll_extent::Frame>,
+) -> AnyElement {
+    crate::work::time!(_build, ScrollBuildNs);
+    build(handle, h, v, frame)
+}
+
 /// Сохраняет ручку GPUI между кадрами и строит содержимое с прокруткой.
 pub struct ScrollArea {
     pub(crate) id: ElementId,
