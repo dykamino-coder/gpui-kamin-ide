@@ -99,7 +99,7 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
     };
     let mut style = style.clone();
     style.inh.text_flow.nowrap = Some(true);
-    style.reset_text_box.ruby_unit = true;
+    style.tree.ruby_unit = true;
     // CSS Ruby 1 §2.1.1: these units share an inline formatting
     // context, rather than starting indented block paragraphs.
     // Blink line_breaker.cc:846-848 excludes ruby sub-line breakers.
@@ -118,7 +118,7 @@ pub(super) fn unit_box(nodes: &[Node], style: &BoxStyle, opts: &RenderOpts) -> A
         block.style.used_mut().reset_box_layout.display = Some(Display::Block);
         block.style.used_mut().reset_context.inline_display = None;
         block.style.used_mut().reset_text_box.ruby_role = None;
-        block.style.used_mut().reset_text_box.ruby_unit = true;
+        block.style.edit_tree(|t| t.ruby_unit = true);
         block.style.used_mut().inh.text_flow.nowrap = Some(true);
         block.style.used_mut().inh.text_flow.text_indent = Some(Len::Px(0.0));
         block.style.used_mut().inh.text_flow.text_indent_each_line = Some(false);

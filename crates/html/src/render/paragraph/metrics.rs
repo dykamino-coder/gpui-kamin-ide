@@ -58,10 +58,10 @@ pub(crate) fn flow_metrics(
 pub(crate) fn line_box_spans(
     pieces: &[inline::Piece],
     edges: &[(std::ops::Range<usize>, bool, f32)],
-    inherited: &Computed,
+    inherited: &crate::style::computed::BoxStyle,
     opts: &RenderOpts,
 ) -> Option<(Vec<(std::ops::Range<usize>, f32)>, f32)> {
-    let vertical = inherited.wm().vertical() || inherited.wm().turned();
+    let vertical = inherited.wm().vertical() || inherited.turned_line();
     // Sideways lines use the same alphabetic metrics and per-run half-leading
     // as horizontal lines (Blink inline_box_state.cc:110-150). Only the physical
     // projection differs. Central baseline runs need their own metric table.
@@ -136,7 +136,7 @@ pub(crate) fn atoms_fit_line(
         // the end of the paragraph box (`paragraph_routed`, pure-atom
         // branch); a line box would add the strut's descent below the atoms
         // (`wm-propagation-body-035`: the caption image rose by the descent).
-        && (!inherited.wm().turned() || rotated_atom::text_turn(cx))
+        && (!inherited.turned_line() || rotated_atom::text_turn(cx))
         && (ruby || !inherited.wm().rtl())
         && inherited.tree.no_select != Some(true)
         && inherited.inh.ui.pointer_events_none != Some(true)

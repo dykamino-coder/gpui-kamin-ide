@@ -10,18 +10,13 @@ pub(super) fn text_box(g: &ResetTextBox) -> bool {
         td_color,
         td_lines,
         // Resolved before paint: decoration records and the text-shadow ink.
-        decors: _,
-        text_shadow_ink: _,
         // Text only: the first letter and line style text.
         first_letter: _,
         first_letter_own: _,
         first_line: _,
         first_line_own: _,
         // No colour.
-        underline: _,
-        line_through: _,
         text_align_match_parent: _,
-        ruby_unit: _,
         ruby_suppress_breaks: _,
         text_box_trim_start: _,
         text_box_trim_end: _,
@@ -43,7 +38,6 @@ pub(super) fn text_box(g: &ResetTextBox) -> bool {
         td_thickness: _,
         td_inset: _,
         ruby_role: _,
-        turned_line: _,
     } = g;
     td_color.depends_on_current() && td_lines.is_some_and(|lines| lines != 0)
 }
