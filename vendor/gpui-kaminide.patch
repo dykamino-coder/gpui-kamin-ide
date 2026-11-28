@@ -5918,10 +5918,10 @@ index 0000000000000000000000000000000000000000..b3546e8d16158b5f111ca8af70696ef9
 +}
 diff --git a/vendor/gpui/src/batch_cost.rs b/vendor/gpui/src/batch_cost.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2bcbb4ae9d
+index 0000000000000000000000000000000000000000..76c4b3ba1c8f68aa9896cc771ba78d1e12a32f3e
 --- /dev/null
 +++ b/vendor/gpui/src/batch_cost.rs
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,251 @@
 +//! KaminIDE patch: экземпляр счётчиков пачек и времени GPU для приложения.
 +
 +use std::sync::Mutex;
@@ -5954,6 +5954,9 @@ index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2b
 +    full_by: Vec<(&'static str, u64)>,
 +    /// Pixels of the path intermediate the path batches cleared and drew.
 +    path_intermediate_px: f64,
++    path_msaa_create: u64,
++    path_msaa_drop: u64,
++    path_msaa_alloc_bytes: u64,
 +}
 +
 +/// The index of path batches in [`KINDS`].
@@ -6003,6 +6006,19 @@ index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2b
 +    /// reached nothing and drew nothing).
 +    pub fn intermediate(&self, px: f64) {
 +        self.with(|t| t.path_intermediate_px += px);
++    }
++
++    /// A successfully allocated path intermediate, in descriptor bytes.
++    pub fn path_target_created(&self, bytes: u64) {
++        self.with(|t| {
++            t.path_msaa_create += 1;
++            t.path_msaa_alloc_bytes += bytes;
++        });
++    }
++
++    /// A path intermediate released by its renderer owner.
++    pub fn path_target_dropped(&self) {
++        self.with(|t| t.path_msaa_drop += 1);
 +    }
 +
 +    /// The plan of a window frame of `window_px` pixels: how much is painted
@@ -6083,7 +6099,7 @@ index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2b
 +    /// Строка для `diag.log` за период; счётчики обнуляются.
 +    pub fn take_line(&self) -> Option<String> {
 +        let t = self.totals.lock().ok()?.take()?;
-+        if t.frames == 0 && t.plans == [0; 3] {
++        if t.frames == 0 && t.plans == [0; 3] && t.path_msaa_create == 0 && t.path_msaa_drop == 0 {
 +            return None;
 +        }
 +        let per = |v: f64| v / t.frames.max(1) as f64;
@@ -6125,9 +6141,12 @@ index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2b
 +            String::new()
 +        };
 +        Some(format!(
-+            "[gpu] frames={}{frame_gpu} {} per frame: {kinds}; top quads: {detail}",
++            "[gpu] frames={}{frame_gpu} {} path_msaa_create={} path_msaa_drop={} path_msaa_alloc_bytes={} per frame: {kinds}; top quads: {detail}",
 +            t.frames,
-+            plan_summary(&t)
++            plan_summary(&t),
++            t.path_msaa_create,
++            t.path_msaa_drop,
++            t.path_msaa_alloc_bytes
 +        ))
 +    }
 +}
@@ -6156,10 +6175,10 @@ index 0000000000000000000000000000000000000000..9a6cd8b0d47c260abc414c4d74128d2b
 +mod plan_tests;
 diff --git a/vendor/gpui/src/batch_cost/plan_tests.rs b/vendor/gpui/src/batch_cost/plan_tests.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..cbaed2ca33b433fe5e859bb9e673150c83eaea6b
+index 0000000000000000000000000000000000000000..acb48342f29de7c8f0f3358aab6347a3c3e2c7ee
 --- /dev/null
 +++ b/vendor/gpui/src/batch_cost/plan_tests.rs
-@@ -0,0 +1,41 @@
+@@ -0,0 +1,52 @@
 +//! KaminIDE patch: the `[gpu]` line of a period: plans, batches, path intermediate.
 +
 +use super::{BatchCost, FramePlan, PATHS};
@@ -6200,6 +6219,17 @@ index 0000000000000000000000000000000000000000..cbaed2ca33b433fe5e859bb9e673150c
 +    let line = cost.take_line().unwrap();
 +    assert!(line.contains("paths: n=6 kpx=2 b=2 mid_kpx=3;"), "{line}");
 +    assert!(line.contains("quads: n=7 kpx=9 b=1;"), "{line}");
++}
++
++#[test]
++fn resource_events_report_exact_bytes_even_without_a_drawn_frame() {
++    let cost = BatchCost::default();
++    cost.path_target_created(16 * 64 * 48);
++    cost.path_target_created(16 * 32 * 24);
++    cost.path_target_dropped();
++    let line = cost.take_line().unwrap();
++    assert!(line.contains("path_msaa_create=2 path_msaa_drop=1 path_msaa_alloc_bytes=61440"), "{line}");
++    assert!(cost.take_line().is_none());
 +}
 diff --git a/vendor/gpui/src/bounds_tree.rs b/vendor/gpui/src/bounds_tree.rs
 index e95e32477b912b810607b20306be5f7d53c76df2..44a6252b1392f00b3721abc60a13000aad2676b8

@@ -34,9 +34,9 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
         view.all_files = files;
         view.files = queue.clone();
         view.timing_plain = options.plain;
-        view.scenario_viewport = Some((options.width as f32, options.height as f32));
+        view.preset_width = Some(options.width);
         view.journal = Some(journal.clone());
-        cx.notify();
+        view.resize(window, cx);
     });
     let view = view.downgrade();
     window
@@ -49,25 +49,11 @@ pub fn start(view: &Entity<Browser>, options: TimeOptions, window: &mut Window, 
                 for action in 0..=20 {
                     let requested = view.update_in(cx, |view, window, cx| {
                         if action == 0 {
-                            view.viewport = (options.width as f32, options.height as f32);
                             view.current = Some(path.clone());
                             view.selected = index;
                             view.reload(window, cx);
-                            journal.metadata(serde_json::json!({
-                                "viewport": {"width": options.width, "height": options.height},
-                                "plain": options.plain,
-                                "geometry": {
-                                    "physical_client": {
-                                        "width": (f32::from(window.viewport_size().width) * window.scale_factor()).round(),
-                                        "height": (f32::from(window.viewport_size().height) * window.scale_factor()).round(),
-                                    },
-                                    "css_client": {
-                                        "width": f32::from(window.viewport_size().width),
-                                        "height": f32::from(window.viewport_size().height),
-                                    },
-                                    "scale": window.scale_factor(),
-                                },
-                            }));
+                            view.resize(window, cx);
+                            journal.metadata(serde_json::json!({"plain": options.plain}));
                         } else if action <= 10 {
                             journal.step("wheel", action);
                             let before = view

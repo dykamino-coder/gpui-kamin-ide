@@ -35,6 +35,10 @@ heap-report = ["dep:kamin-heap", "kamin-style/heap-report"]
 name = "wptrun"
 required-features = ["wpt-harness"]
 
+[[example]]
+name = "kamin-browser"
+test = true
+
 [dependencies]
 # The DevTools `why` protocol form (`why::to_json`).
 serde_json.workspace = true

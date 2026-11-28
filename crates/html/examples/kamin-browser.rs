@@ -42,6 +42,9 @@ mod ui;
 mod viewport;
 #[path = "kamin-browser/window.rs"]
 mod window;
+#[cfg(test)]
+#[path = "kamin-browser/window_tests.rs"]
+mod window_tests;
 
 use gpui::{AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 use std::collections::HashSet;

@@ -30,8 +30,6 @@ pub struct Browser {
     #[cfg(feature = "why-profiler")]
     pub journal: Option<kamin_html::why::WindowJournal>,
     #[cfg(feature = "why-profiler")]
-    pub scenario_viewport: Option<(f32, f32)>,
-    #[cfg(feature = "why-profiler")]
     pub timing_plain: bool,
     _bounds: Subscription,
     pub file_watch: Option<crate::file_watch::FileWatch>,
@@ -70,8 +68,6 @@ impl Browser {
             hud,
             #[cfg(feature = "why-profiler")]
             journal: None,
-            #[cfg(feature = "why-profiler")]
-            scenario_viewport: None,
             #[cfg(feature = "why-profiler")]
             timing_plain: false,
             _bounds: bounds,
@@ -157,23 +153,40 @@ impl Browser {
 
     pub fn resize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let window_size = window.viewport_size();
+        let folder = self.folder.is_some();
+        #[cfg(feature = "why-profiler")]
+        let folder = folder && !self.timing_plain;
         self.viewport = viewport::content(
             (window_size.width.into(), window_size.height.into()),
-            self.folder.is_some(),
+            folder,
         );
+        #[cfg(feature = "why-profiler")]
+        if self.timing_plain {
+            self.viewport.1 = window_size.height.into();
+        }
         if let Some(width) = self.preset_width {
             if viewport::matches_preset(
                 window_size.width.into(),
                 width,
-                self.folder.is_some(),
+                folder,
                 window.scale_factor(),
             ) {
                 self.viewport.0 = width as f32;
             }
         }
         #[cfg(feature = "why-profiler")]
-        if let Some(viewport) = self.scenario_viewport {
-            self.viewport = viewport;
+        if let Some(journal) = &self.journal {
+            journal.metadata(serde_json::json!({
+                "viewport": {"width": self.viewport.0, "height": self.viewport.1},
+                "geometry": {
+                    "physical_client": {
+                        "width": (f32::from(window_size.width) * window.scale_factor()).round(),
+                        "height": (f32::from(window_size.height) * window.scale_factor()).round(),
+                    },
+                    "css_client": {"width": f32::from(window_size.width), "height": f32::from(window_size.height)},
+                    "scale": window.scale_factor(),
+                },
+            }));
         }
         if let Some(page) = &self.page {
             let result = page.update(cx, |page, cx| {

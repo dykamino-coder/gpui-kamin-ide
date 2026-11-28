@@ -7,6 +7,7 @@ use gpui::{Modifiers, ScrollDelta, ScrollWheelEvent, TestAppContext, point, size
 struct Panel {
     page: Entity<DocumentView>,
     top: f32,
+    viewport: gpui::Size<Pixels>,
 }
 
 impl Render for Panel {
@@ -14,8 +15,8 @@ impl Render for Panel {
         div().id("panel").pt(px(self.top)).child(
             div()
                 .id("clip")
-                .w(px(400.))
-                .h(px(300.))
+                .w(self.viewport.width)
+                .h(self.viewport.height)
                 .overflow_hidden()
                 .font_family("Segoe UI")
                 .text_size(px(13.))
@@ -26,6 +27,7 @@ impl Render for Panel {
 
 #[gpui::test]
 fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
+    let (_one, _reader) = crate::why::test_reader();
     let html = LONG.replace("<main></main>", "<main>old text</main>");
     let (panel, cx) = cx.add_window_view(move |window, cx| Panel {
         page: DocumentView::open(
@@ -36,6 +38,7 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
         )
         .unwrap(),
         top: 76.,
+        viewport: size(px(400.), px(300.)),
     });
     frame(cx);
     frame(cx);
@@ -92,6 +95,7 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
     });
 
     // Moving the panel must reject the old origin/clip rather than replay it.
+    crate::why::take();
     let before = cx.update(|_, cx| page.read(cx).document.frame_counters());
     cx.update(|_, cx| {
         panel.update(cx, |panel, cx| {
@@ -109,6 +113,15 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
             .unwrap();
         assert!(builds > 0, "changed embedding replayed stale geometry");
     });
+    let entry = crate::why::take();
+    let miss = entry
+        .journal
+        .causes
+        .iter()
+        .find(|cause| cause.code == "frame_environment.inputs")
+        .expect("changed bounds must explain the environment miss");
+    assert!(miss.detail.contains("bounds_old="), "{}", miss.detail);
+    assert!(miss.detail.contains("bounds_new="), "{}", miss.detail);
     frame(cx);
     let before = cx.update(|_, cx| page.read(cx).document.frame_counters());
     frame(cx);
@@ -116,6 +129,79 @@ fn embedded_frames_and_wheel_replay_without_layout(cx: &mut TestAppContext) {
         assert_eq!(
             page.read(cx).document.frame_counters().since(&before),
             Some((0, 1, 0))
+        );
+    });
+}
+
+#[gpui::test]
+fn fractional_embedding_reuses_resolved_bounds_across_document_steps(cx: &mut TestAppContext) {
+    let (panel, cx) = cx.add_window_view(|window, cx| {
+        let viewport = size(px(1206.), px(728.));
+        Panel {
+            page: DocumentView::open(&mut Document::builder(LONG, ""), viewport, window, cx)
+                .unwrap(),
+            top: 76.,
+            viewport,
+        }
+    });
+    cx.simulate_scale_factor_change(1.25);
+    cx.simulate_resize(size(px(1446.4), px(804.)));
+    frame(cx);
+    frame(cx);
+    let page = cx.update(|_, cx| panel.read(cx).page.clone());
+    cx.update(|_, cx| {
+        let state = page.read(cx).document.state_rc();
+        let bounds = state.root_scroll.as_ref().unwrap().handle.bounds();
+        assert_eq!(bounds.size.width, px(1206.4));
+        assert_eq!(bounds.origin.y, px(76.));
+    });
+    for _ in 0..4 {
+        let before = cx.update(|_, cx| {
+            page.update(cx, |_, cx| cx.notify());
+            page.read(cx).document.frame_counters()
+        });
+        frame(cx);
+        cx.update(|_, cx| {
+            let (builds, replays, inside) = page
+                .read(cx)
+                .document
+                .frame_counters()
+                .since(&before)
+                .unwrap();
+            assert_eq!(
+                (builds, inside),
+                (0, 0),
+                "the rendering step substituted authored dimensions for resolved bounds"
+            );
+            assert!(replays > 0);
+        });
+    }
+    // A changed viewport still rebuilds and reaches the actual scrollport.
+    let before = cx.update(|_, cx| {
+        panel.update(cx, |panel, cx| {
+            panel.viewport.width = px(1100.);
+            panel
+                .page
+                .update(cx, |page, cx| page.resize(panel.viewport, cx).unwrap());
+            cx.notify();
+        });
+        page.read(cx).document.frame_counters()
+    });
+    frame(cx);
+    cx.update(|_, cx| {
+        let document = &page.read(cx).document;
+        assert!(document.frame_counters().since(&before).unwrap().0 > 0);
+        assert_eq!(
+            document
+                .state_rc()
+                .root_scroll
+                .as_ref()
+                .unwrap()
+                .handle
+                .bounds()
+                .size
+                .width,
+            px(1100.)
         );
     });
 }
