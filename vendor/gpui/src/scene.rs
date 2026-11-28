@@ -890,14 +890,27 @@ impl Scene {
             let mut operation = self.relabeled(operation);
             // KaminIDE patch: the mark of a node the record opened inside itself.
             let carried = self.carried(index);
-            if !place(&mut operation) {
-                layer::PlacedMap::skip(&mut self.book.placed_map);
-                self.land_carried(None, None, shift);
-                continue;
-            }
+            let shown = place(&mut operation);
+            let carried = match carried {
+                Some(mark) => match self.carried_landing(&mut operation, mark, shown, index) {
+                    Some(mark) => Some(mark),
+                    None => {
+                        layer::PlacedMap::skip(&mut self.book.placed_map);
+                        self.land_gone();
+                        continue;
+                    }
+                },
+                None if !shown => {
+                    layer::PlacedMap::skip(&mut self.book.placed_map);
+                    self.land_carried(None, None, shift);
+                    continue;
+                }
+                None => None,
+            };
             // KaminIDE patch: a moved copy builds its matrices from the moved pivots.
             if let PaintOperation::Primitive(primitive) = &mut operation
                 && self.scroll.open.is_none()
+                && carried.is_none()
             {
                 self.copied_pivot(primitive, index, false);
             }

@@ -161,6 +161,8 @@ impl Render for DocumentView {
 }
 
 #[cfg(test)]
+mod bar_wheel_tests;
+#[cfg(test)]
 mod fixed_hoisted_tests;
 #[cfg(test)]
 mod fixed_tests;

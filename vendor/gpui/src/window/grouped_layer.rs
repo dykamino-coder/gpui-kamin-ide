@@ -141,7 +141,7 @@ impl Window {
                 node.more = node.more.iter().map(map).collect();
                 node.painted_in = Some(here);
             } else {
-                node.torn = true;
+                node.tear();
             }
         }
         for dependent in frame.scroll_dependents.iter_mut().filter(|dependent| exact && dependent.2 == from) {
