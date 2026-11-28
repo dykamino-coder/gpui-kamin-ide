@@ -43,7 +43,7 @@ pub(crate) async fn sample_with(
     Option<kamin_html::host::capture::Frame>,
     work::Sample,
 )> {
-    let watch = crate::why::Watch::begin(args, cx, window, luid.journal_luid)?;
+    let watch = crate::why::Watch::begin(args, cx, window)?;
     let seq = capture.sequence();
     let out = sample_once(cx, window, fonts, args, step, capture, luid, present).await;
     if let Some(watch) = watch {

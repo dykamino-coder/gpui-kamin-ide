@@ -28,7 +28,7 @@ thread_local! {
     static FRAMES: RefCell<Vec<Value>> = const { RefCell::new(Vec::new()) };
     static OWNERS: RefCell<BTreeMap<String, u64>> = const { RefCell::new(BTreeMap::new()) };
     /// The reader's subscription, for the whole run.
-    static READER: RefCell<Option<kamin_html::why::Reader>> = const { RefCell::new(None) };
+    static READER: RefCell<Option<kamin_html::why::Subscription>> = const { RefCell::new(None) };
 }
 
 /// Counters before one sample.
@@ -46,20 +46,15 @@ impl Watch {
         args: &super::args::Args,
         cx: &AsyncApp,
         window: WindowHandle<View>,
-        luid: (i32, u32),
     ) -> Result<Option<Self>> {
         if args.why.is_none() {
             return Ok(None);
         }
         READER.with(|r| {
-            r.borrow_mut().get_or_insert_with(|| {
-                kamin_html::why::Reader::new(Some(kamin_html::why::MemoryAdapter {
-                    luid_high: luid.0,
-                    luid_low: luid.1,
-                }))
-            });
+            r.borrow_mut()
+                .get_or_insert_with(kamin_html::why::subscribe);
         });
-        let between = take();
+        let between = kamin_html::why::to_json(&kamin_html::why::take());
         let frames = window.read_with(cx, |view, _| view.doc.frame_counters())?;
         let path = kamin_html::paint_path::read();
         Ok(Some(Self {
@@ -113,15 +108,7 @@ impl Watch {
             .filter(|&(i, name)| *name != "write_ns" && after[i] != self.path[i])
             .map(|(i, name)| ((*name).into(), json!(after[i].wrapping_sub(self.path[i]))))
             .collect();
-        let index = FRAMES.with(|f| f.borrow().len()) + 1;
-        window.update(cx, |view, window, cx| {
-            READER.with(|reader| {
-                if let Some(reader) = reader.borrow_mut().as_mut() {
-                    reader.poll_document_memory(index as u64, "frame-end", &view.doc, window, cx);
-                }
-            });
-        })?;
-        let mut entry = take();
+        let mut entry = kamin_html::why::to_json(&kamin_html::why::take());
         // Primitives and painted area by batch kind since the last sample (`[gpu]`,
         // with GPU time per kind under KAMIN_DIAG_GPU_TIMING=1).
         let gpu_batches = cx.update(|cx| cx.instrumentation().batches.take_line());
@@ -131,6 +118,7 @@ impl Watch {
         // Boxes laid out with the inputs of the previous layout pass since the last sample.
         let inputs =
             cx.update(|cx| layout_inputs::to_json(cx.instrumentation().layout_inputs.take()));
+        let index = FRAMES.with(|f| f.borrow().len()) + 1;
         let fields = json!({
             "frame": index,
             "mode": format!("{:?}", args.mode).to_lowercase(),
@@ -159,18 +147,6 @@ impl Watch {
         FRAMES.with(|f| f.borrow_mut().push(entry));
         write(args.why.as_deref().ok_or("--why without a directory")?)
     }
-}
-
-fn take() -> Value {
-    READER.with(|reader| {
-        kamin_html::why::to_json(
-            &reader
-                .borrow_mut()
-                .as_mut()
-                .expect("why reader initialized by Watch::begin")
-                .take(),
-        )
-    })
 }
 
 /// Builds, replays and builds inside the draw of the document's frame.

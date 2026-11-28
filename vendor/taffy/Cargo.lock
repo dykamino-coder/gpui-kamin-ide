@@ -192,35 +192,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[patch.unused]]
-name = "gpui-base"
-version = "0.7.1"
-
-[[patch.unused]]
-name = "gpui-component"
-version = "0.7.1"
-
-[[patch.unused]]
-name = "gpui-pre"
-version = "0.3.8"
-
-[[patch.unused]]
-name = "gpui-pre-windows"
-version = "0.3.8"
-
-[[patch.unused]]
-name = "resvg"
-version = "0.48.1"
-
-[[patch.unused]]
-name = "tendril"
-version = "0.5.1"
-
-[[patch.unused]]
-name = "usvg"
-version = "0.48.1"
-
-[[patch.unused]]
-name = "xml-rs"
-version = "0.8.29"

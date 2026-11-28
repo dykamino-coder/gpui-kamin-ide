@@ -34,8 +34,6 @@ required-features = ["wpt-harness"]
 [dependencies]
 # The DevTools `why` protocol form (`why::to_json`).
 serde_json.workspace = true
-# Process journal service; allocation hooks require a separate explicit feature.
-kamin-profiler = { path = "../profiler" }
 # Нижний контракт шрифтов; реэкспорт `kamin_html::font_facts` сохраняет путь.
 kamin-font-facts = { path = "../font-facts" }
 # Нижняя фаза: DOM, CSS, каскад, ресурсы и нижние данные документа; реэкспорт

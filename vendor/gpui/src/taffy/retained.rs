@@ -59,8 +59,6 @@ use std::any::Any;
 use std::rc::Rc;
 use taffy::tree::NodeId;
 
-mod memory;
-
 /// `NodeContext::key_slot` of a leaf that is in no candidate list.
 pub(super) const NO_SLOT: u32 = u32::MAX;
 
@@ -375,7 +373,7 @@ impl TaffyLayoutEngine {
         }
         // A pass only adds nodes, so this pass's nodes are in the tree: when
         // they are all of it there is nothing to sweep, and the sweep would
-        // visit the key table, which preserves generations of retired nodes.
+        // visit every slot the tree ever had (its storage never shrinks).
         if live.len() != self.taffy.total_node_count() {
             self.taffy.retain_nodes(|node| live.contains(&node));
         }
@@ -407,11 +405,6 @@ impl TaffyLayoutEngine {
                 list.push(position as u32);
             }
         }
-        // Keep capacity for the nodes that survived this pass, rather than the
-        // largest document ever laid out in this window.
-        retained.memos.shrink_to_fit();
-        retained.keys.shrink_to_fit();
-        retained.by_key.shrink_to_fit();
         retained.prev = std::mem::take(&mut retained.seq);
         retained.prev_pass = std::mem::take(&mut retained.pass).0.get();
         retained.cursor = 0;
@@ -419,7 +412,6 @@ impl TaffyLayoutEngine {
         retained.next_key = None;
         retained.keys_enabled = false;
         retained.live = live;
-        retained.live.shrink_to_fit();
         retained.live.clear();
     }
 

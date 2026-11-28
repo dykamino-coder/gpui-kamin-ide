@@ -68,23 +68,3 @@ fn codes_are_unique_and_cover_frame_misses_and_refusals() {
         assert!(!is_code(code), "{code}");
     }
 }
-
-#[test]
-fn process_publications_survive_a_readers_take_without_reusing_bench_memory_key() {
-    let (_one, _sub) = test_reader();
-    let mut reader = Reader::new(None);
-    assert!(reader.poll_memory(7, "frame-end", || vec![MemoryResource {
-        owner: "gpu/target/frame".into(),
-        bytes: 4096,
-        count: 1,
-    }]));
-    let mut value = to_json(&reader.take());
-    value["memory"] = json!({"heap_bytes": 32});
-    assert_eq!(value["memory_samples"][0]["frame"], 7);
-    assert_eq!(
-        value["memory_samples"][0]["logical_resources"][0]["bytes"],
-        4096
-    );
-    assert_eq!(value["memory"]["heap_bytes"], 32);
-    assert_eq!(to_json(&reader.take())["memory_samples"], json!([]));
-}

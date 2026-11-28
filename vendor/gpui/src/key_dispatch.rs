@@ -75,8 +75,6 @@ impl DispatchNodeId {
     pub(crate) const NONE: Self = Self(usize::MAX);
 }
 
-mod storage;
-
 pub(crate) struct DispatchTree {
     node_stack: Vec<DispatchNodeId>,
     pub(crate) context_stack: Vec<KeyContext>,
@@ -193,7 +191,6 @@ impl DispatchTree {
     }
 
     pub fn clear(&mut self) {
-        self.release_retired_storage();
         self.node_stack.clear();
         self.context_stack.clear();
         self.view_stack.clear();

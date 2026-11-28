@@ -5,13 +5,8 @@ edition.workspace = true
 publish = false
 
 # Отчёт о памяти по владельцам (docs/memprof.md): каждый владелец меряет свои
-# блоки кучи по запросу. По умолчанию без зависимостей.
-
-[features]
-serde = ["dep:serde"]
-
-[dependencies]
-serde = { workspace = true, optional = true }
+# блоки кучи по запросу. Без зависимостей; движок подключает его только с
+# фичей `heap-report`, обычная сборка его не видит.
 
 [lints]
 workspace = true
