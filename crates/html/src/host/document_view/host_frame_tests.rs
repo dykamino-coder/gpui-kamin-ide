@@ -166,10 +166,16 @@ fn root_document_view_also_skips_an_unchanged_window_frame(cx: &mut TestAppConte
         )
     });
     let fixed = super::fixed_tests::boxes(cx);
+    let builds = cx.update(|_, cx| page.read(cx).document.retained_frames().0);
     super::fixed_tests::wheel(cx);
     draw(cx);
     assert!(super::fixed_tests::root(&page, cx).offset().y < px(0.));
     assert_eq!(super::fixed_tests::boxes(cx), fixed);
+    assert_eq!(
+        cx.update(|_, cx| page.read(cx).document.retained_frames().0),
+        builds,
+        "host-only cached frames must carry the document's record"
+    );
     cx.update(|_, cx| {
         assert!(
             page.read(cx).document.take_root_phases()["work_calls"]["total"]

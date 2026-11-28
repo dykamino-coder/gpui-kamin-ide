@@ -148,6 +148,7 @@ impl Retained {
                     }
                 }
                 record.painted();
+                record.track_continuity(window);
                 if let Some(inputs) = &record.inputs {
                     inputs.replayed(window);
                 }
@@ -185,6 +186,7 @@ impl Retained {
                 .map(|(_, miss)| miss);
             record.paint = paint;
             record.painted();
+            record.track_continuity(window);
             record.publish(&self.slot, refusal);
             ((), record)
         });

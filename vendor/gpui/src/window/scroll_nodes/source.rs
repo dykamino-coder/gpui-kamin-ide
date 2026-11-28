@@ -25,6 +25,12 @@ pub(crate) enum NodeSource {
 }
 
 impl NodeSource {
+    /// These sources paint positions on the device grid, even when their CSS
+    /// representation loses low bits far down a long document.
+    pub(crate) fn device_grid(&self) -> bool {
+        matches!(self, Self::Handle(_) | Self::Viewport { .. } | Self::Visible(_) | Self::Follow { device_grid: true, .. })
+    }
+
     /// The offset now at device `scale`: a handle's clamped to its scroll
     /// range, as prepaint clamps it (written back, so the handle reads what
     /// is shown), then the translation a frame paints for it, aligned to
@@ -53,9 +59,16 @@ impl NodeSource {
         parent: Point<Pixels>,
         old: Point<Pixels>,
         new: Point<Pixels>,
+        scale: f32,
     ) -> Point<Pixels> {
         match self {
             Self::Viewport { .. } => Point::default(),
+            _ if self.device_grid() => {
+                // Subtract device positions before converting back to CSS. At
+                // 112000 CSS px / 1.25 DPR, (new - old) * DPR loses ~0.004 px.
+                let delta = |old: Pixels, new: Pixels| px(((new.0 * scale).round() - (old.0 * scale).round()) / scale);
+                parent + point(delta(old.x, new.x), delta(old.y, new.y))
+            }
             _ => parent + (new - old),
         }
     }

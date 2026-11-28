@@ -11,6 +11,7 @@ pub(super) struct Inputs {
     pub(super) key: FrameKey,
     window: AnyWindowHandle,
     serial: Cell<u64>,
+    continuity: std::cell::RefCell<Option<gpui::RetainedContinuity>>,
     environment: WindowKey,
     pub(super) layout: gpui::RetainedLayoutInputs,
 }
@@ -30,6 +31,7 @@ impl Inputs {
             key,
             window: window.window_handle(),
             serial: Cell::new(window.frame_serial()),
+            continuity: Default::default(),
             environment,
             layout,
         })
@@ -37,7 +39,7 @@ impl Inputs {
 
     pub(super) fn matches(&self, environment: &WindowKey, window: &Window) -> bool {
         let matches = self.window == window.window_handle()
-            && self.serial.get().checked_add(1) == Some(window.frame_serial())
+            && self.previous(window)
             && window.retained_root_environment()
             && self.environment == *environment;
         if !matches {
@@ -64,6 +66,15 @@ impl Inputs {
 
     pub(super) fn replayed(&self, window: &Window) {
         self.serial.set(window.frame_serial());
+    }
+
+    fn previous(&self, window: &Window) -> bool {
+        self.serial.get().checked_add(1) == Some(window.frame_serial())
+            || self
+                .continuity
+                .borrow()
+                .as_ref()
+                .is_some_and(|proof| proof.is_previous(window))
     }
 }
 
@@ -128,7 +139,12 @@ impl Record {
         }
         let continued = self.painted
             && self.frame.is_some_and(|(prior, generation)| {
-                generation == epoch && prior.checked_add(1) == Some(serial)
+                generation == epoch
+                    && (prior.checked_add(1) == Some(serial)
+                        || self
+                            .inputs
+                            .as_ref()
+                            .is_some_and(|inputs| inputs.previous(window)))
             });
         let next = store.draw(continued);
         self.frame = Some((serial, next));
@@ -138,6 +154,14 @@ impl Record {
 
     pub(super) fn painted(&mut self) {
         self.painted = true;
+    }
+
+    pub(super) fn track_continuity(&self, window: &mut Window) {
+        if let Some(inputs) = &self.inputs {
+            inputs
+                .continuity
+                .replace(Some(window.retain_continuity(&self.prepaint, &self.paint)));
+        }
     }
 
     /// Publish the record for replay, or keep why it is not (`refusal`).

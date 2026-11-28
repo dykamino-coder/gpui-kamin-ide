@@ -35,7 +35,7 @@ impl Window {
         }
         chain.reverse();
         ScrollMotion(Rc::new(move || chain.iter().fold(Point::default(), |parent, (source, old)| {
-            source.replay_shift(parent, *old, source.offset(scale))
+            source.replay_shift(parent, *old, source.offset(scale), scale)
         })))
     }
 }

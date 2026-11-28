@@ -363,7 +363,7 @@ impl Window {
                     None => chain,
                 };
                 let clip = if visible { clip } else { Bounds::default() };
-                let shift = node.source.replay_shift(parent_shift, node.offset, new);
+                let shift = node.source.replay_shift(parent_shift, node.offset, new, self.scale_factor());
                 // A matrix without its pivot is drawn only where it was built.
                 if node.unpivoted && shift != Point::default() {
                     return Err(at_node(ScrollRefusal::Transform, index));
@@ -377,7 +377,8 @@ impl Window {
                 // Painted offsets are whole device pixels (`ScrollHandle::painted`)
                 // up to the f32 error of their CSS values.
                 let off = |v: f32| (v - v.round()).abs() > 1e-3;
-                if !follower && (off(device.x.0) || off(device.y.0)) {
+                let grid = node.source.device_grid() && parent.is_none_or(|parent| parent.whole);
+                if !follower && !grid && (off(device.x.0) || off(device.y.0)) {
                     return Err(at_node(ScrollRefusal::Fractional, index));
                 }
                 // A node whose children painted nothing as it (hidden, or painted

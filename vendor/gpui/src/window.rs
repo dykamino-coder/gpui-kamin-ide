@@ -95,6 +95,8 @@ pub use scroll_replay::ScrollReplay; pub use scroll_refusal::ScrollRefusal;
 pub(crate) use retained::{ink_add, reset_ink_scopes, scoped_ink};
 pub(crate) use retained::InkSinks;
 pub use retained::{InkScope, InkSink, InkSinkList, LayoutSnapshot, ink_scope_tainted, RetainedPaint, RetainedSubtree, RetainedPrepaint};
+mod retained_continuity;
+pub use retained_continuity::RetainedContinuity;
 mod hit_transform;
 pub use hit_transform::PaintHitScope;
 pub use paint_record::{PaintRecord, PaintRecordError, PaintPlacement, PaintPlan, PaintSegment, PaintSegmentId, PaintSegmentRecords, PaintSegmentSlice, PaintSegmentClips,
@@ -1572,6 +1574,8 @@ pub struct Window {
     pub(crate) hover_notifies: usize,
     /// KaminIDE patch: frames drawn so far (Window::frame_serial).
     pub(crate) frame_serial: u64,
+    /// Records whose slots must survive cached ancestor replays.
+    retained_continuity: Vec<std::rc::Weak<retained_continuity::Continuity>>,
     pending_input: Option<PendingInput>,
     pending_modifier: ModifierState,
     pub(crate) pending_input_observers: SubscriberSet<(), AnyObserver>,
@@ -2534,6 +2538,7 @@ impl Window {
             interaction_epoch: 0,
             hover_notifies: 0,
             frame_serial: 0,
+            retained_continuity: Vec::new(),
             pending_input: None,
             pending_modifier: ModifierState::default(),
             pending_input_observers: SubscriberSet::new(),
@@ -4622,6 +4627,7 @@ impl Window {
     }
 
     pub(crate) fn reuse_prepaint(&mut self, range: Range<PrepaintStateIndex>) {
+        let same_slots = range.start.pack().0 == self.prepaint_index().pack().0;
         // KaminIDE patch: the scroll nodes prepainted in the range, and where
         // they land (deferred draws keep their owner node, `scroll_deferred`).
         let owners = scroll_deferred::OwnerMap::new(&range, self);
@@ -4658,8 +4664,11 @@ impl Window {
                 .iter()
                 .map(|(id, type_id)| (id.clone(), *type_id)),
         );
-        self.text_system
-            .reuse_layouts(range.start.line_layout_index..range.end.line_layout_index);
+        let same_lines = self.text_system
+            .reuse_layouts(range.start.line_layout_index.clone()..range.end.line_layout_index.clone());
+        if same_slots && same_lines {
+            self.carry_retained_prepaint(&range);
+        }
 
         let reused_subtree = self.next_frame.dispatch_tree.reuse_subtree(
             range.start.dispatch_tree_index..range.end.dispatch_tree_index,
@@ -4723,7 +4732,7 @@ impl Window {
     }
 
     /// KaminIDE patch: `reuse_paint` of everything but the scene commands.
-    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) {
+    pub(crate) fn reuse_paint_state(&mut self, range: &Range<PaintIndex>) -> bool {
         // Cached elements still exist in the frame even when their paint methods don't run.
         #[cfg(any(test, feature = "test-support"))]
         for (selector, bounds) in &self.rendered_frame.debug_bounds_records
@@ -4762,11 +4771,15 @@ impl Window {
         );
 
         self.text_system
-            .reuse_layouts(range.start.line_layout_index.clone()..range.end.line_layout_index.clone());
+            .reuse_layouts(range.start.line_layout_index.clone()..range.end.line_layout_index.clone())
     }
 
     pub(crate) fn reuse_paint(&mut self, range: Range<PaintIndex>) {
-        self.reuse_paint_state(&range);
+        let same_slots = self.paint_slots_match(&range.start);
+        let same_lines = self.reuse_paint_state(&range);
+        if same_slots && same_lines {
+            self.carry_retained_paint(&range);
+        }
         // KaminIDE patch: a range recorded inside a scene layer is in its scene.
         let scenes = range.start.scene_index..range.end.scene_index;
         let landed = self.next_frame.scene.paint_operations.len();
