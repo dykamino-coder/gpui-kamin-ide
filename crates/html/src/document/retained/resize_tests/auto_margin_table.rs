@@ -32,3 +32,24 @@ fn table_auto_margins_follow_free_space_after_replaying_an_overflow(cx: &mut Tes
         }
     }
 }
+
+#[gpui::test]
+fn negative_table_end_margin_does_not_prove_zero_free_space(cx: &mut TestAppContext) {
+    let html = "<!doctype html><style>body{margin:0}table{border-spacing:0;\
+                margin-left:auto;margin-right:-100px}td{padding:0}\
+                td div{width:500px;height:20px;background:blue}</style>\
+                <table><tr><td><div></div></td></tr></table>";
+    let mut app = cx.clone();
+    let (view, vcx) = open(&mut app, html);
+    frame(vcx);
+    resize(&view, vcx, 401.);
+    for width in [400., 399., 450., 400.] {
+        resize(&view, vcx, width);
+        let actual = scene(vcx);
+        let mut fresh_app = cx.clone();
+        let (fresh, fresh_cx) = open(&mut fresh_app, html);
+        fresh_cx.update(|_, cx| fresh.update(cx, |v, _| v.viewport.0 = width));
+        frame(fresh_cx);
+        assert_eq!(actual, scene(fresh_cx), "negative end margin at {width}");
+    }
+}

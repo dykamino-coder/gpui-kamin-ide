@@ -223,7 +223,13 @@ fn wrapper_overflows(e: &Element) -> bool {
         && [m.left, m.right].contains(&Some(Len::Auto))
         && [m.left, m.right]
             .into_iter()
-            .all(|m| matches!(m, None | Some(Len::Auto | Len::Px(_))))
+            // A negative fixed margin can leave positive free space even
+            // when the content overflows the wrapper's border box.
+            .all(|m| match m {
+                None | Some(Len::Auto) => true,
+                Some(Len::Px(px)) => px >= 0.0,
+                _ => false,
+            })
 }
 
 /// Таблица стоит у начального края обёртки при любой её ширине: поля
