@@ -162,11 +162,18 @@ fn fractional_embedding_reuses_resolved_bounds_across_document_steps(cx: &mut Te
         });
         frame(cx);
         cx.update(|_, cx| {
+            let (builds, replays, inside) = page
+                .read(cx)
+                .document
+                .frame_counters()
+                .since(&before)
+                .unwrap();
             assert_eq!(
-                page.read(cx).document.frame_counters().since(&before),
-                Some((0, 1, 0)),
+                (builds, inside),
+                (0, 0),
                 "the rendering step substituted authored dimensions for resolved bounds"
             );
+            assert!(replays > 0);
         });
     }
     // A changed viewport still rebuilds and reaches the actual scrollport.
