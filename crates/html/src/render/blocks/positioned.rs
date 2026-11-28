@@ -193,12 +193,17 @@ pub(crate) fn static_position_layer(
                 kept
             };
             let contiguous = below && out.len() == below_run_end;
+            let holder = div().relative().w_full().h_0().flex_shrink_0();
+            // Recorded in place, the static position of an `rtl` parent is
+            // its inline-end edge (CSS 2.1 §10.3.7), as `spot_place` anchors
+            // the late layer's box.
+            let holder = if !below && rtl && !wm.vertical() {
+                holder.flex().flex_row().justify_end()
+            } else {
+                holder
+            };
             out.push(
-                div()
-                    .relative()
-                    .w_full()
-                    .h_0()
-                    .flex_shrink_0()
+                holder
                     .child(kept)
                     .into_any_element(),
             );
