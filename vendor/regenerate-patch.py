@@ -35,11 +35,9 @@ FIXES = {
     "tendril": ["Admission: fallible reservation before tendril growth; a storage-owned lease survives shared views until the last allocation owner is dropped."],
     "xml-rs": ["Admission: canonical reader storage and leased events grow fallibly before mutation; a typed terminal driver releases partial state and stops reads, entity expansion and callbacks immediately.", "XML namespace constraints: reject duplicate declarations and duplicate expanded attribute names; recursive entity references remain syntax errors independently of work limits."],
     "gpui": [
-<<<<<<< HEAD
+        "Smooth scroll replay: retain device-grid scrollbar followers, conditional native arrows, and source-built perspective planes with independent ancestor spatial frames.",
         "Empty scroll nodes: carry scene ownership and exact landing positions even when a record paints no commands; nested record/segment copies preserve fixed anchors across moved replay.",
-=======
         "Font fallback normalization: carry a typed raw metric target in the shared fallback configuration, including font identity and shaping cache keys, without growing Font or FontRun.",
->>>>>>> origin/main
         "Effect lifetime diagnostics: opt-in batch journal reports immutable mask uploads and texture owners released when the complete scene stops using their effect kind.",
         "Moved frames: a frame whose largest scroll node moved by whole device pixels is compared, cell by cell and with retained layers expanded, against the last frame moved by that step (both cut by the moved window); where they agree a renderer may copy the kept pixels, and the rest becomes at most four damage rectangles (`Scene::frame_shift`). Layer sources stay held from recording to present so the comparison reads what the last frame drew.",
         "Analytic gradients: immutable geometry and arbitrary sRGB stops belong to retained commands; replay, splicing, damage comparison and group batches preserve content while remapping scene-local descriptor indices.",
