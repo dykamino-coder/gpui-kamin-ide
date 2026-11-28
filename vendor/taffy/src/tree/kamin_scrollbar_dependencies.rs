@@ -21,6 +21,27 @@ pub struct LayoutDependencyEvent {
     pub descendant_gutter: bool,
 }
 
+// Keep diagnostic event temporaries out of every recursive layout stack frame.
+#[cold]
+#[inline(never)]
+fn observe_dependency_retry(
+    observe: fn(LayoutDependencyEvent),
+    node: NodeId,
+    inputs: &LayoutInput,
+    output: &LayoutOutput,
+    own_gutter: bool,
+    descendant_gutter: bool,
+) {
+    observe(LayoutDependencyEvent {
+        kind: "layout.dependency_retry",
+        node,
+        inputs: *inputs,
+        output: output.clone(),
+        own_gutter,
+        descendant_gutter,
+    });
+}
+
 /// Global configuration values for a TaffyTree instance
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TaffyConfig {
@@ -160,14 +181,14 @@ where
                 return output;
             }
             if let Some(observe) = self.taffy.config.layout_observer {
-                observe(LayoutDependencyEvent {
-                    kind: "layout.dependency_retry",
-                    node: node_id,
-                    inputs,
-                    output: output.clone(),
-                    own_gutter: own_bars_changed,
-                    descendant_gutter: self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY != 0,
-                });
+                observe_dependency_retry(
+                    observe,
+                    node_id,
+                    &inputs,
+                    &output,
+                    own_bars_changed,
+                    self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY != 0,
+                );
             }
             #[cfg(feature = "grid")]
             self.grid_memos.0.retain(|(grid, _)| *grid != node_id);

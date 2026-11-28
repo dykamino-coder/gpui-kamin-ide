@@ -23887,10 +23887,10 @@ index 0000000000000000000000000000000000000000..49e969a71d51de9d2d92ffb498c1ecf1
 +}
 diff --git a/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c3c73b0d0ccff77a77c4c45d1e008253afe3b843
+index 0000000000000000000000000000000000000000..03d09c26621a896135a8141f77de8c496375910a
 --- /dev/null
 +++ b/vendor/taffy/src/tree/kamin_scrollbar_dependencies.rs
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,208 @@
 +//! Gutter changes invalidate intrinsic sizes before an ancestor commits its result.
 +//! As Blink's BlockNode retry, freeze appeared bars for the rest of the layout transaction
 +//! while the box keeps the size they appeared at.
@@ -23912,6 +23912,27 @@ index 0000000000000000000000000000000000000000..c3c73b0d0ccff77a77c4c45d1e008253
 +    pub own_gutter: bool,
 +    /// Whether a descendant invalidated this box.
 +    pub descendant_gutter: bool,
++}
++
++// Keep diagnostic event temporaries out of every recursive layout stack frame.
++#[cold]
++#[inline(never)]
++fn observe_dependency_retry(
++    observe: fn(LayoutDependencyEvent),
++    node: NodeId,
++    inputs: &LayoutInput,
++    output: &LayoutOutput,
++    own_gutter: bool,
++    descendant_gutter: bool,
++) {
++    observe(LayoutDependencyEvent {
++        kind: "layout.dependency_retry",
++        node,
++        inputs: *inputs,
++        output: output.clone(),
++        own_gutter,
++        descendant_gutter,
++    });
 +}
 +
 +/// Global configuration values for a TaffyTree instance
@@ -24053,14 +24074,14 @@ index 0000000000000000000000000000000000000000..c3c73b0d0ccff77a77c4c45d1e008253
 +                return output;
 +            }
 +            if let Some(observe) = self.taffy.config.layout_observer {
-+                observe(LayoutDependencyEvent {
-+                    kind: "layout.dependency_retry",
-+                    node: node_id,
-+                    inputs,
-+                    output: output.clone(),
-+                    own_gutter: own_bars_changed,
-+                    descendant_gutter: self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY != 0,
-+                });
++                observe_dependency_retry(
++                    observe,
++                    node_id,
++                    &inputs,
++                    &output,
++                    own_bars_changed,
++                    self.taffy.nodes[node_id.into()].scrollbar_state & DIRTY != 0,
++                );
 +            }
 +            #[cfg(feature = "grid")]
 +            self.grid_memos.0.retain(|(grid, _)| *grid != node_id);
