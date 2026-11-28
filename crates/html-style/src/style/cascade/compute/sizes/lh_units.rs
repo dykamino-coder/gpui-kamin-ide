@@ -8,6 +8,11 @@ pub(super) fn inherit_lh_units(
     c: &mut Computed,
     vcx: crate::values::ValueCx<'_>,
 ) {
+    // Nothing to resolve, so neither the line nor the font is measured: the writes
+    // below detach shared style groups (copy on write) even without a value change.
+    if !reads_lh_units(c) {
+        return;
+    }
     // css-values-4 §6.1.4, оговорка про font-affecting properties:
     // «when ''lh'' or ''rlh'' units are used in the value of the
     // 'line-height' property or font-affecting properties on the element
@@ -145,4 +150,40 @@ pub(super) fn inherit_lh_units(
     }
     em(&mut c.reset_background.bg_pos.x);
     em(&mut c.reset_background.bg_pos.y);
+}
+
+/// Whether `c` holds a length this pass resolves: `lh` in its own lengths and font, or `em`
+/// in its background lengths.
+fn reads_lh_units(c: &Computed) -> bool {
+    use crate::style::values::value::Len;
+    let lh = |l: &Option<Len>| matches!(l, Some(Len::Lh(_) | Len::LhPx(..)));
+    let em = |l: &Option<Len>| matches!(l, Some(Len::Em(_)));
+    let b = &c.reset_box_layout;
+    let (pad, mar) = (&b.snap.padding, &b.snap.margin);
+    let bg = match &c.reset_background.bg_size {
+        crate::style::computed::BgSize::Fixed(w, h) => lh(w) || lh(h) || em(w) || em(h),
+        _ => false,
+    };
+    bg || em(&c.reset_background.bg_pos.x)
+        || em(&c.reset_background.bg_pos.y)
+        || lh(&c.inh.font.line_height)
+        || lh(&c.inh.font.font_size)
+        || [
+            &b.width,
+            &b.height,
+            &b.min_width,
+            &b.min_height,
+            &b.max_width,
+            &b.max_height,
+            &pad.top,
+            &pad.right,
+            &pad.bottom,
+            &pad.left,
+            &mar.top,
+            &mar.right,
+            &mar.bottom,
+            &mar.left,
+        ]
+        .into_iter()
+        .any(lh)
 }
