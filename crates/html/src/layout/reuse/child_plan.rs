@@ -41,12 +41,16 @@ struct Entry {
     owner: BoxId,
     /// `BoxTree::build_epoch` of the owner when the list was prepared.
     at: u32,
-    /// The nodes the container was given: address and length of the slice.
+    /// The nodes the container was given: address and length of the slice, and the nodes.
+    /// Their copies hold the snapshots of their children, so an edit below them (copy on
+    /// write from the root) gives them new snapshots: a shallow compare sees any edit.
     nodes: (usize, usize),
+    sources: Vec<Node>,
     style: BoxStyle,
     inputs: Box<[u32]>,
-    /// The containing block and available widths, when the preparation read them.
-    widths: Option<(Option<f32>, Option<f32>)>,
+    /// The width accessors the preparation read (`scoped::CB_WIDTH`, `AVAIL_W`) and their values.
+    reads: u8,
+    widths: (Option<f32>, Option<f32>),
     plan: Rc<dyn Any>,
     /// `Store::epoch` of the last build that took or made it.
     seen: Cell<u64>,
@@ -88,16 +92,13 @@ impl ChildPlans {
 
 impl Entry {
     fn holds(&self, key: &Key<'_>, opts: &RenderOpts) -> bool {
-        let widths = || {
-            let constraints = &opts.cx.constraints;
-            (constraints.cb_width(), constraints.avail_w())
-        };
         self.owner == key.owner
             && self.at == key.at
             && self.nodes == key.nodes
             && *self.inputs == *key.inputs
+            && same_nodes(&self.sources, key.sources)
             && self.style.same_box_values(key.style)
-            && self.widths.is_none_or(|read| read == widths())
+            && (self.reads == 0 || opts.cx.constraints.read_widths(self.reads) == self.widths)
     }
 }
 
@@ -105,6 +106,7 @@ struct Key<'a> {
     owner: BoxId,
     at: u32,
     nodes: (usize, usize),
+    sources: &'a [Node],
     style: &'a BoxStyle,
     inputs: &'a [u32],
 }
@@ -141,6 +143,7 @@ impl FlowReuse {
             owner,
             at,
             nodes: (nodes.as_ptr() as usize, nodes.len()),
+            sources: nodes,
             style: inherited,
             inputs,
         };
@@ -153,13 +156,11 @@ impl FlowReuse {
             plans.count(|s| s.reused += 1);
             return plan;
         }
-        let read = Rc::new(Cell::new(false));
+        let read = Rc::new(Cell::new(0));
         let saved = opts.cx.constraints.track_reads(read.clone());
         let (plan, viewport) = crate::values::viewport_reads::track(opts.cx.vcx().doc, make);
-        let widths = read.get().then(|| {
-            let constraints = &opts.cx.constraints;
-            (constraints.cb_width(), constraints.avail_w())
-        });
+        let reads = read.get();
+        let widths = opts.cx.constraints.read_widths(reads);
         opts.cx.constraints.untrack_reads(saved);
         crate::work::add!(ChildPlansBuilt, 1);
         plans.count(|s| s.built += 1);
@@ -175,8 +176,10 @@ impl FlowReuse {
             owner,
             at,
             nodes: key.nodes,
+            sources: nodes.to_vec(),
             style: inherited.clone(),
             inputs: inputs.into(),
+            reads,
             widths,
             plan: plan.clone(),
             seen: Cell::new(epoch),
@@ -184,4 +187,19 @@ impl FlowReuse {
         plans.with(|map| map.insert(id, Rc::new(entry)));
         plan
     }
+}
+
+/// The same nodes apart from their children's contents: equal values (`dom::same_box`) and
+/// the same children snapshots, or equal texts.
+fn same_nodes(kept: &[Node], now: &[Node]) -> bool {
+    kept.len() == now.len()
+        && kept.iter().zip(now).all(|pair| match pair {
+            (Node::Element(a), Node::Element(b)) => {
+                crate::dom::same_box(a, b) && a.children.mark().holds(&b.children)
+            }
+            (Node::Text(a), Node::Text(b)) => {
+                a.first_source() == b.first_source() && a.as_str() == b.as_str()
+            }
+            _ => false,
+        })
 }

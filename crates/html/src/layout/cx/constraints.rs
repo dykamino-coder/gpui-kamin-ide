@@ -55,15 +55,15 @@ pub(crate) trait WidthSink {
 #[derive(Default)]
 struct WidthReads {
     sink: Cell<Option<Rc<dyn WidthSink>>>,
-    /// Every read, outside or not, of one build step (`BoxConstraints::track_reads`).
-    any: Cell<Option<Rc<Cell<bool>>>>,
+    /// Every read, outside or not, of one build step, by accessor (`BoxConstraints::track_reads`).
+    any: Cell<Option<Rc<Cell<u8>>>>,
 }
 
 impl WidthReads {
-    fn note(&self, outside: bool) {
+    fn note(&self, outside: bool, which: u8) {
         let any = self.any.take();
         if let Some(any) = &any {
-            any.set(true);
+            any.set(any.get() | which);
         }
         self.any.set(any);
         if !outside {
@@ -115,14 +115,14 @@ impl BoxConstraints {
     /// Containing-block width (see the field); a read of an outside width
     /// is recorded.
     pub(crate) fn cb_width(&self) -> Option<f32> {
-        self.widths.note(self.cb_outside.get());
+        self.widths.note(self.cb_outside.get(), scoped::CB_WIDTH);
         self.cb_width
     }
 
     /// Available width of `width: auto` blocks (see the field); a read of an
     /// outside width is recorded.
     pub(crate) fn avail_w(&self) -> Option<f32> {
-        self.widths.note(self.avail_outside.get());
+        self.widths.note(self.avail_outside.get(), scoped::AVAIL_W);
         self.avail_w
     }
 
@@ -158,7 +158,7 @@ impl BoxConstraints {
         }
         let seen = f(self.avail_w);
         if seen != blind {
-            self.widths.note(self.avail_outside.get());
+            self.widths.note(self.avail_outside.get(), scoped::AVAIL_W);
         }
         seen
     }
@@ -197,9 +197,7 @@ impl BoxConstraints {
             Some(outer) => Rc::new(BothSinks(sink, outer)),
             None => sink,
         };
-        self.widths = WidthReads {
-            sink: Cell::new(Some(sink)),
-        };
+        self.widths.sink.set(Some(sink));
         self.cb_outside.set(true);
         self.avail_outside.set(true);
     }

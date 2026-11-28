@@ -23,20 +23,33 @@ impl WidthSink for BothSinks {
     }
 }
 
+/// The accessors `track_reads` tells apart: `cb_width` and `avail_w`.
+pub(crate) const CB_WIDTH: u8 = 1;
+pub(crate) const AVAIL_W: u8 = 2;
+
 /// What `track_reads` replaced in the context.
-pub(crate) struct ScopedReads(Option<Rc<Cell<bool>>>);
+pub(crate) struct ScopedReads(Option<Rc<Cell<u8>>>);
 
 impl BoxConstraints {
     /// Record into `read` every width read of one build step until `untrack_reads`,
-    /// outside or not, in place: the copies made meanwhile record too. Unlike
-    /// `track_scoped`, what the tracked subtrees around the step record is unchanged.
-    pub(crate) fn track_reads(&self, read: Rc<Cell<bool>>) -> ScopedReads {
+    /// outside or not, as a set of accessors (`CB_WIDTH`, `AVAIL_W`), in place: the copies
+    /// made meanwhile record too. Unlike `track_scoped`, what the tracked subtrees around
+    /// the step record is unchanged.
+    pub(crate) fn track_reads(&self, read: Rc<Cell<u8>>) -> ScopedReads {
         ScopedReads(self.widths.any.replace(Some(read)))
     }
 
     /// End `track_reads`: the context records as before it.
     pub(crate) fn untrack_reads(&self, saved: ScopedReads) {
         self.widths.any.set(saved.0);
+    }
+
+    /// The widths the accessors in `reads` give, read through them: a tracked subtree
+    /// around the step records them as the step itself did.
+    pub(crate) fn read_widths(&self, reads: u8) -> (Option<f32>, Option<f32>) {
+        let cb = (reads & CB_WIDTH != 0).then(|| self.cb_width()).flatten();
+        let avail = (reads & AVAIL_W != 0).then(|| self.avail_w()).flatten();
+        (cb, avail)
     }
 }
 
@@ -116,12 +129,16 @@ mod tests {
         let cx = BoxConstraints::default();
         let outer = Rc::new(Cell::new(false));
         cx.track_widths_in_place(outer.clone());
-        let read = Rc::new(Cell::new(false));
+        let read = Rc::new(Cell::new(0));
         let saved = cx.track_reads(read.clone());
         let copy = cx.clone();
         let _ = copy.cb_width();
         cx.untrack_reads(saved);
-        assert!(read.get(), "a copy made in the step records its read");
+        assert_eq!(
+            read.get(),
+            CB_WIDTH,
+            "a copy made in the step records its read"
+        );
         assert_eq!(
             outer.get(),
             cx.cb_outside.get(),
