@@ -74,10 +74,18 @@ impl Entry {
             (Some(a), Some(b)) => BoxStyle::same_computed_values(a, b),
             (a, b) => a.is_none() && b.is_none(),
         };
-        if *self.parent != *q.parent
-            || !same_element(self.element_parent.as_ref(), q.element_parent)
-            || !anonymous
-        {
+        let parent = self.parent.first_difference(q.parent);
+        let element = !same_element(self.element_parent.as_ref(), q.element_parent);
+        if parent.is_some() || element || !anonymous {
+            // DevTools `why`: which parent input of the stage changed.
+            let reason = parent.unwrap_or(if element {
+                "element_parent"
+            } else {
+                "anonymous"
+            });
+            crate::journal::cache_miss("box_stage.parent", reason, || {
+                self.parent.difference_detail(q.parent)
+            });
             return Err(Miss::Parent);
         }
         if self.viewport.is_some_and(|v| v != viewport(q.vcx)) {
@@ -116,9 +124,10 @@ impl StageMemo {
                     }
                     return Ok(entry.out.clone());
                 }
-                // A record of this copy of the element names the input that changed.
-                Err(miss) if miss != Miss::Own => return Err(miss),
-                Err(miss) => reason = miss,
+                // A record of this copy of the element names the input that changed; a
+                // record of another parent variant of the same stages may still hold.
+                Err(miss) if reason == Miss::First || reason == Miss::Own => reason = miss,
+                Err(_) => {}
             }
         }
         Err(reason)
@@ -138,8 +147,14 @@ impl StageMemo {
             out: out.clone(),
         };
         let mut entries = self.0.borrow_mut();
+        // One record per parent variant: a box built under two variants of its parent
+        // in one frame (an inline box with and without its band) keeps both.
         let same = entries.iter().position(|e| {
-            e.paint == entry.paint && e.moved == entry.moved && e.own.same_stages(&entry.own)
+            e.paint == entry.paint
+                && e.moved == entry.moved
+                && e.own.same_stages(&entry.own)
+                && *e.parent == *entry.parent
+                && same_element(e.element_parent.as_ref(), entry.element_parent.as_ref())
         });
         match same {
             Some(i) => entries[i] = entry,
