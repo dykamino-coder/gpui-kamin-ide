@@ -50,6 +50,8 @@ mod group_stage;
 // KaminIDE patch: a path batch works within the pixels its paths reach.
 mod path_pass;
 mod path_target;
+mod effect_targets;
+mod mask_uploads;
 mod gaussian;
 mod group_atlas;
 mod group_batch;
@@ -189,7 +191,7 @@ struct BlurScratch {
     group_frags: Vec<Vec<([[f32; 4]; 4], u32)>>,
     /// Текстуры масок по картинке-источнику: заливать пиксели каждый кадр
     /// незачем, картинка неизменна (`ImageId` уникален на содержимое).
-    mask_cache: HashMap<ImageId, [Option<ID3D11ShaderResourceView>; 1]>,
+    mask_cache: mask_uploads::MaskUploads,
 }
 
 struct BlurTexture {
@@ -316,7 +318,7 @@ fn create_mask_texture(
     width: u32,
     height: u32,
     bytes: &[u8],
-) -> Result<[Option<ID3D11ShaderResourceView>; 1]> {
+) -> Result<mask_uploads::MaskUpload> {
     let desc = D3D11_TEXTURE2D_DESC {
         Width: width,
         Height: height,
@@ -342,7 +344,7 @@ fn create_mask_texture(
     let texture = texture.unwrap();
     let mut srv = None;
     unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut srv))? };
-    Ok([srv])
+    Ok(mask_uploads::MaskUpload::new(texture, [srv]))
 }
 
 /// KaminIDE patch: один даунсемпл-проход каскада blur (квад на весь dest,
@@ -848,6 +850,7 @@ impl DirectXRenderer {
         self.count_plan(&plan, scene.frame_shift_miss(), scene.frame_shift_stats());
         let keep = matches!(plan, retained::Plan::Keep);
         if keep {
+            self.release_unused_effect_targets(scene);
             // KaminIDE patch (group_cache.rs): the kept frame's groups own the images now.
             self.carry_kept_groups(scene);
         }
@@ -925,6 +928,7 @@ impl DirectXRenderer {
     ) -> Result<()> {
         self.ensure_drawable_resources()?;
         self.release_unused_path_target(scene);
+        self.release_unused_effect_targets(scene);
         self.backdrop = backdrop::opaque_backdrop(scene, self.width, self.height);
         self.backdrop_pending = self.backdrop.is_some();
         self.layer_cache.begin_frame();
@@ -1101,12 +1105,6 @@ impl DirectXRenderer {
         self.blur.group_clip.clear();
         self.blur.group_proj.clear();
         self.blur.group_frags.clear();
-        // Кэш текстур масок не растёт без предела: смена страницы рождает
-        // новые `ImageId`, старые записи никому не нужны.
-        if self.blur.mask_cache.len() > 64 {
-            self.blur.mask_cache.clear();
-        }
-
         // KaminIDE patch: per-group composite data first (nested composites of an
         // outer group read it while the outer group is drawn).
         for (i, group) in scene.groups.iter().enumerate() {
@@ -1132,8 +1130,8 @@ impl DirectXRenderer {
                 .group_frags
                 .push(group.fragments.iter().map(|f| pack_poly(f)).collect());
             let mask = group.mask.as_ref().and_then(|img| {
-                let srv = match self.blur.mask_cache.get(&img.id) {
-                    Some(srv) => srv.clone(),
+                let srv = match self.blur.mask_cache.get(img.id) {
+                    Some(srv) => srv,
                     None => {
                         let size = img.size(0);
                         let (mw, mh) = (size.width.0.max(1) as u32, size.height.0.max(1) as u32);
@@ -1141,9 +1139,13 @@ impl DirectXRenderer {
                         if bytes.len() < (mw * mh * 4) as usize {
                             return None;
                         }
-                        let srv = create_mask_texture(&device, mw, mh, bytes).log_err()?;
-                        self.blur.mask_cache.insert(img.id, srv.clone());
-                        srv
+                        let upload = create_mask_texture(&device, mw, mh, bytes).log_err()?;
+                        if self.gpu_timer.instrumentation.config().gpu_timing {
+                            self.gpu_timer.instrumentation.batches.mask_uploaded(
+                                gpu_memory::texture_bytes(&upload.texture),
+                            );
+                        }
+                        self.blur.mask_cache.insert(img.id, upload)
                     }
                 };
                 Some((

@@ -74,9 +74,13 @@ pub(super) fn populate_effects(r: &mut DirectXRenderer) {
     r.blur
         .groups
         .push(create_blur_texture(&device, r.width, r.height, true).unwrap());
-    r.blur
-        .mask_cache
-        .insert(ImageId(7), r.blur.groups[0].srv.clone());
+    r.blur.mask_cache.insert(
+        ImageId(7),
+        super::super::mask_uploads::MaskUpload::new(
+            r.blur.groups[0].texture.clone(),
+            r.blur.groups[0].srv.clone(),
+        ),
+    );
     r.blur
         .group_mask
         .push(Some((r.blur.groups[0].srv.clone(), [0.; 4], 0.)));
