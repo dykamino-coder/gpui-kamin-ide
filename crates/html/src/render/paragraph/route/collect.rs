@@ -28,8 +28,8 @@ pub(crate) fn paragraph_pieces_routed(
     crate::work::time!(_build, ParagraphBuildNs);
     crate::work::time_self!(_own, BuildSelfParagraphNs);
     let vcx = opts.cx.vcx();
-    // Бюджет строк знака обрыва (авто-режим) забирается РАЗОМ, до сборки кусков: куски
-    // строят вложенные абзацы (`inline-block`, `<svg>`), чужой бюджет им не достаётся.
+    // The line budget of the clamp marker (auto mode) is taken at once, before the pieces are
+    // built: they build nested paragraphs (`inline-block`, `<svg>`) that must not get it.
     let clamp_tag = opts.cx.clamp.paragraph;
     let clamp_budget = clamp_tag.and_then(|(key, seq)| {
         opts.cx

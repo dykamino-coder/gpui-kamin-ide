@@ -61,11 +61,6 @@ impl Drop for Timer {
     }
 }
 
-thread_local! {
-    /// Time the self-timed intervals nested in the open one spent, ns (`SelfTimer`).
-    static NESTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
 /// An interval whose counter gets only its own time: the time of self-timed
 /// intervals opened inside it goes to theirs. The self-timed counters of one
 /// tree of calls sum to the time of its outermost interval, as a profiler's
@@ -79,7 +74,7 @@ pub struct SelfTimer {
 pub fn time_self(counter: Counter) -> SelfTimer {
     let start = get_default(|dispatch| {
         dispatch.downcast_ref::<Collector>().map(|c| {
-            let outer = NESTED.with(|n| n.replace(0));
+            let outer = c.0.nested_ns.swap(0, Relaxed);
             (Instant::now(), c.0.clone(), c.0.phase.load(Relaxed), outer)
         })
     });
@@ -94,7 +89,7 @@ impl Drop for SelfTimer {
     fn drop(&mut self) {
         if let Some((start, totals, phase, outer)) = &self.start {
             let ns = u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX);
-            let nested = NESTED.with(|n| n.replace(outer.saturating_add(ns)));
+            let nested = totals.nested_ns.swap(outer.saturating_add(ns), Relaxed);
             totals.counts[*phase][self.counter as usize]
                 .fetch_add(ns.saturating_sub(nested), Relaxed);
         }
