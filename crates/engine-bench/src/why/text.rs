@@ -117,7 +117,7 @@ pub(super) fn render(out: &Value) -> String {
             let _ = writeln!(s, "  cause  ... {} more not kept", f["causes_dropped"]);
         }
         pairs(&mut s, "path ", &f["paint_path"]);
-        super::paint_work::render(&mut s, &f["paint_work"]);
+        super::paint_work::render_frame(&mut s, f);
         super::layout_work::render(&mut s, &f["layout_work"]);
         super::element_kinds::render(&mut s, &f["request_layout_kinds"]);
         super::layout_inputs::render(&mut s, &f["layout_inputs"]);

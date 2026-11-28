@@ -99,6 +99,7 @@ mod tests {
             border_color: Hsla::default(),
             corner_radii: Corners::default(),
             border_widths: Edges::default(),
+            ellipse: Default::default(),
             transformation: TransformationMatrix::unit(),
         }
     }

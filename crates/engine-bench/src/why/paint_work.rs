@@ -3,6 +3,20 @@
 use serde_json::Value;
 use std::fmt::Write;
 
+/// A frame's paint groups by reason, then its CPU paint attribution.
+pub(super) fn render_frame(out: &mut String, frame: &Value) {
+    let reasons: Vec<String> = frame["group_reasons"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(k, n)| format!("{k}={n}"))
+        .collect();
+    if !reasons.is_empty() {
+        let _ = writeln!(out, "  groups by reason: {}", reasons.join(" "));
+    }
+    render(out, &frame["paint_work"]);
+}
+
 pub(super) fn render(out: &mut String, profile: &Value) {
     let Some(intervals) = profile["intervals_inclusive_ns"].as_object() else {
         return;
@@ -27,6 +41,20 @@ pub(super) fn render(out: &mut String, profile: &Value) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn groups_by_reason_print_on_one_line_and_none_print_nothing() {
+        let mut out = String::new();
+        super::render_frame(&mut out, &serde_json::json!({"group_reasons": {}}));
+        assert!(out.is_empty());
+        super::render_frame(
+            &mut out,
+            &serde_json::json!({"group_reasons": {"rounded_mask": 3, "blur": 1}}),
+        );
+        assert!(out.starts_with("  groups by reason: ") && out.ends_with('\n'));
+        assert!(out.contains("rounded_mask=3") && out.contains("blur=1"));
+        assert_eq!(out.lines().count(), 1);
+    }
+
     #[test]
     fn intervals_are_labelled_inclusive_and_absence_is_not_zero() {
         let mut out = String::new();
