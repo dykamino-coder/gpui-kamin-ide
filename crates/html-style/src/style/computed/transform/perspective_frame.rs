@@ -9,6 +9,11 @@ use std::{cell::RefCell, rc::Rc};
 pub struct PerspectiveFrame(Rc<RefCell<Option<PerspectiveInputs>>>);
 
 impl PerspectiveFrame {
+    /// Whether both boxes read the same parent's spatial source.
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+
     pub fn source(&self) -> Option<PerspectiveInputs> {
         self.0.borrow().clone()
     }

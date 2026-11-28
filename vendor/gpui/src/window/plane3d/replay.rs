@@ -51,7 +51,7 @@ impl PaintGroup {
         // The raster's commands move through a fixed clip chain. Translating
         // the old allocation clips ink entering at its far edge; dormant
         // reservoirs may also leave the plane with no drawn ink at all.
-        self.bounds = coverage::replayed(&self.scene, self.bounds);
+        self.bounds = coverage::source(&self.scene, self.bounds);
         self.projection = spec.projection;
         self.polygon = match near_clip(&plane_corners(&spec.full, spec.outer, spec.rect)) {
             Some((points, true)) => to_points(&points),

@@ -86,7 +86,7 @@ fn a_box_under_another_parent_keeps_the_elements_perspective_cell() {
     ) else {
         panic!("perspective cells")
     };
-    assert!(Rc::ptr_eq(cell, &own));
+    assert!(cell.ptr_eq(&own));
 }
 
 #[test]
