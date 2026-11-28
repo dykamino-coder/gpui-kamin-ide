@@ -38547,10 +38547,10 @@ index 0000000000000000000000000000000000000000..c316c467fb6b10da4b67d583df5629e8
 +}
 diff --git a/vendor/gpui/src/window/group_replay.rs b/vendor/gpui/src/window/group_replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ae5047a7aaa9b2953475a5ea22654f17ca2ab9f5
+index 0000000000000000000000000000000000000000..c2f7a8ea5aa9d85f1249280a6f142497d7334ff5
 --- /dev/null
 +++ b/vendor/gpui/src/window/group_replay.rs
-@@ -0,0 +1,170 @@
+@@ -0,0 +1,173 @@
 +//! KaminIDE patch: the composition groups of a retained paint record
 +//! (`scene::group_replay`).
 +//!
@@ -38697,15 +38697,18 @@ index 0000000000000000000000000000000000000000..ae5047a7aaa9b2953475a5ea22654f17
 +        let scenes = std::iter::once(scene).chain(scene.groups.iter().map(|group| &*group.scene));
 +        let labels = scenes
 +            .flat_map(|scene| scene.surfaces.iter().filter(|surface| surface.group > 0))
++            // Retained planes keep their reservoir and label when their
++            // raster becomes empty; the compositor allocates no buffer.
++            .filter(|surface| scene.groups.get(surface.group as usize - 1).is_some_and(|group| !group.bounds.is_empty()))
 +            .map(|surface| (surface.group, surface.bounds.intersect(&surface.content_mask.bounds)))
 +            .collect();
 +        (labels, scene.groups.iter().map(|group| (group.bounds, group.scene.quads.clone())).collect())
 +    }
 +
-+    /// Residual plane maps used by composition, in group order.
++    /// Residual plane maps with a nonempty raster, in group order.
 +    #[cfg(any(test, feature = "test-support"))]
 +    pub fn painted_plane_maps(&self) -> Vec<Option<[f32; 9]>> {
-+        self.rendered_frame.scene.groups.iter().map(|group| group.projection).collect()
++        self.rendered_frame.scene.groups.iter().filter(|group| !group.bounds.is_empty()).map(|group| group.projection).collect()
 +    }
 +
 +    /// The draw sequence of each group of the rendered frame (`painted_sequence`).
@@ -43357,10 +43360,10 @@ index 0000000000000000000000000000000000000000..52c0311797cf7ba502e7f71b91e7221d
 +}
 diff --git a/vendor/gpui/src/window/plane3d/coverage.rs b/vendor/gpui/src/window/plane3d/coverage.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..5e503a58ba5a34f606b276e05281cd5ac7a2b76e
+index 0000000000000000000000000000000000000000..faf12df362ae0492fc63f20961ed52134810171e
 --- /dev/null
 +++ b/vendor/gpui/src/window/plane3d/coverage.rs
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,64 @@
 +//! Conservative source ink for projected plane surfaces.
 +
 +use super::*;
@@ -43395,6 +43398,18 @@ index 0000000000000000000000000000000000000000..5e503a58ba5a34f606b276e05281cd5a
 +        }
 +    }
 +    ink.filter(|b| finite(*b)).unwrap_or(fallback)
++}
++
++/// A retained reservoir can draw no commands at the current scroll offset.
++/// Invalid geometry still uses the conservative allocation as on first paint.
++pub(super) fn replayed(scene: &Scene, fallback: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
++    if scene.book.primitive_ink.is_none()
++        && !scene.paint_operations.iter().any(|op| matches!(op, crate::scene::PaintOperation::Layer(_)))
++    {
++        Bounds::default()
++    } else {
++        source(scene, fallback)
++    }
 +}
 +
 +#[cfg(test)]
@@ -43486,10 +43501,10 @@ index 0000000000000000000000000000000000000000..41fa724c99e838a71d480de814a9ec23
 +}
 diff --git a/vendor/gpui/src/window/plane3d/replay.rs b/vendor/gpui/src/window/plane3d/replay.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0d1551291a2af44cdc90968c5b019ae5a5ef6ae6
+index 0000000000000000000000000000000000000000..3dca6572eb656657701fbf909c564ee8d1142921
 --- /dev/null
 +++ b/vendor/gpui/src/window/plane3d/replay.rs
-@@ -0,0 +1,58 @@
+@@ -0,0 +1,62 @@
 +//! Source-built raster and homography retained with a scrolling plane.
 +
 +use super::*;
@@ -43540,6 +43555,10 @@ index 0000000000000000000000000000000000000000..0d1551291a2af44cdc90968c5b019ae5
 +        let Some((build, scale)) = &self.plane else { return };
 +        let build = build.moved(delta.map(|v| Pixels(v.0 / scale)));
 +        let spec = build.spec();
++        // The raster's commands move through a fixed clip chain. Translating
++        // the old allocation clips ink entering at its far edge; dormant
++        // reservoirs may also leave the plane with no drawn ink at all.
++        self.bounds = coverage::replayed(&self.scene, self.bounds);
 +        self.projection = spec.projection;
 +        self.polygon = match near_clip(&plane_corners(&spec.full, spec.outer, spec.rect)) {
 +            Some((points, true)) => to_points(&points),

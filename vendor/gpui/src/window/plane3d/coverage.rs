@@ -34,6 +34,18 @@ pub(super) fn source(scene: &Scene, fallback: Bounds<ScaledPixels>) -> Bounds<Sc
     ink.filter(|b| finite(*b)).unwrap_or(fallback)
 }
 
+/// A retained reservoir can draw no commands at the current scroll offset.
+/// Invalid geometry still uses the conservative allocation as on first paint.
+pub(super) fn replayed(scene: &Scene, fallback: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+    if scene.book.primitive_ink.is_none()
+        && !scene.paint_operations.iter().any(|op| matches!(op, crate::scene::PaintOperation::Layer(_)))
+    {
+        Bounds::default()
+    } else {
+        source(scene, fallback)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
