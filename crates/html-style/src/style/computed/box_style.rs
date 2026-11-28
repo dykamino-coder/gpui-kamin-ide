@@ -123,8 +123,9 @@ pub struct BoxStyle {
 }
 
 impl BoxStyle {
-    pub fn set_parent_context(&mut self, parent: &Self) {
-        self.context = context::child_of(parent);
+    /// The parent facts this box gives the box context of its children.
+    pub fn child_context(&self) -> BoxContext<super::writing_mode::WritingMode, super::Align> {
+        context::child_of(self)
     }
 
     /// Коробка со стилем `style` и пустым контекстом.

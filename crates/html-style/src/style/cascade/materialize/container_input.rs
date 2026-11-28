@@ -25,9 +25,9 @@ impl ComputedSlot {
             computed.decor_box = 0;
         }
         if super::sharing::size_key(computed.reset_context.cq_size)
-            != super::sharing::size_key(self.1.get())
+            != super::sharing::size_key(self.1.container.get())
         {
-            computed.reset_context.cq_size = self.1.get();
+            computed.reset_context.cq_size = self.1.container.get();
         }
         computed.finish()
     }
@@ -38,7 +38,7 @@ impl ComputedSlot {
     /// lays the window's roots out again in the same draw.
     #[track_caller]
     pub fn set_container_size(&self, size: (Option<f32>, Option<f32>)) -> bool {
-        let old = self.1.replace(size);
+        let old = self.1.container.replace(size);
         if old != size {
             crate::journal::note("layout_retry.container_size", || {
                 format!("container size (width, height) {old:?} -> {size:?}")
