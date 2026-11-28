@@ -16,17 +16,15 @@ impl DirectXRenderer {
         let resources = self.res();
         let device = &self.dev().device;
         let (texture, view) = create_offscreen_target_and_its_view(device, width, height)?;
-        let (msaa, msaa_view, path_srv) =
-            create_path_intermediate_msaa_texture_and_view(device, width, height)?;
         let isolated = DirectXResources {
             swap_chain: resources.swap_chain.clone(),
             frame_gate: None,
             render_target: Some(texture),
             render_target_view: view,
             back_buffer: None,
-            path_intermediate_srv: path_srv,
-            path_intermediate_msaa_texture: msaa,
-            path_intermediate_msaa_view: msaa_view,
+            path_intermediate_srv: None,
+            path_intermediate_msaa_texture: None,
+            path_intermediate_msaa_view: None,
             viewport: D3D11_VIEWPORT {
                 Width: width as f32,
                 Height: height as f32,
@@ -38,6 +36,7 @@ impl DirectXRenderer {
         let dimensions = (self.width, self.height);
         (self.width, self.height) = (width, height);
         let result = self.render_to_image(scene, WindowBackgroundAppearance::Transparent);
+        self.release_path_target();
         self.resources = original;
         (self.width, self.height) = dimensions;
         unsafe {

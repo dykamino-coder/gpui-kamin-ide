@@ -69,6 +69,7 @@ impl DirectXRenderer {
         self.clear_effect_resources();
         // KaminIDE patch: the kept frame and its device objects die with the device.
         self.reset_retained();
+        self.release_path_target();
         unsafe {
             #[cfg(debug_assertions)]
             if let Some(devices) = &self.devices {
