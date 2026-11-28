@@ -13,4 +13,3 @@ impl Default for SceneSpace {
         Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
     }
 }
-

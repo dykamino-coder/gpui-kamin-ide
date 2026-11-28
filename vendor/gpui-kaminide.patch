@@ -24494,10 +24494,10 @@ index 0000000000000000000000000000000000000000..a57862f5e3d643be0891ae4e4bd0d065
 +}
 diff --git a/vendor/gpui/src/scene/scroll_marks/space.rs b/vendor/gpui/src/scene/scroll_marks/space.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..79099bdb5f1c97cd7c0cdcce9bf37219f7c0cadb
+index 0000000000000000000000000000000000000000..f3ec05007ddc5c78930a2b0a03015c49f6dbf5c4
 --- /dev/null
 +++ b/vendor/gpui/src/scene/scroll_marks/space.rs
-@@ -0,0 +1,16 @@
+@@ -0,0 +1,15 @@
 +//! KaminIDE patch: scene identity separates empty paint ranges in different records.
 +
 +/// Which scene a command index counts in: each scene has its own, kept by
@@ -24513,7 +24513,6 @@ index 0000000000000000000000000000000000000000..79099bdb5f1c97cd7c0cdcce9bf37219
 +        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 +    }
 +}
-+
 diff --git a/vendor/gpui/src/scene/segments.rs b/vendor/gpui/src/scene/segments.rs
 new file mode 100644
 index 0000000000000000000000000000000000000000..50d78f3e965b072aee2b08ffe4b7baa0f79d059c
