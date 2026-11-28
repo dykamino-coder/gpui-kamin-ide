@@ -1,5 +1,5 @@
 //! CLI usage text.
-pub(crate) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--runs N] \
+pub(crate) const USAGE: &str = "engine_bench <file.html> [--viewport WxH] [--device-scale-factor N] [--runs N] \
     [--gpu default|high-performance|minimum-power|software|NAME] [--mode cold|warm|both|relayout|scroll|edit] [--edit text|attr|class|insert|remove | --edit-markup FILE] [--json] [--snapshot first.png] [--frame-diff-dir DIR] [--fresh-check-dir DIR] [--why DIR] [--trace-frames] [--animation-step-ms N] [--scroll-back [--scroll-step PX]] [--memory-settle-ms N (2000..60000)] [--surface offscreen|window] [--plan PLAN.json]\n\
     engine_bench --list-gpus\n\
     engine_bench --why-compare A B   (what changed between two --why runs: dirs or why.json)\n\

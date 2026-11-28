@@ -1,6 +1,7 @@
 //! Проверяемые параметры CLI; не читает конфигурацию WPT.
 
 pub(super) mod animation;
+mod capture;
 use std::path::PathBuf;
 
 /// Наименьшее окно устойчивой памяти (`--memory-settle-ms`) после последнего кадра.
@@ -63,6 +64,7 @@ pub(super) struct Args {
     pub(super) path: PathBuf,
     pub(super) gpu: String,
     pub(super) viewport: (u32, u32),
+    pub(super) device_scale_factor: f32,
     pub(super) runs: usize,
     pub(super) animation_step: Option<std::time::Duration>,
     pub(super) mode: Mode,
@@ -111,6 +113,7 @@ impl Args {
             path: path.into(),
             gpu: "default".into(),
             viewport: (800, 600),
+            device_scale_factor: 1.,
             runs: 30,
             animation_step: None,
             mode: Mode::Both,
@@ -205,12 +208,8 @@ impl Args {
                     }
                 }
                 "--plan" => out.plan = Some(value.into()),
-                "--scroll-step" => {
-                    out.scroll_step = value.parse()?;
-                    if !out.scroll_step.is_finite() || out.scroll_step < 0.0 {
-                        return Err("scroll step must be finite and nonnegative".into());
-                    }
-                }
+                "--scroll-step" => out.scroll_step = capture::scroll_step(&value)?,
+                "--device-scale-factor" => out.device_scale_factor = capture::scale_factor(&value)?,
                 "--frame-diff-dir" => out.frame_diff_dir = Some(value.into()),
                 "--fresh-check-dir" => out.fresh_check_dir = Some(value.into()),
                 "--why" => out.why = Some(value.into()),

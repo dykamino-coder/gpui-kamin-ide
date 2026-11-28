@@ -1,6 +1,28 @@
 use super::Args;
 
 #[test]
+fn capture_scale_defaults_to_one_and_preserves_fractional_scale() {
+    let page = std::env::temp_dir().join(format!("engine-bench-scale-{}.html", std::process::id()));
+    std::fs::write(&page, "<!doctype html><p>scale</p>").unwrap();
+    let parse = |extra: &[&str]| {
+        Args::parse(
+            std::iter::once(page.to_str().unwrap())
+                .chain(extra.iter().copied())
+                .map(str::to_owned),
+        )
+    };
+    assert_eq!(parse(&[]).unwrap().unwrap().device_scale_factor, 1.);
+    assert_eq!(
+        parse(&["--device-scale-factor", "1.25"])
+            .unwrap()
+            .unwrap()
+            .device_scale_factor,
+        1.25
+    );
+    std::fs::remove_file(page).unwrap();
+}
+
+#[test]
 fn scroll_step_supports_stationary_and_end_clamped_captures() {
     let page = std::env::temp_dir().join(format!(
         "engine-bench-scroll-step-{}.html",
