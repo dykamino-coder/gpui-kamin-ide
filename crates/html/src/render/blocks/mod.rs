@@ -28,6 +28,7 @@ pub(crate) use context::{blocks, blocks_stack, blocks_stack_with_dimensions};
 use gpui::AnyElement;
 pub(super) mod canvas;
 pub(super) mod flow;
+mod plan;
 pub(super) mod positioned;
 mod text_only;
 use flow::blocks_flow;
@@ -83,134 +84,17 @@ async fn build(
     opts: &RenderOpts,
     cell_bfc: bool,
 ) -> Vec<AnyElement> {
-    let vcx = opts.cx.vcx();
     let (ordered, under_tf) = prepare_children::container_flags(inherited);
     if text_only::applies(nodes, inherited, ordered) {
         return text_only::flow(stk, nodes, inherited, opts, under_tf).await;
     }
-    // `content-visibility: hidden`: содержимое пропускается целиком
-    // (css-contain-2 §4) — коробка остаётся, детей нет.
-    let (collapsed, ordered_context, under_tf) =
-        prepare_children(nodes, inherited, &sizes, opts, cell_bfc);
-    // Плавающий блок и выравнивание по базовой линии на элементе гибкого
-    // контейнера или сетки НЕ действуют — так велит CSS. Без этого правила
-    // `float: right` на элементе ряда выкидывал его из раскладки родителя.
-    let collapsed = ordered_children(collapsed, ordered_context, inherited, opts);
-    let flex_ctx = matches!(
-        inherited.reset_box_layout.display,
-        Some(Display::Flex) | Some(Display::InlineFlex)
-    );
-    let letter_scope = first_letter_scope::Scope::new(&collapsed, inherited);
-    // Буквица `initial-letter` расшивается в плавающий узел ДО обтекания —
-    // дальше её ведёт `wrap_floats` наравне с авторскими флоатами. В гибком
-    // контейнере и сетке `::first-letter` не действует — там не трогаем.
-    let collapsed = if ordered_context {
-        collapsed
-    } else {
-        initial_letter_float(
-            first_letter_descendants::route(
-                first_line_descendants::route(collapsed, inherited),
-                inherited,
-            ),
-            inherited,
-            opts,
-        )
-    };
-    // §8.3.1: поле первого ребёнка примыкает к верхнему полю содержащего
-    // блока, только если того не отделяют ни рамка, ни отбивка и он не
-    // заводит своего контекста форматирования.
-    let cb_top_open = !own_context_style(inherited)
-        && zero_len(inherited.reset_box_layout.padding.top)
-        && zero_len(inherited.borders().top);
-    // Измеряемый бандовый хост (`band_flow.rs`) — только в БЛОЧНОМ контейнере
-    // горизонтального письма: в гибком и сетке `float` не
-    // действует (css-flexbox-1 §3, css-grid-1 §6.1).
-    // Хост работает и в вертикальном письме: план в логических осях,
-    // перевод в физику при сборке. Float sides are line-relative (left =
-    // line-left), independent of `direction` (css-writing-modes-4 §6.3), so
-    // RTL hosts use the same plan; paragraphs handle RTL within the bands.
-    // `sideways-lr` uses the same logical bands; physical holders and shape
-    // profiles start at the bottom line edge (css-writing-modes-4 §6.3).
-    // Page stacks still need the measured host's break opportunities before
-    // they can fragment it (CSS Break 3 section 4.1). Deferred clamp children
-    // retain the counting scope, including the float's independent BFC.
-    let measured_ok = !flex_ctx
-        && !matches!(
-            inherited.reset_box_layout.display,
-            Some(Display::Grid) | Some(Display::InlineGrid)
-        )
-        && (!inherited.wm().block_rl() || inherited.wm().vertical());
-    let collapsed = replaced_used_style::inline_nodes(collapsed, || opts.cx.constraints.avail_w());
-    let collapsed = by_layer(
-        wrap_floats(
-            collapsed,
-            inherited,
-            cb_top_open,
-            match inherited.inh.font.font_size {
-                Some(Len::Px(v)) => v,
-                _ => opts.base_size(),
-            },
-            measured_ok,
-            own_context_style(inherited) || inherited.reset_flex.flex_item,
-            cell_bfc,
-            || opts.cx.constraints.cb_width(),
-            opts.cx.constraints.avail_h,
-            vcx,
-        ),
-        flex_ctx,
-    );
-    // Блок мы изображаем гибкой колонкой, а её дети по умолчанию сжимаются —
-    // в обычном потоке этого нет: ребёнок выше родителя обязан вылезти, а не
-    // ужаться. Поэтому в потоке сжатие детям выключается, если разметка не
-    // просила обратного.
-    let flex_context = matches!(
-        inherited.reset_box_layout.display,
-        Some(Display::Flex) | Some(Display::InlineFlex)
-    );
-    let collapsed = flow_children(collapsed, ordered_context, inherited, opts, flex_context);
-    // §9.9 шаг 8: позиционированная коробка рисуется ПОВЕРХ содержимого
-    // потока, а порядок краски у нас — порядок детей. В обычном потоке это
-    // делает верхний слой, но в сетке и гибком контейнере он выключен
-    // (`!ordered_context` у гейтов ниже), и абсолютный ребёнок оказывался под
-    // соседями. Здесь его достаточно переставить в конец: место он берёт не
-    // из потока (в раскладку сетки такой ребёнок не входит), поэтому
-    // перестановка меняет только краску.
-    // Вынесенный абсолют всё же РВЁТ прогон текста: каждая непрерывная
-    // последовательность текстовых детей — свой анонимный элемент
-    // (css-flexbox-1 §4, css-grid-2 §6.1), а абсолютный ребёнок в неё не
-    // входит. После перестановки куски «Two » и «lines» оказывались соседями
-    // и склеивались в один абзац (`anonymous-flex-item-004`,
-    // `anonymous-grid-item-001`). `run_breaks` — индексы в новом списке, перед
-    // которыми накопленный абзац закрывается.
-    let mut run_breaks: Vec<usize> = vec![];
-    let collapsed: Vec<Node> = if ordered_context {
-        let in_flow = |n: &Node| match n {
-            Node::Element(e) => {
-                e.style.used().reset_positioned.position
-                    != Some(crate::style::computed::Position::Absolute)
-                    || e.style
-                        .used()
-                        .reset_positioned
-                        .z_index
-                        .is_some_and(|z| z < 0)
-            }
-            Node::Text(_) => true,
-        };
-        let mut flow: Vec<Node> = vec![];
-        let mut over: Vec<Node> = vec![];
-        for n in collapsed {
-            if in_flow(&n) {
-                flow.push(n);
-            } else {
-                if run_breaks.last() != Some(&flow.len()) {
-                    run_breaks.push(flow.len());
-                }
-                over.push(n);
-            }
+    let make = || plan::prepare(nodes, inherited, &sizes, opts, cell_bfc);
+    let plan = match opts.cx.contracts.reuse.as_ref() {
+        Some(reuse) => {
+            let inputs = plan::inputs(&sizes, opts, cell_bfc);
+            reuse.child_plan(nodes, inherited, opts, &inputs, make)
         }
-        flow.into_iter().chain(over).collect()
-    } else {
-        collapsed
+        None => std::rc::Rc::new(make()),
     };
     let mut out = vec![];
     // Порядок краски подслоя (§9.9 шаг 3): соседние распорки отрицательного
@@ -225,30 +109,22 @@ async fn build(
     // Липкому ребёнку нужны две вещи, которых он сам не видит: коробка
     // родителя и видимая часть ленты. Их снимает распорка — она идёт первой,
     // потому что готовит замер до отрисовки детей.
-    let sticky = collapsed.iter().any(|n| match n {
-        Node::Element(e) => {
-            e.style.used().reset_positioned.position
-                == Some(crate::style::computed::Position::Sticky)
-        }
-        _ => false,
-    });
     let frame: crate::interactive::sticky::element::StickyCell = Default::default();
-    if sticky {
+    if plan.sticky {
         out.push(sticky_probe(frame.clone()));
     }
     // Слой верхней отрисовки этого контейнера: позиционированные элементы
     // складывают сюда содержимое, а забирается оно последними детьми.
-    let nodes = collapsed.as_slice();
     blocks_flow(
         stk,
-        nodes,
-        run_breaks,
+        &plan.nodes,
+        plan.run_breaks.clone(),
         out,
-        letter_scope,
+        plan.letter_scope,
         inherited,
         opts,
-        ordered_context,
-        under_tf,
+        plan.ordered_context,
+        plan.under_tf,
         frame,
         below_run_end,
         below_run_start,

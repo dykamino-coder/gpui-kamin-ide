@@ -40,22 +40,6 @@ pub(crate) trait WidthSink {
     fn note(&self);
 }
 
-impl WidthSink for Cell<bool> {
-    fn note(&self) {
-        self.set(true);
-    }
-}
-
-/// A nested subtree's sink and its tracked ancestor's (`track_widths_below`).
-struct BothSinks(Rc<dyn WidthSink>, Rc<dyn WidthSink>);
-
-impl WidthSink for BothSinks {
-    fn note(&self) {
-        self.0.note();
-        self.1.note();
-    }
-}
-
 /// Read set of the widths of a subtree kept across frames (`layout::reuse`):
 /// the subtree's build output stays valid under another available width
 /// unless the build consumed a width that came from outside the subtree.
@@ -71,10 +55,17 @@ impl WidthSink for BothSinks {
 #[derive(Default)]
 struct WidthReads {
     sink: Cell<Option<Rc<dyn WidthSink>>>,
+    /// Every read, outside or not, of one build step (`BoxConstraints::track_reads`).
+    any: Cell<Option<Rc<Cell<bool>>>>,
 }
 
 impl WidthReads {
     fn note(&self, outside: bool) {
+        let any = self.any.take();
+        if let Some(any) = &any {
+            any.set(true);
+        }
+        self.any.set(any);
         if !outside {
             return;
         }
@@ -94,8 +85,11 @@ impl WidthReads {
 
 impl Clone for WidthReads {
     fn clone(&self) -> Self {
+        let any = self.any.take();
+        self.any.set(any.clone());
         Self {
             sink: Cell::new(self.sink()),
+            any: Cell::new(any),
         }
     }
 }
@@ -245,5 +239,6 @@ pub(crate) struct FragmentConstraints {
 }
 
 pub(crate) mod scoped;
+use scoped::BothSinks;
 #[cfg(test)]
 mod tests;

@@ -17,7 +17,7 @@ pub(super) fn unfloated_flow(
     em: f32,
     measured_ok: bool,
     parent_bfc: bool,
-    cb: FloatCb,
+    cb: &dyn Fn() -> FloatCb,
     nodes: &mut Vec<Node>,
     vcx: crate::values::ValueCx<'_>,
 ) -> Option<Vec<Node>> {
@@ -55,7 +55,7 @@ pub(super) fn prepare_float_nodes(
     nodes: Vec<Node>,
     parent: &BoxStyle,
     cb_top_open: bool,
-    cb_px: Option<f32>,
+    cb_px: &dyn Fn() -> Option<f32>,
     vcx: ValueCx<'_>,
 ) -> Vec<Node> {
     // CSS Display 3 §2.5: an element with `display: contents` generates no
@@ -144,7 +144,7 @@ pub(super) fn prepare_float_nodes(
             Some(c) if c < 0 => left,
             Some(_) => right,
             None => false,
-        } || bfc_no_fit(n, min_w, cb_px))
+        } || bfc_no_fit(n, min_w, cb_px()))
     {
         if let Node::Element(w) = &mut nodes[a] {
             w.style.used_mut().reset_box_layout.height = None;

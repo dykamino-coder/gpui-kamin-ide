@@ -23,9 +23,10 @@ pub(crate) struct Store {
     pub(super) inputs: super::content::shared::KeyInputs,
     /// Paragraphs kept across frames (`paragraph`), by container and nodes.
     pub(crate) paragraphs: super::paragraph::Records,
-    /// Records of far blocks laid out from their kept layout subtree
-    /// (`far`), with the storage of the build that claims them; allocated
-    /// while there are any. A build holds it while it runs (`FlowReuse::far`).
+    /// Prepared child lists of block containers (`child_plan`), by container box.
+    pub(crate) child_plans: super::child_plan::ChildPlans,
+    /// Records of far blocks laid out from their kept layout subtree (`far`), with the storage
+    /// of the build that claims them; allocated while there are any, held by a running build.
     pub(super) far: Cell<Option<Box<FrameFar>>>,
     /// The last blocks whose far recording failed (near the screen, not
     /// quiet or reading an outside width; 0 is empty): they are not wrapped
@@ -33,8 +34,7 @@ pub(crate) struct Store {
     /// screen costs no far wrapper per frame. Two slots cover the single
     /// on-screen root block of a page; more near blocks just record again.
     pub(super) far_near: Cell<[u64; 2]>,
-    /// Blocks whose replay failed the frame check (moved, or their layout
-    /// needed a new measurement): they are built until the flow key changes.
+    /// Blocks whose replay failed the frame check (moved, new measurement): built until it changes.
     pub(super) banned: Cell<HashSet<u64>>,
     /// Blocks whose last replay recording read a width from outside: their
     /// records fit only the same widths.
@@ -94,8 +94,7 @@ impl Store {
 
     /// Кадр документа повторён целиком: диапазоны записей повтора блоков
     /// указывают в кадр до него и больше не годятся.
-    /// The layout pass of the replayed frame did not request the document's
-    /// nodes either, so no kept layout subtree is left (`far`).
+    /// Its layout pass requested no node either, so no kept layout subtree is left (`far`).
     pub(crate) fn forget_replays(&self) {
         self.replays.take();
         self.contents.take();
@@ -181,6 +180,7 @@ impl Store {
     pub(super) fn reset_replays(&self) {
         self.replays.take();
         self.paragraphs.reset();
+        self.child_plans.reset();
         self.far.take();
         self.far_near.take();
         self.banned.take();

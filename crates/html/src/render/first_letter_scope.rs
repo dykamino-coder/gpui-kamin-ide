@@ -11,6 +11,7 @@ use crate::render::paragraph::route::paragraph_probed;
 use crate::style::computed::{BoxStyle, Computed, Display};
 use gpui::AnyElement;
 
+#[derive(Clone, Copy)]
 pub(crate) struct Scope {
     first: bool,
 }

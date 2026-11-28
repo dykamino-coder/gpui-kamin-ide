@@ -3,9 +3,42 @@
 //! subtree tracked around it still sees its reads, and the context is as it
 //! was once the step ends.
 
-use super::{BothSinks, BoxConstraints, WidthReads, WidthSink};
+use super::{BoxConstraints, WidthReads, WidthSink};
 use std::cell::Cell;
 use std::rc::Rc;
+
+impl WidthSink for Cell<bool> {
+    fn note(&self) {
+        self.set(true);
+    }
+}
+
+/// A nested subtree's sink and its tracked ancestor's (`track_widths_below`).
+pub(super) struct BothSinks(pub(super) Rc<dyn WidthSink>, pub(super) Rc<dyn WidthSink>);
+
+impl WidthSink for BothSinks {
+    fn note(&self) {
+        self.0.note();
+        self.1.note();
+    }
+}
+
+/// What `track_reads` replaced in the context.
+pub(crate) struct ScopedReads(Option<Rc<Cell<bool>>>);
+
+impl BoxConstraints {
+    /// Record into `read` every width read of one build step until `untrack_reads`,
+    /// outside or not, in place: the copies made meanwhile record too. Unlike
+    /// `track_scoped`, what the tracked subtrees around the step record is unchanged.
+    pub(crate) fn track_reads(&self, read: Rc<Cell<bool>>) -> ScopedReads {
+        ScopedReads(self.widths.any.replace(Some(read)))
+    }
+
+    /// End `track_reads`: the context records as before it.
+    pub(crate) fn untrack_reads(&self, saved: ScopedReads) {
+        self.widths.any.set(saved.0);
+    }
+}
 
 /// What a scoped tracking replaced in the context (`BoxConstraints::untrack_scoped`).
 pub(crate) struct ScopedWidths {
@@ -76,5 +109,23 @@ mod tests {
         cx.untrack_scoped(saved);
         let _ = cx.cb_width();
         assert!(!again.get(), "no read after the step");
+    }
+
+    #[test]
+    fn a_read_of_a_step_is_recorded_without_changing_the_outer_record() {
+        let cx = BoxConstraints::default();
+        let outer = Rc::new(Cell::new(false));
+        cx.track_widths_in_place(outer.clone());
+        let read = Rc::new(Cell::new(false));
+        let saved = cx.track_reads(read.clone());
+        let copy = cx.clone();
+        let _ = copy.cb_width();
+        cx.untrack_reads(saved);
+        assert!(read.get(), "a copy made in the step records its read");
+        assert_eq!(
+            outer.get(),
+            cx.cb_outside.get(),
+            "the outer record sees only outside reads"
+        );
     }
 }
